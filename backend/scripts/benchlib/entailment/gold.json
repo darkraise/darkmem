@@ -1,0 +1,536 @@
+{
+  "version": 1,
+  "variant": "claim-fact",
+  "_notes": "Claim/fact entailment gold (doc 17 §6, G-D). Labelling rules, slice decision procedures and edge rulings: LABELLING.md beside this file. Append-only; retire in place; declared counts track live pairs. Loader: benchlib/entailment_gold.py.",
+  "declared_slice_counts": {
+    "direction": 5,
+    "overreach": 6,
+    "paraphrase": 6,
+    "temporal": 6,
+    "unrelated": 4,
+    "value-swap": 5,
+    "verbatim": 4,
+    "weakening": 5
+  },
+  "declared_verdict_counts": {
+    "contradicted": 10,
+    "entailed": 17,
+    "unsupported": 14
+  },
+  "declared_provenance_counts": {
+    "hand-authored-synthetic-fact": 25,
+    "hand-authored-bench-corpus": 16,
+    "synthesis-draft": 0,
+    "l2-fact": 0
+  },
+  "pairs": [
+    {
+      "id": "eg-0001",
+      "premise": "The staging Postgres runs version 15.6 on host stg-db-01.",
+      "hypothesis": "Staging Postgres, on host stg-db-01, runs version 15.6.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Surface reorder only: subject, minor version and host all preserved, nothing added or dropped. Entailed under the verbatim rule.",
+      "corpus_key": "s03-staging-postgres"
+    },
+    {
+      "id": "eg-0002",
+      "premise": "The VPN is WireGuard on UDP port 51820, handing peers addresses in 10.8.0.0/24.",
+      "hypothesis": "The VPN is WireGuard on UDP port 51820 and hands peers addresses in 10.8.0.0/24.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Near-literal restatement; the participial clause becomes a coordinate clause with no content change. Entailed under the verbatim rule.",
+      "corpus_key": "s09-wireguard-port"
+    },
+    {
+      "id": "eg-0003",
+      "premise": "The reverse proxy terminates TLS with certificates issued by Let's Encrypt.",
+      "hypothesis": "TLS is terminated at the reverse proxy using Let's Encrypt certificates.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Passivisation plus one function-word swap; identical content. Entailed under the verbatim rule."
+    },
+    {
+      "id": "eg-0004",
+      "premise": "Loki keeps logs for 30 days; the compactor deletes older chunks.",
+      "hypothesis": "Loki retains logs for 30 days, and chunks older than that are deleted by the compactor.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "One-word synonym (keeps/retains) and a passivised second clause; both assertions and the 30-day value preserved. Entailed under the verbatim rule.",
+      "corpus_key": "s10-loki-retention"
+    },
+    {
+      "id": "eg-0005",
+      "premise": "Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.",
+      "hypothesis": "On the monitoring box, the Grafana service is reachable on port 3000, proxied by nginx.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Full rewording; same subject, same port, same proxy relationship. No content strengthened or weakened, so entailed.",
+      "corpus_key": "s01-grafana-port"
+    },
+    {
+      "id": "eg-0006",
+      "premise": "We chose Caddy over nginx for the public reverse proxy because it renews certificates automatically.",
+      "hypothesis": "Automatic certificate renewal is why Caddy was picked instead of nginx for the public-facing proxy.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "The causal structure is inverted syntactically but identical semantically: same choice, same alternative, same reason. Entailed.",
+      "corpus_key": "s06-caddy-decision"
+    },
+    {
+      "id": "eg-0007",
+      "premise": "The backup job encrypts archives with age before uploading them to the offsite bucket.",
+      "hypothesis": "Before they are pushed to the offsite bucket, archives are encrypted using age.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Temporal-clause fronting and lexical substitution (uploads/pushed); the encrypt-then-upload ordering and the tool are preserved. Entailed."
+    },
+    {
+      "id": "eg-0008",
+      "premise": "Prometheus scrapes the node exporters every 15 seconds, double the default interval.",
+      "hypothesis": "The node exporters are polled by Prometheus at 15-second intervals, twice the default.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Voice flip plus scrape/poll and double/twice substitutions; interval value and the relation to the default both preserved. Entailed.",
+      "corpus_key": "s02-prometheus-scrape"
+    },
+    {
+      "id": "eg-0009",
+      "premise": "Deploys to production require a green end-to-end suite and a manual approval step in the pipeline.",
+      "hypothesis": "Nothing ships to production unless the end-to-end tests pass and someone approves the pipeline step by hand.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Requirement restated as its contrapositive gate; both conjuncts (passing e2e, manual approval) preserved. Entailed."
+    },
+    {
+      "id": "eg-0010",
+      "premise": "The metrics database is sharded by tenant, with one schema per customer.",
+      "hypothesis": "Each customer gets its own schema; tenant is the sharding key for the metrics database.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Clause order swapped, both assertions restated in different words, nothing added. Entailed."
+    },
+    {
+      "id": "eg-0011",
+      "premise": "The staging Postgres runs version 15.6 on host stg-db-01.",
+      "hypothesis": "The staging database is on Postgres 15.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Strict weakening: version 15.6 entails major version 15, and dropping the host drops content. A judge that refuses this fails recall; the deliberate mirror of the overreach pair eg-0027.",
+      "corpus_key": "s03-staging-postgres"
+    },
+    {
+      "id": "eg-0012",
+      "premise": "The Kubernetes workers run k3s v1.29.4 on three Odroid boards.",
+      "hypothesis": "The cluster's worker nodes run a v1.29 release of k3s.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "v1.29.4 entails 'a v1.29 release'; the board count and hardware are dropped, never contradicted. Entailed by weakening.",
+      "corpus_key": "s12-k3s-version"
+    },
+    {
+      "id": "eg-0013",
+      "premise": "The rate limiter allows 100 requests per minute per API key and returns 429 beyond that.",
+      "hypothesis": "API requests are rate-limited per key.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The claim abstracts away the magnitude and the status code and keeps only the existence of per-key limiting, which the fact asserts. Entailed; mirror of the overreach pair eg-0029."
+    },
+    {
+      "id": "eg-0014",
+      "premise": "The VPN is WireGuard on UDP port 51820, handing peers addresses in 10.8.0.0/24.",
+      "hypothesis": "A WireGuard VPN is in use.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Existence claim derived from a fully specified fact; port and subnet dropped. Entailed by weakening.",
+      "corpus_key": "s09-wireguard-port"
+    },
+    {
+      "id": "eg-0015",
+      "premise": "Nightly restic backups of the wiki volume run at 02:30 and land on the NAS.",
+      "hypothesis": "The wiki volume is backed up on a nightly schedule.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Nightly restic backups entail the volume being backed up nightly; the tool, time and destination are dropped, not altered. Entailed.",
+      "corpus_key": "s04-wiki-backup"
+    },
+    {
+      "id": "eg-0016",
+      "premise": "Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.",
+      "hypothesis": "Production was still on Postgres 15 in December 2025.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "December 2025 lies inside the stated validity window [March 2025, January 2026). A window-scoped claim inside the window is entailed (window rule)."
+    },
+    {
+      "id": "eg-0017",
+      "premise": "Since the February 2026 migration, object storage is served by MinIO; the old Ceph cluster was decommissioned.",
+      "hypothesis": "As of June 2026, MinIO serves object storage.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: a fact valid since February 2026 with no closing event entails the same state at a later reference date. A judge must not demand an explicit revalidation for every later date."
+    },
+    {
+      "id": "eg-0018",
+      "premise": "Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.",
+      "hypothesis": "Production currently runs Postgres 15.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The window is explicitly closed by the upgrade, and the fact names the successor. A present-tense claim over an explicitly ended state contradicts the fact despite near-total lexical overlap."
+    },
+    {
+      "id": "eg-0019",
+      "premise": "The ELK stack was retired in 2025, and Kibana no longer runs anywhere in the lab.",
+      "hypothesis": "Kibana is still serving dashboards in the lab.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The fact's second clause asserts the negation of the claim's current state directly. Contradicted."
+    },
+    {
+      "id": "eg-0020",
+      "premise": "The staging environment was frozen for the compliance audit during Q1 2026.",
+      "hypothesis": "The staging environment is frozen.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Closed-window fact, undated present-tense claim. 'Was frozen during Q1' implicates but does not assert that the freeze ended, and asserts nothing about the present either way -- implicature is not contradiction, so the verdict is unsupported, not contradicted."
+    },
+    {
+      "id": "eg-0021",
+      "premise": "The certificate for lab.internal was renewed on 10 March 2026 and is valid for 90 days.",
+      "hypothesis": "The lab.internal certificate is currently valid.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: the fact fixes a validity window but 'currently' is anchored to an evaluation date the premise does not contain, so the claim is neither entailed nor contradicted. Unsupported."
+    },
+    {
+      "id": "eg-0022",
+      "premise": "After the bake-off, Vector replaced Telegraf for metrics collection.",
+      "hypothesis": "After the bake-off, Telegraf replaced Vector for metrics collection.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Reversal of an exclusive asymmetric relation: one bake-off outcome cannot have both directions, so the reversed claim contradicts the fact (reversal rule, exclusive case)."
+    },
+    {
+      "id": "eg-0023",
+      "premise": "haproxy load-balances incoming requests across the three app nodes.",
+      "hypothesis": "The three app nodes load-balance requests across haproxy instances.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Reversed functional role. The premise does not assert the reverse arrangement, but nothing in it excludes a separate one either, so this is unsupported, not contradicted (reversal rule, non-exclusive case)."
+    },
+    {
+      "id": "eg-0024",
+      "premise": "The January migration moved the job queue from Redis to Postgres.",
+      "hypothesis": "The January migration moved the job queue from Postgres to Redis.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The same named event with source and destination swapped: one migration cannot have moved the queue both ways. Contradicted."
+    },
+    {
+      "id": "eg-0025",
+      "premise": "The auth service depends on the config service at startup.",
+      "hypothesis": "The config service depends on the auth service at startup.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Reversed dependency. Dependency is not exclusive by meaning -- mutual dependency is not ruled out by the text -- so the reversed claim is merely unasserted. Unsupported."
+    },
+    {
+      "id": "eg-0026",
+      "premise": "DNS queries from the guest VLAN are forwarded to Unbound; Unbound never forwards queries to the guest VLAN.",
+      "hypothesis": "Unbound forwards DNS queries to the guest VLAN.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The premise's second clause explicitly negates the reversed direction, so the reversal is contradicted outright, not just unsupported."
+    },
+    {
+      "id": "eg-0027",
+      "premise": "The staging database is on Postgres 15.",
+      "hypothesis": "The staging Postgres runs version 15.6 on host stg-db-01.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: the minor version and the host are added content the fact does not carry. Not contradicted -- 15.6 is consistent with 15 -- so unsupported. Mirror of eg-0011."
+    },
+    {
+      "id": "eg-0028",
+      "premise": "Backups run nightly.",
+      "hypothesis": "Backups run nightly at 02:30 and are verified by a restore test.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The time and the verification step are unsupported additions; the nightly cadence alone is entailed but the conjunction is not, and a claim is scored whole. Unsupported."
+    },
+    {
+      "id": "eg-0029",
+      "premise": "The API is rate-limited.",
+      "hypothesis": "The API allows at most 100 requests per minute per key.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The magnitude and the per-key scope strengthen the bare existence fact. Unsupported; mirror of eg-0013."
+    },
+    {
+      "id": "eg-0030",
+      "premise": "Grafana sits behind the reverse proxy.",
+      "hypothesis": "Grafana sits behind the nginx reverse proxy on port 3000.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Proxy vendor and port are added. Both happen to be true in the wider corpus world, which is exactly the trap: the judge must score against this premise, not against world knowledge. Unsupported."
+    },
+    {
+      "id": "eg-0031",
+      "premise": "Some hosts run a node exporter.",
+      "hypothesis": "Every host runs a node exporter.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Quantifier strengthening: 'some' neither entails nor excludes 'every'. Unsupported, not contradicted."
+    },
+    {
+      "id": "eg-0032",
+      "premise": "The postmortem identified a misconfigured health check as one contributing factor in the outage.",
+      "hypothesis": "The outage was caused by the misconfigured health check.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "'One contributing factor' to 'the cause' strengthens both the causal strength and the exclusivity. Not excluded by the fact, so unsupported rather than contradicted."
+    },
+    {
+      "id": "eg-0033",
+      "premise": "Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.",
+      "hypothesis": "Grafana on the monitoring host listens on port 3300 behind the nginx reverse proxy.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Single-token port swap (3000 -> 3300) with every other token identical. Exclusive-slot rule: the fact states the operative port, so a different value for the same slot contradicts it. The canonical hard negative for an overlap-driven judge.",
+      "corpus_key": "s01-grafana-port"
+    },
+    {
+      "id": "eg-0034",
+      "premise": "The production Postgres runs version 16.2 on host prod-db-01.",
+      "hypothesis": "The production Postgres runs version 15.6 on host prod-db-01.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Version swapped to the STAGING instance's real value (15.6, s03), so the wrong claim is corpus-plausible. One instance runs one version: exclusive-slot rule, contradicted.",
+      "corpus_key": "d02-prod-postgres"
+    },
+    {
+      "id": "eg-0035",
+      "premise": "Prometheus scrapes the node exporters every 15 seconds, double the default interval.",
+      "hypothesis": "Prometheus scrapes the node exporters every 30 seconds.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Interval swap 15 -> 30 seconds. The scrape interval is a single-valued configuration slot, so the differing value contradicts the fact.",
+      "corpus_key": "s02-prometheus-scrape"
+    },
+    {
+      "id": "eg-0036",
+      "premise": "Terraform state lives in the MinIO bucket tf-state with locking enabled.",
+      "hypothesis": "Terraform state lives in the MinIO bucket artifacts-prod with locking enabled.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Bucket entity swapped for a sibling bucket that genuinely exists in the corpus world (artifacts-prod, s07), maximising plausibility. State lives in one bucket: exclusive-slot rule, contradicted.",
+      "corpus_key": "s14-terraform-state"
+    },
+    {
+      "id": "eg-0037",
+      "premise": "The JWT access-token lifetime is 15 minutes, and refresh tokens last 30 days.",
+      "hypothesis": "The JWT access-token lifetime is 30 minutes, and refresh tokens last 15 days.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The two magnitudes are crossed while every content word survives -- near-maximal lexical overlap with both slots wrong. Exclusive-slot rule on both conjuncts: contradicted."
+    },
+    {
+      "id": "eg-0038",
+      "premise": "The mail relay is Postfix on mail-01, accepting connections only from the internal subnet.",
+      "hypothesis": "The CI runners are capped at four concurrent jobs.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "The claim is true in the corpus world (s05) but this premise is about the mail relay and says nothing about CI. The judge must ground on the premise, not on plausibility. Unsupported.",
+      "corpus_key": "s11-mail-relay"
+    },
+    {
+      "id": "eg-0039",
+      "premise": "Internal DNS is Unbound at 192.168.20.53 with a wildcard zone for lab.internal.",
+      "hypothesis": "Alert notifications route through ntfy.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "hand-authored-bench-corpus",
+      "label_source": "author",
+      "rationale": "Same trap as eg-0038: a corpus-true claim (s15) against a premise about DNS that neither supports nor contradicts it. Unsupported.",
+      "corpus_key": "s16-unbound-dns"
+    },
+    {
+      "id": "eg-0040",
+      "premise": "The wiki volume is snapshotted before every upgrade.",
+      "hypothesis": "The photo library is stored on the NAS.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "No shared subject, predicate or value; the premise bears on nothing in the claim. Unsupported."
+    },
+    {
+      "id": "eg-0041",
+      "premise": "Deploy notifications are posted to the ops channel.",
+      "hypothesis": "The ops channel is archived monthly.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Shared entity (the ops channel) but a disjoint predicate: posting to a channel says nothing about its archival policy. Unsupported."
+    }
+  ]
+}
