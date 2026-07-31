@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 60 | 56 | 0 | 0 | 0 | 4 | 0 | G-C, G-D open |
+| E2 — Truth core | 60 | 48 | 4 | 0 | 0 | 8 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **219** | **111** | **0** | **0** | **0** | **107** | **1** | |
+| **Total** | **219** | **103** | **4** | **0** | **0** | **111** | **1** | |
 
 ---
 
@@ -179,7 +179,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.01 | `knowledge_triples` rebuild: the bi-temporal belief axis | L | Opus | high | claude/e2-truth-core | done | 31e4a24…2ec027b (11 commits) | fable adversarial: plan APPROVED WITH CHANGES (1C/4I/2M, all applied); whole-branch review BLOCKED on 1 Important, addressed and re-review cleared | Plan-first per §3. **The DDL was already in the baseline, so this was the semantics, not the schema — no migration changed.** Deleted the drifted demo layer (413 lines: ORM model, service, repo SQL — all describing columns the table no longer had, dead so the suite was green regardless). Then `compute_triple_key`, the ORM rebuild, the belief-axis repository, inert verification storage refusing `confirmed`, and journaling. Two identity rulings logged as amendments: project embedded **verbatim** in the key, and `project` required on the reads. Verify: gate green, floor 2524 passed (2480 at start), 44 tests on the fact layer |
 | T2.02 | `fact_sources` and origin-diversity counting | M | Opus | high | claude/e2-truth-core | done | aa04685, 7d9f998 | fable adversarial: spec PASS, 1 Important + 3 Minor; addressed after 1 fix round, re-review clean | **COUNT(DISTINCT origin_key), never rows** — the guard test fails loudly under row-counting. Unknown identity folds to ONE bucket per fact (merge-only, so it can undercount but never split a witness). Review caught the subtler half: the bucket was a full witness for the N=2 gates, so one known source + one anonymous capture was promotion-ready; it now counts toward the raw total but can never supply the kind-diversity or the time-gap that lowers the bar. `document` resolved as arriving under `block`, not a fifth kind (amendment). Verify: gate green, floor 2565 passed, 41 tests |
 | T2.03 | The verification ladder | L | Opus | high | claude/e2-truth-core | done | 22223c5…4556567 (8 commits) | fable adversarial: spec ❌ narrowly (D2's mandated test missing), quality 4 Important; fixed, re-reviewed, then a 2nd round for a regression the 1st introduced — final verdict all addressed, no new breakage | **L-size, so plan-first per §3** — the plan drew 5 Importants at Fable tier and all were applied *before* any code. The Tier-3 §7 escalation was already ruled (spec governs; T2.60 minted), so scope was unchanged. Shipped: the config layer whose shipped defaults are **floors** a G-C measurement must unlock per-parameter, the pure `decide()`, `recompute_fact` as **sole journaller**, and invariant 15 as a tree-wide allowlist scan. Review caught the epic's signature defect in my own work: the config→decision seam was unpinned, so `decide()` ignoring its config survived all 64 tests — I2 closed at the profile layer and reopened one layer up. It also found the row-lock gap (a concurrent `disputed` could be overwritten, with the machine journaling a resolution it has no detector for) and a negative control that tested a re-typed copy of the predicate rather than the guard. **The fix round then introduced NB-1** — the sub-one bound preempted the floor clamp, so an unmeasured `n_default: 0` promoted a same-day pair at N=2 — caught by re-review and fixed. Verify: ladder 75, floor **2680** (2605 at branch point), gate GREEN, F1 parity 0.912/0.971/0.883/0.883 |
-| T2.04 | The contradiction veto is absolute | M | Opus | high | | todo | | | |
+| T2.04 | The contradiction veto is absolute | M | Opus | high | claude/e2-lane-a2 | wip | | | |
 | T2.05 | Human ratification is the only path to `confirmed` | S | Opus | high | | todo | | | |
 | T2.06 | Every ladder transition journaled | M | Sonnet | high | | todo | | | |
 | T2.07 | `projects` table + lazy registration | M | Sonnet | high | claude/e2-lane-b | done | 8c05293, 576e5c7, 313e6b8 (merged a7c49da) | fable adversarial: spec PASS (all three Done-when hold), quality 2 Important + 3 Minor; re-review after 1 fix round — all addressed, no new breakage | Lazy registration is one `INSERT … ON CONFLICT DO NOTHING` in the capture transaction; names stored **verbatim** because `project` is the supersession scope and `compute_triple_key` embeds it uncanonicalised, so folding `Foo`/`foo` would give two memory scopes one fact identity. Review found a **real bypass**: `MemoryUpdate.project` reached a memory row through REST `PUT` without registering, leaving the registry blind until the next boot backfill — an unbounded window. Fixed after a successful row update, so a PUT to a nonexistent id registers nothing; the re-review independently audited every other write path and confirmed it was the only one. Second finding was a hollow assertion — the idempotence test re-selected the entity and got the identity-map cache, so a backfill rewriting `created_at` every call passed it. **The fix round's first mutation silently proved nothing**: Postgres `now()` is transaction-constant, so the mutant wrote an identical value and the test stayed green — a mutation that fails to mutate manufactures confidence rather than merely withholding it. `clock_timestamp()` turns it red; both reproduced by the re-reviewer. A recorded coverage gap (per-batch dedup untested against a mixed-project batch) was closed rather than carried. Verify: 13 tests, floor 2617 |
@@ -189,7 +189,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.11 | `contradiction_scan` | M | Opus | high | | todo | | | |
 | T2.12 | `memory_dream` — never hard-merges, never deletes | L | Opus | high | | todo | | | |
 | T2.13 | Dream digest + per-action and per-batch undo | L | Opus | high | | todo | | | |
-| T2.14 | Register `article_synthesis` inert | S | Haiku | high | | todo | | | |
+| T2.14 | Register `article_synthesis` inert | S | Haiku | high | claude/e2-lane-c1 | wip | | | |
 | T2.15 | Five associative types + normaliser | S | Sonnet | high | claude/e2-truth-core | done | 2df7cd7 | fable adversarial: spec PASS, quality approved, 0 Critical/0 Important, 2 Minor | **Implementation was already landed by T1.23 — this task was the missing proof.** `taxonomy.py` untouched (net-zero diff, asserted). 26 tests in the file the Verify names, which did not exist. Reviewer independently ran 7 mutations incl. a same-length swap and a `PRECEDES→FOLLOWS` alias (which would silently invert temporal order); all broke the named tests. Floor 2591 passed |
 | T2.16 | Derivation from overlap, proximity, and contradiction | L | Opus | high | | todo | | | |
 | T2.17 | Strip-before-rewrite and endpoint self-healing | S | Sonnet | high | | todo | | | |
@@ -200,7 +200,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.22 | Review queue (adjudicates truth) | M | Sonnet | high | | todo | | | |
 | T2.23 | Hygiene queue (curates housekeeping) + bulk actions | M | Sonnet | high | | todo | | | |
 | T2.24 | Consequence ranking + dispute-staleness decay | M | Opus | high | | todo | | | |
-| T2.25 | Labelled entailment gold set | M | Fable | high | | todo | | | |
+| T2.25 | Labelled entailment gold set | M | Fable | high | claude/e2-lane-g | wip | | | |
 | T2.26 | `verification`-purpose judge + precision/recall bars | L | Fable | high | | todo | | | |
 | T2.27 | `assert_from_repo` — imports-only, LLM-free | M | Opus | high | | todo | | | |
 | T2.28 | Lift to facts born `corroborated` | M | Opus | high | | todo | | | |
@@ -222,7 +222,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.44 | Arm-ablation interface for the retrieval eval | M | Sonnet | high | claude/e2-lane-i2 | done | a383674, 37a4aa4 (merged b026749) | fable adversarial: spec ❌ narrowly on one prescribed mechanism, quality 1 Important + 7 Minor; re-review after 1 fix round — all addressed, ratification stands | Unblocks T2.30/T2.31/T2.35/T2.50, none of which could measure anything without it. **Diverged from the brief deliberately and was upheld**: it declined to route ablation recording through `full_context.record_comparison`, because that type's `retrieval`/`full_context` labels would mislabel an on/off ablation in the ledger four measurement tasks read. Review found benchlib already had multiple sanctioned recorders, so the brief's single-boundary premise was mine and mistaken — ratified, **conditional on** closing the twin-emission gap, which a bypass writing a twin-less row survived all 51 tests before the fix and dies on after. The live run's per-slice delta of exactly **0.0000 was confirmed honest**: `w_importance` is structurally inert until T2.30 wires the signal, and the reviewer proved the machinery transmits −0.3333 for an arm that *is* wired. Verify: harness 312, floor 2605 |
 | T2.45 | The Tier-C `supersede()` primitive + status bridge | L | Opus | high | | todo | | | |
 | T2.46 | Demotion hysteresis and the `under-sourced` label | M | Opus | high | | todo | | | |
-| T2.47 | The enqueue-for-verification emit hook | M | Opus | high | | todo | | | |
+| T2.47 | The enqueue-for-verification emit hook | M | Opus | high | claude/e2-lane-l1 | wip | | | |
 | T2.48 | Citation re-verifier + code-fact lifecycle | M | Opus | high | | todo | | | |
 | T2.49 | `relation_embeddings` refresh job + writer | M | Sonnet | high | | todo | | | |
 | T2.50 | Graph-arm activation measurement | M | Fable | high | | todo | | | |
