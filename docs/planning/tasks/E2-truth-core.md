@@ -375,12 +375,18 @@ served labelled — decay changes priority, never verification status.
 **What.** Claim/fact entailment gold. This is what G-D measures against, so build it
 before the judge — otherwise the judge is tuned to its own test.
 
-**Where the material comes from, since Phase-3 drafts do not exist yet.** Running
-`article_synthesis` manually in a **labelled non-shipping mode against
-`darkmem_bench`** produces raw drafts to label; supplement with hand-authored
-claim/fact pairs over live L2 facts. Nothing produced this way ships as an article —
-it exists to be labelled. Waiting for real drafts would deadlock the gate, since
-drafts come from T3.02, which is behind the gate this task feeds.
+**Where the material comes from, since Phase-3 drafts do not exist yet.** *(Amended
+2026-07-31 — the two sources this paragraph originally named were verified
+unavailable: `article_synthesis` is a `PlaceholderJobRunner` until T3.02, so there is
+no manual non-shipping mode to run, and `knowledge_triples` has no producer until
+`fact_lift` (T2.10), so no live L2 facts exist.)* The harvest is hand-authored:
+claim/fact pairs over synthetic-but-realistic fact texts, and over
+`benchlib/retrieval/corpus.json` entries used verbatim as premises with a
+machine-checked anchor. Every pair records its actual provenance in a closed
+vocabulary with declared counts; `synthesis-draft` and `l2-fact` are reserved
+values pinned to zero until their producers land. Nothing produced this way ships
+as an article — it exists to be labelled. Waiting for real drafts would deadlock
+the gate, since drafts come from T3.02, which is behind the gate this task feeds.
 
 **Done when:** grounded and ungrounded sentences both represented, including hard
 near-misses; labelling rationale recorded; gold is JSON on disk.
@@ -844,17 +850,37 @@ trigger while held returns 409.
 
 #### T2.54 — Label the entailment gold set
 
-`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.25` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.25, T2.10` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
 
 **What.** Split from T2.25 so the compute half cannot stall on the human half. T2.25
 harvests candidate claim/fact pairs; this task is the labelling itself, which is bounded by
 your afternoon rather than by a machine.
+
+**Composition is gate-binding, not just volume** (added 2026-07-31 from T2.25's review).
+Doc 17 §11's stance is explicit: the qualification gold is *"seeded from real synthesis
+drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is
+rejected as unrepresentative**; ≥ 200 pairs per task variant before the corresponding gate
+can open"*. T2.25's 41 pairs are 100% hand-authored, correctly and honestly so — neither
+named source existed at its branch point — and its two reserved provenances
+(`synthesis-draft`, `l2-fact`) sit test-pinned at zero waiting for this task. **So G-D
+cannot open on T2.25's composition however far it is grown.** Volume is necessary and not
+sufficient.
+
+**This is not the deadlock T2.25's text feared, for the claim/fact variant.** §11 says
+"once **Layer 2** is live", and Layer 2 is verified facts — `knowledge_triples`, whose
+producer is `fact_lift` (**T2.10**, this epic), not the Phase-3 article synthesiser. So
+real premises for the `claim-fact` variant become available inside E2, which is why T2.10
+is now a dependency. The `synthesis-draft` provenance and the block-answer variant stay
+behind T3.02 and doc 16's horizon respectively; they gate those variants' own bars, not
+this one.
 
 **Done when:**
 - [ ] Grounded and ungrounded sentences both represented, including hard near-misses
 - [ ] Labelling rationale recorded, so a later contributor labels consistently
 - [ ] Inter-label consistency spot-checked on a resample
 - [ ] Gold committed as JSON on disk (invariant 1)
+- [ ] The `claim-fact` variant reaches ≥ 200 pairs **and** carries real `l2-fact` premises
+      rather than hand-authored ones — the §11 composition rule, not volume alone
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
@@ -1007,9 +1033,19 @@ only source was that memory keeps serving as `corroborated` forever with `expire
 NULL — the exact "lingering as corroborated" failure doc 08 §3.3's inline expiry exists to
 prevent, reached by the one delete path that skips it.
 
+**A second stranding path, found by T2.47's review.** `ProcessingPipeline.delete_memory`
+swallows every exception with a log line, so a withdrawal that *fails* on the interactive
+path strands its rows just as silently as the TTL sweep's bypass does. Both directions
+produce the same end state — a fact solely sourced by a vanished memory keeps serving as
+`corroborated` forever, with no `sources_changed` ever revisiting it — which is the
+**overcounting** direction the truth core categorically forbids. A backstop that heals
+orphaned provenance covers both; routing the TTL sweep alone covers only one.
+
 **Latent today, live the moment T2.10 lands.** `fact_sources` has no producer until
 `fact_lift`, so the gap writes no bad data yet. That is why it is a task rather than a
-bug: it must close before the first producer ships.
+bug: it must close before the first producer ships. **G-C may not claim the withdraw path
+is closed until this lands** — T2.47 closes the removal half on the paths that reach it,
+not the paths that skip it.
 
 **T2.34 does not own this.** Its text explicitly reuses T1.37's sweep *unchanged*, and it
 governs the fact side's pre-closed belief window, not memory-deletion provenance.
@@ -1018,6 +1054,8 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 - [ ] The TTL sweep withdraws provenance and expires sole-sourced facts on the same terms
       as every other delete path, proven by a test that fails if the sweep regresses to a
       bare SQL delete
+- [ ] Orphaned `fact_sources` rows are reaped whatever stranded them, so a swallowed
+      failure on the interactive path heals too — not only the TTL bypass
 - [ ] The demote-before-delete ordering T1.37 owns is preserved — the sweep must still
       demote `superseded_by` dependents before deleting, or `chk_superseded_has_pointer`
       aborts the batch
@@ -1029,6 +1067,7 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-07-31 | T2.54, T2.41, T2.26, T2.25 | 2 | **Doc 17 §11 makes the entailment gold's *composition* gate-binding, not only its size, and no task carried that.** §11: gold is "seeded from real synthesis drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is rejected as unrepresentative**; >= 200 pairs per task variant before the corresponding gate can open". T2.54's Done-when named only the resample and JSON-on-disk; its handoff from T2.25 named only volume. T2.54 now carries the composition clause and **depends on T2.10** | Raised as a Minor by the Fable review of T2.25, 2026-07-31, and confirmed against §11 verbatim. T2.25 is unaffected and stays `done` — its 41 pairs are 100% hand-authored for the honest reason that neither named source existed at its branch point, and it reserved `synthesis-draft` / `l2-fact` at test-pinned zero precisely so the first real harvest is a visible diff. The trap this closes is that G-D could otherwise be claimed on a grown-but-still-synthetic set. **Not the deadlock T2.25 feared**: §11 says "once *Layer 2* is live", and Layer 2 is `knowledge_triples`, whose producer is T2.10 in this epic — not T3.02 behind the gate. The `synthesis-draft` provenance and the block-answer variant remain behind T3.02 and doc 16, gating those variants only |
 | 2026-07-31 | T2.47, T2.61, T2.34 | 2 | **T2.61 minted: the `expired_memory_cleanup` job bypasses T2.47's provenance-withdrawal hook.** T2.47 hangs the hook off `delete_by_memory_id`, which covers re-extraction and both interactive delete doors. The TTL sweep deletes by raw SQL (`app/services/job_runners.py`) and never reaches it; `fact_sources.source_ref` is a soft ref with no FK, so a TTL-expired memory strands its provenance and its sole-sourced facts never expire. Latent today (no `fact_sources` producer until T2.10) and live the moment `fact_lift` ships | Found by T2.47's implementer and confirmed by the controller against every delete path. Raised to Tier 2 because it is a **new task the plan missed**, not a T2.47-local correction: T2.47's own Done-when list is satisfied without it, and T2.34 — the only other task touching this sweep — explicitly reuses T1.37's sweep *unchanged*, so no existing task owns the fix. Sized S and made to depend on T2.47 so it lands on the shared withdrawal path rather than duplicating it |
 | 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
 | 2026-07-28 | T2.58 | 3 | **New task, opened from a Tier-3 doc/code conflict found by T1.60's planning pass and confirmed in code by the controller: Chat runs a THIRD retrieval implementation.** Doc 13 §4.1 asserted "Chat's reads ride the same one ranking path as Memories (doc 07 §9, invariant 17)". `ChatService._search_memories` calls `vector_repo.search` directly — semantic-only, no keyword arm, no RRF, no rank-fusion factor, no trace. Doc 13 §4.1 amended to describe the tree; the convergence is T2.58, placed in E2 beside T2.43. | Routed to E2 rather than E1 deliberately: converging Chat onto today's fusion only to re-converge it after the four-layer composition lands would be two rewrites of an invariant-bearing path. The escalation itself is the part worth recording — a Sonnet-tier planning lane hit retrieval-fusion surgery, recognised it as above its tier, and stopped instead of building it silently, which is runbook §2's escalate-on-discovery rule working in the direction it is hardest to follow. The count is also the finding: three ranking implementations now exist (`rank_fusion.py`, `code_query.py`'s own `RRF_K`, and Chat's none), so a task that fixes only one has closed one of two doors. |
@@ -1039,3 +1078,4 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 | 2026-07-29 | T2.03, T2.06, T2.36 | 2 | **The `confidence` formula is fixed here, because the corpus fixes only its properties.** Doc 04 §8.3 and doc 08 §4.1 bind `confidence` as an *aggregated* support estimate "recomputed with `verification_status`, never a single-source guess", and state no formula. T2.03 adopts `support = min(K, N) / N` and `confidence = min(0.90, 0.40 + 0.40·support + 0.10·(gate fired))`, pinned by **exact-value vectors** rather than by properties alone, and capped at 0.90 because the machine never claims certainty. **Contradiction deliberately does not enter it**: confidence is support, while a dispute is adjudication and lives on the verification/`review_state` surfaces T2.04 owns — so a contradiction-blocked hold can legitimately carry 0.90 | Raised to Tier 2 because three later tasks read this number: T2.06's journal evidence, T2.36's badge, and the review queue's consequence ranking. A formula chosen silently at code time would be an unreviewable decision propagating into all three. Revision is cheap **now** and expensive later — `knowledge_triples` has no producer until T2.10, so the table holds zero production rows. The exact-value pinning came from the Fable plan review (M1), which showed all four stated properties are survived by a coefficient typo: `0.04·support` is monotone, capped, row-invariant and deterministic while every confidence in the system is wrong |
 | 2026-07-29 | T2.04 | 2 | **Recovery out of `disputed` is T2.04's, and is recorded here because T2.04's Done-when list does not name it.** Doc 08 §4's state diagram carries `disputed → corroborated : contradiction resolved`, but T2.04's five checkboxes cover only the veto's entry (one contradiction beats any number of corroborations, echo semantics, window overlap, no config knob, the e2e spec). T2.03 holds `disputed` unconditionally on the stated grounds that both the entry and the exit are T2.04's; that reading is now recorded rather than private | Raised as finding I5 by the Fable-tier review of T2.03's plan, 2026-07-29. Read literally, T2.04's checkboxes leave `disputed` a **one-way state with no owner for the exit** — the same unowned-transition shape §7's Tier-3 escalation surfaced, and the same read-literally trap the T2.01 amendment row (I4) exists to prevent. Cheap to record now, expensive as a surprise during T2.04's review. T2.03's own scope is unchanged: it never writes `disputed` and never resolves one |
 | 2026-07-29 | T2.03, T2.60 | 3 | **Spec §2.1 promotion condition 4's supersession-signal half stands.** Doc 08 §4.1 and doc 04 §8.3 omitted it by drift, not by decision; **T2.60** is minted to own it as a deterministic promotion blocker (hold, never `disputed`, never demote). Doc 08 §4.1 and doc 04 §8.3 amended to carry the condition; the spec is unchanged because it was right. T2.03, T2.04 and T2.45 are unchanged in scope, and T2.03 is unblocked | Escalated by T2.03's plan (§7): a promotion-blocking input the spec requires had no owner in the task corpus, so facts could promote while a newer memory had already replaced the claim. Adjudicated at Fable tier under owner delegation; full ruling and its rejected alternatives at `.superpowers/sdd/rulings/2026-07-29-t2.03-supersession-blocker.md` |
+| 2026-07-31 | T2.25 | 1 | **The task's two stated material sources were verified unavailable, and the material paragraph was corrected in place.** `article_synthesis` has no runnable body — it is a `PlaceholderJobRunner` until T3.02, which is behind G-D, so "run it manually in non-shipping mode" is not an available operation; and `knowledge_triples` holds zero rows because its producer is `fact_lift` (T2.10), so "live L2 facts" do not exist. The harvest was realised as hand-authored pairs: 25 over synthetic fact texts and 16 over verbatim `benchlib/retrieval/corpus.json` premises with a machine-checked corpus anchor, provenance declared per pair in a closed vocabulary with counted, test-pinned totals; `synthesis-draft` and `l2-fact` are reserved provenances pinned to zero until their producers land | The task text anticipated the deadlock but named concrete mechanisms that do not exist at this branch point; left uncorrected, T2.54's labeller would look for drafts that were never produced. Recording the realised provenance here keeps G-D's eventual precision/recall numbers traceable to what the gold actually contains — a gold set whose provenance is overstated is worse than a small one |
