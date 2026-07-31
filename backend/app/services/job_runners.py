@@ -250,17 +250,34 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
 
 
 def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
-    """Delete memories past their ``expires_at`` TTL.
+    """Delete memories past their ``expires_at`` TTL, and heal stranded provenance.
 
     Without this, a client-set TTL is silently never honored (the column was
     accepted, stored, and never swept). Embedding partition rows go with the
     memory via ON DELETE CASCADE; orphaned graph entities and tags left behind
-    are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup."""
+    are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup.
+
+    ``fact_sources.source_ref`` is a **soft** reference with no FK, so nothing
+    cascades there: this sweep withdraws provenance itself (doc 05 §8.4), on the
+    same terms as every other delete path. The provenance backstop rides here as
+    a second arm rather than on graph_orphan_cleanup because that job is Layer-1
+    graph hygiene, on which Phase-4 dedup depends, and a Layer-2 failure sharing
+    its session would take it down; this job is already the one that makes
+    memories vanish, which is what strands provenance in the first place."""
     from sqlalchemy import text
+    # Module-qualified rather than name-imported: the two arms below heal the
+    # same end state, so a test proving the sweep withdraws on its own has to be
+    # able to stub the backstop out. A name imported here would still see such a
+    # patch (this runs when the factory is called, after the patch is applied),
+    # but a name imported at module scope — which is what an import hoist or an
+    # import sorter produces — would not, and the test would silently pass on
+    # the backstop's work instead. Attribute lookup cannot drift that way.
+    from app.services import fact_provenance
     from app.services.supersession import demote_dependents
     async def run() -> None:
         from app.services.events import record_maintenance_run
         deleted = 0
+        reaped = 0
         try:
             async with session_factory() as session:
                 expired = (await session.execute(text(
@@ -275,22 +292,46 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
                     # Shared with the interactive delete path
                     # (MemoryService.delete_memory) so the two cannot drift.
                     await demote_dependents(session, ids)
+                    # Then withdraw provenance, still before the DELETE and in
+                    # the same transaction: a rollback must take the inline
+                    # expiry and the append-only sources_changed rows with the
+                    # delete that justified them. The batch is all-or-nothing
+                    # for the same reason it always was -- a memory whose
+                    # withdrawal failed must not be deleted anyway, which is the
+                    # stranding this closes.
+                    for memory_id in ids:
+                        await fact_provenance.withdraw_memory_sources(
+                            session, memory_id=memory_id
+                        )
                     result = await session.execute(
                         text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
                         {"ids": ids},
                     )
                     deleted = len(result.scalars().all())
                     await session.commit()
+
+            # The backstop, in its own transaction after the delete committed,
+            # and outside the `if expired` branch: what it heals was stranded by
+            # some *other* path -- ProcessingPipeline.delete_memory swallows a
+            # failed withdrawal -- so it must run on ticks that expire nothing.
+            async with session_factory() as session:
+                reaped = len(
+                    await fact_provenance.reap_orphaned_memory_sources(session)
+                )
+                await session.commit()
         except Exception:
             await record_maintenance_run(
                 session_factory, operation="expired_memory_cleanup", outcome="error",
             )
             raise
-        if deleted:
-            logger.info("Expired memory cleanup: deleted=%s", deleted)
+        if deleted or reaped:
+            logger.info(
+                "Expired memory cleanup: deleted=%s provenance_reaped=%s",
+                deleted, reaped,
+            )
         await record_maintenance_run(
             session_factory, operation="expired_memory_cleanup", outcome="ok",
-            detail={"deleted": deleted},
+            detail={"deleted": deleted, "provenance_reaped": reaped},
         )
     return run
 
