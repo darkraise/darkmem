@@ -265,9 +265,13 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
     its session would take it down; this job is already the one that makes
     memories vanish, which is what strands provenance in the first place."""
     from sqlalchemy import text
-    # Module-qualified rather than name-imported: the two arms heal the same end
-    # state, so a test proving the sweep withdraws on its own has to be able to
-    # neutralise the backstop, and a name bound into this closure cannot be.
+    # Module-qualified rather than name-imported: the two arms below heal the
+    # same end state, so a test proving the sweep withdraws on its own has to be
+    # able to stub the backstop out. A name imported here would still see such a
+    # patch (this runs when the factory is called, after the patch is applied),
+    # but a name imported at module scope — which is what an import hoist or an
+    # import sorter produces — would not, and the test would silently pass on
+    # the backstop's work instead. Attribute lookup cannot drift that way.
     from app.services import fact_provenance
     from app.services.supersession import demote_dependents
     async def run() -> None:

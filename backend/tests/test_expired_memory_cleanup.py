@@ -109,7 +109,7 @@ async def emitted_for(session, source_ref) -> list[dict]:
     return [dict(row) for row in rows.mappings().all()]
 
 
-def without_the_backstop(monkeypatch) -> None:
+def without_the_backstop(monkeypatch) -> list[str]:
     """Neutralise the backstop arm for a test about the *routing*.
 
     The two arms converge on the same end state — that is the point of having
@@ -118,14 +118,23 @@ def without_the_backstop(monkeypatch) -> None:
     second session. That is a guard that reads stronger than it is. With the
     reaper stubbed out, only the sweep's own withdrawal can satisfy these
     assertions.
+
+    Returns a call log the caller **must** assert on. Without that assertion the
+    neutralisation is itself unpinned: if the runner ever binds the reaper at
+    module-import time, this patch stops intercepting, the live backstop heals
+    the strand, and the routing test goes green having proved nothing. A stub
+    nobody checks was invoked is not a guard.
     """
+    calls: list[str] = []
 
     async def _no_backstop(session):
+        calls.append("reap")
         return []
 
     monkeypatch.setattr(
         fact_provenance, "reap_orphaned_memory_sources", _no_backstop
     )
+    return calls
 
 
 async def discard(factory, *, fact_ids=(), memory_ids=()) -> None:
@@ -204,7 +213,7 @@ async def test_expired_cleanup_withdraws_provenance_and_expires_its_last_fact(
 
     This fails if the sweep regresses to a bare DELETE.
     """
-    without_the_backstop(monkeypatch)
+    backstop_calls = without_the_backstop(monkeypatch)
     engine = create_async_engine(settings.test_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     fact_id = memory_id = None
@@ -217,6 +226,10 @@ async def test_expired_cleanup_withdraws_provenance_and_expires_its_last_fact(
 
         await make_expired_memory_cleanup_runner(factory)()
 
+        assert backstop_calls == ["reap"], (
+            "the backstop stub was never invoked, so this test proves nothing "
+            "about the sweep's own withdrawal"
+        )
         async with factory() as s:
             assert await source_rows(s, fact_id) == 0, "provenance outlived its memory"
             assert await expired_at(s, fact_id) is not None, (
@@ -241,7 +254,7 @@ async def test_expired_cleanup_leaves_a_fact_that_keeps_a_surviving_source(monke
     memory still asserts it, and the enqueue still fires because its origin
     profile moved even though its belief did not.
     """
-    without_the_backstop(monkeypatch)
+    backstop_calls = without_the_backstop(monkeypatch)
     engine = create_async_engine(settings.test_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
     fact_id = doomed = survivor = None
@@ -256,6 +269,7 @@ async def test_expired_cleanup_leaves_a_fact_that_keeps_a_surviving_source(monke
 
         await make_expired_memory_cleanup_runner(factory)()
 
+        assert backstop_calls == ["reap"], "the backstop stub was never invoked"
         async with factory() as s:
             assert await source_rows(s, fact_id) == 1
             assert await expired_at(s, fact_id) is None
@@ -340,4 +354,51 @@ async def test_expired_cleanup_never_reaps_a_non_memory_source():
             assert await source_rows(s, orphan_fact) == 0, "the arm did not run"
     finally:
         await discard(factory, fact_ids=[human_fact, orphan_fact])
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_expired_cleanup_never_reaps_a_ref_naming_a_live_memory():
+    """The second destructive-failure guard: a mis-spelled ref is not an orphan.
+
+    The backstop is an anti-join, so *failing to match is reaping*. A ref that
+    names a live memory under a non-canonical spelling — braced, or upper-cased
+    — matches no ``CAST(memories.id AS text)`` either, so an unguarded predicate
+    destroys provenance whose memory is sitting right there. That also inverts
+    what ``memory_source_ref``'s docstring promises a producer: that a badly
+    spelled ref is *invisible* to the sweep, not deleted by it.
+
+    Both survivors here point at a memory that still exists, so nothing about
+    them is orphaned under any reading. The canonically-spelled orphan beside
+    them proves the arm ran rather than finding nothing to do.
+    """
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    braced_fact = upper_fact = orphan_fact = live = None
+    vanished = memory_source_ref(uuid.uuid4())
+    try:
+        async with factory() as s:
+            live = await plant_memory(s, expired=False)
+            braced_fact = await plant_fact(s, subject="ruff", obj="rust")
+            upper_fact = await plant_fact(s, subject="mypy", obj="python")
+            orphan_fact = await plant_fact(s, subject="esbuild", obj="go")
+            await plant_source(s, fact_id=braced_fact, source_ref=f"{{{live}}}")
+            await plant_source(s, fact_id=upper_fact, source_ref=str(live).upper())
+            await plant_source(s, fact_id=orphan_fact, source_ref=vanished)
+            await s.commit()
+
+        await make_expired_memory_cleanup_runner(factory)()
+
+        async with factory() as s:
+            assert await source_rows(s, braced_fact) == 1, "a braced ref was reaped"
+            assert await source_rows(s, upper_fact) == 1, "an upper-cased ref was reaped"
+            assert await expired_at(s, braced_fact) is None
+            assert await expired_at(s, upper_fact) is None
+            assert await source_rows(s, orphan_fact) == 0, "the arm did not run"
+    finally:
+        await discard(
+            factory,
+            fact_ids=[braced_fact, upper_fact, orphan_fact],
+            memory_ids=[live],
+        )
         await engine.dispose()

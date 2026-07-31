@@ -342,6 +342,18 @@ async def test_a_fact_still_asserted_in_a_non_default_project_is_retained(sessio
 # ── The backstop: provenance whose memory is gone, whatever stranded it ──────
 
 
+def only_mine(affected: list[str], *fact_ids) -> list[str]:
+    """Narrow a whole-vault scan's result to the rows this test planted.
+
+    ``reap_orphaned_memory_sources`` has no scope argument — it sweeps every
+    ``fact_sources`` row — so asserting exact equality against its return value
+    would make these tests fail the day another suite leaks a committed orphan.
+    The planted set is the only thing a test can soundly reason about.
+    """
+    mine = {str(f) for f in fact_ids}
+    return [f for f in affected if f in mine]
+
+
 @pytest.mark.asyncio
 async def test_the_backstop_reaps_provenance_whose_memory_is_gone(session):
     """A reaper that reaps nothing is the defect; this proves it reaps.
@@ -358,7 +370,7 @@ async def test_the_backstop_reaps_provenance_whose_memory_is_gone(session):
 
     affected = await reap_orphaned_memory_sources(session)
 
-    assert affected == [fact["id"]]
+    assert only_mine(affected, fact["id"]) == [fact["id"]]
     assert await source_rows(session, fact["id"]) == 0
     assert await expired_at(session, fact["id"]) is not None
     rows = await emitted(session, gone)
@@ -399,7 +411,9 @@ async def test_the_backstop_never_reaps_a_non_memory_source(session):
 
     affected = await reap_orphaned_memory_sources(session)
 
-    assert affected == [orphan_fact["id"]]
+    assert only_mine(
+        affected, orphan_fact["id"], human_fact["id"], code_fact["id"]
+    ) == [orphan_fact["id"]]
     assert await source_rows(session, human_fact["id"]) == 1
     assert await source_rows(session, code_fact["id"]) == 1
     assert await expired_at(session, human_fact["id"]) is None
@@ -421,7 +435,7 @@ async def test_the_backstop_leaves_provenance_whose_memory_still_exists(session)
 
     affected = await reap_orphaned_memory_sources(session)
 
-    assert affected == []
+    assert only_mine(affected, fact["id"]) == []
     assert await source_rows(session, fact["id"]) == 1
     assert await expired_at(session, fact["id"]) is None
     assert await emitted(session, live) == []
@@ -440,7 +454,7 @@ async def test_the_backstop_expires_on_no_surviving_source_never_on_one_fewer(se
 
     affected = await reap_orphaned_memory_sources(session)
 
-    assert affected == [fact["id"]]
+    assert only_mine(affected, fact["id"]) == [fact["id"]]
     assert await source_rows(session, fact["id"]) == 1
     assert await expired_at(session, fact["id"]) is None
     assert len(await emitted(session, gone)) == 1
@@ -448,14 +462,19 @@ async def test_the_backstop_expires_on_no_surviving_source_never_on_one_fewer(se
 
 @pytest.mark.asyncio
 async def test_the_backstop_emits_nothing_when_nothing_is_orphaned(session):
-    """The empty-case property survives the new entry: withdrawing nothing is
-    not a provenance change, and an event there is indistinguishable to the
-    drain from real evidence movement."""
+    """A tick with nothing to reap is a no-op on every observable surface.
+
+    This does **not** pin ``_withdraw``'s ``if not rows: return []``. That early
+    return is unobservable — delete it and the zero-row loop below it still
+    emits nothing — so it is a cost saving and a statement of intent, not a
+    guard, and no test here claims otherwise. What this does pin is the
+    predicate's direction: a reaper that selected live rows would fail here.
+    """
     live = await seed_memory(session)
     fact = await seed_fact(session, subject="redis", rel_type="USES", obj="lua")
     await seed_source(session, fact_id=fact["id"], memory_id=live)
 
-    assert await reap_orphaned_memory_sources(session) == []
+    assert only_mine(await reap_orphaned_memory_sources(session), fact["id"]) == []
     count = await session.execute(
         text(
             "SELECT count(*) FROM events WHERE event_type = 'sources_changed' "
@@ -465,6 +484,79 @@ async def test_the_backstop_emits_nothing_when_nothing_is_orphaned(session):
     )
     assert count.scalar_one() == 0
     assert await source_rows(session, fact["id"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_backstop_never_reaps_a_ref_naming_a_live_memory(session):
+    """Reaping is the anti-join's *default*, so a ref it cannot read is spared.
+
+    A ref carrying a live memory's id in a non-canonical spelling matches no
+    ``CAST(memories.id AS text)``, so an unguarded ``NOT EXISTS`` deletes it and
+    expires the fact it solely sources — destroying provenance whose memory is
+    sitting right there, and inverting what ``memory_source_ref``'s docstring
+    promises a producer: that a mis-spelled ref is invisible to the sweep, not
+    deleted by it.
+
+    The ruling this pins is that the conservative reading wins. "Never
+    withdrawn" is a stranding a later fix can repair; "reaped" cannot be undone,
+    and ``expire`` COALESCEs so even the timestamp sticks.
+    """
+    live = await seed_memory(session)
+    gone = uuid.uuid4()
+    braced = await seed_fact(session, subject="ruff", rel_type="USES", obj="rust")
+    upper = await seed_fact(session, subject="mypy", rel_type="USES", obj="python")
+    orphan = await seed_fact(session, subject="esbuild", rel_type="USES", obj="go")
+    await seed_source_of_kind(
+        session,
+        fact_id=braced["id"],
+        source_kind=MEMORY_SOURCE_KIND,
+        source_ref=f"{{{live}}}",
+    )
+    await seed_source_of_kind(
+        session,
+        fact_id=upper["id"],
+        source_kind=MEMORY_SOURCE_KIND,
+        source_ref=str(live).upper(),
+    )
+    await seed_source(session, fact_id=orphan["id"], memory_id=gone)
+
+    affected = await reap_orphaned_memory_sources(session)
+
+    assert only_mine(affected, braced["id"], upper["id"], orphan["id"]) == [
+        orphan["id"]
+    ]
+    assert await source_rows(session, braced["id"]) == 1
+    assert await source_rows(session, upper["id"]) == 1
+    assert await expired_at(session, braced["id"]) is None
+    assert await expired_at(session, upper["id"]) is None
+
+
+def test_the_minted_ref_matches_the_shape_the_backstop_trusts():
+    """The producer and the reaper's shape filter must not drift apart.
+
+    ``_CANONICAL_REF`` decides which refs the backstop is willing to delete, and
+    ``memory_source_ref`` decides which refs get written. If the pattern ever
+    stopped matching what the minter emits, the backstop would silently stop
+    reaping real orphans; if it widened, it would start reaping spellings the
+    minter never produces. Neither has a symptom, so the coupling is pinned
+    here rather than left to the two definitions sitting near each other.
+    """
+    import re
+
+    from app.services.fact_provenance import _CANONICAL_REF
+
+    for _ in range(64):
+        assert re.match(_CANONICAL_REF, memory_source_ref(uuid.uuid4()))
+
+    sample = uuid.uuid4()
+    for rejected in (
+        str(sample).upper(),
+        f"{{{sample}}}",
+        f" {sample} ",
+        str(sample).replace("-", ""),
+        "reviewer:alice",
+    ):
+        assert not re.match(_CANONICAL_REF, rejected), rejected
 
 
 # ── Phase 5 and the deletion sweep, end to end ───────────────────────────────
