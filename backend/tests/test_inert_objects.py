@@ -300,21 +300,21 @@ def test_article_synthesis_job_is_inert():
     The PlaceholderJobRunner marker (not a comment or convention) ensures
     a shipped runner cannot silently keep wearing the placeholder type.
     """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
     from app.services.dream_jobs import (
         ARTICLE_SYNTHESIS_JOB_KEY,
         DREAM_JOB_OWNERS,
         PlaceholderJobRunner,
+        register_dream_jobs,
     )
     from app.services.job_registry import JobRegistry
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-    from app.config import settings
+    from .conftest import test_engine
 
-    engine = create_async_engine(settings.test_database_url)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    registry = JobRegistry(factory)
-
-    from app.services.dream_jobs import register_dream_jobs
+    # Registration never touches the database, so this reuses conftest's
+    # engine rather than opening one this test would have to dispose.
+    registry = JobRegistry(async_sessionmaker(test_engine, expire_on_commit=False))
     register_dream_jobs(registry)
 
     job = registry.get(ARTICLE_SYNTHESIS_JOB_KEY)
