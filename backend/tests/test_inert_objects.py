@@ -264,8 +264,14 @@ async def test_inert_purposes_resolve_without_a_row(session):
 
 
 def test_no_app_code_dispatches_the_inert_purposes():
-    """The inertness itself. Their first writers are T2.26 (`verification`) and
-    T3.02 (`synthesis`); until then no call site may name either purpose."""
+    """The inertness itself. `synthesis` awaits its first writer (T3.02);
+    until then no call site may name it. `verification` left this guard on
+    2026-07-31 when its declared first writer landed (T2.26): the judge in
+    `app/services/verification_judge.py` dispatches on it, and the
+    single-door discipline is now owned by the STRICTER scan in
+    `tests/test_verification_judge.py` — the quoted purpose token is lawful
+    only in the judge module beyond the same three files allowed here, and
+    every consumer must enter through the qualification-gated `judge()`."""
     allowed = {
         "app/config.py",              # the Settings defaults
         "app/services/config.py",     # PURPOSES + the defaults map
@@ -280,13 +286,14 @@ def test_no_app_code_dispatches_the_inert_purposes():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for purpose in ("synthesis", "verification"):
+            for purpose in ("synthesis",):
                 if f'"{purpose}"' in line or f"'{purpose}'" in line:
                     offenders.append(f"{rel}:{lineno}: {stripped}")
     assert not offenders, (
         "an inert LLM purpose gained a dispatcher:\n" + "\n".join(offenders)
-        + "\nIf this is the intended first writer (T2.26 / T3.02), remove the "
-          "purpose from this test and update the schema inventory."
+        + "\nIf this is the intended first writer (T3.02), remove the "
+          "purpose from this test and update the planning record, as T2.26 "
+          "did for verification."
     )
 
 
