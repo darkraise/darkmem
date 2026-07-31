@@ -65,7 +65,15 @@ MEMORY_SOURCE_KIND = "memory"
 
 
 def memory_source_ref(memory_id: UUID | str) -> str:
-    return str(memory_id)
+    """The canonical spelling of a memory's ``source_ref``.
+
+    Normalised through ``UUID`` rather than stringified as given: a padded or
+    upper-cased id would write a ref this module's sweep can never match, so
+    the rows would never be withdrawn and their facts never expire — an
+    invisible failure with no error and no symptom. Producers and the sweep
+    have to agree on one spelling, so the one spelling is minted here.
+    """
+    return str(UUID(str(memory_id)))
 
 
 _MEMORY_PROVENANCE = text("""
