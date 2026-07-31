@@ -279,6 +279,12 @@ silently tests the wrong database. Set `TEST_DATABASE_URL` instead. And the deri
 default resolves to port **5432** while the dev Postgres runs on **5433**, so any bare
 shell command that reaches the database needs an explicit URL.
 
+**The bench database has no per-lane isolation unless you ask for it.** `darkmem_test_N` is assigned per lane, but
+`darkmem_bench` is one shared name — so two lanes running `scripts/benchlib/tests` concurrently collide and produce
+failures that look exactly like a code regression (unrelated tests, moving between runs, in the one suite `pytest -q`
+does not collect). **Set `BENCH_DATABASE_URL` to a per-lane database** (`darkmem_bench_<lane>`) whenever you run harness
+work while other lanes are live. This cost three agents time in a single round on 2026-07-31.
+
 **A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
 does not populate it and there is no interpreter at the path every **Verify** field names.
 Run the main checkout's interpreter by absolute path
