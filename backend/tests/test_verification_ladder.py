@@ -35,6 +35,7 @@ from app.repositories.fact_sources import (
 )
 from app.services.verification_ladder import (
     LADDER_CONFIG_KEY,
+    NO_DETECTOR,
     compute_confidence,
     decide,
     recompute_fact,
@@ -443,55 +444,65 @@ class TestCeiling:
             for status in ("candidate", "corroborated"):
                 assert decide_at(prof, status).target_status != "confirmed"
 
-    def test_no_profile_reaches_disputed(self):
-        """Asserted at runtime, not left to the ``Literal``.
+    def test_no_origin_profile_reaches_disputed_on_its_own(self):
+        """`disputed` is reachable only through the veto input (T2.04).
 
-        Python does not enforce annotations, so the type excluding `disputed`
-        proves nothing on its own.
+        Asserted at runtime rather than left to the ``Literal``, because Python
+        does not enforce annotations. The count, the gates and the config can
+        move the fact up and down the ladder; none of them may move it sideways.
         """
-        prof = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
-        for status in ("candidate", "corroborated"):
-            for blocked in (False, True):
-                d = decide_at(prof, status, open_contradiction=blocked)
-                assert d.target_status != "disputed"
+        profiles = (
+            profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",))),
+            profile(origin("a")),
+            profile(),
+            profile(*(origin(f"o{i}") for i in range(9))),
+        )
+        for prof in profiles:
+            for status in ("candidate", "corroborated"):
+                for verdict in (NO_DETECTOR, False):
+                    d = decide_at(prof, status, open_contradiction=verdict)
+                    assert d.target_status != "disputed"
 
     def test_confirmed_is_held_and_never_demoted(self):
         """Even with zero origins, which would demote any machine status."""
         d = decide_at(profile(), "confirmed")
         assert (d.target_status, d.outcome) == ("confirmed", "hold")
 
-    def test_disputed_is_held_unconditionally(self):
-        """The NO_DETECTOR stub must not resolve a real dispute.
+    def test_disputed_is_held_without_an_adjudication(self):
+        """No detector reported, so nothing may resolve the dispute.
 
-        With no detector wired, an implementation that recomputed `disputed`
-        like any other status would silently promote it to `corroborated` the
-        first time the recompute ran over one.
+        An implementation that recomputed `disputed` like any other status
+        would silently promote it to `corroborated` the first time a recompute
+        ran over one. The full entry/exit semantics live in
+        ``tests/test_contradiction_veto.py``; this is the T2.03-side pin that
+        the default keyword cannot move a disputed fact.
         """
         strong = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
         d = decide_at(strong, "disputed")
         assert (d.target_status, d.outcome) == ("disputed", "hold")
 
 
-class TestContradictionBlocks:
-    def test_an_open_contradiction_blocks_an_otherwise_good_promotion(self):
+class TestContradictionVeto:
+    def test_an_open_contradiction_vetoes_an_otherwise_good_promotion(self):
         strong = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
         assert decide_at(strong).outcome == "promote"
-        blocked = decide_at(strong, open_contradiction=True)
-        assert blocked.outcome == "hold"
-        assert blocked.contradiction_blocked is True
-        assert blocked.target_status == "candidate", "blocked, not disputed"
+        vetoed = decide_at(strong, open_contradiction=True)
+        assert vetoed.outcome == "dispute"
+        assert vetoed.contradiction_blocked is True
+        assert vetoed.target_status == "disputed"
 
     def test_the_default_is_no_detector_not_adjudicated_clean(self):
-        from app.services.verification_ladder import NO_DETECTOR
-
-        assert NO_DETECTOR is False
+        assert NO_DETECTOR is None, (
+            "NO_DETECTOR must stay distinguishable from an affirmative clean "
+            "verdict; collapsing them lets silence resolve a dispute"
+        )
         strong = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
         assert decide_at(strong).contradiction_blocked is False
 
-    def test_a_block_does_not_demote_a_corroborated_fact(self):
+    def test_a_veto_demotes_a_corroborated_fact(self):
         strong = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
         d = decide_at(strong, "corroborated", open_contradiction=True)
-        assert (d.target_status, d.outcome) == ("corroborated", "hold")
+        assert (d.target_status, d.outcome) == ("disputed", "dispute")
 
 
 class TestDemotion:
@@ -573,17 +584,17 @@ class TestConfidence:
         )
         assert decide_at(overwhelming).confidence == 0.90
 
-    def test_a_blocked_hold_still_carries_its_support_score(self):
+    def test_a_disputed_fact_still_carries_its_support_score(self):
         """Contradiction deliberately does not enter the formula.
 
-        Confidence is *support*; the dispute lives on the verification and
-        review surfaces T2.04 owns. Pinned so the next reader finds this a
-        decision rather than a bug.
+        Confidence is *support*; the dispute is adjudication and lives on the
+        verification and ``review_state`` surfaces. Pinned so the next reader
+        finds a disputed fact at 0.90 a decision rather than a bug.
         """
         strong = profile(origin("a", kinds=("memory",)), origin("b", kinds=("code",)))
-        blocked = decide_at(strong, open_contradiction=True)
-        assert blocked.outcome == "hold"
-        assert blocked.confidence == 0.90
+        vetoed = decide_at(strong, open_contradiction=True)
+        assert vetoed.target_status == "disputed"
+        assert vetoed.confidence == 0.90
 
 
 # ────────────── Step 4 — recompute_fact against real rows ──────────────
@@ -753,7 +764,7 @@ class TestRecomputeFact:
         decision = await recompute_fact(session, uuid4())
         assert (decision.current_status, decision.outcome) == ("missing", "hold")
 
-    async def test_a_contradiction_blocks_the_promotion_it_would_have_made(self, session):
+    async def test_a_contradiction_vetoes_the_promotion_it_would_have_made(self, session):
         fact_id = await _make_fact(session)
         await _add_origin(session, fact_id, "sess-a", kind="memory")
         await _add_origin(session, fact_id, "repo-b", kind="code")
@@ -763,8 +774,10 @@ class TestRecomputeFact:
 
         assert decision.contradiction_blocked is True
         row = await _read(session, fact_id)
-        assert row["verification_status"] == "candidate", "held, never disputed"
-        assert await _verified_events(session, fact_id) == []
+        assert row["verification_status"] == "disputed"
+        events = await _verified_events(session, fact_id)
+        assert len(events) == 1
+        assert events[0]["after"]["verification_status"] == "disputed"
 
 
 # ────────── Invariant 15 — the ladder is Tier-C only, enforced ──────────

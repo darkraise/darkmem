@@ -1,10 +1,16 @@
 """The verification ladder: the promotion decision, and the knobs that bound it.
 
 A fact's verification axis climbs ``candidate -> corroborated`` on
-distinct-origin diversity. This module owns that decision and nothing else:
-it never writes ``disputed`` (T2.04), never reaches ``confirmed`` (T2.05,
-structurally refused by the repository), never schedules itself (T2.09), and
-never applies demotion hysteresis (T2.46).
+distinct-origin diversity, and is vetoed sideways to ``disputed`` by a single
+non-echo contradiction (T2.04). This module owns that decision and nothing else:
+it never reaches ``confirmed`` (T2.05, structurally refused by the repository),
+never schedules itself (T2.09), and never applies demotion hysteresis (T2.46).
+
+**The veto is absolute and reads no configuration.** However many origins
+corroborate a fact, one contradiction beats them (doc 08 §4.2) — not a weight,
+not a score, not a threshold. The three thresholds below govern *promotion*
+only; none of them is on the veto's path, and
+``tests/test_contradiction_veto.py`` fails the build if one becomes so.
 
 **Tier-C only (invariant 15).** Nothing in capture or retrieval may reach this
 module. Reconciliation stays off the hot path, and the tempting failure is a
@@ -41,6 +47,7 @@ from app.repositories.fact_sources import (
     CORROBORATION_TIME_GAP_DAYS,
     OriginProfile,
 )
+from app.services.contradiction_veto import adjudicate_contradiction
 
 logger = logging.getLogger(__name__)
 
@@ -212,16 +219,21 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
 # ─────────────────────────── the decision ───────────────────────────
 
 # The machine's reachable targets. `confirmed` is a human's floor above the
-# machine's ceiling (T2.05) and `disputed` is the veto's verdict (T2.04);
-# neither is representable here, and the runtime assertions in the test suite
-# check that, because Python does not enforce annotations.
-MachineTarget = Literal["candidate", "corroborated"]
-Outcome = Literal["promote", "demote", "hold"]
+# machine's ceiling (T2.05) and stays unrepresentable here; `disputed` became
+# reachable with T2.04's veto, but only through `open_contradiction` — never
+# off the origin count. The runtime assertions in the test suite check both,
+# because Python does not enforce annotations.
+MachineTarget = Literal["candidate", "corroborated", "disputed"]
+Outcome = Literal["promote", "demote", "hold", "dispute", "recover"]
 
-# The default contradiction verdict: "no detector exists yet", not "adjudicated
-# and found clean". T2.04 builds the detector; naming the absence keeps a
-# caller from reading a stub's silence as a finding.
-NO_DETECTOR = False
+# The contradiction verdict is three-valued, and the third value is the point.
+# `None` is "no detector reported", which is not the same claim as `False`
+# ("every wired detector adjudicated this fact and found nothing"). Collapsing
+# them is what would let a machine with no detector behind it journal
+# `disputed -> corroborated`: the disputed hold below turns on this distinction,
+# so only an affirmative adjudication can end a dispute.
+ContradictionVerdict = bool | None
+NO_DETECTOR: ContradictionVerdict = None
 
 
 @dataclass(frozen=True)
@@ -282,15 +294,21 @@ def decide(
     profile: OriginProfile,
     config: LadderConfig,
     *,
-    open_contradiction: bool = NO_DETECTOR,
+    open_contradiction: ContradictionVerdict = NO_DETECTOR,
 ) -> LadderDecision:
-    """Promotion, demotion or hold -- a pure function of the four inputs.
+    """Promotion, demotion, dispute, recovery or hold -- a pure function.
 
     **No I/O, no session, and no clock.** The time gate reads
     ``OriginProfile.max_cross_origin_gap``, which is computed purely from
     stored timestamps relative to *each other*; reading the wall clock here
     would make a replay of the same inputs produce a different answer as the
     calendar moves, which is what "reproducible on replay" forbids.
+
+    ``open_contradiction`` is the veto, and it is **absolute**: no branch below
+    consults ``config`` before honouring it, and there is no arithmetic between
+    the verdict and the outcome. ``k`` and ``n`` are still computed because the
+    decision record must report the support it overrode, not because they can
+    change the answer.
 
     ``open_contradiction`` is a keyword on purpose. T2.60's sibling blocker --
     a newer REPLACES-family / supersession signal over the fact's live memory
@@ -329,15 +347,27 @@ def decide(
     if current_status == "confirmed":
         return settled("confirmed", "hold")
 
-    # Entry into and recovery out of `disputed` are both T2.04's transitions
-    # (recorded in E2's amendment log, 2026-07-29). Holding unconditionally is
-    # what stops the NO_DETECTOR stub from "resolving" a real dispute into
-    # `corroborated` the first time this runs over one.
-    if current_status == "disputed":
-        return settled("disputed", "hold")
+    # The veto, before every count. One non-echo contradiction beats any number
+    # of corroborations (doc 08 §4.2), so it is checked ahead of the threshold
+    # rule rather than weighed against it -- there is no arithmetic on this path
+    # for a config row to reach.
+    if open_contradiction is True:
+        if current_status == "disputed":
+            return settled("disputed", "hold", blocked=True)
+        return settled("disputed", "dispute", blocked=True)
 
-    if open_contradiction:
-        return settled(current_status, "hold", blocked=True)
+    # Recovery out of `disputed`, which is T2.04's transition too (recorded in
+    # E2's amendment log, 2026-07-29). It needs an *affirmative* clean verdict:
+    # `NO_DETECTOR` still holds unconditionally, so a caller that ran no
+    # detector cannot resolve a dispute by silence -- the property T2.03's
+    # unconditional hold protected, now protected by the verdict's third value
+    # instead. Recovery then re-enters the ordinary rule rather than jumping
+    # straight to `corroborated`: a fact that lost its origins while disputed
+    # has had its contradiction resolved, not its support restored.
+    if current_status == "disputed":
+        if open_contradiction is None:
+            return settled("disputed", "hold")
+        return settled("corroborated" if k >= n else "candidate", "recover")
 
     if k >= n:
         if current_status == "corroborated":
@@ -359,13 +389,20 @@ async def recompute_fact(
     session: AsyncSession,
     fact_id: UUID | str,
     *,
-    open_contradiction: bool = NO_DETECTOR,
+    open_contradiction: ContradictionVerdict = NO_DETECTOR,
 ) -> LadderDecision:
     """Recompute one fact's verification status, and return why.
 
     The per-fact primitive. The **job** that finds which facts to call this on
     -- draining ``sources_changed`` past a watermark, deduping, scheduling --
     is T2.09's; this function neither reads events nor registers itself.
+
+    The contradiction verdict is **adjudicated here**, on this side of the
+    purity boundary, because it needs the session ``decide`` must not have. A
+    caller may pass a verdict to override the scan (a replay re-deciding
+    recorded inputs); leaving it at ``NO_DETECTOR`` runs every wired detector
+    under the same lock and transaction as the status write, so the verdict
+    cannot be taken against a row the applier no longer holds.
 
     **This is the sole journaller of verification transitions**, which is the
     hand-off ``set_verification_status`` was written anticipating: the only
@@ -411,12 +448,16 @@ async def recompute_fact(
             confidence=0.0,
         )
 
+    verdict = open_contradiction
+    if verdict is NO_DETECTOR:
+        verdict = await adjudicate_contradiction(session, fact_id)
+
     decision = decide(
         str(fact_id),
         current,
         profile,
         config,
-        open_contradiction=open_contradiction,
+        open_contradiction=verdict,
     )
 
     repo = KnowledgeTripleRepository(session)
