@@ -408,6 +408,25 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="review_queue.triage",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/review-queue/facts"),
+            ("GET", f"{V1}/review-queue/articles"),
+            ("GET", f"{V1}/review-queue/counts"),
+        ),
+        reason=(
+            "Truth-adjudication triage (doc 08 §6): a human resolves disputed "
+            "and under-sourced facts and ungrounded articles, the same "
+            "pipeline_failures.triage shape. An agent retrieving a disputed "
+            "fact sees it labelled inline through ordinary retrieval (never "
+            "gated on review_state) rather than through this backlog view, so "
+            "there is no MCP capability for an agent to twin against. "
+            "review_state has no writer on this surface either (T2.62 owns "
+            "it) -- this is read-only triage, not an action door."
+        ),
+    ),
+    Surface(
         name="buffer.triage",
         status=REST_ONLY,
         rest=(

@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**44 surfaces: 14 two-door, 30 single-door with a stated reason (24 REST-only, 6 MCP-only), 0 divergent.**
+**45 surfaces: 14 two-door, 31 single-door with a stated reason (25 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -44,6 +44,7 @@ the test rather than quietly joining the surface.
 ## The parity table
 
 <!-- BEGIN GENERATED PARITY TABLE -->
+
 | Surface | REST | MCP | Status | Reason / note |
 |---|---|---|---|---|
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
@@ -73,6 +74,7 @@ the test rather than quietly joining the surface.
 | `jobs.control` | `GET /api/v1/jobs`<br>`PUT /api/v1/jobs/{key}`<br>`PUT /api/v1/jobs/{key}/config`<br>`POST /api/v1/jobs/{key}/trigger` | — | REST single-door | Scheduler control. Triggering or reconfiguring a job is remote control of the box's background work -- expired_memory_cleanup deletes rows and graph_orphan_cleanup prunes the graph -- so it stays behind the authenticated door. |
 | `pipeline.observability` | `GET /api/v1/pipeline`<br>`GET /api/v1/pipeline/metrics` | — | REST single-door | Human-observability read behind the pipeline dashboard: configuration echo and per-phase metrics, an operator's view of the box's health rather than knowledge an agent retrieves. |
 | `pipeline_failures.triage` | `GET /api/v1/pipeline-failures`<br>`GET /api/v1/pipeline-failures/counts`<br>`GET /api/v1/pipeline-failures/{failure_id}`<br>`DELETE /api/v1/pipeline-failures/{failure_id}`<br>`POST /api/v1/pipeline-failures/{failure_id}/retry`<br>`POST /api/v1/pipeline-failures/retry-all` | — | REST single-door | Operator triage and remediation: the retry doors re-run extraction and spend the provider budget, and the listing is a health view for the human. An agent learns its own capture's fate from the pipeline websocket and its ack, not from another caller's failure queue. |
+| `review_queue.triage` | `GET /api/v1/review-queue/facts`<br>`GET /api/v1/review-queue/articles`<br>`GET /api/v1/review-queue/counts` | — | REST single-door | Truth-adjudication triage (doc 08 §6): a human resolves disputed and under-sourced facts and ungrounded articles, the same pipeline_failures.triage shape. An agent retrieving a disputed fact sees it labelled inline through ordinary retrieval (never gated on review_state) rather than through this backlog view, so there is no MCP capability for an agent to twin against. review_state has no writer on this surface either (T2.62 owns it) -- this is read-only triage, not an action door. |
 | `buffer.triage` | `GET /api/v1/memory-buffer`<br>`GET /api/v1/memory-buffer/stats`<br>`DELETE /api/v1/memory-buffer/{buffer_id}`<br>`POST /api/v1/memory-buffer/{buffer_id}/requeue` | — | REST single-door | The operator's view of the Tier-A capture buffer plus poison-row remediation. An agent already learns its own capture's fate from memory_add's ack (doc 05 section 2); another caller's buffered rows, and the power to drop or requeue them, are not its business. |
 | `reembed.maintenance` | `POST /api/v1/reembed/all`<br>`POST /api/v1/reembed/memories`<br>`POST /api/v1/reembed/entities`<br>`POST /api/v1/reembed/code-chunks`<br>`POST /api/v1/reembed/prune-cache`<br>`GET /api/v1/reembed/obsolete-counts`<br>`GET /api/v1/reembed/obsolete/memories`<br>`GET /api/v1/reembed/obsolete/entities`<br>`GET /api/v1/reembed/obsolete/code-chunks` | — | REST single-door | Expensive, destructive maintenance around an embedder rotation: it re-embeds the whole corpus into a new fingerprint partition and prunes the entity cache. Operator power, authenticated door only; the obsolete-listings exist to let the human decide whether to pay for it. |
 | `vectors.projection` | `GET /api/v1/vectors/projection` | — | REST single-door | A 2-D projection computed purely for the UI's scatter plot. It is a rendering aid over embeddings an agent already reaches as ranked results through memory_search, so a twin would ship coordinates no agent has a use for. |
@@ -90,6 +92,7 @@ the test rather than quietly joining the surface.
 | `code.processes` | — | `code_processes` | MCP single-door | The traced execution flows for one repo with their ordered steps, filtered out of the same code_graph_nodes and code_edges rows GET /code/graph/{repo_id} ships whole. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.rename` | — | `code_rename` | MCP single-door | A cross-file reference sweep with a per-reference confidence, assembled from the definition rows and the call, heritage and import edges the REST door serves whole. It exists to drive an agent's edit; the UI has no rename view for a twin to feed. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.changes` | — | `code_changes` | MCP single-door | The only genuinely single-door capability in the code family: it shells out to git in the repo working directory and reports the uncommitted diff against the indexed symbols. Every REST read and the whole indexed graph are commit-based, so no route carries this state and the UI has no working-tree view. It serves the agent editing the tree right now. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. It has none, and unlike its five siblings the underlying state is not REST-reachable either. Escalated by T1.42d, not resolved. |
+
 <!-- END GENERATED PARITY TABLE -->
 
 ## Findings this audit raises

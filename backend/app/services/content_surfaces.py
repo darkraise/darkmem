@@ -229,6 +229,38 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "would blank the preview for exactly the rows needing triage.",
     ),
     ContentSurface(
+        key="review_queue_facts",
+        kind=_S,
+        front_doors=("GET /api/v1/review-queue/facts",),
+        crosses=("fact_content",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.22",
+        reason="The review queue's job (doc 08 §6) is every disputed or "
+               "under-sourced fact the deployment holds, ranked by consequence "
+               "not arrival order; a screen that hid another project's disputes "
+               "would misreport the system's truth backlog the same way "
+               "pipeline_failure_triage's would misreport its health backlog. "
+               "review_state='open' is the sole membership predicate — see "
+               "app/services/review_queue.py for why it is never a bind "
+               "parameter.",
+    ),
+    ContentSurface(
+        key="review_queue_articles",
+        kind=_S,
+        front_doors=("GET /api/v1/review-queue/articles",),
+        crosses=("content_preview",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.22",
+        reason="Same triage-queue reasoning as review_queue_facts, over "
+               "knowledge_articles instead of knowledge_triples. No producer "
+               "writes this table yet (article_synthesis is a placeholder "
+               "until T3.02), so the arm is exercised in tests against seeded "
+               "rows only — the decision is about the surface's scope, not "
+               "about live volume.",
+    ),
+    ContentSurface(
         key="analytics_recents",
         kind=_S,
         front_doors=("GET /api/v1/analytics/overview",),
@@ -377,6 +409,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/repos",
     "POST /api/v1/repos/{repo_id}/reindex",
     "PUT /api/v1/repos/{repo_id}",
+    "GET /api/v1/review-queue/counts",
     "GET /api/v1/setup/fs/list",
     "GET /api/v1/setup/fs/roots",
     "GET /api/v1/setup/status",
