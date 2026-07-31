@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 64 | 40 | 4 | 1 | 0 | 19 | 0 | G-C, G-D open |
+| E2 — Truth core | 64 | 40 | 3 | 1 | 0 | 20 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **223** | **95** | **4** | **1** | **0** | **122** | **1** | |
+| **Total** | **223** | **95** | **3** | **1** | **0** | **123** | **1** | |
 
 ---
 
@@ -226,7 +226,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.48 | Citation re-verifier + code-fact lifecycle | M | Opus | high | | todo | | | |
 | T2.49 | `relation_embeddings` refresh job + writer | M | Sonnet | high | | todo | | | |
 | T2.50 | Graph-arm activation measurement | M | Fable | high | | todo | | | |
-| T2.51 | Promotion-metrics runner | S | Sonnet | high | claude/e2-lane-m1 | wip | | | |
+| T2.51 | Promotion-metrics runner | S | Sonnet | high | claude/e2-lane-m1 | done | 4cceffa, a7742bb (merged 66997af) | fable adversarial: spec PASS all 3 clauses, quality Needs fixes (3 Important, 3 Minor); scoped re-review: **all ADDRESSED**, no new breakage, 4 independent per-filter mutations | Built by Sonnet so T2.40 only designs the bar and reads the number — runbook §2's rule that the model writing the harness must not judge its own output. Every metric from the journal; the denominator **reuses T2.06's pinned equivalence verbatim** rather than re-deriving it (`before='candidate'`, `outcome IN ('promote','dispute')`, `origin_count >= required_n`), because ordinary holds are deliberately unjournalled and "never eligible" is by construction. A payload vocabulary guard raises `UnrecognisedPayloadError` rather than silently mis-sizing that denominator when an unknown outcome, key, or non-contradiction `hold` appears — **built for T2.60**, which will trip it on both counts. Read-only is structural (`default_transaction_read_only=on`), forbidden databases refused before any connection. **Review found two of the three filters DEFINING the denominator were mutation-invisible** — the suite seeded no below-bar dispute and no non-candidate transition *inside* an asserted window, so both held vacuously; duplicated SQL that can drift with no failing test is exactly how a gate number goes quietly wrong. The re-reviewer then mutated each filter in each of the two slice queries separately (four mutations, stronger than the finding asked): all four inflated `eligible` 1→2, which **also proves the seeded negatives sit inside the window**, since a deletion could only inflate the count if the excluded row is scanned. **Three disclosures now ride the rendered report rather than a review**, because T2.40 reads the report: the rate is **per-transition** where doc 17 §5.1 says per-fact (inherited from T2.06, which converted the audit to DISTINCT-facts and left the rate per-event); the `diverse` bucket is **not** the diversity gate (the gate needs two *attributable* origins of differing kinds, `source_kinds` is the union over all origins, so one origin under two kinds slices as diverse without ever lowering the bar); and the human-rejected half is **structurally blind** under T2.62's landed design, so its 0 is not evidence of zero rejections — **opened T2.63** to own it. Real run reports **0 observations, under-powered** — correct, and a stronger "no evidence" than a sparse journal: `darkmem` has no schema on this machine at all. Deferred: a `?database=` query param still reaches a forbidden database (pre-existing, read-only GUC still applies). Verify: benchlib **401** post-merge (377 + 24); backend floor **2967** unchanged — it touches nothing under `backend/app/` |
 | T2.52 | Contradiction-shortlist miss-rate runner | M | Sonnet | high | | todo | | | |
 | T2.53 | Register `topic_detection` on the schedule | S | Haiku | high | | todo | | | |
 | T2.54 | Label the entailment gold set | L | Fable | high | | todo | | | |
