@@ -1,0 +1,59 @@
+{
+  "purpose": "T2.26 plumbing fixtures — NOT gold. The runner's fixture sanity stage probes these before any gold contact (plan D9/[C1]); deliberately easy, unambiguous examples of each verdict class, authored fresh (not from gold.json, not from the retrieval corpus). The 'note' field records the authored intent for human reference only — the sanity gate never compares against it, so these measure parseability and class diversity, not judge correctness.",
+  "pairs": [
+    {
+      "id": "sp-01",
+      "premise": "The backup job runs every night at 02:00.",
+      "hypothesis": "A backup job runs at night.",
+      "note": "entailed — strictly weaker restatement"
+    },
+    {
+      "id": "sp-02",
+      "premise": "Alice deployed version 3.2 of the billing service on Monday.",
+      "hypothesis": "Version 3.2 of the billing service was deployed by Alice.",
+      "note": "entailed — passive-voice restatement"
+    },
+    {
+      "id": "sp-03",
+      "premise": "The cluster has six worker nodes.",
+      "hypothesis": "The cluster has worker nodes.",
+      "note": "entailed — count dropped, weaker"
+    },
+    {
+      "id": "sp-04",
+      "premise": "The metrics API listens on port 8080.",
+      "hypothesis": "The metrics API listens on port 9090.",
+      "note": "contradicted — exclusive-slot value swap"
+    },
+    {
+      "id": "sp-05",
+      "premise": "The schema migration completed successfully with zero errors.",
+      "hypothesis": "The schema migration failed.",
+      "note": "contradicted — explicit negation"
+    },
+    {
+      "id": "sp-06",
+      "premise": "The cache layer was removed from the stack in March and never reinstated.",
+      "hypothesis": "The cache layer is currently part of the stack.",
+      "note": "contradicted — closed state versus present-tense claim"
+    },
+    {
+      "id": "sp-07",
+      "premise": "The web server terminates TLS 1.3 connections.",
+      "hypothesis": "The database server terminates TLS 1.3 connections.",
+      "note": "unsupported — different subject, nothing asserted about it"
+    },
+    {
+      "id": "sp-08",
+      "premise": "The team adopted a new logging library.",
+      "hypothesis": "The team adopted a new logging library because the old one leaked memory.",
+      "note": "unsupported — added cause the premise does not assert"
+    },
+    {
+      "id": "sp-09",
+      "premise": "The report generator supports PDF export.",
+      "hypothesis": "The report generator supports CSV export.",
+      "note": "unsupported — a different capability, neither asserted nor excluded"
+    }
+  ]
+}
