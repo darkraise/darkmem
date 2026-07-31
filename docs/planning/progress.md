@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 60 | 48 | 4 | 0 | 0 | 8 | 0 | G-C, G-D open |
+| E2 — Truth core | 60 | 48 | 3 | 0 | 0 | 9 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **219** | **103** | **4** | **0** | **0** | **111** | **1** | |
+| **Total** | **219** | **103** | **3** | **0** | **0** | **112** | **1** | |
 
 ---
 
@@ -189,7 +189,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.11 | `contradiction_scan` | M | Opus | high | | todo | | | |
 | T2.12 | `memory_dream` — never hard-merges, never deletes | L | Opus | high | | todo | | | |
 | T2.13 | Dream digest + per-action and per-batch undo | L | Opus | high | | todo | | | |
-| T2.14 | Register `article_synthesis` inert | S | Haiku | high | claude/e2-lane-c1 | wip | | | |
+| T2.14 | Register `article_synthesis` inert | S | Haiku | high | claude/e2-lane-c1 | done | 874ce94, fe1c37d (merged 413b33c) | — (Haiku tier; no Fable review required) | T2.08 had already registered the job; the gap was the **label**, which named T2.14 itself and would have pointed a reader at a completed task the moment T2.14 landed. Now names **T3.02** in four places (module docstring table, `DREAM_JOB_OWNERS`, the registration description, and CLAUDE.md's family list), asserted by a test that mutation-checks both the `PlaceholderJobRunner` marker and the owner string. **"Scheduled off" resolved to a pre-satisfied premise, recorded with evidence rather than invented**: `JobRegistry` has no disabled-registration path at all (`Job` has no `enabled=`, `JobConfig.enabled` defaults True, `load_config` synthesises `enabled=True`), so the placeholder runner *is* the corpus's inert state. Controller fixed two things on merge: the new test opened an async engine it never disposed (registration touches no DB, so it reuses conftest's), and CLAUDE.md still named T2.14 as owner. Verify 28 passed (inert + dream_jobs); floor **2707 passed** post-merge, up 1 from the 2706 branch point |
 | T2.15 | Five associative types + normaliser | S | Sonnet | high | claude/e2-truth-core | done | 2df7cd7 | fable adversarial: spec PASS, quality approved, 0 Critical/0 Important, 2 Minor | **Implementation was already landed by T1.23 — this task was the missing proof.** `taxonomy.py` untouched (net-zero diff, asserted). 26 tests in the file the Verify names, which did not exist. Reviewer independently ran 7 mutations incl. a same-length swap and a `PRECEDES→FOLLOWS` alias (which would silently invert temporal order); all broke the named tests. Floor 2591 passed |
 | T2.16 | Derivation from overlap, proximity, and contradiction | L | Opus | high | | todo | | | |
 | T2.17 | Strip-before-rewrite and endpoint self-healing | S | Sonnet | high | | todo | | | |
