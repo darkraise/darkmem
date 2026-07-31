@@ -463,11 +463,22 @@ async def recompute_fact(
     repo = KnowledgeTripleRepository(session)
     # A held fact writes confidence alone: `confirmed` cannot be passed its own
     # status back (the repository refuses it before any read), and a status
-    # write that changes nothing would only risk a phantom journal row.
+    # write that changes nothing would only risk a phantom journal row. The
+    # repository still journals on `contradiction_blocked` alone (a reconfirmed
+    # `disputed -> disputed` hold), so the evidence rides every call regardless
+    # of whether this particular decision carries a status change.
     status_to_write = (
         decision.target_status if decision.target_status != decision.current_status else None
     )
     await repo.set_verification_status(
-        fact_id, status_to_write, confidence=decision.confidence
+        fact_id,
+        status_to_write,
+        confidence=decision.confidence,
+        outcome=decision.outcome,
+        origin_count=decision.origin_count,
+        required_n=decision.required_n,
+        gate_fired=decision.gate_fired,
+        source_kinds=decision.source_kinds,
+        contradiction_blocked=decision.contradiction_blocked,
     )
     return decision

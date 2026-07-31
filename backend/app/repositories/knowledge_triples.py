@@ -315,16 +315,22 @@ class KnowledgeTripleRepository:
         status: str | None,
         *,
         confidence: float | None = None,
+        outcome: str | None = None,
+        origin_count: int | None = None,
+        required_n: int | None = None,
+        gate_fired: str | None = None,
+        source_kinds: tuple[str, ...] | list[str] | None = None,
+        contradiction_blocked: bool = False,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
 
         ``status=None`` means **write confidence only** — no status change, and
-        therefore no journal row, because no transition occurred. That is what
-        lets the ladder refresh the support estimate on a fact it must not
-        move: a ``confirmed`` fact cannot be passed its own status back,
-        because the refusal below fires before any read. ``candidate`` and
-        ``corroborated`` holds may take either route, since passing an
-        unchanged status is already a journal no-op.
+        therefore no journal row on that account alone, because no transition
+        occurred. That is what lets the ladder refresh the support estimate on
+        a fact it must not move: a ``confirmed`` fact cannot be passed its own
+        status back, because the refusal below fires before any read.
+        ``candidate`` and ``corroborated`` holds may take either route, since
+        passing an unchanged status is already a journal no-op.
 
         ``confidence`` rides the same UPDATE as the status so the two can never
         drift. Both are verification-axis columns, so writing them together
@@ -337,22 +343,40 @@ class KnowledgeTripleRepository:
         method, not a gap to be filled in later. A refused call performs no
         read and no write, so it journals nothing: no transition occurred.
 
-        Journals ``verified`` with the before/after ``verification_status`` —
-        but only when the write actually changes the value; setting a row to
-        the status it already holds is a no-op and must not journal (append-
-        only ``events`` can never un-write a phantom row, so "a row means a
-        transition" has to be true by construction). The prior value is read
-        with ``FOR UPDATE`` in this same transaction, not a separate round
-        trip, so a concurrent write to the same row cannot make the
-        journalled "before" a lie or make a no-op look like a transition.
+        Journals ``verified`` with the before/after ``verification_status``
+        whenever the write actually changes the value; setting a row to the
+        status it already holds is a no-op and must not journal on that
+        account (append-only ``events`` can never un-write a phantom row, so
+        "a row means a transition" has to be true by construction). The prior
+        value is read with ``FOR UPDATE`` in this same transaction, not a
+        separate round trip, so a concurrent write to the same row cannot make
+        the journalled "before" a lie or make a no-op look like a transition.
 
-        T2.03's Tier-C verification recompute will become the sole journaller
-        of verification transitions once it lands; from that point this
-        emitter is subordinate to it, so the recompute does not double-count
-        the same transition in G-C's metrics. That hand-off is T2.03's to
-        make, not this method's — no suppression flag exists here (the
-        before/after equality check above is this method's own no-op guard,
-        not a coordination mechanism with T2.03).
+        ``outcome``/``origin_count``/``required_n``/``gate_fired``/
+        ``source_kinds``/``contradiction_blocked`` are T2.06's decision
+        evidence (the applier's decision record, see the promotion-decision
+        module beside this one), threaded through as plain values rather than
+        that dataclass itself, to avoid a repository -> service import cycle.
+        They are optional so every direct/legacy caller that only ever wrote a
+        bare status keeps its original two-key payload verbatim. When
+        ``outcome`` is given the full evidence block rides the payload too —
+        this is the row G-C's promotion-rate and false-promotion-audit SQL
+        reads, so the payload must carry everything those queries need
+        without a join back to ``knowledge_triples``.
+
+        ``contradiction_blocked=True`` journals even when ``status`` is
+        ``None`` (unchanged): a fact the veto is *still* holding in
+        ``disputed`` across a recompute cycle is not a status transition, but
+        it is exactly the ongoing-veto evidence doc 08 §4.2's audit needs, and
+        it is the one hold this method journals on purpose. Every other hold
+        (a human-ratified ``confirmed`` refresh, an unblocked candidate or
+        corroborated hold) stays a pure no-op, or the frequent Tier-C
+        recompute cadence would flood the append-only journal with rows no
+        G-C metric consumes.
+
+        The promotion decision's applier is this module's sole caller into
+        the verification axis, which is what makes the event count here
+        countable rather than a duplicate of a second writer's.
         """
         if status is not None and status not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
             if status == "confirmed":
@@ -396,17 +420,33 @@ class KnowledgeTripleRepository:
             ),
             params,
         )
-        if status is not None and prior_row["verification_status"] != status:
+        changed = status is not None and prior_row["verification_status"] != status
+        if changed or contradiction_blocked:
+            payload: dict[str, Any] = {
+                "before": {"verification_status": prior_row["verification_status"]},
+                "after": {
+                    "verification_status": (
+                        status if status is not None else prior_row["verification_status"]
+                    )
+                },
+            }
+            if outcome is not None:
+                payload["outcome"] = outcome
+                payload["origin_count"] = origin_count
+                payload["required_n"] = required_n
+                payload["gate_fired"] = gate_fired
+                payload["source_kinds"] = (
+                    list(source_kinds) if source_kinds is not None else []
+                )
+                payload["contradiction_blocked"] = contradiction_blocked
+                payload["confidence"] = confidence
             await record_event(
                 self.session,
                 event_type="verified",
                 object_type="fact",
                 object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
                 project=prior_row["project"],
-                payload={
-                    "before": {"verification_status": prior_row["verification_status"]},
-                    "after": {"verification_status": status},
-                },
+                payload=payload,
             )
 
     async def as_of(
