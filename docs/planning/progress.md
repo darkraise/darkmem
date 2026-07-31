@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 21 | 1 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 62 | 41 | 5 | 1 | 0 | 15 | 0 | G-C, G-D open |
+| E2 — Truth core | 62 | 41 | 4 | 1 | 0 | 16 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **221** | **96** | **5** | **1** | **0** | **118** | **1** | |
+| **Total** | **221** | **96** | **4** | **1** | **0** | **119** | **1** | |
 
 ---
 
@@ -237,7 +237,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.59 | Content retention on delete: decide the policy, then implement it | M | Opus | high | | todo | | | |
 | T2.60 | The supersession-signal promotion blocker | M | Opus | high | | todo | | | |
 | T2.61 | The TTL sweep must withdraw provenance too | S | Opus | high | claude/e2-lane-n1 | wip |  |  |  |
-| T2.62 | `review_state` must open on the veto and clear on recovery | S | Opus | high | claude/e2-lane-n2 | wip |  |  |  |
+| T2.62 | `review_state` must open on the veto and clear on recovery | S | Opus | high | claude/e2-lane-n2 | done | f9106d4, ce57041 (merged 6b09106) | fable adversarial: spec PASS all 4 clauses, quality **Approved** — 0 Critical / 0 Important / 3 Minor; 2 Minors closed in a fix round, 3rd recorded for triage | Settles the precedence question a bare nullable TEXT column with three independent openers creates, **without a schema change**. The ruling: `review_state` is **derived** from a registered opener tuple (`REVIEW_OPENERS`, shaped like `CONTRADICTION_DETECTORS` so a not-yet-landed member cannot be plumbed past it) inside `recompute_fact`'s existing `FOR UPDATE` window — **the clear is the absence of every opener, never the negation of one**. Deliberate asymmetry: opening is unconditional (it can only *add* a queue row, so it hides nothing), clearing is applied only over a value the derivation could itself have produced, else left in place with a warning — a stale queue entry costs a glance, a wrongly cleared one costs the fact. **A human's bare clear reopens next recompute and that is correct**: doc 08 §6 gives the human three verbs (ratify/re-ground/edit) and each changes a condition the derivation honours; §6 gives no bare dismiss, because that affordance is T2.24's priority decay. No schema change needed — the `under-sourced` *label* belongs on T2.46's `demotion_pending_since`, and doc 08's own schema note says `review_state` "open marks disputed or under-sourced". Review upheld every citation against the doc rather than the paraphrase. **Review improved on the implementer's own reasoning**: it argued the missing concurrency test was an honest substitution, but even with real commits a split two-statement write shares one transaction, so a live race test would have *passed* under mutation 1 — the structural SQL-capture test is the better guard, not a fallback. **Reviewer's own mutation found the epic's signature defect inside mutation-tested work**: reverting the extended early return left all 26 tests green, so the extension the report called "closing a real gap" was itself unpinned; closed in ce57041 with the implementer's own diagnosis recorded. Minor 2 (a caller can still write `disputed` with the flag UNSET) recorded for triage, not fixed — structural closure reaches a T2.06-era test. Verify 28 passed; floor **2917** post-merge (branch point 2889, +28) |
 
 ## E3 — Synthesis & reach (26 tasks)
 
