@@ -216,13 +216,15 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
             await session.commit()
         logger.info(
             "Verification recompute drained %d sources_changed event(s) "
-            "touching %d fact(s): %d recomputed (%d failed), %d transition(s). "
-            "Slow arm %s: scanned %d fact(s), healed %d%s",
+            "touching %d fact(s): %d recomputed (%d failed, %d skipped dead), "
+            "%d transition(s). Slow arm %s: scanned %d fact(s), healed %d "
+            "(%d skipped dead)%s",
             outcome.drain.events_scanned, outcome.drain.facts_touched,
             outcome.drain.facts_recomputed, outcome.drain.facts_failed,
-            outcome.drain.transitions,
+            outcome.drain.facts_skipped_expired, outcome.drain.transitions,
             "ran" if outcome.slow_arm_ran else "skipped (not due)",
             outcome.reconcile.facts_scanned, outcome.reconcile.facts_healed,
+            outcome.reconcile.facts_skipped_expired,
             " (wrapped to start)" if outcome.reconcile.wrapped else "",
         )
 

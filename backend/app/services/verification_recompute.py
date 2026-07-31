@@ -92,6 +92,21 @@ than merely bounding its cost; a producer that ever became slower than the
 margin would reopen it, at which point the margin is the number to raise,
 not the mechanism to abandon.
 
+**The margin compares two clocks, and today that is safe only because they
+are the same clock.** ``moment`` is ``datetime.now(timezone.utc)`` in the
+*application* process (or, for a replay/test, a caller-supplied stand-in for
+it); ``created_at`` is computed by *PostgreSQL's* own clock. On today's
+single-host deployment the app and the database share one system clock, so
+the two are never meaningfully skewed. A split deployment — the app and the
+database on separate hosts — would change that silently: any clock drift
+between the two hosts eats directly into the margin's headroom (or, in the
+adversarial direction, could invert it), with no error and no symptom,
+because nothing here ever compares the two clocks against each other. This
+is worth stating plainly rather than leaving implicit, so whoever changes
+the deployment topology knows to re-examine it rather than trusting that a
+constant tuned for one deployment shape still means the same thing on
+another.
+
 The slow arm's cursor carries the identical same-transaction-tie hazard —
 ``fact_lift`` can mint several facts inside one transaction, so
 ``knowledge_triples.created_at`` can tie the same way — and uses the same
@@ -129,6 +144,47 @@ permanently-poisonous fact stall the whole queue forever — and the slow arm
 is what re-visits that fact later regardless of the reason it was missed,
 which is why the two arms are a genuine pair rather than one primary path
 with a redundant mirror.
+
+**Isolation is per-fact, not per-tick — a batch of many wedged facts can
+still exhaust the tick.** ``_set_local_lock_timeout`` (M-2) bounds any *one*
+fact's lock wait to ``_LOCK_TIMEOUT_MS`` (5s), but that bound is per fact,
+not per run: roughly 24 or more concurrently-wedged facts in a single batch
+would still sum past the job's own ``max_run_seconds`` (120s) ceiling and
+reproduce the exact zero-progress rollback M-2 exists to prevent for the
+single-poisonous-fact case (every lock in the batch failing after its own
+5s still adds up to more than 120s of wall time before the batch finishes).
+This is recorded as a known, accepted limit — pathological in practice (it
+needs dozens of rows genuinely wedged at once, not one), and closing it
+would mean either a much smaller per-fact timeout (trading false-positive
+failures on ordinary contention for batch-level safety) or the bounded
+in-state retry list the T2.09 report already declined to build for
+unrelated reasons. Neither is undertaken here; this paragraph is the
+record, not a task.
+
+**Both arms re-check liveness under the per-fact lock, not just at
+selection time (N-1).** ``fact_provenance``'s withdrawal sweep
+(``_withdraw``, ``fact_provenance.py``) emits ``sources_changed``
+*unconditionally* for every source row it withdraws, including the source
+whose withdrawal just expired the fact inline — doc 08 §3.3's own contract
+is "expires inline ... **then enqueues**", not "expires inline instead of
+enqueuing". So the fast arm can reach a fact expired only moments earlier
+through a perfectly legitimate, correctly-emitted event; this is not a
+producer bug and not something either arm can route around by reading
+events more carefully. ``recompute_fact`` has no opinion about ``expired_at``
+at all — it only ever touches the verification axis, by the belief/
+verification split ``knowledge_triples.py`` documents — so left unguarded it
+will happily compute and journal a transition (a demote, typically) on a row
+nothing is served from any more, landing in the same ``verified`` stream
+G-C's metrics read live transitions from. ``_still_live`` closes this on
+**both** arms: called inside each per-fact savepoint, under the same
+``FOR UPDATE`` lock ``recompute_fact`` will immediately re-acquire on the
+same row, so there is no window between the check and the decision for the
+fact to be expired out from under it. The slow arm's own
+``expired_at IS NULL`` slice filter is a cheap pre-filter that keeps
+obviously-dead rows out of the slice entirely (and bounds the rotation
+period by live fact count); ``_still_live`` is what actually closes the
+race between that filter's read and the row's eventual lock, which the
+filter alone cannot do.
 
 **Volume consequence, named as the brief asks.** ``set_verification_status``
 journals a *contradiction-blocked* hold on purpose, once per call, even when
@@ -334,6 +390,36 @@ async def _set_local_lock_timeout(session: AsyncSession) -> None:
     await session.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}ms'"))
 
 
+async def _still_live(session: AsyncSession, fact_id: str) -> bool:
+    """Is this fact still un-expired? N-1's fix, shared by both arms.
+
+    Read under `FOR UPDATE`, inside the caller's own savepoint -- the same
+    lock `recompute_fact` will immediately re-acquire on the same row a
+    moment later, so there is no window between this check and the decision
+    it gates for the fact to be expired out from under it. A plain SELECT
+    beforehand would leave exactly that window open.
+
+    A **missing** row (the fact deleted outright, not merely expired) is
+    treated as live here on purpose: `recompute_fact` already handles that
+    case gracefully on its own (a "missing" hold that writes nothing, per
+    its own docstring), so this only has to gate the one state
+    `recompute_fact` has no opinion about at all -- `expired_at`, the belief
+    axis, which `set_verification_status` never touches. See the module
+    docstring's "Both arms re-check liveness" paragraph (N-1) for why a
+    fact can reach this call already dead through a perfectly ordinary,
+    correctly-emitted event.
+    """
+    result = await session.execute(
+        text(
+            "SELECT expired_at FROM knowledge_triples "
+            "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+        ),
+        {"id": str(fact_id)},
+    )
+    row = result.first()
+    return row is None or row[0] is None
+
+
 # ── the fast arm: drain sources_changed ────────────────────────────────
 
 # The tuple compare, spelled as two conjuncts rather than a Postgres row
@@ -368,6 +454,7 @@ class DrainOutcome:
     facts_touched: int = 0
     facts_recomputed: int = 0
     facts_failed: int = 0
+    facts_skipped_expired: int = 0
     transitions: int = 0
 
 
@@ -394,11 +481,14 @@ async def _drain_sources_changed(
             seen.add(fact_id)
             fact_ids.append(fact_id)
 
-    recomputed = failed = transitions = 0
+    recomputed = failed = transitions = skipped_expired = 0
     for fact_id in fact_ids:
         try:
             async with session.begin_nested():
                 await _set_local_lock_timeout(session)
+                if not await _still_live(session, fact_id):
+                    skipped_expired += 1
+                    continue
                 decision = await recompute_fact(session, fact_id)
         except Exception:
             failed += 1
@@ -422,6 +512,7 @@ async def _drain_sources_changed(
         facts_touched=len(fact_ids),
         facts_recomputed=recomputed,
         facts_failed=failed,
+        facts_skipped_expired=skipped_expired,
         transitions=transitions,
     )
     return outcome, new_state
@@ -433,16 +524,27 @@ async def _drain_sources_changed(
 # ceiling), so recomputing it can only ever be a wasted lock-and-read.
 #
 # expired_at IS NULL is I-2's fix: expiry lives on the belief axis
-# (`KnowledgeTripleRepository.expire`, never touches verification_status),
-# and `fact_provenance` deliberately does not emit `sources_changed` for a
-# fact it expires inline (doc 08 3.3) -- an expired fact is dead, not merely
-# unsourced. Without this filter a corroborated-but-expired fact with zero
+# (`KnowledgeTripleRepository.expire`, never touches verification_status).
+# An expired fact is dead, not merely unsourced, and it must not be
+# recomputed. Without this filter a corroborated-but-expired fact with zero
 # surviving sources gets "demoted" by the slow arm, journaling a `verified`
 # row with outcome=demote that is indistinguishable in payload from a live
 # demotion, in the exact stream T2.51/T2.40 count. Excluding dead facts also
 # bounds the rotation period by *live* fact count rather than historical
 # count, since a dead row can never be walked past -- it simply never enters
 # the slice again.
+#
+# This is a pre-filter, not the whole guarantee: `_still_live` (below,
+# called inside the per-fact savepoint on BOTH arms) is what actually closes
+# the race between this SELECT and the row's eventual FOR UPDATE lock,
+# because a fact can die in the gap between the two. It is also, on its own,
+# the ONLY thing standing between the fast arm and a fact that just died --
+# `fact_provenance`'s withdrawal sweep emits `sources_changed`
+# unconditionally, including for the source whose withdrawal is what just
+# expired the fact (doc 08 3.3: "expires inline ... then enqueues"), so the
+# fast arm reaches freshly-dead facts through ordinary, correctly-emitted
+# events, not merely through this slice's own read-write race. See the
+# module docstring's "Both arms re-check liveness" paragraph (N-1).
 #
 # invalid_at (window-closed but still live, i.e. superseded-by-a-newer-
 # belief history) is deliberately NOT excluded, on a ruling made here: a
@@ -475,6 +577,7 @@ _SLOW_ARM_SLICE = text("""
 class ReconcileOutcome:
     facts_scanned: int = 0
     facts_healed: int = 0
+    facts_skipped_expired: int = 0
     wrapped: bool = False
 
 
@@ -488,12 +591,15 @@ async def _reconcile_from_fact_sources(
     )
     rows = result.mappings().all()
 
-    healed = 0
+    healed = skipped_expired = 0
     for row in rows:
         fact_id = str(row["id"])
         try:
             async with session.begin_nested():
                 await _set_local_lock_timeout(session)
+                if not await _still_live(session, fact_id):
+                    skipped_expired += 1
+                    continue
                 decision = await recompute_fact(session, fact_id)
         except Exception:
             logger.exception(
@@ -517,7 +623,8 @@ async def _reconcile_from_fact_sources(
             slow_cursor_id=str(last["id"]),
         )
     outcome = ReconcileOutcome(
-        facts_scanned=len(rows), facts_healed=healed, wrapped=wrapped
+        facts_scanned=len(rows), facts_healed=healed,
+        facts_skipped_expired=skipped_expired, wrapped=wrapped,
     )
     return outcome, new_state
 

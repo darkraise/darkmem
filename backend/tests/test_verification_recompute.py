@@ -52,6 +52,26 @@ def _safe_now() -> datetime:
     return datetime.now(timezone.utc) + _SAFE_MARGIN_BUFFER
 
 
+async def _prime_slow_arm(session) -> None:
+    """Burn the slow arm's "always due on the first tick" window before a
+    test that needs to isolate the fast arm's own behaviour.
+
+    `slow_arm_last_run_at` starts unset for every test (`_reset_recompute_state`
+    seeds it to `None`), so the very first `run_recompute` call always runs
+    the slow arm regardless of `slow_arm_interval_seconds` -- `due` is an OR,
+    and the `is None` branch wins on tick one. The slow arm has no
+    commit-skew margin and no per-helper call-count contract of its own, so
+    letting it run on the same tick as a test asserting either would let it
+    independently reconcile the very fact under test, confounding the
+    assertion. Priming with `_safe_now()` (real wall clock + 30s) sets
+    `slow_arm_last_run_at` far enough in the future that a later call
+    anchored to a *real*, un-inflated timestamp (an event's own recorded
+    `created_at`, for instance) reads as comfortably not-yet-due.
+    """
+    await run_recompute(session, now=_safe_now())
+    await session.commit()
+
+
 async def _tail(session, query: str) -> tuple:
     row = (await session.execute(text(query))).mappings().first()
     if row is None:
@@ -271,16 +291,25 @@ class TestWithdrawalDemotes:
         assert events[0]["after"] == {"verification_status": "candidate"}
 
 
-class TestExpiredFactsAreNotSlowArmReconciled:
-    """I-2: expiry lives on the belief axis (`expired_at`), which
-    `KnowledgeTripleRepository.expire` never conflates with
-    `verification_status`. A dead fact left with zero live sources is not
-    merely "under-sourced" -- `fact_provenance` deliberately withholds
-    `sources_changed` when it expires a fact inline (doc 08 3.3), precisely
-    so nothing downstream re-touches a fact that has already stopped being
-    served. The slow arm must honour that same silence, not re-open it by
-    demoting (and journaling) a dead fact into the same `verified` stream
-    T2.51/T2.40 count live transitions from.
+class TestExpiredFactsAreNeverJournaledByEitherArm:
+    """I-2 (slow arm) + N-1 (fast arm): expiry lives on the belief axis
+    (`expired_at`), which `KnowledgeTripleRepository.expire` never conflates
+    with `verification_status`. A dead fact is not merely "under-sourced",
+    and neither arm may recompute or journal a transition on one.
+
+    **N-1 correction, recorded here so the mistake is not repeated.** An
+    earlier draft of this suite (and of the module's own comments) claimed
+    "`fact_provenance` deliberately withholds `sources_changed` when it
+    expires a fact inline" as the reason only the slow arm needed guarding.
+    That claim is false: `fact_provenance._withdraw` emits `sources_changed`
+    *unconditionally* for every source row it withdraws, including the
+    source whose withdrawal is what just expired the fact -- doc 08 3.3's
+    own contract is "expires inline ... **then enqueues**", not "instead of
+    enqueuing". So the fast arm reaches a freshly-dead fact through an
+    ordinary, correctly-emitted event just as readily as the slow arm can
+    reach one through a slice-read race, and both tests below have to hold
+    for the same underlying property: `_still_live`, checked inside the
+    per-fact savepoint on **both** arms, not a claim about who emits what.
     """
 
     pytestmark = pytest.mark.usefixtures("_reset_recompute_state")
@@ -303,6 +332,37 @@ class TestExpiredFactsAreNotSlowArmReconciled:
         # Status axis untouched -- still corroborated, because the slow arm
         # never reached the row to recompute it in the first place.
         assert await _status_of(session, fact_id) == "corroborated"
+        assert await _verified_events(session, fact_id) == []
+
+    async def test_fast_arm_skips_an_expired_fact_reached_via_a_real_event(self, session):
+        """N-1's exact demonstrated scenario: a corroborated fact whose
+        sources are withdrawn expires inline and receives one
+        `sources_changed` event per withdrawn source -- exactly what
+        `fact_provenance._withdraw` really does (simulated here rather than
+        called directly: `fact_provenance.py` is T2.61's file). The fast arm
+        must not journal a demote on it."""
+        fact_id = await _make_fact(session, key="expired-via-event-1", status="corroborated")
+        s1 = await _add_origin(session, fact_id, "sess-a")
+        s2 = await _add_origin(session, fact_id, "sess-b")
+        s3 = await _add_origin(session, fact_id, "sess-c")
+
+        await _remove_source(session, s1)
+        await _remove_source(session, s2)
+        await _remove_source(session, s3)
+        await KnowledgeTripleRepository(session).expire(fact_id)
+        await session.commit()
+        await _emit_sources_changed(session, fact_id=fact_id, memory_ref="memory:sess-a")
+        await _emit_sources_changed(session, fact_id=fact_id, memory_ref="memory:sess-b")
+        await _emit_sources_changed(session, fact_id=fact_id, memory_ref="memory:sess-c")
+
+        outcome = await run_recompute(session, now=_safe_now())
+        await session.commit()
+
+        assert outcome.drain.events_scanned == 3
+        assert outcome.drain.facts_touched == 1  # deduped to one fact_id
+        assert outcome.drain.facts_recomputed == 0
+        assert outcome.drain.facts_skipped_expired == 1
+        assert await _status_of(session, fact_id) == "corroborated"  # untouched, dead
         assert await _verified_events(session, fact_id) == []
 
 
@@ -403,6 +463,143 @@ class TestSameTransactionEventsSurvive:
 
         assert await _status_of(session, fact_a) == "corroborated"
         assert await _status_of(session, fact_b) == "corroborated"
+
+
+class TestCommitSkewMargin:
+    """N-2: the I-1 commit-skew margin (`_COMMIT_SKEW_MARGIN`) was
+    mechanically real but unpinned -- every prior test calls `run_recompute`
+    with `now = wall clock + 30s` (`_safe_now()`), which pushes the margin's
+    cutoff (`now - margin`) comfortably past every event this suite writes,
+    so the `created_at <= :safe_until` conjunct was never exercised by
+    anything. Deleting it left all tests green.
+
+    This class anchors `now` to the event's own recorded `created_at`
+    instead of wall-clock proximity, so it holds regardless of how fast or
+    slow the test process happens to be running.
+    """
+
+    pytestmark = pytest.mark.usefixtures("_reset_recompute_state")
+
+    async def test_an_event_inside_the_margin_is_deferred_then_drained_later(self, session):
+        await _prime_slow_arm(session)
+
+        fact_id = await _make_fact(session, key="skew-1")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+        await _emit_sources_changed(session, fact_id=fact_id, memory_ref="repo-b")
+
+        event_created_at = (
+            await session.execute(
+                text(
+                    "SELECT created_at FROM events WHERE event_type = 'sources_changed' "
+                    "AND object_id = CAST(:id AS uuid) ORDER BY created_at DESC, id DESC "
+                    "LIMIT 1"
+                ),
+                {"id": fact_id},
+            )
+        ).scalar_one()
+
+        # 1s after the event: well inside the 5s margin, so
+        # safe_until = now - 5s sits BEFORE the event's own created_at.
+        deferred = await run_recompute(
+            session, now=event_created_at + timedelta(seconds=1),
+        )
+        await session.commit()
+        assert deferred.drain.events_scanned == 0, (
+            "an event inside the commit-skew margin was drained early"
+        )
+        assert await _status_of(session, fact_id) == "candidate"
+
+        # 10s after the event: comfortably past the margin now.
+        drained = await run_recompute(
+            session, now=event_created_at + timedelta(seconds=10),
+        )
+        await session.commit()
+        assert drained.drain.events_scanned == 1
+        assert await _status_of(session, fact_id) == "corroborated"
+
+
+class TestLockTimeoutAndLivenessAreActuallyWired:
+    """N-3: `TestLockWaitIsBounded` proves `_set_local_lock_timeout` itself
+    works, but calls it directly through its own savepoint -- it never
+    proves either arm's loop actually calls it. Deleting both
+    `await _set_local_lock_timeout(session)` call sites left every existing
+    test green. Same shape of gap for `_still_live`: nothing yet proves the
+    arms call it rather than merely defining it. Both are pinned here by
+    counting real calls through the arms' own code paths, not by re-deriving
+    their effects indirectly.
+    """
+
+    pytestmark = pytest.mark.usefixtures("_reset_recompute_state")
+
+    async def test_fast_arm_calls_the_lock_timeout_and_liveness_helpers(
+        self, session, monkeypatch
+    ):
+        import app.services.verification_recompute as vr_module
+
+        await _prime_slow_arm(session)
+
+        fact_id = await _make_fact(session, key="wiring-fast-1")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+        await _emit_sources_changed(session, fact_id=fact_id, memory_ref="repo-b")
+
+        lock_calls: list[None] = []
+        live_calls: list[str] = []
+        real_lock = vr_module._set_local_lock_timeout
+        real_live = vr_module._still_live
+
+        async def tracking_lock(session):
+            lock_calls.append(None)
+            await real_lock(session)
+
+        async def tracking_live(session, fact_id):
+            live_calls.append(fact_id)
+            return await real_live(session, fact_id)
+
+        monkeypatch.setattr(vr_module, "_set_local_lock_timeout", tracking_lock)
+        monkeypatch.setattr(vr_module, "_still_live", tracking_live)
+
+        outcome = await run_recompute(session, now=_safe_now())
+        await session.commit()
+
+        assert outcome.drain.facts_recomputed == 1
+        assert len(lock_calls) == 1
+        assert live_calls == [fact_id]
+
+    async def test_slow_arm_calls_the_lock_timeout_and_liveness_helpers(
+        self, session, monkeypatch
+    ):
+        import app.services.verification_recompute as vr_module
+
+        fact_id = await _make_fact(session, key="wiring-slow-1")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+        # Deliberately no event -- forces the slow arm, not the fast one,
+        # to be the caller under test.
+
+        lock_calls: list[None] = []
+        live_calls: list[str] = []
+        real_lock = vr_module._set_local_lock_timeout
+        real_live = vr_module._still_live
+
+        async def tracking_lock(session):
+            lock_calls.append(None)
+            await real_lock(session)
+
+        async def tracking_live(session, fact_id):
+            live_calls.append(fact_id)
+            return await real_live(session, fact_id)
+
+        monkeypatch.setattr(vr_module, "_set_local_lock_timeout", tracking_lock)
+        monkeypatch.setattr(vr_module, "_still_live", tracking_live)
+
+        outcome = await run_recompute(session, now=_safe_now())
+        await session.commit()
+
+        assert outcome.reconcile.facts_scanned == 1
+        assert len(lock_calls) == 1
+        assert live_calls == [fact_id]
 
 
 # ─────────────── 5. the slow arm heals a swallowed emit (I-4) ───────────────
