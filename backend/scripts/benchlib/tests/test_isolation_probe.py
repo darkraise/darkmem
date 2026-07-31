@@ -66,6 +66,25 @@ async def test_no_unaccounted_sentinel_in_the_baseline(baseline_report):
     assert forced == []
 
 
+async def test_no_article_content_crosses_past_its_declared_preview(baseline_report):
+    """`review_queue_articles` declares it crosses `content_preview`, not
+    `content`, and every article fixture runs past the LEFT(content, 200)
+    boundary — so a tail marker on the wire means the surface widened beyond
+    what `content_surfaces` declares.
+
+    The raw-body net above cannot catch this: the sentinel deliberately sits
+    inside the first 200 characters, because the preview is a declared
+    crossing and must cross, so `scan_sentinels` sees the same thing whether
+    the content was truncated or not. Without this assertion the over-length
+    fixture is decorative — it seeds the boundary and nothing reads it."""
+    forced = [
+        c for c in baseline_report.classified
+        if c.sighting.forced_v1_reason
+        == "article content crossed past its declared preview"
+    ]
+    assert forced == []
+
+
 async def test_a_removed_status_predicate_fails_the_probe(baseline_report, monkeypatch):
     """The gate's teeth: strip the status clause out of MemoryFilter's SQL
     rendering (the exact shape of a real regression) and the probe must

@@ -408,6 +408,29 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="review_queue.triage",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/review-queue/facts"),
+            ("GET", f"{V1}/review-queue/articles"),
+            ("GET", f"{V1}/review-queue/counts"),
+        ),
+        reason=(
+            "Doc 12 section 1 names the review queue as one of the reshape's "
+            "two deliberate single-door kinds -- a human-observability read, "
+            "not a confirmed-power write -- and section 3 assigns the "
+            "agent-facing capability to a separate tool family, "
+            "dispute_inspect (both-sides detail on one disputed fact or "
+            "article), never to this backlog view: 'the review-queue read is "
+            "a curation surface, not an agent capability ... an agent "
+            "triaging its own truth backlog is a conflict of interest the "
+            "design declines.' This surface is the pipeline_failures.triage "
+            "shape (doc 08 section 6) over facts and articles. review_state "
+            "has no writer here either (T2.62 owns it) -- this is read-only "
+            "triage, not an action door."
+        ),
+    ),
+    Surface(
         name="buffer.triage",
         status=REST_ONLY,
         rest=(

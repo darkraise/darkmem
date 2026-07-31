@@ -138,6 +138,9 @@ EXPECTED_STATUS = {
     # correct today; DELETE-as-cancel is the thing left for a coordinated
     # client update, not the status code.
     ("DELETE", "/api/v1/repos/{repo_id}/tasks/{task_id}"): 200,
+    ("GET", "/api/v1/review-queue/articles"): 200,
+    ("GET", "/api/v1/review-queue/counts"): 200,
+    ("GET", "/api/v1/review-queue/facts"): 200,
     ("POST", "/api/v1/setup"): 200,
     ("GET", "/api/v1/setup/fs/list"): 200,
     ("GET", "/api/v1/setup/fs/roots"): 200,
@@ -377,6 +380,8 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
         "/api/v1/pipeline-failures",
         "/api/v1/code/symbols",
         "/api/v1/auth/audit",
+        "/api/v1/review-queue/facts",
+        "/api/v1/review-queue/articles",
     ]
     for path in paginated_gets:
         response = await client.get(path, headers=auth_headers)
