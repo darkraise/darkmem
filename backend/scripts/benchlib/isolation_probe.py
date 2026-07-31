@@ -163,6 +163,19 @@ class ArticleFixture:
     project: str
 
     @property
+    def tail_marker(self) -> str:
+        """The part of ``content_text`` that lies past the preview boundary.
+
+        The driver forces a V1 when this reaches the wire, which is what
+        makes the over-length fixture load-bearing rather than decorative.
+        The sentinel deliberately sits *inside* the first 200 characters --
+        it must cross, since the preview is a declared content field -- so
+        `scan_sentinels` can never distinguish a truncated preview from an
+        untruncated one. This marker is the only thing that can.
+        """
+        return f"-TAIL-{self.key}"
+
+    @property
     def content_text(self) -> str:
         # Deliberately past review_queue.py's LEFT(content, 200) boundary,
         # with a distinct tail past it: a fixture short enough that preview
@@ -173,7 +186,7 @@ class ArticleFixture:
         # only unit-testing the field the classification is about.
         body = f"{sentinel(self.key)} ungrounded article about {self.key.replace('_', ' ')}"
         padding = "x" * (260 - len(body))
-        return f"{body} {padding}-TAIL-{self.key}"
+        return f"{body} {padding}{self.tail_marker}"
 
 
 ARTICLE_FIXTURES: tuple[ArticleFixture, ...] = (
@@ -1269,6 +1282,18 @@ async def _drive_review_queue_articles(ctx: ProbeContext) -> list[Sighting]:
             label_project=row.get("project") == fx.project,
         ))
     out.extend(_account_body(surface, door, case, response.text, accounted))
+    # The declared crossing is `content_preview`, not `content`. Every fixture
+    # runs past the LEFT(content, 200) boundary, so a tail marker on the wire
+    # means the surface widened beyond what content_surfaces declares -- and
+    # `_account_body` cannot catch it, because the sentinel sits inside the
+    # first 200 characters and crosses legitimately either way.
+    for fx in ARTICLE_FIXTURES:
+        if fx.tail_marker in response.text:
+            out.append(Sighting(
+                surface=surface, door=door, case=f"{case} [past preview boundary]",
+                row=fx.key, true_project=fx.project, true_status=None,
+                forced_v1_reason="article content crossed past its declared preview",
+            ))
     return out
 
 
