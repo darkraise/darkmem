@@ -261,7 +261,18 @@ class TestTheVetoIsAbsolute:
         assert events[0]["before"]["verification_status"] == "candidate"
         assert events[0]["after"]["verification_status"] == "disputed"
 
-    async def test_a_re_run_over_a_standing_dispute_journals_nothing_further(self, session):
+    async def test_a_re_run_over_a_standing_dispute_journals_the_reconfirmation(
+        self, session
+    ):
+        """T2.06 amendment (2026-07-31): a re-run over a standing dispute is
+        not a status *transition* — before and after are both ``disputed`` —
+        but it is the veto still firing, which is exactly the
+        contradiction-blocked evidence G-C's audit needs and every other kind
+        of hold is not. T2.04 originally pinned this path as silent; T2.06's
+        brief requires deciding it explicitly, and the decision is to journal
+        it (before == after == 'disputed', outcome == 'hold',
+        contradiction_blocked == True) rather than staying quiet.
+        """
         subject, _ = await _contradicted_pair(
             session, corroborations=3, contradicting_origin="contrarian"
         )
@@ -271,14 +282,22 @@ class TestTheVetoIsAbsolute:
         await session.commit()
 
         assert (second.target_status, second.outcome) == ("disputed", "hold")
+        assert second.contradiction_blocked is True
         rows = await session.execute(
             text(
-                "SELECT count(*) FROM events WHERE event_type = 'verified' "
-                "AND object_id = CAST(:id AS uuid)"
+                "SELECT payload FROM events WHERE event_type = 'verified' "
+                "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
             ),
             {"id": str(subject)},
         )
-        assert rows.scalar_one() == 1
+        events = [row[0] for row in rows.all()]
+        assert len(events) == 2
+        assert events[0]["outcome"] == "dispute"
+        second_payload = events[1]
+        assert second_payload["before"]["verification_status"] == "disputed"
+        assert second_payload["after"]["verification_status"] == "disputed"
+        assert second_payload["outcome"] == "hold"
+        assert second_payload["contradiction_blocked"] is True
 
     async def test_the_belief_axis_is_untouched_by_a_veto(self, session):
         """Verification and belief stay orthogonal (doc 08 §3)."""

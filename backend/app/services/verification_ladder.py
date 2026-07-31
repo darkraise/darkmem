@@ -316,6 +316,33 @@ def decide(
     lands. It is deliberately *not* added now: it would have no provider, and
     a zero-writer input presented as substrate is the thing invariant 23
     forbids (ruling, 2026-07-29).
+
+    **T2.06 ruling for T2.60 (2026-07-31), binding on whichever branch that
+    keyword adds.** Doc 08 §4 defines the supersession hold as deterministic
+    -- a candidate that has met its corroboration bar but is held from
+    promoting by a live signal, never itself a dispute, never a demotion.
+    That is exactly the shape T2.06's promotion-rate SQL cannot see for free:
+    the metric's "eligible candidate facts" equivalence (a journaled
+    transition with ``origin_count >= required_n`` -- see
+    ``tests/test_ladder_journaling.py``) holds today only because this
+    function never returns a hold for a candidate that met its bar. T2.60's
+    blocker breaks that by construction, the same way a bare `hold` would
+    have if T2.06 had left the contradiction veto's reconfirmed-dispute hold
+    unjournaled. The two hazards are symmetric, and T2.06 resolved its own
+    the same way: T2.60 must carry an analogous
+    ``supersession_blocked: bool`` field on ``LadderDecision``, and its
+    applier-side hold must journal exactly the way ``contradiction_blocked``
+    does today (the OR-branch in
+    ``KnowledgeTripleRepository.set_verification_status``) -- not stay
+    silent. The alternative (ruling that supersession-blocked candidates are
+    simply not "eligible" for N-tuning purposes) was considered and
+    rejected: it would let a widening supersession block silently inflate
+    the observed promotion rate with no journal trace, which is precisely
+    the kind of invisible tuning distortion the contradiction veto's
+    blocked-hold journaling exists to prevent on the other axis. Do not
+    resolve this by omission; if T2.60 has a reason to choose the rejected
+    alternative instead, that has to be argued in T2.60's own plan, not
+    defaulted into by silence.
     """
     k = profile.origin_count
     n = profile.required_origin_count_for(
@@ -463,11 +490,22 @@ async def recompute_fact(
     repo = KnowledgeTripleRepository(session)
     # A held fact writes confidence alone: `confirmed` cannot be passed its own
     # status back (the repository refuses it before any read), and a status
-    # write that changes nothing would only risk a phantom journal row.
+    # write that changes nothing would only risk a phantom journal row. The
+    # repository still journals on `contradiction_blocked` alone (a reconfirmed
+    # `disputed -> disputed` hold), so the evidence rides every call regardless
+    # of whether this particular decision carries a status change.
     status_to_write = (
         decision.target_status if decision.target_status != decision.current_status else None
     )
     await repo.set_verification_status(
-        fact_id, status_to_write, confidence=decision.confidence
+        fact_id,
+        status_to_write,
+        confidence=decision.confidence,
+        outcome=decision.outcome,
+        origin_count=decision.origin_count,
+        required_n=decision.required_n,
+        gate_fired=decision.gate_fired,
+        source_kinds=decision.source_kinds,
+        contradiction_blocked=decision.contradiction_blocked,
     )
     return decision
