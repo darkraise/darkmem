@@ -24,6 +24,7 @@ from app.services.dream_jobs import (
     FACT_LIFT_JOB_KEY,
     MEMORY_DREAM_JOB_KEY,
     PlaceholderJobRunner,
+    SHIPPED_DREAM_JOBS,
     TOPIC_DETECTION_JOB_KEY,
     VERIFICATION_RECOMPUTE_JOB_KEY,
     register_dream_jobs,
@@ -382,10 +383,12 @@ def test_guard_fails_when_a_forbidden_call_is_introduced(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_every_family_member_is_a_marked_placeholder():
+async def test_unshipped_family_members_are_marked_placeholders():
     registry, engine = _fresh_registry()
     try:
         for key in DREAM_JOB_KEYS:
+            if key in SHIPPED_DREAM_JOBS:
+                continue
             job = registry.get(key)
             assert isinstance(job.runner, PlaceholderJobRunner), (
                 f"{key}'s runner must stay a PlaceholderJobRunner until "
@@ -395,6 +398,27 @@ async def test_every_family_member_is_a_marked_placeholder():
             assert job.runner.owner_task == DREAM_JOB_OWNERS[key]
             # A placeholder run is genuinely inert.
             await job.runner()
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_shipped_family_members_no_longer_wear_the_placeholder_marker():
+    """The inverse direction, and the one that catches a regression: a job
+    whose owning task has landed must never be `isinstance`-true for the
+    marker again. Without this, reverting a shipped runner to a placeholder
+    would leave the whole suite green while the job silently stopped working."""
+    assert SHIPPED_DREAM_JOBS, "at least one family member has shipped"
+    assert SHIPPED_DREAM_JOBS <= set(DREAM_JOB_KEYS)
+    registry, engine = _fresh_registry()
+    try:
+        for key in SHIPPED_DREAM_JOBS:
+            job = registry.get(key)
+            assert not isinstance(job.runner, PlaceholderJobRunner), (
+                f"{key} is listed as shipped but still carries the "
+                f"PlaceholderJobRunner marker"
+            )
     finally:
         await registry.stop_all()
         await engine.dispose()

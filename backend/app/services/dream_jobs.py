@@ -12,19 +12,20 @@ outside this module and `app.main`'s registration call may reference a
 family job (`tests/test_dream_jobs.py` enforces this as a source scan, not
 a convention).
 
-This module lands the umbrella only. Every runner below is a
+T2.08 landed the umbrella only, and every runner started as a
 `PlaceholderJobRunner` — a distinct, introspectable type, not a bare
 no-op closure — so a later reader can tell "registered but unimplemented"
-from "shipped" without reading the body:
+from "shipped" without reading the body. `SHIPPED_DREAM_JOBS` names the
+members whose owning task has since landed:
 
-| Job | Owner |
-|---|---|
-| `verification_recompute` | T2.09 |
-| `fact_lift` | T2.10 |
-| `contradiction_scan` | T2.11 |
-| `memory_dream` | T2.12 |
-| `article_synthesis` | T3.02 |
-| `topic_detection` | T2.53 |
+| Job | Owner | State |
+|---|---|---|
+| `verification_recompute` | T2.09 | placeholder |
+| fact lifting | T2.10 | shipped |
+| `contradiction_scan` | T2.11 | placeholder |
+| `memory_dream` | T2.12 | placeholder |
+| `article_synthesis` | T3.02 | placeholder |
+| `topic_detection` | T2.53 | placeholder |
 
 Each owning task replaces its job's `runner=` (and, if it needs one, its
 `config_schema=`) with the real implementation; the registration shape,
@@ -32,20 +33,29 @@ cron, floor and ceiling here are a starting point tuned from doc 08 §5's
 cadence table, not a contract the owning task must preserve verbatim.
 `contradiction_scan`'s two fields are the config rows doc 08 §5.3 names by
 value (`contradiction_scan_batch`, `contradiction_candidate_top_k`); the
-other five jobs get a single generic `batch_size` placeholder knob, since
+remaining placeholders get a single generic `batch_size` knob, since
 doc 08 §5 does not name theirs. **Whoever replaces a `config_schema` here
 must also clear any `batch_size` (or other placeholder key) already
 persisted in that job's `config` row** — `JobRegistry.set_config` merges
 `{**cfg.config, **partial}` and never drops a key on its own, so a stale
 placeholder value survives a schema swap silently unless the owning task's
-migration/first-run explicitly strips it.
+migration/first-run explicitly strips it. T2.10 sidestepped that rather
+than solving it: `LIFT_CONFIG_SCHEMA` keeps `batch_size` under its
+placeholder key, default and bounds, so no persisted value is orphaned and
+none needs stripping.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
-from app.services.job_registry import FieldDescriptor, Job, JobRegistry
+from app.services.fact_lift import (
+    DEFAULT_LIFT_BATCH,
+    DEFAULT_MIN_ASSERTING_MEMORIES,
+    LIFT_CONFIG_SCHEMA,
+    run_lift,
+)
+from app.services.job_registry import FieldDescriptor, Job, JobRegistry, JobRunner
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +102,13 @@ DREAM_JOB_OWNERS: dict[str, str] = {
 
 DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 
+# The members whose owning task has landed, so their runner is real work rather
+# than a `PlaceholderJobRunner`. Structural, like the marker it complements:
+# `tests/test_dream_jobs.py` asserts both directions off this set, so a shipped
+# job can never regress to a placeholder and a placeholder can never be mistaken
+# for shipped.
+SHIPPED_DREAM_JOBS: frozenset[str] = frozenset({FACT_LIFT_JOB_KEY})
+
 
 _GENERIC_PLACEHOLDER_HELP = (
     "Placeholder tuning knob so the job is configurable before its owning "
@@ -121,6 +138,37 @@ def _placeholder_job(
     )
 
 
+def _make_lift_runner(registry: JobRegistry, key: str) -> JobRunner:
+    """The fact-lifting tick, bound to the registry's own session factory.
+
+    The runner reads its thresholds from the job's `config` row on every tick
+    rather than closing over them, so an operator edit takes effect on the next
+    run without a restart. It opens and commits its own session: the registry
+    hands the runner nothing, and a lift that never commits would re-derive the
+    same candidates forever.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings = {**registry.get(key).default_config, **cfg.config}
+        async with registry.session_factory() as session:
+            outcome = await run_lift(
+                session,
+                batch_size=int(settings.get("batch_size", DEFAULT_LIFT_BATCH)),
+                min_asserting_memories=int(
+                    settings.get("min_asserting_memories", DEFAULT_MIN_ASSERTING_MEMORIES)
+                ),
+            )
+            await session.commit()
+        logger.info(
+            "Fact lifting scanned %d candidate(s): %d fact(s) created, "
+            "%d source(s) added, %d sources_changed event(s) emitted",
+            outcome.candidates, outcome.facts_created,
+            outcome.sources_added, outcome.events_emitted,
+        )
+
+    return run
+
+
 def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     return [FieldDescriptor(
         key="batch_size", label="Batch Size", default=default,
@@ -138,15 +186,20 @@ def register_dream_jobs(registry: JobRegistry) -> None:
     other. Every runner is a `PlaceholderJobRunner` — T2.08 lands only the
     umbrella; each job's real work ships from its own task (`DREAM_JOB_OWNERS`).
     """
-    registry.register(_placeholder_job(
-        FACT_LIFT_JOB_KEY, "Fact Lift",
-        "Derives Layer-2 candidate facts and their fact_sources from the "
-        "Layer-1 candidate graph, then runs the two temporal passes "
-        f"(doc 08 §5.2). Placeholder — real work lands in "
-        f"{DREAM_JOB_OWNERS[FACT_LIFT_JOB_KEY]}.",
-        default_cron="*/15 * * * *", min_interval_seconds=60,
+    registry.register(Job(
+        key=FACT_LIFT_JOB_KEY,
+        display_name="Fact Lift",
+        description=(
+            "Derives Layer-2 candidate facts and their fact_sources from the "
+            "Layer-1 candidate graph, then runs the two temporal passes "
+            "(doc 08 §5.2). Emits one sources_changed event per touched fact "
+            "for the verification recompute to drain; it never promotes."
+        ),
+        default_cron="*/15 * * * *",
+        min_interval_seconds=60,
+        runner=_make_lift_runner(registry, FACT_LIFT_JOB_KEY),
         max_run_seconds=300,
-        config_schema=_generic_batch_schema(default=50, maximum=1000),
+        config_schema=LIFT_CONFIG_SCHEMA,
     ))
     registry.register(_placeholder_job(
         VERIFICATION_RECOMPUTE_JOB_KEY, "Verification Recompute",
