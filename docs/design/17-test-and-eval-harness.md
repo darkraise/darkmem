@@ -208,6 +208,30 @@ flowchart TB
 
 - **Retrieval gold-set construction and size.** *Stance: build the gold as labelled `(query, relevant_memory_ids, slice_tags)` JSON over a deterministic seeded bench corpus, starting at ≥ 100 pairs covering all seven slices (four query-type, three capability), grown opportunistically from real retrieval traces the maintainer adjudicates; version the gold file and never rewrite past entries.* The eval is target-new; the gold lands with it, before any `w_*` activation is proposed.
 - **Who labels the judge-qualification gold.** *Stance: the maintainer adjudicates, seeded from real synthesis drafts and real block answers once Layer 2 is live — synthetic-only entailment gold is rejected as unrepresentative; ≥ 200 pairs per task variant before the corresponding gate can open, re-qualification required after any `verification`-purpose model swap.*
+
+  **What "real" means, ruled 2026-07-31 (owner decision, Tier-3 escalation from T2.54).**
+  "Real" governs the **premise distribution, not the authorship or the database of
+  origin.** A `claim-fact` premise is real when it was **minted by the production code
+  path** — extraction → `fact_lift` → `fact_sentence` — and is byte-anchored to the
+  `knowledge_triples` row that produced it, whatever corpus was ingested to produce
+  that row. Facts lifted from the harness bench corpus therefore satisfy this clause;
+  hand-authored premises do not, however faithfully they imitate the shape.
+
+  The rejected reading was "rows from the production vault". It was rejected on two
+  grounds. It is **near-circular**: doc 20 sequences the homelab cutover *after* G-C
+  and G-D, so gating the gold on a production deploy gates the deploy on itself. And
+  the one route that satisfies it today — snapshotting the live instance's memories
+  into the bench database — would commit the maintainer's private memory content into
+  a committed `gold.json`, permanently, in a repository whose publication is
+  contemplated. The owner weighed that route explicitly and declined it.
+
+  What this clause does **not** license: a hand-authored premise self-declaring
+  `provenance: l2-fact`. The anchor is machine-checkable — the premise must be
+  byte-equal to the `fact` in a committed, byte-reproducible harvest manifest, with
+  the manifest row as the source of truth — and **≥ 50% of live pairs per variant must
+  carry such premises** (the `temporal` slice exempt while `fact_lift` renders no
+  validity windows; the exemption sunsets the moment it does). Volume alone was never
+  sufficient and a `199 synthetic / 1 real` set must not pass.
 - **Default bar values.** *Stance: the defaults named in §5–§6 (false-promotion < 1%, miss-rate writer trigger > 20% on the disjoint slice, judge precision ≥ 0.95 / recall ≥ 0.90) are conservative starting `config` values, not measured truths — each is expected to be re-tuned by its own protocol once real data exists, and each change is recorded like any tuning run.*
 - **Durable eval-results storage.** *Stance: dated report files under `docs/` remain the record for v1; an in-DB `eval_runs` table (and any doc-13 eval-viewer surface) is added only if the retrieval-trace persistence decision (doc 07 §8, doc 04 §13) lands a durable trace first — the two would share the tie-to-`events` pattern. Until then, no table.*
 - **Full-context baseline mechanics.** *Stance: bound the baseline corpus to what fits the configured model's context at the bench fingerprint's chunking, report the bound alongside the number, and treat the baseline as an anchor recomputed per gold-set version — not per run — since it is expensive by construction.*
