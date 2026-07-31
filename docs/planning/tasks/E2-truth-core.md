@@ -1063,10 +1063,39 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 
 **Verify.** `cd backend && python -m pytest tests/test_expired_memory_cleanup.py tests/test_sources_changed_emit.py -q`
 
+#### T2.62 — `review_state` must open on the veto and clear on recovery
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.04` · `Doc: 08 §4.3, §6` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 08 §4.3's flowchart node reads "set `disputed`, `review_state` open", and §6
+defines the review queue as `WHERE review_state='open'`. `ix_knowledge_triples_review` has
+been in the baseline since T0.12b waiting for a writer. **There is none.** The only
+mention of `review_state` in `backend/app` outside the model is an insert parameter
+defaulting to `None` that no caller passes. So a fact the veto disputes never reaches the
+review queue, and nothing clears the flag when the contradiction resolves.
+
+**Why its own task and not T2.22's.** The open and clear writes belong beside the sole
+journaller, inside `recompute_fact`'s `FOR UPDATE` window — ladder-side code. T2.22 is a
+queue-*surface* task, and a surface-layer writer would open a window in which a fact is
+`disputed` but unqueued. `review_state` is also shared with T2.46's `under-sourced` label
+and §6's human-clear, so the clear semantics span three tasks' outputs — the same
+cross-cutting shape that got T2.60 minted.
+
+**Done when:**
+- [ ] The veto opens `review_state` in the same transaction and under the same lock as the
+      status write, so `disputed`-but-unqueued is not a reachable state
+- [ ] Recovery clears it, proven by test
+- [ ] The clear does not stomp a value T2.46's `under-sourced` label or a human owns — the
+      three writers' precedence is stated and tested, not left to write order
+- [ ] `chk_superseded_has_pointer` and the sole-journaller property both still hold
+
+**Verify.** `cd backend && python -m pytest tests/test_review_state_transitions.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-07-31 | T2.62, T2.04, T2.22 | 2 | **T2.62 minted: nothing writes `review_state`, so a veto-disputed fact never reaches the review queue.** Doc 08 §4.3 pairs the status flip with opening `review_state` and §6 defines the queue as `WHERE review_state='open'`, but T2.04's five Done-when clauses never name the write and T2.22's cover only the queue's surface and index shape. `ix_knowledge_triples_review` has sat in the baseline since T0.12b with no writer | Surfaced by T2.04's implementer, which deliberately declined to absorb it, and independently confirmed by the Fable review (the only `review_state` mention in `backend/app` outside the model is an insert parameter defaulting to None that nothing passes). Minted rather than folded into T2.22 on the reviewer's recommendation: the writes belong inside `recompute_fact`'s `FOR UPDATE` window beside the sole journaller, and a queue-surface writer would leave a window where a fact is `disputed` but unqueued. The clear semantics additionally span T2.46's `under-sourced` label and §6's human-clear, so precedence needs one owner |
 | 2026-07-31 | T2.54, T2.41, T2.26, T2.25 | 2 | **Doc 17 §11 makes the entailment gold's *composition* gate-binding, not only its size, and no task carried that.** §11: gold is "seeded from real synthesis drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is rejected as unrepresentative**; >= 200 pairs per task variant before the corresponding gate can open". T2.54's Done-when named only the resample and JSON-on-disk; its handoff from T2.25 named only volume. T2.54 now carries the composition clause and **depends on T2.10** | Raised as a Minor by the Fable review of T2.25, 2026-07-31, and confirmed against §11 verbatim. T2.25 is unaffected and stays `done` — its 41 pairs are 100% hand-authored for the honest reason that neither named source existed at its branch point, and it reserved `synthesis-draft` / `l2-fact` at test-pinned zero precisely so the first real harvest is a visible diff. The trap this closes is that G-D could otherwise be claimed on a grown-but-still-synthetic set. **Not the deadlock T2.25 feared**: §11 says "once *Layer 2* is live", and Layer 2 is `knowledge_triples`, whose producer is T2.10 in this epic — not T3.02 behind the gate. The `synthesis-draft` provenance and the block-answer variant remain behind T3.02 and doc 16, gating those variants only |
 | 2026-07-31 | T2.47, T2.61, T2.34 | 2 | **T2.61 minted: the `expired_memory_cleanup` job bypasses T2.47's provenance-withdrawal hook.** T2.47 hangs the hook off `delete_by_memory_id`, which covers re-extraction and both interactive delete doors. The TTL sweep deletes by raw SQL (`app/services/job_runners.py`) and never reaches it; `fact_sources.source_ref` is a soft ref with no FK, so a TTL-expired memory strands its provenance and its sole-sourced facts never expire. Latent today (no `fact_sources` producer until T2.10) and live the moment `fact_lift` ships | Found by T2.47's implementer and confirmed by the controller against every delete path. Raised to Tier 2 because it is a **new task the plan missed**, not a T2.47-local correction: T2.47's own Done-when list is satisfied without it, and T2.34 — the only other task touching this sweep — explicitly reuses T1.37's sweep *unchanged*, so no existing task owns the fix. Sized S and made to depend on T2.47 so it lands on the shared withdrawal path rather than duplicating it |
 | 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
