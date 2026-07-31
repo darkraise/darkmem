@@ -24,6 +24,7 @@ from app.services.dream_jobs import (
     FACT_LIFT_JOB_KEY,
     MEMORY_DREAM_JOB_KEY,
     PlaceholderJobRunner,
+    SHIPPED_DREAM_JOBS,
     TOPIC_DETECTION_JOB_KEY,
     VERIFICATION_RECOMPUTE_JOB_KEY,
     register_dream_jobs,
@@ -294,15 +295,66 @@ _ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
 }
 
 
+# Modules that are legitimately imported by the umbrella but are shared
+# infrastructure rather than a family job's body. Everything else the umbrella
+# pulls out of `app.services` is a job implementation and inherits the scan.
+_UMBRELLA_INFRASTRUCTURE = {"job_registry"}
+
+
+def service_modules_imported_by(source: str) -> set[str]:
+    """Every `app.services` module a source file imports, in any import style.
+
+    All three spellings, because coverage has to be total rather than
+    conventional: parsing only `from app.services.X import ...` would silently
+    drop a future member wired with `from app.services import X` or
+    `import app.services.X`, and a guard with a hole nobody can see is the
+    failure mode this whole scan exists to avoid.
+    """
+    modules: set[str] = set()
+    for raw in source.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            continue
+        if line.startswith("from app.services."):
+            modules.add(line[len("from app.services."):].split()[0].split(".")[0])
+        elif line.startswith("from app.services import "):
+            names = line[len("from app.services import "):].split("#")[0]
+            modules.update(
+                name.strip().strip("()").split(" as ")[0].strip()
+                for name in names.split(",")
+                if name.strip().strip("()")
+            )
+        elif line.startswith("import app.services."):
+            modules.add(line[len("import app.services."):].split()[0].split(".")[0])
+    return {module for module in modules if module}
+
+
+def dream_job_implementation_modules() -> set[str]:
+    """The modules holding a family job's real body, derived rather than listed.
+
+    A shipped runner's work does not live in `dream_jobs.py` — the umbrella
+    imports it — so scanning for `app.services.dream_jobs` alone stops catching
+    a hot-path caller the moment the first member ships: importing the
+    implementation module directly reaches the job just as effectively and
+    names the umbrella nowhere. Reading the umbrella's own imports instead of
+    keeping a hand-maintained list means the next member (T2.09, T2.11, T2.12,
+    T2.53) is covered by the act of wiring it up, with nothing to remember —
+    a job that is not reachable from the umbrella is not wired at all.
+    """
+    umbrella = (BACKEND / "app" / "services" / "dream_jobs.py").read_text()
+    return service_modules_imported_by(umbrella) - _UMBRELLA_INFRASTRUCTURE
+
+
 def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> list[str]:
-    """A forbidden reference is either an import from `app.services.dream_jobs`
-    or a quoted literal naming one of the six family job keys, in any file
-    outside the umbrella module, and on any line outside the one legitimate
-    registration call site.
+    """A forbidden reference is an import from `app.services.dream_jobs`, an
+    import from any module holding a family job's real body, or a quoted literal
+    naming one of the six family job keys — in any file outside the umbrella
+    module, and on any line outside the one legitimate registration call site.
 
     Mirrors `tests/test_inert_objects.py`'s inert-purpose scan: a source
     scan that fails the build, not a convention a reviewer has to remember.
     """
+    implementations = dream_job_implementation_modules()
     offenders: list[str] = []
     for path in paths:
         rel = str(path.relative_to(backend_root))
@@ -316,6 +368,11 @@ def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> li
             forbidden = (
                 "app.services.dream_jobs" in line
                 or "from app.services import dream_jobs" in line
+                or any(
+                    f"app.services.{module}" in line
+                    or f"from app.services import {module}" in line
+                    for module in implementations
+                )
                 or any(f'"{key}"' in line or f"'{key}'" in line for key in DREAM_JOB_KEYS)
             )
             if forbidden and stripped not in allowed_lines:
@@ -378,14 +435,79 @@ def test_guard_fails_when_a_forbidden_call_is_introduced(tmp_path):
     assert any("fact_lift" in o for o in offenders)
 
 
+def test_the_scan_covers_a_shipped_jobs_implementation_module(tmp_path):
+    """A shipped runner's body does not live in the umbrella, so reaching the
+    job no longer requires naming `dream_jobs` at all — importing the
+    implementation module directly is the same hot-path violation with none of
+    the old scan's fingerprints. Negative control for that arm."""
+    implementations = dream_job_implementation_modules()
+    assert implementations, (
+        "the umbrella imports no implementation module — either nothing has "
+        "shipped, or the derivation below has stopped finding them and the "
+        "scan would pass vacuously"
+    )
+    module = sorted(implementations)[0]
+
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        f"from app.services.{module} import run_lift\n"
+        "\n"
+        "async def search(session):\n"
+        "    await run_lift(session)\n"
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, (
+        f"the guard must flag a hot-path import of app.services.{module}, "
+        "which is a family job's real body"
+    )
+
+
+def test_every_shipped_member_has_its_body_covered_by_the_scan():
+    """The derivation is what makes the guard self-maintaining, so pin that it
+    actually resolves the shipped members rather than returning something
+    incidental."""
+    implementations = dream_job_implementation_modules()
+    assert "fact_lift" in implementations
+    assert "job_registry" not in implementations, (
+        "shared infrastructure must stay out, or every module in the tree "
+        "that schedules anything would read as a violation"
+    )
+    # Total, not name-pinned: every shipped member declares the module holding
+    # its body, and every one of those must be a module the derivation found.
+    # A member wired without an umbrella import fails here rather than silently
+    # losing its guard.
+    missing = set(SHIPPED_DREAM_JOBS.values()) - implementations
+    assert not missing, (
+        f"shipped member bodies {sorted(missing)} are not reachable from the "
+        "umbrella's imports, so the invariant-15 source scan does not cover them"
+    )
+
+
+def test_the_import_parser_covers_every_import_style():
+    """The derivation's own negative control. Parsing only the dotted style
+    would drop a future member wired either of the other two ways, and the
+    guard would lose coverage with nothing failing."""
+    parsed = service_modules_imported_by(
+        "from app.services.alpha import run\n"
+        "from app.services import beta, gamma as g\n"
+        "import app.services.delta\n"
+        "from app.services.epsilon.nested import thing\n"
+        "# from app.services.commented import ignored\n"
+        "from app.repositories.zeta import other\n"
+    )
+    assert parsed == {"alpha", "beta", "gamma", "delta", "epsilon"}
+
+
 # ── Done-when / test-plan point 6: placeholders are identifiable ─────────
 
 
 @pytest.mark.asyncio
-async def test_every_family_member_is_a_marked_placeholder():
+async def test_unshipped_family_members_are_marked_placeholders():
     registry, engine = _fresh_registry()
     try:
         for key in DREAM_JOB_KEYS:
+            if key in SHIPPED_DREAM_JOBS:
+                continue
             job = registry.get(key)
             assert isinstance(job.runner, PlaceholderJobRunner), (
                 f"{key}'s runner must stay a PlaceholderJobRunner until "
@@ -395,6 +517,27 @@ async def test_every_family_member_is_a_marked_placeholder():
             assert job.runner.owner_task == DREAM_JOB_OWNERS[key]
             # A placeholder run is genuinely inert.
             await job.runner()
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_shipped_family_members_no_longer_wear_the_placeholder_marker():
+    """The inverse direction, and the one that catches a regression: a job
+    whose owning task has landed must never be `isinstance`-true for the
+    marker again. Without this, reverting a shipped runner to a placeholder
+    would leave the whole suite green while the job silently stopped working."""
+    assert SHIPPED_DREAM_JOBS, "at least one family member has shipped"
+    assert set(SHIPPED_DREAM_JOBS) <= set(DREAM_JOB_KEYS)
+    registry, engine = _fresh_registry()
+    try:
+        for key in SHIPPED_DREAM_JOBS:
+            job = registry.get(key)
+            assert not isinstance(job.runner, PlaceholderJobRunner), (
+                f"{key} is listed as shipped but still carries the "
+                f"PlaceholderJobRunner marker"
+            )
     finally:
         await registry.stop_all()
         await engine.dispose()

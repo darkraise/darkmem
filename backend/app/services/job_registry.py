@@ -163,6 +163,17 @@ class JobRegistry:
         self._jobs: dict[str, Job] = {}
         self._stopped = False
 
+    @property
+    def session_factory(self) -> async_sessionmaker[AsyncSession]:
+        """The factory a runner opens its own session from.
+
+        A runner takes no arguments, so a job that needs a session has to reach
+        one; exposing the registry's own keeps it on the same engine the
+        registry was constructed with rather than a module-level global that a
+        test harness pointing elsewhere would silently bypass.
+        """
+        return self._session_factory
+
     # ── registration ────────────────────────────────────────────────
 
     def register(self, job: Job) -> None:

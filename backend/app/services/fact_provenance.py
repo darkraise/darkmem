@@ -65,7 +65,15 @@ MEMORY_SOURCE_KIND = "memory"
 
 
 def memory_source_ref(memory_id: UUID | str) -> str:
-    return str(memory_id)
+    """The canonical spelling of a memory's ``source_ref``.
+
+    Normalised through ``UUID`` rather than stringified as given: a padded or
+    upper-cased id would write a ref this module's sweep can never match, so
+    the rows would never be withdrawn and their facts never expire — an
+    invisible failure with no error and no symptom. Producers and the sweep
+    have to agree on one spelling, so the one spelling is minted here.
+    """
+    return str(UUID(str(memory_id)))
 
 
 _MEMORY_PROVENANCE = text("""
@@ -151,7 +159,11 @@ async def _withdraw(
             object_type="fact",
             object_id=fact_id,
             project=row["project"],
-            payload={"fact_id": str(fact_id), "memory_id": str(memory_id)},
+            # The same spelling the producer emits, minted by the same
+            # function: the drain groups these payloads, so two halves
+            # rendering one memory id two ways would split one fact's
+            # evidence movement into two.
+            payload={"fact_id": str(fact_id), "memory_id": memory_source_ref(memory_id)},
         )
         affected.append(str(fact_id))
     return affected
