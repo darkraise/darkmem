@@ -844,17 +844,37 @@ trigger while held returns 409.
 
 #### T2.54 — Label the entailment gold set
 
-`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.25` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.25, T2.10` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
 
 **What.** Split from T2.25 so the compute half cannot stall on the human half. T2.25
 harvests candidate claim/fact pairs; this task is the labelling itself, which is bounded by
 your afternoon rather than by a machine.
+
+**Composition is gate-binding, not just volume** (added 2026-07-31 from T2.25's review).
+Doc 17 §11's stance is explicit: the qualification gold is *"seeded from real synthesis
+drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is
+rejected as unrepresentative**; ≥ 200 pairs per task variant before the corresponding gate
+can open"*. T2.25's 41 pairs are 100% hand-authored, correctly and honestly so — neither
+named source existed at its branch point — and its two reserved provenances
+(`synthesis-draft`, `l2-fact`) sit test-pinned at zero waiting for this task. **So G-D
+cannot open on T2.25's composition however far it is grown.** Volume is necessary and not
+sufficient.
+
+**This is not the deadlock T2.25's text feared, for the claim/fact variant.** §11 says
+"once **Layer 2** is live", and Layer 2 is verified facts — `knowledge_triples`, whose
+producer is `fact_lift` (**T2.10**, this epic), not the Phase-3 article synthesiser. So
+real premises for the `claim-fact` variant become available inside E2, which is why T2.10
+is now a dependency. The `synthesis-draft` provenance and the block-answer variant stay
+behind T3.02 and doc 16's horizon respectively; they gate those variants' own bars, not
+this one.
 
 **Done when:**
 - [ ] Grounded and ungrounded sentences both represented, including hard near-misses
 - [ ] Labelling rationale recorded, so a later contributor labels consistently
 - [ ] Inter-label consistency spot-checked on a resample
 - [ ] Gold committed as JSON on disk (invariant 1)
+- [ ] The `claim-fact` variant reaches ≥ 200 pairs **and** carries real `l2-fact` premises
+      rather than hand-authored ones — the §11 composition rule, not volume alone
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
@@ -1041,6 +1061,7 @@ governs the fact side's pre-closed belief window, not memory-deletion provenance
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-07-31 | T2.54, T2.41, T2.26, T2.25 | 2 | **Doc 17 §11 makes the entailment gold's *composition* gate-binding, not only its size, and no task carried that.** §11: gold is "seeded from real synthesis drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is rejected as unrepresentative**; >= 200 pairs per task variant before the corresponding gate can open". T2.54's Done-when named only the resample and JSON-on-disk; its handoff from T2.25 named only volume. T2.54 now carries the composition clause and **depends on T2.10** | Raised as a Minor by the Fable review of T2.25, 2026-07-31, and confirmed against §11 verbatim. T2.25 is unaffected and stays `done` — its 41 pairs are 100% hand-authored for the honest reason that neither named source existed at its branch point, and it reserved `synthesis-draft` / `l2-fact` at test-pinned zero precisely so the first real harvest is a visible diff. The trap this closes is that G-D could otherwise be claimed on a grown-but-still-synthetic set. **Not the deadlock T2.25 feared**: §11 says "once *Layer 2* is live", and Layer 2 is `knowledge_triples`, whose producer is T2.10 in this epic — not T3.02 behind the gate. The `synthesis-draft` provenance and the block-answer variant remain behind T3.02 and doc 16, gating those variants only |
 | 2026-07-31 | T2.47, T2.61, T2.34 | 2 | **T2.61 minted: the `expired_memory_cleanup` job bypasses T2.47's provenance-withdrawal hook.** T2.47 hangs the hook off `delete_by_memory_id`, which covers re-extraction and both interactive delete doors. The TTL sweep deletes by raw SQL (`app/services/job_runners.py`) and never reaches it; `fact_sources.source_ref` is a soft ref with no FK, so a TTL-expired memory strands its provenance and its sole-sourced facts never expire. Latent today (no `fact_sources` producer until T2.10) and live the moment `fact_lift` ships | Found by T2.47's implementer and confirmed by the controller against every delete path. Raised to Tier 2 because it is a **new task the plan missed**, not a T2.47-local correction: T2.47's own Done-when list is satisfied without it, and T2.34 — the only other task touching this sweep — explicitly reuses T1.37's sweep *unchanged*, so no existing task owns the fix. Sized S and made to depend on T2.47 so it lands on the shared withdrawal path rather than duplicating it |
 | 2026-07-27 | T2.50 | 2 | Added a precondition: the arm's entity-linking semantics must be stated before any multi-hop activation verdict is read off the retrieval slice | T0.06a's adversarial review measured the ingested graph pair by pair and found the multi-hop bridges are not uniform. Six of the fourteen live pairs bridge through one shared entity row; eight bridge through same-name nodes of *different* `entity_type`, which are disjoint under the domain model's `(name, entity_type)` identity because Phase-4 dedup is type-constrained. The slice's achievable ceiling is therefore 6/14 under strict node-identity traversal and 14/14 under name or name-embedding linking. That is a property of the arm, not of the gold, so the gold records both ceilings and defers rather than guessing; without the semantics stated, an activation number measures the gold's undocumented shape rather than the arm |
 | 2026-07-28 | T2.58 | 3 | **New task, opened from a Tier-3 doc/code conflict found by T1.60's planning pass and confirmed in code by the controller: Chat runs a THIRD retrieval implementation.** Doc 13 §4.1 asserted "Chat's reads ride the same one ranking path as Memories (doc 07 §9, invariant 17)". `ChatService._search_memories` calls `vector_repo.search` directly — semantic-only, no keyword arm, no RRF, no rank-fusion factor, no trace. Doc 13 §4.1 amended to describe the tree; the convergence is T2.58, placed in E2 beside T2.43. | Routed to E2 rather than E1 deliberately: converging Chat onto today's fusion only to re-converge it after the four-layer composition lands would be two rewrites of an invariant-bearing path. The escalation itself is the part worth recording — a Sonnet-tier planning lane hit retrieval-fusion surgery, recognised it as above its tier, and stopped instead of building it silently, which is runbook §2's escalate-on-discovery rule working in the direction it is hardest to follow. The count is also the finding: three ranking implementations now exist (`rank_fusion.py`, `code_query.py`'s own `RRF_K`, and Chat's none), so a task that fixes only one has closed one of two doors. |
