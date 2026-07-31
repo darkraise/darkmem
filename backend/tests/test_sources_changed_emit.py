@@ -281,6 +281,44 @@ async def test_provenance_is_withdrawn_across_projects(session):
     assert [row["project"] for row in rows] == ["legacy"]
 
 
+@pytest.mark.asyncio
+async def test_a_fact_still_asserted_in_a_non_default_project_is_retained(session):
+    """The retention key is computed per the *fact's* project, not a fixed one.
+
+    ``compute_triple_key`` embeds ``project`` verbatim, so the same
+    subject/predicate/object yields a different key in every scope. Computing
+    the retained set under any one project would leave a fact that is still
+    asserted in another scope matching nothing — withdrawing its provenance,
+    inline-expiring a belief nothing had withdrawn, and emitting the spurious
+    ``sources_changed`` the no-op guard exists to prevent. The expiry is the
+    part that does not heal: ``expire`` COALESCEs, so the first timestamp
+    sticks and a later correct sweep cannot undo it.
+
+    The withdrawal-arm test above cannot catch this — it seeds no graph, so its
+    retained set is empty whatever project it is computed under. This one seeds
+    the assertion, so the key must match for the row to survive.
+    """
+    memory_id = uuid.uuid4()
+    await seed_relation(
+        session, memory_id=memory_id, subject="pgvector", rel_type="REPLACES", obj="faiss"
+    )
+    fact = await seed_fact(
+        session,
+        subject="pgvector",
+        rel_type="REPLACES",
+        obj="faiss",
+        project="legacy",
+    )
+    await seed_source(session, fact_id=fact["id"], memory_id=memory_id)
+
+    affected = await reconcile_memory_sources(session, memory_id=memory_id)
+
+    assert affected == []
+    assert await emitted(session, memory_id) == []
+    assert await source_rows(session, fact["id"]) == 1
+    assert await expired_at(session, fact["id"]) is None
+
+
 # ── Phase 5 and the deletion sweep, end to end ───────────────────────────────
 
 
