@@ -60,16 +60,33 @@ Y". Rendering the actual counterpart claim needs either a persisted pointer on
 the fact row (a schema change, out of this task's scope) or a future surface
 that owns querying the scan. Flagged as a coordination item, not solved here.
 
-**The ordering seam for T2.24.** Doc 08 §6: the queue is "ranked by
+**The ordering seam, filled (T2.24).** Doc 08 §6: the queue is "ranked by
 consequence — retrieval frequency and subject salience — not arrival order".
-That ranking needs retrieval telemetry this task does not have, so
-``ReviewQueueOrder`` is deliberately a closed set with one member today,
-``ARRIVAL_DESC`` (most recently opened first) — disclosed, not hidden, and
-explicitly *not* the final policy. T2.24 fills the seam by adding a
-``CONSEQUENCE`` member and flipping ``_DEFAULT_ORDER``; every caller that did
-not pin ``ARRIVAL_DESC`` explicitly picks the new ranking up for free, with no
-change to the query shape or the callers of ``list_open_facts`` /
-``list_open_articles``.
+``ReviewQueueOrder`` now carries the ``CONSEQUENCE`` member T2.22 left room
+for and ``_DEFAULT_ORDER`` names it; ``ARRIVAL_DESC`` survives as an explicit
+opt-in so the two orders can be compared rather than assumed to differ. The
+ranking itself — how each consequence input is derived, what each one's
+failure mode is, and why a stale dispute's decay is a rank tier rather than a
+status — lives in ``app/services/review_ranking.py``.
+
+Two properties of that fill are this module's to keep. **The ranking changes
+the ``ORDER BY`` and the projection, never the membership predicate**: the
+consequence statement applies the caller's ``review_state = 'open'`` predicate
+verbatim inside its leading CTE, so the partial index property above still
+holds and the EXPLAIN proof still runs the exact executed statement. And
+**consequence ranking degrades to arrival order rather than to arbitrary
+order**: a queue whose facts have no access history and no graph presence
+scores every row 0, and the tiebreak is ``created_at DESC, id DESC`` — the
+same key ``ARRIVAL_DESC`` sorts on — so a fresh vault's queue is stable and
+the ordering only starts to move once there is a signal to move it.
+
+**Articles keep ``ARRIVAL_DESC``, and it is pinned rather than defaulted.**
+Neither consequence input exists for an article: there is no ``fact_sources``
+bridge to ``memory_access_stats`` and ``subject_key`` is a text key, not an
+entity pointer. A ranking derived from nothing would be arrival order wearing
+a score, so this arm names its order explicitly instead of inheriting a
+default it cannot honour. Ranking articles needs an input doc 09's synthesis
+job would have to produce, and ``article_synthesis`` is still a placeholder.
 """
 
 from __future__ import annotations
@@ -81,30 +98,60 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.review_ranking import (
+    DEFAULT_RANKING_CONFIG,
+    RankingConfig,
+    build_ranked_facts_sql,
+    consequence_explanation,
+    get_ranking_config,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class ReviewQueueOrder(str, enum.Enum):
     """Ordering strategies for the review queue's list endpoints.
 
-    ``ARRIVAL_DESC`` is the only member today and is not doc 08 §6's final
-    policy (see module docstring) — it is the seam T2.24 fills.
+    ``CONSEQUENCE`` is doc 08 §6's policy and the default. ``ARRIVAL_DESC``
+    was T2.22's disclosed placeholder and is kept as an explicit opt-in: it is
+    what a caller pins to compare the two orders, and a test that seeds a
+    queue where they *agree* proves nothing about either.
     """
 
     ARRIVAL_DESC = "arrival_desc"
+    CONSEQUENCE = "consequence"
 
 
+# The consequence key's tail is ARRIVAL_DESC's whole key, and that is the
+# point rather than a coincidence: ties (a queue with no telemetry yet) fall
+# through to a total, deterministic order instead of to whatever the plan
+# happened to emit, and pagination stays stable across pages.
 _ORDER_SQL: dict[ReviewQueueOrder, str] = {
     ReviewQueueOrder.ARRIVAL_DESC: "created_at DESC, id DESC",
+    ReviewQueueOrder.CONSEQUENCE: (
+        "active_tier DESC, consequence_score DESC, o.created_at DESC, o.id DESC"
+    ),
 }
 
-_DEFAULT_ORDER = ReviewQueueOrder.ARRIVAL_DESC
+_DEFAULT_ORDER = ReviewQueueOrder.CONSEQUENCE
 
-_FACT_COLUMNS = (
-    "id, subject_name, object_name, rel_type, fact, project, "
-    "valid_at, invalid_at, expired_at, verification_status, confidence, "
-    "review_state, created_at"
+_FACT_COLUMN_NAMES = (
+    "id",
+    "subject_name",
+    "object_name",
+    "rel_type",
+    "fact",
+    "project",
+    "valid_at",
+    "invalid_at",
+    "expired_at",
+    "verification_status",
+    "confidence",
+    "review_state",
+    "created_at",
 )
+
+_FACT_COLUMNS = ", ".join(_FACT_COLUMN_NAMES)
 
 _ARTICLE_COLUMNS = (
     "id, subject_key, project, title, status, confidence, "
@@ -127,7 +174,12 @@ def _article_reason(status: str | None) -> str:
     return "unspecified"
 
 
-def build_facts_query(project: str | None) -> tuple[str, str]:
+def build_facts_query(
+    project: str | None,
+    *,
+    order: ReviewQueueOrder | None = None,
+    ranking: RankingConfig | None = None,
+) -> tuple[str, str]:
     """Return (items_sql, count_sql) for the open-facts membership query.
 
     Exported so the EXPLAIN test in ``tests/test_review_queue.py`` runs the
@@ -137,16 +189,32 @@ def build_facts_query(project: str | None) -> tuple[str, str]:
     ``tests/test_memory_lineage_index.py`` use for their own index-usage
     proofs. ``review_state = 'open'`` is a literal in the SQL text, never a
     bind parameter — see the module docstring.
+
+    Both ``order`` and ``ranking`` default to the shipped policy, so the
+    statement is reachable without threading configuration through the
+    EXPLAIN proofs; the bound parameter set is ``limit``/``offset`` (plus
+    ``project``) either way, because every ranking knob is interpolated as a
+    literal for the same planner reason the membership predicate is.
     """
+    order = order or _DEFAULT_ORDER
     where = ["review_state = 'open'"]
     if project is not None:
         where.append("project = CAST(:project AS text)")
     where_sql = " AND ".join(where)
-    order_sql = _ORDER_SQL[_DEFAULT_ORDER]
-    items_sql = (
-        f"SELECT {_FACT_COLUMNS} FROM knowledge_triples "
-        f"WHERE {where_sql} ORDER BY {order_sql} LIMIT :limit OFFSET :offset"
-    )
+    order_sql = _ORDER_SQL[order]
+
+    if order is ReviewQueueOrder.CONSEQUENCE:
+        items_sql = build_ranked_facts_sql(
+            column_names=_FACT_COLUMN_NAMES,
+            where_sql=where_sql,
+            order_sql=order_sql,
+            config=ranking or DEFAULT_RANKING_CONFIG,
+        )
+    else:
+        items_sql = (
+            f"SELECT {_FACT_COLUMNS} FROM knowledge_triples "
+            f"WHERE {where_sql} ORDER BY {order_sql} LIMIT :limit OFFSET :offset"
+        )
     count_sql = f"SELECT COUNT(*) FROM knowledge_triples WHERE {where_sql}"
     return items_sql, count_sql
 
@@ -156,12 +224,16 @@ def build_articles_query(project: str | None) -> tuple[str, str]:
 
     Same discipline as ``build_facts_query``: exported for the EXPLAIN test,
     literal ``review_state = 'open'`` predicate.
+
+    Pinned to ``ARRIVAL_DESC`` rather than reading ``_DEFAULT_ORDER``: neither
+    consequence input exists for an article (see the module docstring), so
+    inheriting the facts arm's default would be a claim this arm cannot back.
     """
     where = ["review_state = 'open'"]
     if project is not None:
         where.append("project = CAST(:project AS text)")
     where_sql = " AND ".join(where)
-    order_sql = _ORDER_SQL[_DEFAULT_ORDER]
+    order_sql = _ORDER_SQL[ReviewQueueOrder.ARRIVAL_DESC]
     items_sql = (
         f"SELECT {_ARTICLE_COLUMNS} FROM knowledge_articles "
         f"WHERE {where_sql} ORDER BY {order_sql} LIMIT :limit OFFSET :offset"
@@ -212,12 +284,25 @@ async def list_open_facts(
     project: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    order: ReviewQueueOrder | None = None,
 ) -> tuple[list[dict], int]:
     """Facts whose ``review_state = 'open'`` — disputed and (once T2.46 lands)
     under-sourced facts. Membership is exactly the partial index's predicate;
     see ``build_facts_query``.
+
+    Consequence-ranked by default (doc 08 §6). Each item carries a
+    ``consequence`` block naming every input that moved its score, so the
+    ranking is answerable per item rather than an opaque float; the block is
+    absent only when a caller pins ``ARRIVAL_DESC``, which computes none of
+    those inputs.
     """
-    items_sql, count_sql = build_facts_query(project)
+    order = order or _DEFAULT_ORDER
+    ranked = order is ReviewQueueOrder.CONSEQUENCE
+    # One primary-key read per call, not per item, and its value is
+    # interpolated into the single ranking statement below.
+    ranking = await get_ranking_config(session) if ranked else DEFAULT_RANKING_CONFIG
+
+    items_sql, count_sql = build_facts_query(project, order=order, ranking=ranking)
     params: dict[str, Any] = {"limit": limit, "offset": offset}
     if project is not None:
         params["project"] = project
@@ -247,6 +332,7 @@ async def list_open_facts(
                 "review_state": row["review_state"],
                 "reason": _fact_reason(row["verification_status"]),
                 "evidence": evidence_by_id.get(fid),
+                "consequence": consequence_explanation(row, ranking) if ranked else None,
                 "created_at": row["created_at"],
             }
         )
