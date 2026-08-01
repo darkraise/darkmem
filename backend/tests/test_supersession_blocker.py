@@ -81,9 +81,11 @@ def _code_only(source: str) -> str:
     return ast.unparse(tree)
 
 
-async def _memory(session, *, content: str, technologies=(), created_at=None) -> Memory:
+async def _memory(
+    session, *, content: str, technologies=(), created_at=None, id=None
+) -> Memory:
     row = Memory(
-        id=uuid.uuid4(),
+        id=id or uuid.uuid4(),
         content=content,
         source="test",
         source_agent=None,
@@ -620,6 +622,57 @@ class TestThePredicateRules:
 
         assert await adjudicate_supersession_hold(session, fact_id) is True
 
+    async def _tie_break_fact(self, session, *, key: str, source_id, superseder_id):
+        """A fact whose one memory source is superseded at an *equal* timestamp.
+
+        Both memories share one ``created_at``, which is the shape a within-batch
+        supersession produces: same-batch rows take one server-side timestamp, so
+        the strict ``>`` never fires and only the id tie-break can.
+        """
+        m_old = await _memory(
+            session, content="replaced", created_at=T0, id=source_id
+        )
+        sup = await _memory(
+            session, content="successor", created_at=T0, id=superseder_id
+        )
+        fact_id = await _fact(session, key=key)
+        await _source(session, fact_id, memory=m_old, origin="sess-a")
+        await _source(session, fact_id, origin="repo-b", kind="code", ref=f"repo:{key}")
+        await _supersede(session, old=m_old, new=sup)
+        await session.commit()
+        return fact_id
+
+    async def test_an_equal_timestamp_superseder_blocks_on_the_id_tie_break(
+        self, session
+    ):
+        """The ``(created_at, id)`` tie-break arm, which strict ``>`` cannot reach.
+
+        Deleting the arm leaves every other test in this file green while
+        within-batch supersessions stop blocking — and failing to block is the
+        unsafe direction, so the omission would be silent in the worst way.
+        """
+        lower, higher = sorted([uuid.uuid4(), uuid.uuid4()])
+        fact_id = await self._tie_break_fact(
+            session, key="tiebreak-1", source_id=lower, superseder_id=higher
+        )
+        assert await adjudicate_supersession_hold(session, fact_id) is True
+
+    async def test_an_equal_timestamp_superseder_below_the_tie_break_does_not_block(
+        self, session
+    ):
+        """The arm is directional, not "equal timestamps always block".
+
+        A superseder whose id sorts *below* its candidate is a pair the
+        write-time detector cannot produce — its fifth guard is the same
+        comparison — so declining to read it as a supersession signal keeps the
+        two definitions identical rather than inventing a third.
+        """
+        lower, higher = sorted([uuid.uuid4(), uuid.uuid4()])
+        fact_id = await self._tie_break_fact(
+            session, key="tiebreak-2", source_id=higher, superseder_id=lower
+        )
+        assert await adjudicate_supersession_hold(session, fact_id) is False
+
     async def test_a_deprecated_source_does_not_block(self, session):
         """Only `superseded` is the signal; `deprecated` is retirement without
         a successor and carries no replacement claim."""
@@ -755,6 +808,11 @@ class TestTheVetoStillOutranksTheBlocker:
         assert decision.target_status == "disputed"
         assert decision.outcome == "dispute"
         assert decision.contradiction_blocked is True
+        # The flag must NOT ride the dispute. It means "withheld a promotion",
+        # and G-C's blocked FILTER carries no outcome constraint, so a flag set
+        # here would count every contradiction-disputed fact as a supersession
+        # block and inflate the number T2.40 tunes against.
+        assert decision.supersession_blocked is False
 
     def test_a_confirmed_fact_is_immune_to_the_blocker(self):
         """Doc 08 §4.4: the machine never moves a human-ratified fact."""
@@ -775,3 +833,68 @@ class TestTheVetoStillOutranksTheBlocker:
         )
         assert decision.target_status == "confirmed"
         assert decision.supersession_blocked is False
+
+
+# ───────── Invariant 15 — the blocker is Tier-C only ─────────
+
+BACKEND = Path(__file__).resolve().parent.parent
+
+# The ladder is the blocker's only legitimate consumer: it is an input to the
+# verification decision and nothing else. Mirrors `_ALLOWED_VETO_FILES` in
+# `test_contradiction_veto.py`, because each Tier-C input needs its own scan --
+# the ladder's own scan matches ladder imports and `recompute_fact`, so a
+# capture path importing this module directly is invisible to it.
+_ALLOWED_BLOCKER_FILES: set[str] = {"app/services/verification_ladder.py"}
+
+
+def _forbidden_blocker_references(paths: list[Path], root: Path = BACKEND) -> list[str]:
+    offenders: list[str] = []
+    for path in paths:
+        rel = str(path.relative_to(root))
+        if rel == "app/services/supersession_hold.py" or rel in _ALLOWED_BLOCKER_FILES:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if (
+                "app.services.supersession_hold" in line
+                or "from app.services import supersession_hold" in line
+                or "detect_supersession_hold" in line
+                or "adjudicate_supersession_hold" in line
+            ):
+                offenders.append(f"{rel}:{lineno}: {stripped}")
+    return offenders
+
+
+def test_no_app_code_outside_the_ladder_reaches_the_blocker():
+    paths = [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the scan below would pass "
+        "vacuously; check BACKEND / the glob path"
+    )
+    offenders = _forbidden_blocker_references(paths)
+    assert not offenders, (
+        "app code outside the verification ladder reached the supersession "
+        "blocker:\n" + "\n".join(offenders) + "\nThe blocker is Tier-C "
+        "(invariant 15): promotion is reconciled off the hot path, and the "
+        "tempting failure is a capture path consulting it so a fact settles "
+        "immediately."
+    )
+
+
+def test_the_blocker_guard_rejects_a_forbidden_reference(tmp_path):
+    """In-suite negative control — proven every run, not once by hand."""
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True)
+    violation = fake / "eager_block.py"
+    violation.write_text(
+        "from app.services.supersession_hold import adjudicate_supersession_hold\n"
+        "async def on_write(session, fact_id):\n"
+        "    await adjudicate_supersession_hold(session, fact_id)\n"
+    )
+    offenders = _forbidden_blocker_references([violation], root=tmp_path)
+    assert offenders, (
+        "the real guard failed to flag a synthesised violation; the tree-wide "
+        "scan above would be reporting success while blind"
+    )

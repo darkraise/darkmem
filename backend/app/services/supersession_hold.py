@@ -143,9 +143,19 @@ subtracting a reported number is always available while recovering a number that
 was never counted is not.
 
 **Tier-C only (invariant 15).** This is an input to the verification ladder and
-inherits its confinement: nothing in capture or retrieval may reach it, and the
-tree-wide source scan in ``tests/test_verification_ladder.py`` fails the build
-if a module outside the allowlist references it.
+inherits its confinement: nothing in capture or retrieval may reach it. The
+guard is this module's **own** tree-wide source scan,
+``test_no_app_code_outside_the_ladder_reaches_the_blocker`` in
+``tests/test_supersession_blocker.py``, whose allowlist is the ladder alone.
+The ladder's own scan does not cover this: it matches imports of the ladder
+module and its applier entry point, so a capture path importing
+``adjudicate_supersession_hold`` directly would trip nothing there. Each Tier-C
+input therefore carries its own scan, as ``contradiction_veto`` does.
+
+(The applier's name is deliberately not spelled here. That scan reads whole
+lines and skips only ``#`` comments, so naming it inside a docstring in a
+non-allowlisted module registers as a reference and fails the build — which is
+how this paragraph's first draft was caught.)
 """
 
 from __future__ import annotations
@@ -161,10 +171,11 @@ from app.services.fact_provenance import MEMORY_SOURCE_KIND
 
 logger = logging.getLogger(__name__)
 
-# One row is enough to block, so the scan stops at the first. Ordered by the
-# provenance row id so a fact with several superseded sources always reports the
-# same one -- an arbitrary pick would make the journalled evidence depend on
-# plan choice, and two runs over identical data must produce identical records.
+# One row is enough to block, so the scan stops at the first. The ORDER BY makes
+# the pick stable when several sources qualify, rather than leaving it to plan
+# choice. **No test pins which row is chosen**, and none is claimed: the boolean
+# the ladder consumes is identical either way, so the ordering is tidiness for a
+# human reading two runs side by side, not a property anything depends on.
 _SUPERSEDED_SOURCE_SQL = text("""
     SELECT fs.source_ref AS memory_ref,
            CAST(m.superseded_by AS text) AS superseder_ref
@@ -187,11 +198,18 @@ _SUPERSEDED_SOURCE_SQL = text("""
 class SupersessionHold:
     """One blocking signal, and the two rows that produced it.
 
-    Returned whole rather than as a bare boolean for the reason the
-    contradiction finding is: a hold nobody can trace back to a specific source
-    memory and the memory that replaced it is a hold nobody can review. The
-    refs are carried in the spelling ``memory_source_ref`` mints so they line up
-    with the ``sources_changed`` payloads for the same memory.
+    **The two refs have no production consumer today**, and that is recorded
+    rather than dressed up: only the boolean reaches ``decide``, and only the
+    boolean rides the journal payload, so the traceability these fields offer
+    is available to a caller re-running the detector (a human triaging a held
+    fact) and nowhere else. ``ContradictionFinding`` is carried through to a
+    journalled ``counterpart_id`` by T2.64; nothing analogous is planned here,
+    so do not read this shape as a promise that the journal explains *which*
+    source blocked.
+
+    They are carried in the spelling ``memory_source_ref`` mints so a caller
+    that does read them can line them up with the ``sources_changed`` payloads
+    for the same memory.
     """
 
     fact_id: str
