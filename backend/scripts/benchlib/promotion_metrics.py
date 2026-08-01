@@ -647,13 +647,26 @@ def no_schema_report(
 
 
 def _render_slice_table(slices: tuple[SliceResult, ...]) -> str:
+    """Renders `blocked` beside the rate, and that column is load-bearing.
+
+    Widening the denominator to admit T2.60's blocked holds changed what
+    `eligible` — and therefore every rate in this table — means. Without the
+    blocked count on the **rendered** surface, a G-C reader cannot tell a low
+    rate caused by blocking from one caused by starvation, and those two argue
+    for opposite tuning moves (doc 17 §5.1's two-sided evidence rule). The
+    in-memory dataclass carrying it is not enough: the report and the ledger
+    row are what a gate run actually reads.
+    """
     if not slices:
-        return "| (no eligible transitions in window) | - | - | n/a **UNDER-POWERED** |\n"
+        return "| (no eligible transitions in window) | - | - | - | n/a **UNDER-POWERED** |\n"
     lines = []
     for s in slices:
         rate = f"{s.rate:.3f}" if s.rate is not None else "n/a"
         powered = "" if s.powered else " **UNDER-POWERED**"
-        lines.append(f"| {s.bucket} | {s.promoted} | {s.eligible} | {rate}{powered} |\n")
+        lines.append(
+            f"| {s.bucket} | {s.promoted} | {s.supersession_blocked} | "
+            f"{s.eligible} | {rate}{powered} |\n"
+        )
     return "".join(lines)
 
 
@@ -692,8 +705,8 @@ def render_report(report: PromotionMetricsReport) -> str:
         "\n",
         "## Promotion rate — by which N-fired gate (`gate_fired`)\n",
         "\n",
-        "| gate_fired | promoted | eligible | rate |\n",
-        "|---|---|---|---|\n",
+        "| gate_fired | promoted | blocked | eligible | rate |\n",
+        "|---|---|---|---|---|\n",
         _render_slice_table(report.by_gate_fired),
         "\n",
         "## Promotion rate — by source-kind diversity\n",
@@ -712,8 +725,8 @@ def render_report(report: PromotionMetricsReport) -> str:
         "17 §5.1's two-slice-axes instruction), not a proxy for `gate_fired "
         "= 'diversity'`; use the gate_fired table above for that question.\n",
         "\n",
-        "| bucket | promoted | eligible | rate |\n",
-        "|---|---|---|---|\n",
+        "| bucket | promoted | blocked | eligible | rate |\n",
+        "|---|---|---|---|---|\n",
         _render_slice_table(report.by_diversity),
         "\n",
         "## False-promotion audit\n",
@@ -762,14 +775,24 @@ def to_ledger_row(report: PromotionMetricsReport, *, extra: dict | None = None) 
         "under_powered_threshold": report.under_powered_threshold,
         "by_gate_fired": [
             {
-                "bucket": s.bucket, "promoted": s.promoted, "eligible": s.eligible,
+                "bucket": s.bucket, "promoted": s.promoted,
+                # Load-bearing: the widened denominator changed what
+                # `eligible` means, so a ledger row without this cannot
+                # distinguish blocking from starvation after the fact.
+                "supersession_blocked": s.supersession_blocked,
+                "eligible": s.eligible,
                 "rate": s.rate, "powered": s.powered,
             }
             for s in report.by_gate_fired
         ],
         "by_diversity": [
             {
-                "bucket": s.bucket, "promoted": s.promoted, "eligible": s.eligible,
+                "bucket": s.bucket, "promoted": s.promoted,
+                # Load-bearing: the widened denominator changed what
+                # `eligible` means, so a ledger row without this cannot
+                # distinguish blocking from starvation after the fact.
+                "supersession_blocked": s.supersession_blocked,
+                "eligible": s.eligible,
                 "rate": s.rate, "powered": s.powered,
             }
             for s in report.by_diversity

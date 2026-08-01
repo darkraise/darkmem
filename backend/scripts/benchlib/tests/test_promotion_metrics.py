@@ -572,6 +572,51 @@ class TestUnrecognisedPayloadGuard:
                 )
 
     @pytest.mark.asyncio
+    async def test_the_blocked_hold_reaches_both_slices_and_both_outputs(self):
+        """The by-diversity slice's widened denominator was decorative: the
+        earlier test only exercised by-gate, so dropping the OR-branch from
+        the diversity query left the whole suite green. Both G-C slices must
+        admit the blocked hold, and both durable outputs — the rendered
+        report and the ledger row — must carry the count, because those are
+        what a gate run actually reads. A number that exists only on the
+        in-memory dataclass cannot tell a reader whether a low rate came from
+        blocking or from starvation."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.60-both-slices")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "candidate"},
+                    "outcome": "hold",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "time_gap",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": False,
+                    "supersession_blocked": True, "confidence": 0.8,
+                },
+            )
+            await session.commit()
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+            by_gate = {s.bucket: s for s in report.by_gate_fired}
+            by_div = {s.bucket: s for s in report.by_diversity}
+            assert by_gate["time_gap"].supersession_blocked == 1
+            assert by_div["diverse"].supersession_blocked == 1, (
+                "the by-diversity slice must admit the blocked hold too"
+            )
+            assert by_div["diverse"].eligible >= 1
+
+            rendered = pm.render_report(report)
+            assert "blocked" in rendered, "the rendered table must carry the count"
+            row = pm.to_ledger_row(report)
+            assert any(
+                s["supersession_blocked"] == 1 for s in row["by_diversity"]
+            ), "the ledger row must carry the count"
+
+    @pytest.mark.asyncio
     async def test_one_fact_disputed_and_rejected_counts_once_not_twice(self):
         """doc 17 §5.1 counts **facts**, not arm-hits, and the overlap is the
         primary flow rather than an edge case: the queue serves the human
