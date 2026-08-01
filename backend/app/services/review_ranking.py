@@ -459,6 +459,21 @@ def consequence_explanation(row: dict[str, Any], config: RankingConfig) -> dict[
     just the total. A bare float would be unauditable: the maintainer could
     not tell a hot fact from a hub-subject fact, and neither could anyone
     diagnosing a ranking that looked wrong.
+
+    **The three ``retrieval_frequency`` counters are independent maxima over
+    the fact's source memories and must not be read as one source's
+    attributes.** ``peak_access_count``, ``last_accessed`` and
+    ``decayed_access`` are three separate ``MAX``es, so a fact sourced by one
+    memory hit 100 times a year ago and another hit 5 times today renders
+    ``peak_access_count: 100``, ``last_accessed: <today>`` and
+    ``decayed_access: 5.0`` — and recomputing the decay from the first two
+    would give 100, which is not what ranked the item. Only
+    ``decayed_access`` feeds the score, so ranking is unaffected; carrying
+    arg-max attribution instead (``DISTINCT ON`` over the decayed term) is
+    the honest fix and is recorded, not built here. ``source_memories``
+    likewise counts only the sources that *joined* ``memory_access_stats``,
+    so it is "sources with access history", not the fact's provenance
+    count — a never-retrieved memory source is absent from all four.
     """
     tier = int(row["active_tier"])
     stale = tier == STALE_TIER

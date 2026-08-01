@@ -5,7 +5,15 @@ from pydantic import BaseModel
 
 
 class ConsequenceFrequency(BaseModel):
-    """The retrieval-frequency arm's inputs, not just its output."""
+    """The retrieval-frequency arm's inputs, not just its output.
+
+    The three counters are **independent maxima** over the fact's source
+    memories, not one source's attributes: ``peak_access_count`` and
+    ``last_accessed`` may come from different memories than
+    ``decayed_access``, so recomputing the decay from the other two is not
+    valid. Only ``decayed_access`` feeds the score. ``source_memories``
+    counts the sources that have access history, not the fact's provenance.
+    """
 
     source_memories: int
     peak_access_count: int

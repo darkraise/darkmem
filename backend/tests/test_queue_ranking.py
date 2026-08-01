@@ -33,6 +33,7 @@ from sqlalchemy import text
 from app.models.memory import Memory
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import review_queue as review_queue_service
+from app.services import review_ranking
 from app.services.review_queue import ReviewQueueOrder, build_facts_query
 from app.services.review_ranking import (
     DEFAULT_DISPUTE_STALE_DAYS,
@@ -210,6 +211,29 @@ async def _relate(session, source_id: UUID, target_id: UUID, rel_type: str = "RE
             "        CAST(:rel AS text), '{}'::uuid[])"
         ),
         {"src": str(source_id), "tgt": str(target_id), "rel": rel_type},
+    )
+
+
+async def _relate_many(session, hub: UUID, count: int, *, prefix: str) -> None:
+    """Give ``hub`` ``count`` distinct neighbours in one statement."""
+    await session.execute(
+        text(
+            """
+            WITH minted AS (
+                INSERT INTO entities (id, name, entity_type, memory_ids)
+                SELECT gen_random_uuid(), CAST(:prefix AS text) || g, 'concept',
+                       '{}'::uuid[]
+                FROM generate_series(1, CAST(:count AS integer)) g
+                RETURNING id
+            )
+            INSERT INTO entity_relations
+                (id, source_entity_id, target_entity_id, rel_type, memory_ids)
+            SELECT gen_random_uuid(), CAST(:hub AS uuid), minted.id,
+                   'RELATED_TO', '{}'::uuid[]
+            FROM minted
+            """
+        ),
+        {"hub": str(hub), "count": count, "prefix": prefix},
     )
 
 
@@ -416,6 +440,106 @@ async def test_incoming_edges_count_toward_salience(session):
     items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
     assert items[0]["id"] == fact_id
     assert items[0]["consequence"]["subject_salience"]["neighbour_count"] == 4
+
+
+async def test_log_compression_bounds_how_far_a_hub_can_dominate(session):
+    """The compression is what makes the hub-domination failure mode
+    survivable, so it needs a guard of its own.
+
+    Two subjects an order of magnitude apart in raw degree (10 against 100).
+    Under ``ln(1 + n)`` the contribution ratio is ~1.9; under a raw count it
+    is 10. Replacing either component's ``ln(1.0 + x)`` with a bare ``x``
+    passes every other test in this file and fails only this one — which is
+    exactly the regression the module docstring's "worth about twice, not
+    fourteen times" claim needs defended. The bound is asserted from both
+    sides so a broken salience count that returned a constant cannot pass it
+    either."""
+    small = await _entity(session, "ten-neighbours")
+    large = await _entity(session, "hundred-neighbours")
+    await _relate_many(session, small, 10, prefix="small-n-")
+    await _relate_many(session, large, 100, prefix="large-n-")
+
+    small_fact = await _fact(
+        session, subject="ten-neighbours", obj="o",
+        subject_id=small, created_days_ago=2.0,
+    )
+    large_fact = await _fact(
+        session, subject="hundred-neighbours", obj="o",
+        subject_id=large, created_days_ago=1.0,
+    )
+    await session.commit()
+
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    by_id = {item["id"]: item["consequence"]["subject_salience"] for item in items}
+
+    # The raw degrees really are an order of magnitude apart.
+    assert by_id[small_fact]["neighbour_count"] == 10
+    assert by_id[large_fact]["neighbour_count"] == 100
+
+    ratio = by_id[large_fact]["component"] / by_id[small_fact]["component"]
+    assert ratio > 1.0, "compression must not erase the ordering entirely"
+    assert ratio < 3.0, (
+        f"a 10x degree difference produced a {ratio:.1f}x contribution "
+        "difference — the log compression is gone, and a hub subject can now "
+        "dominate the queue proportionally to its incidental mentions"
+    )
+    # The order still follows salience: the hub outranks the newer arrival.
+    assert [item["id"] for item in items] == [large_fact, small_fact]
+
+
+async def test_the_arm_weights_decide_a_head_to_head_winner(session):
+    """The 2:1 weighting is a policy, so it needs an assertion that is not
+    tautological.
+
+    Asserting ``weight == W_RETRIEVAL_FREQUENCY`` compares a constant with
+    itself and holds however the constants are set. This pits a
+    frequency-winning fact against a salience-winning one at equal raw
+    magnitude, so the *winner is determined by the weights alone*: swapping
+    them in source flips the first assertion, and the runtime-swapped half
+    proves the fixture is genuinely weight-sensitive rather than decided by
+    something else."""
+    w_frequency = review_ranking.W_RETRIEVAL_FREQUENCY
+    w_salience = review_ranking.W_SUBJECT_SALIENCE
+
+    # Equal raw magnitude on both arms (8 accesses, 8 neighbours), so the two
+    # unweighted components are identical and only the weights separate them.
+    # Deliberately no precondition assertion on the constants: comparing them
+    # against themselves is the tautology this test exists to replace, and a
+    # precondition would trip *before* the ranking assertion under a swap,
+    # leaving the substantive claim unexercised. The fixture holds for any
+    # ratio, so the assertions below are the whole guard.
+    memory_id = await _memory(session)
+    await _access(session, memory_id, count=8, days_ago=0.0)
+    subject = await _entity(session, "head-to-head-subject")
+    await _relate_many(session, subject, 8, prefix="h2h-")
+
+    by_frequency = await _fact(
+        session, subject="frequency-winner", obj="o", created_days_ago=1.0,
+    )
+    await _source(session, by_frequency, memory_id)
+    by_salience = await _fact(
+        session, subject="head-to-head-subject", obj="o",
+        subject_id=subject, created_days_ago=2.0,
+    )
+    await session.commit()
+
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    scores = {item["id"]: item["consequence"]["score"] for item in items}
+    assert scores[by_frequency] > scores[by_salience]
+    assert [item["id"] for item in items] == [by_frequency, by_salience]
+
+    # Swap the weights and nothing else. The winner has to change; if it does
+    # not, the ranking is not reading the weights at all.
+    review_ranking.W_RETRIEVAL_FREQUENCY = w_salience
+    review_ranking.W_SUBJECT_SALIENCE = w_frequency
+    try:
+        items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+        swapped = {item["id"]: item["consequence"]["score"] for item in items}
+        assert swapped[by_salience] > swapped[by_frequency]
+        assert [item["id"] for item in items] == [by_salience, by_frequency]
+    finally:
+        review_ranking.W_RETRIEVAL_FREQUENCY = w_frequency
+        review_ranking.W_SUBJECT_SALIENCE = w_salience
 
 
 # ─────────────────────── the per-item explanation ───────────────────────
