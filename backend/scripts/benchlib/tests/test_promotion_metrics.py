@@ -610,11 +610,24 @@ class TestUnrecognisedPayloadGuard:
             assert by_div["diverse"].eligible >= 1
 
             rendered = pm.render_report(report)
-            assert "blocked" in rendered, "the rendered table must carry the count"
+            # Assert a rendered ROW carrying the value, not the substring
+            # "blocked" -- the header alone satisfies that, so dropping the
+            # value from every row while keeping the column heading would
+            # have passed.
+            assert any(
+                line.startswith("| time_gap |") and line.count("|") == 6
+                and line.split("|")[3].strip() == "1"
+                for line in rendered.splitlines()
+            ), f"the rendered row must carry the blocked value:\n{rendered}"
             row = pm.to_ledger_row(report)
+            # BOTH ledger slices, not just one: asserting through
+            # by_diversity alone left by_gate_fired's field unguarded.
             assert any(
                 s["supersession_blocked"] == 1 for s in row["by_diversity"]
-            ), "the ledger row must carry the count"
+            ), "the by_diversity ledger row must carry the count"
+            assert any(
+                s["supersession_blocked"] == 1 for s in row["by_gate_fired"]
+            ), "the by_gate_fired ledger row must carry the count"
 
     @pytest.mark.asyncio
     async def test_one_fact_disputed_and_rejected_counts_once_not_twice(self):
@@ -668,6 +681,20 @@ class TestUnrecognisedPayloadGuard:
             assert audit.rate is not None and audit.rate <= 1.0, (
                 "a rate above 1.0 is arithmetically impossible for a fact count"
             )
+            # The headline must reach the durable artifact too. Without it a
+            # ledger reader sees the two arm counts beside a union-derived
+            # rate and reconstructs the count by summing -- getting 2 where
+            # the recorded rate says 1. Fixing the object and not the
+            # artifact is exactly what this round already had to correct
+            # once, on the slice tables.
+            ledger = pm.to_ledger_row(report)["false_promotion"]
+            assert ledger["false_promotions"] == 1, (
+                "the ledger must carry the union headline, not just the arms"
+            )
+            assert (
+                ledger["disputed_after_corroboration"] + ledger["human_rejected"]
+                != ledger["false_promotions"]
+            ), "this fixture exists precisely because the arms must not sum"
 
     @pytest.mark.asyncio
     async def test_a_seeded_rejection_is_counted_by_the_audit(self):
@@ -698,7 +725,24 @@ class TestUnrecognisedPayloadGuard:
             report = await pm.compute_promotion_metrics(
                 session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
             )
-            assert report.false_promotion.human_rejected == 1
+            audit = report.false_promotion
+            assert audit.human_rejected == 1
+            # The arm display count is not the headline. Without this, the
+            # union's `rejected_after` branch is decorative: rewriting its
+            # verdict predicate to match nothing survived the whole suite,
+            # because the overlap test reaches the headline through the
+            # DISPUTED arm and this one only checked the display. A
+            # rejection-only false promotion -- the human catching what the
+            # machine missed, which is the exact case doc 17 §5.1's second
+            # half exists for -- would then be undercounted, in the one
+            # number this module may never undercount.
+            assert audit.disputed_after_corroboration == 0, (
+                "this fact was never machine-disputed -- the headline must "
+                "come from the rejection arm alone"
+            )
+            assert audit.false_promotions == 1, (
+                "a rejection-only false promotion must reach the headline"
+            )
 
 
 # ───────────────────────── report rendering (no DB) ─────────────────────────

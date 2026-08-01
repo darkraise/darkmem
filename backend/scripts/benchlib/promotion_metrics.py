@@ -801,6 +801,12 @@ def to_ledger_row(report: PromotionMetricsReport, *, extra: dict | None = None) 
             "total_corroborations": report.false_promotion.total_corroborations,
             "disputed_after_corroboration": report.false_promotion.disputed_after_corroboration,
             "human_rejected": report.false_promotion.human_rejected,
+            # The headline the rate is derived from. Without it a ledger
+            # reader sees the two arm counts beside a union-derived rate and
+            # reconstructs the count by summing -- getting 2 where the
+            # recorded rate says 1, which is precisely the arithmetic this
+            # module was fixed to stop doing.
+            "false_promotions": report.false_promotion.false_promotions,
             "rate": report.false_promotion.rate,
             "powered": report.false_promotion.powered,
         },
