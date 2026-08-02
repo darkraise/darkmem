@@ -22,7 +22,7 @@ this module has no inverse for.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
@@ -328,6 +328,65 @@ async def read_cycle_actions(
             )
         )
     return views
+
+
+async def annotate_undoability(
+    session: AsyncSession,
+    actions: list[DreamActionView],
+    *,
+    now: datetime | None = None,
+) -> list[DreamActionView]:
+    """Fill each view's ``undoable`` / ``undo_blocked_reason``, advisory only.
+
+    Computed with no locks, from the same pure predicate the door re-runs under
+    its locks — the same function object, so the advisory and authoritative
+    answers cannot drift into disagreement about *why*. They can still disagree
+    about *whether*, because the live row may move between this render and the
+    request; that is what the door's 409 is for, and it is why T2.38 must
+    re-fetch on a 409 rather than trusting its last render.
+    """
+    # Imported here rather than at module scope: the undo service reads this
+    # module's window constant, and the digest reads its predicate.
+    from app.services import dream_undo
+
+    if not actions:
+        return actions
+    resolved_now = now or datetime.now(timezone.utc)
+    retention = await dream_undo.read_retention(session)
+
+    resolved = [
+        dream_undo.ResolvedAction(
+            event_id=view.event_id,
+            created_at=view.created_at,
+            object_id=view.object_id,
+            project=view.project,
+            payload={
+                "action": view.action,
+                "before": view.before,
+                "after": view.after,
+                "created": view.detail.get("created"),
+                "fields": view.detail.get("fields"),
+            },
+        )
+        for view in actions
+    ]
+    live = await dream_undo._read_live(
+        session, dream_undo.lock_plan(resolved), lock=False
+    )
+
+    annotated: list[DreamActionView] = []
+    for view, action in zip(actions, resolved):
+        reason = dream_undo.blocking_reason(
+            action,
+            live=live[dream_undo.live_key(action)],
+            already_undone=view.undone,
+            now=resolved_now,
+            retention=retention,
+        )
+        annotated.append(
+            replace(view, undoable=reason is None, undo_blocked_reason=reason)
+        )
+    return annotated
 
 
 def group_by_object(actions: list[DreamActionView]) -> list[DreamObjectGroup]:

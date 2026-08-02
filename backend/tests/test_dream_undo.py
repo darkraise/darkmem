@@ -24,11 +24,13 @@ from uuid import UUID
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.repositories import memory_relations as edges
 from app.repositories.relational import PostgresMemoryRepository
 from app.services import dream_digest as digest
 from app.services import dream_journal as journal
+from app.services import dream_undo as undo
 from app.services import events as events_module
 from app.services import memory_dream as dream
 from app.utils.ids import new_id
@@ -177,6 +179,8 @@ async def committing(setup_database):
                 "DELETE FROM memory_relations WHERE project LIKE 't213-%'",
                 "DELETE FROM memories WHERE project LIKE 't213-%'",
                 "DELETE FROM tags WHERE name LIKE 't213-%'",
+                "DELETE FROM config WHERE key = "
+                f"'{undo.RETENTION_CONFIG_KEY}'",
             ):
                 await cleanup.execute(text(statement))
             await cleanup.commit()
@@ -543,3 +547,385 @@ class TestDigest:
         assert actions[0].detail == {"fields": ["summary", "tags"]}
         assert actions[0].before["summary"] == "the old summary"
         assert actions[0].after["summary"] == "a refined summary"
+
+
+# ── Step 4: the three inverses ───────────────────────────────────────────
+
+
+async def undo_ids(factory, *event_ids, actor="admin", now=None):
+    """One batch through the door, committed. Mirrors what the HTTP route
+    does, including the commit the primitive deliberately does not do."""
+    async with factory() as session:
+        batch = await undo.undo(
+            session, event_ids=list(event_ids), actor=actor, now=now
+        )
+        await session.commit()
+    return batch
+
+
+class TestSubsumeInverse:
+    async def test_status_and_pointer_come_back(self, committing, project):
+        """T-SUB1. Asserted field by field, and the successor is asserted
+        byte-identical because an inverse that "helpfully" tidied the other
+        half would pass any assertion phrased as "no exception"."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        before_newer = await memory_row(committing, newer)
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+        batch = await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, older)
+        assert row["status"] == "active"
+        assert row["superseded_by"] is None
+        assert row["content"] == "old truth"
+        assert row["summary"] is None
+        assert await memory_row(committing, newer) == before_newer
+        assert batch.undone[0].restored == ("status", "superseded_by")
+
+    async def test_the_pointer_first_split_raises(self, committing, project):
+        """T-SUB2. The provocation, not an assumption.
+
+        `chk_superseded_has_pointer` is `status != 'superseded' OR
+        superseded_by IS NOT NULL`, and it is evaluated once per row per
+        statement, so clearing the pointer while the status still says
+        superseded has no legal intermediate. This test fails the day the
+        constraint is relaxed.
+        """
+        cycle = str(new_id())
+        older, _, _ = await produce_subsume(committing, project, cycle_id=cycle)
+        with pytest.raises(IntegrityError):
+            async with committing() as session:
+                await session.execute(
+                    text(
+                        "UPDATE memories SET superseded_by = NULL "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(older)},
+                )
+                await session.commit()
+
+    async def test_the_status_first_split_fails_silently_instead(
+        self, committing, project
+    ):
+        """T-SUB2's other half, and the stronger argument for one statement.
+
+        The CHECK is one-sided, so the *other* split order does not raise: it
+        leaves an `active` memory still pointing at its successor, which no
+        constraint objects to and nothing downstream would notice. The forward
+        flip is the mirror image — there it is the status-first order that
+        raises — so carrying the forward direction's reasoning into the inverse
+        gets the failure mode exactly backwards. The one-statement restore is
+        required because the alternative fails **silently**, not loudly.
+        """
+        cycle = str(new_id())
+        older, newer, _ = await produce_subsume(committing, project, cycle_id=cycle)
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = 'active' "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(older)},
+            )
+            await session.commit()
+        row = await memory_row(committing, older)
+        assert row["status"] == "active" and row["superseded_by"] == str(newer)
+
+    async def test_updated_at_moves_and_is_declared(self, committing, project):
+        """T-SUB3. E1 asserted as a real exclusion rather than left unmentioned:
+        the trigger fires on the inverse's own UPDATE and no honest undo can
+        claim otherwise."""
+        cycle = str(new_id())
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        before = (await memory_row(committing, older))["updated_at"]
+
+        batch = await undo_ids(committing, event_id)
+
+        assert (await memory_row(committing, older))["updated_at"] > before
+        assert "updated_at" in batch.undone[0].excluded
+
+
+class TestAssociateInverse:
+    async def test_an_exclusively_mine_row_is_deleted(self, committing, project):
+        """T-ASC1. `created=True` with nothing else on the row: prior state was
+        "no row", so the row goes."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+        assert await edge_row(committing, newer, older, "RELATES_TO") is not None
+
+        await undo_ids(committing, event_id)
+
+        assert await edge_row(committing, newer, older, "RELATES_TO") is None
+
+    async def test_a_prior_block_is_restored_beside_its_siblings(
+        self, committing, project
+    ):
+        """T-ASC2. The F4/§9.2-item-7 guard from the undo side: a whole-object
+        `SET properties = …` would restore the block and take the sibling pass
+        with it."""
+        cycle = str(new_id())
+        prior = {
+            "kind": "duplicate_candidate",
+            "hygiene_state": "open",
+            "score": 0.5,
+            "verdict": "duplicate",
+            "detected_at": "2026-07-01T00:00:00+00:00",
+        }
+        older, newer, event_id = await produce_associate(
+            committing, project, cycle_id=cycle,
+            prior_block=prior, sibling_block={"kind": "proximity", "score": 0.3},
+        )
+
+        await undo_ids(committing, event_id)
+
+        edge = await edge_row(committing, newer, older, "RELATES_TO")
+        assert edges.pass_block_of(edge, journal.NEAR_DUPLICATE_PASS) == prior
+        assert edge["properties"]["dream"]["proximity"] == {
+            "kind": "proximity", "score": 0.3
+        }
+
+    async def test_a_block_a_sibling_owned_first_is_removed_not_nulled(
+        self, committing, project
+    ):
+        """T-ASC3 — F4's missing arm.
+
+        A sibling pass owned the row first, so `created` is False and there was
+        no near-duplicate block to restore. `jsonb_set(…, 'null')` would leave
+        the key present holding JSON null, which `pass_block_of` reads as absent
+        while the row carries a value the prior state never had. The assertion
+        is on the key's absence, so that mutation fails.
+        """
+        cycle = str(new_id())
+        older, newer, event_id = await produce_associate(
+            committing, project, cycle_id=cycle,
+            sibling_block={"kind": "proximity", "score": 0.3},
+        )
+        async with committing() as session:
+            rows = await session.execute(
+                text(
+                    "SELECT payload FROM events WHERE id = CAST(:id AS bigint) "
+                    "  AND created_at > CAST(:floor AS timestamptz)"
+                ),
+                {"id": event_id, "floor": NOW},
+            )
+            payload = rows.mappings().one()["payload"]
+        assert payload["created"] is False and payload["before"]["edge"] is None
+
+        await undo_ids(committing, event_id)
+
+        edge = await edge_row(committing, newer, older, "RELATES_TO")
+        assert edge is not None, "the sibling's row must survive"
+        assert journal.NEAR_DUPLICATE_PASS not in edge["properties"]["dream"]
+        assert edges.pass_block_of(edge, journal.NEAR_DUPLICATE_PASS) is None
+
+    async def test_a_row_a_sibling_claimed_since_survives(
+        self, committing, project
+    ):
+        """T-ASC4 — E5. `created=True`, but a sibling pass added its own block
+        afterwards. Deleting unconditionally would destroy another actor's edge:
+        the same whole-object hazard, arriving through the other door."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+        async with committing() as session:
+            await edges.upsert_edge(
+                session, source_memory_id=newer, target_memory_id=older,
+                rel_type="RELATES_TO", project=project,
+                pass_key="proximity", block={"kind": "proximity", "score": 0.3},
+            )
+            await session.commit()
+
+        batch = await undo_ids(committing, event_id)
+
+        edge = await edge_row(committing, newer, older, "RELATES_TO")
+        assert edge is not None
+        assert edge["properties"]["dream"] == {
+            "proximity": {"kind": "proximity", "score": 0.3}
+        }
+        assert "memory_relations_row" in batch.undone[0].excluded
+
+    async def test_a_human_triage_refuses_the_undo(self, committing, project):
+        """T-ASC5 — D5's load-bearing test.
+
+        A human moved `hygiene_state` off its derived default. That write is not
+        a consolidation event, so an `events` watermark over the consolidated
+        stream would not see it, would report this action still undoable, and
+        the `created=True` arm would delete a row carrying the triage. The
+        compare-and-swap sees it, because the live block no longer equals the
+        journalled `after` block.
+        """
+        cycle = str(new_id())
+        older, newer, event_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memory_relations "
+                    "   SET properties = jsonb_set(properties, "
+                    "       '{dream,near_duplicate,hygiene_state}', "
+                    "       CAST('\"dismissed\"' AS jsonb), true) "
+                    " WHERE source_memory_id = CAST(:source AS uuid) "
+                    "   AND target_memory_id = CAST(:target AS uuid) "
+                    "   AND rel_type = 'RELATES_TO'"
+                ),
+                {"source": str(newer), "target": str(older)},
+            )
+            await session.commit()
+        before = await edge_row(committing, newer, older, "RELATES_TO")
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id)
+
+        assert [item.reason for item in refusal.value.blocked] == ["state_changed"]
+        assert await edge_row(committing, newer, older, "RELATES_TO") == before
+
+
+class TestRefineInverse:
+    async def test_summary_and_tags_both_come_back(self, committing, project):
+        """T-REF1."""
+        cycle = str(new_id())
+        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        assert (await memory_row(committing, memory))["summary"] == "a refined summary"
+
+        batch = await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, memory)
+        assert row["summary"] == "the old summary"
+        assert list(row["tag_names"]) == ["t213-original"]
+        assert batch.undone[0].restored == ("summary", "tags")
+
+    async def test_the_refine_marker_is_preserved(self, committing, project):
+        """T-REF2 — E2, asserted on both halves.
+
+        Restoring the marker from `before` would clear it on a first refine, and
+        `needs_refine` keys on the marker alone: the next cycle would re-apply
+        the refine and silently reverse the undo. Asserting only that the
+        marker's value is unchanged could be finessed; asserting `needs_refine`
+        is still False pins the behaviour that matters.
+        """
+        cycle = str(new_id())
+        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        after_action = (await memory_row(committing, memory))["metadata"]
+
+        await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, memory)
+        assert row["metadata"] == after_action
+        assert journal.refine_marker_of(row["metadata"]) is not None
+        assert not dream.needs_refine(
+            memory_row_of(
+                memory, project=project, content=row["content"],
+                summary=row["summary"], metadata=row["metadata"],
+            )
+        )
+
+    async def test_a_tags_only_refine_leaves_summary_alone(
+        self, committing, project
+    ):
+        """T-REF3. `fields` is an exact record of what moved, so an inverse that
+        always wrote `summary` would write a None over a live one."""
+        cycle = str(new_id())
+        memory, event_id = await produce_refine(
+            committing, project, cycle_id=cycle, summary=None, tags=("t213-new",),
+        )
+        assert (await memory_row(committing, memory))["summary"] == "the old summary"
+
+        batch = await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, memory)
+        assert batch.undone[0].restored == ("tags",)
+        assert row["summary"] == "the old summary"
+        assert list(row["tag_names"]) == ["t213-original"]
+
+    async def test_a_superset_of_the_journalled_tags_refuses(
+        self, committing, project
+    ):
+        """T-REF4. Compared exactly, not as a subset: a human's added tag would
+        otherwise be silently discarded by the undo."""
+        cycle = str(new_id())
+        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        async with committing() as session:
+            await PostgresMemoryRepository(session).set_tags(
+                memory, ["t213-alpha", "t213-added-by-a-human"]
+            )
+            await session.commit()
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id)
+
+        assert [item.reason for item in refusal.value.blocked] == ["state_changed"]
+        assert sorted((await memory_row(committing, memory))["tag_names"]) == [
+            "t213-added-by-a-human", "t213-alpha"
+        ]
+
+
+class TestExclusions:
+    async def test_updated_at_is_named_on_both_actions_that_move_it(
+        self, committing, project
+    ):
+        """T-EXC1."""
+        cycle = str(new_id())
+        _, _, subsume_id = await produce_subsume(committing, project, cycle_id=cycle)
+        _, refine_id = await produce_refine(committing, project, cycle_id=cycle)
+
+        for event_id in (subsume_id, refine_id):
+            batch = await undo_ids(committing, event_id)
+            assert "updated_at" in batch.undone[0].excluded
+
+    async def test_the_action_row_survives_its_own_undo(self, committing, project):
+        """T-EXC2 — E3. `events` is append-only: the undo adds a row, it removes
+        nothing, and the delete that would "clean up" raises."""
+        cycle = str(new_id())
+        _, _, event_id = await produce_subsume(committing, project, cycle_id=cycle)
+        before = await journal_rows(committing, project)
+
+        await undo_ids(committing, event_id)
+
+        assert await journal_rows(committing, project) == before
+        with pytest.raises(Exception):
+            async with committing() as session:
+                await session.execute(
+                    text("DELETE FROM events WHERE id = CAST(:id AS bigint)"),
+                    {"id": event_id},
+                )
+                await session.commit()
+
+    def test_the_exclusion_table_matches_the_code(self):
+        """T-EXC3. Documentation and code drift silently; this fails the build
+        when they do. The plan's D2 table is the other half."""
+        assert {item.key for item in undo.EXCLUSIONS} == {
+            "E1", "E2", "E3", "E4", "E5",
+        }
+        assert len(undo.EXCLUSIONS_BY_FIELD) == len(undo.EXCLUSIONS)
+        for item in undo.EXCLUSIONS:
+            assert item.actions <= journal.ACTIONS
+            assert item.kind in (undo.NOT_RESTORABLE, undo.BY_DESIGN)
+
+    async def test_every_reported_exclusion_is_in_the_table(
+        self, committing, project
+    ):
+        """T-EXC3's live half: a result may not name an exclusion the table has
+        never heard of, and each one must be declared for the action reporting
+        it."""
+        cycle = str(new_id())
+        _, _, subsume_id = await produce_subsume(committing, project, cycle_id=cycle)
+        _, _, associate_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+        _, refine_id = await produce_refine(committing, project, cycle_id=cycle)
+
+        for event_id in (subsume_id, associate_id, refine_id):
+            batch = await undo_ids(committing, event_id)
+            action = batch.undone[0]
+            for field_name in action.excluded:
+                entry = undo.EXCLUSIONS_BY_FIELD[field_name]
+                assert action.action in entry.actions
