@@ -101,7 +101,7 @@ _LOCK_CANDIDATE = text("""
     FOR UPDATE
 """)
 
-_READ_SUCCESSOR = text("""
+_READ_MEMORY = text("""
     SELECT CAST(id AS text) AS memory_id, project, created_at
     FROM memories
     WHERE id = CAST(:memory_id AS uuid)
@@ -342,7 +342,7 @@ async def supersede(
         return declined("self_reference")
 
     successor_row = await session.execute(
-        _READ_SUCCESSOR, {"memory_id": _canonical(superseded_by)}
+        _READ_MEMORY, {"memory_id": _canonical(superseded_by)}
     )
     successor = successor_row.mappings().first()
     if successor is None:
@@ -584,7 +584,7 @@ async def adjudicate_status_bridge(
     direction this subsystem errs in.
     """
     result = await session.execute(
-        _READ_SUCCESSOR, {"memory_id": _canonical(candidate_memory_id)}
+        _READ_MEMORY, {"memory_id": _canonical(candidate_memory_id)}
     )
     candidate = result.mappings().first()
 
