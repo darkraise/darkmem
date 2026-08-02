@@ -34,8 +34,11 @@ timestamp-independent by construction.
 
 from __future__ import annotations
 
+import ast
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -921,3 +924,327 @@ async def test_a_superseded_successor_still_counts_as_live(session):
 
     assert decision.outcome == "supersede"
     assert (await _row(session, memory.id))["superseded_by"] == str(successor.id)
+
+
+# ───────────────────────── the single-path scans ─────────────────────────
+#
+# What these prove, and what they do not. Together they raise the cost of a
+# second door: a consolidation module cannot hand-roll the flip (claim A) and
+# cannot name the write-time detector (claim B), so the straightforward ways to
+# bypass this module fail the build. They do **not** establish that
+# consolidation *cannot* reach the fast path — claim B forbids a direct
+# reference only, and a job that drives the ingest pipeline reaches the
+# detector transitively with nothing tripping. These are a tripwire that makes
+# a second writer's arrival loud, which is what the promotion blocker's own
+# scan is and what it claims to be. Overclaiming one would be worse than the
+# gap it hides, because a reader trusts a guard.
+#
+# They are AST walks rather than line scans on purpose. The line-scan
+# precedent reads whole lines and skips only `#` comments, which is why one
+# module has to avoid naming its own applier in a docstring. Four modules here
+# legitimately discuss the detector in prose, and a line scan would either fail
+# the build or need four exemptions that also blind it.
+
+BACKEND = Path(__file__).resolve().parent.parent
+
+_POINTER = "superseded_by"
+_DETECTOR = "detect_supersessions"
+_DETECTOR_MODULE = "app.services.supersession"
+_RAW_MEMORY_UPDATE = re.compile(r"UPDATE\s+memories", re.IGNORECASE)
+
+# Claim A: only these two modules write the pointer. The primitive is the slow
+# path and the detector is the fast one; doc 08 §2.2 keeps them as two writers
+# of one pointer under one CHECK.
+_ALLOWED_POINTER_WRITERS = {
+    "app/services/supersede.py",
+    "app/services/supersession.py",
+}
+
+# Claim B: only the pipeline names the write-time detector.
+_ALLOWED_DETECTOR_REFERENCES = {"app/services/pipeline.py"}
+
+
+class _PointerWriteVisitor(ast.NodeVisitor):
+    """Rules A1, A2, A2b and A3 — the write forms that exist today.
+
+    Each rule's blind spot is stated rather than implied. A3 cannot see a flip
+    written with a bound parameter (``SET status = :st``). A2 and A2b enumerate
+    write shapes and miss a computed attribute name by construction. A1 is
+    deliberately blind to a bare ``Name`` target so the model's own column
+    declaration is not flagged, and A2 is scoped to two call shapes so a
+    response construction reading the column is not.
+    """
+
+    def __init__(self, rel: str):
+        self.rel = rel
+        self.offenders: list[str] = []
+
+    def _flag(self, node: ast.AST, rule: str, detail: str) -> None:
+        self.offenders.append(f"{self.rel}:{node.lineno}: {rule} {detail}")
+
+    def _check_target(self, target: ast.AST, node: ast.AST) -> None:
+        if isinstance(target, ast.Attribute) and target.attr == _POINTER:
+            self._flag(node, "A1", "attribute assignment")
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self._check_target(element, node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._check_target(target, node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._check_target(node.target, node)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self._check_target(node.target, node)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        writes_a_row = (isinstance(func, ast.Attribute) and func.attr == "values") or (
+            isinstance(func, ast.Name) and func.id == "Memory"
+        )
+        if writes_a_row:
+            if any(keyword.arg == _POINTER for keyword in node.keywords):
+                self._flag(node, "A2", "pointer keyword on a row write")
+            for argument in node.args:
+                # SQLAlchemy accepts `.values({"superseded_by": ...})`, which
+                # produces no keyword node at all for the rule above to see.
+                if isinstance(argument, ast.Dict) and any(
+                    isinstance(key, ast.Constant) and key.value == _POINTER
+                    for key in argument.keys
+                ):
+                    self._flag(node, "A2", "pointer key in a values dict")
+        if (
+            isinstance(func, ast.Name)
+            and func.id == "setattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == _POINTER
+        ):
+            self._flag(node, "A2b", "setattr on the pointer")
+        self.generic_visit(node)
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if (
+            isinstance(node.value, str)
+            and _RAW_MEMORY_UPDATE.search(node.value)
+            and "superseded" in node.value
+        ):
+            self._flag(node, "A3", "raw-SQL status flip")
+        self.generic_visit(node)
+
+
+class _DetectorReferenceVisitor(ast.NodeVisitor):
+    """Rule B1 — a direct reference to the write-time detector.
+
+    Narrower than "any import of the detector's module": that module also
+    holds the shared demotion helper, which the TTL sweep and the interactive
+    delete both import legitimately, and flagging them would be a false
+    positive against claim B's own wording. A bare module handle is still
+    flagged, because it makes the detector reachable as an attribute.
+    """
+
+    def __init__(self, rel: str):
+        self.rel = rel
+        self.offenders: list[str] = []
+
+    def _flag(self, node: ast.AST, detail: str) -> None:
+        self.offenders.append(f"{self.rel}:{node.lineno}: B1 {detail}")
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            if alias.name == _DETECTOR_MODULE:
+                self._flag(node, "module import")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        names = {alias.name for alias in node.names}
+        if node.module == _DETECTOR_MODULE and _DETECTOR in names:
+            self._flag(node, "named import of the detector")
+        elif node.module == "app.services" and "supersession" in names:
+            self._flag(node, "module handle")
+        self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id == _DETECTOR:
+            self._flag(node, "name reference")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr == _DETECTOR:
+            self._flag(node, "attribute reference")
+        self.generic_visit(node)
+
+
+def _scan(paths, visitor_class, allowlist, root=BACKEND) -> list[str]:
+    offenders: list[str] = []
+    for path in paths:
+        rel = str(path.relative_to(root))
+        if rel in allowlist:
+            continue
+        visitor = visitor_class(rel)
+        visitor.visit(ast.parse(path.read_text()))
+        offenders.extend(visitor.offenders)
+    return offenders
+
+
+def _forbidden_pointer_writes(paths, root=BACKEND) -> list[str]:
+    return _scan(paths, _PointerWriteVisitor, _ALLOWED_POINTER_WRITERS, root)
+
+
+def _forbidden_detector_references(paths, root=BACKEND) -> list[str]:
+    return _scan(paths, _DetectorReferenceVisitor, _ALLOWED_DETECTOR_REFERENCES, root)
+
+
+def _app_sources() -> list[Path]:
+    paths = [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the scans below would "
+        "pass vacuously; check BACKEND / the glob path"
+    )
+    return paths
+
+
+def test_only_the_two_writers_touch_the_supersession_pointer():
+    offenders = _forbidden_pointer_writes(_app_sources())
+    assert not offenders, (
+        "app code outside the primitive and the write-time detector writes "
+        "`memories.superseded_by`:\n" + "\n".join(offenders) + "\nConsolidation "
+        "supersedes through the primitive, so a hand-rolled flip is a second "
+        "door past its guards and its journal."
+    )
+
+
+def test_only_the_pipeline_names_the_write_time_detector():
+    offenders = _forbidden_detector_references(_app_sources())
+    assert not offenders, (
+        "app code outside Phase 5 references the write-time detector:\n"
+        + "\n".join(offenders)
+        + "\nThe detector is the fast path and belongs to ingest; a "
+        "consolidation caller reaching it bypasses the primitive."
+    )
+
+
+@pytest.mark.parametrize(
+    "rule,body",
+    [
+        ("A1", "def f(m, s):\n    m.superseded_by = s\n"),
+        (
+            "A2-keyword",
+            "def f(u, s):\n    return u.values(status='superseded', "
+            "superseded_by=s)\n",
+        ),
+        (
+            "A2-dict",
+            "def f(u, s):\n    return u.values({'superseded_by': s})\n",
+        ),
+        (
+            "A2-model",
+            "def f(s):\n    return Memory(content='x', superseded_by=s)\n",
+        ),
+        ("A2b", "def f(m, s):\n    setattr(m, 'superseded_by', s)\n"),
+        (
+            "A3",
+            "SQL = \"UPDATE memories SET status='superseded', "
+            "superseded_by=:s WHERE id=:i\"\n",
+        ),
+    ],
+)
+def test_the_pointer_scan_flags_every_rule(tmp_path, rule, body):
+    """In-suite negative control — the guard's teeth proven every run."""
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True, exist_ok=True)
+    violation = fake / f"eager_{rule.replace('-', '_').lower()}.py"
+    violation.write_text(body)
+
+    offenders = _forbidden_pointer_writes([violation], root=tmp_path)
+
+    assert offenders, (
+        f"the real guard failed to flag a synthesised {rule} violation; the "
+        "tree-wide scan would be reporting success while blind"
+    )
+
+
+@pytest.mark.parametrize(
+    "shape,body",
+    [
+        ("named-import", "from app.services.supersession import detect_supersessions\n"),
+        ("module-import", "import app.services.supersession\n"),
+        ("module-handle", "from app.services import supersession\n"),
+        (
+            "attribute",
+            "import app.services.supersession as s\n"
+            "async def go(x):\n    await s.detect_supersessions(x)\n",
+        ),
+    ],
+)
+def test_the_detector_scan_flags_every_shape(tmp_path, shape, body):
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True, exist_ok=True)
+    violation = fake / f"eager_{shape.replace('-', '_')}.py"
+    violation.write_text(body)
+
+    offenders = _forbidden_detector_references([violation], root=tmp_path)
+
+    assert offenders, (
+        f"the real guard failed to flag a synthesised {shape} reference"
+    )
+
+
+def test_the_detector_scan_admits_the_shared_demotion_helper(tmp_path):
+    """The narrowing is deliberate, so it is pinned rather than assumed.
+
+    The delete paths import a sibling helper out of the detector's module and
+    must keep passing; a rule that flagged them would be a false positive
+    against claim B's own wording, and the exemption is the kind of thing that
+    silently widens into "the module is fine" if nothing holds it.
+    """
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True, exist_ok=True)
+    innocent = fake / "sweeper.py"
+    innocent.write_text(
+        "from app.services.supersession import demote_dependents\n"
+        "async def sweep(session, ids):\n"
+        "    await demote_dependents(session, ids)\n"
+    )
+
+    assert _forbidden_detector_references([innocent], root=tmp_path) == []
+
+
+def test_the_primitive_never_removes_a_row():
+    """Doc 08 §2.2's demote-first clause, discharged by construction.
+
+    The primitive issues one ``UPDATE`` and nothing else, so the SET-NULL
+    hazard is unreachable from it — which is only true while it stays that way.
+    A later edit that adds a removal fails here rather than aborting a sweep in
+    production, where the symptom is that no expired row is ever reclaimed.
+    """
+    source = (BACKEND / "app" / "services" / "supersede.py").read_text()
+    tree = ast.parse(source)
+
+    removals = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and re.search(r"DELETE\s+FROM", node.value, re.IGNORECASE)
+    ]
+    assert removals == []
+
+    orm_deletes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "delete"
+    ]
+    assert orm_deletes == []
+
+    assert "demote_" + "dependents" not in source, (
+        "the primitive reached for the demotion helper; it has no delete to "
+        "demote before, and joining the delete paths is not its job"
+    )
