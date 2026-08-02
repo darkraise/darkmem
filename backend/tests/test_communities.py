@@ -37,6 +37,8 @@ from app.repositories import memory_communities as repo
 from app.services import memory_community_detection as detection
 from app.services import memory_community_labels as labels
 from app.services.community_detector import CommunityDetector
+from app.services.dream_jobs import TOPIC_DETECTION_JOB_KEY, register_dream_jobs
+from app.services.job_registry import JobRegistry
 from app.services.memory_projection import (
     EntityAssertion,
     TRUNCATED_TOO_MANY_EDGES,
@@ -1423,3 +1425,31 @@ async def test_the_code_detector_keeps_its_communities_without_the_library(
 
     assert members == 0
     assert await _code_communities(session, repo_id) == before
+
+
+def test_the_config_seam_keeps_the_placeholders_batch_key():
+    """T2.53 swaps the placeholder's `config_schema` for this one.
+
+    `JobRegistry.set_config` merges `{**cfg.config, **partial}` and never drops
+    a key, so a schema swap that renamed `batch_size` would orphan any value an
+    operator had already persisted under it — silently, with the old value
+    still sitting in the config row. Keeping the key, its default and its
+    ceiling is what makes the swap safe; the new knobs are additions.
+    """
+    engine = create_async_engine(settings.test_database_url)
+    registry = JobRegistry(async_sessionmaker(engine, expire_on_commit=False))
+    register_dream_jobs(registry)
+    try:
+        placeholder = {
+            fd.key: fd
+            for fd in registry.get(TOPIC_DETECTION_JOB_KEY).config_schema
+        }
+        seam = {fd.key: fd for fd in detection.TOPIC_DETECTION_CONFIG_SCHEMA}
+
+        assert set(placeholder) <= set(seam)
+        for key, field in placeholder.items():
+            assert seam[key].default == field.default
+            assert seam[key].min == field.min
+            assert seam[key].max == field.max
+    finally:
+        engine.sync_engine.dispose()
