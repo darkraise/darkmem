@@ -74,6 +74,7 @@ EVENT_TYPES: list[str] = [
     "maintenance_run",
     "human_verdict",
     "pin_decision",
+    "undone",
 ]
 
 OBJECT_TYPES: list[str] = [
