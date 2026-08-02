@@ -82,9 +82,21 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
+
+# "Currently open", as distinct from "live". ``LIVE_PREDICATE``
+# (``expired_at IS NULL``) answers *what is retained as history*, and a
+# window-closed row is still live under it; this one answers *what is currently
+# believed* and is exactly ``ux_knowledge_triples_open``'s scope. The two are
+# not interchangeable in either direction, and confusing them here is not a
+# margin error but a total one: stale-on-arrival closes the older row's window
+# on every legitimate correction, so a memory whose fact was ever replaced
+# permanently holds a window-closed row and would read as still asserting an
+# open belief forever.
+OPEN_BELIEF_PREDICATE = "expired_at IS NULL AND invalid_at IS NULL"
 
 # The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
 # {memory, block, code, human}; `block` is held in _RESERVED_SOURCE_KINDS below
@@ -275,6 +287,24 @@ class OriginProfile:
         )
 
 
+@dataclass(frozen=True)
+class MemorySource:
+    """One memory that asserts a fact, carrying what a status decision reads.
+
+    ``memory_id`` is the canonical text spelling ``memory_source_ref`` mints, so
+    it lines up with the ``source_ref`` the provenance rows store and with the
+    refs the withdrawal sweep emits. ``status`` and ``created_at`` ride along
+    because the consumers that pick a successor out of these rows need to order
+    them and to report what they saw; the row's mere presence is what
+    establishes the memory still exists.
+    """
+
+    memory_id: str
+    project: str
+    status: str
+    created_at: datetime
+
+
 def _row_to_dict(row: Any) -> dict:
     out = dict(row)
     for key in ("id", "fact_id"):
@@ -436,6 +466,86 @@ class FactSourceRepository:
             for row in result.mappings().all()
         )
         return OriginProfile(fact_id=str(fact_id), origins=origins)
+
+    async def memory_sources_for_fact(
+        self, fact_id: UUID | str
+    ) -> tuple[MemorySource, ...]:
+        """The memories that assert a fact — the provenance reverse lookup.
+
+        A memory appears here iff a ``memories`` row still matches its
+        ``source_ref``. That existence test is the whole liveness condition:
+        ``fact_sources.source_ref`` is a soft reference with no FK, so the
+        memory analogue of belief withdrawal is deletion, and a withdrawn
+        memory leaves a dangling ref that this join simply does not find. It is
+        the same test ``_ORPHANED_PROVENANCE`` applies to orphanhood.
+
+        Deliberately **not** filtered by ``status``. A memory that asserted a
+        newer belief may itself have been superseded moments later, and
+        excluding it would strand the lineage a supersession pointer exists to
+        record — the lineage reads walk pointers status-blind, and the self-FK
+        requires existence and nothing else.
+
+        The join casts ``memories.id`` to text rather than the ref to uuid:
+        ``source_ref`` holds every kind's spelling, and a planner free to hoist
+        ``CAST(source_ref AS uuid)`` above the kind filter would abort on the
+        first non-uuid ref.
+        """
+        result = await self.session.execute(
+            text("""
+                SELECT DISTINCT CAST(m.id AS text) AS memory_id,
+                       m.project, m.status, m.created_at
+                FROM fact_sources fs
+                JOIN memories m ON CAST(m.id AS text) = fs.source_ref
+                WHERE fs.fact_id = CAST(:fact_id AS uuid)
+                  AND fs.source_kind = CAST(:kind AS text)
+                ORDER BY 1
+            """),
+            {"fact_id": str(fact_id), "kind": MEMORY_SOURCE_KIND},
+        )
+        return tuple(
+            MemorySource(
+                memory_id=row["memory_id"],
+                project=row["project"],
+                status=row["status"],
+                created_at=row["created_at"],
+            )
+            for row in result.mappings().all()
+        )
+
+    async def sourced_triples(self, memory_id: UUID | str) -> tuple[int, int]:
+        """``(total, open)`` over the triples a memory sources — both, always.
+
+        One method returning one tuple rather than an openness test beside a
+        count, because the two numbers are only meaningful together. A caller
+        asking "does this memory still assert an open belief?" and getting
+        ``False`` cannot tell a **spent** memory from an **unlifted** one: fact
+        lifting runs on a cadence, so a young memory has no provenance at all,
+        and the withdrawal sweep deletes a provenance row before expiring the
+        fact it orphans. Both read as zero open triples, and only ``total``
+        separates them. Splitting this into two methods is precisely the shape
+        in which the second number gets dropped.
+
+        The ``source_kind`` filter is required, not tidiness: ``source_ref``
+        carries no type discriminator, so a human reviewer's ref or a repo id
+        would otherwise be counted as this memory's evidence.
+
+        The ref is minted, never stringified as given — a braced or upper-cased
+        id would match no stored row, and zero rows is exactly what a spent
+        memory looks like.
+        """
+        result = await self.session.execute(
+            text(f"""
+                SELECT COUNT(*) AS total,
+                       COUNT(*) FILTER (WHERE {OPEN_BELIEF_PREDICATE}) AS open
+                FROM fact_sources fs
+                JOIN knowledge_triples kt ON kt.id = fs.fact_id
+                WHERE fs.source_kind = CAST(:kind AS text)
+                  AND fs.source_ref = CAST(:ref AS text)
+            """),
+            {"kind": MEMORY_SOURCE_KIND, "ref": memory_source_ref(memory_id)},
+        )
+        row = result.mappings().one()
+        return int(row["total"]), int(row["open"])
 
     async def facts_for_source(
         self,
