@@ -42,11 +42,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.models.memory import Memory
+from app.repositories.fact_sources import FactSourceRepository, MemorySource
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.fact_provenance import memory_source_ref
 from app.services.supersede import (
+    apply_status_bridge,
+    decide_status_bridge,
     deprecate,
     successor_is_newer,
     supersede,
 )
+from app.services.triple_key import compute_triple_key
 
 PROJECT = "t245-supersede"
 NOW = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
@@ -499,3 +505,419 @@ async def test_the_refusal_is_a_no_op_and_never_a_deprecation(session):
     )
     assert row["superseded_by"] is None
     assert await _events(session, second.id) == []
+
+
+# ───────────────────────── the status bridge ─────────────────────────
+
+
+async def _triple(session, *, subject: str, project: str = PROJECT) -> str:
+    row = await KnowledgeTripleRepository(session).insert_open(
+        triple_key=compute_triple_key(project, subject, "RUNS_ON", "linux"),
+        subject_name=subject,
+        object_name="linux",
+        rel_type="RUNS_ON",
+        fact=f"{subject} runs on linux",
+        reference_time=NOW,
+        project=project,
+    )
+    return row["id"]
+
+
+async def _source(session, fact_id, memory_id=None, *, kind="memory", ref=None) -> None:
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id,
+        source_kind=kind,
+        source_ref=ref or memory_source_ref(memory_id),
+        origin_key=f"origin:{ref or memory_id}",
+    )
+
+
+def _subject(prefix: str) -> str:
+    """A fresh subject per call.
+
+    ``ux_knowledge_triples_open`` admits one currently-open belief per
+    ``triple_key``, and the key is derived from the names — so two invocations
+    of a builder inside one test would collide on the second insert. Tests that
+    need two independent fixtures are exactly the differential arms, so the
+    builders have to be re-entrant.
+    """
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+async def _candidate_asserting(session, *, other_open: bool):
+    """M, sourcing the invalidated fact and one other.
+
+    ``other_open`` is the single flipped bit the guard-2 arms differ by: with
+    it set the second fact is still currently open, so the memory is not spent.
+    """
+    memory = _mem(created_at=NOW - timedelta(days=2))
+    session.add(memory)
+    await session.flush()
+
+    triples = KnowledgeTripleRepository(session)
+    invalidated = await _triple(session, subject=_subject("postgres"))
+    other = await _triple(session, subject=_subject("redis"))
+    await _source(session, invalidated, memory.id)
+    await _source(session, other, memory.id)
+
+    await triples.close_window(invalidated, NOW)
+    if not other_open:
+        await triples.close_window(other, NOW)
+    return memory
+
+
+async def _successor_asserting(session, *, project: str = PROJECT):
+    """S, the sole source of the triple that invalidated M's fact."""
+    successor = _mem(created_at=NOW, project=project, content="the replacement")
+    session.add(successor)
+    await session.flush()
+    invalidating = await _triple(
+        session, subject=_subject("postgres-16"), project=project
+    )
+    await _source(session, invalidating, successor.id)
+    return successor, invalidating
+
+
+@pytest.mark.asyncio
+async def test_guard2_fails_so_nothing_changes(session):
+    """A memory still asserting a live fact is left alone. (T1)"""
+    memory = await _candidate_asserting(session, other_open=True)
+    successor, invalidating = await _successor_asserting(session)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "no_change"
+    assert decision.guard2_holds is False
+    assert decision.guard1_holds is None, (
+        "guard 1 was consulted after guard 2 failed; the ruled order says "
+        "guard 2's answer dominates and guard 1 is not asked"
+    )
+    assert result is None
+
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == ("active", None)
+    assert await _events(session, memory.id) == []
+
+
+@pytest.mark.asyncio
+async def test_guard2_holds_so_the_memory_is_superseded(session):
+    """The differential arm: one timestamp separates this from T1. (T1b)"""
+    memory = await _candidate_asserting(session, other_open=False)
+    successor, invalidating = await _successor_asserting(session)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "supersede"
+    assert decision.guard2_holds is True
+    assert decision.guard1_holds is True
+    assert decision.successor_newer is True
+    assert decision.successor_id == str(successor.id)
+    assert result is not None and result.applied is True
+
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == (
+        "superseded",
+        str(successor.id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_two_guards_fail_differently(session):
+    """The Done-when's "they fail differently", in executable form. (T2)
+
+    Collapsing the two failures into one outcome fails this directly.
+    """
+    guard2_failed = await _candidate_asserting(session, other_open=True)
+    _, invalidating_a = await _successor_asserting(session)
+    await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating_a,
+        candidate_memory_id=guard2_failed.id,
+    )
+
+    guard1_failed = await _candidate_asserting(session, other_open=False)
+    _, invalidating_b = await _successor_asserting(session)
+    second_source = _mem(created_at=NOW, content="another claimant")
+    session.add(second_source)
+    await session.flush()
+    await _source(session, invalidating_b, second_source.id)
+    await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating_b,
+        candidate_memory_id=guard1_failed.id,
+    )
+
+    guard2_row = await _row(session, guard2_failed.id)
+    guard1_row = await _row(session, guard1_failed.id)
+
+    assert (guard2_row["status"], guard2_row["superseded_by"]) == ("active", None)
+    assert (guard1_row["status"], guard1_row["superseded_by"]) == (
+        "deprecated",
+        None,
+    )
+    assert guard2_row["status"] != guard1_row["status"]
+
+
+@pytest.mark.asyncio
+async def test_the_both_fail_cell_is_absolute_no_change(session):
+    """Guard 2 dominates even when guard 1 also fails. (T2b)
+
+    This is the only arm that detects the rejected chain-order: every other
+    cell produces an identical outcome under it. A memory asserting one
+    invalidated fact whose replacement has several sources, plus one fact still
+    open, is ordinary — any memory carrying more than one fact is a candidate.
+    """
+    memory = await _candidate_asserting(session, other_open=True)
+    _, invalidating = await _successor_asserting(session)
+    second_source = _mem(created_at=NOW, content="another claimant")
+    session.add(second_source)
+    await session.flush()
+    await _source(session, invalidating, second_source.id)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "no_change"
+    assert decision.guard2_holds is False
+    assert decision.guard1_holds is None
+    assert result is None
+
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == ("active", None)
+    assert await _events(session, memory.id) == [], (
+        "the both-fail cell wrote a transition; under the rejected chain-order "
+        "this memory is deprecated while it still asserts a live fact"
+    )
+
+
+@pytest.mark.asyncio
+async def test_guard1_fails_on_two_sources_so_the_memory_is_deprecated(session):
+    """Spent, but with no single live replacement to point at. (T3)"""
+    memory = await _candidate_asserting(session, other_open=False)
+    _, invalidating = await _successor_asserting(session)
+    second_source = _mem(created_at=NOW, content="another claimant")
+    session.add(second_source)
+    await session.flush()
+    await _source(session, invalidating, second_source.id)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "deprecate"
+    assert decision.guard1_holds is False
+    assert decision.live_source_count == 2
+    assert result is not None and result.applied is True
+
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == ("deprecated", None)
+
+
+@pytest.mark.asyncio
+async def test_guard1_fails_when_no_memory_sources_the_triple(session):
+    """A code-kind source is not a successor a pointer can name. (T3b)"""
+    memory = await _candidate_asserting(session, other_open=False)
+    invalidating = await _triple(session, subject=_subject("postgres-16"))
+    await _source(session, invalidating, kind="code", ref="repo-42:src/db.py")
+
+    decision, _ = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "deprecate"
+    assert decision.live_source_count == 0
+    assert (await _row(session, memory.id))["status"] == "deprecated"
+
+
+@pytest.mark.asyncio
+async def test_guard1_fails_on_a_cross_project_successor(session):
+    """Supersession never crosses the isolation boundary. (T3c)"""
+    memory = await _candidate_asserting(session, other_open=False)
+    successor, invalidating = await _successor_asserting(session, project="q")
+
+    decision, _ = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "deprecate"
+    assert decision.guard1_holds is False
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == ("deprecated", None)
+    assert (await _row(session, successor.id))["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_the_candidate_is_excluded_before_the_count_is_taken(session):
+    """A memory cannot be its own successor, but it can co-source. (T3d)
+
+    Counting first and rejecting any self-source would deprecate a memory that
+    has a perfectly good successor.
+    """
+    memory = await _candidate_asserting(session, other_open=False)
+    successor, invalidating = await _successor_asserting(session)
+    await _source(session, invalidating, memory.id)
+    # The candidate co-sources the invalidating triple, so that triple has to
+    # be closed too or the candidate is not spent and guard 2 — absolute, and
+    # asked first — would decline before guard 1 is reached at all.
+    await KnowledgeTripleRepository(session).close_window(invalidating, NOW)
+
+    decision, _ = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "supersede"
+    assert decision.live_source_count == 1
+    assert decision.successor_id == str(successor.id)
+    assert (await _row(session, memory.id))["superseded_by"] == str(successor.id)
+
+
+@pytest.mark.asyncio
+async def test_guard2_reads_the_minted_ref_not_the_given_spelling(session):
+    """Guard 2's lookup is fail-open, so the ref spelling is load-bearing. (T7)
+
+    A braced, upper-cased id matches no stored row. Without the single minter
+    the provenance read returns ``(0, 0)``, the floor declines, and a spent
+    memory silently stops being retired — the drill that proves this arm can
+    fail.
+    """
+    memory = await _candidate_asserting(session, other_open=False)
+    successor, invalidating = await _successor_asserting(session)
+    noisy = "{" + str(memory.id).upper() + "}"
+
+    decision, _ = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=noisy,
+    )
+
+    assert decision.sourced_total == 2
+    assert decision.sourced_open == 0
+    assert decision.outcome == "supersede"
+    assert (await _row(session, memory.id))["superseded_by"] == str(successor.id)
+
+
+@pytest.mark.asyncio
+async def test_an_unlifted_memory_is_not_retired_on_absent_evidence(session):
+    """Guard 2's floor: zero provenance is unlifted, not spent.
+
+    Fact lifting runs on a cadence, so a young memory routinely sources
+    nothing. Without the floor guard 2 holds vacuously and guard 1 then finds a
+    perfectly good successor, so the bridge retires memories wholesale on the
+    absence of evidence.
+    """
+    memory = _mem(created_at=NOW - timedelta(days=2))
+    session.add(memory)
+    await session.flush()
+    successor, invalidating = await _successor_asserting(session)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert (decision.sourced_total, decision.sourced_open) == (0, 0)
+    assert decision.outcome == "no_change"
+    assert decision.guard2_holds is False
+    assert result is None
+    assert (await _row(session, memory.id))["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_the_bridge_refuses_an_older_successor_without_deprecating(session):
+    """The ordering refusal short-circuits to no change, never to deprecate."""
+    memory = await _candidate_asserting(session, other_open=False)
+    successor = _mem(
+        created_at=NOW - timedelta(days=5), content="a backfilled memory"
+    )
+    session.add(successor)
+    await session.flush()
+    invalidating = await _triple(session, subject=_subject("postgres-16"))
+    await _source(session, invalidating, successor.id)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "no_change"
+    assert decision.guard1_holds is True
+    assert decision.successor_newer is False
+    assert result is None
+
+    row = await _row(session, memory.id)
+    assert (row["status"], row["superseded_by"]) == ("active", None)
+    assert await _events(session, memory.id) == []
+
+
+@pytest.mark.asyncio
+async def test_the_decision_is_pure_and_needs_no_session(session):
+    """``decide_status_bridge`` is replayable from its inputs alone."""
+    candidate_id = str(uuid.UUID(int=7))
+    successor = MemorySource(
+        memory_id=str(uuid.UUID(int=8)),
+        project=PROJECT,
+        status="superseded",
+        created_at=NOW,
+    )
+
+    decision = decide_status_bridge(
+        memory_id=candidate_id,
+        invalidating_fact_id=uuid.UUID(int=9),
+        candidate_project=PROJECT,
+        candidate_created_at=NOW - timedelta(days=1),
+        sourced_total=2,
+        sourced_open=0,
+        invalidating_sources=(successor,),
+    )
+
+    assert decision.outcome == "supersede"
+    assert decision.successor_id == successor.memory_id
+    assert decision.sourced_total == 2
+    assert decision.live_source_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_successor_still_counts_as_live(session):
+    """"Live source memory" is row existence, never ``status='active'``.
+
+    A successor that was itself superseded later in the same cycle is still the
+    memory that replaced this one; requiring it to be active would deprecate
+    the candidate and destroy the lineage the pointer exists to record.
+    """
+    memory = await _candidate_asserting(session, other_open=False)
+    successor, invalidating = await _successor_asserting(session)
+    latest = _mem(created_at=NOW + timedelta(days=1), content="the newest")
+    session.add(latest)
+    await session.flush()
+    await supersede(session, memory_id=successor.id, superseded_by=latest.id)
+    assert (await _row(session, successor.id))["status"] == "superseded"
+
+    decision, _ = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=memory.id,
+    )
+
+    assert decision.outcome == "supersede"
+    assert (await _row(session, memory.id))["superseded_by"] == str(successor.id)

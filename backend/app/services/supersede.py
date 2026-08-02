@@ -63,9 +63,13 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.fact_sources import FactSourceRepository, MemorySource
 from app.services.events import record_event
+from app.services.fact_provenance import memory_source_ref
 
 logger = logging.getLogger(__name__)
+
+BridgeOutcome = Literal["supersede", "deprecate", "no_change"]
 
 SupersedeReason = Literal[
     "applied",
@@ -159,6 +163,33 @@ class SupersedeResult:
     superseded_by: str | None
 
 
+@dataclass(frozen=True)
+class BridgeDecision:
+    """The bridge's three-way choice, with every input that produced it.
+
+    Returned whole rather than applied silently: doc 08 §7 makes every
+    consolidation action undoable from its journalled payload, and the digest
+    has to be able to explain *why* the bridge did what it did.
+
+    ``guard1_holds`` and ``successor_newer`` are ``None`` when the question was
+    never asked. That is not a convenience — the ruled evaluation order says
+    guard 1 is *not consulted* once guard 2 has failed, and a record reporting
+    ``False`` there would describe an answer nobody computed. The ``None`` is
+    the evaluation order in observable form.
+    """
+
+    memory_id: str
+    invalidating_fact_id: str
+    outcome: BridgeOutcome
+    successor_id: str | None
+    sourced_total: int
+    sourced_open: int
+    live_source_count: int
+    guard2_holds: bool
+    guard1_holds: bool | None
+    successor_newer: bool | None
+
+
 def successor_is_newer(
     *,
     candidate_created_at: datetime,
@@ -206,8 +237,20 @@ def _refusal_for_status(status: str) -> SupersedeReason:
     return "already_superseded" if status == "superseded" else "terminal"
 
 
+def _canonical(memory_id: UUID | str) -> str:
+    """Every id crossing into raw SQL, through the one minter.
+
+    asyncpg parses a uuid parameter client-side rather than handing the text to
+    Postgres, so a braced or upper-cased id raises where the database would
+    have accepted it — and the provenance reads normalise anyway, so an
+    un-normalised id here would make the two halves of one decision disagree
+    about which memory they are talking about.
+    """
+    return memory_source_ref(memory_id)
+
+
 async def _locked_candidate(session: AsyncSession, memory_id: UUID | str) -> dict | None:
-    result = await session.execute(_LOCK_CANDIDATE, {"memory_id": str(memory_id)})
+    result = await session.execute(_LOCK_CANDIDATE, {"memory_id": _canonical(memory_id)})
     row = result.mappings().first()
     return dict(row) if row is not None else None
 
@@ -276,7 +319,7 @@ async def supersede(
     candidate = await _locked_candidate(session, memory_id)
     if candidate is None:
         return SupersedeResult(
-            memory_id=str(memory_id),
+            memory_id=_canonical(memory_id),
             applied=False,
             reason="not_found",
             status=None,
@@ -285,7 +328,7 @@ async def supersede(
 
     def declined(reason: SupersedeReason) -> SupersedeResult:
         return SupersedeResult(
-            memory_id=str(memory_id),
+            memory_id=_canonical(memory_id),
             applied=False,
             reason=reason,
             status=candidate["status"],
@@ -299,7 +342,7 @@ async def supersede(
         return declined("self_reference")
 
     successor_row = await session.execute(
-        _READ_SUCCESSOR, {"memory_id": str(superseded_by)}
+        _READ_SUCCESSOR, {"memory_id": _canonical(superseded_by)}
     )
     successor = successor_row.mappings().first()
     if successor is None:
@@ -318,7 +361,7 @@ async def supersede(
 
     written = await session.execute(
         _FLIP_TO_SUPERSEDED,
-        {"memory_id": str(memory_id), "successor": str(superseded_by)},
+        {"memory_id": _canonical(memory_id), "successor": _canonical(superseded_by)},
     )
     row = written.mappings().first()
     if row is None:
@@ -364,7 +407,7 @@ async def deprecate(
     candidate = await _locked_candidate(session, memory_id)
     if candidate is None:
         return SupersedeResult(
-            memory_id=str(memory_id),
+            memory_id=_canonical(memory_id),
             applied=False,
             reason="not_found",
             status=None,
@@ -373,18 +416,20 @@ async def deprecate(
 
     if candidate["status"] != "active":
         return SupersedeResult(
-            memory_id=str(memory_id),
+            memory_id=_canonical(memory_id),
             applied=False,
             reason=_refusal_for_status(candidate["status"]),
             status=candidate["status"],
             superseded_by=candidate["superseded_by"],
         )
 
-    written = await session.execute(_FLIP_TO_DEPRECATED, {"memory_id": str(memory_id)})
+    written = await session.execute(
+        _FLIP_TO_DEPRECATED, {"memory_id": _canonical(memory_id)}
+    )
     row = written.mappings().first()
     if row is None:
         return SupersedeResult(
-            memory_id=str(memory_id),
+            memory_id=_canonical(memory_id),
             applied=False,
             reason=_refusal_for_status(candidate["status"]),
             status=candidate["status"],
@@ -410,3 +455,201 @@ async def deprecate(
         status=row["status"],
         superseded_by=row["superseded_by"],
     )
+
+
+# ── The status bridge: how a fact invalidation composes with supersession ──
+
+
+def decide_status_bridge(
+    *,
+    memory_id: UUID | str,
+    invalidating_fact_id: UUID | str,
+    candidate_project: str,
+    candidate_created_at: datetime,
+    sourced_total: int,
+    sourced_open: int,
+    invalidating_sources: tuple[MemorySource, ...],
+) -> BridgeDecision:
+    """Pure. Which status change, if any, a fact invalidation implies.
+
+    **Guard 2 is absolute and is evaluated first** (owner's ruling, 2026-08-02;
+    doc 08 §3.4 as amended). The two guards are not a chain. Guard 2 answers
+    *may this memory's status change at all*; guard 1 answers *which change*.
+    Where both fail — a memory asserting one invalidated fact whose replacement
+    has several sources, plus one fact still open — chaining guard 1 first
+    would retire a memory that still carries live knowledge, which is verbatim
+    the harm guard 2 exists to prevent. The ruled order can only ever decline
+    to act, and its cost is a spent memory lingering as active until a later
+    pass retires it.
+
+    **Guard 2 holds iff the memory sources at least one triple and none of them
+    is currently open.** The floor is not decoration. Guard 2 as literally
+    stated holds *vacuously* for a memory with zero provenance, and such a
+    memory is not spent but **unlifted** — fact lifting runs on a cadence, so a
+    young memory routinely has no provenance at all, and the withdrawal sweep
+    deletes a provenance row before expiring the fact it orphans. Without the
+    floor the bridge retires memories on the absence of evidence. It also turns
+    a total ref-spelling miss into inertness rather than a wrongful
+    retirement.
+
+    **Guard 1 asks which *other* memory replaced this one.** The candidate is
+    excluded before the count is taken, not counted and then rejected, so a
+    triple sourced by the candidate and one other still yields a well-defined
+    successor. Counting first would deprecate a memory that has a perfectly
+    good successor. A successor in another project fails guard 1 and falls to
+    ``deprecated``, because supersession never crosses the isolation boundary
+    and "retired without a single live successor" is then the honest outcome.
+
+    The ordering predicate is the last question, and its refusal routes to
+    ``no_change`` — never to ``deprecated``. Take a mutual pair: the older
+    memory supersedes, and were the newer one's refusal to fall through to
+    guard 1's arm it would be deprecated, so both would leave the active view.
+    That is exactly the outcome the ordering rule exists to prevent.
+
+    No session, no clock: the guards are set-membership questions over stored
+    state, and reading the wall clock would make a replay of the same inputs
+    answer differently.
+    """
+    identity = str(memory_id)
+    fact = str(invalidating_fact_id)
+
+    guard2_holds = sourced_total > 0 and sourced_open == 0
+
+    others = tuple(
+        source
+        for source in invalidating_sources
+        if UUID(source.memory_id) != UUID(identity)
+    )
+
+    def decided(
+        outcome: BridgeOutcome,
+        *,
+        successor_id: str | None = None,
+        guard1_holds: bool | None = None,
+        successor_newer: bool | None = None,
+    ) -> BridgeDecision:
+        return BridgeDecision(
+            memory_id=identity,
+            invalidating_fact_id=fact,
+            outcome=outcome,
+            successor_id=successor_id,
+            sourced_total=sourced_total,
+            sourced_open=sourced_open,
+            live_source_count=len(others),
+            guard2_holds=guard2_holds,
+            guard1_holds=guard1_holds,
+            successor_newer=successor_newer,
+        )
+
+    if not guard2_holds:
+        return decided("no_change")
+
+    if len(others) != 1:
+        return decided("deprecate", guard1_holds=False)
+
+    successor = others[0]
+    if successor.project != candidate_project:
+        return decided("deprecate", guard1_holds=False)
+
+    if not successor_is_newer(
+        candidate_created_at=candidate_created_at,
+        candidate_id=identity,
+        successor_created_at=successor.created_at,
+        successor_id=successor.memory_id,
+    ):
+        return decided("no_change", guard1_holds=True, successor_newer=False)
+
+    return decided(
+        "supersede",
+        successor_id=successor.memory_id,
+        guard1_holds=True,
+        successor_newer=True,
+    )
+
+
+async def adjudicate_status_bridge(
+    session: AsyncSession,
+    *,
+    invalidating_fact_id: UUID | str,
+    candidate_memory_id: UUID | str,
+) -> BridgeDecision:
+    """Read the guards' inputs and hand them to the pure decision.
+
+    Separate from ``decide_status_bridge`` for the reason the verification
+    ladder keeps its own halves apart: a decision that needs a session cannot
+    be replayed from the journal to audit it.
+
+    A candidate that no longer exists yields ``no_change``. It asserts nothing
+    live and has no status to move, so declining is both correct and the
+    direction this subsystem errs in.
+    """
+    result = await session.execute(
+        _READ_SUCCESSOR, {"memory_id": _canonical(candidate_memory_id)}
+    )
+    candidate = result.mappings().first()
+
+    sources = FactSourceRepository(session)
+    total, open_count = await sources.sourced_triples(candidate_memory_id)
+
+    if candidate is None:
+        return BridgeDecision(
+            memory_id=_canonical(candidate_memory_id),
+            invalidating_fact_id=str(invalidating_fact_id),
+            outcome="no_change",
+            successor_id=None,
+            sourced_total=total,
+            sourced_open=open_count,
+            live_source_count=0,
+            guard2_holds=False,
+            guard1_holds=None,
+            successor_newer=None,
+        )
+
+    return decide_status_bridge(
+        memory_id=candidate["memory_id"],
+        invalidating_fact_id=invalidating_fact_id,
+        candidate_project=candidate["project"],
+        candidate_created_at=candidate["created_at"],
+        sourced_total=total,
+        sourced_open=open_count,
+        invalidating_sources=await sources.memory_sources_for_fact(
+            invalidating_fact_id
+        ),
+    )
+
+
+async def apply_status_bridge(
+    session: AsyncSession,
+    *,
+    invalidating_fact_id: UUID | str,
+    candidate_memory_id: UUID | str,
+) -> tuple[BridgeDecision, SupersedeResult | None]:
+    """Adjudicate, then write. The consolidation entry point.
+
+    The result is ``None`` exactly when the decision was ``no_change``, so a
+    caller can distinguish "declined by the guards" from "attempted and
+    declined by the writer" — the two are different findings on a digest.
+
+    Each application must be wrapped in its own savepoint by the caller: this
+    opens none, so one memory's failure would otherwise abort a whole cycle.
+    """
+    decision = await adjudicate_status_bridge(
+        session,
+        invalidating_fact_id=invalidating_fact_id,
+        candidate_memory_id=candidate_memory_id,
+    )
+
+    if decision.outcome == "supersede":
+        return decision, await supersede(
+            session,
+            memory_id=decision.memory_id,
+            superseded_by=decision.successor_id,
+            invalidating_fact_id=invalidating_fact_id,
+        )
+    if decision.outcome == "deprecate":
+        return decision, await deprecate(
+            session,
+            memory_id=decision.memory_id,
+            invalidating_fact_id=invalidating_fact_id,
+        )
+    return decision, None
