@@ -649,7 +649,7 @@ class TestSubsumeInverse:
         batch = await undo_ids(committing, event_id)
 
         assert (await memory_row(committing, older))["updated_at"] > before
-        assert "updated_at" in batch.undone[0].excluded
+        assert "updated_at" in batch.undone[0].not_restored
 
 
 class TestAssociateInverse:
@@ -752,7 +752,7 @@ class TestAssociateInverse:
         assert edge["properties"]["dream"] == {
             "proximity": {"kind": "proximity", "score": 0.3}
         }
-        assert "memory_relations_row" in batch.undone[0].excluded
+        assert "memory_relations_row" in batch.undone[0].not_restored
 
     async def test_a_human_triage_refuses_the_undo(self, committing, project):
         """T-ASC5 — D5's load-bearing test.
@@ -881,7 +881,7 @@ class TestExclusions:
 
         for event_id in (subsume_id, refine_id):
             batch = await undo_ids(committing, event_id)
-            assert "updated_at" in batch.undone[0].excluded
+            assert "updated_at" in batch.undone[0].not_restored
 
     async def test_the_action_row_survives_its_own_undo(self, committing, project):
         """T-EXC2 — E3. `events` is append-only: the undo adds a row, it removes
@@ -928,7 +928,7 @@ class TestExclusions:
         for event_id in (subsume_id, associate_id, refine_id):
             batch = await undo_ids(committing, event_id)
             action = batch.undone[0]
-            for field_name in action.excluded:
+            for field_name in action.not_restored:
                 entry = undo.EXCLUSIONS_BY_FIELD[field_name]
                 assert action.action in entry.actions
 
@@ -1232,7 +1232,7 @@ class TestAtomicity:
         _, _, lone_id = await produce_subsume(committing, project, cycle_id=other)
         lone = await undo_ids(committing, lone_id)
         assert lone.undone[0].restored == batch.undone[0].restored
-        assert lone.undone[0].excluded == batch.undone[0].excluded
+        assert lone.undone[0].not_restored == batch.undone[0].not_restored
         assert lone.undone[0].action == batch.undone[0].action
 
     def test_the_lock_order_is_deterministic(self):
@@ -1814,7 +1814,7 @@ class TestUndoJournal:
         assert undone["before"]["status"] == "superseded"
         assert undone["after"]["status"] == "active"
         assert undone["restored"] == list(batch.undone[0].restored)
-        assert undone["excluded"] == list(batch.undone[0].excluded)
+        assert undone["not_restored"] == list(batch.undone[0].not_restored)
 
     async def test_an_unjournallable_undo_does_not_land(
         self, committing, project, monkeypatch
@@ -1925,3 +1925,298 @@ class TestUndoJournal:
         assert actions[0].undoable is False
         assert actions[0].undo_blocked_reason == "already_undone"
         assert cycles[0].undone_count == 1
+
+
+# ── Step 8: the doors ────────────────────────────────────────────────────
+
+
+@pytest.fixture
+async def api(client, session, auth_headers):
+    """The HTTP door on the rollback-isolated session, so a route test cannot
+    leak state into the `committing` fixtures above."""
+    return client, session, auth_headers
+
+
+async def seed_action_over(session, project, *, cycle_id):
+    """One real subsume through the request-scoped session, so the route sees
+    exactly what the pass writes."""
+    older = await seed_memory(
+        session, project=project, content="old truth", created_at=NOW
+    )
+    newer = await seed_memory(
+        session, project=project, content="new truth",
+        created_at=NOW + timedelta(hours=1),
+    )
+    await session.flush()
+    assert await dream.apply_subsume(
+        session,
+        dream.SubsumeAction(
+            pair=dream.PairCandidate(
+                older=memory_row_of(older, project=project, content="old truth"),
+                newer=memory_row_of(
+                    newer, project=project, content="new truth",
+                    created_at=NOW + timedelta(hours=1),
+                ),
+                score=0.97,
+            ),
+            verdict=dream.PairVerdict(verdict="subsumes", reason="r"),
+        ),
+        cycle_id=cycle_id,
+        outcome=dream.DreamOutcome(),
+    )
+    await session.flush()
+    event_id = (
+        await session.execute(
+            text(
+                "SELECT max(id) FROM events WHERE event_type = 'consolidated' "
+                "AND project = CAST(:project AS text)"
+            ),
+            {"project": project},
+        )
+    ).scalar_one()
+    return older, newer, int(event_id)
+
+
+class TestDoors:
+    async def test_every_route_needs_auth(self, client):
+        """T-API1."""
+        cycle = str(new_id())
+        for method, path in (
+            ("get", "/api/v1/dream-digest/cycles"),
+            ("get", f"/api/v1/dream-digest/cycles/{cycle}"),
+            ("post", "/api/v1/dream-digest/actions/1/undo"),
+            ("post", f"/api/v1/dream-digest/cycles/{cycle}/undo"),
+        ):
+            response = await getattr(client, method)(path)
+            assert response.status_code == 401, path
+
+    async def test_the_cycle_list_and_digest_render(self, api, project):
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, event_id = await seed_action_over(session, project, cycle_id=cycle)
+
+        listing = await client.get(
+            "/api/v1/dream-digest/cycles", params={"project": project},
+            headers=headers,
+        )
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["total"] == 1
+        assert body["items"][0]["cycle_id"] == cycle
+        assert body["items"][0]["counts"]["subsume"] == 1
+
+        detail = await client.get(
+            f"/api/v1/dream-digest/cycles/{cycle}", headers=headers
+        )
+        assert detail.status_code == 200
+        digest_body = detail.json()
+        assert digest_body["objects"][0]["object_id"] == str(older)
+        action = digest_body["objects"][0]["actions"][0]
+        assert action["event_id"] == event_id
+        assert action["undoable"] is True
+        assert action["undo_blocked_reason"] is None
+        assert action["before"] == {"status": "active", "superseded_by": None}
+
+    async def test_an_unknown_cycle_is_404(self, api):
+        """T-API4. An empty digest would tell a client the cycle exists and did
+        nothing."""
+        client, _, headers = api
+        response = await client.get(
+            f"/api/v1/dream-digest/cycles/{new_id()}", headers=headers
+        )
+        assert response.status_code == 404
+
+    async def test_the_single_action_door_undoes_and_journals(self, api, project):
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, event_id = await seed_action_over(session, project, cycle_id=cycle)
+
+        response = await client.post(
+            f"/api/v1/dream-digest/actions/{event_id}/undo", headers=headers
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["undone"]) == 1
+        assert body["undone"][0]["restored"] == ["status", "superseded_by"]
+        assert "updated_at" in body["undone"][0]["not_restored"]
+        status = (
+            await session.execute(
+                text(
+                    "SELECT status::text FROM memories WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(older)},
+            )
+        ).scalar_one()
+        assert status == "active"
+        assert (
+            await session.execute(
+                text(
+                    "SELECT count(*) FROM events WHERE event_type = 'undone' "
+                    "AND project = CAST(:project AS text)"
+                ),
+                {"project": project},
+            )
+        ).scalar_one() == 1
+
+    async def test_a_blocked_batch_answers_409_naming_every_reason(
+        self, api, project
+    ):
+        """T-API2. 200 with a partial result is the one answer this primitive
+        refuses to represent."""
+        client, session, headers = api
+        cycle = str(new_id())
+        older, newer, event_id = await seed_action_over(
+            session, project, cycle_id=cycle
+        )
+        await session.execute(
+            text(
+                "UPDATE memories SET status = 'active', superseded_by = NULL "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": str(older)},
+        )
+        await session.flush()
+
+        response = await client.post(
+            f"/api/v1/dream-digest/actions/{event_id}/undo", headers=headers
+        )
+
+        assert response.status_code == 409
+        body = response.json()
+        assert body["error"]["code"] == "conflict"
+        assert body["error"]["details"] == [
+            {"event_id": event_id, "action": "subsume", "reason": "state_changed"}
+        ]
+
+    async def test_an_unknown_event_id_is_404(self, api):
+        client, _, headers = api
+        response = await client.post(
+            f"/api/v1/dream-digest/actions/{2 ** 40}/undo", headers=headers
+        )
+        assert response.status_code == 404
+
+    async def test_a_cycle_undo_honours_the_action_filter(self, api, project):
+        """T-API3. Ignoring the filter would undo the whole cycle when the user
+        asked for one kind of it."""
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, subsume_id = await seed_action_over(
+            session, project, cycle_id=cycle
+        )
+        memory = await seed_memory(
+            session, project=project, content="the sweeper runs hourly",
+            summary="the old summary",
+        )
+        await session.flush()
+        assert await dream.apply_refine(
+            session,
+            dream.RefineAction(
+                memory=memory_row_of(
+                    memory, project=project, content="the sweeper runs hourly",
+                    summary="the old summary",
+                ),
+                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+            ),
+            cycle_id=cycle,
+            outcome=dream.DreamOutcome(),
+        )
+        await session.flush()
+
+        response = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo",
+            json={"action": "subsume"},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [item["action"] for item in body["undone"]] == ["subsume"]
+        summary = (
+            await session.execute(
+                text("SELECT summary FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(memory)},
+            )
+        ).scalar_one()
+        assert summary == "a refined summary", "the refine must be untouched"
+
+    async def test_a_whole_cycle_undo_takes_every_action(self, api, project):
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, _ = await seed_action_over(session, project, cycle_id=cycle)
+        memory = await seed_memory(
+            session, project=project, content="the sweeper runs hourly",
+            summary="the old summary",
+        )
+        await session.flush()
+        assert await dream.apply_refine(
+            session,
+            dream.RefineAction(
+                memory=memory_row_of(
+                    memory, project=project, content="the sweeper runs hourly",
+                    summary="the old summary",
+                ),
+                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+            ),
+            cycle_id=cycle,
+            outcome=dream.DreamOutcome(),
+        )
+        await session.flush()
+
+        response = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo", headers=headers
+        )
+
+        assert response.status_code == 200
+        assert len(response.json()["undone"]) == 2
+        rows = {
+            row["id"]: row
+            for row in (
+                await session.execute(
+                    text(
+                        "SELECT CAST(id AS text) AS id, status::text AS status, "
+                        "       summary FROM memories "
+                        " WHERE id = ANY(CAST(:ids AS uuid[]))"
+                    ),
+                    {"ids": [str(older), str(memory)]},
+                )
+            ).mappings()
+        }
+        assert rows[str(older)]["status"] == "active"
+        assert rows[str(memory)]["summary"] == "the old summary"
+
+    def test_the_paths_and_response_models_match_the_conventions(self):
+        """T-API5."""
+        import re
+
+        from app.api.routes import dream_digest as routes
+        from app.schemas import dream_digest as schemas
+
+        for route in routes.router.routes:
+            assert re.fullmatch(
+                r"/api/v1/dream-digest(/[a-z-]+|/\{[a-z_]+\})*", route.path
+            ), route.path
+        for name in dir(schemas):
+            model = getattr(schemas, name)
+            if isinstance(model, type) and issubclass(model, schemas.BaseModel):
+                assert not [
+                    field for field in model.model_fields if field.startswith("llm_")
+                ], name
+
+    async def test_a_missing_retention_row_does_not_500(self, api, project):
+        """T-API6. The door reads the config row on every call; an absent one is
+        the ordinary state, not an error."""
+        client, session, headers = api
+        cycle = str(new_id())
+        _, _, event_id = await seed_action_over(session, project, cycle_id=cycle)
+        assert (
+            await session.execute(
+                text("SELECT count(*) FROM config WHERE key = CAST(:key AS text)"),
+                {"key": undo.RETENTION_CONFIG_KEY},
+            )
+        ).scalar_one() == 0
+
+        response = await client.post(
+            f"/api/v1/dream-digest/actions/{event_id}/undo", headers=headers
+        )
+        assert response.status_code == 200

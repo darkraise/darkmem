@@ -229,6 +229,28 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "would blank the preview for exactly the rows needing triage.",
     ),
     ContentSurface(
+        key="dream_cycle_digest",
+        kind=_S,
+        front_doors=("GET /api/v1/dream-digest/cycles/{cycle_id}",),
+        crosses=("summary",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.13",
+        reason="A refine action journals the summary it replaced and the one "
+               "it wrote, so the digest's before/after carries memory-derived "
+               "content by construction — that is what makes the action "
+               "undoable at all, and withholding it would leave a curator "
+               "approving a reversal they cannot see. Operator-wide for the "
+               "same reason pipeline_failure_triage is: a cycle is one "
+               "night's consolidation across the deployment, and a digest "
+               "that hid another project's actions would misreport what the "
+               "pass did. Each action still carries its own project label. "
+               "Note the journal is append-only, so a preview here outlives "
+               "deletion of its memory — the retention question that spans "
+               "events and chat citations is escalated and unresolved, not "
+               "this surface's to settle.",
+    ),
+    ContentSurface(
         key="review_queue_facts",
         kind=_S,
         front_doors=("GET /api/v1/review-queue/facts",),
@@ -392,6 +414,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "DELETE /api/v1/pipeline-failures/{failure_id}",
     "POST /api/v1/pipeline-failures/retry-all",
     "POST /api/v1/pipeline-failures/{failure_id}/retry",
+    # Aggregate counts per cycle: timestamps, action tallies and project
+    # names, never a payload's before/after. The cycle detail that does carry
+    # content is classified above.
+    "GET /api/v1/dream-digest/cycles",
+    # Reversal verbs. The response names the fields each inverse restored and
+    # the state it deliberately did not, never a field's value.
+    "POST /api/v1/dream-digest/actions/{event_id}/undo",
+    "POST /api/v1/dream-digest/cycles/{cycle_id}/undo",
     # An adjudication verb, not a read: it withdraws belief and journals the
     # human's verdict, and returns 204, so no memory-derived row crosses it.
     "POST /api/v1/review-queue/facts/{fact_id}/reject",

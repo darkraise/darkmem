@@ -1041,7 +1041,22 @@ _RAW_MEMORY_UPDATE = re.compile(r"UPDATE\s+memories", re.IGNORECASE)
 _ALLOWED_POINTER_WRITERS = {
     "app/services/supersede.py",
     "app/services/supersession.py",
+    # T2.13's undo door. **Not a third supersede door**, and the narrower claim
+    # is enforced below rather than taken on trust: this module never writes
+    # `'superseded'`, it only restores the status a `consolidated` event
+    # journalled as the memory's state *before* the pass touched it, and it
+    # journals the reversal with a readback that makes an unjournalled undo
+    # unreachable. Doc 08 §2.1 already names undo alongside demote-first as a
+    # pointer-affecting path ("undo (§7) and demote-first (§2.2) can never
+    # leave a stored edge disagreeing with the pointer"), and doc 08 §7
+    # requires the write to exist; the two-module allowlist predates the path.
+    # The atomic-set contract this scan protects is unchanged — the restore
+    # moves `status` and `superseded_by` in one statement under the one CHECK.
+    "app/services/dream_undo.py",
 }
+
+# The narrowing that keeps the entry above from being a blank cheque.
+_UNDO_MODULE = "app/services/dream_undo.py"
 
 # Claim B: only the pipeline names the write-time detector.
 _ALLOWED_DETECTOR_REFERENCES = {"app/services/pipeline.py"}
@@ -1227,6 +1242,60 @@ def test_only_the_two_writers_touch_the_supersession_pointer():
         "supersedes through the primitive, so a hand-rolled flip is a second "
         "door past its guards and its journal."
     )
+
+
+def test_the_undo_door_never_writes_a_supersession():
+    """The undo module is allowlisted for the pointer, and this is the reason.
+
+    A third module writing `superseded_by` is only acceptable while it can
+    exclusively *un*-supersede. It writes the status as a bound parameter taken
+    from a journalled before-value and validated against the enum, so the
+    module contains no `'superseded'` literal at all — the moment one appears,
+    the allowlist entry has outgrown its justification and this fails.
+    """
+    tree = ast.parse((BACKEND / _UNDO_MODULE).read_text())
+
+    # The one legitimate mention: the enum allowlist the journalled status is
+    # validated against before it is restored.
+    validator = next(
+        (
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "_LEGAL_STATUSES"
+                for t in node.targets
+            )
+        ),
+        None,
+    )
+    assert validator is not None, (
+        f"{_UNDO_MODULE} no longer validates the journalled status against the "
+        "enum before restoring it"
+    )
+    exempt = {id(n) for n in ast.walk(validator)}
+
+    stray = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value == "superseded"
+        and id(node) not in exempt
+    ]
+    assert not stray, (
+        f"{_UNDO_MODULE} names the superseded status outside its validator at "
+        f"line(s) {stray}; it is allowlisted for the pointer only because it "
+        "restores a journalled prior status and can never create one."
+    )
+
+    # And the status it does write is a bound parameter, never a literal.
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _RAW_MEMORY_UPDATE.search(node.value)
+        ):
+            assert not re.search(r"status\s*=\s*'", node.value), (
+                f"{_UNDO_MODULE} writes a literal status at line {node.lineno}"
+            )
 
 
 def test_only_the_pipeline_names_the_write_time_detector():

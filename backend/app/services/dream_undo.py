@@ -165,7 +165,7 @@ class UndoneAction:
     action: str
     object_id: str
     restored: tuple[str, ...]
-    excluded: tuple[str, ...]
+    not_restored: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -604,7 +604,7 @@ async def _invert_subsume(
         action=action.action,
         object_id=action.object_id,
         restored=("status", "superseded_by"),
-        excluded=("updated_at", "events", "metadata.dream.undone_subsume"),
+        not_restored=("updated_at", "events", "metadata.dream.undone_subsume"),
     )
 
 
@@ -617,7 +617,7 @@ async def _invert_associate(
 ) -> UndoneAction:
     source, target, rel_type = edge_triple(action)
     prior = action.before.get("edge")
-    excluded: list[str] = ["events"]
+    not_restored: list[str] = ["events"]
 
     if isinstance(prior, dict):
         # The block existed before this action overwrote it, whatever `created`
@@ -636,7 +636,7 @@ async def _invert_associate(
             action=action.action,
             object_id=action.object_id,
             restored=("edge",),
-            excluded=tuple(excluded),
+            not_restored=tuple(not_restored),
         )
 
     exclusive = await edges.clear_pass_block(
@@ -657,13 +657,13 @@ async def _invert_associate(
         # Prior state was "no row", but a sibling pass has claimed it since.
         # Restoring "no row" would destroy another actor's edge, so the row
         # survives carrying only what is not mine, and the result says so.
-        excluded.append("memory_relations_row")
+        not_restored.append("memory_relations_row")
     return UndoneAction(
         event_id=action.event_id,
         action=action.action,
         object_id=action.object_id,
         restored=("edge",),
-        excluded=tuple(excluded),
+        not_restored=tuple(not_restored),
     )
 
 
@@ -698,17 +698,17 @@ async def _invert_refine(
         )
         restored.append("tags")
 
-    excluded = ["events", "metadata.dream.refine"]
+    not_restored = ["events", "metadata.dream.refine"]
     if "summary" in restored:
-        excluded.append("updated_at")
+        not_restored.append("updated_at")
     if "tags" in restored:
-        excluded.append("orphan_tags")
+        not_restored.append("orphan_tags")
     return UndoneAction(
         event_id=action.event_id,
         action=action.action,
         object_id=action.object_id,
         restored=tuple(restored),
-        excluded=tuple(excluded),
+        not_restored=tuple(not_restored),
     )
 
 
@@ -839,7 +839,7 @@ async def _journal_undo(
             "before": action.after,
             "after": action.before,
             "restored": list(restored.restored),
-            "excluded": list(restored.excluded),
+            "not_restored": list(restored.not_restored),
         },
     )
 
