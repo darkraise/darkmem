@@ -120,10 +120,15 @@ def label_communities(
     ranked = [
         rank_dominant_entities(entity_index, members) for members in communities
     ]
+    # How many entities each label actually names. A widened label must carry
+    # the widening entity in its own provenance too, or `dominant_entities`
+    # silently omits the one entity that distinguishes the community.
+    named = [LABEL_ENTITY_COUNT] * len(communities)
     labels = [_join(entities[:LABEL_ENTITY_COUNT]) for entities in ranked]
 
     for group in _collision_groups(labels):
         for index in group:
+            named[index] = LABEL_WIDENED_ENTITY_COUNT
             labels[index] = _join(ranked[index][:LABEL_WIDENED_ENTITY_COUNT])
 
     for group in _collision_groups(labels):
@@ -134,7 +139,7 @@ def label_communities(
     return [
         CommunityLabel(
             label=labels[index],
-            dominant_entities=tuple(ranked[index][:LABEL_ENTITY_COUNT]),
+            dominant_entities=tuple(ranked[index][:named[index]]),
         )
         for index in range(len(communities))
     ]
