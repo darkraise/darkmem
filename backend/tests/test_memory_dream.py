@@ -985,3 +985,214 @@ def _true_order(left, right):
     ):
         return left, right
     return right, left
+
+
+# ── Step 5: the near-duplicate arm and the hygiene marker ────────────────
+
+
+async def edge_row(factory, source, target, rel_type="RELATES_TO") -> dict | None:
+    async with factory() as session:
+        return await edges.get_edge(
+            session,
+            source_memory_id=source,
+            target_memory_id=target,
+            rel_type=rel_type,
+        )
+
+
+async def edge_count(factory, project) -> int:
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT count(*) FROM memory_relations "
+                "WHERE project = CAST(:p AS text)"
+            ),
+            {"p": project},
+        )
+        return result.scalar_one()
+
+
+class TestAssociateArm:
+    async def test_associate_fires(self, committing, project, run_cycle):
+        """T-A2."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.associated == 1
+        assert await edge_count(committing, project) == 1
+        row = await edge_row(committing, newer, older)
+        block = edges.pass_block_of(row, "near_duplicate")
+        assert block["kind"] == "duplicate_candidate"
+        assert block["hygiene_state"] == "open"
+
+        events = await consolidated_events(committing, project, newer)
+        assert len(events) == 1
+        payload = events[0]["payload"]
+        assert payload["action"] == "associate"
+        assert payload["created"] is True
+        assert payload["before"] == {"edge": None}
+        assert payload["after"]["edge"]["rel_type"] == "RELATES_TO"
+
+    async def test_associate_is_idempotent_and_silent(
+        self, committing, project, run_cycle
+    ):
+        """T-A2b. A writer that re-upserted would accrete one `associate` event
+        per cycle forever into an append-only journal."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+
+        first = await run_cycle(committing, stub, refine_batch=0)
+        await _rewind_cursor(committing)
+        second = await run_cycle(committing, stub, refine_batch=0)
+
+        assert first.associated == 1
+        assert second.associated == 0
+        assert second.associate_unchanged == 1
+        assert await edge_count(committing, project) == 1
+        assert len(await consolidated_events(committing, project, newer)) == 1
+
+    async def test_triage_survives_re_derivation(
+        self, committing, project, run_cycle
+    ):
+        """T-A2c. A whole-object `SET properties` upsert resets this to "open",
+        silently refilling the hygiene queue with items already actioned. This
+        is the only test that catches it."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+        await run_cycle(committing, stub, refine_batch=0)
+
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memory_relations SET properties = jsonb_set("
+                    "  properties, '{dream,near_duplicate,hygiene_state}', "
+                    "  CAST('\"dismissed\"' AS jsonb), true) "
+                    "WHERE project = CAST(:p AS text)"
+                ),
+                {"p": project},
+            )
+            await session.commit()
+        await _bump_score(committing, project)
+        await _rewind_cursor(committing)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        block = edges.pass_block_of(
+            await edge_row(committing, newer, older), "near_duplicate"
+        )
+        assert block["hygiene_state"] == "dismissed"
+
+    async def test_a_foreign_passs_block_survives(
+        self, committing, project, run_cycle
+    ):
+        """T-A2d. A whole-object `SET properties` erases both a sibling pass's
+        block and an unrelated top-level key."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+        await run_cycle(committing, stub, refine_batch=0)
+
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memory_relations SET properties = "
+                    "  jsonb_set(properties, '{dream,proximity}', "
+                    "            CAST(:prox AS jsonb), true) "
+                    "  || CAST(:other AS jsonb) "
+                    "WHERE project = CAST(:p AS text)"
+                ),
+                {
+                    "prox": json.dumps({"weight": 3}),
+                    "other": json.dumps({"other": {"owned_by": "t2.16"}}),
+                    "p": project,
+                },
+            )
+            await session.commit()
+        await _bump_score(committing, project)
+        await _rewind_cursor(committing)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        row = await edge_row(committing, newer, older)
+        assert row["properties"]["dream"]["proximity"] == {"weight": 3}
+        assert row["properties"]["other"] == {"owned_by": "t2.16"}
+        assert edges.pass_block_of(row, "near_duplicate")["kind"] == (
+            "duplicate_candidate"
+        )
+
+    @pytest.mark.parametrize(
+        "existing",
+        [None, {}, {"note": "x"}],
+        ids=["null", "empty", "no-dream-key"],
+    )
+    async def test_a_dream_less_existing_edge_still_gets_its_block(
+        self, committing, project, run_cycle, existing
+    ):
+        """T-A2e, and the only arm that catches the collapsed `jsonb_set`.
+
+        T-A2d seeds a `dream` key, so it passes under the single-path form. The
+        three shapes here do not: the write is silently dropped, `created=false`
+        is still returned, the journalled `after` names a block the row does not
+        have, and the identical-pass skip can then never fire — so every cycle
+        re-upserts and re-journals the pair forever."""
+        older, newer, _, _ = await build_pair(committing, project)
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO memory_relations "
+                    "(id, source_memory_id, target_memory_id, rel_type, "
+                    " project, properties) "
+                    "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), "
+                    "        CAST(:t AS uuid), 'RELATES_TO', "
+                    "        CAST(:p AS text), CAST(:props AS jsonb))"
+                ),
+                {
+                    "id": str(new_id()),
+                    "s": str(newer),
+                    "t": str(older),
+                    "p": project,
+                    "props": None if existing is None else json.dumps(existing),
+                },
+            )
+            await session.commit()
+        stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        row = await edge_row(committing, newer, older)
+        block = edges.pass_block_of(row, "near_duplicate")
+        assert block is not None
+        assert block["kind"] == "duplicate_candidate"
+        if existing:
+            assert row["properties"]["note"] == "x"
+
+        await _rewind_cursor(committing)
+        second = await run_cycle(committing, stub, refine_batch=0)
+        assert second.associate_unchanged == 1
+
+
+async def _rewind_cursor(factory) -> None:
+    """Send the rotating cursor back to the start so a second cycle in one test
+    visits the same slice."""
+    async with factory() as session:
+        await session.execute(
+            text("DELETE FROM config WHERE key = 'memory_dream_state'")
+        )
+        await session.commit()
+
+
+async def _bump_score(factory, project) -> None:
+    """Move the stored score out of its bucket so the identical-pass skip does
+    not fire and the merge itself is what the test observes."""
+    async with factory() as session:
+        await session.execute(
+            text(
+                "UPDATE memory_relations SET properties = jsonb_set("
+                "  properties, '{dream,near_duplicate,score}', "
+                "  CAST('0.5' AS jsonb), true) "
+                "WHERE project = CAST(:p AS text)"
+            ),
+            {"p": project},
+        )
+        await session.commit()

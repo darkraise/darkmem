@@ -59,13 +59,18 @@ import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
+from app.repositories.memory_relations import (
+    get_edge,
+    pass_block_of,
+    upsert_edge,
+)
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
@@ -713,6 +718,16 @@ class SubsumeAction:
         return self.pair.older.memory_id
 
 
+@dataclass(frozen=True)
+class AssociateAction:
+    pair: PairCandidate
+    verdict: PairVerdict
+
+    @property
+    def memory_id(self) -> str:
+        return self.pair.newer.memory_id
+
+
 async def _set_local_lock_timeout(session: AsyncSession) -> None:
     await session.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}ms'"))
 
@@ -826,6 +841,131 @@ async def apply_subsume(
     return True
 
 
+# A score bucket rather than the raw float: two cycles that scored the same pair
+# 0.9412 and 0.9413 have not learned anything a hygiene queue can act on, and
+# treating that as a change would re-journal the pair every night forever.
+_SCORE_BUCKET = 100
+
+
+def _score_bucket(score: float) -> int:
+    return int(round(score * _SCORE_BUCKET))
+
+
+def near_duplicate_block(
+    *, score: float, verdict: str, existing: dict | None, detected_at: str
+) -> dict:
+    """This pass's block, composed from the edge as it was read.
+
+    ``hygiene_state`` is carried forward verbatim whenever the block already
+    exists and only defaulted to ``open`` when it does not: it belongs to the
+    triage queue, and re-deriving a still-similar pair must never roll a
+    human's confirm or dismiss back to the derived default.
+    """
+    state = (existing or {}).get("hygiene_state") or HYGIENE_STATE_OPEN
+    return {
+        "kind": "duplicate_candidate",
+        "hygiene_state": state,
+        "score": score,
+        "verdict": verdict,
+        "detected_at": detected_at,
+    }
+
+
+def _edge_is_unchanged(existing: dict | None, block: dict) -> bool:
+    if not existing:
+        return False
+    return (
+        existing.get("kind") == block["kind"]
+        and existing.get("verdict") == block["verdict"]
+        and _score_bucket(float(existing.get("score") or 0.0))
+        == _score_bucket(float(block["score"]))
+    )
+
+
+async def apply_associate(
+    session: AsyncSession,
+    action: AssociateAction,
+    *,
+    cycle_id: str,
+    outcome: DreamOutcome,
+) -> bool:
+    """Mark a near-duplicate pair with one associative edge.
+
+    Writes nothing and journals nothing when its own block is already there
+    unchanged. Without that skip a stable pair would accrete one `associate`
+    event per cycle, forever, into an append-only journal, for a row that never
+    moved.
+    """
+    await _set_local_lock_timeout(session)
+    older, newer = action.pair.older, action.pair.newer
+
+    locked = await _locked(session, older.memory_id)
+    successor = await _locked(session, newer.memory_id)
+    if locked is None or successor is None:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(locked["content"]) != older.content_sha:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(successor["content"]) != newer.content_sha:
+        outcome.stale_skipped += 1
+        return False
+
+    rel_type = "ELABORATES" if action.verdict.verdict == "subsumes" else "RELATES_TO"
+    existing_edge = await get_edge(
+        session,
+        source_memory_id=newer.memory_id,
+        target_memory_id=older.memory_id,
+        rel_type=rel_type,
+    )
+    existing_block = pass_block_of(existing_edge, NEAR_DUPLICATE_PASS)
+    block = near_duplicate_block(
+        score=action.pair.score,
+        verdict=action.verdict.verdict,
+        existing=existing_block,
+        detected_at=datetime.now(timezone.utc).isoformat(),
+    )
+    if _edge_is_unchanged(existing_block, block):
+        outcome.associate_unchanged += 1
+        return False
+
+    write = await upsert_edge(
+        session,
+        source_memory_id=newer.memory_id,
+        target_memory_id=older.memory_id,
+        rel_type=rel_type,
+        project=newer.project,
+        pass_key=NEAR_DUPLICATE_PASS,
+        block=block,
+    )
+    await _journal(
+        session,
+        memory_id=newer.memory_id,
+        project=newer.project,
+        payload={
+            "action": ACTION_ASSOCIATE,
+            "before": {"edge": existing_block},
+            "after": {
+                "edge": {
+                    "source": newer.memory_id,
+                    "target": older.memory_id,
+                    "rel_type": rel_type,
+                    "properties": {NEAR_DUPLICATE_PASS: block},
+                }
+            },
+            "created": write.created,
+            "pair": {"older": older.memory_id, "newer": newer.memory_id},
+            "detector": DETECTOR,
+            "verdict": action.verdict.verdict,
+            "score": action.pair.score,
+            "cycle_id": cycle_id,
+        },
+    )
+    outcome.associated += 1
+    return True
+
+
+
 # ── the run ──────────────────────────────────────────────────────────────
 
 
@@ -864,6 +1004,8 @@ async def _judge_pairs(
         outcome.judged += 1
         if verdict.verdict == "subsumes":
             actions.append(SubsumeAction(pair=pair, verdict=verdict))
+        elif verdict.verdict == "duplicate":
+            actions.append(AssociateAction(pair=pair, verdict=verdict))
     return actions
 
 
@@ -875,6 +1017,10 @@ async def _apply(
         async with session.begin_nested():
             if isinstance(action, SubsumeAction):
                 await apply_subsume(
+                    session, action, cycle_id=cycle_id, outcome=outcome
+                )
+            elif isinstance(action, AssociateAction):
+                await apply_associate(
                     session, action, cycle_id=cycle_id, outcome=outcome
                 )
     except Exception:
