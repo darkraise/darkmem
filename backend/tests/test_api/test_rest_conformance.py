@@ -138,6 +138,13 @@ EXPECTED_STATUS = {
     # correct today; DELETE-as-cancel is the thing left for a coordinated
     # client update, not the status code.
     ("DELETE", "/api/v1/repos/{repo_id}/tasks/{task_id}"): 200,
+    # T2.13. Both undo doors are 200-with-a-body rather than 204: the digest
+    # re-renders from the response, and a 204 would leave the UI nothing to
+    # mark the undone actions with.
+    ("GET", "/api/v1/dream-digest/cycles"): 200,
+    ("GET", "/api/v1/dream-digest/cycles/{cycle_id}"): 200,
+    ("POST", "/api/v1/dream-digest/actions/{event_id}/undo"): 200,
+    ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,

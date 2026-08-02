@@ -408,6 +408,31 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="dream_digest.undo",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/dream-digest/cycles"),
+            ("GET", f"{V1}/dream-digest/cycles/{{cycle_id}}"),
+            ("POST", f"{V1}/dream-digest/actions/{{event_id}}/undo"),
+            ("POST", f"{V1}/dream-digest/cycles/{{cycle_id}}/undo"),
+        ),
+        reason=(
+            "Curation, not an agent capability, and the same "
+            "conflict-of-interest reasoning doc 12 section 1 applies to the "
+            "review queue applies here more sharply. Doc 08 section 7 makes "
+            "undo an authenticated human act over what consolidation did "
+            "overnight; an agent reversing the consolidation of its own "
+            "memories is the agent editing the record it is measured "
+            "against. The read half is the same human-observability shape as "
+            "pipeline_failures.triage -- a digest a person reviews -- and an "
+            "agent has no use for another actor's nightly cycle report. "
+            "Invariant 15 is the second, independent reason: the dream job "
+            "family may not be reachable from capture or retrieval, and an "
+            "MCP twin would put a door onto that stream inside the agent "
+            "surface."
+        ),
+    ),
+    Surface(
         name="review_queue.triage",
         status=REST_ONLY,
         rest=(

@@ -179,6 +179,139 @@ async def upsert_edge(
     return EdgeWrite(created=bool(row["created"]), before=before)
 
 
+# The inverse of the upsert's pass-keyed write, and it uses `#-` rather than a
+# `jsonb_set` to JSON `null` for a reason measured on this deployment's
+# PostgreSQL 17.10: `jsonb_set(…, '{dream,near_duplicate}', 'null')` leaves the
+# key *present, holding null*, which `pass_block_of` reads as absent while the
+# row carries a value the prior state never had. `#-` removes the key.
+#
+# `exclusive` reports whether the row is now this pass's and nothing else's —
+# no sibling block under `dream` and no other top-level key — which is the only
+# condition under which deleting the row cannot destroy another actor's edge.
+# Computed in the same statement so it describes the post-removal row rather
+# than a re-read that a concurrent writer could have moved.
+_CLEAR_PASS_BLOCK = text("""
+    UPDATE memory_relations
+       SET properties = COALESCE(properties, CAST('{}' AS jsonb))
+                        #- CAST(:block_path AS text[])
+     WHERE source_memory_id = CAST(:source AS uuid)
+       AND target_memory_id = CAST(:target AS uuid)
+       AND rel_type = CAST(:rel_type AS text)
+    RETURNING properties,
+              (
+                  (properties - CAST(:dream_key AS text))
+                      = CAST('{}' AS jsonb)
+                  AND COALESCE(
+                          properties -> CAST(:dream_key AS text),
+                          CAST('{}' AS jsonb)
+                      ) = CAST('{}' AS jsonb)
+              ) AS exclusive
+""")
+
+# UPDATE-only, and nested for the same reason the upsert is: `create_if_missing`
+# creates only the *final* path element, so a row whose `properties` lost its
+# `dream` key would silently swallow a single-call restore.
+_WRITE_PASS_BLOCK = text("""
+    UPDATE memory_relations
+       SET properties = jsonb_set(
+               jsonb_set(
+                   COALESCE(properties, CAST('{}' AS jsonb)),
+                   '{dream}',
+                   COALESCE(properties -> 'dream', CAST('{}' AS jsonb)),
+                   true
+               ),
+               CAST(:block_path AS text[]),
+               CAST(:block AS jsonb),
+               true
+           )
+     WHERE source_memory_id = CAST(:source AS uuid)
+       AND target_memory_id = CAST(:target AS uuid)
+       AND rel_type = CAST(:rel_type AS text)
+    RETURNING CAST(id AS text) AS id
+""")
+
+_DELETE_EDGE = text("""
+    DELETE FROM memory_relations
+     WHERE source_memory_id = CAST(:source AS uuid)
+       AND target_memory_id = CAST(:target AS uuid)
+       AND rel_type = CAST(:rel_type AS text)
+    RETURNING CAST(id AS text) AS id
+""")
+
+
+def _edge_params(source_memory_id, target_memory_id, rel_type: str) -> dict:
+    return {
+        "source": str(source_memory_id),
+        "target": str(target_memory_id),
+        "rel_type": _resolve_rel_type(rel_type),
+    }
+
+
+async def write_pass_block(
+    session: AsyncSession,
+    *,
+    source_memory_id: UUID | str,
+    target_memory_id: UUID | str,
+    rel_type: str,
+    pass_key: str,
+    block: dict,
+) -> bool:
+    """Restore one pass's block on an existing edge, touching nothing else.
+
+    Never inserts: an undo restoring a block onto a row that has since gone is
+    not a restore, and the caller's compare-and-swap has already refused that
+    case by the time this runs.
+    """
+    result = await session.execute(
+        _WRITE_PASS_BLOCK,
+        {
+            **_edge_params(source_memory_id, target_memory_id, rel_type),
+            "block_path": [DREAM_PROPERTIES_KEY, pass_key],
+            "block": json.dumps(block),
+        },
+    )
+    return result.mappings().first() is not None
+
+
+async def clear_pass_block(
+    session: AsyncSession,
+    *,
+    source_memory_id: UUID | str,
+    target_memory_id: UUID | str,
+    rel_type: str,
+    pass_key: str,
+) -> bool | None:
+    """Remove one pass's block; report whether the row is now exclusively empty.
+
+    ``None`` means no such row. ``True`` means nothing but this pass's block was
+    ever on it, so the caller may delete it; ``False`` means a sibling pass or
+    another actor still owns state there and the row must survive.
+    """
+    result = await session.execute(
+        _CLEAR_PASS_BLOCK,
+        {
+            **_edge_params(source_memory_id, target_memory_id, rel_type),
+            "block_path": [DREAM_PROPERTIES_KEY, pass_key],
+            "dream_key": DREAM_PROPERTIES_KEY,
+        },
+    )
+    row = result.mappings().first()
+    return None if row is None else bool(row["exclusive"])
+
+
+async def delete_edge(
+    session: AsyncSession,
+    *,
+    source_memory_id: UUID | str,
+    target_memory_id: UUID | str,
+    rel_type: str,
+) -> bool:
+    result = await session.execute(
+        _DELETE_EDGE, _edge_params(source_memory_id, target_memory_id, rel_type)
+    )
+    return result.mappings().first() is not None
+
+
 def pass_block_of(edge: dict | None, pass_key: str) -> dict | None:
     """One pass's block out of an edge row read by :func:`get_edge`."""
     if not edge:
