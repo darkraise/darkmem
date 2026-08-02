@@ -135,6 +135,16 @@ _LIST_ALL = text(_LIST_WITH_MEMBERS.replace("--EXTRA--", ""))
 _LIST_BY_LABEL = text(
     _LIST_WITH_MEMBERS.replace("--EXTRA--", "AND c.label = CAST(:label AS text)")
 )
+# "Which topics is this memory in" (doc 09 §3.1) — an index lookup on
+# `ix_memory_community_members_memory (memory_id)`, not a scan of every
+# community's membership.
+_LIST_FOR_MEMORY = text(
+    _LIST_WITH_MEMBERS.replace(
+        "--EXTRA--",
+        "AND c.id IN (SELECT community_id FROM memory_community_members "
+        "WHERE memory_id = CAST(:memory_id AS uuid))",
+    )
+)
 
 # `properties_patch` merges over the existing jsonb (T2.19's report-status
 # markers, e.g. `report_error`) rather than replacing it wholesale, so a
@@ -247,6 +257,18 @@ async def list_with_members(
     session: AsyncSession, project: str
 ) -> list[CommunityRow]:
     result = await session.execute(_LIST_ALL, {"project": project})
+    return [_to_row(m) for m in result.mappings()]
+
+
+async def list_for_memory(
+    session: AsyncSession, project: str, memory_id: UUID
+) -> list[CommunityRow]:
+    """Every community `memory_id` currently belongs to, full membership
+    included — the other direction of `list_with_members`, for a browsing
+    surface that answers "which topics is this memory in" (doc 09 §3.1)."""
+    result = await session.execute(
+        _LIST_FOR_MEMORY, {"project": project, "memory_id": str(memory_id)}
+    )
     return [_to_row(m) for m in result.mappings()]
 
 
