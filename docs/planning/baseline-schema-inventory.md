@@ -161,8 +161,8 @@ they are in §8, with their own vocabulary.
 | `memory_relations` | 04 §8.2 | — | `target-new` | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
 | `knowledge_triples` | 04 §8.3 | T0.12b | `target-new` | Exists at HEAD but `target-new` by doc 04 §8.3 — "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
 | `fact_sources` | 04 §8.3 | T0.12b | `target-new` | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
-| `memory_communities` | 04 §8.4 | — | `target-new` | Leiden communities per project; ids churn every run (F-02). |
-| `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)` (F-02). |
+| `memory_communities` | 04 §8.4 | — | `target-new` | Leiden communities per project; ids churn every run (F-02). Carries `UNIQUE (id, project)` — trivially satisfiable, and there solely so the members table can declare a composite endpoint FK, exactly as `memories_id_project_key` does for `memory_relations` (T2.18). |
+| `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)`, plus `project TEXT NOT NULL` and two composite endpoint FKs (F-02, T2.18). |
 | `documents` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `blocks` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `memory_buffer` | 04 §8.6 | — | `target-new` | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
@@ -475,7 +475,7 @@ behaviour change, not a tidy-up.
 | `memory_relations` uniqueness | UNIQUE | `memory_relations` | `UNIQUE (source_memory_id, target_memory_id, rel_type)` | `target-new` | 04 §8.2, §10 | — (F-02) |
 | `memory_relations` endpoint FKs | FK | `memory_relations` | `(source_memory_id, project) → memories(id, project) ON DELETE CASCADE` and the same for `target_memory_id` — **composite**, which is why the `UNIQUE (id, project)` support above exists | `target-new` | 04 §8.2 | — (F-02) |
 | `memory_buffer` status CHECK | CHECK | `memory_buffer` | `CHECK (status IN ('pending','claimed','done','error'))` | `target-new` | 04 §8.6 | — (F-02) |
-| `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `community_id → memory_communities ON DELETE CASCADE`; `memory_id → memories ON DELETE CASCADE` | `target-new` | 04 §8.4 | — (F-02) |
+| `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `(community_id, project) → memory_communities(id, project) ON DELETE CASCADE`; `(memory_id, project) → memories(id, project) ON DELETE CASCADE` — **both composite, and one alone is not enough**: with only the memory-side key, a row naming a project-A community, a project-B memory and project B satisfies every constraint and is still cross-project. All three columns are NOT NULL, so MATCH SIMPLE offers no null escape. No `ON UPDATE` action — a memory changing project clears its memberships first (T2.18) | `target-new` | 04 §8.4 | — (F-02) |
 | `memory_access_stats` PK + FK | PK, FK | `memory_access_stats` | `memory_id uuid PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE` | `target-new` | 04 §9 | — (F-02) |
 | `project_repositories` PK + FK | PK, FK | `project_repositories` | `PRIMARY KEY (project, repo_id)`; `repo_id → repositories(id)` | `target-new` | 04 §8.7, §10 | — (F-02) |
 | `projects` PK | PK | `projects` | `PRIMARY KEY (name)` — lazy `INSERT … ON CONFLICT (name) DO NOTHING`; **no FK enforcement yet**, every scoped table keeps its bare `project text` | `target-new` | 04 §7, §10 | T0.12b |
