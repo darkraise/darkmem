@@ -98,7 +98,6 @@ SKIPPED_LIBRARY_UNAVAILABLE = "library_unavailable"
 
 EVENT_TYPE = "consolidated"
 OBJECT_TYPE = "topic"
-EVENT_SOURCE = "topic_detection"
 
 # Keeps the placeholder registration's `batch_size` key, default and maximum
 # verbatim. `JobRegistry.set_config` merges `{**cfg.config, **partial}` and
@@ -222,7 +221,6 @@ async def _journal(session: AsyncSession, outcome: ProjectOutcome, sizes: Sequen
         object_type=OBJECT_TYPE,
         object_id=None,
         project=outcome.project,
-        source=EVENT_SOURCE,
         payload={
             "communities": [
                 {"label": label, "size": size}
