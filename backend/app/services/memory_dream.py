@@ -172,7 +172,13 @@ class DreamOutcome:
     refused_cross_project: int = 0
     refused_self_reference: int = 0
     refused_not_found: int = 0
+    # Why the *whole run* did nothing: a missing provider or an unresolvable
+    # fingerprint, both of which stop it before Phase W.
     skipped_reason: str | None = None
+    # Why the *pair arm alone* found nothing. Kept apart from `skipped_reason`
+    # so an outcome cannot claim the run was skipped while reporting the refines
+    # it went on to make: the refine arm needs no vector and runs regardless.
+    pair_arm_skipped_reason: str | None = None
     cursor_created_at: datetime | None = None
     cursor_id: str | None = None
     wrapped: bool = False
@@ -372,6 +378,10 @@ async def read_memories(
     return {row["memory_id"]: _row_to_memory(row) for row in result.mappings()}
 
 
+def _parse_vector(raw: str) -> list[float]:
+    return [float(value) for value in raw.strip("[]").split(",")]
+
+
 async def seed_vectors(
     session: AsyncSession, *, fingerprint: str, memory_ids: list[str]
 ) -> dict[str, list[float]]:
@@ -393,7 +403,7 @@ async def seed_vectors(
         {"ids": list(memory_ids)},
     )
     return {
-        row["memory_id"]: PostgresVectorRepository._parse_vector(row["embedding_text"])
+        row["memory_id"]: _parse_vector(row["embedding_text"])
         for row in result.mappings()
     }
 
@@ -686,15 +696,29 @@ ACTION_REFINE = "refine"
 # value is a fixed internal constant.
 _LOCK_TIMEOUT_MS = 5000
 
+# `tag_names` rides the locked read for the same reason `superseded_by` rides
+# the primitive's: the journalled before-state must be what was read under the
+# lock, not what Phase R saw minutes earlier. Without it a tag edit landing
+# during the model fan-out is clobbered by `set_tags` *and* unrecoverable,
+# because the journal would misstate the state an undo restores to.
 _LOCK_MEMORY = text("""
-    SELECT status::text AS status,
-           content,
-           project,
-           summary,
-           metadata,
-           CAST(superseded_by AS text) AS superseded_by
-    FROM memories
-    WHERE id = CAST(:memory_id AS uuid)
+    SELECT m.status::text AS status,
+           m.content,
+           m.project,
+           m.summary,
+           m.metadata,
+           CAST(m.superseded_by AS text) AS superseded_by,
+           COALESCE(
+               ARRAY(
+                   SELECT t.name FROM memory_tags mt
+                   JOIN tags t ON t.id = mt.tag_id
+                   WHERE mt.memory_id = m.id
+                   ORDER BY t.name
+               ),
+               CAST(ARRAY[] AS text[])
+           ) AS tag_names
+    FROM memories m
+    WHERE m.id = CAST(:memory_id AS uuid)
     FOR UPDATE
 """)
 
@@ -913,6 +937,17 @@ async def apply_associate(
     if locked is None or successor is None:
         outcome.stale_skipped += 1
         return False
+    # **Both halves must still be active, and this arm must check it itself.**
+    # The subsume arm can leave the question to the primitive, which re-reads
+    # the row under the same lock and names the refusal precisely; nothing
+    # downstream of here does that. An earlier action in this very cycle can
+    # retire the older half — pairs (A,B) subsuming and (A,C) duplicating need
+    # no concurrency at all — and writing the edge anyway files a permanently
+    # open hygiene item against a pair supersession has already resolved, which
+    # never self-corrects because a retired memory leaves the active probe.
+    if locked["status"] != "active" or successor["status"] != "active":
+        outcome.stale_skipped += 1
+        return False
     if content_sha(locked["content"]) != older.content_sha:
         outcome.stale_skipped += 1
         return False
@@ -1063,6 +1098,7 @@ async def apply_refine(
         outcome.stale_skipped += 1
         return False
 
+    locked_tags = tuple(locked["tag_names"] or ())
     before_marker = refine_marker_of(locked["metadata"])
     if before_marker and before_marker.get("content_sha") == memory.content_sha:
         outcome.stale_skipped += 1
@@ -1119,7 +1155,7 @@ async def apply_refine(
             "action": ACTION_REFINE,
             "before": {
                 "summary": locked["summary"],
-                "tags": list(memory.tags),
+                "tags": list(locked_tags),
                 "metadata_dream_refine": before_marker,
             },
             "after": {
@@ -1127,7 +1163,7 @@ async def apply_refine(
                 "tags": (
                     list(action.verdict.tags)
                     if action.verdict.tags is not None
-                    else list(memory.tags)
+                    else list(locked_tags)
                 ),
                 "metadata_dream_refine": marker,
             },
@@ -1150,7 +1186,7 @@ async def _judge_pairs(
     *,
     llm_concurrency: int,
     outcome: DreamOutcome,
-) -> list[SubsumeAction]:
+) -> list[SubsumeAction | AssociateAction]:
     """Phase C for the pair arm: no transaction is open across any of this."""
     if not pairs:
         return []
@@ -1171,7 +1207,7 @@ async def _judge_pairs(
 
     results = await asyncio.gather(*[judge(pair) for pair in pairs])
 
-    actions: list[SubsumeAction] = []
+    actions: list[SubsumeAction | AssociateAction] = []
     for pair, verdict in results:
         if verdict is None:
             outcome.judge_failed += 1
@@ -1302,7 +1338,7 @@ async def run_memory_dream(
         # re-embedded after a rotation; it is the wrong unit for "the partition
         # this job reads is empty", and only the run-level check tells them
         # apart.
-        outcome.skipped_reason = SKIPPED_NO_SEED_VECTORS
+        outcome.pair_arm_skipped_reason = SKIPPED_NO_SEED_VECTORS
         logger.warning(
             "memory dream: no seed in a slice of %d had a vector under %s",
             len(seeds), fingerprint,
@@ -1352,7 +1388,11 @@ async def run_memory_dream(
         outcome.cycle_id, outcome.seeds_visited, outcome.judged,
         outcome.subsumed, outcome.associated, outcome.associate_unchanged,
         outcome.refined, outcome.stale_skipped, outcome.failed,
-        f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason else "",
+        f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason
+        else (
+            f" (pair arm: {outcome.pair_arm_skipped_reason})"
+            if outcome.pair_arm_skipped_reason else ""
+        ),
     )
     return outcome
 
