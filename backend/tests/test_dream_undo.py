@@ -36,6 +36,7 @@ from app.services import events as events_module
 from app.services import memory_dream as dream
 from app.utils.ids import new_id
 from tests.test_dream_jobs import dream_job_implementation_modules
+from tests.test_memory_dream import StubLLM, put_vector, seed_partition
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 
@@ -904,7 +905,7 @@ class TestExclusions:
         """T-EXC3. Documentation and code drift silently; this fails the build
         when they do. The plan's D2 table is the other half."""
         assert {item.key for item in undo.EXCLUSIONS} == {
-            "E1", "E2", "E3", "E4", "E5",
+            "E1", "E2", "E3", "E4", "E5", "E6",
         }
         assert len(undo.EXCLUSIONS_BY_FIELD) == len(undo.EXCLUSIONS)
         for item in undo.EXCLUSIONS:
@@ -1444,3 +1445,317 @@ class TestUndoWindow:
             await session.commit()
         async with committing() as session:
             assert await undo.read_retention(session) == timedelta(days=3)
+
+
+# ── Step 6: the suppression tombstone ────────────────────────────────────
+
+
+async def run_one_cycle(factory, *, verdict="subsumes"):
+    stub = StubLLM(
+        pair_verdict=json.dumps({"verdict": verdict, "reason": "r"}), refine=None
+    )
+    return await dream.run_memory_dream(factory, lambda: stub, refine_batch=0)
+
+
+async def build_dreamable_pair(factory, project):
+    """Two near-identical memories with vectors, so a real cycle nominates
+    them. The whole ruling is about what the *next cycle* does, so the test
+    that pins it has to run one."""
+    async with factory() as session:
+        await seed_partition(session)
+        older = await seed_memory(
+            session, project=project, content="the api listens on port 8000",
+            created_at=NOW,
+        )
+        newer = await seed_memory(
+            session, project=project,
+            content="the api listens on port 8000 with keepalive",
+            created_at=NOW + timedelta(hours=1),
+        )
+        await put_vector(session, older, [1.0, 0.0, 0.0, 0.0])
+        await put_vector(session, newer, [1.0, 0.0, 0.0, 0.0])
+        await session.commit()
+    return older, newer
+
+
+class TestSubsumeTombstone:
+    async def test_an_undone_subsumption_is_not_re_applied(
+        self, committing, project
+    ):
+        """T-TOMB1 — the ruling's own test.
+
+        Restoring the older memory to `active` puts the pair back exactly as
+        the detector found it, and the judge is seeded on both contents in
+        fixed order: re-application is not merely likely, it is deterministic.
+        Without the read in `generate_pairs` the second cycle subsumes again
+        and the human's undo is silently reversed, every night, forever.
+        """
+        older, newer = await build_dreamable_pair(committing, project)
+        first = await run_one_cycle(committing)
+        assert first.subsumed == 1
+
+        rows = await journal_rows(committing, project)
+        event_id = int(
+            [row for row in rows if row["payload"].get("action") == "subsume"][-1][
+                "event_id"
+            ]
+        )
+        await undo_ids(committing, event_id)
+        assert (await memory_row(committing, older))["status"] == "active"
+
+        async with committing() as session:
+            await session.execute(
+                text("DELETE FROM config WHERE key = 'memory_dream_state'")
+            )
+            await session.commit()
+        second = await run_one_cycle(committing)
+
+        assert second.pairs_suppressed_by_undo == 1
+        assert second.subsumed == 0
+        assert (await memory_row(committing, older))["status"] == "active"
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [None, {}, {"x": 1}, {"dream": {"refine": {"content_sha": "abc"}}}],
+        ids=["null", "empty", "other-key", "dream-key-present"],
+    )
+    async def test_the_tombstone_lands_in_every_metadata_shape(
+        self, committing, project, metadata
+    ):
+        """T-TOMB2. Four shapes, because the trap is shape-dependent.
+
+        `create_if_missing` creates only the *final* path element, so a
+        two-level `jsonb_set` on a three-element path drops the write. The
+        fourth case is the one a reader gets wrong: it fails **even on a row
+        that already carries a `dream` key**, because `undone_subsume` beneath
+        it does not exist — so a test written only against a previously-refined
+        memory would not catch the collapse either.
+        """
+        cycle = str(new_id())
+        async with committing() as session:
+            older = await seed_memory(
+                session, project=project, content="old truth",
+                created_at=NOW, metadata=metadata,
+            )
+            newer = await seed_memory(
+                session, project=project, content="new truth",
+                created_at=NOW + timedelta(hours=1),
+            )
+            await session.commit()
+        async with committing() as session:
+            assert await dream.apply_subsume(
+                session,
+                dream.SubsumeAction(
+                    pair=dream.PairCandidate(
+                        older=memory_row_of(
+                            older, project=project, content="old truth",
+                            metadata=metadata,
+                        ),
+                        newer=memory_row_of(
+                            newer, project=project, content="new truth",
+                            created_at=NOW + timedelta(hours=1),
+                        ),
+                        score=0.97,
+                    ),
+                    verdict=dream.PairVerdict(verdict="subsumes", reason="r"),
+                ),
+                cycle_id=cycle,
+                outcome=dream.DreamOutcome(),
+            )
+            await session.commit()
+        event_id = int((await journal_rows(committing, project))[-1]["event_id"])
+
+        await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, older)
+        tombstone = journal.subsume_tombstone_of(row["metadata"], str(newer))
+        assert tombstone is not None, (
+            f"the tombstone was dropped for metadata={metadata!r}"
+        )
+        assert tombstone["content_sha"] == journal.content_sha("old truth")
+        assert tombstone["counterpart_content_sha"] == journal.content_sha(
+            "new truth"
+        )
+        # The pre-existing metadata survives beside it.
+        if metadata:
+            for key, value in metadata.items():
+                if key != "dream":
+                    assert row["metadata"][key] == value
+        if metadata and "dream" in metadata:
+            assert row["metadata"]["dream"]["refine"] == metadata["dream"]["refine"]
+
+    async def test_the_counterpart_sha_is_the_newer_memorys(
+        self, committing, project
+    ):
+        """T-TOMB6. Writing the older's sha into both fields would make T-TOMB4
+        pass for the older-side edit and silently stop the newer-side edit from
+        ever lapsing the tombstone, so the two tests together pin both the
+        field's source and its purpose."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle,
+        )
+        await undo_ids(committing, event_id)
+        tombstone = journal.subsume_tombstone_of(
+            (await memory_row(committing, older))["metadata"], str(newer)
+        )
+        assert tombstone["content_sha"] != tombstone["counterpart_content_sha"]
+        assert tombstone["counterpart_content_sha"] == journal.content_sha(
+            "new truth"
+        )
+
+    async def test_a_failed_restore_leaves_no_tombstone(self, committing, project):
+        """T-TOMB3. The tombstone rides the same statement as the status
+        restore, so it can never record an undo that did not land. Provoked by
+        making that one statement fail on the FK."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle,
+        )
+        async with committing() as session:
+            action = await undo.resolve(
+                session, [event_id],
+                now=datetime.now(timezone.utc),
+                retention=timedelta(days=undo.DEFAULT_RETENTION_DAYS),
+            )
+            # A superseded_by pointing at a memory that does not exist: the FK
+            # rejects the one statement, so neither half of it lands.
+            action[0].payload["before"]["superseded_by"] = str(new_id())
+            live = await undo._read_live(
+                session, undo.lock_plan(action), lock=True
+            )
+            with pytest.raises(IntegrityError):
+                await undo._invert_subsume(
+                    session, action[0], live[undo.live_key(action[0])],
+                    undo_batch_id=str(new_id()),
+                )
+            await session.rollback()
+
+        row = await memory_row(committing, older)
+        assert row["status"] == "superseded"
+        assert journal.subsume_tombstone_of(row["metadata"], str(newer)) is None
+
+    async def test_editing_either_content_lapses_the_tombstone(
+        self, committing, project
+    ):
+        """T-TOMB4. The human's judgement was about these two texts; once
+        either moves the judgement is stale and dreaming may re-ask. Keying on
+        the older's sha alone would leave a newer-side edit suppressed forever.
+        """
+        older, newer = await build_dreamable_pair(committing, project)
+        await run_one_cycle(committing)
+        rows = await journal_rows(committing, project)
+        event_id = int(
+            [row for row in rows if row["payload"].get("action") == "subsume"][-1][
+                "event_id"
+            ]
+        )
+        await undo_ids(committing, event_id)
+
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET content = :content "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(newer), "content": "the api now listens on port 9000"},
+            )
+            await session.execute(
+                text("DELETE FROM config WHERE key = 'memory_dream_state'")
+            )
+            await session.commit()
+
+        second = await run_one_cycle(committing)
+        assert second.pairs_suppressed_by_undo == 0
+        assert second.subsumed == 1
+
+    async def test_the_tombstone_never_reaches_the_lifecycle(
+        self, committing, project
+    ):
+        """T-TOMB5 — the Tier-2/Tier-3 line, asserted rather than argued.
+
+        A nomination filter changes which pairs the nightly pass proposes. A
+        lifecycle mechanism would change what makes a supersession fire. Wiring
+        the read into `supersede()` crosses that line, and this test is what
+        makes the crossing audible.
+        """
+        from app.services.supersede import supersede
+
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle,
+        )
+        await undo_ids(committing, event_id)
+        assert journal.subsume_tombstone_of(
+            (await memory_row(committing, older))["metadata"], str(newer)
+        ) is not None
+
+        async with committing() as session:
+            result = await supersede(
+                session, memory_id=str(older), superseded_by=str(newer),
+                reason="a_direct_caller",
+            )
+            await session.commit()
+
+        assert result.applied, (
+            "the primitive consulted the tombstone; that is a lifecycle "
+            "change, which is Tier 3 and not this task's to make"
+        )
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+    async def test_a_metadata_patch_clears_both_dream_markers(
+        self, committing, project, client, auth_headers, session
+    ):
+        """T-TOMB7 — the blunter lapse path, **recorded rather than defended
+        against**.
+
+        `MemoryUpdate.metadata` is wire-editable (the door is a PUT, not the
+        PATCH the plan named) and the repository replaces
+        `metadata_` wholesale rather than merging, so one PATCH clears every
+        subsystem's marker beneath `dream` at once. Both current cases fail
+        open — a cleared tombstone re-proposes the pair, a cleared refine
+        marker re-refines — so this is a bound to know, not a bug to route
+        around from this lane. Asserting the loss is what makes the seam a test
+        the third marker's author meets rather than a surprise.
+        """
+        memory_id = new_id()
+        await session.execute(
+            _INSERT_MEMORY,
+            {
+                "id": str(memory_id),
+                "content": "a memory carrying two dream markers",
+                "project": project,
+                "status": "active",
+                "created_at": NOW,
+                "summary": None,
+                "metadata": json.dumps(
+                    {
+                        "dream": {
+                            "refine": {"content_sha": "abc"},
+                            "undone_subsume": {"some-counterpart": {"at": "now"}},
+                        },
+                        "kept": 1,
+                    }
+                ),
+            },
+        )
+        await session.flush()
+
+        response = await client.put(
+            f"/api/v1/memories/{memory_id}",
+            json={"metadata": {"kept": 2}},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+
+        stored = (
+            await session.execute(
+                text(
+                    "SELECT metadata FROM memories WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(memory_id)},
+            )
+        ).scalar_one()
+        assert stored == {"kept": 2}
+        assert journal.refine_marker_of(stored) is None
+        assert journal.subsume_tombstone_of(stored, "some-counterpart") is None

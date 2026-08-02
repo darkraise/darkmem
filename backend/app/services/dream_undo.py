@@ -39,6 +39,7 @@ triage with it. Widening a safety guard this way can only ever decline to act.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -132,6 +133,14 @@ EXCLUSIONS: tuple[Exclusion, ...] = (
     Exclusion(
         "E5", "memory_relations_row",
         frozenset({journal.ACTION_ASSOCIATE}), BY_DESIGN,
+    ),
+    # The one exclusion T2.13 introduces rather than inherits: the inverse
+    # *adds* the suppression tombstone, which was not in the prior state. Named
+    # loudly so a reader who finds an unexplained metadata key on a restored
+    # memory meets it here first.
+    Exclusion(
+        "E6", "metadata.dream.undone_subsume",
+        frozenset({journal.ACTION_SUBSUME}), BY_DESIGN,
     ),
 )
 
@@ -287,16 +296,50 @@ _MEMORY_STATE_SQL = """
 _LOCK_MEMORY = text(f"{_MEMORY_STATE_SQL}    FOR UPDATE")
 _READ_MEMORY = text(_MEMORY_STATE_SQL)
 
+_READ_CONTENT = text(
+    "SELECT content FROM memories WHERE id = CAST(:memory_id AS uuid)"
+)
+
 _LOCK_EDGE = text("""
     SELECT 1 FROM memory_relations
      WHERE id = CAST(:id AS uuid)
      FOR UPDATE
 """)
 
+# One statement, and the suppression tombstone rides it for the same reason the
+# producer's refine marker rides the summary write: a tombstone can never record
+# an undo that did not land.
+#
+# **Three nested `jsonb_set`, and two is silent data loss.** `create_if_missing`
+# creates only the *final* path element, so level 1 must materialise `dream` and
+# level 2 must materialise `undone_subsume` before level 3 has a container to
+# write the counterpart key into. Measured on this deployment's PostgreSQL
+# 17.10: the two-level form drops the block even on a row that already carries a
+# `dream` key, because `undone_subsume` beneath it does not exist — so a test
+# written only against a previously-refined memory would not catch it either.
 _RESTORE_STATUS = text("""
     UPDATE memories
        SET status = CAST(:status AS memory_status),
-           superseded_by = CAST(:superseded_by AS uuid)
+           superseded_by = CAST(:superseded_by AS uuid),
+           metadata = jsonb_set(
+               jsonb_set(
+                   jsonb_set(
+                       COALESCE(metadata, CAST('{}' AS jsonb)),
+                       '{dream}',
+                       COALESCE(metadata -> 'dream', CAST('{}' AS jsonb)),
+                       true
+                   ),
+                   '{dream,undone_subsume}',
+                   COALESCE(
+                       metadata -> 'dream' -> 'undone_subsume',
+                       CAST('{}' AS jsonb)
+                   ),
+                   true
+               ),
+               CAST(:tombstone_path AS text[]),
+               CAST(:tombstone AS jsonb),
+               true
+           )
      WHERE id = CAST(:memory_id AS uuid)
     RETURNING CAST(id AS text) AS id
 """)
@@ -482,7 +525,11 @@ def blocking_reason(
 
 
 async def _invert_subsume(
-    session: AsyncSession, action: ResolvedAction, live: LiveState
+    session: AsyncSession,
+    action: ResolvedAction,
+    live: LiveState,
+    *,
+    undo_batch_id: str,
 ) -> UndoneAction:
     before = action.before
     status = before.get("status")
@@ -491,6 +538,29 @@ async def _invert_subsume(
             f"the journalled before-status {status!r} is outside the memory "
             "status enum; refusing to restore a value the lifecycle cannot hold"
         )
+    counterpart = str((action.payload.get("pair") or {}).get("newer") or "")
+    # Unlocked, and deliberately so. The subsume payload journals no shas, so
+    # this read is the counterpart sha's only source; if the counterpart's
+    # content moves between here and the commit the recorded sha is stale and
+    # the tombstone lapses **early**, re-proposing the pair — which is the
+    # behaviour with no tombstone at all. The race can only ever fail toward
+    # not suppressing, never toward suppressing a supersession it should not,
+    # so a second lock contending with the dreaming pass's write phase is not
+    # worth buying.
+    counterpart_content = (
+        await session.execute(_READ_CONTENT, {"memory_id": counterpart})
+    ).scalar_one_or_none() if counterpart else None
+
+    tombstone = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "undo_batch_id": undo_batch_id,
+        "cycle_id": action.payload.get("cycle_id"),
+        "content_sha": journal.content_sha((live.memory or {}).get("content") or ""),
+        "counterpart_content_sha": (
+            journal.content_sha(counterpart_content)
+            if counterpart_content is not None else None
+        ),
+    }
     # One statement, because `chk_superseded_has_pointer` is evaluated once per
     # row per statement: the intermediate state in which the status has moved
     # and the pointer has not is not merely unlikely, it has no existence for
@@ -501,6 +571,8 @@ async def _invert_subsume(
             "memory_id": action.object_id,
             "status": status,
             "superseded_by": before.get("superseded_by"),
+            "tombstone_path": [*journal.SUBSUME_TOMBSTONE_PATH, counterpart],
+            "tombstone": json.dumps(tombstone),
         },
     )
     return UndoneAction(
@@ -508,12 +580,16 @@ async def _invert_subsume(
         action=action.action,
         object_id=action.object_id,
         restored=("status", "superseded_by"),
-        excluded=("updated_at", "events"),
+        excluded=("updated_at", "events", "metadata.dream.undone_subsume"),
     )
 
 
 async def _invert_associate(
-    session: AsyncSession, action: ResolvedAction, live: LiveState
+    session: AsyncSession,
+    action: ResolvedAction,
+    live: LiveState,
+    *,
+    undo_batch_id: str,
 ) -> UndoneAction:
     source, target, rel_type = edge_triple(action)
     prior = action.before.get("edge")
@@ -568,7 +644,11 @@ async def _invert_associate(
 
 
 async def _invert_refine(
-    session: AsyncSession, action: ResolvedAction, live: LiveState
+    session: AsyncSession,
+    action: ResolvedAction,
+    live: LiveState,
+    *,
+    undo_batch_id: str,
 ) -> UndoneAction:
     fields = tuple(action.payload.get("fields") or ())
     if not fields:
@@ -752,10 +832,11 @@ async def undo(
     # LIFO. The three inverses touch disjoint state so no order is required
     # today; it is specified because it is the natural inverse of a sequence
     # and the right default the day two action kinds do interact.
+    undo_batch_id = str(new_id())
     undone: list[UndoneAction] = []
     for action in reversed(actions):
         restored = await _INVERSES[action.action](
-            session, action, live[live_key(action)]
+            session, action, live[live_key(action)], undo_batch_id=undo_batch_id,
         )
         # Only a real restore counts as one. An inverse that returns anything
         # else has reported nothing, and the completeness check below is what
@@ -771,5 +852,5 @@ async def undo(
             "cannot be completed must not be returned as one that was"
         )
     return UndoBatch(
-        undo_batch_id=str(new_id()), undone=tuple(reversed(undone))
+        undo_batch_id=undo_batch_id, undone=tuple(reversed(undone))
     )

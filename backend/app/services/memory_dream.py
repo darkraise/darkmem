@@ -85,6 +85,7 @@ from app.services.dream_journal import (
     REFINE_MARKER_PATH,
     content_sha,
     refine_marker_of,
+    subsume_tombstone_blocks,
 )
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
@@ -158,6 +159,7 @@ class DreamOutcome:
     seeds_visited: int = 0
     pairs_considered: int = 0
     pairs_skipped_no_vector: int = 0
+    pairs_suppressed_by_undo: int = 0
     judged: int = 0
     judge_failed: int = 0
     subsumed: int = 0
@@ -498,6 +500,16 @@ async def generate_pairs(
         if first is None or second is None:
             continue
         older, newer = order_pair(first, second)
+        # A human undid this exact subsumption against these exact two texts.
+        # Dropped here, before the judge, because with unchanged content and a
+        # fixed seed the verdict is foregone: judging first would spend a model
+        # call to reach a conclusion already known. A *nomination* filter, the
+        # same shape `needs_refine` already has for the refine work set — the
+        # status lifecycle never consults it, and the primitive will still
+        # retire this pair for any caller that asks.
+        if subsume_tombstone_blocks(older, newer):
+            outcome.pairs_suppressed_by_undo += 1
+            continue
         pairs.append(PairCandidate(older=older, newer=newer, score=score))
 
     outcome.pairs_considered = len(pairs)
