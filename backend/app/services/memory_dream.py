@@ -77,6 +77,7 @@ from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.extraction_clean import _content_seed, _loads_extraction
+from app.services.job_registry import FieldDescriptor
 from app.services.supersede import successor_is_newer, supersede
 from app.utils.ids import new_id
 
@@ -1354,3 +1355,49 @@ async def run_memory_dream(
         f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason else "",
     )
     return outcome
+
+
+MEMORY_DREAM_CONFIG_SCHEMA: list[FieldDescriptor] = [
+    # `batch_size` keeps the placeholder registration's key, default and
+    # ceiling verbatim: `JobRegistry.set_config` merges `{**cfg.config,
+    # **partial}` and never drops a key, so renaming it would orphan any
+    # persisted value silently.
+    FieldDescriptor(
+        key="batch_size", label="Seed Memories Per Run",
+        default=DEFAULT_BATCH_SIZE, min=1, max=MAX_BATCH_SIZE,
+        help="Memories visited per run, in rotating (created_at, id) order.",
+    ),
+    FieldDescriptor(
+        key="pair_candidates", label="Neighbours Per Seed",
+        default=DEFAULT_PAIR_CANDIDATES, min=1, max=50,
+        help="ANN neighbours probed per seed inside its own project.",
+    ),
+    FieldDescriptor(
+        key="near_duplicate_threshold_pct", label="Near-Duplicate Threshold (%)",
+        default=DEFAULT_NEAR_DUPLICATE_THRESHOLD_PCT, min=50, max=100,
+        help=(
+            "Cosine floor for a pair to reach the judge, as an integer "
+            "percent — FieldDescriptor defaults are typed int."
+        ),
+    ),
+    FieldDescriptor(
+        key="judge_fanout", label="Pair Judgments Per Run",
+        default=DEFAULT_JUDGE_FANOUT, min=0, max=500,
+        help="0 disables the subsume and associate arms without disabling the job.",
+    ),
+    FieldDescriptor(
+        key="refine_batch", label="Refines Per Run",
+        default=DEFAULT_REFINE_BATCH, min=0, max=500,
+        help="0 disables the refine arm without disabling the job.",
+    ),
+    FieldDescriptor(
+        key="write_batch", label="Actions Per Commit",
+        default=DEFAULT_WRITE_BATCH, min=1, max=200,
+        help="Actions applied per write transaction.",
+    ),
+    FieldDescriptor(
+        key="llm_concurrency", label="Judge Concurrency",
+        default=DEFAULT_LLM_CONCURRENCY, min=1, max=32,
+        help="Concurrent model calls during the compute phase.",
+    ),
+]

@@ -359,7 +359,7 @@ async def lifespan(app: FastAPI):
     # The Tier-C consolidation ("dreaming") family — doc 08 §5. Every member
     # is a placeholder until its owning task (T2.09-T2.14, T2.53) lands the
     # real runner; see app/services/dream_jobs.py.
-    register_dream_jobs(job_registry)
+    register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
     # immediately when a repo's auto_sync flips. The registry owns the

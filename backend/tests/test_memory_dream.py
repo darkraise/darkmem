@@ -713,9 +713,13 @@ async def committing(setup_database):
             # `events` is append-only — a DELETE raises. Every cycle test gets
             # its own project instead, so one test's journal rows can never be
             # read by another.
+            # Tags outlive their memories — `memory_tags` cascades but `tags`
+            # does not — and a stray committed tag is an orphan every other
+            # suite's tag-sweep assertions would then count.
             for statement in (
                 "DELETE FROM memory_relations WHERE project LIKE 't212-%'",
                 "DELETE FROM memories WHERE project LIKE 't212-%'",
+                "DELETE FROM tags WHERE name LIKE 't212-%'",
                 "DELETE FROM config WHERE key = 'memory_dream_state'",
             ):
                 await cleanup.execute(text(statement))
@@ -1223,7 +1227,7 @@ class TestRefineArm:
             await session.commit()
         stub = StubLLM(
             pair_verdict=verdict("distinct"),
-            refine=refine(summary="An hourly sweeper.", tags=["ops"]),
+            refine=refine(summary="An hourly sweeper.", tags=["t212-ops"]),
         )
 
         outcome = await run_cycle(committing, stub, judge_fanout=0)
@@ -1575,7 +1579,7 @@ async def _three_action_fixture(committing, project):
 
     stub = StubLLM(
         pair_verdict=pair_reply,
-        refine=refine(summary="A refined summary.", tags=["ops"]),
+        refine=refine(summary="A refined summary.", tags=["t212-ops"]),
     )
     return {
         "older": older, "newer": newer, "dup_a": dup_a, "dup_b": dup_b,
@@ -1939,3 +1943,61 @@ class TestJournalReason:
         assert result.applied is True
         events = await superseded_events(committing, project, older)
         assert events[0]["payload"]["reason"] == "status_bridge"
+
+
+# ── Step 9: the job wiring ───────────────────────────────────────────────
+
+
+class TestJobWiring:
+    async def test_a_persisted_batch_size_survives_the_schema_swap(self):
+        """`JobRegistry.set_config` merges and never drops a key, so renaming
+        the placeholder's knob would orphan an operator's value silently. The
+        key, default and ceiling are kept verbatim instead."""
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.config import settings
+        from app.services.dream_jobs import MEMORY_DREAM_JOB_KEY, register_dream_jobs
+        from app.services.job_registry import JobRegistry
+
+        engine = create_async_engine(settings.test_database_url)
+        registry = JobRegistry(async_sessionmaker(engine, expire_on_commit=False))
+        register_dream_jobs(registry)
+        try:
+            cfg = await registry.set_config(MEMORY_DREAM_JOB_KEY, {"batch_size": 7})
+            assert cfg.config["batch_size"] == 7
+            reloaded = await registry.load_config(MEMORY_DREAM_JOB_KEY)
+            assert reloaded.config["batch_size"] == 7
+
+            schema = {
+                field.key: field
+                for field in registry.get(MEMORY_DREAM_JOB_KEY).config_schema
+            }
+            assert schema["batch_size"].default == 50
+            assert schema["batch_size"].max == 1000
+        finally:
+            await registry.stop_all()
+            async with async_sessionmaker(engine)() as cleanup:
+                await cleanup.execute(
+                    text("DELETE FROM config WHERE key = 'job:memory_dream'")
+                )
+                await cleanup.commit()
+            await engine.dispose()
+
+    def test_the_job_module_never_quotes_its_own_key(self):
+        """Invariant 15's scan runs over every file under `app/` and exempts
+        only the umbrella, so a quoted `"memory_dream"` inside the job's own
+        body fails the build. `logging.getLogger(__name__)` is what keeps it
+        out; the state config key is safe because the pattern needs a closing
+        quote immediately after."""
+        source = (BACKEND / "app" / "services" / "memory_dream.py").read_text()
+        assert '"memory_dream"' not in source
+        assert "'memory_dream'" not in source
+        assert '"memory_dream_state"' in source
+
+    def test_the_runner_is_no_longer_a_placeholder(self):
+        from app.services.dream_jobs import (
+            MEMORY_DREAM_JOB_KEY,
+            SHIPPED_DREAM_JOBS,
+        )
+
+        assert SHIPPED_DREAM_JOBS[MEMORY_DREAM_JOB_KEY] == "memory_dream"
