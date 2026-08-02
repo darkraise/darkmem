@@ -1238,10 +1238,73 @@ paths already drifted.
 
 **Verify.** `cd backend && python -m pytest tests/test_facts_channel.py tests/test_hybrid_search.py -q`
 
+#### T2.67 — Invariant 15's scan is bypassed by ordinary import formatting
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.18` · `Doc: 08 §5, invariant 15` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Invariant 15 says none of the six Tier-C dream jobs may be reached from capture
+or retrieval, and a source scan over `backend/app` is what enforces it. That scan is
+line-based, so **a parenthesised multi-line import defeats it** — the exact form a
+formatter produces. Measured, not reasoned: appending
+
+```python
+from app.services import (
+    fact_lift,
+)
+```
+
+to the real `app/services/pipeline.py` leaves `test_no_app_code_reaches_a_family_job`
+**passing**, while the single-line form fails it. A Tier-A module reaching a shipped
+family job's body, undetected.
+
+**The second net does not cover it, and the reason is structural.** The family scan has two
+arms: a module-import arm and a quoted-job-key arm. Quoting a key is how you ask the
+*registry* for a job; reaching a job's *body* goes through its module and needs no key at
+all. So the two arms double-cover the registry route and leave the module route open.
+
+Exposure is live and growing: `fact_lift` and `verification_recompute` have shipped bodies
+today, and four more family members land in this epic.
+
+T2.18 rebuilt **its own** detector scan on an AST walk and proved the rebuild a strict
+superset of the regex — every case the regex caught plus eight it missed, including
+wrapped imports, split-string `import_module`, name-bound `importlib`, `__import__`,
+`sys.modules`, `getattr` with a literal, a full-literal f-string, and a depth-2 relative
+import. It deliberately did **not** widen the family scan from a topics commit: a
+cross-cutting invariant change buried in a feature commit is not reviewable as one.
+
+**Design notes from the re-review, which reproduced the measurement independently:**
+
+- Lift T2.18's AST helper into a shared test utility, **parameterised on the forbidden
+  module set** — the family scan derives its set from the umbrella's imports, so the set
+  cannot be hard-coded.
+- Rework `_ALLOWED_DREAM_JOB_LINES` from line-text allowlists into **node-addressable
+  exemptions**; a line-text allowlist re-introduces the bug it is meant to except.
+- Close T2.18's own two residuals in the same stroke: an `ast.Attribute` net for reach
+  through a parent-package import (`from app import services` then
+  `services.<module>.<fn>()` — inert today only because nothing imports the module, and
+  live the moment T2.53's umbrella does), and a docstring sentence bounding the
+  computed-string forms (`"a" + "b"`, f-string interpolation) that no literal-level static
+  scan can close in general.
+
+**Done when:**
+- [ ] One scanner serves both vocabularies; neither scan is line-based
+- [ ] The wrapped-import and split-string bypasses **fail the build**, proven by injecting
+      each into real code under `app/` rather than into a fixture string
+- [ ] The attribute-reach route is caught
+- [ ] The allowlist is node-addressable, and a test proves an exempted node's *neighbour*
+      is still flagged
+- [ ] The computed-string bound is documented where the scan's reader sees it, not only in
+      a report
+- [ ] The rebuilt family scan is a strict superset of today's: every case the current scan
+      catches still fails the build
+
+**Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py tests/test_communities.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-02 | T2.67, T2.08, T2.53 | 2 | **T2.67 minted: invariant 15's source scan is bypassed by a parenthesised multi-line import — the form a formatter produces.** Measured, not reasoned: appending `from app.services import (\n    fact_lift,\n)` to the real `app/services/pipeline.py` leaves `test_no_app_code_reaches_a_family_job` passing, while the single-line form fails it. The scan's second arm does not help, and the reason is structural rather than incidental: quoting a job key is how you ask the *registry* for a job, whereas reaching a job's *body* goes through its module and needs no key, so the two arms double-cover the registry route and leave the module route open. Exposure is live and growing — `fact_lift` and `verification_recompute` have shipped bodies today and four more family members land in this epic | Found by T2.18 while closing the identical hole in its **own** detector scan, and reproduced independently by the scoped re-reviewer. T2.18 deliberately declined to widen the family scan from a topics commit, on the grounds that a cross-cutting invariant change buried in a feature commit is not reviewable as one — the same judgement T2.22 and T2.42 made about clause scope, and the right one. Its AST rebuild is the proven template: a strict superset of the regex, catching eight shapes the regex missed. Routed as its own task because the shared utility must be parameterised on a forbidden-module set the family scan derives from the umbrella's imports, and because `_ALLOWED_DREAM_JOB_LINES` must become node-addressable — a line-text allowlist re-introduces the very bug it excepts |
 | 2026-08-02 | T2.65, T2.42, T2.29, T2.24 | 2 | **T2.65 minted: fact-level retrieval heat has no counter, and T2.42 broke the premise the existing proxy rests on.** Doc 08 §6 ranks the review queue by retrieval frequency; the only counter is `memory_access_stats` (T2.29), keyed by `memory_id` and fed from the memory hybrid, and T2.24's landed ranking reaches it through `fact_sources.source_ref` cast to a memory id — a documented proxy that is correct only while facts are read through the memories sourcing them. The facts channel now serves `knowledge_triples` rows directly and records nothing, so a frequently-served fact accrues heat nowhere and §6's consequence ranking degrades toward its salience arm as that channel takes traffic. Minted as a **decision before an implementation**: either a fact-keyed counter fed from the serving path, or the proxy declared permanent with its error bound stated where a ranking reader sees it | Flagged by T2.42's implementer as a controller-facing gap and independently confirmed by its Fable review, which swept T2.29, T2.31, T2.55, T2.56 and this log and found no task owning a fact-keyed counter. Minted rather than folded into T2.43 because the question is which substrate is correct, not where to call it from — and the degradation is silent, with no error and no empty result, only a ranking that weights the wrong thing, which is the failure mode this corpus is least able to notice after the fact |
 | 2026-08-02 | T2.66, T2.42 | 2 | **T2.66 minted: the one-arm-degrade contract does not survive a database-level failure, in both channels.** Doc 07 §2 promises that a one-sided failure degrades to the other modality while a both-sided failure raises. Both the memory hybrid and the new facts channel run their arms on **one shared session**, so a database-level error in the first arm aborts the transaction and the second arm's valid SQL then fails on the aborted transaction — the channel raises where the contract promises degraded service, naming an arm that never independently failed. Both channels' contract tests pass regardless, because they simulate failure by monkeypatching the query *builder*, a pre-SQL failure that leaves the transaction usable. Fix shape is a SAVEPOINT per arm via `begin_nested()`, landed in both channels together | Proved empirically by T2.42's Fable reviewer, which broke only the keyword arm's SQL and watched the name arm's own statement error, rather than reading the contract test and believing it. Non-blocking for T2.42's merge on two grounds the reviewer named: the failure direction is loud rather than a silent empty list, and the shape is copied verbatim from `hybrid_search.py`, which the brief mandated as the template — so the defect is the template's and predates this task. Scoped over both channels deliberately: fixing one would diverge the idiom, which is exactly how the two ranking implementations already drifted |
 | 2026-08-02 | T2.45, T2.12 | 2 | **The `supersede()` primitive refuses a successor that is not strictly newer than the candidate — `created_at >`, with an `id` tie-break for equal timestamps — mirroring `detect_supersessions`' rule 5, and the refusal short-circuits to no-change rather than falling through to guard 1's `deprecated` arm.** Doc 08 §3.4 states **no** ordering rule for the status bridge, so two spent memories can each be the sole live source of the triple that invalidated the other's fact, supersede each other, and both leave the active view — the mutual flip that rule 5 exists to block on the fast path, which the slow path inherited nothing from. `WHERE status='active'` does not help: it guards the candidate, and the second adjudication's candidate is still active. **This narrows the bridge beyond §3.4's letter without contradicting it**, since §3.4 states no ordering rule to override. It changes what T2.12 may hand the primitive, hence both tasks. Accepted cost, stated rather than smoothed away: a backfilled successor genuinely older than the candidate is declined and the candidate lingers as `active` until a later pass — the owner's own accepted failure mode for the neighbouring ruling | **The reason of record is blocker visibility, not symmetry.** `supersession_hold.py:179-194` recognises a supersession signal **only** when `sup.created_at > m.created_at OR (sup.created_at = m.created_at AND sup.id > m.id)`, and `:48-55` states that it checks rather than assumes this precisely *because* `memories.status` has a second future writer — this bridge — "whose guards are about *fact invalidation* and say nothing about timestamps". So a bridge-written pointer with an older superseder is **invisible to T2.60's blocker**, and a fact sourced by that superseded memory promotes to `corroborated` on evidence the store already knows was replaced: a correctness leak with no error and no symptom. T2.60 therefore already depends on this property and documents the dependency; the amendment makes the dependency true. Raised by T2.45's step-level plan (§3 D7), which declined to apply a doc-narrowing constraint unilaterally, and approved after the controller verified the `supersession_hold.py` claim against the tree independently. A strict total order was chosen over a 2-cycle refusal because it forbids cycles of every length, where `S.superseded_by == M` needs a recursive CTE to generalise and leaves 3-cycles reachable |
