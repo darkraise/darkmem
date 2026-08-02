@@ -82,6 +82,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.knowledge_triples import OPEN_BELIEF_PREDICATE
 from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
 from app.utils.ids import new_id
 
@@ -96,7 +97,12 @@ logger = logging.getLogger(__name__)
 # on every legitimate correction, so a memory whose fact was ever replaced
 # permanently holds a window-closed row and would read as still asserting an
 # open belief forever.
-OPEN_BELIEF_PREDICATE = "expired_at IS NULL AND invalid_at IS NULL"
+#
+# Imported rather than re-declared: T2.42 and T2.45 each minted this string in
+# their own lane, same name and same value in different files, so git merged
+# both without a conflict to force the collapse. Two copies would have drifted
+# silently, and a guard 2 whose predicate no longer matches the unique index's
+# scope fails in exactly the total direction described above.
 
 # The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
 # {memory, block, code, human}; `block` is held in _RESERVED_SOURCE_KINDS below
