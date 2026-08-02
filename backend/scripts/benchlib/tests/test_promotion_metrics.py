@@ -64,6 +64,37 @@ async def _add_origin(session, fact_id, origin_key, *, kind="memory") -> None:
     await session.commit()
 
 
+async def _real_dispute(session, *, tag: str) -> tuple[str, str]:
+    """A fact and a genuine counterpart, adjudicated by the real scan.
+
+    Every other seeding helper here either hand-writes a payload or passes
+    `open_contradiction=True`, which *overrides* the adjudication -- no scan
+    runs, so no finding exists and no counterpart block is written. Only a real
+    inverse-replacement pair produces the payload shape T2.64 emits, which is
+    the shape this runner's vocabulary has to already know.
+
+    The names are tagged per test because `darkmem_bench` is reset once per
+    session, not per test: an untagged pair would be found by a later test's
+    scan as well as its own.
+    """
+    repo = KnowledgeTripleRepository(session)
+    ids = []
+    for subject, obj in ((f"{tag}-alpha", f"{tag}-beta"), (f"{tag}-beta", f"{tag}-alpha")):
+        row = await repo.insert_open(
+            triple_key=f"{tag}-{subject}", subject_name=subject, object_name=obj,
+            rel_type="REPLACES", fact=f"{subject} replaces {obj}",
+            reference_time=datetime(2025, 6, 20, 12, 0, 0, tzinfo=timezone.utc),
+            project="default",
+        )
+        ids.append(row["id"])
+    await session.commit()
+    subject_id, counterpart_id = ids
+    await _add_origin(session, subject_id, f"{tag}-sess", kind="memory")
+    await _add_origin(session, subject_id, f"{tag}-repo", kind="code")
+    await _add_origin(session, counterpart_id, f"{tag}-witness", kind="memory")
+    return subject_id, counterpart_id
+
+
 # ───────────────────── promotion rate, both slice axes ─────────────────────
 
 
@@ -453,6 +484,208 @@ class TestUnrecognisedPayloadGuard:
             # withheld, so it counts as eligible and not as a promotion.
             assert buckets["diversity"].eligible >= 1
             assert buckets["diversity"].promoted == 0
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_payload_key_raises(self):
+        """The guard the class above has always cited and never exercised.
+
+        `KNOWN_PAYLOAD_KEYS` is the reason a new field cannot be silently
+        mis-bucketed, and until now nothing proved it rejected anything: every
+        test here seeded a key the set already knew.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.51-unknown-key")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                    "outcome": "promote",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": False,
+                    "confidence": 0.9,
+                    "hysteresis_cycles": 2,  # invented, not in KNOWN_PAYLOAD_KEYS
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="hysteresis_cycles"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_real_counterpart_block_is_accepted_and_changes_no_number(self):
+        """T2.64's payload, produced by the ladder rather than hand-written.
+
+        Two halves, and both matter. The runner must **accept** it -- an
+        unwidened vocabulary turns every G-C measurement into a hard failure
+        the day the ladder starts emitting -- and it must **not** re-bucket
+        anything on its account: the counterpart explains a decision that
+        `outcome` and `contradiction_blocked` already describe in full, so a
+        vetoed-after-meeting-its-bar fact lands in the denominator exactly
+        where it did before the block existed.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            subject, counterpart = await _real_dispute(session, tag="t2.64-accepted")
+
+            decision = await recompute_fact(session, subject)
+            await session.commit()
+            assert decision.outcome == "dispute"
+            assert decision.origin_count >= decision.required_n
+            assert decision.gate_fired == "diversity"
+
+            payload = (
+                await session.execute(
+                    text(
+                        "SELECT payload FROM events WHERE event_type = 'verified' "
+                        "AND object_id = CAST(:id AS uuid) ORDER BY created_at DESC, id DESC"
+                    ),
+                    {"id": subject},
+                )
+            ).scalar()
+            assert payload["contradiction"]["counterpart_id"] == counterpart
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+
+        buckets = {s.bucket: s for s in report.by_gate_fired}
+        assert buckets["diversity"].eligible == 1
+        assert buckets["diversity"].promoted == 0
+
+    @pytest.mark.asyncio
+    async def test_an_unrecognised_contradiction_key_raises(self):
+        """The nested block gets the same closed vocabulary as the top level.
+
+        Without this, a field added inside the block would pass the runner
+        untouched -- the silent widening `KNOWN_PAYLOAD_KEYS` exists to make
+        impossible one level up.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.64-unknown-inner-key")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "disputed"},
+                    "outcome": "dispute",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": True,
+                    "confidence": 0.9,
+                    "contradiction": {
+                        "counterpart_id": str(_uuid.uuid4()),
+                        "enumeration": "first_finding",
+                        "counterpart_confidence": 0.4,  # invented
+                    },
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(
+                pm.UnrecognisedPayloadError, match="counterpart_confidence"
+            ):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_enumeration_raises(self):
+        """`enumeration` states how many contradictions the block names. A
+        reader that took `first_finding`'s meaning for a value that no longer
+        means it would report one counterpart as if it were all of them."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.64-unknown-enumeration")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "disputed"},
+                    "outcome": "dispute",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": True,
+                    "confidence": 0.9,
+                    "contradiction": {
+                        "counterpart_id": str(_uuid.uuid4()),
+                        "enumeration": "all_findings",
+                    },
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="all_findings"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_counterpart_on_a_row_whose_veto_never_fired_raises(self):
+        """The block is written only by the verdict that fired the veto, so it
+        beside `contradiction_blocked: false` means a second writer or a block
+        copied onto a decision it does not describe -- either way, a live
+        dispute's evidence attached to a fact nothing is disputing."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.64-unblocked-counterpart")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                    "outcome": "promote",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": False,
+                    "confidence": 0.9,
+                    "contradiction": {
+                        "counterpart_id": str(_uuid.uuid4()),
+                        "enumeration": "first_finding",
+                    },
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="did not happen"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
+
+    @pytest.mark.asyncio
+    async def test_a_contradiction_block_with_no_counterpart_id_raises(self):
+        """A block that names no fact is worse than no block: it reads as
+        "both sides are recorded" while carrying only one."""
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+            fact_id = await _make_fact(session, key="t2.64-anonymous-counterpart")
+            await record_event(
+                session, event_type="verified", object_type="fact",
+                object_id=_uuid.UUID(fact_id), project="default",
+                payload={
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "disputed"},
+                    "outcome": "dispute",
+                    "origin_count": 2, "required_n": 2, "gate_fired": "diversity",
+                    "source_kinds": ["memory", "code"], "contradiction_blocked": True,
+                    "confidence": 0.9,
+                    "contradiction": {
+                        "counterpart_id": None,
+                        "enumeration": "first_finding",
+                    },
+                },
+            )
+            await session.commit()
+
+            with pytest.raises(pm.UnrecognisedPayloadError, match="counterpart_id"):
+                await pm.compute_promotion_metrics(
+                    session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+                )
 
     @pytest.mark.asyncio
     async def test_a_hold_that_is_not_contradiction_blocked_raises(self):

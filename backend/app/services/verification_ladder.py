@@ -54,7 +54,10 @@ from app.repositories.fact_sources import (
     CORROBORATION_TIME_GAP_DAYS,
     OriginProfile,
 )
-from app.services.contradiction_veto import adjudicate_contradiction
+from app.services.contradiction_veto import (
+    ContradictionFinding,
+    adjudicate_contradiction_finding,
+)
 from app.services.supersession_hold import adjudicate_supersession_hold
 
 logger = logging.getLogger(__name__)
@@ -569,6 +572,54 @@ def derive_review_state(decision: LadderDecision) -> str | None:
     return None
 
 
+# ───────────────── the contradiction's counterpart, on the payload ─────────────────
+
+# The one payload key this adds. A nested block rather than six sibling keys:
+# the fields are one finding, and the closed top-level vocabulary that
+# ``benchlib.promotion_metrics`` validates every payload against then widens by
+# one entry instead of six.
+CONTRADICTION_EVIDENCE_KEY = "contradiction"
+
+# What the block's ``enumeration`` field claims, carried as a value rather than
+# left to a docstring nobody downstream reads. The adjudication short-circuits
+# at the first detector that finds anything, so this is the counterpart the
+# verdict turned on, never the complete set of contradictions standing against
+# the fact. A consumer may render "disputed by fact X asserting Y"; it may not
+# render "the only contradiction", and with the policy on the row it does not
+# have to guess which of the two it holds.
+ENUMERATION_FIRST_FINDING = "first_finding"
+
+
+def contradiction_evidence(finding: ContradictionFinding) -> dict[str, str | None]:
+    """The finding, reduced to what a human adjudicating actually needs.
+
+    Doc 08 §6 requires disputed knowledge be served labelled with both sides,
+    and §4.2's veto is the only thing that ever knows the other side. It is
+    discarded once the verdict is taken, so the journal is where it has to be
+    recorded: the review queue (T2.22) and the composed result (T2.43) both
+    read the latest ``verified`` payload, and neither may re-derive this,
+    because the deterministic scan's sole legitimate caller is this module.
+
+    **The copy is deliberately minimal, and the reason is retention.** Journal
+    payloads outlive deletion of their subject and the retention policy is an
+    open Tier-3 question, so this carries the counterpart's structured triple —
+    the competing claim — and not its ``fact`` text, its sources or its
+    confidence. The triple is what makes the block readable without a fetch (an
+    id alone would satisfy "names the counterpart" while failing "readable from
+    the journal alone"); the id is what makes it actionable once the human
+    wants the whole row.
+    """
+    return {
+        "counterpart_id": finding.counterpart_id,
+        "counterpart_subject": finding.counterpart_subject,
+        "counterpart_rel_type": finding.counterpart_rel_type,
+        "counterpart_object": finding.counterpart_object,
+        "rule": finding.rule,
+        "witness_origin": finding.witness_origin,
+        "enumeration": ENUMERATION_FIRST_FINDING,
+    }
+
+
 # ─────────────────────────── the applier ───────────────────────────
 
 
@@ -603,6 +654,23 @@ async def recompute_fact(
     hand-off ``set_verification_status`` was written anticipating: the only
     write path here is that repository method, so exactly one ``verified``
     event exists per transition and G-C cannot double-count one.
+
+    **The counterpart rides that same payload** (doc 08 §6, "labelled with both
+    sides"), and this is the only place it can: the finding is in scope here
+    and nowhere else, and it is discarded the moment the verdict is taken. It
+    rides *every* payload the scan produced a finding for, which is the dispute
+    transition **and** each blocked hold that re-confirms it — not the dispute
+    alone. The queue reads the *latest* ``verified`` row per fact, so a
+    counterpart carried only on the opening transition would vanish from every
+    long-lived dispute on its first re-confirmation, which is exactly the
+    population the queue is made of.
+
+    Two shapes carry no counterpart, both honestly. A caller that **overrides**
+    the verdict ran no detector here, so nothing was found to name; and a
+    ``recover`` was adjudicated clean, so naming the fact it is no longer
+    contradicted by would assert a live dispute that no longer stands — in an
+    append-only journal, permanently. The opening dispute's own row keeps that
+    history.
 
     A ``fact_id`` with no row returns a hold that writes nothing. The drain
     that will call this races deletion by construction, so raising would turn
@@ -643,9 +711,11 @@ async def recompute_fact(
             confidence=0.0,
         )
 
+    finding: ContradictionFinding | None = None
     verdict = open_contradiction
     if verdict is NO_DETECTOR:
-        verdict = await adjudicate_contradiction(session, fact_id)
+        finding = await adjudicate_contradiction_finding(session, fact_id)
+        verdict = finding is not None
 
     blocked = supersession_blocked
     if blocked is None:
@@ -688,5 +758,6 @@ async def recompute_fact(
         source_kinds=decision.source_kinds,
         contradiction_blocked=decision.contradiction_blocked,
         supersession_blocked=decision.supersession_blocked,
+        contradiction=contradiction_evidence(finding) if finding is not None else None,
     )
     return decision

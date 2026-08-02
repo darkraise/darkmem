@@ -107,8 +107,17 @@ _FACT_COLUMNS = (
     "valid_at, invalid_at, expired_at"
 )
 
-_SINGLE_VALUED_SQL = """
-    SELECT id, valid_at, invalid_at
+# The candidate projection carries the counterpart's own triple as well as the
+# columns the overlap guard reads, because a finding that cannot state the
+# competing claim is a finding a human cannot adjudicate (doc 08 §6). The three
+# name columns widen the projection only; they are not predicates and change no
+# row, no ordering and no verdict.
+_CANDIDATE_COLUMNS = (
+    "id, valid_at, invalid_at, subject_name, rel_type, object_name"
+)
+
+_SINGLE_VALUED_SQL = f"""
+    SELECT {_CANDIDATE_COLUMNS}
     FROM knowledge_triples
     WHERE project = CAST(:project AS text)
       AND expired_at IS NULL
@@ -119,8 +128,8 @@ _SINGLE_VALUED_SQL = """
     ORDER BY created_at, id
 """
 
-_INVERSE_REPLACEMENT_SQL = """
-    SELECT id, valid_at, invalid_at
+_INVERSE_REPLACEMENT_SQL = f"""
+    SELECT {_CANDIDATE_COLUMNS}
     FROM knowledge_triples
     WHERE project = CAST(:project AS text)
       AND expired_at IS NULL
@@ -140,12 +149,29 @@ class ContradictionFinding:
     itself: T2.06 journals the transition and G-C counts it, and a dispute
     nobody can trace back to a counterpart fact and a named witness origin is a
     dispute nobody can review.
+
+    The counterpart's triple is carried alongside its id because doc 08 §6's
+    "labelled with both sides" is a claim a human reads, and an id alone sends
+    every reader back to ``knowledge_triples`` for the sentence. The free-text
+    ``fact`` column is deliberately **not** carried: the triple already states
+    the competing claim, and this record reaches an append-only journal whose
+    payloads outlive deletion of their subject, so every additional copied
+    column is a permanent one.
+
+    The three name fields default to ``None`` because a detector is not
+    obliged to know them. The deterministic scan reads them off the candidate
+    row it already selected; a future registered detector (T2.11's LLM scan)
+    that can name only an id says so by leaving them unset rather than by
+    inventing a triple.
     """
 
     fact_id: str
     counterpart_id: str
     rule: str
     witness_origin: str
+    counterpart_subject: str | None = None
+    counterpart_rel_type: str | None = None
+    counterpart_object: str | None = None
 
 
 def windows_overlap(
@@ -267,6 +293,9 @@ async def detect_open_contradiction(
                         counterpart_id=str(candidate["id"]),
                         rule=rule,
                         witness_origin=origin,
+                        counterpart_subject=candidate["subject_name"],
+                        counterpart_rel_type=candidate["rel_type"],
+                        counterpart_object=candidate["object_name"],
                     )
     return None
 
@@ -284,6 +313,26 @@ ContradictionDetector = Callable[
 CONTRADICTION_DETECTORS: tuple[ContradictionDetector, ...] = (detect_open_contradiction,)
 
 
+async def adjudicate_contradiction_finding(
+    session: AsyncSession, fact_id: UUID | str
+) -> ContradictionFinding | None:
+    """The adjudication, returning *what* it found rather than *whether*.
+
+    The first detector that finds one wins and the rest are not consulted, so
+    the finding returned here is the one the verdict turned on and never an
+    enumeration of every contradiction standing against the fact. That
+    short-circuit is the veto's own shape — one contradiction is already
+    absolute, so a second changes no outcome — and widening it would turn an
+    O(1) adjudication into a full scan for a payload field. Callers that
+    journal this must say which of the two they are carrying; the ladder does.
+    """
+    for detector in CONTRADICTION_DETECTORS:
+        finding = await detector(session, fact_id)
+        if finding is not None:
+            return finding
+    return None
+
+
 async def adjudicate_contradiction(session: AsyncSession, fact_id: UUID | str) -> bool:
     """Is there an open contradiction against this fact? A definite verdict.
 
@@ -291,8 +340,10 @@ async def adjudicate_contradiction(session: AsyncSession, fact_id: UUID | str) -
     wired detector reported nothing. That conjunction is the whole meaning of
     ``False`` here, and it is why the ladder treats it as permission to leave
     ``disputed`` while treating "no detector ran" as a hold.
+
+    Delegates rather than re-walking the registry, so the conjunction above is
+    spelled exactly once: two loops over ``CONTRADICTION_DETECTORS`` could
+    disagree about what a clean verdict means, and only one of them would be
+    the one that ends a dispute.
     """
-    for detector in CONTRADICTION_DETECTORS:
-        if await detector(session, fact_id) is not None:
-            return True
-    return False
+    return await adjudicate_contradiction_finding(session, fact_id) is not None
