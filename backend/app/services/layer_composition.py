@@ -47,7 +47,7 @@ candidate-graph row be served as a composed result.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.services.rank_fusion import (
     RRF_K,
@@ -444,12 +444,66 @@ class CompositionResult:
     reranked: bool = False
 
 
+def _rerank_bands(
+    keys: list[str], rerank_scores: Mapping[str, float]
+) -> dict[str, int]:
+    """Dense rank over the rerank score, with one terminal band for the tail.
+
+    A key **missing** from the mapping is a row the model never saw, and it
+    lands below every scored band — including a genuine ``0.0``. The two are
+    different facts about the world, and collapsing them would let a bounded
+    budget masquerade as a verdict. ``RerankerService`` itself conflates them
+    (it stamps its unscored tail ``0.0``), which is exactly why the mapping
+    handed here is sliced by the caller rather than read off that return.
+    """
+    scored = {key: float(rerank_scores[key]) for key in keys if key in rerank_scores}
+    distinct = sorted(set(scored.values()), reverse=True)
+    dense = {value: position for position, value in enumerate(distinct, start=1)}
+    terminal = len(distinct) + 1
+    return {
+        key: dense[scored[key]] if key in scored else terminal for key in keys
+    }
+
+
+def _reband_within_channels(rows: list[ComposedRow]) -> list[ComposedRow]:
+    """Re-rank each channel by its own weighted score and re-derive the band.
+
+    This is where the deterministic multipliers get **rank authority rather
+    than score authority**. A band is unique within a channel, so a
+    ``(band, tier)`` cell holds at most one row per channel — a per-row scalar
+    sitting *beside* the band could therefore never move a row past a
+    same-channel neighbour at any magnitude, which would leave every arm and
+    the context boost order-inert on the default path and repeal doc 07 §6's
+    rank boost. Re-ranking the channel by the weighted score implements the
+    word §6 actually uses.
+
+    The re-rank happens **inside one channel**, where the magnitudes are
+    commensurable; the cross-channel comparison stays rank and only rank. Gaps
+    left by an exclusion close here, so a channel that lost its rank-2 row
+    does not leave a hole. The sort is **stable on the channel's prior
+    order**, so rows with equal weighted scores — every row at the no-op
+    default — keep the order their channel's own fusion gave them.
+    """
+    out: list[ComposedRow] = []
+    by_channel: dict[str, list[ComposedRow]] = {}
+    for row in rows:
+        by_channel.setdefault(row.id_kind, []).append(row)
+    for group in by_channel.values():
+        ordered = sorted(group, key=lambda r: r.channel_rank)
+        ordered = sorted(ordered, key=lambda r: -r.weighted_score)
+        out.extend(
+            replace(row, band=position) for position, row in enumerate(ordered, start=1)
+        )
+    return out
+
+
 def compose(
     candidates,
     *,
     weights: Mapping[str, object] | None = None,
     declared_context: DeclaredContext | None = None,
     evidence: Mapping[str, Mapping] | None = None,
+    rerank_scores: Mapping[str, float] | None = None,
 ) -> CompositionResult:
     """Doc 07 §5 steps 1 to 4, as a pure function.
 
@@ -529,7 +583,19 @@ def compose(
             )
         )
 
+    # The authoritative relevance signal is chosen **once per request**,
+    # never per row: that single choice is what keeps the comparator a strict
+    # weak ordering, so two rows in one response are never compared under
+    # different signals.
+    reranked = rerank_scores is not None
+    if reranked:
+        bands = _rerank_bands([row.key for row in rows], rerank_scores)
+        rows = [replace(row, band=bands[row.key]) for row in rows]
+    else:
+        rows = _reband_within_channels(rows)
+
     return CompositionResult(
         rows=sorted(rows, key=lambda r: (r.band, -r.tier, r.key)),
         excluded_by_context_conflict=excluded_by_context_conflict,
+        reranked=reranked,
     )

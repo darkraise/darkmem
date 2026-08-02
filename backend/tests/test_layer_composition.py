@@ -359,3 +359,186 @@ def test_the_boost_is_applied_once():
     assert boost == 5.0
     assert row.weighted_score == pytest.approx(base * row.rank_fusion_factor * boost)
     assert row.weighted_score != pytest.approx(base * row.rank_fusion_factor * boost * boost)
+
+
+# ─────────── the band: what the rerank and the multipliers move (D3, D5) ───────────
+
+
+def _memory_channel(n, *, importance=None):
+    out = []
+    for rank in range(1, n + 1):
+        extra = {}
+        if importance is not None:
+            extra["importance"] = importance(rank)
+        out.append(lc.memory_candidate(_memory_row(uuid4(), **extra), channel_rank=rank))
+    return out
+
+
+def test_the_reranker_orders_the_bands_and_the_tier_orders_within_one():
+    leader = lc.memory_candidate(_memory_row(uuid4()), channel_rank=1)
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=1,
+    )
+    article = lc.article_candidate(
+        _article_row(uuid4(), verification_status="candidate"), channel_rank=1,
+    )
+    scores = {leader.key: 0.9, fact.key: 0.8, article.key: 0.8}
+
+    result = lc.compose([leader, fact, article], rerank_scores=scores)
+    by_key = {r.key: r for r in result.rows}
+
+    assert result.reranked is True
+    assert by_key[leader.key].band == 1
+    assert by_key[fact.key].band == 2
+    assert by_key[article.key].band == 2
+    assert [r.key for r in result.rows] == [leader.key, fact.key, article.key]
+
+
+def test_an_unscored_row_is_not_a_row_scored_zero():
+    rated_zero = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="candidate"), channel_rank=1,
+    )
+    never_seen = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=2,
+    )
+
+    result = lc.compose(
+        [rated_zero, never_seen], rerank_scores={rated_zero.key: 0.0},
+    )
+    by_key = {r.key: r for r in result.rows}
+
+    assert by_key[rated_zero.key].band < by_key[never_seen.key].band
+    # The unscored row outranks on tier and still loses: the band it is in is
+    # strictly lower, so "never asked" cannot be read as a verdict.
+    assert result.rows[0].key == rated_zero.key
+
+
+def test_one_response_is_ordered_under_one_signal():
+    scored = _memory_channel(2)
+    tail = [lc.memory_candidate(_memory_row(uuid4()), channel_rank=r) for r in (3, 4)]
+    scores = {scored[0].key: 0.9, scored[1].key: 0.5}
+
+    result = lc.compose(scored + tail, rerank_scores=scores)
+    by_key = {r.key: r for r in result.rows}
+
+    assert result.reranked is True
+    assert by_key[scored[0].key].band == 1
+    assert by_key[scored[1].key].band == 2
+    # Both tail rows share the one terminal band; neither falls back to its
+    # channel rank, which would have given them 3 and 4.
+    assert by_key[tail[0].key].band == 3
+    assert by_key[tail[1].key].band == 3
+
+    plain = lc.compose(scored + tail)
+    assert plain.reranked is False
+    assert all(r.band == r.channel_rank for r in plain.rows)
+
+
+def test_the_unscored_tail_band_orders_by_tier_then_key():
+    scored = lc.memory_candidate(_memory_row(uuid4()), channel_rank=1)
+    # The memory leads its channel, so its weighted score is the higher of the
+    # two; the fact is deep in its own. Ordering the tail band by weighted
+    # score would therefore put the memory first, which is the cross-channel
+    # magnitude comparison the design forbids.
+    tail_memory = lc.memory_candidate(_memory_row(uuid4()), channel_rank=2)
+    tail_fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=5,
+    )
+
+    result = lc.compose(
+        [scored, tail_memory, tail_fact], rerank_scores={scored.key: 0.9},
+    )
+    tail_rows = [r for r in result.rows if r.band == 2]
+
+    assert {r.key for r in tail_rows} == {tail_memory.key, tail_fact.key}
+    assert tail_rows[0].key == tail_fact.key
+    assert tail_rows[0].weighted_score < tail_rows[1].weighted_score
+    assert [r.key for r in tail_rows] == [
+        r.key for r in sorted(tail_rows, key=lambda r: (-r.tier, r.key))
+    ]
+
+
+def test_a_multiplier_moves_a_row_across_bands_but_never_across_a_tier():
+    """The two halves of doc 07 §6's rank boost, on one fixture.
+
+    (b)'s mutation is **reintroducing the weighted score into the
+    cross-channel sort**, not deleting the tier term. Simulated on this exact
+    fixture: with ``-tier`` gone the sort falls to ``key``, and ``"fact:…"``
+    sorts before ``"memory:…"``, so the fact still leads and the guard passes
+    while removed. No fixture can dodge that here, because a memory's key
+    prefix always sorts after a fact's — the article fixture in
+    ``test_verified_sorts_above_labelled_candidate_in_the_same_band`` is where
+    the tier term is observable.
+    """
+    weights = {"w_importance": 10.0}
+    memories = _memory_channel(5, importance=lambda rank: 1.0 if rank == 5 else 0.5)
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=1,
+    )
+    boosted = memories[4]
+
+    result = lc.compose(memories + [fact], weights=weights)
+    by_key = {r.key: r for r in result.rows}
+
+    # (a) the multiplier is not order-inert: rank 5 re-ranks to band 1.
+    assert by_key[boosted.key].channel_rank == 5
+    assert by_key[boosted.key].band == 1
+    assert by_key[memories[0].key].band == 2
+
+    # (b) inside band 1 the tier still decides, at any weight.
+    band_one = [r for r in result.rows if r.band == 1]
+    assert {r.key for r in band_one} == {fact.key, boosted.key}
+    assert band_one[0].key == fact.key
+    assert by_key[boosted.key].weighted_score > by_key[fact.key].weighted_score
+
+    for magnitude in (10.0, 1e6):
+        rows = lc.compose(memories + [fact], weights={"w_importance": magnitude}).rows
+        assert [r for r in rows if r.band == 1][0].key == fact.key
+
+
+def test_the_context_boost_is_band_monotone_in_its_weight():
+    """Band monotonicity, which is a theorem; **not** position monotonicity,
+    which is not.
+
+    Within a channel only matched rows scale, so a matched row's within-channel
+    rank is weakly non-increasing in the weight regardless of what any other
+    channel does. Composed *position* is a different quantity: with matched
+    rows in more than one channel, a matched row rising in its own channel can
+    displace the bands above it and push an unrelated row of another channel
+    down, so a matched row's position can worsen while its band improves.
+    """
+    matched_memory = lc.memory_candidate(
+        _memory_row(uuid4(), applies_when={"env": "prod"}), channel_rank=3,
+    )
+    plain_memories = [
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=r) for r in (1, 2)
+    ]
+    matched_fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="corroborated",
+                  applies_when={"env": "prod"}),
+        channel_rank=2,
+    )
+    plain_fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=1,
+    )
+    candidates = plain_memories + [matched_memory, plain_fact, matched_fact]
+
+    previous = {}
+    for weight in (0.0, 0.5, 2.0, 20.0):
+        rows = lc.compose(
+            candidates,
+            weights={"w_context_boost": weight},
+            declared_context=_declared(env="prod"),
+        ).rows
+        by_key = {r.key: r for r in rows}
+        for matched in (matched_memory, matched_fact):
+            band = by_key[matched.key].band
+            if matched.key in previous:
+                assert band <= previous[matched.key], (
+                    f"{matched.key} worsened from band {previous[matched.key]} "
+                    f"to {band} at w={weight}"
+                )
+            previous[matched.key] = band
+
+    assert previous[matched_memory.key] == 1
+    assert previous[matched_fact.key] == 1
