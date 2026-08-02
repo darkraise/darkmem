@@ -1759,3 +1759,169 @@ class TestSubsumeTombstone:
         assert stored == {"kept": 2}
         assert journal.refine_marker_of(stored) is None
         assert journal.subsume_tombstone_of(stored, "some-counterpart") is None
+
+
+# ── Step 7: the journal ──────────────────────────────────────────────────
+
+
+class TestUndoJournal:
+    async def test_one_row_per_undone_action(self, committing, project):
+        """T-JRN1. Per item, never per batch — matching the producer's own rule
+        and T2.23's Done-when. The batch stays visible as one act through
+        `undo_batch_id`."""
+        cycle = str(new_id())
+        older, _, subsume_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle
+        )
+
+        batch = await undo_ids(committing, subsume_id, refine_id, actor="curator")
+
+        rows = await journal_rows(committing, project, journal.UNDONE_EVENT_TYPE)
+        assert len(rows) == 2
+        assert {row["object_id"] for row in rows} == {str(older), str(memory)}
+        assert {row["actor"] for row in rows} == {"curator"}
+        assert {row["payload"]["undoes_event_id"] for row in rows} == {
+            subsume_id, refine_id
+        }
+        assert {row["payload"]["undo_batch_id"] for row in rows} == {
+            batch.undo_batch_id
+        }
+        assert {row["payload"]["cycle_id"] for row in rows} == {cycle}
+
+    async def test_the_payload_is_in_the_undos_own_frame(self, committing, project):
+        """T-JRN2. Written the other way round the journal reads plausibly and
+        is exactly backwards — the sort of thing only ever noticed years
+        later."""
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        action = [
+            row for row in await journal_rows(committing, project)
+            if row["payload"].get("action") == "subsume"
+        ][-1]["payload"]
+
+        batch = await undo_ids(committing, event_id)
+
+        undone = (
+            await journal_rows(committing, project, journal.UNDONE_EVENT_TYPE)
+        )[0]["payload"]
+        assert undone["before"] == action["after"]
+        assert undone["after"] == action["before"]
+        assert undone["before"]["status"] == "superseded"
+        assert undone["after"]["status"] == "active"
+        assert undone["restored"] == list(batch.undone[0].restored)
+        assert undone["excluded"] == list(batch.undone[0].excluded)
+
+    async def test_an_unjournallable_undo_does_not_land(
+        self, committing, project, monkeypatch
+    ):
+        """T-JRN3 — clause 3, proved non-vacuously.
+
+        Asserted on the **restored state being absent**, not on the row being
+        absent: the latter passes with the readback deleted. `record_event`
+        degrades loudly and never raises, so without the readback an undo whose
+        journal silently failed would commit — which is precisely the erasure
+        the clause forbids.
+        """
+        cycle = str(new_id())
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+
+        async def swallow(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(undo, "record_event", swallow)
+
+        with pytest.raises(undo.UndoNotJournalled):
+            async with committing() as session:
+                await undo.undo(session, event_ids=[event_id], actor="admin")
+                await session.commit()
+
+        assert (await memory_row(committing, older))["status"] == "superseded"
+        assert await journal_rows(
+            committing, project, journal.UNDONE_EVENT_TYPE
+        ) == []
+
+    async def test_the_batch_id_groups_one_batch_and_only_one(
+        self, committing, project
+    ):
+        """T-JRN4."""
+        cycle = str(new_id())
+        _, _, first_id = await produce_subsume(committing, project, cycle_id=cycle)
+        _, second_id = await produce_refine(committing, project, cycle_id=cycle)
+        _, _, third_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+
+        first = await undo_ids(committing, first_id, second_id)
+        second = await undo_ids(committing, third_id)
+
+        assert first.undo_batch_id != second.undo_batch_id
+        rows = await journal_rows(committing, project, journal.UNDONE_EVENT_TYPE)
+        grouped: dict[str, int] = {}
+        for row in rows:
+            key = row["payload"]["undo_batch_id"]
+            grouped[key] = grouped.get(key, 0) + 1
+        assert grouped == {first.undo_batch_id: 2, second.undo_batch_id: 1}
+
+    async def test_a_second_undo_of_one_action_refuses(self, committing, project):
+        """T-UND1. Without the check a second `undone` row is journalled for one
+        transition, and the timeline claims a memory was restored twice."""
+        cycle = str(new_id())
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        await undo_ids(committing, event_id)
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id)
+
+        assert [item.reason for item in refusal.value.blocked] == ["already_undone"]
+        assert len(
+            await journal_rows(committing, project, journal.UNDONE_EVENT_TYPE)
+        ) == 1
+
+    async def test_already_undone_outranks_the_elapsed_window(
+        self, committing, project
+    ):
+        """T-UND5 end to end: an action that is both already undone and out of
+        window reports `already_undone`, which is the fact an operator needs
+        first."""
+        cycle = str(new_id())
+        _, _, event_id = await produce_subsume(committing, project, cycle_id=cycle)
+        await undo_ids(committing, event_id)
+        later = datetime.now(timezone.utc) + timedelta(
+            days=undo.DEFAULT_RETENTION_DAYS + 1
+        )
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id, now=later)
+
+        assert [item.reason for item in refusal.value.blocked] == ["already_undone"]
+
+    async def test_the_digest_marks_an_undone_action(self, committing, project):
+        """What T2.38 renders as "an undone action still appears, marked
+        undone" — guaranteed by append-only rather than by the read surface
+        remembering to include it."""
+        cycle = str(new_id())
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        batch = await undo_ids(committing, event_id, actor="curator")
+
+        async with committing() as session:
+            actions = await digest.read_cycle_actions(session, cycle)
+            actions = await digest.annotate_undoability(session, actions)
+            cycles, _ = await digest.list_cycles(session, project=project)
+
+        assert actions[0].undone is True
+        assert actions[0].undone_by == "curator"
+        assert actions[0].undo_batch_id == batch.undo_batch_id
+        assert actions[0].undoable is False
+        assert actions[0].undo_blocked_reason == "already_undone"
+        assert cycles[0].undone_count == 1

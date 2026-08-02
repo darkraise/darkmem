@@ -51,6 +51,7 @@ from app.models.config import Config
 from app.repositories import memory_relations as edges
 from app.repositories.relational import PostgresMemoryRepository
 from app.services import dream_journal as journal
+from app.services.events import record_event
 from app.utils.ids import new_id
 
 # ── the retention window ─────────────────────────────────────────────────
@@ -208,6 +209,18 @@ class UndoActionNotFound(UndoRefused):
         super().__init__(())
 
 
+class UndoNotJournalled(RuntimeError):
+    """The journal readback came up short.
+
+    ``record_event`` degrades loudly and never raises, which is correct for a
+    side-channel and wrong for a Done-when clause: an undo whose journal
+    silently failed *is* an erasure. Raising here makes an unjournalled undo
+    unreachable rather than merely unlikely — and, like every raise other than
+    ``UndoRefused``, it leaves restores in the session for the caller to roll
+    back.
+    """
+
+
 class UndoIncomplete(RuntimeError):
     """Fewer actions were restored than were named. Unreachable by
     construction; the assertion is what makes a short result *unreturnable*
@@ -342,6 +355,17 @@ _RESTORE_STATUS = text("""
            )
      WHERE id = CAST(:memory_id AS uuid)
     RETURNING CAST(id AS text) AS id
+""")
+
+# Bounded by real wall-clock rather than the caller's injected `now`: the row
+# lands at the server's `now()` whatever the caller believes the time to be, and
+# the bound is what prunes this read to one or two monthly children.
+_READBACK = text("""
+    SELECT count(*) AS journalled
+    FROM events
+    WHERE event_type = CAST(:undone_type AS text)
+      AND created_at >= CAST(:floor AS timestamptz)
+      AND payload ->> 'undo_batch_id' = CAST(:undo_batch_id AS text)
 """)
 
 _RESTORE_SUMMARY = text("""
@@ -780,6 +804,46 @@ async def already_undone_ids(
     return {int(row["undoes"]) for row in rows if row["undoes"]}
 
 
+async def _journal_undo(
+    session: AsyncSession,
+    *,
+    action: ResolvedAction,
+    restored: UndoneAction,
+    undo_batch_id: str,
+    actor: str,
+) -> None:
+    """One row per undone action, never one per batch.
+
+    **``before`` and ``after`` are in the undo's own frame**, not the original
+    action's: an undo *is* an action, and every payload in this journal means
+    "what this row's transition moved from and to". So the undo's ``before`` is
+    the action's ``after``, and its ``after`` is the action's ``before``.
+    Stated explicitly because writing it the other way round produces a journal
+    that reads plausibly and is exactly backwards.
+
+    ``object_type`` stays ``memory`` so one memory's timeline carries the
+    action and its reversal through the existing index.
+    """
+    await record_event(
+        session,
+        event_type=journal.UNDONE_EVENT_TYPE,
+        object_type=journal.OBJECT_TYPE,
+        object_id=UUID(action.object_id),
+        project=action.project,
+        actor=actor,
+        payload={
+            "action": action.action,
+            "undoes_event_id": action.event_id,
+            "undo_batch_id": undo_batch_id,
+            "cycle_id": action.payload.get("cycle_id"),
+            "before": action.after,
+            "after": action.before,
+            "restored": list(restored.restored),
+            "excluded": list(restored.excluded),
+        },
+    )
+
+
 async def undo(
     session: AsyncSession,
     *,
@@ -851,6 +915,33 @@ async def undo(
             f"{len(undone)} of {len(actions)} actions restored; a batch that "
             "cannot be completed must not be returned as one that was"
         )
+
+    by_event = {action.event_id: action for action in actions}
+    for restored_action in undone:
+        await _journal_undo(
+            session,
+            action=by_event[restored_action.event_id],
+            restored=restored_action,
+            undo_batch_id=undo_batch_id,
+            actor=actor,
+        )
+
+    journalled = (
+        await session.execute(
+            _READBACK,
+            {
+                "undone_type": journal.UNDONE_EVENT_TYPE,
+                "floor": datetime.now(timezone.utc) - timedelta(days=1),
+                "undo_batch_id": undo_batch_id,
+            },
+        )
+    ).scalar_one()
+    if journalled != len(undone):
+        raise UndoNotJournalled(
+            f"{journalled} of {len(undone)} undo rows reached the journal; an "
+            "undo that could not be journalled does not happen"
+        )
+
     return UndoBatch(
         undo_batch_id=undo_batch_id, undone=tuple(reversed(undone))
     )
