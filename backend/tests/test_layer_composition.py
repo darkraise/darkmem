@@ -850,3 +850,16 @@ def test_the_code_search_guard_rejects_a_synthesised_reference(tmp_path):
     assert offenders
     assert any("import route" in offender for offender in offenders)
     assert any("attribute route" in offender for offender in offenders)
+
+
+def test_the_composition_is_on_the_hot_path_floor():
+    """Invariant 15's floor carries a maintenance duty, and this discharges it
+    for this module. The composition reads the verification label; it must
+    never be able to reach the judge that computes one.
+
+    ``facts_channel.py``'s own absence from that set is real and confirmed,
+    and is routed to its own task rather than repaired here.
+    """
+    from tests.test_verification_judge import _HOT_PATH_MODULES
+
+    assert "app/services/layer_composition.py" in _HOT_PATH_MODULES
