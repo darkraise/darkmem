@@ -203,3 +203,99 @@ async def test_the_counterpart_comes_from_the_latest_verified_event(session):
     label = lc.dispute_label(row, evidence.get(str(fact_id)))
 
     assert label["counterpart"]["object"] == "fresh"
+
+
+# ─────────────── the tier table and the ordering rule (D4) ───────────────
+
+
+def test_an_unknown_verification_status_raises():
+    candidate = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="probably_true"), channel_rank=1,
+    )
+    with pytest.raises(ValueError):
+        lc.compose([candidate])
+
+
+def test_verified_sorts_above_labelled_candidate_in_the_same_band():
+    """The ordering rule's flagship guard.
+
+    The **article** is load-bearing and must not be simplified to a memory or
+    a second fact. ``key`` is the final tie-break and sorts alphabetically,
+    where ``"article:…" < "fact:…" < "memory:…"``. That accidentally *agrees*
+    with tier order in the obvious fixtures (a fact above a memory, a high
+    article above a low fact), so a test built from those passes with the
+    ``-tier`` term deleted and the guard gone. A ``confirmed`` fact against a
+    ``candidate`` article in the same band is the one cross-channel pairing
+    where the tie-break and the tier disagree, which is what makes deleting
+    the tier term observable here.
+    """
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="confirmed"), channel_rank=1,
+    )
+    article = lc.article_candidate(
+        _article_row(uuid4(), verification_status="candidate"), channel_rank=1,
+    )
+
+    for order in ([fact, article], [article, fact]):
+        rows = lc.compose(order).rows
+        assert [r.band for r in rows] == [1, 1]
+        assert rows[0].id_kind == "fact"
+        assert rows[1].id_kind == "article"
+        # The tie-break alone would have ordered them the other way round.
+        assert sorted(r.key for r in rows)[0].startswith("article:")
+
+
+def test_no_row_is_dropped_for_its_verification_status():
+    candidates = [
+        lc.fact_candidate(_fact_row(uuid4(), verification_status="candidate"), channel_rank=i)
+        for i in range(1, 4)
+    ]
+    candidates.append(lc.memory_candidate(_memory_row(uuid4()), channel_rank=1))
+
+    result = lc.compose(candidates)
+
+    assert len(result.rows) == 4
+    assert {r.verification_status for r in result.rows} == {"candidate", None}
+    assert all(r.labels["project"] == "default" for r in result.rows)
+
+
+def test_under_sourced_keeps_the_corroborated_tier():
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="corroborated", review_state="open"),
+        channel_rank=1,
+    )
+    article = lc.article_candidate(
+        _article_row(uuid4(), verification_status="candidate"), channel_rank=1,
+    )
+
+    rows = lc.compose([fact, article]).rows
+    by_kind = {r.id_kind: r for r in rows}
+
+    assert by_kind["fact"].tier == lc.TIER_BY_VERIFICATION_STATUS["corroborated"]
+    assert by_kind["fact"].labels["review_state"] == "open"
+    assert rows[0].id_kind == "fact"
+
+
+def test_the_order_is_total_and_reproducible():
+    candidates = [
+        lc.fact_candidate(_fact_row(uuid4(), verification_status="confirmed"), channel_rank=1),
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=1),
+        lc.article_candidate(_article_row(uuid4()), channel_rank=1),
+    ]
+    first = [r.key for r in lc.compose(candidates).rows]
+    second = [r.key for r in lc.compose(list(reversed(candidates))).rows]
+    assert first == second
+
+
+def test_a_memory_lifecycle_status_never_reaches_the_tier_lookup():
+    """``scope_labels`` stamps ``status`` on every hybrid row, so wiring the
+    tier lookup to it is one keyword away and would raise on every memory in
+    the corpus."""
+    row = _memory_row(uuid4(), status="active")
+    composed = lc.compose([lc.memory_candidate(row, channel_rank=1)]).rows[0]
+
+    assert composed.tier == lc.MEMORY_TIER
+    assert composed.labels["status"] == "active"
+
+    with pytest.raises(ValueError):
+        lc.tier_for("active")

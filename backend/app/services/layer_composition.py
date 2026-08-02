@@ -62,13 +62,19 @@ __all__ = [
     "ID_KINDS",
     "LAYERS",
     "LAYER_BY_ID_KIND",
+    "MEMORY_TIER",
+    "TIER_BY_VERIFICATION_STATUS",
+    "ComposedRow",
+    "CompositionResult",
     "LayerCandidate",
     "article_candidate",
+    "compose",
     "composition_key",
     "cross_layer_rrf",
     "dispute_label",
     "fact_candidate",
     "memory_candidate",
+    "tier_for",
 ]
 
 LAYERS: frozenset[str] = frozenset({"L0", "L2", "L3"})
@@ -98,6 +104,56 @@ DISPUTED = "disputed"
 # caller-overridden verdict, a dispute predating the writer) are not
 # distinguishable from the journal.
 COUNTERPART_ABSENT_NO_FINDING = "no_finding_recorded"
+
+# Doc 07 §5's ordering rule, as a lookup over the closed verification
+# vocabulary. Four things this table is careful about:
+#
+# It is a lookup and **not** a computation — an unknown status raises rather
+# than falling back, because a silent default would be the read path assigning
+# a verification meaning, which is the line invariant 15 draws. The column's
+# CHECK admits exactly these four values, so raising costs nothing.
+#
+# ``under-sourced`` is **not** a tier. Doc 08 §4.3 makes it a review-state
+# overlay on a still-corroborated fact, so it rides through as a label and
+# does not move the row; demoting it here would be recomputing a label.
+#
+# L0 sits at the bottom because doc 07 §5 puts it there: a verified fact
+# outranks a raw candidate of equal query-relevance.
+#
+# ``disputed`` sits below ``candidate`` (ruled Tier-1, 2026-08-02). Doc 07 §5
+# makes ``disputed`` a sub-state orthogonal to the three rungs rather than a
+# fourth rung, so its sort position is unspecified rather than contradicted.
+# Under-claiming is the corpus's posture, the cost is bounded because the row
+# is still served labelled with both sides, and the natural alternative —
+# retaining the pre-dispute rung — is unavailable to this layer: the prior
+# rung is gone from the row, and reconstructing it would mean retrieval
+# reading the verification journal to compute a label rather than read one.
+TIER_BY_VERIFICATION_STATUS: dict[str, int] = {
+    "confirmed": 4,
+    "corroborated": 3,
+    "candidate": 2,
+    "disputed": 1,
+}
+
+MEMORY_TIER = 0
+
+
+def tier_for(verification_status: str | None) -> int:
+    """The ordering tier of one verification status.
+
+    ``None`` is the memory layer, which carries a lifecycle status instead of
+    a verification one and sits at :data:`MEMORY_TIER`.
+    """
+    if verification_status is None:
+        return MEMORY_TIER
+    try:
+        return TIER_BY_VERIFICATION_STATUS[verification_status]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"{verification_status!r} is not a verification status; the "
+            f"composition orders {sorted(TIER_BY_VERIFICATION_STATUS)} and "
+            "never invents a tier for a value it does not know"
+        ) from None
 
 
 def composition_key(id_kind: str, wire_id: str) -> str:
@@ -319,3 +375,124 @@ def article_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         signals=_signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
+
+
+def _labels(candidate: LayerCandidate) -> dict:
+    """The labels a composed row carries about its own scope and belief.
+
+    Read off the producer's row, never computed. ``review_state`` rides
+    through on a fact for exactly the reason it does not move it: doc 08
+    §4.3's under-sourced overlay is a label a consumer may render, not a rung
+    this layer may re-derive.
+    """
+    row = candidate.row
+    labels: dict = {"project": row.get("project")}
+    if candidate.id_kind == "memory":
+        labels["status"] = row.get("status")
+    else:
+        labels["verification_status"] = candidate.verification_status
+        labels["review_state"] = row.get("review_state")
+    return labels
+
+
+@dataclass(frozen=True)
+class ComposedRow:
+    """One served row, labelled with where it came from and how it ranked.
+
+    Carries **both** key spellings on purpose: ``key`` is the internal
+    namespaced merge key, and ``id`` + ``id_kind`` are doc 07 §8's wire pair,
+    so a client is handed a bare id it can look up. ``key ==
+    f"{id_kind}:{id}"`` always.
+
+    There is deliberately **no** ``grouping`` key. Emitting
+    ``{grouped_under: None}`` would claim a grouping pass ran; T2.55 adds the
+    key when it adds the pass.
+    """
+
+    key: str
+    id: str
+    id_kind: str
+    layer: str
+    channel_rank: int
+    verification_status: str | None
+    tier: int
+    band: int
+    cross_layer_rrf: float
+    labels: Mapping[str, object]
+    dispute: Mapping[str, object] | None
+    row: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class CompositionResult:
+    """``compose()``'s ordered output plus the counts the envelope owes.
+
+    ``excluded_by_context_conflict`` is doc 07 §8's ``by_context_conflict``
+    and is reported unconditionally, including when it is zero — a suppressed
+    count hides exactly the case a reader needs.
+    """
+
+    rows: list[ComposedRow]
+    excluded_by_context_conflict: int = 0
+    reranked: bool = False
+
+
+def compose(
+    candidates,
+    *,
+    weights: Mapping[str, object] | None = None,
+    evidence: Mapping[str, Mapping] | None = None,
+) -> CompositionResult:
+    """Doc 07 §5 steps 1 to 4, as a pure function.
+
+    No session, no clock, no LLM — the same split the verification ladder
+    keeps between its decision and its applier, and for the same reason: it
+    makes every ordering, tier and keyspace property a fast test that can be
+    mutated cheaply and often.
+
+    **The order is ascending on ``(band, -tier, key)``.** ``key`` is the sole
+    tie-break because it is input-independent: an insertion-order tie-break
+    would make the served order depend on the order a caller happened to list
+    its channels. A weighted score is deliberately *not* a sort term —
+    comparing two channels' weighted magnitudes directly is the
+    cross-modality comparison doc 07 §3 rejects.
+
+    **Nothing is dropped for its verification status.** An all-``candidate``
+    input composes to a full, labelled result, which is the floor T2.56's
+    cold start inherits rather than a rule it has to unpick.
+    """
+    weights = weights or {}
+    evidence = evidence or {}
+
+    for candidate in candidates:
+        if not isinstance(candidate, LayerCandidate):
+            raise TypeError(
+                "compose() admits only LayerCandidate, minted by "
+                "memory_candidate() / fact_candidate() / article_candidate(); "
+                f"got {type(candidate).__name__}: {candidate!r}"
+            )
+
+    rows: list[ComposedRow] = []
+    for candidate in candidates:
+        rows.append(
+            ComposedRow(
+                key=candidate.key,
+                id=candidate.id,
+                id_kind=candidate.id_kind,
+                layer=candidate.layer,
+                channel_rank=candidate.channel_rank,
+                verification_status=candidate.verification_status,
+                tier=tier_for(candidate.verification_status),
+                band=candidate.channel_rank,
+                cross_layer_rrf=cross_layer_rrf(candidate.channel_rank),
+                labels=_labels(candidate),
+                dispute=(
+                    dispute_label(candidate.row, evidence.get(candidate.id))
+                    if candidate.id_kind != "memory"
+                    else None
+                ),
+                row=candidate.row,
+            )
+        )
+
+    return CompositionResult(rows=sorted(rows, key=lambda r: (r.band, -r.tier, r.key)))
