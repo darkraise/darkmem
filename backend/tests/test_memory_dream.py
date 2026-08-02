@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.repositories import memory_relations as edges
+from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services import memory_dream as dream
 from app.services.embedder_registry import child_table
@@ -1517,3 +1518,363 @@ class TestSourceScans:
         )
 
         assert _forbidden_writes([innocent], tmp_path) == []
+
+
+# ── Step 7: the negatives and the journalling contract ───────────────────
+
+
+async def _three_action_fixture(committing, project):
+    """A cycle that provably does all three things at once.
+
+    OLD/NEW subsume, DUP_A/DUP_B associate, and LONE refines — so the row-set
+    invariance assertion below is made against a cycle that definitely acted.
+    """
+
+
+    def refined_already(content: str) -> dict:
+        """A marker matching the row's own content, so the refine arm passes it
+        over and LONE is the only memory this cycle refines."""
+        return {"dream": {"refine": {"content_sha": dream.content_sha(content)}}}
+
+    async with committing() as session:
+        await seed_partition(session)
+        older = await seed_memory(
+            session, project=project, content="the api listens on 8000",
+            created_at=NOW,
+            metadata=refined_already("the api listens on 8000"),
+        )
+        newer = await seed_memory(
+            session, project=project,
+            content="the api listens on 8000 with keepalive",
+            created_at=NOW + timedelta(hours=1),
+            metadata=refined_already("the api listens on 8000 with keepalive"),
+        )
+        dup_a = await seed_memory(
+            session, project=project, content="the sweeper runs hourly",
+            created_at=NOW + timedelta(hours=2),
+            metadata=refined_already("the sweeper runs hourly"),
+        )
+        dup_b = await seed_memory(
+            session, project=project, content="the sweeper runs every hour",
+            created_at=NOW + timedelta(hours=3),
+            metadata=refined_already("the sweeper runs every hour"),
+        )
+        lone = await seed_memory(
+            session, project=project, content="the vite proxy listens on 3636",
+            created_at=NOW + timedelta(hours=4),
+        )
+        await put_vector(session, older, [1.0, 0.0, 0.0, 0.0])
+        await put_vector(session, newer, [1.0, 0.0, 0.0, 0.0])
+        await put_vector(session, dup_a, [0.0, 1.0, 0.0, 0.0])
+        await put_vector(session, dup_b, [0.0, 1.0, 0.0, 0.0])
+        await put_vector(session, lone, [0.0, 0.0, 1.0, 0.0])
+        await session.commit()
+
+    def pair_reply(body: str) -> str:
+        return verdict("subsumes" if "listens on 8000" in body else "duplicate")
+
+    stub = StubLLM(
+        pair_verdict=pair_reply,
+        refine=refine(summary="A refined summary.", tags=["ops"]),
+    )
+    return {
+        "older": older, "newer": newer, "dup_a": dup_a, "dup_b": dup_b,
+        "lone": lone, "stub": stub,
+    }
+
+
+async def _all_memories(factory) -> dict[str, str]:
+    async with factory() as session:
+        result = await session.execute(
+            text("SELECT CAST(id AS text) AS id, content FROM memories")
+        )
+        return {row["id"]: dream.content_sha(row["content"]) for row in result.mappings()}
+
+
+async def _reference_counts(factory, memory_id) -> dict[str, int]:
+    """Every table that points at a memory, counted by endpoint. A hard merge
+    would have moved these onto the surviving row."""
+    async with factory() as session:
+        counts = {}
+        for name, statement in (
+            (
+                "memory_relations_source",
+                "SELECT count(*) FROM memory_relations "
+                "WHERE source_memory_id = CAST(:id AS uuid)",
+            ),
+            (
+                "memory_relations_target",
+                "SELECT count(*) FROM memory_relations "
+                "WHERE target_memory_id = CAST(:id AS uuid)",
+            ),
+            (
+                "memory_crossrefs",
+                "SELECT count(*) FROM memory_crossrefs "
+                "WHERE memory_id = CAST(:id AS uuid)",
+            ),
+            (
+                # fact_sources references a memory by text `source_ref`, not by
+                # a uuid column.
+                "fact_sources",
+                "SELECT count(*) FROM fact_sources "
+                "WHERE source_kind = 'memory' AND source_ref = CAST(:id AS text)",
+            ),
+        ):
+            result = await session.execute(text(statement), {"id": str(memory_id)})
+            counts[name] = result.scalar_one()
+        return counts
+
+
+class TestNoPathDeletesOrHardMerges:
+    async def test_the_row_set_is_invariant_under_a_cycle_that_acted(
+        self, committing, project, run_cycle
+    ):
+        """T-N1a. The outcome assertion is the whole point: without it a cycle
+        that did nothing would pass this trivially."""
+        fixture = await _three_action_fixture(committing, project)
+        before = await _all_memories(committing)
+
+        outcome = await run_cycle(committing, fixture["stub"])
+
+        assert outcome.subsumed >= 1
+        assert outcome.associated >= 1
+        assert outcome.refined >= 1
+        assert await _all_memories(committing) == before
+
+    async def test_the_cycle_moved_state_without_rewriting_a_row(
+        self, committing, project, run_cycle
+    ):
+        """T-N1b, the differential twin: the invariance above is not because the
+        cycle is inert."""
+        fixture = await _three_action_fixture(committing, project)
+        before = await memory_row(committing, fixture["older"])
+
+        await run_cycle(committing, fixture["stub"])
+
+        after = await memory_row(committing, fixture["older"])
+        assert before["status"] == "active"
+        assert after["status"] == "superseded"
+        assert after["content"] == before["content"]
+
+    async def test_references_to_a_subsumed_memory_are_not_repointed(
+        self, committing, project, run_cycle
+    ):
+        """The third shape of a hard merge: moving another table's references
+        from the retired memory onto the survivor."""
+        fixture = await _three_action_fixture(committing, project)
+        before = await _reference_counts(committing, fixture["older"])
+
+        await run_cycle(committing, fixture["stub"])
+
+        assert (await memory_row(committing, fixture["older"]))["status"] == (
+            "superseded"
+        )
+        assert await _reference_counts(committing, fixture["older"]) == before
+
+
+class TestJournalling:
+    async def test_every_action_writes_one_before_after_payload(
+        self, committing, project, run_cycle
+    ):
+        """T-J1, table-driven over the three actions."""
+        fixture = await _three_action_fixture(committing, project)
+        snapshot = {
+            "subsume": await memory_row(committing, fixture["older"]),
+            "refine": await memory_row(committing, fixture["lone"]),
+        }
+
+        outcome = await run_cycle(committing, fixture["stub"])
+
+        events = await consolidated_events(committing, project)
+        by_action: dict[str, list[dict]] = {}
+        for event in events:
+            by_action.setdefault(event["payload"]["action"], []).append(event)
+        assert set(by_action) == {"subsume", "associate", "refine"}
+
+        for action, rows in by_action.items():
+            assert len(rows) == 1, f"{action} journalled {len(rows)} rows"
+            payload = rows[0]["payload"]
+            assert "before" in payload and "after" in payload
+            assert payload["before"] != payload["after"]
+            assert payload["cycle_id"] == outcome.cycle_id
+
+        assert by_action["subsume"][0]["payload"]["before"]["status"] == (
+            snapshot["subsume"]["status"]
+        )
+        assert by_action["refine"][0]["payload"]["before"]["summary"] == (
+            snapshot["refine"]["summary"]
+        )
+
+    async def test_a_second_cycle_carries_a_different_cycle_id(
+        self, committing, project, run_cycle
+    ):
+        fixture = await _three_action_fixture(committing, project)
+        first = await run_cycle(committing, fixture["stub"])
+        await _rewind_cursor(committing)
+        second = await run_cycle(committing, fixture["stub"])
+
+        assert first.cycle_id != second.cycle_id
+
+    async def test_a_declined_pair_journals_nothing(
+        self, committing, project, run_cycle
+    ):
+        """T-J3. `events` is append-only, so a phantom transition row can never
+        be removed once written."""
+        await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("distinct"), refine=None)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        assert await consolidated_events(committing, project) == []
+
+    async def test_each_payload_is_sufficient_to_invert_its_action(
+        self, committing, project, run_cycle
+    ):
+        """T-J2, the strongest form: the inverse is applied by hand here, from
+        the payload and nothing else, and the object must land back where it
+        started field-for-field — with two exclusions asserted positively rather
+        than skipped."""
+        fixture = await _three_action_fixture(committing, project)
+        before_subsume = await memory_row(committing, fixture["older"])
+        before_refine = await memory_row(committing, fixture["lone"])
+
+        await run_cycle(committing, fixture["stub"])
+        after_refine = await memory_row(committing, fixture["lone"])
+
+        events = {
+            event["payload"]["action"]: event["payload"]
+            for event in await consolidated_events(committing, project)
+        }
+
+        # Subsume: one statement, because the CHECK forbids the two-statement
+        # form.
+        payload = events["subsume"]
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET status = CAST(:status AS memory_status), "
+                    "superseded_by = CAST(:pointer AS uuid) "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {
+                    "status": payload["before"]["status"],
+                    "pointer": payload["before"]["superseded_by"],
+                    "id": payload["pair"]["older"],
+                },
+            )
+            await session.commit()
+        restored = await memory_row(committing, fixture["older"])
+        assert restored["status"] == before_subsume["status"]
+        assert restored["superseded_by"] == before_subsume["superseded_by"]
+
+        # Associate: `created` decides the inverse, and it was a fresh row.
+        payload = events["associate"]
+        assert payload["created"] is True
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "DELETE FROM memory_relations "
+                    "WHERE source_memory_id = CAST(:s AS uuid) "
+                    "AND target_memory_id = CAST(:t AS uuid) "
+                    "AND rel_type = CAST(:r AS text)"
+                ),
+                {
+                    "s": payload["after"]["edge"]["source"],
+                    "t": payload["after"]["edge"]["target"],
+                    "r": payload["after"]["edge"]["rel_type"],
+                },
+            )
+            await session.commit()
+        assert await edge_count(committing, project) == 0
+
+        # Refine: summary and tags, and nothing else.
+        payload = events["refine"]
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET summary = :summary "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"summary": payload["before"]["summary"], "id": str(fixture["lone"])},
+            )
+            await PostgresMemoryRepository(session).set_tags(
+                fixture["lone"], payload["before"]["tags"]
+            )
+            await session.commit()
+        undone = await memory_row(committing, fixture["lone"])
+        assert undone["summary"] == before_refine["summary"]
+
+        # The two named exclusions, asserted rather than skipped. Restoring the
+        # marker would clear it on a first refine and re-arm the very loop the
+        # suppression rule closes; `updated_at` is the trigger's and no inverse
+        # can restore it.
+        assert (
+            undone["metadata"]["dream"]["refine"]
+            == after_refine["metadata"]["dream"]["refine"]
+        )
+        assert undone["updated_at"] > after_refine["updated_at"]
+
+    async def test_an_undone_refine_stays_undone(
+        self, committing, project, run_cycle
+    ):
+        """T-J2b, the executable form of the marker rule. An inverse that
+        restored `metadata.dream.refine` passes T-J2 and fails only here."""
+        fixture = await _three_action_fixture(committing, project)
+        before = await memory_row(committing, fixture["lone"])
+        await run_cycle(committing, fixture["stub"])
+
+        payload = {
+            event["payload"]["action"]: event["payload"]
+            for event in await consolidated_events(committing, project)
+        }["refine"]
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET summary = :summary "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"summary": payload["before"]["summary"], "id": str(fixture["lone"])},
+            )
+            await PostgresMemoryRepository(session).set_tags(
+                fixture["lone"], payload["before"]["tags"]
+            )
+            await session.commit()
+        await _rewind_cursor(committing)
+
+        second = await run_cycle(committing, fixture["stub"])
+
+        assert second.refined == 0
+        after = await memory_row(committing, fixture["lone"])
+        assert after["summary"] == before["summary"]
+        assert len(
+            [
+                event
+                for event in await consolidated_events(committing, project)
+                if event["payload"]["action"] == "refine"
+            ]
+        ) == 1
+
+    async def test_one_poisonous_action_does_not_void_its_siblings(
+        self, committing, project, run_cycle, monkeypatch
+    ):
+        """Without the per-action savepoint the first action's write would go
+        with the second's failure."""
+        fixture = await _three_action_fixture(committing, project)
+        original = dream.apply_associate
+        calls = {"n": 0}
+
+        async def explode(session, action, **kwargs):
+            calls["n"] += 1
+            raise RuntimeError("poisonous action")
+
+        monkeypatch.setattr(dream, "apply_associate", explode)
+
+        outcome = await run_cycle(committing, fixture["stub"])
+
+        assert calls["n"] >= 1
+        assert outcome.failed >= 1
+        assert outcome.subsumed == 1
+        assert outcome.refined >= 1
+        assert (await memory_row(committing, fixture["older"]))["status"] == (
+            "superseded"
+        )
