@@ -27,6 +27,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import text
 
+from app.repositories import memory_communities as repo
 from app.services.memory_projection import (
     TRUNCATED_TOO_MANY_EDGES,
     build_projection,
@@ -435,3 +436,252 @@ async def test_kernel_honours_weights(recorded_executors):
     assert weighted.membership[0] == weighted.membership[1]
     assert weighted.membership[2] == weighted.membership[3]
     assert weighted.membership[1] != weighted.membership[2]
+
+
+# ---------------------------------------------------------------------------
+# The repository — the per-project delete-and-rewrite
+# ---------------------------------------------------------------------------
+
+
+async def test_rewrite_writes_communities_and_members(session):
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+
+    written = await repo.replace_project_communities(
+        session,
+        PROJECT,
+        [repo.CommunityDraft(label="alpha", memory_ids=(a, b),
+                             properties={"size": 2})],
+    )
+    await session.flush()
+
+    (row,) = await repo.list_with_members(session, PROJECT)
+    assert row.id == written[0]
+    assert row.label == "alpha"
+    assert row.properties == {"size": 2}
+    assert set(row.memory_ids) == {a, b}
+    assert row.report_string is None
+
+
+async def test_rewrite_replaces_rather_than_accumulates(session):
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+
+    first = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+    second = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="beta", memory_ids=(a,))]
+    )
+    await session.flush()
+
+    assert set(first) & set(second) == set()
+    assert await community_ids(session, PROJECT) == set(second)
+    assert len(await member_rows(session, PROJECT)) == 1
+
+
+async def test_rewrite_leaves_other_projects_untouched(session):
+    """T6. Dropping `WHERE project = :p` from the DELETE takes every other
+    project's topics with it."""
+    mine = await seed_memory(session)
+    theirs = await seed_memory(session, OTHER_PROJECT)
+    await session.flush()
+
+    other = await repo.replace_project_communities(
+        session,
+        OTHER_PROJECT,
+        [repo.CommunityDraft(label="theirs", memory_ids=(theirs,))],
+    )
+    await session.flush()
+    await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="mine", memory_ids=(mine,))]
+    )
+    await session.flush()
+
+    assert await community_ids(session, OTHER_PROJECT) == set(other)
+    assert len(await member_rows(session, OTHER_PROJECT)) == 1
+
+
+async def test_member_shortfall_names_a_cross_project_violation(session):
+    """T3. Without the rowcount check the foreign row is dropped silently and
+    the write reports success on a membership it never wrote."""
+    mine = await seed_memory(session)
+    theirs = await seed_memory(session, OTHER_PROJECT)
+    await session.flush()
+
+    with pytest.raises(repo.MemberWriteError) as excinfo:
+        await repo.replace_project_communities(
+            session,
+            PROJECT,
+            [repo.CommunityDraft(label="mixed", memory_ids=(mine, theirs))],
+        )
+
+    assert excinfo.value.reason == repo.CROSS_PROJECT_VIOLATION
+    assert str(theirs) in str(excinfo.value)
+
+
+async def test_member_shortfall_distinguishes_a_stale_snapshot(session):
+    """The read-to-write race is not a defect and must not be journalled as
+    one: Phase R's snapshot is read before the write transaction opens."""
+    kept = await seed_memory(session)
+    await session.flush()
+    vanished = new_id()
+
+    with pytest.raises(repo.MemberWriteError) as excinfo:
+        await repo.replace_project_communities(
+            session,
+            PROJECT,
+            [repo.CommunityDraft(label="raced", memory_ids=(kept, vanished))],
+        )
+
+    assert excinfo.value.reason == repo.STALE_SNAPSHOT
+
+
+async def test_a_failed_rewrite_leaves_the_previous_run_intact(session):
+    """T5, repository half. The T1.21 guard: the strip and the rewrite are one
+    atomic unit, so a failure anywhere in the write leaves the previous run's
+    communities intact — ids and all — rather than leaving the project with
+    none."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+
+    good = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+    before_ids = await community_ids(session, PROJECT)
+    before_members = await member_rows(session, PROJECT)
+
+    with pytest.raises(repo.MemberWriteError):
+        async with session.begin_nested():
+            await repo.replace_project_communities(
+                session,
+                PROJECT,
+                [repo.CommunityDraft(label="doomed", memory_ids=(a, new_id()))],
+            )
+
+    assert await community_ids(session, PROJECT) == before_ids == set(good)
+    assert await member_rows(session, PROJECT) == before_members
+
+
+async def test_get_by_label_and_set_report_carry_reports_across_a_rewrite(
+    session,
+):
+    """The T2.19 seam: ids churn every run, labels do not, so a prior run's
+    report can be carried forward instead of regenerated nightly."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+
+    (first,) = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+    await repo.set_report(session, first, report_string="a report")
+    await session.flush()
+
+    carried = await repo.get_by_label(session, PROJECT, "alpha")
+    assert carried is not None
+    assert carried.report_string == "a report"
+
+    (second,) = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a,))]
+    )
+    await session.flush()
+
+    assert second != first
+    rewritten = await repo.get_by_label(session, PROJECT, "alpha")
+    assert rewritten is not None
+    assert rewritten.id == second
+    assert rewritten.report_string is None
+    assert await repo.get_by_label(session, PROJECT, "nothing") is None
+
+
+async def test_delete_memberships_for_memory_clears_only_that_memory(session):
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+    await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+
+    removed = await repo.delete_memberships_for_memory(session, a)
+    await session.flush()
+
+    assert removed == 1
+    assert {m for _, m in await member_rows(session, PROJECT)} == {b}
+
+
+async def test_m4_catches_a_hand_inserted_cross_project_member(session):
+    """T1. Until the members table carries `project` and both composite
+    foreign keys, M4's post-write scan is the only database-level backstop:
+    the member insert's join cannot produce this row, but a hand-written
+    INSERT can, and nothing else notices."""
+    mine = await seed_memory(session)
+    theirs = await seed_memory(session, OTHER_PROJECT)
+    await session.flush()
+
+    (community,) = await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="mine", memory_ids=(mine,))]
+    )
+    await session.flush()
+    await repo.assert_no_cross_project_members(session, PROJECT)
+
+    await session.execute(
+        text(
+            "INSERT INTO memory_community_members (community_id, memory_id) "
+            "VALUES (CAST(:c AS uuid), CAST(:m AS uuid))"
+        ),
+        {"c": str(community), "m": str(theirs)},
+    )
+    await session.flush()
+
+    with pytest.raises(repo.MemberWriteError) as excinfo:
+        await repo.assert_no_cross_project_members(session, PROJECT)
+    assert excinfo.value.reason == repo.CROSS_PROJECT_VIOLATION
+
+
+# ---------------------------------------------------------------------------
+# The schema these tables actually carry
+# ---------------------------------------------------------------------------
+
+
+async def test_nothing_durable_references_a_churning_community_id(session):
+    """T14a. Community ids are rewritten every run, so a durable FK onto one
+    would break on the next nightly pass (doc 04 §8.4)."""
+    result = await session.execute(
+        text(
+            "SELECT conname, conrelid::regclass::text AS referencing "
+            "FROM pg_constraint "
+            "WHERE contype = 'f' "
+            "AND confrelid = CAST('memory_communities' AS regclass)"
+        )
+    )
+    referencing = {row.referencing for row in result}
+    assert referencing == {"memory_community_members"}
+
+
+async def test_community_tables_carry_the_columns_the_writer_assumes(session):
+    result = await session.execute(
+        text(
+            "SELECT table_name, column_name, is_nullable "
+            "FROM information_schema.columns "
+            "WHERE table_schema = 'public' "
+            "AND table_name IN "
+            "('memory_communities', 'memory_community_members')"
+        )
+    )
+    columns = {(r.table_name, r.column_name): r.is_nullable for r in result}
+
+    assert columns[("memory_communities", "id")] == "NO"
+    assert columns[("memory_communities", "project")] == "NO"
+    assert columns[("memory_communities", "label")] == "YES"
+    assert columns[("memory_communities", "report_string")] == "YES"
+    assert columns[("memory_communities", "properties")] == "YES"
+    assert columns[("memory_community_members", "community_id")] == "NO"
+    assert columns[("memory_community_members", "memory_id")] == "NO"
