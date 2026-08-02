@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import json
+import uuid as uuid_module
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
+from app.models.memory import Memory
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services import facts_channel, hybrid_search
 from app.services import layer_composition as lc
 from app.services import rank_fusion
+from app.services.embedder_registry import child_table
 from app.services.events import record_event
+from app.services.reranker import RerankerService
 from app.services.verified_evidence import latest_verified_evidence
 
 PROJECT = "t2-43-layer-composition"
@@ -542,3 +549,204 @@ def test_the_context_boost_is_band_monotone_in_its_weight():
 
     assert previous[matched_memory.key] == 1
     assert previous[matched_fact.key] == 1
+
+
+# ─────────── the service: fan-out, envelope, rerank derivation (D7, D10) ───────────
+
+
+class _FakeLLM:
+    def __init__(self, vector, fingerprint):
+        self._vector = vector
+        self._fingerprint = fingerprint
+
+    async def embed(self, query: str):
+        return self._vector, self._fingerprint
+
+
+class _StubOrchestrator:
+    """Counts the reranker's LLM calls and answers each with a fixed score."""
+
+    def __init__(self, score=7):
+        self.calls = 0
+        self.score = score
+
+    async def chat_completion(self, purpose, messages, **kwargs):
+        self.calls += 1
+        return json.dumps({"score": self.score})
+
+
+@pytest.mark.asyncio
+async def test_a_memory_keyword_outage_still_reads_partial(session, monkeypatch):
+    memory_trace = hybrid_search.ChannelTrace(
+        results=[_memory_row(uuid4())], semantic_failed=False, keyword_failed=True,
+    )
+    fact_trace = facts_channel.FactChannelTrace(
+        results=[_fact_row(uuid4())], keyword_failed=False, name_failed=False,
+    )
+
+    async def _memory(self, *args, **kwargs):
+        return memory_trace
+
+    async def _facts(self, *args, **kwargs):
+        return fact_trace
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    service = lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session)
+    result = await service.search("q", project="default")
+
+    channels = result.envelope.channels
+    assert channels["memory.keyword"].failed is True
+    assert channels["fact.keyword"].failed is False
+    assert channels["memory.semantic"].failed is False
+    assert channels["fact.semantic"].ran is False
+    assert channels["article.semantic"].ran is False
+    assert result.envelope.partial is True
+
+
+@pytest.mark.asyncio
+async def test_the_envelope_reports_the_conflict_tally_at_zero(session, monkeypatch):
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[_memory_row(uuid4())])
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    service = lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session)
+    result = await service.search("q", project="default")
+
+    assert result.envelope.excluded["by_context_conflict"] == 0
+    assert result.envelope.reranked is False
+
+
+@pytest.mark.asyncio
+async def test_the_rerank_mapping_covers_only_the_scored_window(session):
+    orchestrator = _StubOrchestrator()
+    service = lc.LayerCompositionService(
+        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(orchestrator),
+    )
+    candidates = [
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=rank)
+        for rank in range(1, 46)
+    ]
+    rows = lc.compose(candidates).rows
+    assert len(rows) == 45
+
+    scores = await service.derive_rerank_scores("q", rows)
+
+    assert orchestrator.calls == lc.RERANK_WINDOW
+    assert len(scores) == lc.RERANK_WINDOW
+    window_keys = {r.key for r in rows[: lc.RERANK_WINDOW]}
+    assert set(scores) == window_keys
+    for tail_row in rows[lc.RERANK_WINDOW:]:
+        assert tail_row.key not in scores
+
+
+@pytest.mark.asyncio
+async def test_a_total_rerank_failure_degrades_to_the_deterministic_order(session):
+    class _DeadOrchestrator:
+        async def chat_completion(self, *args, **kwargs):
+            raise RuntimeError("reranker outage")
+
+    service = lc.LayerCompositionService(
+        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(_DeadOrchestrator()),
+    )
+    candidates = [
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=rank) for rank in (1, 2, 3)
+    ]
+    rows = lc.compose(candidates).rows
+
+    assert await service.derive_rerank_scores("q", rows) is None
+    assert lc.compose(candidates).reranked is False
+
+
+@pytest.mark.asyncio
+async def test_an_empty_rerank_mapping_is_no_signal(session):
+    service = lc.LayerCompositionService(
+        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(_StubOrchestrator()),
+    )
+    assert await service.derive_rerank_scores("q", []) is None
+
+
+@pytest.mark.asyncio
+async def test_the_composition_serves_both_channels_end_to_end(session):
+    fingerprint = "fake-embedder|4"
+    vector = [1.0, 0.0, 0.0, 0.0]
+    project = "t2-43-e2e"
+
+    memory_id = uuid4()
+    session.add(Memory(
+        id=memory_id,
+        content="postgres runs on the homelab box",
+        source="test",
+        project=project,
+    ))
+    await session.flush()
+    await session.execute(
+        text(
+            "INSERT INTO embedders (fingerprint, model_id, dims, source) "
+            "VALUES (:fp, 'fake-embedder', 4, 'llm') ON CONFLICT DO NOTHING"
+        ),
+        {"fp": fingerprint},
+    )
+    child = child_table("memory_embeddings", fingerprint)
+    await session.execute(text(
+        f"CREATE TABLE IF NOT EXISTS {child} ("
+        " memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        " embedding vector(4) NOT NULL,"
+        " payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (memory_id, fingerprint))"
+    ))
+    await session.execute(
+        text(
+            f"INSERT INTO {child} (memory_id, fingerprint, embedding, payload) "
+            "VALUES (:mid, :fp, CAST(:vec AS vector), '{}'::jsonb)"
+        ),
+        {"mid": memory_id, "fp": fingerprint, "vec": str(vector)},
+    )
+
+    repo = KnowledgeTripleRepository(session)
+    fact = await repo.insert_open(
+        triple_key=f"k-{uuid4()}",
+        subject_name="postgres",
+        object_name="homelab",
+        rel_type="DEPLOYED_ON",
+        fact="postgres runs on the homelab box",
+        reference_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        project=project,
+    )
+    await repo.set_verification_status(fact["id"], "disputed")
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=uuid_module.UUID(fact["id"]),
+        project=project,
+        payload={"contradiction": _counterpart_block(counterpart_object="fly.io")},
+    )
+    await session.commit()
+
+    service = lc.LayerCompositionService(_FakeLLM(vector, fingerprint), session)
+    result = await service.search("postgres homelab", project=project)
+
+    by_kind = {}
+    for row in result.rows:
+        by_kind.setdefault(row.id_kind, []).append(row)
+
+    assert set(by_kind) == {"memory", "fact"}
+    assert by_kind["memory"][0].id == str(memory_id)
+    assert by_kind["memory"][0].labels["project"] == project
+    assert by_kind["fact"][0].tier == lc.TIER_BY_VERIFICATION_STATUS["disputed"]
+    assert by_kind["fact"][0].dispute["counterpart"]["object"] == "fly.io"
+    assert result.envelope.partial is False
+    assert set(result.envelope.channels) == {
+        "memory.semantic", "memory.keyword",
+        "fact.keyword", "fact.name", "fact.semantic",
+        "article.semantic",
+    }

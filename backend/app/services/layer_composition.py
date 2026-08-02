@@ -46,8 +46,22 @@ candidate-graph row be served as a composed result.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories.vector import MemoryFilter
+from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
+from app.services.facts_channel import (
+    KEYWORD_ARM,
+    NAME_ARM,
+    SEMANTIC_ARM,
+    FactsChannel,
+)
+from app.services.feature_flags import get_feature_flags_dict
+from app.services.hybrid_search import HybridSearchService
 
 from app.services.rank_fusion import (
     RRF_K,
@@ -58,9 +72,15 @@ from app.services.rank_fusion import (
     rank_fusion_factor,
     row_context_from_applies_when,
 )
-from app.services.verified_evidence import CONTRADICTION_EVIDENCE_KEY
+from app.services.verified_evidence import (
+    CONTRADICTION_EVIDENCE_KEY,
+    latest_verified_evidence,
+)
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ARTICLE_CHANNEL_OWNER",
     "COUNTERPART_ABSENT_NO_FINDING",
     "DISPUTED",
     "ID_KINDS",
@@ -70,7 +90,10 @@ __all__ = [
     "TIER_BY_VERIFICATION_STATUS",
     "ComposedRow",
     "CompositionResult",
+    "ComposedResult",
     "LayerCandidate",
+    "LayerCompositionService",
+    "RERANK_WINDOW",
     "article_candidate",
     "compose",
     "composition_key",
@@ -599,3 +622,224 @@ def compose(
         excluded_by_context_conflict=excluded_by_context_conflict,
         reranked=reranked,
     )
+
+
+# ─────────────────── the impure half: one entry point ───────────────────
+
+# The task that ships the article channel's producer, carried as a value the
+# way ``RankArm.activation`` names an arm's activation task, so an envelope
+# reporting a channel that never ran can never be mistaken for one that did.
+ARTICLE_CHANNEL_OWNER = "T3.02"
+
+# How many of the surviving, provisionally-ordered rows the reranker sees.
+RERANK_WINDOW = 40
+
+# The key the composition stamps on a document handed to the reranker, so the
+# returned scores can be mapped back to composition keys rather than to
+# whatever id the producer's row happened to carry.
+RERANK_KEY_FIELD = "_composition_key"
+
+
+@dataclass(frozen=True)
+class ComposedResult:
+    """The single entry point's return: an ordered list and its envelope."""
+
+    rows: list[ComposedRow]
+    envelope: RetrievalEnvelope
+
+
+def _namespaced(prefix: str, statuses: Mapping[str, ChannelStatus]) -> dict:
+    """One channel's arm statuses, qualified by the layer that owns them.
+
+    ``RetrievalEnvelope.channels`` is flat and the memory hybrid already
+    populates ``keyword`` and ``semantic`` in it, so merging the facts
+    channel's unqualified keys straight in overwrites the memory channel's
+    entries — and a memory keyword outage then disappears from the envelope's
+    ``partial`` flag, which is ``any(channel.failed …)``. That is a silent
+    degradation of the no-silent-degradation flag itself.
+    """
+    return {f"{prefix}.{arm}": status for arm, status in statuses.items()}
+
+
+class LayerCompositionService:
+    """The impure half: run the channels, read the journal, assemble the envelope.
+
+    ``compose()`` is pure — no session, no clock, no LLM — and this is
+    everything that is not. The split is ``verification_ladder``'s own, kept
+    for the same reason: it makes every ordering, tier and keyspace property a
+    fast test that can be mutated cheaply.
+
+    :meth:`search` is the single entry point T2.58 converges Chat onto. It is
+    not Chat-aware, and it has no productive caller today: T2.56 and T2.58 are
+    its consumers and both are behind this task.
+    """
+
+    def __init__(self, llm, session: AsyncSession, *, reranker=None):
+        self.llm = llm
+        self.session = session
+        self.reranker = reranker
+
+    async def derive_rerank_scores(
+        self, query: str, rows: list[ComposedRow]
+    ) -> dict[str, float] | None:
+        """The rerank mapping, over a window this module slices itself.
+
+        Derived naively from ``RerankerService.rerank``'s return, no key could
+        ever be missing: it stamps its own unscored tail through
+        ``setdefault(…, 0.0)``, which is exactly the collapse of "never asked"
+        into "rated 0" that the terminal band exists to prevent. It also
+        truncates to ``top_k`` (defaulting to 10), which would silently drop
+        rows and contradict the guarantee that nothing is dropped.
+
+        So both bounds are pinned. ``top_k=len(window)`` makes the truncation
+        a no-op. ``max_candidates=len(window)`` makes the reranker's **own**
+        head the whole window: without it the tail is empty only because
+        ``RERANK_WINDOW`` happens to equal that parameter's default, and
+        raising the window would quietly let ``setdefault`` zeros into the
+        mapping as scored rows while every length assertion still passed.
+
+        A mapping that is empty, or all-zero, is **no usable signal**. The
+        reranker's outer failure handler stamps every document ``0.0`` and
+        returns them in input order, which is indistinguishable from a model
+        that rated everything 0; serving that as a rerank would collapse the
+        whole window into one band ordered by tier alone — a large silent
+        behaviour change out of an outage.
+        """
+        if self.reranker is None:
+            return None
+        window = list(rows)[:RERANK_WINDOW]
+        if not window:
+            return None
+
+        documents = [{**dict(row.row), RERANK_KEY_FIELD: row.key} for row in window]
+        scored = await self.reranker.rerank(
+            query,
+            documents,
+            top_k=len(window),
+            max_candidates=len(window),
+        )
+        if len(scored) != len(window):
+            raise RuntimeError(
+                f"the reranker returned {len(scored)} rows for a window of "
+                f"{len(window)}; the window must survive intact"
+            )
+
+        scores = {
+            document[RERANK_KEY_FIELD]: float(document["rerank_score"])
+            for document in scored
+        }
+        if not scores:
+            return None
+        if all(value == 0.0 for value in scores.values()):
+            return None
+        return scores
+
+    async def search(
+        self,
+        query: str,
+        *,
+        project: str,
+        limit: int = 20,
+        declared_context: DeclaredContext | None = None,
+        weights: Mapping[str, object] | None = None,
+    ) -> ComposedResult:
+        if weights is None:
+            weights = await get_feature_flags_dict(self.session)
+
+        channels: dict[str, ChannelStatus] = {}
+        candidates: list[LayerCandidate] = []
+
+        memory_failed = False
+        try:
+            memory_trace = await HybridSearchService(self.llm, self.session).search_with_trace(
+                query, limit=limit, filters=MemoryFilter(project=project),
+            )
+        except Exception:
+            logger.error("Layer composition: the memory channel failed outright")
+            memory_failed = True
+            channels.update(
+                _namespaced("memory", {
+                    "semantic": ChannelStatus(ran=True, failed=True),
+                    "keyword": ChannelStatus(ran=True, failed=True),
+                })
+            )
+        else:
+            channels.update(
+                _namespaced("memory", {
+                    "semantic": ChannelStatus(ran=True, failed=memory_trace.semantic_failed),
+                    "keyword": ChannelStatus(ran=True, failed=memory_trace.keyword_failed),
+                })
+            )
+            candidates.extend(
+                memory_candidate(row, channel_rank=rank)
+                for rank, row in enumerate(memory_trace.results, start=1)
+            )
+
+        fact_failed = False
+        try:
+            fact_trace = await FactsChannel(self.session).search_with_trace(
+                query, project=project, limit=limit,
+            )
+        except Exception:
+            logger.error("Layer composition: the facts channel failed outright")
+            fact_failed = True
+            channels.update(
+                _namespaced("fact", {
+                    KEYWORD_ARM: ChannelStatus(ran=True, failed=True),
+                    NAME_ARM: ChannelStatus(ran=True, failed=True),
+                    SEMANTIC_ARM: ChannelStatus(ran=False),
+                })
+            )
+        else:
+            channels.update(_namespaced("fact", fact_trace.channel_status()))
+            candidates.extend(
+                fact_candidate(row, channel_rank=rank)
+                for rank, row in enumerate(fact_trace.results, start=1)
+            )
+
+        # A one-sided outage degrades to the surviving layer and says so; both
+        # sides down would make an empty result indistinguishable from a
+        # genuine no-match, which is the one case invariant 14 forbids serving.
+        if memory_failed and fact_failed:
+            raise RuntimeError("Layer composition failed on both the memory and fact channels")
+
+        # Present and ran=False, never omitted: an absent key makes "this layer
+        # has no such modality" indistinguishable from "the composition never
+        # asked", while marking a deferred writer failed would put it into
+        # partial, which is a different lie.
+        channels["article.semantic"] = ChannelStatus(ran=False)
+
+        fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
+        evidence = await latest_verified_evidence(self.session, fact_ids)
+
+        provisional = compose(
+            candidates,
+            weights=weights,
+            declared_context=declared_context,
+            evidence=evidence,
+        )
+        rerank_scores = await self.derive_rerank_scores(query, provisional.rows)
+        result = (
+            provisional
+            if rerank_scores is None
+            else compose(
+                candidates,
+                weights=weights,
+                declared_context=declared_context,
+                evidence=evidence,
+                rerank_scores=rerank_scores,
+            )
+        )
+
+        envelope = RetrievalEnvelope(
+            query=query,
+            channels=channels,
+            reranked=result.reranked,
+            weights={
+                key: float(value)
+                for key, value in weights.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            },
+            excluded={"by_context_conflict": result.excluded_by_context_conflict},
+        )
+        return ComposedResult(rows=result.rows, envelope=envelope)
