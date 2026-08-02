@@ -1206,8 +1206,9 @@ async def _seed_derivation(target: asyncpg.Connection, table: str) -> None:
             community,
         )
         await target.execute(
-            "INSERT INTO memory_community_members (community_id, memory_id) "
-            "VALUES ($1, $2)",
+            "INSERT INTO memory_community_members "
+            "(community_id, memory_id, project) "
+            "VALUES ($1, $2, 'homelab')",
             community,
             OLD_ID,
         )
