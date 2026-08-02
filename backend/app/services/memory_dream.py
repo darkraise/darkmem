@@ -56,7 +56,6 @@ calls take no qualification gate, unlike the verification judge's.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -74,6 +73,19 @@ from app.repositories.memory_relations import (
     upsert_edge,
 )
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
+from app.services.dream_journal import (
+    ACTION_ASSOCIATE,
+    ACTION_REFINE,
+    ACTION_SUBSUME,
+    DETECTOR,
+    EVENT_TYPE,
+    HYGIENE_STATE_OPEN,
+    NEAR_DUPLICATE_PASS,
+    OBJECT_TYPE,
+    REFINE_MARKER_PATH,
+    content_sha,
+    refine_marker_of,
+)
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.extraction_clean import _content_seed, _loads_extraction
@@ -92,13 +104,6 @@ DEFAULT_REFINE_BATCH = 25
 DEFAULT_WRITE_BATCH = 25
 DEFAULT_LLM_CONCURRENCY = 4
 
-# The pass's own key under `memory_relations.properties.dream`. Keyed by pass
-# name so a sibling derivation pass can coexist on the one row the UNIQUE forces
-# them to share.
-NEAR_DUPLICATE_PASS = "near_duplicate"
-
-HYGIENE_STATE_OPEN = "open"
-
 # Internal bookkeeping, never an operator knob: `JobRegistry.set_config`
 # validates against the job's schema and would reject it.
 _STATE_CONFIG_KEY = "memory_dream_state"
@@ -114,10 +119,6 @@ _CANARY_TEXT = "fingerprint canary"
 # The sentinel `llm_fingerprint()` emits under an unset `dimensions`. A canary
 # that comes back wearing it means no real vector was measured.
 _SENTINEL_DIMS_SUFFIX = "|0"
-
-
-def content_sha(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -676,18 +677,10 @@ async def judge_refine(llm, memory: MemoryRow) -> RefineVerdict:
 
 # ── Phase W: apply, one savepoint per action ─────────────────────────────
 
-EVENT_TYPE = "consolidated"
-OBJECT_TYPE = "memory"
-DETECTOR = "dedup"
-
 # The journal label the primitive writes for a dedup-driven subsumption. The
 # bridge's own label would be false here: nothing about this transition came
 # from a fact invalidation.
 DREAM_SUPERSEDE_REASON = "dream_dedup"
-
-ACTION_SUBSUME = "subsume"
-ACTION_ASSOCIATE = "associate"
-ACTION_REFINE = "refine"
 
 # Scoped inside each action's SAVEPOINT via `SET LOCAL`, so a wedged row lock
 # becomes an ordinary per-action failure instead of consuming the whole tick's
@@ -1016,11 +1009,6 @@ async def apply_associate(
 # parser discards unknown keys too, so it is refused twice, independently.
 _REFINABLE_COLUMNS: tuple[str, ...] = ("summary",)
 
-# The marker records the content revision this pass has already acted on —
-# suppression bookkeeping, not a provenance claim that the summary now in place
-# was derived from it. After an undo the two legitimately disagree.
-REFINE_MARKER_PATH = ("dream", "refine")
-
 
 class RefinableColumnError(ValueError):
     """A caller asked to write a column outside the allowlist."""
@@ -1034,15 +1022,6 @@ class RefineAction:
     @property
     def memory_id(self) -> str:
         return self.memory.memory_id
-
-
-def refine_marker_of(metadata: dict | None) -> dict | None:
-    node = metadata if isinstance(metadata, dict) else {}
-    for key in REFINE_MARKER_PATH:
-        node = node.get(key) if isinstance(node, dict) else None
-        if node is None:
-            return None
-    return node if isinstance(node, dict) else None
 
 
 def needs_refine(memory: MemoryRow) -> bool:
