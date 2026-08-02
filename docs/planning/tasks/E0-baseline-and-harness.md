@@ -546,12 +546,48 @@ reports survive independently.
 *terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
 leaf surface, not infrastructure another task consumes.*
 
+#### T0.19 — No lane worktree can run the merge gate
+
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: T0.16` · `Doc: 17 §9` · `Tag: target-new` · `Gate: none (harness integrity)`
+
+**What.** `scripts/gate.sh:20` hard-codes `PY="$REPO_ROOT/backend/.venv/bin/python"`, and
+`backend/.venv/` is gitignored, so `git worktree add` never populates it. **No lane
+worktree can run the merge gate at all** — the runbook's own §8 already tells agents to
+reach for the main checkout's interpreter by absolute path for `pytest`, but the gate
+script has no such escape and simply fails.
+
+The consequence is not that lanes skip a nicety. The gate is the only command that runs
+the alembic single-revision assertion, the frontend trio, the benchlib harness suite and
+the F1 bench together; a lane running `pytest -q` alone gets a green floor over an
+unchecked harness, which is the exact trap `pyproject.toml`'s `testpaths` already sets and
+which has caught lanes twice. Every lane this epic has run has been unable to self-check
+before handing work back, and every future lane inherits it.
+
+**Done when:**
+- [ ] A lane worktree can run `./scripts/gate.sh` — either `PY` is overridable by
+      environment variable with the hard-coded path as its default, or the script resolves
+      an interpreter when the local `.venv` is absent
+- [ ] The resolution is **explicit and reported**: the script says which interpreter it
+      chose, so a lane cannot silently gate against the wrong tree's code
+- [ ] Running it from a worktree gates that worktree's code, not the main checkout's —
+      proven by a deliberate failure introduced in the worktree only
+- [ ] `runbook §8`'s environment section records the invocation, beside the existing
+      no-`.venv` note it currently leaves half-finished
+
+**Verify.** From a fresh `git worktree add`, run `./scripts/gate.sh` and confirm it
+completes rather than failing on a missing interpreter; then break a test in the worktree
+only and confirm the gate goes red naming that gate.
+
+*terminal-by-design — nothing depends on this; it is a backstop, an activation, or a
+leaf surface, not infrastructure another task consumes.*
+
 ---
 
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-02 | T0.19, T0.16 | 2 | **T0.19 minted: no lane worktree can run the merge gate.** `scripts/gate.sh:20` hard-codes `PY="$REPO_ROOT/backend/.venv/bin/python"`, and `backend/.venv/` is gitignored so `git worktree add` never populates it — the script fails outright from any lane. Runbook §8 already tells agents to reach for the main checkout's interpreter by absolute path for `pytest`, but gives the gate no equivalent escape, leaving the half-finished note that names the problem without solving it | Surfaced by T2.45's Fable review while adjudicating why the implementer had not run the gate: the deviation was legitimate and the limitation structural. It matters more than a missing convenience because the gate is the only command that runs the alembic single-revision assertion, the frontend trio, the benchlib harness suite and the F1 bench together — a lane running `pytest -q` alone gets a green floor over an unchecked harness, which is the trap `pyproject.toml`'s `testpaths` sets and which has caught lanes twice already. Filed in E0 rather than E2 because `gate.sh` is T0.16's artifact; sized S and routed to Haiku because the change is one overridable variable plus a reported resolution, but the *reported* half is load-bearing — a silent fallback that gates the main checkout's code from a lane worktree would be worse than the current loud failure |
 | 2026-07-27 | T0.11 | 3→resolved | `updated_at`'s auto-bump had no SQL home; the maintainer adjudicated that the baseline authors `touch_updated_at` plus a `BEFORE UPDATE` trigger on `memories`, `conversations` and `repositories` | SQLAlchemy's `onupdate` is client-side. Measured on a live database: a Core `update()` bumps the column, a raw `text()` UPDATE does not — so the two demote-before-delete paths silently left it stale on a status change they themselves made. Doc 04 §9 reasons *from* the bump (it is the whole justification for `memory_access_stats` being a side table) while doc 19 §2 forbids a load-bearing ORM-only construct and lists only two triggers. **Doc 04 §12 and doc 19 §2 must be amended to name the third trigger** |
 | 2026-07-27 | T0.12c | 2 | Re-sized `M` → `L`, and its scope now explicitly includes the mechanical read-path migration | Its acceptance requires the full backend suite green against the baseline, but the baseline renames four `memories` columns and drops the LLM indirection — 108 measured failures, none of them DDL defects. Closing them is T1.01's and T1.09's stated scope, and **T1.01 declares `Depends: T0.12c`**, so the two formed a cycle. The mechanical half lands in T0.12c; T1.01 keeps one-query resolution and the wizard finalize, T1.09 the `events`-backed read retirement. Runbook §3 makes the re-sized task plan-first: `docs/superpowers/plans/2026-07-27-baseline-part-3.md` |
 | 2026-07-27 | T0.12c, T1.42b | 2 | The REST and websocket payload keys keep their `llm_` names while the columns lose them | Doc 04 §3.1 renames the *columns*; the wire contract is doc 12's, and `frontend/src` reads `llm_*` in 61 places. T0.12c's bar is the backend suite, which cannot verify a frontend change, so the response builders map new attribute → old wire key and the contract rename gets its own owner |
