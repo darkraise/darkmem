@@ -394,21 +394,35 @@ async def test_a_status_refusal_outranks_an_ordering_refusal(
 
 @pytest.mark.asyncio
 async def test_the_check_predicate_holds_through_every_transition(session):
-    """Asserted independently of Postgres enforcing it, at each step."""
+    """Asserted independently of Postgres enforcing it, at each step.
+
+    Every step also asserts what the primitive *did*. The dangling-pointer
+    count alone stays zero under a completely inert primitive, so on its own
+    this arm would borrow its teeth from its neighbours and report success
+    while nothing had been written at all.
+    """
     candidate, successor = await _pair(session)
     assert await _dangling_pointers(session) == 0
 
-    await supersede(session, memory_id=candidate.id, superseded_by=successor.id)
+    flipped = await supersede(
+        session, memory_id=candidate.id, superseded_by=successor.id
+    )
+    assert (flipped.reason, flipped.status) == ("applied", "superseded")
     assert await _dangling_pointers(session) == 0
 
-    await deprecate(session, memory_id=candidate.id)
+    refused = await deprecate(session, memory_id=candidate.id)
+    assert (refused.reason, refused.status) == ("already_superseded", "superseded")
     assert await _dangling_pointers(session) == 0
 
     fresh, _ = await _pair(session)
-    await deprecate(session, memory_id=fresh.id)
+    retired = await deprecate(session, memory_id=fresh.id)
+    assert (retired.reason, retired.status) == ("applied", "deprecated")
     assert await _dangling_pointers(session) == 0
 
-    await supersede(session, memory_id=fresh.id, superseded_by=successor.id)
+    terminal = await supersede(
+        session, memory_id=fresh.id, superseded_by=successor.id
+    )
+    assert (terminal.reason, terminal.status) == ("terminal", "deprecated")
     assert await _dangling_pointers(session) == 0
 
 
@@ -916,8 +930,35 @@ async def test_the_bridge_refuses_an_older_successor_without_deprecating(session
 
 
 @pytest.mark.asyncio
-async def test_the_decision_is_pure_and_needs_no_session(session):
-    """``decide_status_bridge`` is replayable from its inputs alone."""
+async def test_a_vanished_candidate_declines_without_consulting_the_guards(session):
+    """The arm a deleted memory reaches, with its record honest about it.
+
+    A memory can be deleted while its provenance rows survive until the
+    backstop reaps them, so "no row" does not imply "sources nothing". The
+    counts are reported as zero because nothing was read, not as a claim about
+    what the store holds.
+    """
+    _, invalidating = await _successor_asserting(session)
+
+    decision, result = await apply_status_bridge(
+        session,
+        invalidating_fact_id=invalidating,
+        candidate_memory_id=uuid.uuid4(),
+    )
+
+    assert decision.outcome == "no_change"
+    assert (decision.sourced_total, decision.sourced_open) == (0, 0)
+    assert decision.guard2_holds is False
+    assert decision.guard1_holds is None
+    assert result is None
+
+
+def test_the_decision_is_pure_and_needs_no_session():
+    """``decide_status_bridge`` is replayable from its inputs alone.
+
+    Deliberately synchronous and fixture-free: requesting the session fixture
+    to prove a function does not need one would undercut the claim.
+    """
     candidate_id = str(uuid.UUID(int=7))
     successor = MemorySource(
         memory_id=str(uuid.UUID(int=8)),
@@ -1052,12 +1093,26 @@ class _PointerWriteVisitor(ast.NodeVisitor):
         if writes_a_row:
             if any(keyword.arg == _POINTER for keyword in node.keywords):
                 self._flag(node, "A2", "pointer keyword on a row write")
-            for argument in node.args:
-                # SQLAlchemy accepts `.values({"superseded_by": ...})`, which
-                # produces no keyword node at all for the rule above to see.
-                if isinstance(argument, ast.Dict) and any(
+            # A literal dict carrying the pointer key reaches these two call
+            # shapes two ways, and each hangs off a different node. Passed
+            # positionally — `.values({"superseded_by": s})` — it is an arg and
+            # produces no keyword node at all. Splatted — `.values(**{...})` —
+            # it rides a keyword whose `arg` is None, so the keyword rule above
+            # steps over it. Both are literal dicts inside the shapes this rule
+            # claims to cover, not the computed name the blind-spot note
+            # reserves.
+            dicts = [
+                argument for argument in node.args if isinstance(argument, ast.Dict)
+            ]
+            dicts += [
+                keyword.value
+                for keyword in node.keywords
+                if keyword.arg is None and isinstance(keyword.value, ast.Dict)
+            ]
+            for literal in dicts:
+                if any(
                     isinstance(key, ast.Constant) and key.value == _POINTER
-                    for key in argument.keys
+                    for key in literal.keys
                 ):
                     self._flag(node, "A2", "pointer key in a values dict")
         if (
@@ -1088,6 +1143,12 @@ class _DetectorReferenceVisitor(ast.NodeVisitor):
     delete both import legitimately, and flagging them would be a false
     positive against claim B's own wording. A bare module handle is still
     flagged, because it makes the detector reachable as an attribute.
+
+    Relative imports are matched as well as absolute ones. An unaliased
+    relative import is still caught at the use site by the name rule, but
+    ``from .supersession import detect_supersessions as d`` escapes both
+    halves at once — the module string is bare ``supersession`` so the import
+    rule misses it, and the alias erases the name so the use site does too.
     """
 
     def __init__(self, rel: str):
@@ -1105,9 +1166,16 @@ class _DetectorReferenceVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         names = {alias.name for alias in node.names}
-        if node.module == _DETECTOR_MODULE and _DETECTOR in names:
+        module = node.module or ""
+        relative = node.level > 0
+        names_the_module = module == _DETECTOR_MODULE or (
+            relative and module.split(".")[-1] == "supersession"
+        )
+        if names_the_module and _DETECTOR in names:
             self._flag(node, "named import of the detector")
-        elif node.module == "app.services" and "supersession" in names:
+        elif "supersession" in names and (
+            module == "app.services" or (relative and module == "")
+        ):
             self._flag(node, "module handle")
         self.generic_visit(node)
 
@@ -1188,6 +1256,14 @@ def test_only_the_pipeline_names_the_write_time_detector():
             "A2-model",
             "def f(s):\n    return Memory(content='x', superseded_by=s)\n",
         ),
+        (
+            "A2-splat-values",
+            "def f(u, s):\n    return u.values(**{'superseded_by': s})\n",
+        ),
+        (
+            "A2-splat-model",
+            "def f(s):\n    return Memory(**{'superseded_by': s})\n",
+        ),
         ("A2b", "def f(m, s):\n    setattr(m, 'superseded_by', s)\n"),
         (
             "A3",
@@ -1222,6 +1298,16 @@ def test_the_pointer_scan_flags_every_rule(tmp_path, rule, body):
             "import app.services.supersession as s\n"
             "async def go(x):\n    await s.detect_supersessions(x)\n",
         ),
+        ("relative-import", "from .supersession import detect_supersessions\n"),
+        # The one shape that escapes both halves at once: the bare module
+        # string dodges the import rule and the alias erases the name the use
+        # site would otherwise carry.
+        (
+            "relative-aliased",
+            "from .supersession import detect_supersessions as d\n"
+            "async def go(x):\n    await d(x)\n",
+        ),
+        ("relative-handle", "from . import supersession\n"),
     ],
 )
 def test_the_detector_scan_flags_every_shape(tmp_path, shape, body):
@@ -1252,6 +1338,25 @@ def test_the_detector_scan_admits_the_shared_demotion_helper(tmp_path):
         "from app.services.supersession import demote_dependents\n"
         "async def sweep(session, ids):\n"
         "    await demote_dependents(session, ids)\n"
+    )
+
+    assert _forbidden_detector_references([innocent], root=tmp_path) == []
+
+
+def test_the_detector_scan_admits_a_relative_sibling_import(tmp_path):
+    """The relative arm must not widen into "any neighbouring module".
+
+    The detector's module is a sibling of every other service, so a rule keyed
+    on relative imports is one careless ``endswith`` away from flagging
+    ``from .supersession_hold import ...`` and every legitimate relative import
+    of the shared demotion helper.
+    """
+    fake = tmp_path / "app" / "services"
+    fake.mkdir(parents=True, exist_ok=True)
+    innocent = fake / "neighbour.py"
+    innocent.write_text(
+        "from .supersession import demote_dependents\n"
+        "from .supersession_hold import detect_supersession_hold\n"
     )
 
     assert _forbidden_detector_references([innocent], root=tmp_path) == []

@@ -237,6 +237,24 @@ def _refusal_for_status(status: str) -> SupersedeReason:
     return "already_superseded" if status == "superseded" else "terminal"
 
 
+def _lost_the_row(memory_id: UUID | str) -> SupersedeReason:
+    """The write matched nothing after the locked read said ``active``.
+
+    Unreachable while the ``FOR UPDATE`` idiom stands, which is exactly why it
+    needs a truthful label rather than a plausible one. Deriving the reason
+    from the status just read would report ``terminal`` — a specific claim that
+    the row is ``deprecated``, which is the one thing it demonstrably is not.
+    ``not_found`` is what actually happened: the statement's ``WHERE`` found no
+    row. It is logged because reaching here means the lock was dropped.
+    """
+    logger.warning(
+        "supersede: the status write matched no row for %s after a locked "
+        "read reported 'active'; the row lock was not held",
+        memory_id,
+    )
+    return "not_found"
+
+
 def _canonical(memory_id: UUID | str) -> str:
     """Every id crossing into raw SQL, through the one minter.
 
@@ -365,7 +383,7 @@ async def supersede(
     )
     row = written.mappings().first()
     if row is None:
-        return declined(_refusal_for_status(candidate["status"]))
+        return declined(_lost_the_row(memory_id))
 
     await _journal(
         session,
@@ -431,7 +449,7 @@ async def deprecate(
         return SupersedeResult(
             memory_id=_canonical(memory_id),
             applied=False,
-            reason=_refusal_for_status(candidate["status"]),
+            reason=_lost_the_row(memory_id),
             status=candidate["status"],
             superseded_by=candidate["superseded_by"],
         )
@@ -579,17 +597,18 @@ async def adjudicate_status_bridge(
     ladder keeps its own halves apart: a decision that needs a session cannot
     be replayed from the journal to audit it.
 
-    A candidate that no longer exists yields ``no_change``. It asserts nothing
-    live and has no status to move, so declining is both correct and the
-    direction this subsystem errs in.
+    A candidate that no longer exists yields ``no_change``: it has no status
+    to move, so declining is both correct and the direction this subsystem
+    errs in. Its counts are reported as zero and the provenance query is not
+    issued at all — not because a deleted memory sources nothing (it can leave
+    dangling refs behind until the backstop reaps them) but because the guards
+    were never consulted, and a decision record must report what was read
+    rather than what could have been.
     """
     result = await session.execute(
         _READ_MEMORY, {"memory_id": _canonical(candidate_memory_id)}
     )
     candidate = result.mappings().first()
-
-    sources = FactSourceRepository(session)
-    total, open_count = await sources.sourced_triples(candidate_memory_id)
 
     if candidate is None:
         return BridgeDecision(
@@ -597,13 +616,16 @@ async def adjudicate_status_bridge(
             invalidating_fact_id=str(invalidating_fact_id),
             outcome="no_change",
             successor_id=None,
-            sourced_total=total,
-            sourced_open=open_count,
+            sourced_total=0,
+            sourced_open=0,
             live_source_count=0,
             guard2_holds=False,
             guard1_holds=None,
             successor_newer=None,
         )
+
+    sources = FactSourceRepository(session)
+    total, open_count = await sources.sourced_triples(candidate_memory_id)
 
     return decide_status_bridge(
         memory_id=candidate["memory_id"],
