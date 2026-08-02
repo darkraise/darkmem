@@ -22,7 +22,15 @@ Raises anything else         restores may already be in the session; **the
 
 The last row is not a caveat, it is the contract. This module structurally
 cannot clean up after itself: the scan that forbids the savepoint forbids the
-rollback too. The HTTP door inherits the obligation from its request-scoped
+rollback too.
+
+**One side effect outlives the call**, and an in-process caller should know
+it: `undo()` issues `SET LOCAL lock_timeout`, which is scoped to the
+*transaction*, not to this function. A caller that keeps working on the same
+transaction afterwards inherits that timeout on every later statement until it
+commits or rolls back. Harmless for the HTTP door, whose transaction ends with
+the request; worth knowing for a bulk caller doing more work on the same
+session. The HTTP door inherits the obligation from its request-scoped
 session dependency, which is exactly why the gap is invisible from this lane's
 own route tests — an in-process caller inherits nothing, and a bulk loop
 catching broadly per item and continuing on one session would commit a
@@ -77,12 +85,19 @@ _LOCK_TIMEOUT_MS = 5000
 REASON_ALREADY_UNDONE = "already_undone"
 REASON_RETENTION_ELAPSED = "retention_elapsed"
 REASON_OBJECT_MISSING = "object_missing"
+# An action kind this door has no inverse for. Distinct from `state_changed`
+# on purpose: the state may be pristine, and saying it changed would send an
+# operator looking for a write that never happened. Doc 08 §7 lists seven
+# reversible action kinds and today's producer ships three, so the fourth
+# arrives with a producer rather than with a corruption.
+REASON_UNSUPPORTED_ACTION = "unsupported_action"
 REASON_STATE_CHANGED = "state_changed"
 
 BLOCKING_REASONS: tuple[str, ...] = (
     REASON_ALREADY_UNDONE,
     REASON_RETENTION_ELAPSED,
     REASON_OBJECT_MISSING,
+    REASON_UNSUPPORTED_ACTION,
     REASON_STATE_CHANGED,
 )
 
@@ -540,7 +555,9 @@ def blocking_reason(
     if not live.exists:
         return REASON_OBJECT_MISSING
     comparator = _UNCHANGED.get(action.action)
-    if comparator is None or not comparator(action, live):
+    if comparator is None:
+        return REASON_UNSUPPORTED_ACTION
+    if not comparator(action, live):
         return REASON_STATE_CHANGED
     return None
 

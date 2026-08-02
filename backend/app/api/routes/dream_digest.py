@@ -142,15 +142,39 @@ async def undo_cycle(
     than to the cycle because the alternative reading — that a cycle is the
     only legal batch — would make a per-item bulk action unbuildable on this
     primitive.
+
+    **The already-undone prefilter applies only to the body-less whole-cycle
+    form.** There it is what the request means — *undo what is left of this
+    cycle* — and skipping the rest is defensible. Applied to a request that
+    *names* its actions it is a silent shrink of an explicitly named set: two
+    curators race, the second submits a set containing one the first already
+    undid, and a prefilter answers 200 with contents that differ from the
+    request instead of the 409-then-refetch flow the digest is built around.
+    The primitive would refuse that set on `already_undone`; a prefilter here
+    defeats it. So a named set goes through whole and the primitive decides.
     """
     actions = await dream_digest.read_cycle_actions(session, cycle_id)
     if not actions:
         raise HTTPException(status_code=404, detail="Cycle not found")
 
-    selected = [view for view in actions if not view.undone]
-    if body is not None and body.action:
+    names_a_subset = body is not None and (
+        body.action is not None or body.event_ids is not None
+    )
+    selected = actions if names_a_subset else [
+        view for view in actions if not view.undone
+    ]
+    if body is not None and body.action is not None:
         selected = [view for view in selected if view.action == body.action]
     if body is not None and body.event_ids is not None:
+        in_cycle = {view.event_id for view in selected}
+        # An id this cycle does not hold is refused rather than dropped, for
+        # the same reason an already-undone one is: the caller named it.
+        stray = sorted(set(body.event_ids) - in_cycle)
+        if stray:
+            raise HTTPException(
+                status_code=404,
+                detail=f"event id(s) {stray} are not in this cycle",
+            )
         named = set(body.event_ids)
         selected = [view for view in selected if view.event_id in named]
     if not selected:

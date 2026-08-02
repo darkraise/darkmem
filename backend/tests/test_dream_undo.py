@@ -1378,7 +1378,7 @@ class TestUndoWindow:
         ) == "state_changed"
         assert undo.BLOCKING_REASONS == (
             "already_undone", "retention_elapsed", "object_missing",
-            "state_changed",
+            "unsupported_action", "state_changed",
         )
 
     async def test_an_unknown_event_id_is_refused_not_invented(
@@ -2220,3 +2220,212 @@ class TestDoors:
             f"/api/v1/dream-digest/actions/{event_id}/undo", headers=headers
         )
         assert response.status_code == 200
+
+
+# ── Review round: the door must not shrink a set the caller named ────────
+
+
+class TestNamedSetIsNeverShrunk:
+    async def test_a_named_set_holding_an_undone_action_refuses(
+        self, api, project
+    ):
+        """The two-curator race, which is the whole reason the digest hands
+        T2.38 a 409-then-refetch flow.
+
+        One curator undoes A; the other submits `{A, B}` built from a render
+        taken before that landed. Pre-filtering the already-undone action out
+        answers **200 with contents that differ from the request** — no 409, no
+        mention of the dropped action — and the second curator has no way to
+        learn their view was stale. The primitive would refuse this set on
+        `already_undone`, which is first in the tested precedence; a prefilter
+        in the door defeats it.
+        """
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, subsume_id = await seed_action_over(
+            session, project, cycle_id=cycle
+        )
+        memory = await seed_memory(
+            session, project=project, content="the sweeper runs hourly",
+            summary="the old summary",
+        )
+        await session.flush()
+        assert await dream.apply_refine(
+            session,
+            dream.RefineAction(
+                memory=memory_row_of(
+                    memory, project=project, content="the sweeper runs hourly",
+                    summary="the old summary",
+                ),
+                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+            ),
+            cycle_id=cycle,
+            outcome=dream.DreamOutcome(),
+        )
+        await session.flush()
+        refine_id = (
+            await session.execute(
+                text(
+                    "SELECT max(id) FROM events WHERE event_type = 'consolidated' "
+                    "AND project = CAST(:project AS text)"
+                ),
+                {"project": project},
+            )
+        ).scalar_one()
+
+        # Curator one undoes the subsume.
+        first = await client.post(
+            f"/api/v1/dream-digest/actions/{subsume_id}/undo", headers=headers
+        )
+        assert first.status_code == 200
+
+        # Curator two submits a set built before that landed.
+        second = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo",
+            json={"event_ids": [subsume_id, int(refine_id)]},
+            headers=headers,
+        )
+
+        assert second.status_code == 409, (
+            "a named set containing an already-undone action must refuse, not "
+            "quietly undo the rest"
+        )
+        assert second.json()["error"]["details"] == [
+            {"event_id": subsume_id, "action": "subsume",
+             "reason": "already_undone"}
+        ]
+        # And nothing of the second request landed.
+        summary = (
+            await session.execute(
+                text("SELECT summary FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(memory)},
+            )
+        ).scalar_one()
+        assert summary == "a refined summary"
+
+    async def test_a_named_action_kind_holding_an_undone_action_refuses(
+        self, api, project
+    ):
+        """The `action` filter names a subset too, so it gets the same rule."""
+        client, session, headers = api
+        cycle = str(new_id())
+        _, _, subsume_id = await seed_action_over(session, project, cycle_id=cycle)
+        assert (
+            await client.post(
+                f"/api/v1/dream-digest/actions/{subsume_id}/undo", headers=headers
+            )
+        ).status_code == 200
+
+        response = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo",
+            json={"action": "subsume"},
+            headers=headers,
+        )
+
+        assert response.status_code == 409
+        assert [
+            item["reason"] for item in response.json()["error"]["details"]
+        ] == ["already_undone"]
+
+    async def test_the_body_less_form_still_skips_what_is_done(
+        self, api, project
+    ):
+        """The other half of the same rule: with nothing named, the request
+        means *undo what is left of this cycle*, and skipping the rest is what
+        it asks for. Scoping the prefilter to this form is the fix; deleting it
+        outright would make the whole-cycle button un-pressable after any
+        single-action undo."""
+        client, session, headers = api
+        cycle = str(new_id())
+        older, _, subsume_id = await seed_action_over(
+            session, project, cycle_id=cycle
+        )
+        memory = await seed_memory(
+            session, project=project, content="the sweeper runs hourly",
+            summary="the old summary",
+        )
+        await session.flush()
+        assert await dream.apply_refine(
+            session,
+            dream.RefineAction(
+                memory=memory_row_of(
+                    memory, project=project, content="the sweeper runs hourly",
+                    summary="the old summary",
+                ),
+                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+            ),
+            cycle_id=cycle,
+            outcome=dream.DreamOutcome(),
+        )
+        await session.flush()
+        assert (
+            await client.post(
+                f"/api/v1/dream-digest/actions/{subsume_id}/undo", headers=headers
+            )
+        ).status_code == 200
+
+        response = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo", headers=headers
+        )
+
+        assert response.status_code == 200
+        assert [item["action"] for item in response.json()["undone"]] == ["refine"]
+        summary = (
+            await session.execute(
+                text("SELECT summary FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(memory)},
+            )
+        ).scalar_one()
+        assert summary == "the old summary"
+
+    async def test_an_event_id_outside_the_cycle_is_refused(self, api, project):
+        """Same principle, other shape: an id this cycle does not hold was
+        still named, so dropping it silently would shrink the set just as
+        quietly."""
+        client, session, headers = api
+        cycle = str(new_id())
+        _, _, subsume_id = await seed_action_over(session, project, cycle_id=cycle)
+
+        response = await client.post(
+            f"/api/v1/dream-digest/cycles/{cycle}/undo",
+            json={"event_ids": [subsume_id, 2 ** 40]},
+            headers=headers,
+        )
+
+        assert response.status_code == 404
+        status = (
+            await session.execute(
+                text(
+                    "SELECT status::text FROM memories WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str((await session.execute(
+                    text(
+                        "SELECT CAST(object_id AS text) FROM events "
+                        "WHERE id = CAST(:id AS bigint) "
+                        "  AND created_at > CAST(:floor AS timestamptz)"
+                    ),
+                    {"id": subsume_id, "floor": NOW},
+                )).scalar_one())},
+            )
+        ).scalar_one()
+        assert status == "superseded", "nothing may land when the set is refused"
+
+    async def test_an_unknown_action_kind_is_not_called_a_state_change(self):
+        """The accepted minor. A fourth reversible action kind arrives with its
+        producer (§8 O4), and until its inverse exists the honest answer is
+        that this door cannot invert it — not that the state moved, which sends
+        an operator looking for a write that never happened."""
+        action = undo.ResolvedAction(
+            event_id=1,
+            created_at=datetime.now(timezone.utc),
+            object_id=str(new_id()),
+            project="p",
+            payload={"action": "ratify", "after": {}},
+        )
+        assert undo.blocking_reason(
+            action,
+            live=undo.LiveState(exists=True, memory={"status": "active"}),
+            already_undone=False,
+            now=datetime.now(timezone.utc),
+            retention=timedelta(days=undo.DEFAULT_RETENTION_DAYS),
+        ) == "unsupported_action"

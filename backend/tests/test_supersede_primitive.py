@@ -1250,8 +1250,22 @@ def test_the_undo_door_never_writes_a_supersession():
     A third module writing `superseded_by` is only acceptable while it can
     exclusively *un*-supersede. It writes the status as a bound parameter taken
     from a journalled before-value and validated against the enum, so the
-    module contains no `'superseded'` literal at all — the moment one appears,
-    the allowlist entry has outgrown its justification and this fails.
+    module contains no `'superseded'` literal outside that validator — the
+    moment one appears, the allowlist entry has outgrown its justification and
+    this fails.
+
+    **What this scan does not establish.** It enforces two syntactic
+    properties: no `'superseded'` literal outside the enum validator, and no
+    literal status inside a raw `UPDATE memories`. It cannot see that the
+    bound value is a *journalled* before-value rather than something the
+    module computed, which is a runtime property and lives in
+    `tests/test_dream_undo.py`'s behavioural assertions. Nor does it prove the
+    value can never be `'superseded'`: with today's producer that is
+    unreachable, because the pass only ever journals a before-status of
+    `'active'` — a different producer journalling a `consolidated` subsume
+    from another starting status would make it reachable, and the preflight
+    enum check would admit it. Stated rather than implied, because a reader
+    trusts a guard.
     """
     tree = ast.parse((BACKEND / _UNDO_MODULE).read_text())
 
