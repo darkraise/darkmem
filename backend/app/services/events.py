@@ -73,6 +73,7 @@ EVENT_TYPES: list[str] = [
     "buffer_discarded",
     "maintenance_run",
     "human_verdict",
+    "pin_decision",
 ]
 
 OBJECT_TYPES: list[str] = [
