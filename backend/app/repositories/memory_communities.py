@@ -136,10 +136,18 @@ _LIST_BY_LABEL = text(
     _LIST_WITH_MEMBERS.replace("--EXTRA--", "AND c.label = CAST(:label AS text)")
 )
 
+# `properties_patch` merges over the existing jsonb (T2.19's report-status
+# markers, e.g. `report_error`) rather than replacing it wholesale, so a
+# report write never clobbers T2.18's `dominant_entities`/`size`/etc. A fresh
+# non-null `report_string` also strips any stale `report_error` — a retried
+# generation that succeeds must not leave the community looking failed.
 _SET_REPORT = text(
     "UPDATE memory_communities SET "
     "label = COALESCE(CAST(:label AS text), label), "
-    "report_string = COALESCE(CAST(:report_string AS text), report_string) "
+    "report_string = COALESCE(CAST(:report_string AS text), report_string), "
+    "properties = CASE WHEN CAST(:report_string AS text) IS NOT NULL "
+    "THEN (properties || CAST(:properties_patch AS jsonb)) - 'report_error' "
+    "ELSE properties || CAST(:properties_patch AS jsonb) END "
     "WHERE id = CAST(:id AS uuid)"
 )
 
@@ -264,6 +272,7 @@ async def set_report(
     *,
     label: str | None = None,
     report_string: str | None = None,
+    properties_patch: dict | None = None,
 ) -> None:
     await session.execute(
         _SET_REPORT,
@@ -271,6 +280,7 @@ async def set_report(
             "id": str(community_id),
             "label": label,
             "report_string": report_string,
+            "properties_patch": json.dumps(properties_patch or {}, default=str),
         },
     )
 

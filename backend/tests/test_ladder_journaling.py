@@ -28,13 +28,19 @@ suites.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
 from app.repositories.fact_sources import FactSourceRepository as _FSR
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.services.verification_ladder import recompute_fact
+from app.services.review_queue import list_open_facts
+from app.services.verification_ladder import (
+    CONTRADICTION_EVIDENCE_KEY,
+    ENUMERATION_FIRST_FINDING,
+    recompute_fact,
+)
 
 T0 = datetime(2025, 6, 20, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -74,6 +80,43 @@ async def _add_origin(session, fact_id, origin_key, *, kind="memory") -> None:
         origin_key=origin_key,
     )
     await session.commit()
+
+
+async def _replaces_fact(session, *, subject: str, obj: str) -> str:
+    repo = KnowledgeTripleRepository(session)
+    row = await repo.insert_open(
+        triple_key=f"k-{uuid4()}",
+        subject_name=subject,
+        object_name=obj,
+        rel_type="REPLACES",
+        fact=f"{subject} replaces {obj}",
+        reference_time=T0,
+        project="default",
+    )
+    await session.commit()
+    return row["id"]
+
+
+async def _real_dispute(session, *, pair=("postgres", "mysql")) -> tuple[str, str]:
+    """A fact and a genuine counterpart, adjudicated by the real scan.
+
+    Every counterpart assertion in this file has to seed a real pair rather
+    than pass ``open_contradiction=True``, and the distinction is the point:
+    that argument *overrides* the adjudication, so no scan runs and there is no
+    finding in scope for the ladder to name. The counterpart exists only where
+    the ladder itself adjudicated.
+
+    ``inverse_replacement`` is the deterministic scan's whole reach today —
+    "postgres replaces mysql" against "mysql replaces postgres", both
+    open-ended — and the counterpart's single origin is distinct from the
+    subject's, so it is a witness rather than an echo.
+    """
+    first, second = pair
+    subject = await _replaces_fact(session, subject=first, obj=second)
+    await _add_origin(session, subject, f"sess-{first}", kind="memory")
+    counterpart = await _replaces_fact(session, subject=second, obj=first)
+    await _add_origin(session, counterpart, f"sess-{second}", kind="memory")
+    return subject, counterpart
 
 
 async def _events_for(session, fact_id) -> list[dict]:
@@ -482,3 +525,279 @@ class TestGCMetricsFromEventsAlone:
         for sql in (_PROMOTION_RATE_SQL, _FALSE_PROMOTION_AUDIT_SQL):
             assert "knowledge_triples" not in sql
             assert "from events" in sql.lower()
+
+
+# ───── T2.64 — the contradiction's counterpart rides that same payload ─────
+
+
+class TestTheCounterpartRidesThePayload:
+    """Doc 08 §6 requires disputed knowledge be served labelled with both
+    sides. §4.2's finding is the only thing that knows the second side, and it
+    is discarded once the verdict is taken, so the journal is the one place it
+    can be recorded: the deterministic scan's sole legitimate caller is the
+    ladder (enforced by a tree-wide reference scan in the veto's own suite), so
+    no surface may re-derive it.
+
+    Every test here seeds a *real* contradicting pair and lets the ladder
+    adjudicate. Passing ``open_contradiction=True`` would prove nothing: it
+    overrides the adjudication, so no scan runs and no finding exists to name.
+    """
+
+    async def test_a_dispute_names_the_counterpart_fact_and_its_claim(self, session):
+        subject, counterpart = await _real_dispute(session)
+
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+
+        assert decision.outcome == "dispute"
+        events = await _events_for(session, subject)
+        assert len(events) == 1
+        block = events[0][CONTRADICTION_EVIDENCE_KEY]
+        assert block["counterpart_id"] == counterpart
+        assert block["counterpart_subject"] == "mysql"
+        assert block["counterpart_rel_type"] == "REPLACES"
+        assert block["counterpart_object"] == "postgres"
+        assert block["rule"] == "inverse_replacement"
+        assert block["witness_origin"] == "sess-mysql"
+
+    async def test_the_block_says_it_names_one_counterpart_not_all_of_them(
+        self, session
+    ):
+        """The adjudication short-circuits at the first detector that finds
+        anything, so this is the counterpart the verdict turned on. A payload
+        that carried one while reading as the complete set would be a silent
+        truncation; the policy is on the row so a consumer never has to guess
+        which of the two it holds.
+        """
+        subject, _ = await _real_dispute(session)
+
+        await recompute_fact(session, subject)
+        await session.commit()
+
+        events = await _events_for(session, subject)
+        assert events[0][CONTRADICTION_EVIDENCE_KEY]["enumeration"] == (
+            ENUMERATION_FIRST_FINDING
+        )
+
+    async def test_the_counterpart_rides_every_reconfirmation_not_only_the_first(
+        self, session
+    ):
+        """The consumer surfaces read the *latest* ``verified`` row per fact.
+
+        A counterpart carried only on the opening transition would therefore
+        vanish from every dispute on its first re-confirmation — and a
+        long-lived dispute, which is the entire population the review queue is
+        made of, accumulates one blocked hold per scan pass.
+        """
+        subject, counterpart = await _real_dispute(session)
+        await recompute_fact(session, subject)
+        await session.commit()
+
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+
+        assert (decision.target_status, decision.outcome) == ("disputed", "hold")
+        events = await _events_for(session, subject)
+        assert len(events) == 2
+        assert events[1]["contradiction_blocked"] is True
+        assert events[1][CONTRADICTION_EVIDENCE_KEY]["counterpart_id"] == counterpart
+
+    async def test_a_recovery_carries_no_counterpart(self, session):
+        """A recovered fact is contradicted by nothing, so there is nothing to
+        name. Naming the fact it is no longer contradicted by would assert a
+        live dispute that no longer stands — permanently, because ``events`` is
+        append-only. The opening dispute's own row keeps that history, which
+        this test also checks so "absent" cannot be read as "lost".
+        """
+        subject, counterpart = await _real_dispute(session)
+        await recompute_fact(session, subject)
+        await session.commit()
+        await KnowledgeTripleRepository(session).expire(counterpart)
+        await session.commit()
+
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+
+        assert decision.outcome == "recover"
+        events = await _events_for(session, subject)
+        assert len(events) == 2
+        assert CONTRADICTION_EVIDENCE_KEY not in events[1]
+        assert events[0][CONTRADICTION_EVIDENCE_KEY]["counterpart_id"] == counterpart
+
+    async def test_an_overridden_verdict_names_nothing_rather_than_guessing(
+        self, session
+    ):
+        """A caller that supplies the verdict ran no detector here, so the
+        ladder has no finding — not even for a fact that a live scan would have
+        found a counterpart for. Recorded because it is the shape every replay
+        takes, and because inventing a counterpart by scanning anyway would add
+        the second caller invariant 15's guard forbids.
+        """
+        subject, _ = await _real_dispute(session)
+
+        decision = await recompute_fact(session, subject, open_contradiction=True)
+        await session.commit()
+
+        assert decision.outcome == "dispute"
+        events = await _events_for(session, subject)
+        assert events[0]["contradiction_blocked"] is True
+        assert CONTRADICTION_EVIDENCE_KEY not in events[0]
+
+    async def test_a_promotion_carries_no_counterpart(self, session):
+        fact_id = await _make_fact(session, key="counterpart-absent-on-promote")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        await recompute_fact(session, fact_id)
+        await session.commit()
+
+        events = await _events_for(session, fact_id)
+        assert CONTRADICTION_EVIDENCE_KEY not in events[0]
+
+    async def test_a_queued_facts_counterpart_is_readable_from_the_journal_alone(
+        self, session
+    ):
+        """The fifth Done-when clause, end to end through the real consumer.
+
+        T2.22's evidence attach reads the latest ``verified`` payload per queued
+        fact and needed **no query change** to surface this, which is the whole
+        argument for putting the counterpart on the payload rather than behind
+        a new column. Nothing here reads ``knowledge_triples`` for the
+        counterpart's claim, and nothing calls the scan.
+        """
+        subject, counterpart = await _real_dispute(session)
+        await recompute_fact(session, subject)
+        await session.commit()
+
+        items, _ = await list_open_facts(session, project="default")
+
+        queued = {item["id"]: item for item in items}
+        assert subject in queued, "the dispute must have opened the review queue"
+        block = queued[subject]["evidence"]["payload"][CONTRADICTION_EVIDENCE_KEY]
+        assert block["counterpart_id"] == counterpart
+        assert (
+            block["counterpart_subject"],
+            block["counterpart_rel_type"],
+            block["counterpart_object"],
+        ) == ("mysql", "REPLACES", "postgres")
+
+
+# ───── T2.64 clause 2 — the `verified` population is unchanged ─────
+
+
+class TestTheVerifiedPopulationIsUnchanged:
+    """Only the payload of rows that already existed gains a field: no new
+    rows, no rows lost.
+
+    Asserting the new key is present proves nothing about this — it passes just
+    as happily if an extra row were emitted per transition. So the count is
+    derived independently, from the decisions the ladder returned, and compared
+    against what the table holds.
+    """
+
+    async def test_the_row_count_is_exactly_the_journalling_rule_predicts(
+        self, session
+    ):
+        decisions = []
+        fact_ids = []
+
+        promoted = await _make_fact(session, key="pop-promote")
+        await _add_origin(session, promoted, "sess-a", kind="memory")
+        await _add_origin(session, promoted, "repo-b", kind="code")
+        fact_ids.append(promoted)
+        decisions.append(await recompute_fact(session, promoted))
+        await session.commit()
+        # A second recompute over the same fact: a corroborated hold, silent.
+        decisions.append(await recompute_fact(session, promoted))
+        await session.commit()
+
+        demoted = await _make_fact(session, key="pop-demote", status="corroborated")
+        await _add_origin(session, demoted, "sess-c", kind="memory")
+        fact_ids.append(demoted)
+        decisions.append(await recompute_fact(session, demoted))
+        await session.commit()
+
+        # A real dispute, a re-confirmation of it, and a recovery once the
+        # counterpart's belief is withdrawn.
+        disputed, counterpart = await _real_dispute(session)
+        fact_ids.append(disputed)
+        decisions.append(await recompute_fact(session, disputed))
+        await session.commit()
+        decisions.append(await recompute_fact(session, disputed))
+        await session.commit()
+        await KnowledgeTripleRepository(session).expire(counterpart)
+        await session.commit()
+        decisions.append(await recompute_fact(session, disputed))
+        await session.commit()
+
+        # Below its bar and unblocked: never eligible, never journaled.
+        held = await _make_fact(session, key="pop-hold")
+        await _add_origin(session, held, "sess-d1", kind="memory")
+        await _add_origin(session, held, "sess-d2", kind="memory")
+        fact_ids.append(held)
+        decisions.append(await recompute_fact(session, held))
+        await session.commit()
+
+        confirmed = await _make_fact(session, key="pop-confirmed", status="confirmed")
+        await _add_origin(session, confirmed, "human-1", kind="human")
+        fact_ids.append(confirmed)
+        decisions.append(await recompute_fact(session, confirmed))
+        await session.commit()
+
+        outcomes = {decision.outcome for decision in decisions}
+        assert outcomes == {"promote", "demote", "dispute", "recover", "hold"}, (
+            "the fixture must exercise every outcome, or the count below is a "
+            "claim about a population with holes in it"
+        )
+        assert any(
+            decision.target_status == decision.current_status
+            and not decision.contradiction_blocked
+            and not decision.supersession_blocked
+            for decision in decisions
+        ), "at least one decision must be a silent hold, or 'no rows lost' is vacuous"
+
+        # The journalling rule, restated independently of the code under test:
+        # a real status change, or a hold one of the two blockers is holding.
+        expected = sum(
+            1
+            for decision in decisions
+            if decision.target_status != decision.current_status
+            or decision.contradiction_blocked
+            or decision.supersession_blocked
+        )
+        actual = (
+            await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM events WHERE event_type = 'verified' "
+                    "AND object_id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"ids": fact_ids},
+            )
+        ).scalar_one()
+
+        assert expected == 5, (
+            "promote, demote, dispute, blocked hold, recover — five journalling "
+            "decisions out of eight recomputes"
+        )
+        assert actual == expected
+
+    async def test_every_journalled_row_is_a_change_or_a_blocked_hold(self, session):
+        """The other direction of the same claim: no row exists that the rule
+        above does not predict, so the counterpart cannot have arrived on a row
+        of its own."""
+        disputed, _ = await _real_dispute(session)
+        await recompute_fact(session, disputed)
+        await session.commit()
+        await recompute_fact(session, disputed)
+        await session.commit()
+
+        events = await _events_for(session, disputed)
+        assert len(events) == 2
+        for payload in events:
+            changed = (
+                payload["before"]["verification_status"]
+                != payload["after"]["verification_status"]
+            )
+            assert changed or payload["contradiction_blocked"] or (
+                payload["supersession_blocked"]
+            )

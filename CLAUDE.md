@@ -368,11 +368,18 @@ arm activation log — never by intuition.
 
 ## LLM configuration
 
-Eight purposes: six live — `embedding`, `extraction`, `classification`,
-`reasoning`, `summarization`, `reranker` — plus two Tier-C rows seeded
-**inert** (`synthesis`, first consumer T3.02; `verification`, T2.26):
-resolvable from day one per doc 11 §6, but nothing dispatches on them
-yet. Each is **one inline `llm_purpose_configs`
+Eight purposes. **Seven are live**: `embedding`, `extraction`,
+`classification`, `reasoning`, `summarization`, `reranker`, and —
+since T2.26 landed — `verification`, which `app/services/verification_judge.py`
+resolves and dispatches on. Only **`synthesis`** is still seeded inert
+(first consumer T3.02): resolvable from day one per doc 11 §6, but nothing
+dispatches on it yet. This paragraph described both Tier-C rows as inert
+until 2026-08-02; the `verification` half was stale, and a task reading it
+would wrongly believe activating that purpose was still an unmade decision.
+Note `verification` being dispatched is not the same as it being *usable*:
+`VerificationJudge.judge()` refuses unconditionally without a qualification
+record, which T2.41 mints and which is behind T2.54's gold. Each purpose is
+**one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
 `llm_providers` / `llm_profiles` / `ml_profiles` indirection tables and

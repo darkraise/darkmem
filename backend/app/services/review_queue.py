@@ -43,22 +43,31 @@ the ``disputed`` reason, and every other open row renders as ``unspecified``
 09's ungrounded-article check, neither of which has landed a distinguishing
 column yet).
 
-**"Both sides" — a real, reported gap.** T2.06's enriched ``verified`` events
-journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
+**"Both sides" — closed by T2.64 (2026-08-02).** T2.06's enriched ``verified``
+events journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
 ``gate_fired``, ``source_kinds``, ``contradiction_blocked``, before/after) that
 this module surfaces as best-effort ``evidence`` alongside a disputed fact, so
-a human can see the support count the veto overrode. But that payload does not
-carry the contradiction's *counterpart* fact id or witness origin (the finding
-that produces those is computed on the fly by the deterministic same-endpoint
-scan in the contradiction-veto module and never persisted), and this module
-does not call into that scan to re-derive it: the verification ladder is that
-scan's *sole* legitimate caller, enforced by a tree-wide reference scan in the
-veto's own test suite that fails the build on a second entry point. So "what
-are the competing claims" is answerable today only as "this fact's own claim,
-disputed, with N origins of these kinds" — not "disputed by fact X asserting
-Y". Rendering the actual counterpart claim needs either a persisted pointer on
-the fact row (a schema change, out of this task's scope) or a future surface
-that owns querying the scan. Flagged as a coordination item, not solved here.
+a human can see the support count the veto overrode. **T2.64 added a
+``contradiction`` block to that same payload**, carrying the counterpart's
+structured triple (``counterpart_id``, subject, ``rel_type``, object) plus the
+``rule`` and ``witness_origin`` — so ``_latest_verified_evidence`` already
+delivers "disputed by fact X asserting Y" with **no query change here**.
+
+Two properties of that block a reader must not re-derive. It names the
+counterpart the verdict turned on, not every counterpart in the database:
+adjudication short-circuits at the first detector that finds anything, since
+one contradiction is already absolute, and the block says so in-band via
+``enumeration: "first_finding"``. And it is **absent** on a recovery, on a
+caller-overridden verdict, and on any dispute predating that commit — absent
+means "no scan produced one here", never "no counterpart exists".
+
+This paragraph previously said the gap needed a persisted pointer on the fact
+row (a schema change) or a future surface owning the scan. **Both were wrong**,
+and the correction matters more than the staleness: the ladder remains the
+scan's *sole* legitimate caller, enforced by a tree-wide reference scan that
+fails the build on a second entry point, so a surface that "owns querying the
+scan" is forbidden by construction. The closure was one jsonb field written
+where the finding was already in scope, and no schema change at all.
 
 **The ordering seam, filled (T2.24).** Doc 08 §6: the queue is "ranked by
 consequence — retrieval frequency and subject salience — not arrival order".
