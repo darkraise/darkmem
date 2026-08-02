@@ -355,6 +355,7 @@ class KnowledgeTripleRepository:
         source_kinds: tuple[str, ...] | list[str] | None = None,
         contradiction_blocked: bool = False,
         supersession_blocked: bool = False,
+        contradiction: dict[str, Any] | None = None,
         review_state: str | None | _UnsetReviewState = UNSET_REVIEW_STATE,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
@@ -433,6 +434,17 @@ class KnowledgeTripleRepository:
         this is the row G-C's promotion-rate and false-promotion-audit SQL
         reads, so the payload must carry everything those queries need
         without a join back to ``knowledge_triples``.
+
+        ``contradiction`` is the veto's counterpart block (T2.64) — already
+        reduced to plain values by ``verification_ladder`` for the same reason
+        the evidence above is, so this module never imports the finding's type.
+        It is **a field on rows that already existed, never a row of its own**:
+        it is folded into the payload the branch below was already going to
+        write, and it appears in no condition that decides whether that branch
+        runs. A ``contradiction`` supplied on a call that journals nothing is
+        therefore silently dropped, which is the correct outcome — a payload
+        with no event is not a thing — and unreachable in any case, since the
+        ladder produces the block only from a verdict that forces the branch.
 
         ``contradiction_blocked=True`` journals even when ``status`` is
         ``None`` (unchanged): a fact the veto is *still* holding in
@@ -594,6 +606,8 @@ class KnowledgeTripleRepository:
                 payload["contradiction_blocked"] = contradiction_blocked
                 payload["supersession_blocked"] = supersession_blocked
                 payload["confidence"] = confidence
+            if contradiction is not None:
+                payload["contradiction"] = dict(contradiction)
             await record_event(
                 self.session,
                 event_type="verified",

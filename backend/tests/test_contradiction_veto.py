@@ -43,6 +43,7 @@ from app.services.contradiction_veto import (
     SINGLE_VALUED_RELATIONS,
     ContradictionFinding,
     adjudicate_contradiction,
+    adjudicate_contradiction_finding,
     detect_open_contradiction,
     windows_overlap,
 )
@@ -1115,6 +1116,138 @@ class TestSingleValuedRelationsIsEmpty:
         await _source(session, counterpart, "sess-b")
 
         assert await detect_open_contradiction(session, subject) is None
+
+
+# ───────── T2.64 — the finding names the claim, not only the row ─────────
+
+
+class TestTheFindingCarriesTheCounterpartsClaim:
+    """Doc 08 §6 serves a disputed fact labelled with both sides, and §4.2's
+    finding is the only thing that ever knows the other one.
+
+    An id alone would satisfy "names the counterpart" while failing the clause
+    it exists for: the human adjudicating, and every surface serving them,
+    would still have to fetch ``knowledge_triples`` to learn what the other
+    side actually claims — and the surfaces that would have to do the fetching
+    are exactly the ones forbidden from reaching this scan.
+    """
+
+    async def test_the_finding_carries_the_counterparts_own_triple(self, session):
+        subject, counterpart = await _contradicted_pair(
+            session, corroborations=2, contradicting_origin="sess-dissent"
+        )
+
+        finding = await detect_open_contradiction(session, subject)
+
+        assert finding is not None
+        assert finding.counterpart_id == counterpart
+        # Reversed, not echoed. The subject asserts "postgres REPLACES mysql";
+        # a finding that read its own row back would produce that triple and
+        # look plausible, so the assertion pins the counterpart's direction.
+        assert (
+            finding.counterpart_subject,
+            finding.counterpart_rel_type,
+            finding.counterpart_object,
+        ) == ("mysql", "REPLACES", "postgres")
+        assert finding.rule == RULE_INVERSE_REPLACEMENT
+        assert finding.witness_origin == "sess-dissent"
+
+    async def test_the_claim_is_readable_without_reading_the_counterpart_row(
+        self, session
+    ):
+        """The whole point of carrying the triple: delete the counterpart and
+        the finding still states what it claimed.
+
+        Not a hypothetical — ``events`` is append-only and its payloads outlive
+        deletion of their subject, so a journalled finding routinely outlives
+        the row it names.
+        """
+        subject, counterpart = await _contradicted_pair(
+            session, corroborations=1, contradicting_origin="sess-dissent"
+        )
+        finding = await detect_open_contradiction(session, subject)
+        assert finding is not None
+
+        await session.execute(
+            text("DELETE FROM knowledge_triples WHERE id = CAST(:id AS uuid)"),
+            {"id": counterpart},
+        )
+        await session.commit()
+
+        assert finding.counterpart_object == "postgres"
+        assert await detect_open_contradiction(session, subject) is None
+
+    async def test_the_widened_projection_changed_no_verdict(self, session):
+        """The three name columns are projection, never predicate: the same
+        pair that contradicted before still does, and the same non-pair still
+        does not."""
+        disputed, _ = await _contradicted_pair(
+            session, corroborations=3, contradicting_origin="sess-dissent"
+        )
+        clean, _ = await _contradicted_pair(
+            session,
+            corroborations=3,
+            contradicting_origin=None,
+            pair=("redis", "memcached"),
+        )
+
+        assert await adjudicate_contradiction(session, disputed) is True
+        assert await adjudicate_contradiction(session, clean) is False
+
+    async def test_the_finding_variant_reads_the_registry_not_the_scan(
+        self, session, monkeypatch
+    ):
+        """Kills an ``adjudicate_contradiction_finding`` that calls the
+        deterministic scan directly — under which T2.11 could register a
+        detector, open disputes through the boolean predicate, and have its
+        finding silently dropped from every journalled payload.
+        """
+        subject = await _fact(session, subject="darkmem", rel="USES", obj="pgvector")
+        await _source(session, subject, "sess-a")
+        assert await adjudicate_contradiction_finding(session, subject) is None
+
+        stub = ContradictionFinding(
+            fact_id=str(subject),
+            counterpart_id=str(uuid4()),
+            rule="stub",
+            witness_origin="stub-origin",
+        )
+
+        async def always_finds(_session, _fact_id):
+            return stub
+
+        monkeypatch.setattr(
+            veto_module,
+            "CONTRADICTION_DETECTORS",
+            (detect_open_contradiction, always_finds),
+        )
+        assert await adjudicate_contradiction_finding(session, subject) is stub
+
+    async def test_the_two_adjudication_forms_never_disagree(self, session, monkeypatch):
+        """The boolean predicate is the finding variant's own answer, reduced.
+
+        Two independent walks of ``CONTRADICTION_DETECTORS`` could disagree
+        about what a clean verdict means, and only one of them is the one that
+        ends a dispute.
+        """
+        subject, _ = await _contradicted_pair(
+            session, corroborations=2, contradicting_origin="sess-dissent"
+        )
+        clean, _ = await _contradicted_pair(
+            session,
+            corroborations=2,
+            contradicting_origin=None,
+            pair=("redis", "memcached"),
+        )
+
+        for fact_id in (subject, clean):
+            verdict = await adjudicate_contradiction(session, fact_id)
+            finding = await adjudicate_contradiction_finding(session, fact_id)
+            assert verdict is (finding is not None)
+
+        monkeypatch.setattr(veto_module, "CONTRADICTION_DETECTORS", ())
+        assert await adjudicate_contradiction(session, subject) is False
+        assert await adjudicate_contradiction_finding(session, subject) is None
 
 
 # ───────── Invariant 15 — the deterministic scan is Tier-C only ─────────

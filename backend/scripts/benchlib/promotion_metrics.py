@@ -69,6 +69,20 @@ a status-changing row (``before`` and ``after`` disagree) carrying no
 SQL uses and would otherwise vanish from both the numerator and the
 denominator with no trace.
 
+**A field this runner validates but never counts (T2.64).** The ``verified``
+payload now carries the contradiction's counterpart -- doc 08 §6's "labelled
+with both sides", recorded on the row because the finding is in scope only
+inside the ladder and no surface may re-derive it. It is validated on the same
+closed-vocabulary terms as every key above, *including its nested keys*,
+because an unvalidated blob inside a validated payload is the same hole one
+level down. It changes no number: the decision it explains is already fully
+described by ``outcome`` and ``contradiction_blocked``, both of which the SQL
+below already reads, so no denominator, numerator or slice moves on its
+account. Its ``enumeration`` field is the one thing a reader must not
+misinterpret -- it says the block names the counterpart the verdict turned on,
+never the complete set -- so an unknown value there fails loud rather than
+reading as the old claim.
+
 **The blast radius of one bad payload is the whole window, on purpose.**
 ``validate_window`` runs before any metric query, so a single unrecognised
 ``verified`` payload anywhere in ``[since, now)`` fails the entire run --
@@ -112,7 +126,34 @@ KNOWN_PAYLOAD_KEYS = frozenset({
     # that did not journal would silently inflate the promotion rate with
     # no trace, so the flag rides the payload and is counted below.
     "supersession_blocked",
+    # T2.64's contradiction counterpart -- doc 08 Section 6's "labelled with
+    # both sides", recorded where the finding is in scope because nothing
+    # else may re-derive it. It carries **no** eligibility signal: the
+    # decision it explains is already fully described by `outcome` and
+    # `contradiction_blocked`, both of which this runner's SQL already
+    # reads, so no denominator, numerator or slice changes on its account.
+    # It is validated rather than ignored because an unvalidated nested blob
+    # is precisely the vocabulary hole this module exists to refuse.
+    "contradiction",
 })
+
+# The counterpart block's own closed vocabulary
+# (app.services.verification_ladder.contradiction_evidence). Nested keys are
+# checked on the same terms as top-level ones: a block that grew a field would
+# otherwise pass this runner untouched, which is the silent widening
+# KNOWN_PAYLOAD_KEYS exists to make impossible one level up.
+KNOWN_CONTRADICTION_KEYS = frozenset({
+    "counterpart_id", "counterpart_subject", "counterpart_rel_type",
+    "counterpart_object", "rule", "witness_origin", "enumeration",
+})
+
+# How many contradictions the block claims to name. `first_finding` is the
+# counterpart the verdict turned on, not the complete set -- the adjudication
+# short-circuits at the first detector that finds anything. A new value here
+# means that selection rule changed, which changes what a reader of this
+# payload is entitled to conclude, so it fails loud rather than reading as the
+# old claim.
+KNOWN_ENUMERATIONS = frozenset({"first_finding"})
 
 
 # Below this many observations, one additional data point swings the
@@ -157,6 +198,49 @@ def validate_verified_event_payload(payload: dict, *, event_id: object) -> None:
             f"verified event {event_id} carries unrecognised gate_fired "
             f"{gate_fired!r}; known values are {sorted(KNOWN_GATE_FIRED)}"
         )
+    contradiction = payload.get("contradiction")
+    if contradiction is not None:
+        if not isinstance(contradiction, dict):
+            raise UnrecognisedPayloadError(
+                f"verified event {event_id} carries a 'contradiction' that is "
+                f"{type(contradiction).__name__}, not an object; the counterpart "
+                f"block is a mapping of {sorted(KNOWN_CONTRADICTION_KEYS)}"
+            )
+        unknown_inner = set(contradiction) - KNOWN_CONTRADICTION_KEYS
+        if unknown_inner:
+            raise UnrecognisedPayloadError(
+                f"verified event {event_id} carries unrecognised contradiction "
+                f"key(s) {sorted(unknown_inner)}; known keys are "
+                f"{sorted(KNOWN_CONTRADICTION_KEYS)}"
+            )
+        if not contradiction.get("counterpart_id"):
+            raise UnrecognisedPayloadError(
+                f"verified event {event_id} carries a 'contradiction' block "
+                f"with no counterpart_id -- a dispute that names no counterpart "
+                f"is the state doc 08 Section 6 exists to end, and a block that "
+                f"cannot be traced back to a fact is worse than none"
+            )
+        enumeration = contradiction.get("enumeration")
+        if enumeration not in KNOWN_ENUMERATIONS:
+            raise UnrecognisedPayloadError(
+                f"verified event {event_id} carries contradiction enumeration "
+                f"{enumeration!r}; known values are {sorted(KNOWN_ENUMERATIONS)}. "
+                f"This field states how many contradictions the block names, so "
+                f"an unknown value means a reader cannot tell whether it is "
+                f"holding one counterpart or all of them"
+            )
+        # The block is produced only from a verdict that fired, so its presence
+        # beside an unfired veto means a second writer -- or a stale block
+        # copied onto a decision it did not describe. Both would put a live
+        # dispute's evidence on a fact nothing is disputing.
+        if not payload.get("contradiction_blocked", False):
+            raise UnrecognisedPayloadError(
+                f"verified event {event_id} carries a 'contradiction' block "
+                f"while contradiction_blocked is "
+                f"{payload.get('contradiction_blocked')!r}; the counterpart is "
+                f"journaled only by the verdict that fired the veto, so this "
+                f"row names a dispute its own evidence says did not happen"
+            )
     if outcome == "hold" and not (
         payload.get("contradiction_blocked", False)
         or payload.get("supersession_blocked", False)

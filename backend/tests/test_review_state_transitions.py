@@ -578,11 +578,20 @@ class TestTheVerifiedEventPopulationIsUnchanged:
         """The exact key set G-C's SQL reads — still no ``review_state`` in it.
 
         T2.62 added no key; T2.60 added exactly one, ``supersession_blocked``,
-        under the ruling in ``verification_ladder.decide``'s docstring. The
-        assertion stays an exact set rather than a subset check on purpose: a
-        new key is what T2.51's ``KNOWN_PAYLOAD_KEYS`` guard refuses, so this
-        is the coupling check that fails loudly if a key is added without the
-        metrics runner's vocabulary being widened in step.
+        under the ruling in ``verification_ladder.decide``'s docstring, and
+        T2.64 added one more, ``contradiction`` — doc 08 §6's counterpart,
+        journaled where the finding is in scope because no surface may
+        re-derive it. The assertion stays an exact set rather than a subset
+        check on purpose: a new key is what T2.51's ``KNOWN_PAYLOAD_KEYS``
+        guard refuses, so this is the coupling check that fails loudly if a key
+        is added without the metrics runner's vocabulary being widened in step.
+        It did exactly that for T2.64, which is the guard working.
+
+        ``contradiction`` rides *this* payload because the veto fired here and
+        the ladder adjudicated it itself. It is absent from a promotion, from a
+        recovery, and from any transition whose verdict a caller supplied — so
+        this exact set is the disputed-transition shape, not a shape every
+        ``verified`` row carries.
         """
         subject, _ = await _disputed_pair(session, tag="payload")
 
@@ -601,6 +610,7 @@ class TestTheVerifiedEventPopulationIsUnchanged:
             "contradiction_blocked",
             "supersession_blocked",
             "confidence",
+            "contradiction",
         }
 
 
