@@ -1176,10 +1176,74 @@ T2.22's evidence attach then surfaces it with no query change at all.
 
 **Verify.** `cd backend && python -m pytest tests/test_ladder_journaling.py tests/test_contradiction_veto.py -q
 
+#### T2.65 — Fact-level retrieval heat has no counter
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.42, T2.29` · `Doc: 08 §6, 07 §3` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Doc 08 §6 ranks the review queue by retrieval frequency, but the only counter in
+the tree is `memory_access_stats` (T2.29), keyed by `memory_id` and fed from the memory
+hybrid. T2.24's landed consequence ranking reaches it through `fact_sources.source_ref`
+cast to a memory id — an explicit, documented **proxy**, correct only while facts are read
+exclusively through the memories that source them.
+
+T2.42 broke that premise: the facts channel serves `knowledge_triples` rows directly and
+records nothing. So a frequently-served fact accrues no heat anywhere, and §6's
+consequence ranking quietly degrades toward its salience arm as the facts channel takes
+traffic. The degradation is silent — no error, no empty result, just a ranking that
+weights the wrong thing.
+
+**This task is a decision before it is an implementation.** Either a fact-keyed analogue of
+T2.29's substrate is fed from the serving path, or the proxy is declared permanent with
+its error bound stated. Do not build the counter before settling which, and record the
+answer where §6's reader sees it rather than only in a report.
+
+**Done when:**
+- [ ] The decision is made and argued: fact-keyed counter, or the proxy made permanent
+- [ ] If a counter: the serving path feeds it, and the recording is off the ranking's hot
+      path in the way `_record_access` already is
+- [ ] If the proxy stands: its error bound is stated where a ranking reader sees it, and a
+      test pins the proxy's behaviour so it cannot silently drift
+- [ ] Either way, `review_ranking`'s comment stops describing a premise that no longer holds
+
+**Verify.** `cd backend && python -m pytest tests/test_review_ranking.py tests/test_access_stats.py -q`
+
+#### T2.66 — A one-sided database failure must degrade, not take the channel down
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.42` · `Doc: 07 §2, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Doc 07 §2's channel contract is that a one-sided failure degrades to the other
+modality while a both-sided failure raises, so an empty list is never confused with a
+genuine no-match. Both the memory hybrid (`hybrid_search.py`) and the facts channel
+(`facts_channel.py`) run their two arms on **one shared session**, so a database-level
+error in the first arm aborts the transaction and the second arm's *valid* SQL then fails
+on the aborted transaction. The channel raises where the contract promises degraded
+service, naming an arm that never independently failed.
+
+**Both channels' contract tests pass anyway**, because they simulate failure by
+monkeypatching the query *builder* — a pre-SQL failure, which leaves the transaction
+usable. That is a guard reading stronger than it is, and it is the template's defect
+rather than either channel's invention, which is why this is one task over both rather
+than a fix in one.
+
+**Fix shape:** a SAVEPOINT per arm (`begin_nested()`), so an arm's failure rolls back only
+that arm. Land it in both channels together — diverging the idiom is how the two ranking
+paths already drifted.
+
+**Done when:**
+- [ ] A genuine database-level failure in one arm degrades to the other, in **both**
+      channels, proven by a test that breaks the SQL rather than the builder
+- [ ] A both-sided failure still raises rather than returning an empty list
+- [ ] The existing builder-level tests are kept, not replaced — they pin a different path
+- [ ] Removing either savepoint fails a test
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_channel.py tests/test_hybrid_search.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-02 | T2.65, T2.42, T2.29, T2.24 | 2 | **T2.65 minted: fact-level retrieval heat has no counter, and T2.42 broke the premise the existing proxy rests on.** Doc 08 §6 ranks the review queue by retrieval frequency; the only counter is `memory_access_stats` (T2.29), keyed by `memory_id` and fed from the memory hybrid, and T2.24's landed ranking reaches it through `fact_sources.source_ref` cast to a memory id — a documented proxy that is correct only while facts are read through the memories sourcing them. The facts channel now serves `knowledge_triples` rows directly and records nothing, so a frequently-served fact accrues heat nowhere and §6's consequence ranking degrades toward its salience arm as that channel takes traffic. Minted as a **decision before an implementation**: either a fact-keyed counter fed from the serving path, or the proxy declared permanent with its error bound stated where a ranking reader sees it | Flagged by T2.42's implementer as a controller-facing gap and independently confirmed by its Fable review, which swept T2.29, T2.31, T2.55, T2.56 and this log and found no task owning a fact-keyed counter. Minted rather than folded into T2.43 because the question is which substrate is correct, not where to call it from — and the degradation is silent, with no error and no empty result, only a ranking that weights the wrong thing, which is the failure mode this corpus is least able to notice after the fact |
+| 2026-08-02 | T2.66, T2.42 | 2 | **T2.66 minted: the one-arm-degrade contract does not survive a database-level failure, in both channels.** Doc 07 §2 promises that a one-sided failure degrades to the other modality while a both-sided failure raises. Both the memory hybrid and the new facts channel run their arms on **one shared session**, so a database-level error in the first arm aborts the transaction and the second arm's valid SQL then fails on the aborted transaction — the channel raises where the contract promises degraded service, naming an arm that never independently failed. Both channels' contract tests pass regardless, because they simulate failure by monkeypatching the query *builder*, a pre-SQL failure that leaves the transaction usable. Fix shape is a SAVEPOINT per arm via `begin_nested()`, landed in both channels together | Proved empirically by T2.42's Fable reviewer, which broke only the keyword arm's SQL and watched the name arm's own statement error, rather than reading the contract test and believing it. Non-blocking for T2.42's merge on two grounds the reviewer named: the failure direction is loud rather than a silent empty list, and the shape is copied verbatim from `hybrid_search.py`, which the brief mandated as the template — so the defect is the template's and predates this task. Scoped over both channels deliberately: fixing one would diverge the idiom, which is exactly how the two ranking implementations already drifted |
 | 2026-08-02 | T2.45, T2.12, T2.13 | 3 | **RULED by the owner: doc 08 §3.4's guard 2 is absolute and is evaluated first — a memory still asserting any live fact never changes status, whatever guard 1 says.** §3.4 described the bridge twice and the two descriptions disagreed: the prose said a guard-2 failure means "the bridge does not apply at all ... deprecating it would drop a memory that still carries live knowledge out of the active view, which is exactly what guard 2 exists to prevent", while the flowchart directly below checked guard 1 first and routed its failure straight to `deprecated` without consulting guard 2. Where both fail, the flowchart produced precisely the outcome the prose forbids. **Doc 08 §3.4 amended in place** — prose and flowchart both — and the evaluation order is now stated explicitly: guard 2 answers *may the status change at all*, guard 1 answers *which change*. Full adjudication and the rejected alternative at `.superpowers/sdd/rulings/2026-08-02-t2.45-status-bridge-guard-order.md`. T2.45's Done-when is unchanged: the two guards still fail differently | Escalated by T2.45's step-level plan (§8 O1, `b4611ef`), which correctly refused to resolve a doc-internal contradiction from an implementation task and gated its own Step 3 on the ruling. The cell is ordinary rather than a corner case — any memory carrying more than one fact reaches it — so the flowchart's reading would have fired routinely. Ruled for guard 2 on reversibility: the ruled reading can only ever decline to act, and a later pass corrects it at no cost, whereas the rejected reading deprecates live knowledge out of the active view with nothing in a monotonic bridge to put it back. The both-fail cell now owes its own test; leaving it to fall out of the two single-guard cases is what let the contradiction survive review this long |
 | 2026-08-02 | T2.42, T2.43, T2.64 | 2 | **"Labelled with both sides" is satisfied in two parts, not one: T2.42's Done-when splits, and `T2.43` gains `Depends: T2.64`.** T2.42 built the facts channel and confirmed against the tree that the counterpart half has no data source a retrieval query can read — the same finding T2.22 reported for the review queue, re-confirmed independently: `knowledge_triples` carries no counterpart column, `fact_sources` carries provenance rather than opposition, and the `verified` journal payload T2.06 enriched stops at `outcome`/`origin_count`/`required_n`/`gate_fired`/`source_kinds`/`contradiction_blocked`/`supersession_blocked`. So T2.42 ships the non-negotiable half — a disputed fact is returned, never filtered, labelled with what its own row carries and with `counterpart: None` naming T2.64 as owner rather than silently omitted — and T2.43, which is where a served row actually has to show both sides, now depends on T2.64 | The clause was a single Done-when checkbox on a task that provably cannot satisfy it, which makes the box either a lie or a licence to invent a re-derivation. T2.42 declined to invent one for the same structural reason T2.22 did: the deterministic scan's sole legitimate caller is the verification ladder, enforced by a tree-wide reference scan that fails the build on a second entry point, so a retrieval-surface re-derivation is forbidden by construction. Routed as a dependency edge on T2.43 rather than on T2.42 because T2.42 is a candidate *producer* — it has no served row to label — while T2.43 is the composition that serves one, so that is where the missing data is actually consumed. Note T2.64's own coupling to T2.51's payload-vocabulary guard still applies |
 | 2026-07-31 | T2.41, T2.54 | 2 | **`T2.41` gains `Depends: T2.54`.** The composition amendment logged earlier today put doc 17 §11's "synthetic-only gold is rejected as unrepresentative; >= 200 pairs per variant before the gate can open" onto T2.54's Done-when, but never added the dependency **edge** to the evidence run that consumes it. So the task graph still permitted starting G-D's evidence run with T2.54 incomplete — the exact claim the amendment exists to block | Caught by T2.26's plan, which had to reason about when G-D may open and found the constraint stated in one place and unenforced in the graph. A constraint recorded on the producer but absent from the consumer's `Depends` is enforced only by whoever remembers to read it; the graph is what the runbook's entry-gate check actually consults |
