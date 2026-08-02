@@ -428,6 +428,30 @@ async def test_set_report_merges_properties_without_clobbering_t218s_keys(sessio
 
 REPORTS_BASENAME = "memory_community_reports"
 REPORTS_PATH = "app/services/memory_community_reports.py"
+REPORTS_MODULE = f"app.services.{REPORTS_BASENAME}"
+
+# T2.20 amendment (2026-08-02): this module's own docstring names T2.20's
+# browsing surface as the intended consumer of `report_status` — "T2.20
+# inherits `report_status` as the read-time projection its browsing surface
+# renders from, rather than re-deriving the three-state classification
+# against `report_string IS NULL` directly." A blanket module-name ban
+# cannot honour that without also forbidding the only correct way to satisfy
+# it, so the scan is precise at the symbol level for exactly these five pure,
+# side-effect-free names (a plain function of stored columns plus its four
+# string constants; no session, no LLM, no I/O). Every other route to this
+# module — a whole-module import, an attribute-style `from app.services
+# import memory_community_reports`, any of the LLM-calling functions
+# (`generate_report`, `generate_reports`), or a mixed import naming even one
+# unsafe symbol alongside a safe one — is still caught, proven below.
+SAFE_REPORT_PROJECTION_SYMBOLS = frozenset(
+    {
+        "report_status",
+        "REPORT_STATUS_READY",
+        "REPORT_STATUS_PENDING",
+        "REPORT_STATUS_FAILED",
+        "REPORT_STATUS_SKIPPED",
+    }
+)
 
 
 def _docstring_constants(tree: ast.AST) -> set[int]:
@@ -469,6 +493,11 @@ def _report_module_offenders(paths, backend_root) -> list[str]:
             if isinstance(node, ast.Import):
                 reached = " ".join(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
+                if node.module == REPORTS_MODULE and all(
+                    alias.name in SAFE_REPORT_PROJECTION_SYMBOLS
+                    for alias in node.names
+                ):
+                    continue
                 reached = " ".join(
                     f"{node.module or ''}.{alias.name}" for alias in node.names
                 )
@@ -538,3 +567,50 @@ def test_the_scan_does_not_fail_on_the_detector_module_name(tmp_path):
         "from app.services import memory_community_detection\n",
     )
     assert _report_module_offenders([innocent], tmp_path) == []
+
+
+def test_the_scan_allows_the_pure_report_status_projection(tmp_path):
+    """T2.20's amendment: `report_status` and its four constants are a pure
+    read-time projection of stored columns, named by this module's own
+    docstring as T2.20's browsing surface's intended import — not the
+    LLM-calling capability invariant 15 exists to contain."""
+    innocent = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import (\n"
+        "    REPORT_STATUS_READY,\n"
+        "    report_status,\n"
+        ")\n",
+    )
+    assert _report_module_offenders([innocent], tmp_path) == []
+
+
+def test_the_scan_still_catches_generate_reports_by_precise_name(tmp_path):
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import generate_report\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_still_catches_a_mixed_import_with_one_unsafe_name(tmp_path):
+    """One unsafe symbol in the same import statement voids the exemption —
+    the allowlist is all-or-nothing per statement, not per-name filtering."""
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import (\n"
+        "    report_status,\n"
+        "    generate_reports,\n"
+        ")\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_still_catches_the_whole_module_import(tmp_path):
+    """`import app.services.memory_community_reports` reaches everything in
+    the module through attribute access, so it is never exempt regardless of
+    which attributes are actually used."""
+    offender = _write(
+        tmp_path,
+        "import app.services.memory_community_reports\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
