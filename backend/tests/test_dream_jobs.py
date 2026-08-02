@@ -287,10 +287,16 @@ _ALLOWED_DREAM_JOB_FILES = {
 # Exact stripped lines legitimate outside the umbrella module — today, only
 # main.py's one import and one registration call in lifespan(). Keyed by
 # file so a forbidden reference anywhere else in that same file still fails.
+#
+# NOTE (T2.67): this set matches on exact stripped line *text*, which is the
+# defect T2.67 was minted to fix — the scan it belongs to is defeated by a
+# parenthesised multi-line import. When these are reworked into
+# node-addressable exemptions, the registration entry below must come with
+# them rather than being dropped as unrecognised.
 _ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
     "app/main.py": {
         "from app.services.dream_jobs import register_dream_jobs",
-        "register_dream_jobs(job_registry)",
+        'register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))',
     },
 }
 

@@ -23,7 +23,7 @@ members whose owning task has since landed:
 | `verification_recompute` | T2.09 | shipped |
 | fact lifting | T2.10 | shipped |
 | `contradiction_scan` | T2.11 | placeholder |
-| `memory_dream` | T2.12 | placeholder |
+| memory dreaming | T2.12 | shipped |
 | `article_synthesis` | T3.02 | placeholder |
 | `topic_detection` | T2.53 | placeholder |
 
@@ -60,6 +60,10 @@ from app.services.fact_lift import (
     run_lift,
 )
 from app.services.job_registry import FieldDescriptor, Job, JobRegistry, JobRunner
+from app.services.memory_dream import (
+    MEMORY_DREAM_CONFIG_SCHEMA,
+    run_memory_dream,
+)
 from app.services.verification_recompute import (
     DEFAULT_FAST_BATCH,
     DEFAULT_SLOW_ARM_INTERVAL_SECONDS,
@@ -128,6 +132,7 @@ DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 SHIPPED_DREAM_JOBS: dict[str, str] = {
     FACT_LIFT_JOB_KEY: "fact_lift",
     VERIFICATION_RECOMPUTE_JOB_KEY: "verification_recompute",
+    MEMORY_DREAM_JOB_KEY: "memory_dream",
 }
 
 
@@ -231,6 +236,46 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
     return run
 
 
+def _make_dream_runner(
+    registry: JobRegistry, key: str, llm_provider
+) -> JobRunner:
+    """The dreaming tick, bound to the registry's own session factory.
+
+    The provider is a callable rather than an orchestrator instance because
+    `app.state.llm` is replaced whole on a config save, so a closed-over
+    instance goes stale and keeps dispatching at the previous configuration.
+    The runner owns its sessions: it opens one per phase and commits each,
+    since a read transaction held across the model fan-out would sit
+    `idle in transaction` for minutes.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings_ = {**registry.get(key).default_config, **cfg.config}
+        outcome = await run_memory_dream(
+            registry.session_factory,
+            llm_provider,
+            batch_size=int(settings_.get("batch_size", 50)),
+            pair_candidates=int(settings_.get("pair_candidates", 5)),
+            near_duplicate_threshold_pct=int(
+                settings_.get("near_duplicate_threshold_pct", 92)
+            ),
+            judge_fanout=int(settings_.get("judge_fanout", 25)),
+            refine_batch=int(settings_.get("refine_batch", 25)),
+            write_batch=int(settings_.get("write_batch", 25)),
+            llm_concurrency=int(settings_.get("llm_concurrency", 4)),
+        )
+        logger.info(
+            "Memory dreaming visited %d seed(s): %d subsumed, %d associated "
+            "(%d unchanged), %d refined, %d stale-skipped, %d failed%s",
+            outcome.seeds_visited, outcome.subsumed, outcome.associated,
+            outcome.associate_unchanged, outcome.refined,
+            outcome.stale_skipped, outcome.failed,
+            f", skipped: {outcome.skipped_reason}" if outcome.skipped_reason else "",
+        )
+
+    return run
+
+
 def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     return [FieldDescriptor(
         key="batch_size", label="Batch Size", default=default,
@@ -238,15 +283,17 @@ def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     )]
 
 
-def register_dream_jobs(registry: JobRegistry) -> None:
+def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
     """Register the six-member consolidation family (doc 08 §5).
 
     Staggered so a single worker never stampedes (§5.1): `fact_lift` and
     `verification_recompute` are frequent (no LLM call), `contradiction_scan`
-    and `memory_dream` are slow LLM passes, and `topic_detection` /
-    `article_synthesis` are daily, offset from `memory_dream` and from each
-    other. Every runner is a `PlaceholderJobRunner` — T2.08 lands only the
-    umbrella; each job's real work ships from its own task (`DREAM_JOB_OWNERS`).
+    and the dreaming pass are slow LLM passes, and `topic_detection` /
+    `article_synthesis` are daily, offset from each other. `llm_provider` is a
+    callable returning the live orchestrator (or ``None`` in Postgres-only
+    mode), passed rather than closed over because `app.state.llm` is replaced
+    whole on a config save; the members whose task has not landed are still
+    `PlaceholderJobRunner`s (`DREAM_JOB_OWNERS`).
     """
     registry.register(Job(
         key=FACT_LIFT_JOB_KEY,
@@ -303,15 +350,21 @@ def register_dream_jobs(registry: JobRegistry) -> None:
             ),
         ],
     ))
-    registry.register(_placeholder_job(
-        MEMORY_DREAM_JOB_KEY, "Memory Dream",
-        "Dedups via supersede(), refines derived enrichment, derives "
-        "associative memory-relation edges (doc 08 §5.4/§5.5). "
-        f"Placeholder — real work lands in "
-        f"{DREAM_JOB_OWNERS[MEMORY_DREAM_JOB_KEY]}.",
+    registry.register(Job(
+        key=MEMORY_DREAM_JOB_KEY,
+        display_name="Memory Dream",
+        description=(
+            "Dedups via supersede(), refines derived enrichment, and derives "
+            "near-duplicate memory-relation edges for the hygiene queue "
+            "(doc 08 §5.4/§5.5). It never deletes or merges a memory, and "
+            "every action journals an invertible before/after payload."
+        ),
         default_cron="0 3 * * *", min_interval_seconds=300,
+        runner=_make_dream_runner(
+            registry, MEMORY_DREAM_JOB_KEY, llm_provider
+        ),
         max_run_seconds=1800,
-        config_schema=_generic_batch_schema(default=50, maximum=1000),
+        config_schema=MEMORY_DREAM_CONFIG_SCHEMA,
     ))
     registry.register(_placeholder_job(
         TOPIC_DETECTION_JOB_KEY, "Topic Detection",

@@ -208,3 +208,12 @@ async def mcp_http_client(session, monkeypatch, mcp_streamable_app):
         headers={"Accept": "application/json"},
     ) as c:
         yield c
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "expect_refusals: this test deliberately provokes a supersede refusal "
+        "the tree-wide collector in tests/test_memory_dream.py otherwise "
+        "asserts never happens",
+    )
