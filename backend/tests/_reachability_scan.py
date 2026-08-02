@@ -15,7 +15,7 @@ both into one scanner, parameterised on each caller's own forbidden
 vocabulary, so a future forbidden-reach guard reuses it instead of growing a
 third copy, and a fix to one blind spot benefits every caller in one place.
 
-**Three independent routes are covered, matched structurally rather than by
+**Four independent routes are covered, matched structurally rather than by
 line text:**
 
 - **Module route** (`forbidden_modules`): any import statement — `import
@@ -68,6 +68,18 @@ line text:**
     app.services.fact_lift" docstring is exactly the shape that would
     trip the boundary-substring check without it) — narrower-but-still-
     real coverage than under the exact-match-only design this replaced.
+- **Loader-call route**: `import_module(...)`/`__import__(...)` called
+  with a **relative** literal name (`".fact_lift"`) and a literal
+  `package=` (or, for `import_module`, a second positional argument),
+  resolved to the absolute dotted path the same way
+  `importlib._bootstrap._resolve_name` does and matched against
+  `forbidden_modules` the same way an absolute import statement is.
+  `import_module(".memory_community_reports", package="app.services")`
+  is fully static and literal-spelled on both arguments — nothing about
+  it is computed — so it belongs on this list rather than in the bound
+  below, even though no scan (T2.18's original AST rebuild, T2.67's
+  first pass, or the family/detector scans before either) ever
+  recognised it before a re-review named it explicitly.
 
 **The bound, stated once here rather than only in a report.** Two shapes
 remain structurally invisible to a static AST walk, and no rework of this
@@ -77,24 +89,45 @@ matching discipline closes them:
     f-string with any non-constant interpolated part, or a name/attribute
     path built through concatenation, formatting, or `getattr` with a
     *computed* (non-literal) attribute name.
-  - A reach that never spells the module's own dotted path at all:
-    `from app.services import *` followed by a bare `fact_lift.run(...)`
-    (star-import plus bare-`Name` use — the module route only recognises
-    explicit `Import`/`ImportFrom` nodes and the literal route only
-    recognises the dotted path, and neither fires on a bare name that
-    resolves through `*`), or an attrgetter-style literal that names the
-    module without the `app.services.` prefix at all
-    (`"services.fact_lift.run_lift"`, `operator.attrgetter(...)` fed that
-    same shorter string) — the boundary-substring check is scoped to the
-    full forbidden dotted path specifically to avoid the false-positive
-    collisions a shorter, prefix-free needle would cause against ordinary
-    prose, and that scoping is what leaves this shape uncovered.
+  - A reach that never spells the module's own **full** dotted path at
+    all: `from app.services import *` followed by a bare
+    `fact_lift.run(...)` (star-import plus bare-`Name` use — the module
+    route only recognises explicit `Import`/`ImportFrom` nodes and the
+    literal route only recognises the dotted path, and neither fires on
+    a bare name that resolves through `*`), or a prefix-free literal
+    that names the module without the leading `app.services.` at all
+    (`"services.fact_lift.run_lift"`, a bare basename mentioned in
+    ordinary prose, `operator.attrgetter(...)` fed either shape) — the
+    boundary-substring check is scoped to the full forbidden dotted path
+    specifically to avoid the false-positive collisions a shorter,
+    prefix-free needle would cause against ordinary prose (see
+    `forbidden_literals` above), and that scoping is what leaves this
+    shape uncovered. Turning a prefix-free literal or a bare mention
+    into an executable reach needs runtime string surgery the reader
+    cannot see statically (reconstructing `app.services.` from context,
+    or resolving the name against `sys.path` some other way) — a
+    genuinely different shape from the loader-call route above, which
+    needs no such reconstruction because both of its arguments already
+    spell the full path between them.
 This scanner catches every route above that is spelled as a literal
-reachable by exact-match or boundary-substring; it does not claim, and
-cannot be made by any static rework, to catch a route that is computed at
-runtime or that never spells a forbidden dotted path in full. That is a
-property of static analysis and of the boundary-substring design choice,
-not an oversight in this implementation.
+reachable by exact-match, boundary-substring, or the loader-call's
+relative+package resolution; it does not claim, and cannot be made by any
+static rework, to catch a route that is computed at runtime or that never
+spells a forbidden dotted path in full. That is a property of static
+analysis and of the boundary-substring design choice, not an oversight in
+this implementation.
+
+**Read this as a tripwire, not a sandbox.** As a tripwire — something that
+reliably fails the build the moment a forbidden path is spelled out in
+full, however it is spelled — this scanner is trustworthy: every route
+above is mutation-proven (delete the route, watch its own negative control
+fail) and re-verified against the real `app/` tree with zero false
+positives. As a sandbox — something that prevents *any* possible reach,
+including one an adversarial author deliberately obfuscates — it is not,
+and does not claim to be: an evader who computes the string at runtime, or
+who never writes the full dotted path anywhere in the source, walks
+through untouched. That is the correct, honestly-stated posture for a
+static-analysis guard, not a shortfall to apologise for.
 """
 from __future__ import annotations
 
@@ -208,6 +241,61 @@ def _matches_forbidden_module(level: int, dotted: str, forbidden: str) -> bool:
     return dotted_parts[-k:] == forbidden_parts[-k:]
 
 
+_LOADER_CALL_NAMES = {"import_module", "__import__"}
+
+
+def _call_func_name(node: ast.Call) -> str | None:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return None
+
+
+def _resolve_relative_loader_call(node: ast.Call) -> str | None:
+    """The absolute dotted path an `import_module`/`__import__` call
+    resolves to, when both its relative first argument and its `package`
+    are literal strings.
+
+    Mirrors `importlib._bootstrap._resolve_name`'s own algorithm
+    (`package.rsplit(".", level - 1)[0]` plus the trailing name) closely
+    enough for a fully literal-spelled call — this is not a general
+    call-argument evaluator, only the one named, fully-static, executable
+    shape a re-review identified: `import_module(".fact_lift",
+    package="app.services")`. Returns `None` for anything not shaped
+    exactly like this: a non-literal argument, a name with no leading dot
+    (an absolute literal name is already caught by the ordinary literal
+    route), or no resolvable `package`.
+    """
+    if _call_func_name(node) not in _LOADER_CALL_NAMES:
+        return None
+    if not node.args or not isinstance(node.args[0], ast.Constant):
+        return None
+    name = node.args[0].value
+    if not isinstance(name, str) or not name.startswith("."):
+        return None
+    package: str | None = None
+    for keyword in node.keywords:
+        if (
+            keyword.arg == "package"
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
+        ):
+            package = keyword.value.value
+    if package is None and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+        candidate = node.args[1].value
+        if isinstance(candidate, str):
+            package = candidate
+    if not package:
+        return None
+    level = len(name) - len(name.lstrip("."))
+    rest = name[level:]
+    bits = package.rsplit(".", level - 1) if level > 1 else [package]
+    base = bits[0]
+    return f"{base}.{rest}" if rest else base
+
+
 @dataclass(frozen=True)
 class ReachabilityRules:
     """A caller's own forbidden vocabulary for `find_forbidden_reach`.
@@ -275,6 +363,13 @@ def _offense_detail(
     if isinstance(node, ast.Attribute):
         if node.attr in rules.forbidden_attrs:
             return f"attribute route: .{node.attr}"
+        return None
+    if isinstance(node, ast.Call):
+        resolved = _resolve_relative_loader_call(node)
+        if resolved is not None:
+            for forbidden in rules.forbidden_modules:
+                if _matches_forbidden_module(0, resolved, forbidden):
+                    return f"loader-call route: {resolved}"
         return None
     if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
         if id(node) in docstrings:

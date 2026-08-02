@@ -1542,6 +1542,22 @@ def test_the_detector_scan_catches_a_loader_spec_literal(tmp_path):
     assert _detector_offenders([offender], tmp_path)
 
 
+def test_the_detector_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """Restored after a re-review's Important finding: `import_module`
+    called with a relative literal name and a literal `package=` is a
+    fully static, literal-spelled executable reach that predates this
+    scan's own history of misses — shared across all three scans via the
+    walker rather than fixed here alone."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(".memory_community_detection", package="app.services")\n',
+    )
+    offenders = _detector_offenders([offender], tmp_path)
+    assert offenders
+    assert any("loader-call" in o for o in offenders), offenders
+
+
 def test_the_detector_scan_catches_a_non_docstring_prose_constant(tmp_path):
     offender = _write(
         tmp_path,

@@ -311,19 +311,22 @@ def _main_py_exempt_node_ids(rel: str, tree: ast.Module) -> set[int]:
     (`test_a_duplicate_registration_outside_lifespan_is_still_flagged`
     proves it).
 
-    **Only the `ImportFrom` branch is a real exemption.** `_offense_detail`
-    has no route that can ever flag an `ast.Call` node — the module route
-    checks `Import`/`ImportFrom`, the attribute route checks
-    `ast.Attribute`, the literal route checks `ast.Constant` — so adding
-    the `register_dream_jobs(...)` call's id to this set suppresses
-    nothing; the scan would pass it either way. It is collected here
-    because `test_main_wires_the_family_at_boot` reuses this exact same
-    structural walk as its "is the family actually wired at boot" presence
-    witness, and duplicating the walk in a second function would risk the
-    two drifting out of sync with each other over time. If a future route
-    ever makes a `Call` flaggable, this stops being decorative and starts
-    doing real suppression work; until then, its only consumer is that one
-    test, not the scan.
+    **The `Call` arm exempts nothing for *this* call, even though `ast.Call`
+    nodes became flaggable in general once the loader-call route landed
+    (`_reachability_scan._resolve_relative_loader_call`).** That route only
+    fires for a `Call` to `import_module`/`__import__` shaped with a
+    relative literal name and a literal `package=`; `register_dream_jobs(
+    job_registry, lambda: getattr(app.state, "llm", None))` matches neither
+    the function name nor the argument shape, so it was never reachable by
+    any route before the loader-call route existed and still is not after.
+    Collecting its id here is therefore still a no-op for suppression on
+    this specific node, not because no route can ever flag a `Call` (that
+    claim is no longer true in general) but because this particular call
+    doesn't have the shape any route checks for. It is collected because
+    `test_main_wires_the_family_at_boot` reuses this exact same structural
+    walk as its "is the family actually wired at boot" presence witness,
+    and duplicating the walk in a second function would risk the two
+    drifting out of sync with each other over time.
     """
     if rel != "app/main.py":
         return set()
@@ -639,6 +642,25 @@ def test_the_family_scan_catches_a_loader_spec_literal(tmp_path):
     offending.write_text(f'_SPEC = "app.services.{module}:run_lift"\n')
     offenders = _forbidden_dream_job_references([offending], tmp_path)
     assert offenders, "a loader-spec literal naming the module must still be caught"
+
+
+def test_the_family_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """The one Important finding a re-review raised after the Critical fix:
+    `import_module`/`__import__` called with a relative literal name and a
+    literal `package=` is a fully static, literal-spelled executable reach
+    — neither argument is computed — that no prior version of this scan
+    (or T2.18's original AST rebuild) ever recognised. Restored, in the
+    shared walker, so all three scans (family, detector, reports) gain it
+    together."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        "from importlib import import_module\n"
+        f'import_module(".{module}", package="app.services")\n'
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a relative import_module()+package= reach must be caught"
+    assert any("loader-call" in o for o in offenders), offenders
 
 
 def test_the_family_scan_catches_a_non_docstring_prose_constant(tmp_path):

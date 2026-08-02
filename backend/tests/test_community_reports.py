@@ -442,6 +442,31 @@ REPORTS_PATH = "app/services/memory_community_reports.py"
 # raw text, so the prefilter skipped the file outright. Dropping the
 # prefilter and reusing the shared walker closes that the same way T2.67's
 # Critical fix closed the family/detector scans' literal-route gap.
+#
+# **This is not a pure superset of the scan it replaces — say what changed,
+# not only what was gained.** The old scan matched `REPORTS_BASENAME` by
+# *substring* over every non-docstring `str` constant, with no distinction
+# between a bare mention and a dotted path. The shared walker's
+# `forbidden_literals` is exact-match-only (T2.67's Critical fix made that
+# deliberate, to stop a bare name colliding with ordinary prose elsewhere in
+# the tree); `forbidden_modules` covers the dotted `app.services.<x>` form
+# by boundary-substring, not the bare basename alone. Three shapes that the
+# old substring check caught therefore do not survive unchanged:
+#   1. `import_module(".memory_community_reports", package="app.services")`
+#      — an executable relative-import-plus-package reach. Restored by the
+#      loader-call route (`_resolve_relative_loader_call`), which all three
+#      scans now share, so this one is not actually lost.
+#   2. A prefix-free literal — `"services.memory_community_reports"`,
+#      naming the module without `app.services.` — genuinely lost, and
+#      folded into the documented computed/partial-spelling bound in
+#      `_reachability_scan`'s module docstring rather than chased: turning
+#      it into an executable reach needs the missing prefix reconstructed
+#      from context, which is runtime string surgery, not a literal spelling.
+#   3. A bare mention of the basename inside otherwise-ordinary prose (a
+#      non-docstring constant, e.g. "do not call memory_community_reports
+#      directly") — also genuinely lost, same disclosed bound, and the
+#      same tradeoff the family/detector scans' bare-name exact-match
+#      discipline already accepts for the reasons given there.
 _REPORTS_RULES = ReachabilityRules(
     forbidden_modules=frozenset({REPORTS_MODULE}),
     forbidden_attrs=frozenset({REPORTS_BASENAME}),
@@ -504,6 +529,24 @@ def test_the_scan_catches_an_adjacent_string_literal_split(tmp_path):
         "import_module('app.services.memory_community' '_reports')\n",
     )
     assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """The Important finding a re-review raised: the old (pre-fold-in)
+    substring-based scan caught `import_module(".memory_community_reports",
+    package="app.services")`, and folding onto the shared walker's
+    exact-match `forbidden_literals` silently dropped it — the one
+    genuinely executable shape among the three the fold-in traded away.
+    Restored in the shared walker (`_resolve_relative_loader_call`), so all
+    three scans, including this one, catch it again."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(".memory_community_reports", package="app.services")\n',
+    )
+    offenders = _report_module_offenders([offender], tmp_path)
+    assert offenders
+    assert any("loader-call" in o for o in offenders), offenders
 
 
 def test_the_scan_does_not_fail_on_prose(tmp_path):
