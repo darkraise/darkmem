@@ -1878,3 +1878,64 @@ class TestJournalling:
         assert (await memory_row(committing, fixture["older"]))["status"] == (
             "superseded"
         )
+
+
+# ── Step 8: the primitive's journal reason (D11) ─────────────────────────
+
+
+async def superseded_events(factory, project, memory_id) -> list[dict]:
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT payload FROM events WHERE event_type = 'superseded' "
+                "AND project = CAST(:project AS text) "
+                "AND object_id = CAST(:id AS uuid) ORDER BY created_at, id"
+            ),
+            {"project": project, "id": str(memory_id)},
+        )
+        return [dict(row) for row in result.mappings()]
+
+
+class TestJournalReason:
+    async def test_a_dedup_subsumption_is_labelled_truthfully(
+        self, committing, project, run_cycle
+    ):
+        """T-RSN1. Before the thread, the primitive labelled this
+        "status_bridge" — a claim that a fact invalidation produced it, which is
+        false for every dream-driven subsumption."""
+        older, _, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        events = await superseded_events(committing, project, older)
+        assert len(events) == 1
+        assert events[0]["payload"]["reason"] == "dream_dedup"
+
+    async def test_the_defaulted_call_still_reads_status_bridge(
+        self, committing, project
+    ):
+        """T-RSN2. One keyword argument separates this from T-RSN1; together
+        they prove the parameter is threaded rather than the literal renamed."""
+        from app.services.supersede import supersede
+
+        async with committing() as session:
+            older = await seed_memory(
+                session, project=project, content="older", created_at=NOW
+            )
+            newer = await seed_memory(
+                session,
+                project=project,
+                content="newer",
+                created_at=NOW + timedelta(hours=1),
+            )
+            await session.commit()
+        async with committing() as session:
+            result = await supersede(
+                session, memory_id=older, superseded_by=newer
+            )
+            await session.commit()
+
+        assert result.applied is True
+        events = await superseded_events(committing, project, older)
+        assert events[0]["payload"]["reason"] == "status_bridge"

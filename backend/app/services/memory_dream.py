@@ -669,6 +669,11 @@ EVENT_TYPE = "consolidated"
 OBJECT_TYPE = "memory"
 DETECTOR = "dedup"
 
+# The journal label the primitive writes for a dedup-driven subsumption. The
+# bridge's own label would be false here: nothing about this transition came
+# from a fact invalidation.
+DREAM_SUPERSEDE_REASON = "dream_dedup"
+
 ACTION_SUBSUME = "subsume"
 ACTION_ASSOCIATE = "associate"
 ACTION_REFINE = "refine"
@@ -806,6 +811,7 @@ async def apply_subsume(
         session,
         memory_id=older.memory_id,
         superseded_by=newer.memory_id,
+        reason=DREAM_SUPERSEDE_REASON,
     )
     if not result.applied:
         counter = _REFUSAL_COUNTERS.get(result.reason)

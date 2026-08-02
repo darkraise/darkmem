@@ -71,6 +71,12 @@ logger = logging.getLogger(__name__)
 
 BridgeOutcome = Literal["supersede", "deprecate", "no_change"]
 
+# What the journal records when the caller says nothing. A default rather than a
+# required argument: the bridge's own two call sites keep the label they have
+# always written, so threading the parameter changes no existing behaviour and
+# only a caller that knows better says otherwise.
+DEFAULT_JOURNAL_REASON = "status_bridge"
+
 SupersedeReason = Literal[
     "applied",
     "already_superseded",
@@ -282,6 +288,7 @@ async def _journal(
     before: dict,
     after: dict,
     invalidating_fact_id: UUID | str | None,
+    reason: str,
 ) -> None:
     """One row per real transition, and never one per no-op.
 
@@ -299,7 +306,7 @@ async def _journal(
         payload={
             "before": before,
             "after": after,
-            "reason": "status_bridge",
+            "reason": reason,
             "invalidating_fact_id": (
                 str(invalidating_fact_id) if invalidating_fact_id is not None else None
             ),
@@ -313,6 +320,7 @@ async def supersede(
     memory_id: UUID | str,
     superseded_by: UUID | str,
     invalidating_fact_id: UUID | str | None = None,
+    reason: str = DEFAULT_JOURNAL_REASON,
 ) -> SupersedeResult:
     """Flip a memory to ``superseded`` with its pointer, atomically.
 
@@ -396,6 +404,7 @@ async def supersede(
         },
         after={"status": "superseded", "superseded_by": row["superseded_by"]},
         invalidating_fact_id=invalidating_fact_id,
+        reason=reason,
     )
     return SupersedeResult(
         memory_id=row["memory_id"],
@@ -411,6 +420,7 @@ async def deprecate(
     *,
     memory_id: UUID | str,
     invalidating_fact_id: UUID | str | None = None,
+    reason: str = DEFAULT_JOURNAL_REASON,
 ) -> SupersedeResult:
     """Retire a spent memory that has no single live successor to point at.
 
@@ -465,6 +475,7 @@ async def deprecate(
         },
         after={"status": "deprecated", "superseded_by": None},
         invalidating_fact_id=invalidating_fact_id,
+        reason=reason,
     )
     return SupersedeResult(
         memory_id=row["memory_id"],
