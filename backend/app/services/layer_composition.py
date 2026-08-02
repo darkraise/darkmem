@@ -51,7 +51,11 @@ from dataclasses import dataclass, field
 
 from app.services.rank_fusion import (
     RRF_K,
+    ContextOutcome,
+    DeclaredContext,
     RowContext,
+    match_context,
+    rank_fusion_factor,
     row_context_from_applies_when,
 )
 from app.services.verified_evidence import CONTRADICTION_EVIDENCE_KEY
@@ -418,6 +422,9 @@ class ComposedRow:
     tier: int
     band: int
     cross_layer_rrf: float
+    rank_fusion_factor: float
+    weighted_score: float
+    context: ContextOutcome
     labels: Mapping[str, object]
     dispute: Mapping[str, object] | None
     row: Mapping[str, object]
@@ -441,6 +448,7 @@ def compose(
     candidates,
     *,
     weights: Mapping[str, object] | None = None,
+    declared_context: DeclaredContext | None = None,
     evidence: Mapping[str, Mapping] | None = None,
 ) -> CompositionResult:
     """Doc 07 §5 steps 1 to 4, as a pure function.
@@ -472,8 +480,26 @@ def compose(
                 f"got {type(candidate).__name__}: {candidate!r}"
             )
 
-    rows: list[ComposedRow] = []
+    # The context map is keyed by the **namespaced** key, which is why
+    # ``rank_fusion.partition_by_context`` cannot be reused here: it looks a
+    # row's context up through ``normalize_row_id``, the bare-id key, so
+    # handed cross-layer rows it would resolve a fact's context from a
+    # memory's entry the moment the two ids coincided.
+    row_contexts = {candidate.key: candidate.row_context for candidate in candidates}
+
+    kept: list[tuple[LayerCandidate, ContextOutcome]] = []
+    excluded_by_context_conflict = 0
     for candidate in candidates:
+        outcome = match_context(declared_context, row_contexts.get(candidate.key), weights)
+        if outcome.excluded:
+            excluded_by_context_conflict += 1
+            continue
+        kept.append((candidate, outcome))
+
+    rows: list[ComposedRow] = []
+    for candidate, outcome in kept:
+        factor = rank_fusion_factor(candidate.signals, weights)
+        base = CHANNEL_LIST_WEIGHTS[candidate.id_kind] * cross_layer_rrf(candidate.channel_rank)
         rows.append(
             ComposedRow(
                 key=candidate.key,
@@ -485,6 +511,14 @@ def compose(
                 tier=tier_for(candidate.verification_status),
                 band=candidate.channel_rank,
                 cross_layer_rrf=cross_layer_rrf(candidate.channel_rank),
+                rank_fusion_factor=factor,
+                # The boost is read off the stamped outcome and folded in
+                # here, once. ``rank_fusion.apply_context_boost`` is not
+                # called: it would multiply the same boost in a second time,
+                # and it sorts on ``rrf_score``/``score``, keys this module
+                # does not order by.
+                weighted_score=base * factor * outcome.boost,
+                context=outcome,
                 labels=_labels(candidate),
                 dispute=(
                     dispute_label(candidate.row, evidence.get(candidate.id))
@@ -495,4 +529,7 @@ def compose(
             )
         )
 
-    return CompositionResult(rows=sorted(rows, key=lambda r: (r.band, -r.tier, r.key)))
+    return CompositionResult(
+        rows=sorted(rows, key=lambda r: (r.band, -r.tier, r.key)),
+        excluded_by_context_conflict=excluded_by_context_conflict,
+    )

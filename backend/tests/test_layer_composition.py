@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import text
 
 from app.services import layer_composition as lc
+from app.services import rank_fusion
 from app.services.events import record_event
 from app.services.verified_evidence import latest_verified_evidence
 
@@ -299,3 +300,62 @@ def test_a_memory_lifecycle_status_never_reaches_the_tier_lookup():
 
     with pytest.raises(ValueError):
         lc.tier_for("active")
+
+
+# ─────────────── the context partition, keyed cross-layer (D6) ───────────────
+
+
+def _declared(**axes) -> rank_fusion.DeclaredContext:
+    return rank_fusion.DeclaredContext(axes)
+
+
+def test_a_context_conflict_is_excluded_and_counted():
+    kept = lc.fact_candidate(
+        _fact_row(uuid4(), applies_when={"env": "prod"}), channel_rank=1,
+    )
+    conflicting = lc.fact_candidate(
+        _fact_row(uuid4(), applies_when={"env": "staging"}), channel_rank=2,
+    )
+
+    result = lc.compose([kept, conflicting], declared_context=_declared(env="prod"))
+
+    assert [r.key for r in result.rows] == [kept.key]
+    assert result.excluded_by_context_conflict == 1
+
+
+def test_the_conflict_tally_is_reported_even_at_zero():
+    result = lc.compose([lc.fact_candidate(_fact_row(uuid4()), channel_rank=1)])
+    assert result.excluded_by_context_conflict == 0
+
+
+def test_a_fact_and_a_memory_sharing_a_uuid_get_their_own_contexts():
+    shared = uuid4()
+    memory = lc.memory_candidate(
+        _memory_row(shared, applies_when={"env": "prod"}), channel_rank=1,
+    )
+    fact = lc.fact_candidate(
+        _fact_row(shared, applies_when={"env": "staging"}), channel_rank=1,
+    )
+
+    result = lc.compose([memory, fact], declared_context=_declared(env="prod"))
+
+    assert result.excluded_by_context_conflict == 1
+    assert [r.key for r in result.rows] == [memory.key]
+    assert result.rows[0].context.match is rank_fusion.ContextMatch.MATCHED
+
+
+def test_the_boost_is_applied_once():
+    weights = {"w_context_boost": 4.0}
+    matched = lc.fact_candidate(
+        _fact_row(uuid4(), applies_when={"env": "prod"}), channel_rank=1,
+    )
+
+    row = lc.compose(
+        [matched], weights=weights, declared_context=_declared(env="prod"),
+    ).rows[0]
+
+    base = lc.CHANNEL_LIST_WEIGHTS["fact"] * lc.cross_layer_rrf(1)
+    boost = row.context.boost
+    assert boost == 5.0
+    assert row.weighted_score == pytest.approx(base * row.rank_fusion_factor * boost)
+    assert row.weighted_score != pytest.approx(base * row.rank_fusion_factor * boost * boost)
