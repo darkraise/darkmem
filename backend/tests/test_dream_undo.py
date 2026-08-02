@@ -16,6 +16,7 @@ green suite can make vacuously:
 """
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import pathlib
@@ -929,3 +930,517 @@ class TestExclusions:
             for field_name in action.excluded:
                 entry = undo.EXCLUSIONS_BY_FIELD[field_name]
                 assert action.action in entry.actions
+
+
+# ── Step 5: atomicity, and the window ────────────────────────────────────
+
+# Layer 2's forbidden field names: any one of these on a result type gives a
+# caller somewhere to *report* a per-item outcome, which is the first move
+# towards producing one.
+FORBIDDEN_RESULT_FIELDS = {"applied", "skipped", "failed", "error", "status"}
+
+# Layer 3's forbidden shapes. `try`/`except` is the obvious one; the other two
+# are the shapes that swallow a failure without being a `try` statement at all,
+# and a scan looking only for `ast.Try` sails straight past both.
+FORBIDDEN_CALLS = {"begin_nested", "commit", "suppress"}
+
+
+def _undo_tree() -> ast.Module:
+    return ast.parse(
+        (BACKEND / "app" / "services" / "dream_undo.py").read_text(),
+        filename="app/services/dream_undo.py",
+    )
+
+
+def _scan_undo_module(tree: ast.Module) -> list[str]:
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Try, ast.TryStar)):
+            offenders.append(
+                f"line {node.lineno}: a try statement — a swallowed failure "
+                "lets a batch continue past a broken action"
+            )
+        elif isinstance(node, ast.Call):
+            name = (
+                node.func.attr if isinstance(node.func, ast.Attribute)
+                else node.func.id if isinstance(node.func, ast.Name)
+                else None
+            )
+            if name in FORBIDDEN_CALLS:
+                offenders.append(f"line {node.lineno}: {name}()")
+            for keyword in node.keywords:
+                if keyword.arg == "return_exceptions":
+                    offenders.append(
+                        f"line {node.lineno}: return_exceptions= turns a "
+                        "failure into a value the batch can walk past"
+                    )
+        elif isinstance(node, ast.ClassDef) and node.name in (
+            "UndoneAction", "UndoBatch"
+        ):
+            for statement in node.body:
+                target = (
+                    statement.target if isinstance(statement, ast.AnnAssign)
+                    else None
+                )
+                if isinstance(target, ast.Name) and target.id in (
+                    FORBIDDEN_RESULT_FIELDS
+                ):
+                    offenders.append(
+                        f"line {statement.lineno}: {node.name}.{target.id} "
+                        "can carry a per-item outcome"
+                    )
+    return offenders
+
+
+class TestAtomicity:
+    def test_the_module_cannot_express_a_partial_undo(self):
+        """T-ATOM1.
+
+        *Not representable* is stronger than *not produced*, so the argument
+        has to be about what the code can express. The five shapes scanned for
+        are the five ways a partial outcome gets produced or reported: a
+        savepoint or a commit that lets half a batch survive, a `try` that
+        swallows the failure, `contextlib.suppress` and
+        `gather(return_exceptions=True)` which swallow one without being a
+        `try` at all, and a result field with somewhere to put the news.
+        """
+        assert _scan_undo_module(_undo_tree()) == []
+
+    def test_the_scan_catches_each_shape(self):
+        """T-ATOM1's negative control. A scan that flags nothing on a module
+        deliberately full of offences is a scan that has stopped working — five
+        decorative guards in this epic read exactly like the one above."""
+        offending = ast.parse(
+            "from dataclasses import dataclass\n"
+            "import asyncio, contextlib\n"
+            "@dataclass\n"
+            "class UndoneAction:\n"
+            "    applied: bool\n"
+            "async def go(session, inverses):\n"
+            "    for item in inverses:\n"
+            "        try:\n"
+            "            async with session.begin_nested():\n"
+            "                await item()\n"
+            "        except Exception:\n"
+            "            continue\n"
+            "    with contextlib.suppress(Exception):\n"
+            "        await session.commit()\n"
+            "    await asyncio.gather(*inverses, return_exceptions=True)\n"
+        )
+        offenders = _scan_undo_module(offending)
+        assert len(offenders) >= 6, offenders
+        joined = "\n".join(offenders)
+        for fragment in (
+            "try statement", "begin_nested", "commit", "suppress",
+            "return_exceptions", "UndoneAction.applied",
+        ):
+            assert fragment in joined
+
+    def test_there_is_no_second_entry_point(self):
+        """T-ATOM4's structural half. A per-action undo is a batch of one
+        through the same function; a sibling single-action coroutine is exactly
+        how the two paths start to diverge."""
+        appliers = {
+            node.name
+            for node in ast.walk(_undo_tree())
+            if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+            and any(
+                isinstance(inner, ast.Subscript)
+                and isinstance(inner.value, ast.Name)
+                and inner.value.id == "_INVERSES"
+                for inner in ast.walk(node)
+            )
+        }
+        assert appliers == {"undo"}, appliers
+
+    async def test_a_middle_failure_leaves_nothing_behind(
+        self, committing, project, monkeypatch
+    ):
+        """T-ATOM2. Asserted field by field after the caller rolls back, not by
+        the absence of an exception."""
+        cycle = str(new_id())
+        older, _, subsume_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        src, tgt, associate_id = await produce_associate(
+            committing, project, cycle_id=cycle
+        )
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle
+        )
+        before = {
+            "subsume": await memory_row(committing, older),
+            "edge": await edge_row(committing, tgt, src, "RELATES_TO"),
+            "refine": await memory_row(committing, memory),
+        }
+
+        async def explode(*_args, **_kwargs):
+            raise RuntimeError("the second inverse failed")
+
+        monkeypatch.setitem(undo._INVERSES, journal.ACTION_ASSOCIATE, explode)
+
+        with pytest.raises(RuntimeError):
+            async with committing() as session:
+                await undo.undo(
+                    session,
+                    event_ids=[subsume_id, associate_id, refine_id],
+                    actor="admin",
+                )
+                await session.commit()
+
+        assert await memory_row(committing, older) == before["subsume"]
+        assert await edge_row(committing, tgt, src, "RELATES_TO") == before["edge"]
+        assert await memory_row(committing, memory) == before["refine"]
+
+    async def test_the_caller_rollback_seam_is_real(
+        self, committing, project, monkeypatch
+    ):
+        """T-ATOM6 — the sharp edge D6 hands T2.23, documented rather than
+        hidden.
+
+        Between the raise and the rollback the session really does hold the
+        first inverse's restore. This module owns no savepoint by construction
+        — the scan above forbids it — so it cannot self-heal, and "partial undo
+        is not representable" holds *under caller rollback*. A consumer that
+        catches broadly and carries on with the same session commits half an
+        undo. Deleting this assertion turns that contract into folklore.
+        """
+        cycle = str(new_id())
+        older, _, subsume_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle
+        )
+
+        async def explode(*_args, **_kwargs):
+            raise RuntimeError("the second inverse failed")
+
+        monkeypatch.setitem(undo._INVERSES, journal.ACTION_SUBSUME, explode)
+
+        async with committing() as session:
+            with pytest.raises(RuntimeError):
+                # LIFO: the refine is applied first, then the subsume raises.
+                await undo.undo(
+                    session, event_ids=[subsume_id, refine_id], actor="admin"
+                )
+            held = (
+                await session.execute(
+                    text(
+                        "SELECT summary FROM memories WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(memory)},
+                )
+            ).scalar_one()
+            assert held == "the old summary", (
+                "the restore is in the session before the rollback; if this "
+                "ever stops holding, the caller obligation D6 states has "
+                "quietly stopped being load-bearing"
+            )
+            await session.rollback()
+
+        assert (await memory_row(committing, memory))["summary"] == "a refined summary"
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+    async def test_a_refusal_leaves_the_session_clean(self, committing, project):
+        """T-ATOM7. The property that makes `UndoRefused` the one raise a caller
+        may swallow: validation completed before any write, so no rollback is
+        needed and the session is still usable."""
+        cycle = str(new_id())
+        older, _, subsume_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle
+        )
+        async with committing() as session:
+            await PostgresMemoryRepository(session).set_tags(
+                memory, ["t213-alpha", "t213-added-by-a-human"]
+            )
+            await session.commit()
+
+        async with committing() as session:
+            with pytest.raises(undo.UndoRefused) as refusal:
+                await undo.undo(
+                    session, event_ids=[subsume_id, refine_id], actor="admin"
+                )
+            # No rollback, and the session still works.
+            still_usable = (
+                await session.execute(text("SELECT 1"))
+            ).scalar_one()
+            assert still_usable == 1
+            await session.commit()
+
+        assert [item.event_id for item in refusal.value.blocked] == [refine_id]
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+    async def test_one_blocked_action_writes_nothing(self, committing, project):
+        """T-ATOM3. Proved by asserting the *unblocked* action is untouched:
+        validation inside the apply loop would land it before the second was
+        refused."""
+        cycle = str(new_id())
+        older, _, subsume_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle
+        )
+        async with committing() as session:
+            await session.execute(
+                text("DELETE FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(memory)},
+            )
+            await session.commit()
+
+        with pytest.raises(undo.UndoRefused):
+            await undo_ids(committing, subsume_id, refine_id)
+
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+    async def test_a_short_result_is_unreturnable(
+        self, committing, project, monkeypatch
+    ):
+        """T-ATOM8. A tuple shorter than the request carries no forbidden field
+        and is invisible to the scan, so the representational claim needs this
+        one line of code and this one test to close."""
+        cycle = str(new_id())
+        _, _, subsume_id = await produce_subsume(committing, project, cycle_id=cycle)
+
+        async def restores_nothing(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setitem(undo._INVERSES, journal.ACTION_SUBSUME, restores_nothing)
+        with pytest.raises(undo.UndoIncomplete):
+            await undo_ids(committing, subsume_id)
+
+    async def test_a_batch_returns_one_entry_per_named_action(
+        self, committing, project
+    ):
+        """T-ATOM4/T-ATOM8's positive half, and the batch-of-one equivalence:
+        the same action produces the same `UndoneAction` alone or in company,
+        because there is only one code path that could produce it."""
+        cycle = str(new_id())
+        _, _, subsume_id = await produce_subsume(committing, project, cycle_id=cycle)
+        _, refine_id = await produce_refine(committing, project, cycle_id=cycle)
+
+        batch = await undo_ids(committing, subsume_id, refine_id)
+        assert len(batch.undone) == 2
+        assert [item.event_id for item in batch.undone] == [subsume_id, refine_id]
+
+        other = str(new_id())
+        _, _, lone_id = await produce_subsume(committing, project, cycle_id=other)
+        lone = await undo_ids(committing, lone_id)
+        assert lone.undone[0].restored == batch.undone[0].restored
+        assert lone.undone[0].excluded == batch.undone[0].excluded
+        assert lone.undone[0].action == batch.undone[0].action
+
+    def test_the_lock_order_is_deterministic(self):
+        """T-ATOM5. Asserted on the recorded order rather than on the absence of
+        a deadlock, which is untestable."""
+        ids = [str(new_id()) for _ in range(4)]
+        triples = [("b", "a", "RELATES_TO"), ("a", "b", "ELABORATES")]
+
+        def actions(order):
+            built = []
+            for index in order:
+                if index < len(ids):
+                    built.append(
+                        undo.ResolvedAction(
+                            event_id=index, created_at=NOW,
+                            object_id=ids[index], project="p",
+                            payload={"action": "subsume"},
+                        )
+                    )
+                else:
+                    source, target, rel_type = triples[index - len(ids)]
+                    built.append(
+                        undo.ResolvedAction(
+                            event_id=index, created_at=NOW,
+                            object_id=source, project="p",
+                            payload={
+                                "action": "associate",
+                                "after": {"edge": {
+                                    "source": source, "target": target,
+                                    "rel_type": rel_type,
+                                }},
+                            },
+                        )
+                    )
+            return built
+
+        forward = undo.lock_plan(actions(range(6)))
+        shuffled = undo.lock_plan(actions([4, 1, 5, 0, 3, 2]))
+        assert forward == shuffled
+        assert [kind for kind, _ in forward] == ["memory"] * 4 + ["edge"] * 2
+        assert [key[0] for kind, key in forward if kind == "memory"] == sorted(ids)
+
+
+class TestUndoWindow:
+    async def test_an_action_past_its_retention_refuses(self, committing, project):
+        """T-UND2."""
+        cycle = str(new_id())
+        older, _, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        later = datetime.now(timezone.utc) + timedelta(
+            days=undo.DEFAULT_RETENTION_DAYS + 1
+        )
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id, now=later)
+
+        assert [item.reason for item in refusal.value.blocked] == [
+            "retention_elapsed"
+        ]
+        assert (await memory_row(committing, older))["status"] == "superseded"
+
+    async def test_a_deleted_memory_reports_object_missing(
+        self, committing, project
+    ):
+        """T-UND3. Collapsing this into `state_changed` tells an operator
+        investigating a vanished row that the state moved."""
+        cycle = str(new_id())
+        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        async with committing() as session:
+            await session.execute(
+                text("DELETE FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(memory)},
+            )
+            await session.commit()
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id)
+
+        assert [item.reason for item in refusal.value.blocked] == ["object_missing"]
+
+    async def test_a_demoted_dependent_reports_state_changed(
+        self, committing, project
+    ):
+        """T-UND4. Deleting the successor demotes the older row to
+        `deprecated`/NULL — the FK is ON DELETE SET NULL, so the demotion is
+        mandatory — and the compare-and-swap must see it. Comparing only
+        `status` would pass a `superseded_by` drift unseen, which is why both
+        halves are in the predicate.
+        """
+        from app.services.supersession import demote_dependents
+
+        cycle = str(new_id())
+        older, newer, event_id = await produce_subsume(
+            committing, project, cycle_id=cycle
+        )
+        async with committing() as session:
+            await demote_dependents(session, [newer])
+            await session.execute(
+                text("DELETE FROM memories WHERE id = CAST(:id AS uuid)"),
+                {"id": str(newer)},
+            )
+            await session.commit()
+        row = await memory_row(committing, older)
+        assert row["status"] == "deprecated" and row["superseded_by"] is None
+
+        with pytest.raises(undo.UndoRefused) as refusal:
+            await undo_ids(committing, event_id)
+
+        assert [item.reason for item in refusal.value.blocked] == ["state_changed"]
+
+    def test_the_reasons_have_a_fixed_precedence(self):
+        """T-UND5, on the pure predicate. An action that is both already undone
+        and out of window reports `already_undone`, because that is the fact an
+        operator needs first."""
+        action = undo.ResolvedAction(
+            event_id=1,
+            created_at=datetime.now(timezone.utc) - timedelta(days=400),
+            object_id=str(new_id()),
+            project="p",
+            payload={"action": "subsume", "after": {"status": "superseded"}},
+        )
+        common = {
+            "now": datetime.now(timezone.utc),
+            "retention": timedelta(days=undo.DEFAULT_RETENTION_DAYS),
+        }
+        gone = undo.LiveState(exists=False)
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=True, **common
+        ) == "already_undone"
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=False, **common
+        ) == "retention_elapsed"
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=False,
+            now=common["now"], retention=timedelta(days=500),
+        ) == "object_missing"
+        assert undo.blocking_reason(
+            action,
+            live=undo.LiveState(exists=True, memory={"status": "active"}),
+            already_undone=False,
+            now=common["now"], retention=timedelta(days=500),
+        ) == "state_changed"
+        assert undo.BLOCKING_REASONS == (
+            "already_undone", "retention_elapsed", "object_missing",
+            "state_changed",
+        )
+
+    async def test_an_unknown_event_id_is_refused_not_invented(
+        self, committing, project
+    ):
+        """An id naming no dream action refuses before any write, carrying
+        exactly `UndoRefused`'s guarantee — which is why it is a subclass."""
+        with pytest.raises(undo.UndoActionNotFound) as refusal:
+            await undo_ids(committing, 2 ** 40)
+        assert isinstance(refusal.value, undo.UndoRefused)
+        assert refusal.value.missing_event_ids == (2 ** 40,)
+
+    async def test_the_digest_and_the_door_share_one_predicate(
+        self, committing, project, monkeypatch
+    ):
+        """T-UND6, proved behaviourally rather than by reading two call sites:
+        replacing the door's predicate changes the digest's answer, so a
+        duplicated copy would fail this test."""
+        cycle = str(new_id())
+        await produce_subsume(committing, project, cycle_id=cycle)
+
+        async with committing() as session:
+            actions = await digest.read_cycle_actions(session, cycle)
+            honest = await digest.annotate_undoability(session, actions)
+        assert [view.undoable for view in honest] == [True]
+
+        monkeypatch.setattr(
+            undo, "blocking_reason", lambda *a, **k: "a_sentinel_reason"
+        )
+        async with committing() as session:
+            actions = await digest.read_cycle_actions(session, cycle)
+            annotated = await digest.annotate_undoability(session, actions)
+        assert [view.undo_blocked_reason for view in annotated] == [
+            "a_sentinel_reason"
+        ]
+
+    async def test_a_malformed_retention_row_degrades_to_the_default(
+        self, committing
+    ):
+        """T-API6's service half. Unreadable bookkeeping must not take the door
+        down; the tolerant-read discipline `index_debt.normalize` established."""
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO config (key, value) VALUES "
+                    "(CAST(:key AS text), CAST(:value AS jsonb)) "
+                    "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+                ),
+                {"key": undo.RETENTION_CONFIG_KEY, "value": json.dumps("nonsense")},
+            )
+            await session.commit()
+        async with committing() as session:
+            assert await undo.read_retention(session) == timedelta(
+                days=undo.DEFAULT_RETENTION_DAYS
+            )
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE config SET value = CAST(:value AS jsonb) "
+                    "WHERE key = CAST(:key AS text)"
+                ),
+                {"key": undo.RETENTION_CONFIG_KEY, "value": json.dumps({"days": 3})},
+            )
+            await session.commit()
+        async with committing() as session:
+            assert await undo.read_retention(session) == timedelta(days=3)

@@ -754,9 +754,16 @@ async def undo(
     # and the right default the day two action kinds do interact.
     undone: list[UndoneAction] = []
     for action in reversed(actions):
-        undone.append(
-            await _INVERSES[action.action](session, action, live[live_key(action)])
+        restored = await _INVERSES[action.action](
+            session, action, live[live_key(action)]
         )
+        # Only a real restore counts as one. An inverse that returns anything
+        # else has reported nothing, and the completeness check below is what
+        # makes a short result *unreturnable* rather than merely unproduced —
+        # a tuple shorter than the request carries no forbidden field and is
+        # invisible to a scan looking for one.
+        if isinstance(restored, UndoneAction):
+            undone.append(restored)
 
     if len(undone) != len(actions):
         raise UndoIncomplete(
