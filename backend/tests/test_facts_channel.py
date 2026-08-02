@@ -529,6 +529,21 @@ async def test_rows_carry_rrf_score_as_the_ordering_signal(session):
 
 
 @pytest.mark.asyncio
+async def test_a_name_only_match_carries_rank_mass(session):
+    """The name arm's fusion weight is observable. Zeroing it leaves a
+    name-only match present but scored 0.0 and sorted last, which is a
+    silent reduction to keyword-ranked-only that a presence assertion
+    cannot see."""
+    seeded = await _open_fact(session, subject="darkmem", obj=RARE_TERM,
+                              fact="the store is reached over a socket")
+
+    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+
+    assert row["fact_id"] == seeded["id"]
+    assert row["rrf_score"] > 0
+
+
+@pytest.mark.asyncio
 async def test_a_fact_both_arms_find_outranks_one_only_one_arm_finds(session):
     both = await _open_fact(session, subject="darkmem", obj="postgres",
                             fact="darkmem uses postgres")

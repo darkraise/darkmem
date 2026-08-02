@@ -141,6 +141,14 @@ class FactChannelTrace:
         whose composition never asked for it, which is the silent gap; marking
         it ``failed`` would put a deferred writer into the envelope's
         ``partial`` flag, which is a different lie.
+
+        **These keys are unqualified and cannot be merged into
+        ``RetrievalEnvelope.channels`` as they stand.** That dict is flat, and
+        the memory hybrid already populates ``keyword`` and ``semantic`` in it,
+        so a naive merge overwrites the memory channel's entries and a memory
+        keyword outage disappears from the envelope's ``partial`` flag. Nothing
+        consumes this method yet; whoever composes the four layers owns the
+        namespacing, and merging before deciding it loses status silently.
         """
         return {
             KEYWORD_ARM: ChannelStatus(ran=True, failed=self.keyword_failed),
