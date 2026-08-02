@@ -350,6 +350,48 @@ async def test_monotonicity_table(
     assert await _dangling_pointers(session) == 0
 
 
+@pytest.mark.parametrize(
+    "start_status,expect_reason",
+    [("superseded", "already_superseded"), ("deprecated", "terminal")],
+)
+@pytest.mark.asyncio
+async def test_a_status_refusal_outranks_an_ordering_refusal(
+    session, start_status, expect_reason
+):
+    """N3: the candidate's own status is decided before its proposed pointer.
+
+    A non-active candidate whose successor also happens to be older must report
+    the status reason, deterministically and regardless of timestamps. This is
+    what makes the monotonicity cells timestamp-independent by construction,
+    which is why the explicit-``created_at`` discipline is deliberately *not*
+    extended to them — without the precedence they would flip their reason per
+    run on a shared timestamp and random ids.
+
+    It is also the one property the code-level status check owns alone. The
+    ``AND status = 'active'`` predicate on the write would refuse this too, but
+    only *after* the ordering predicate had already answered, and it would
+    answer with the wrong reason.
+    """
+    candidate, _ = await _seeded(session, start_status)
+    older = _mem(
+        created_at=NOW - timedelta(days=10), content="a backfilled memory"
+    )
+    session.add(older)
+    await session.flush()
+
+    result = await supersede(
+        session, memory_id=candidate.id, superseded_by=older.id
+    )
+
+    assert result.reason == expect_reason, (
+        "an ordering refusal outranked a status refusal; the candidate is the "
+        "row being written, so a refusal about that row is the more specific "
+        "answer and must not depend on what its proposed pointer looks like"
+    )
+    assert result.applied is False
+    assert (await _row(session, candidate.id))["status"] == start_status
+
+
 @pytest.mark.asyncio
 async def test_the_check_predicate_holds_through_every_transition(session):
     """Asserted independently of Postgres enforcing it, at each step."""
