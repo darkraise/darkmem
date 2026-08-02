@@ -36,6 +36,7 @@ from app.config import settings
 from app.repositories import memory_communities as repo
 from app.services import memory_community_detection as detection
 from app.services import memory_community_labels as labels
+from app.services.community_detector import CommunityDetector
 from app.services.memory_projection import (
     EntityAssertion,
     TRUNCATED_TOO_MANY_EDGES,
@@ -1319,3 +1320,106 @@ def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
     )
 
     assert _detector_offenders([innocent], tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# The code-side detector, on the shared kernel
+# ---------------------------------------------------------------------------
+
+
+async def _seed_code_graph(session, repo_id, clusters):
+    await session.execute(
+        text(
+            "INSERT INTO repositories (id, name, auto_sync, status) "
+            "VALUES (CAST(:id AS uuid), 't218-repo', false, 'ready')"
+        ),
+        {"id": str(repo_id)},
+    )
+    for cluster, keys in enumerate(clusters):
+        for key in keys:
+            await session.execute(
+                text(
+                    "INSERT INTO code_graph_nodes "
+                    "(repo_id, kind, key, label, properties) "
+                    "VALUES (CAST(:r AS uuid), 'symbol', :k, :k, "
+                    "CAST(:p AS jsonb))"
+                ),
+                {
+                    "r": str(repo_id),
+                    "k": key,
+                    "p": json.dumps(
+                        {"kind": "function", "file_path": f"pkg{cluster}/mod.py"}
+                    ),
+                },
+            )
+        for source, target in zip(keys, keys[1:] + keys[:1]):
+            await session.execute(
+                text(
+                    "INSERT INTO code_edges (repo_id, source_kind, source_key, "
+                    "target_kind, target_key, edge_type, properties) "
+                    "VALUES (CAST(:r AS uuid), 'symbol', :s, 'symbol', :t, "
+                    "'calls', CAST('{}' AS jsonb))"
+                ),
+                {"r": str(repo_id), "s": source, "t": target},
+            )
+    await session.flush()
+
+
+async def _code_communities(session, repo_id) -> int:
+    return await session.scalar(
+        text(
+            "SELECT count(*) FROM code_graph_nodes "
+            "WHERE repo_id = CAST(:r AS uuid) AND kind = 'community'"
+        ),
+        {"r": str(repo_id)},
+    )
+
+
+async def test_the_code_detector_still_clusters_through_the_kernel(session):
+    """Step 9 is a refactor of code nobody was exercising, so it gets a test
+    rather than an inspection: two call-disjoint symbol clusters must still
+    produce at least two communities with `member_of` edges."""
+    repo_id = new_id()
+    await _seed_code_graph(
+        session,
+        repo_id,
+        [["t218-a1", "t218-a2", "t218-a3"], ["t218-b1", "t218-b2", "t218-b3"]],
+    )
+
+    members = await CommunityDetector(session, str(repo_id)).detect()
+    await session.flush()
+
+    assert members == 6
+    assert await _code_communities(session, repo_id) >= 2
+    edges = await session.scalar(
+        text(
+            "SELECT count(*) FROM code_edges "
+            "WHERE repo_id = CAST(:r AS uuid) AND edge_type = 'member_of'"
+        ),
+        {"r": str(repo_id)},
+    )
+    assert edges == 6
+
+
+async def test_the_code_detector_keeps_its_communities_without_the_library(
+    session, monkeypatch
+):
+    """The unavailable branch has to return before the deletes, or a missing
+    library wipes the previous run and writes nothing in its place."""
+    repo_id = new_id()
+    await _seed_code_graph(
+        session,
+        repo_id,
+        [["t218-c1", "t218-c2", "t218-c3"], ["t218-d1", "t218-d2", "t218-d3"]],
+    )
+    await CommunityDetector(session, str(repo_id)).detect()
+    await session.flush()
+    before = await _code_communities(session, repo_id)
+    assert before >= 2
+
+    monkeypatch.setitem(sys.modules, "leidenalg", None)
+    members = await CommunityDetector(session, str(repo_id)).detect()
+    await session.flush()
+
+    assert members == 0
+    assert await _code_communities(session, repo_id) == before
