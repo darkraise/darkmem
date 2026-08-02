@@ -31,17 +31,26 @@ channel key is exactly the silent gap doc 07 §2 forbids, while ``ran=False``
 is the report. It is never reported as *failed* — a deferred writer is not an
 outage, and conflating them would make the envelope's ``partial`` flag lie.
 
-**"Both sides" is not constructible today, and this channel does not invent
-it.** Doc 08 §4.2 requires a disputed fact be served labelled with both sides.
-The counterpart half of that label — *disputed by fact X asserting Y* — is
-computed inside ``contradiction_veto`` and discarded once the verdict is taken;
-nothing persists it, and the deterministic scan's sole legitimate caller is the
-verification ladder, enforced by a tree-wide reference scan that fails the build
-on a second entry point. So re-deriving it from a retrieval surface is forbidden
-by construction, not merely awkward. What ships here is the non-negotiable half:
-a disputed fact is **returned**, never filtered out, labelled with everything its
-own row carries, and :data:`DISPUTE_COUNTERPART_OWNER` names the task that will
-supply the missing half rather than leaving a reader to infer it was overlooked.
+**"Both sides" is not constructible from a query on this channel, and this
+channel does not invent it.** Doc 08 §4.2 requires a disputed fact be served
+labelled with both sides. The counterpart half — *disputed by fact X asserting
+Y* — is computed inside ``contradiction_veto``, and the deterministic scan's
+sole legitimate caller is the verification ladder, enforced by a tree-wide
+reference scan that fails the build on a second entry point. So re-deriving it
+from a retrieval surface is forbidden by construction, not merely awkward. What
+ships here is the non-negotiable half: a disputed fact is **returned**, never
+filtered out, labelled with everything its own row carries.
+
+**T2.64 (2026-08-02) persisted the counterpart**, so the half this channel
+leaves open is now available — but *not to a query on ``knowledge_triples``*.
+It rides the ``verified`` event's payload as a ``contradiction`` block, which is
+why the sentence above says "not constructible from a query on this channel"
+rather than the original "not constructible today", which stopped being true.
+Composing it onto a served row is T2.43's, reading the journal the way
+``review_queue`` already does; :data:`DISPUTE_COUNTERPART_OWNER` names T2.64
+because that is where the data comes from. A reader must not take the block's
+absence for "no counterpart exists" — it is also absent on a recovery, on a
+caller-overridden verdict, and on any dispute predating that commit.
 """
 
 from __future__ import annotations
