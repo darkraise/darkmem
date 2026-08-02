@@ -9,7 +9,10 @@ behaviour, a source scan carrying its own in-suite negative control.
 """
 from __future__ import annotations
 
+import ast
 import json
+import pathlib
+import re
 from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -1196,3 +1199,321 @@ async def _bump_score(factory, project) -> None:
             {"p": project},
         )
         await session.commit()
+
+
+# ── Step 6: the refine arm and the content guard ─────────────────────────
+
+
+def refine(summary=None, tags=None, **extra):
+    body = {"summary": summary, "tags": tags}
+    body.update(extra)
+    return json.dumps(body)
+
+
+class TestRefineArm:
+    async def test_refine_fires(self, committing, project, run_cycle):
+        """T-A3."""
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session, project=project, content="the sweeper runs hourly"
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"),
+            refine=refine(summary="An hourly sweeper.", tags=["ops"]),
+        )
+
+        outcome = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert outcome.refined == 1
+        row = await memory_row(committing, target)
+        assert row["summary"] == "An hourly sweeper."
+        marker = row["metadata"]["dream"]["refine"]
+        assert marker["content_sha"] == dream.content_sha("the sweeper runs hourly")
+
+        events = await consolidated_events(committing, project, target)
+        assert len(events) == 1
+        payload = events[0]["payload"]
+        assert payload["action"] == "refine"
+        assert payload["before"]["summary"] is None
+        assert payload["after"]["summary"] == "An hourly sweeper."
+        assert "tags" in payload["fields"]
+
+    async def test_refine_is_suppressed_on_a_re_run(
+        self, committing, project, run_cycle
+    ):
+        """T-A3b. Deleting the marker check makes the second run write again and
+        churn `updated_at` nightly for content that never changed."""
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session, project=project, content="the sweeper runs hourly"
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"), refine=refine(summary="An hourly sweeper.")
+        )
+
+        await run_cycle(committing, stub, judge_fanout=0)
+        after_first = await memory_row(committing, target)
+        await _rewind_cursor(committing)
+        second = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert second.refined == 0
+        after_second = await memory_row(committing, target)
+        assert after_second["updated_at"] == after_first["updated_at"]
+        assert len(await consolidated_events(committing, project, target)) == 1
+
+    async def test_a_restored_summary_does_not_re_arm_the_refine(
+        self, committing, project, run_cycle
+    ):
+        """D7's undo-interaction rule. Keying suppression on `summary_sha` as
+        well as `content_sha` would re-apply the refine here and silently
+        reverse T2.13's undo."""
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session,
+                project=project,
+                content="the sweeper runs hourly",
+                summary="the original",
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"), refine=refine(summary="a rewrite")
+        )
+        await run_cycle(committing, stub, judge_fanout=0)
+
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET summary = 'the original' "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(target)},
+            )
+            await session.commit()
+        await _rewind_cursor(committing)
+
+        second = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert second.refined == 0
+        assert (await memory_row(committing, target))["summary"] == "the original"
+
+    async def test_the_model_tries_to_rewrite_content_and_is_refused(
+        self, committing, project, run_cycle
+    ):
+        """T-N2a, and the non-vacuous proof of Done-when 2: the model actively
+        attempted the forbidden write and the code refused it. Asserting content
+        is unchanged when nothing tried to change it proves nothing."""
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session, project=project, content="the sweeper runs hourly"
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"),
+            refine=refine(summary="s", content="REWRITTEN"),
+        )
+
+        outcome = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert outcome.refined == 1
+        row = await memory_row(committing, target)
+        assert row["content"] == "the sweeper runs hourly"
+        assert row["summary"] == "s"
+        events = await consolidated_events(committing, project, target)
+        assert "content" not in events[0]["payload"]["after"]
+
+    def test_the_allowlist_raises_on_a_forbidden_column(self):
+        """T-N2b. The allowlist is enforcement, not documentation."""
+        with pytest.raises(dream.RefinableColumnError) as caught:
+            dream.build_refine_update({"content": "x"})
+        assert "content" in str(caught.value)
+
+    def test_the_allowlist_accepts_only_what_it_names(self):
+        assignments, ordered = dream.build_refine_update({"summary": "s"})
+        assert ordered == ("summary",)
+        assert assignments == "summary = :summary"
+
+
+# ── the source scans, and their negative controls ────────────────────────
+#
+# What these prove and what they do not. They raise the cost of a content
+# write and of a removal: the four write shapes that exist today fail the
+# build. They do **not** establish that no removal is expressible — a column
+# name arriving as a bound parameter (`SET :col = ...`) is invisible to an AST
+# walk by construction, and so is a computed attribute name. Stated rather than
+# implied, because a reader trusts a guard, and an overclaimed one is worse
+# than the gap it hides.
+
+BACKEND = pathlib.Path(__file__).resolve().parent.parent
+
+_SCANNED = (
+    "app/services/memory_dream.py",
+    "app/repositories/memory_relations.py",
+)
+
+_UPDATE_MEMORIES = re.compile(r"UPDATE\s+memories", re.IGNORECASE)
+_DELETE_MEMORIES = re.compile(r"DELETE\s+FROM\s+memories", re.IGNORECASE)
+_ANY_UPDATE = re.compile(r"UPDATE\s+\w+", re.IGNORECASE)
+
+
+class _ForbiddenWriteVisitor(ast.NodeVisitor):
+    """Rules C1-C4 (content) and R1-R3 (removal).
+
+    C1 flags a raw statement that updates `memories` and mentions `content` in
+    the same constant. C2 flags an attribute assignment to `.content`, and is
+    deliberately blind to a bare `Name` target so the dataclass's own field
+    declaration is not flagged. C3 flags `setattr(x, "content", y)`. C4 flags a
+    `.values()` / model construction carrying `content`, both as a keyword and
+    as a literal dict passed positionally or splatted. R1 flags a raw
+    `DELETE FROM memories`, R2 any `.delete()` call, and R3 a `memory_ids`
+    rewrite — the three shapes a hard merge can take.
+    """
+
+    def __init__(self, rel: str):
+        self.rel = rel
+        self.offenders: list[str] = []
+
+    def _flag(self, node, rule: str, detail: str) -> None:
+        self.offenders.append(f"{self.rel}:{node.lineno}: {rule} {detail}")
+
+    def visit_Constant(self, node: ast.Constant) -> None:
+        if isinstance(node.value, str):
+            if _UPDATE_MEMORIES.search(node.value) and "content" in node.value:
+                self._flag(node, "C1", "raw UPDATE memories mentioning content")
+            if _DELETE_MEMORIES.search(node.value):
+                self._flag(node, "R1", "raw DELETE FROM memories")
+            if _ANY_UPDATE.search(node.value) and "memory_ids" in node.value:
+                # Repointing another table's references from one memory to
+                # another is the third shape a hard merge can take, and the
+                # only one neither of the row-set snapshots would notice.
+                self._flag(node, "R3", "a memory_ids rewrite")
+        self.generic_visit(node)
+
+    def _check_target(self, target, node) -> None:
+        if isinstance(target, ast.Attribute) and target.attr == "content":
+            self._flag(node, "C2", "attribute assignment to .content")
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                self._check_target(element, node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            self._check_target(target, node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._check_target(node.target, node)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self._check_target(node.target, node)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "setattr":
+            if (
+                len(node.args) >= 2
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value == "content"
+            ):
+                self._flag(node, "C3", "setattr of content")
+        writes_a_row = (
+            isinstance(func, ast.Attribute) and func.attr == "values"
+        ) or (isinstance(func, ast.Name) and func.id == "Memory")
+        if writes_a_row:
+            if any(keyword.arg == "content" for keyword in node.keywords):
+                self._flag(node, "C4", "content keyword on a row write")
+            literals = [arg for arg in node.args if isinstance(arg, ast.Dict)]
+            literals += [
+                keyword.value
+                for keyword in node.keywords
+                if keyword.arg is None and isinstance(keyword.value, ast.Dict)
+            ]
+            for literal in literals:
+                if any(
+                    isinstance(key, ast.Constant) and key.value == "content"
+                    for key in literal.keys
+                ):
+                    self._flag(node, "C4", "content key in a row-write dict")
+        if isinstance(func, ast.Attribute) and func.attr == "delete":
+            self._flag(node, "R2", "a .delete() call")
+        self.generic_visit(node)
+
+
+def _forbidden_writes(paths, root) -> list[str]:
+    offenders: list[str] = []
+    for path in paths:
+        visitor = _ForbiddenWriteVisitor(str(path.relative_to(root)))
+        visitor.visit(ast.parse(path.read_text()))
+        offenders.extend(visitor.offenders)
+    return offenders
+
+
+def _scanned_paths() -> list[pathlib.Path]:
+    return [BACKEND / rel for rel in _SCANNED]
+
+
+class TestSourceScans:
+    def test_no_content_write_and_no_removal_exists(self):
+        """T-N1c / T-N2d."""
+        paths = _scanned_paths()
+        assert len(paths) >= 2
+        for path in paths:
+            assert path.exists(), f"{path} is not there to scan"
+
+        assert _forbidden_writes(paths, BACKEND) == []
+
+    @pytest.mark.parametrize(
+        ("source", "rule"),
+        [
+            ('SQL = "UPDATE memories SET content = :c"', "C1"),
+            ("def f(memory):\n    memory.content = 'x'\n", "C2"),
+            ("def f(memory):\n    setattr(memory, 'content', 'x')\n", "C3"),
+            ("def f(stmt):\n    stmt.values(content='x')\n", "C4"),
+            ("def f(stmt):\n    stmt.values({'content': 'x'})\n", "C4"),
+            ("def f(stmt):\n    stmt.values(**{'content': 'x'})\n", "C4"),
+            ('SQL = "DELETE FROM memories WHERE id = :id"', "R1"),
+            ("def f(session, m):\n    session.delete(m)\n", "R2"),
+            ('SQL = "UPDATE entities SET memory_ids = :ids"', "R3"),
+        ],
+    )
+    def test_the_scan_flags_every_shape_it_claims_to(self, tmp_path, source, rule):
+        """T-N1d / T-N2d's negative control: a scan that found nothing to scan
+        would pass silently, and so would one whose rules had been deleted."""
+        offending = tmp_path / "violation.py"
+        offending.write_text(source)
+
+        offenders = _forbidden_writes([offending], tmp_path)
+
+        assert offenders, f"rule {rule} did not flag its own violation"
+        assert any(rule in offender for offender in offenders)
+
+    def test_the_scan_admits_the_shapes_that_are_legitimate(self, tmp_path):
+        """The rules must not widen into "any mention of content": reading the
+        column, naming it in a comparison, and declaring a dataclass field are
+        all things this module legitimately does."""
+        innocent = tmp_path / "innocent.py"
+        innocent.write_text(
+            "from dataclasses import dataclass\n"
+            'SQL = "SELECT content FROM memories WHERE id = :id"\n'
+            'OTHER = "UPDATE memories SET summary = :summary"\n'
+            "\n"
+            "@dataclass\n"
+            "class Row:\n"
+            "    content: str\n"
+            "\n"
+            "def f(row, other):\n"
+            "    return row.content == other.content\n"
+        )
+
+        assert _forbidden_writes([innocent], tmp_path) == []

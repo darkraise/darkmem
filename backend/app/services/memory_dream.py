@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -66,6 +67,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
+from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.memory_relations import (
     get_edge,
     pass_block_of,
@@ -966,6 +968,172 @@ async def apply_associate(
 
 
 
+# The whole set of columns refine may move, and the `UPDATE` below is *built*
+# from it rather than hand-written. A model that answers `{"content": "..."}`
+# therefore cannot reach a column even if the parser were sloppy — and the
+# parser discards unknown keys too, so it is refused twice, independently.
+_REFINABLE_COLUMNS: tuple[str, ...] = ("summary",)
+
+# The marker records the content revision this pass has already acted on —
+# suppression bookkeeping, not a provenance claim that the summary now in place
+# was derived from it. After an undo the two legitimately disagree.
+REFINE_MARKER_PATH = ("dream", "refine")
+
+
+class RefinableColumnError(ValueError):
+    """A caller asked to write a column outside the allowlist."""
+
+
+@dataclass(frozen=True)
+class RefineAction:
+    memory: MemoryRow
+    verdict: RefineVerdict
+
+    @property
+    def memory_id(self) -> str:
+        return self.memory.memory_id
+
+
+def refine_marker_of(metadata: dict | None) -> dict | None:
+    node = metadata if isinstance(metadata, dict) else {}
+    for key in REFINE_MARKER_PATH:
+        node = node.get(key) if isinstance(node, dict) else None
+        if node is None:
+            return None
+    return node if isinstance(node, dict) else None
+
+
+def needs_refine(memory: MemoryRow) -> bool:
+    """Keyed on ``content_sha`` alone, and deliberately not also on the summary.
+
+    If T2.13's undo restores the prior summary, a summary-keyed rule would see a
+    mismatch and re-apply the refine on the next cycle — silently undoing the
+    undo. Keying on the input alone means an undone refine stays undone until
+    the memory's content genuinely changes.
+    """
+    marker = refine_marker_of(memory.metadata)
+    return not marker or marker.get("content_sha") != memory.content_sha
+
+
+def build_refine_update(fields: dict) -> tuple[str, tuple[str, ...]]:
+    """The `UPDATE memories SET ...` fragment, assembled from the allowlist.
+
+    Raises rather than filtering, because a key outside the allowlist means the
+    caller believed it could write something it cannot, and silently dropping it
+    would make that belief invisible.
+    """
+    unknown = [key for key in fields if key not in _REFINABLE_COLUMNS]
+    if unknown:
+        raise RefinableColumnError(
+            f"refine may only write {list(_REFINABLE_COLUMNS)}; refused "
+            f"{sorted(unknown)}"
+        )
+    ordered = tuple(column for column in _REFINABLE_COLUMNS if column in fields)
+    assignments = ", ".join(f"{column} = :{column}" for column in ordered)
+    return assignments, ordered
+
+
+async def apply_refine(
+    session: AsyncSession,
+    action: RefineAction,
+    *,
+    cycle_id: str,
+    outcome: DreamOutcome,
+) -> bool:
+    """Rewrite one memory's derived enrichment, and nothing else.
+
+    The suppression marker rides the *same* statement as the summary, so a
+    marker can never record a refine that did not land.
+    """
+    await _set_local_lock_timeout(session)
+    memory = action.memory
+
+    locked = await _locked(session, memory.memory_id)
+    if locked is None or locked["status"] != "active":
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(locked["content"]) != memory.content_sha:
+        outcome.stale_skipped += 1
+        return False
+
+    before_marker = refine_marker_of(locked["metadata"])
+    if before_marker and before_marker.get("content_sha") == memory.content_sha:
+        outcome.stale_skipped += 1
+        return False
+
+    proposed: dict = {}
+    if action.verdict.summary is not None:
+        proposed["summary"] = action.verdict.summary
+    assignments, ordered = build_refine_update(proposed)
+
+    marker = {
+        "content_sha": memory.content_sha,
+        "at": datetime.now(timezone.utc).isoformat(),
+        "summary_sha": (
+            content_sha(action.verdict.summary)
+            if action.verdict.summary is not None
+            else None
+        ),
+    }
+    params: dict = {"memory_id": memory.memory_id, "marker": json.dumps(marker)}
+    params.update({column: proposed[column] for column in ordered})
+    set_clause = f"{assignments}, " if assignments else ""
+    await session.execute(
+        text(
+            f"UPDATE memories SET {set_clause}"
+            "    metadata = jsonb_set("
+            "        jsonb_set("
+            "            COALESCE(metadata, CAST('{}' AS jsonb)),"
+            "            '{dream}',"
+            "            COALESCE(metadata -> 'dream', CAST('{}' AS jsonb)),"
+            "            true"
+            "        ),"
+            "        '{dream,refine}',"
+            "        CAST(:marker AS jsonb),"
+            "        true"
+            "    ) "
+            "WHERE id = CAST(:memory_id AS uuid)"
+        ),
+        params,
+    )
+
+    changed = list(ordered)
+    if action.verdict.tags is not None:
+        await PostgresMemoryRepository(session).set_tags(
+            UUID(memory.memory_id), list(action.verdict.tags)
+        )
+        changed.append("tags")
+
+    await _journal(
+        session,
+        memory_id=memory.memory_id,
+        project=memory.project,
+        payload={
+            "action": ACTION_REFINE,
+            "before": {
+                "summary": locked["summary"],
+                "tags": list(memory.tags),
+                "metadata_dream_refine": before_marker,
+            },
+            "after": {
+                "summary": proposed.get("summary", locked["summary"]),
+                "tags": (
+                    list(action.verdict.tags)
+                    if action.verdict.tags is not None
+                    else list(memory.tags)
+                ),
+                "metadata_dream_refine": marker,
+            },
+            "fields": changed,
+            "detector": DETECTOR,
+            "cycle_id": cycle_id,
+        },
+    )
+    outcome.refined += 1
+    return True
+
+
+
 # ── the run ──────────────────────────────────────────────────────────────
 
 
@@ -1009,6 +1177,40 @@ async def _judge_pairs(
     return actions
 
 
+async def _judge_refines(
+    llm,
+    targets: list[MemoryRow],
+    *,
+    llm_concurrency: int,
+    outcome: DreamOutcome,
+) -> list[RefineAction]:
+    if not targets:
+        return []
+
+    semaphore = asyncio.Semaphore(max(1, llm_concurrency))
+
+    async def judge(memory: MemoryRow):
+        async with semaphore:
+            try:
+                return memory, await judge_refine(llm, memory)
+            except Exception:
+                logger.warning(
+                    "memory dream: the refine judge failed for %s",
+                    memory.memory_id, exc_info=True,
+                )
+                return memory, None
+
+    results = await asyncio.gather(*[judge(memory) for memory in targets])
+
+    actions: list[RefineAction] = []
+    for memory, proposal in results:
+        if proposal is None:
+            outcome.refine_failed += 1
+            continue
+        actions.append(RefineAction(memory=memory, verdict=proposal))
+    return actions
+
+
 async def _apply(
     session: AsyncSession, action, *, cycle_id: str, outcome: DreamOutcome
 ) -> None:
@@ -1021,6 +1223,10 @@ async def _apply(
                 )
             elif isinstance(action, AssociateAction):
                 await apply_associate(
+                    session, action, cycle_id=cycle_id, outcome=outcome
+                )
+            elif isinstance(action, RefineAction):
+                await apply_refine(
                     session, action, cycle_id=cycle_id, outcome=outcome
                 )
     except Exception:
@@ -1079,6 +1285,9 @@ async def run_memory_dream(
             judge_fanout=judge_fanout,
             outcome=outcome,
         )
+        refine_targets = [
+            seed for seed in seeds if needs_refine(seed)
+        ][:max(0, refine_batch)]
         await session.commit()
 
     if seeds and outcome.pairs_skipped_no_vector == len(seeds):
@@ -1095,6 +1304,9 @@ async def run_memory_dream(
     # Phase C — no transaction is open across any of this.
     actions: list = await _judge_pairs(
         llm, pairs, llm_concurrency=llm_concurrency, outcome=outcome
+    )
+    actions += await _judge_refines(
+        llm, refine_targets, llm_concurrency=llm_concurrency, outcome=outcome
     )
 
     # Phase W.
@@ -1128,9 +1340,11 @@ async def run_memory_dream(
 
     logger.info(
         "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
-        "%d subsumed, %d stale-skipped, %d failed%s",
+        "%d subsumed, %d associated (%d unchanged), %d refined, "
+        "%d stale-skipped, %d failed%s",
         outcome.cycle_id, outcome.seeds_visited, outcome.judged,
-        outcome.subsumed, outcome.stale_skipped, outcome.failed,
+        outcome.subsumed, outcome.associated, outcome.associate_unchanged,
+        outcome.refined, outcome.stale_skipped, outcome.failed,
         f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason else "",
     )
     return outcome
