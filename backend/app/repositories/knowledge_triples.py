@@ -38,6 +38,15 @@ logger = logging.getLogger(__name__)
 # still live history; only belief withdrawal removes a row from the live set.
 LIVE_PREDICATE = "expired_at IS NULL"
 
+# Currently-open belief, spelled once beside the predicate it is most often
+# confused with. The two are NOT interchangeable and the difference is a
+# correctness one, not a performance one: `LIVE_PREDICATE` admits window-closed
+# rows, which are retained history (doc 08 §3.1), while this admits only beliefs
+# nothing has superseded. `ux_knowledge_triples_open` is partial on exactly this,
+# and so are the three retrieval indexes doc 07 §2's fact channel reads, so a
+# query that widens it silently leaves every one of their scopes.
+OPEN_BELIEF_PREDICATE = "expired_at IS NULL AND invalid_at IS NULL"
+
 # The database CHECK's four values. 'confirmed' is excluded from
 # _MACHINE_WRITABLE_VERIFICATION_STATUSES on purpose: only a human ratifies a
 # fact, via the path T2.05 owns, which does not exist yet.
