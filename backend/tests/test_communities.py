@@ -25,9 +25,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import settings
 from app.repositories import memory_communities as repo
+from app.services import memory_community_detection as detection
 from app.services import memory_community_labels as labels
 from app.services.memory_projection import (
     EntityAssertion,
@@ -783,3 +787,344 @@ def test_a_community_with_no_ranked_entity_is_still_labelled():
 
     assert first.label == f"{labels.UNLABELLED} (1)"
     assert second.label == f"{labels.UNLABELLED} (2)"
+
+
+# ---------------------------------------------------------------------------
+# The orchestrator
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def committing(setup_database):
+    """A real session factory with real commits.
+
+    The rollback-per-test session cannot express the property the atomicity
+    tests are about — that a failed rewrite leaves the *committed* previous run
+    intact — so these few tests own their cleanup instead.
+    """
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield factory
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM memory_communities WHERE project LIKE 't218-%'")
+            )
+            await cleanup.execute(
+                text("DELETE FROM entities WHERE name LIKE 't218-%'")
+            )
+            await cleanup.execute(
+                text("DELETE FROM memories WHERE project LIKE 't218-%'")
+            )
+            await cleanup.commit()
+        await engine.dispose()
+
+
+async def _seed_two_clusters(session, project=PROJECT, prefix="t218-cluster"):
+    left = [await seed_memory(session, project) for _ in range(3)]
+    right = [await seed_memory(session, project) for _ in range(3)]
+    await session.flush()
+    await seed_entity(session, f"{prefix}-left", left)
+    await seed_entity(session, f"{prefix}-right", right)
+    await session.flush()
+    return left, right
+
+
+async def test_disjoint_clusters_do_not_merge(session):
+    """T16, and it is what gives this file teeth.
+
+    Every other test here passes with the partition replaced by a constant
+    `[0] * n` — the degenerate single-blob output §3.4's weighting exists to
+    prevent. Two entity-disjoint clusters are two disconnected components, and
+    a modularity maximiser can never merge those: merging adds no internal
+    edges while raising the expected-edges penalty, so modularity strictly
+    falls. It asserts a structural property, never a membership list, so
+    doc 17 §7's ban is not in play.
+    """
+    left, right = await _seed_two_clusters(session)
+
+    outcome = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+
+    assert outcome.community_count >= 2
+    rows = await repo.list_with_members(session, PROJECT)
+    for row in rows:
+        members = set(row.memory_ids)
+        assert not (members & set(left) and members & set(right)), (
+            "two entity-disjoint clusters were merged into one community"
+        )
+
+
+async def test_detection_never_bridges_projects(session):
+    """T2, orchestrator half. `entities.memory_ids` reaches every project, so
+    the node set being closed under project is the whole isolation story."""
+    mine_a = await seed_memory(session)
+    mine_b = await seed_memory(session)
+    theirs_a = await seed_memory(session, OTHER_PROJECT)
+    theirs_b = await seed_memory(session, OTHER_PROJECT)
+    await session.flush()
+    await seed_entity(
+        session, "t218-global", [mine_a, mine_b, theirs_a, theirs_b]
+    )
+    await session.flush()
+
+    await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+
+    members = {m for _, m in await member_rows(session, PROJECT)}
+    assert members == {mine_a, mine_b}
+    assert await member_rows(session, OTHER_PROJECT) == set()
+
+
+async def test_an_isolated_memory_joins_no_community(session):
+    """T8. Membership is not a partition: a memory sharing no entity with
+    anything is not topically related to anything, and sweeping it into an
+    everything-community would assert a relationship the projection denies."""
+    left, right = await _seed_two_clusters(session)
+    orphan = await seed_memory(session)
+    await session.flush()
+
+    outcome = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+
+    members = {m for _, m in await member_rows(session, PROJECT)}
+    assert orphan not in members
+    assert members == set(left) | set(right)
+    assert outcome.unassigned_count == 1
+
+
+async def test_rerunning_on_an_unchanged_corpus_is_stable(session):
+    """T7. Reframed to its own declared fallback — count and size multiset,
+    never a membership list — plus the rewrite properties that do have teeth:
+    the previous ids are gone and no member row is orphaned."""
+    await _seed_two_clusters(session)
+
+    first = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+    first_ids = await community_ids(session, PROJECT)
+    first_sizes = sorted(len(r.memory_ids) for r in await repo.list_with_members(session, PROJECT))
+
+    second = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+    second_ids = await community_ids(session, PROJECT)
+    second_sizes = sorted(len(r.memory_ids) for r in await repo.list_with_members(session, PROJECT))
+
+    assert first.community_count == second.community_count
+    assert first_sizes == second_sizes
+    assert first_ids & second_ids == set()
+
+    orphaned = await session.scalar(
+        text(
+            "SELECT count(*) FROM memory_community_members mm "
+            "LEFT JOIN memory_communities c ON c.id = mm.community_id "
+            "WHERE c.id IS NULL"
+        )
+    )
+    assert orphaned == 0
+
+
+async def test_a_tiny_graph_falls_back_to_one_community(session):
+    """T10."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+    await seed_entity(session, "t218-tiny", [a, b])
+    await session.flush()
+
+    outcome = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+
+    assert outcome.fallback == detection.FALLBACK_TINY_GRAPH
+    (row,) = await repo.list_with_members(session, PROJECT)
+    assert set(row.memory_ids) == {a, b}
+    assert row.properties["fallback"] == detection.FALLBACK_TINY_GRAPH
+
+
+async def test_a_timeout_falls_back_to_one_community(session):
+    """T11. The degraded answer is still an answer: the graph was real, the
+    clustering just did not finish."""
+    left, right = await _seed_two_clusters(session)
+
+    outcome = await detection.detect_for_project(
+        session, PROJECT, leiden_timeout_seconds=0
+    )
+    await session.flush()
+
+    assert outcome.fallback == detection.FALLBACK_TIMEOUT
+    (row,) = await repo.list_with_members(session, PROJECT)
+    assert set(row.memory_ids) == set(left) | set(right)
+    assert row.properties["fallback"] == detection.FALLBACK_TIMEOUT
+
+
+async def test_a_missing_library_writes_nothing_and_deletes_nothing(
+    session, monkeypatch
+):
+    """T9, the second T1.21 guard. A missing clustering library means nothing
+    was computed, so collapsing the project into one topic would fabricate a
+    result — and deleting the previous run's good topics to write it would be
+    T1.21 from another direction."""
+    await _seed_two_clusters(session)
+    await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+    before_ids = await community_ids(session, PROJECT)
+    before_members = await member_rows(session, PROJECT)
+    assert before_ids
+
+    monkeypatch.setitem(sys.modules, "leidenalg", None)
+    outcome = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+
+    assert outcome.skipped_reason == detection.SKIPPED_LIBRARY_UNAVAILABLE
+    assert outcome.community_count == 0
+    assert await community_ids(session, PROJECT) == before_ids
+    assert await member_rows(session, PROJECT) == before_members
+
+
+async def test_an_over_budget_projection_is_skipped_not_truncated(session):
+    await _seed_two_clusters(session)
+    await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+    before_ids = await community_ids(session, PROJECT)
+
+    outcome = await detection.detect_for_project(
+        session, PROJECT, max_projection_edges=1
+    )
+    await session.flush()
+
+    assert outcome.skipped_reason == TRUNCATED_TOO_MANY_EDGES
+    assert await community_ids(session, PROJECT) == before_ids
+
+
+async def test_the_run_journals_one_row_naming_no_community_id(session):
+    """T12. Ids churn every run, so a community id in `object_id` or anywhere
+    in the payload would be exactly the durable reference doc 04 §8.4
+    forbids."""
+    await _seed_two_clusters(session)
+
+    outcome = await detection.detect_for_project(session, PROJECT)
+    await session.flush()
+    written = await community_ids(session, PROJECT)
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT object_id, payload FROM events "
+                "WHERE event_type = 'consolidated' AND object_type = 'topic' "
+                "AND project = CAST(:p AS text)"
+            ),
+            {"p": PROJECT},
+        )
+    ).all()
+
+    assert len(rows) == 1
+    (object_id, payload) = rows[0]
+    assert object_id is None
+    assert payload["community_count"] == outcome.community_count
+    assert {c["label"] for c in payload["communities"]} == set(outcome.labels)
+
+    serialized = json.dumps(payload)
+    for community_id in written:
+        assert str(community_id) not in serialized
+
+
+async def test_a_failed_rewrite_leaves_the_committed_previous_run_intact(
+    committing, monkeypatch
+):
+    """T5, orchestrator half, with real commits — the property the
+    rollback-per-test session cannot express."""
+    async with committing() as session:
+        left, right = await _seed_two_clusters(session)
+        await session.commit()
+
+    first = await detection.run_topic_detection(committing, batch_size=50)
+    assert first.communities >= 1
+
+    async with committing() as session:
+        before_ids = await community_ids(session, PROJECT)
+        before_members = await member_rows(session, PROJECT)
+    assert before_ids
+
+    monkeypatch.setattr(
+        repo,
+        "_INSERT_MEMBERS",
+        text("SELECT CAST(:community_id AS uuid), CAST(:rows AS jsonb), 1 / 0"),
+    )
+    second = await detection.run_topic_detection(committing, batch_size=50)
+
+    assert second.skipped >= 1
+    async with committing() as session:
+        assert await community_ids(session, PROJECT) == before_ids
+        assert await member_rows(session, PROJECT) == before_members
+
+
+async def test_a_project_with_no_live_memories_is_still_visited(committing):
+    """T18. Deriving the cursor from `memories` alone loses a project whose
+    memories have all been superseded or archived: it would never be visited
+    again and its stale topics would linger forever, surfacing dead memories
+    through browsing."""
+    async with committing() as session:
+        a = await seed_memory(session)
+        b = await seed_memory(session)
+        await session.flush()
+        await seed_entity(session, "t218-doomed", [a, b])
+        # The pointer lives in another project so PROJECT is left with no
+        # eligible memory at all.
+        pointer = await seed_memory(session, OTHER_PROJECT)
+        await session.commit()
+
+    await detection.run_topic_detection(committing, batch_size=50)
+    async with committing() as session:
+        assert await community_ids(session, PROJECT)
+
+    async with committing() as session:
+        await session.execute(
+            text(
+                "UPDATE memories SET status = 'superseded', "
+                "superseded_by = CAST(:p AS uuid) "
+                "WHERE project = CAST(:project AS text)"
+            ),
+            {"p": str(pointer), "project": PROJECT},
+        )
+        await session.commit()
+
+    async with committing() as session:
+        assert PROJECT in await detection.next_projects(session, None, 50)
+
+    await detection.run_topic_detection(committing, batch_size=50)
+
+    async with committing() as session:
+        assert await community_ids(session, PROJECT) == set()
+
+
+async def test_the_cursor_rotates_in_project_order(committing):
+    async with committing() as session:
+        await seed_memory(session, PROJECT)
+        await seed_memory(session, OTHER_PROJECT)
+        await session.commit()
+
+    async with committing() as session:
+        first = await detection.next_projects(session, None, 1)
+        after = await detection.next_projects(session, first[0], 50)
+
+    assert first == [min(first[0], *after)]
+    assert first[0] not in after
+    assert after == sorted(after)
+
+
+def test_the_connected_filter_keeps_isolated_nodes_out_of_a_community():
+    """T8's mechanism, driven directly.
+
+    A degree-zero vertex changes modularity by exactly nothing wherever it is
+    placed, so its assignment is implementation-defined; leidenalg happens to
+    give it its own community today, which `min_community_size` would then
+    drop. That makes the filter's failure unreachable through the library and
+    the guarantee an accident of a library version rather than a property of
+    this code — so it is asserted here against a membership vector that does
+    place an isolated node inside a real community.
+    """
+    membership = [0, 0, 0, 0]
+
+    groups = detection._groups_from_membership(membership, (0, 1, 2), 2)
+
+    assert groups == [(0, 1, 2)]
