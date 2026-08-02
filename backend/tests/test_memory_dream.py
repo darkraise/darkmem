@@ -10,6 +10,7 @@ behaviour, a source scan carrying its own in-suite negative control.
 from __future__ import annotations
 
 import json
+from dataclasses import fields
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -541,3 +542,106 @@ class TestSeedCursor:
         identifiers = {row.memory_id for row in rows}
         assert str(live) in identifiers
         assert str(gone) not in identifiers
+
+
+# ── Step 3: the judge — purpose, seed, parsers ───────────────────────────
+
+
+def _row(content="c", summary=None, tags=()):
+    return dream.MemoryRow(
+        memory_id=str(new_id()),
+        project=PROJECT,
+        created_at=NOW,
+        content=content,
+        summary=summary,
+        metadata={},
+        tags=tuple(tags),
+    )
+
+
+class TestJudge:
+    async def test_the_pair_call_dispatches_on_reasoning_and_nothing_else(self):
+        stub = StubLLM(pair_verdict={"verdict": "distinct", "reason": "r"})
+        older, newer = _row("older"), _row("newer")
+
+        await dream.judge_pair(stub, older, newer)
+
+        assert [call["purpose"] for call in stub.calls] == ["reasoning"]
+
+    async def test_the_refine_call_dispatches_on_reasoning_and_nothing_else(self):
+        stub = StubLLM(refine={"summary": "s", "tags": None})
+
+        await dream.judge_refine(stub, _row("a memory"))
+
+        assert [call["purpose"] for call in stub.calls] == ["reasoning"]
+
+    async def test_the_seed_is_deterministic_and_input_sensitive(self):
+        older, newer = _row("older"), _row("newer")
+        assert dream.pair_seed(older, newer) == dream.pair_seed(older, newer)
+        assert dream.pair_seed(older, newer) != dream.pair_seed(newer, older)
+        assert dream.refine_seed(_row("x")) == dream.refine_seed(_row("x"))
+        assert dream.refine_seed(_row("x")) != dream.refine_seed(_row("y"))
+
+    async def test_the_seed_reaches_the_call(self):
+        stub = StubLLM(pair_verdict={"verdict": "distinct", "reason": "r"})
+        older, newer = _row("older"), _row("newer")
+
+        await dream.judge_pair(stub, older, newer)
+
+        assert stub.calls[0]["seed"] == dream.pair_seed(older, newer)
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "not json at all",
+            "",
+            json.dumps({"reason": "no verdict key"}),
+            json.dumps({"verdict": "merge", "reason": "outside the closed set"}),
+            '{"verdict": "subsum',
+        ],
+        ids=["prose", "empty", "missing-key", "unknown-verdict", "truncated"],
+    )
+    def test_every_unusable_pair_answer_raises_the_same_handled_error(self, raw):
+        """One error for every unusable shape, and never a default verdict — a
+        default would let a broken model drive real supersessions."""
+        with pytest.raises(dream.JudgeError):
+            dream.parse_pair_verdict(raw)
+
+    @pytest.mark.parametrize("verdict", sorted(dream.PAIR_VERDICTS))
+    def test_each_lawful_verdict_parses(self, verdict):
+        parsed = dream.parse_pair_verdict(
+            json.dumps({"verdict": verdict, "reason": "because"})
+        )
+        assert parsed.verdict == verdict
+        assert parsed.reason == "because"
+
+    def test_parse_refine_discards_a_content_key(self):
+        """T-N2c. A dict-returning parser would carry it forward silently."""
+        parsed = dream.parse_refine(
+            json.dumps({"summary": "s", "content": "REWRITTEN", "tags": ["a"]})
+        )
+        assert parsed.summary == "s"
+        assert parsed.tags == ("a",)
+        assert not hasattr(parsed, "content")
+        assert "content" not in {f.name for f in fields(parsed)}
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "not json",
+            "",
+            json.dumps({"summary": 7}),
+            json.dumps({"tags": "not-a-list"}),
+            json.dumps({"summary": None, "tags": None}),
+        ],
+        ids=["prose", "empty", "bad-summary", "bad-tags", "nothing-proposed"],
+    )
+    def test_every_unusable_refine_answer_raises_the_same_handled_error(self, raw):
+        with pytest.raises(dream.JudgeError):
+            dream.parse_refine(raw)
+
+    def test_a_fenced_body_still_parses(self):
+        parsed = dream.parse_pair_verdict(
+            'Sure:\n```json\n{"verdict": "duplicate", "reason": "r"}\n```'
+        )
+        assert parsed.verdict == "duplicate"

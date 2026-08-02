@@ -67,6 +67,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import Config
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
+from app.services.extraction_clean import _content_seed, _loads_extraction
 from app.services.supersede import successor_is_newer
 
 logger = logging.getLogger(__name__)
@@ -480,3 +481,174 @@ async def generate_pairs(
 
     outcome.pairs_considered = len(pairs)
     return pairs[:judge_fanout]
+
+
+# ── Phase C: the judge ───────────────────────────────────────────────────
+
+# The `reasoning` purpose, and nothing else. Doc 11 §6 puts dream-refine's
+# merge/rewrite judgments there explicitly, at "the lowest stakes (its actions
+# are undoable, doc 08)", which is why these calls carry no qualification gate.
+JUDGE_PURPOSE = "reasoning"
+
+PAIR_VERDICTS = frozenset({"subsumes", "duplicate", "distinct"})
+
+PAIR_SYSTEM_PROMPT = """\
+You compare two stored memories from one project. The pair is already ordered
+for you: OLDER was captured first, NEWER second. Never reorder them and never
+suggest the older one replaces the newer.
+
+Return exactly one verdict:
+
+- "subsumes": NEWER states everything OLDER does and corrects or completes it,
+  so keeping OLDER active would leave a stale claim in the store.
+- "duplicate": the two say substantially the same thing, but NEWER does not
+  correct OLDER — neither should retire the other.
+- "distinct": they are about different things, or each carries something the
+  other does not.
+
+Answer with a JSON object: {"verdict": "...", "reason": "<one short sentence>"}
+"""
+
+REFINE_SYSTEM_PROMPT = """\
+You improve the derived enrichment of one stored memory. You may propose a
+rewritten one-sentence summary and a cleaned tag list.
+
+You may not rewrite, extend, correct or restate the memory's content — the
+content is the record and is never edited. Return only the derived fields.
+
+Answer with a JSON object: {"summary": "<one sentence>", "tags": ["...", ...]}
+Use null for a field you do not want changed.
+"""
+
+
+class JudgeError(RuntimeError):
+    """The model's answer could not be used.
+
+    One error for every unusable shape — unparseable, truncated, missing key,
+    unknown verdict — because the arm's response to all of them is identical:
+    count it, take no action for that item, and never fall back to a default
+    verdict. A default would let a broken model quietly drive real writes.
+    """
+
+
+@dataclass(frozen=True)
+class PairVerdict:
+    verdict: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class RefineVerdict:
+    """A closed shape with no field that could carry content.
+
+    The allowlist below refuses a content write on its own; this dataclass is
+    the second, independent layer. Neither is redundant: dropping either one
+    leaves a path by which a model's `content` key could reach a column.
+    """
+
+    summary: str | None
+    tags: tuple[str, ...] | None
+
+
+def build_pair_messages(older: MemoryRow, newer: MemoryRow) -> list[dict]:
+    return [
+        {"role": "system", "content": PAIR_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"OLDER:\n{older.content}\n\nNEWER:\n{newer.content}",
+        },
+    ]
+
+
+def build_refine_messages(memory: MemoryRow) -> list[dict]:
+    current = memory.summary or "(none)"
+    tags = ", ".join(memory.tags) or "(none)"
+    return [
+        {"role": "system", "content": REFINE_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": (
+                f"CONTENT:\n{memory.content}\n\n"
+                f"CURRENT SUMMARY:\n{current}\n\n"
+                f"CURRENT TAGS:\n{tags}"
+            ),
+        },
+    ]
+
+
+def pair_seed(older: MemoryRow, newer: MemoryRow) -> int:
+    """Reproducibility (CLAUDE.md): the same pair replays to the same JSON.
+
+    Seeded on both contents in their fixed order, so the seed is a property of
+    the ordered pair rather than of whichever half the probe happened to start
+    from."""
+    return _content_seed(f"{older.content}\n{newer.content}")
+
+
+def refine_seed(memory: MemoryRow) -> int:
+    return _content_seed(memory.content)
+
+
+def parse_pair_verdict(raw: str) -> PairVerdict:
+    try:
+        body = _loads_extraction(raw)
+    except Exception as exc:
+        raise JudgeError(f"pair verdict was not JSON: {raw[:120]!r}") from exc
+    if not isinstance(body, dict):
+        raise JudgeError("pair verdict was not a JSON object")
+    verdict = body.get("verdict")
+    if verdict not in PAIR_VERDICTS:
+        raise JudgeError(f"pair verdict {verdict!r} is outside the closed set")
+    reason = body.get("reason")
+    return PairVerdict(
+        verdict=verdict, reason=str(reason) if reason is not None else ""
+    )
+
+
+def parse_refine(raw: str) -> RefineVerdict:
+    """Every key outside the closed shape is discarded here, before the
+    allowlist ever sees it."""
+    try:
+        body = _loads_extraction(raw)
+    except Exception as exc:
+        raise JudgeError(f"refine answer was not JSON: {raw[:120]!r}") from exc
+    if not isinstance(body, dict):
+        raise JudgeError("refine answer was not a JSON object")
+
+    summary = body.get("summary")
+    if summary is not None and not isinstance(summary, str):
+        raise JudgeError("refine summary was not a string")
+    if isinstance(summary, str):
+        summary = summary.strip() or None
+
+    raw_tags = body.get("tags")
+    tags: tuple[str, ...] | None = None
+    if raw_tags is not None:
+        if not isinstance(raw_tags, list):
+            raise JudgeError("refine tags were not a list")
+        cleaned = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+        tags = tuple(dict.fromkeys(cleaned))
+
+    if summary is None and tags is None:
+        raise JudgeError("refine answer proposed no derived field")
+    return RefineVerdict(summary=summary, tags=tags)
+
+
+async def judge_pair(llm, older: MemoryRow, newer: MemoryRow) -> PairVerdict:
+    raw = await llm.chat_completion(
+        JUDGE_PURPOSE,
+        build_pair_messages(older, newer),
+        response_format={"type": "json_object"},
+        seed=pair_seed(older, newer),
+    )
+    return parse_pair_verdict(raw)
+
+
+async def judge_refine(llm, memory: MemoryRow) -> RefineVerdict:
+    raw = await llm.chat_completion(
+        JUDGE_PURPOSE,
+        build_refine_messages(memory),
+        response_format={"type": "json_object"},
+        seed=refine_seed(memory),
+    )
+    return parse_refine(raw)
