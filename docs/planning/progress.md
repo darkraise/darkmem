@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 22 | 2 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 68 | 34 | 3 | 1 | 0 | 30 | 0 | G-C, G-D open |
+| E2 — Truth core | 68 | 34 | 2 | 1 | 0 | 31 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **228** | **90** | **3** | **1** | **0** | **133** | **1** | |
+| **Total** | **228** | **90** | **2** | **1** | **0** | **134** | **1** | |
 
 ---
 
@@ -243,7 +243,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.64 | The contradiction's counterpart must ride the journal payload | S | Opus | high | claude/e2-lane-m | done | 8dace5f | fable adversarial: spec PASS all 5 clauses, **merges as-is**; every number and all 3 mutations reproduced plus 4 the reviewer invented | A disputed fact's `verified` payload now names the counterpart it is disputed by, as a **structured triple** rather than an id — an id alone satisfies "names the counterpart" while failing "readable from the journal alone", since the surfaces that would fetch the row are the ones forbidden from reaching the scan. **The block rides every payload the ladder adjudicated, not only the opening dispute**: consumers read the *latest* `verified` row per fact, so a counterpart on the opening row alone would vanish from every long-lived dispute at its first re-confirmation — the entire population the review queue is made of. Carries `enumeration: "first_finding"` **in the data**, since adjudication short-circuits and a second scan pass is forbidden. Absent on recovery and on an overridden verdict, both tested. T2.51's vocabulary widened in the same commit, nested keys validated. **Found a test the metrics module cited by name and did not have**, so its top-level key guard had never been exercised. Unblocks T2.43 → T2.55/T2.56/T2.58. Verify 106 passed; floor 3257 passed; harness 410 |
 | T2.65 | Fact-level retrieval heat has no counter | M | Sonnet | high | | todo | | | |
 | T2.66 | A one-sided database failure must degrade, not take the channel down | S | Opus | high | | todo | | | |
-| T2.67 | Invariant 15's scan is bypassed by ordinary import formatting | M | Sonnet | high | claude/e2-lane-r | wip | | | |
+| T2.67 | Invariant 15's scan is bypassed by ordinary import formatting | M | Sonnet | high | claude/e2-lane-r | done | b5e2f40 | fable adversarial: **BLOCKED** on a Critical (superset claim refuted by running it); re-review found 1 further Important; both closed, **merges** | All three reachability scans now share one AST walker with four routes — import, attribute, literal, relative loader call. **The literal route uses two disciplines**, because one does not fit both token kinds: bare names and job keys match exactly, so real log prefixes and help text do not collide; dotted module paths match at identifier boundaries over `str` **and** `bytes`, so exec'd, decoded and spec-string spellings are caught. The forbidden set stays derived **one hop** from the umbrella and that is now a documented contract naming its dependents, because T2.12's landed repository and T2.13's planned module both rely on it. **Review blocked the first attempt**: exact matching had regressed five shapes the old scan caught, one demonstrated live in a capture-path module. A scoped re-review then found the third scan's fold-in had traded away an executable route while claiming pure gain — restored. Also folded in T2.19's raw-source prefilter, which defeated its own documented adjacent-literal coverage. **Controller resolved a semantic merge conflict**: the lane branched before T2.20, so its rewrite lacked T2.20's symbol-precise exemption; carried onto the walker as a node exemption and mutation-proven both ways. Verify 103 passed; floor 3401 passed; harness 410 |
 | T2.68 | Two read paths key on a fingerprint that can be a sentinel | S | Sonnet | high | | todo | | | |
 
 ## E3 — Synthesis & reach (26 tasks)
