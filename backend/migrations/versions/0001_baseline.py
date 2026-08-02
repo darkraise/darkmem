@@ -508,6 +508,41 @@ def _pass_two() -> None:
         "CREATE INDEX ix_knowledge_triples_review ON knowledge_triples (review_state) "
         "WHERE review_state = 'open'"
     )
+    # The three the Layer-2 retrieval channel is born with (doc 07 §2, §7).
+    # All three are partial on the CURRENTLY-OPEN-BELIEF window rather than on
+    # `expired_at IS NULL`: doc 08 §3.1 reserves "live" for the latter, which
+    # still counts window-closed rows as history, and serving those would
+    # present a withdrawn belief as current. Partial rather than full is also
+    # what pushes the belief scope into the index itself, so a query that
+    # widens the predicate stops matching the index instead of quietly
+    # returning history.
+    #
+    # No tsvector column and no trigger: `fact`, `subject_name` and
+    # `object_name` are written once at fact-lift time and never updated (the
+    # belief and verification axes move the timestamps and the status, never
+    # the text), so a stored column would carry maintenance cost for a value
+    # that cannot change. The query must spell these expressions verbatim or
+    # the planner cannot match them.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_fact_fts ON knowledge_triples "
+        "USING gin (to_tsvector('english', fact)) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    # 'simple' rather than 'english' on the endpoints: these are canonicalised
+    # lowercase identifiers, not prose, and stemming a product name buys no
+    # recall while risking a collision between two distinct names.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_name_fts ON knowledge_triples "
+        "USING gin (to_tsvector('simple', subject_name || ' ' || object_name)) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    # The project pushdown's own support, the analogue of
+    # ix_memories_project_live: it serves the scope when the query carries no
+    # search term, where neither FTS index applies.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_project_open ON knowledge_triples (project) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
 
     # Provenance leaves the fact row entirely: a uuid[] cannot carry per-source
     # metadata, index per-kind reverse lookups, or compute
