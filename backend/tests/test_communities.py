@@ -18,10 +18,11 @@ asserting "at least two communities" is a property rather than a coin flip.
 
 from __future__ import annotations
 
+import ast
 import json
 import pathlib
-import re
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
@@ -819,6 +820,11 @@ def test_colliding_labels_are_disambiguated_deterministically():
     assert first.label != second.label
     assert first.label == "a, b, c, e"
     assert second.label == "a, b, c, d"
+    # The widening entity has to reach the provenance too: a label naming four
+    # entities whose dominant_entities lists three omits the one that made the
+    # label distinct.
+    assert [e.name for e in first.dominant_entities] == ["a", "b", "c", "e"]
+    assert [e.name for e in second.dominant_entities] == ["a", "b", "c", "d"]
 
 
 def test_an_indistinguishable_collision_falls_back_to_a_stable_ordinal():
@@ -1181,6 +1187,139 @@ def test_the_connected_filter_keeps_isolated_nodes_out_of_a_community():
 
     assert groups == [(0, 1, 2)]
 
+def _partition_spy(monkeypatch, seen: dict):
+    real = detection.partition_graph
+
+    async def spy(n_nodes, edges, **kwargs):
+        seen.clear()
+        seen.update(kwargs)
+        return await real(n_nodes, edges, **kwargs)
+
+    monkeypatch.setattr(detection, "partition_graph", spy)
+
+
+async def test_the_resolution_knob_reaches_the_clustering(session, monkeypatch):
+    """Without this the knob is decoration: dropping `resolution=` from the
+    call leaves the whole suite green."""
+    await _seed_two_clusters(session)
+    seen: dict = {}
+    _partition_spy(monkeypatch, seen)
+
+    await detection.detect_for_project(session, PROJECT)
+    assert seen["resolution"] == detection.DEFAULT_RESOLUTION
+    assert seen["n_iterations"] == -1
+
+    await detection.detect_for_project(session, PROJECT, resolution=0.25)
+    assert seen["resolution"] == 0.25
+
+
+async def test_a_large_graph_tightens_resolution_and_iterations(
+    session, monkeypatch
+):
+    """The >10k-node branch, driven through `large_graph_nodes` rather than by
+    seeding ten thousand memories."""
+    await _seed_two_clusters(session)
+    seen: dict = {}
+    _partition_spy(monkeypatch, seen)
+
+    await detection.detect_for_project(session, PROJECT, large_graph_nodes=1)
+    await session.flush()
+
+    assert seen["resolution"] == detection.LARGE_GRAPH_RESOLUTION
+    assert seen["n_iterations"] == detection.LARGE_GRAPH_ITERATIONS
+    rows = await repo.list_with_members(session, PROJECT)
+    assert rows
+    assert all(
+        row.properties["resolution"] == detection.LARGE_GRAPH_RESOLUTION
+        for row in rows
+    )
+
+
+async def test_phase_c_runs_with_no_transaction_open(committing, monkeypatch):
+    """Phase R commits before the clustering starts.
+
+    `leiden_timeout_seconds` runs to 600, so holding the read transaction
+    across Phase C would leave a pooled connection `idle in transaction` for
+    minutes per project — pinning xmin, and inviting a kill wherever
+    `idle_in_transaction_session_timeout` is set.
+    """
+    async with committing() as session:
+        await _seed_two_clusters(session)
+        await session.commit()
+
+    observed: dict = {}
+    real = detection.partition_graph
+
+    async def spy(n_nodes, edges, **kwargs):
+        observed["in_transaction"] = probe.in_transaction()
+        return await real(n_nodes, edges, **kwargs)
+
+    monkeypatch.setattr(detection, "partition_graph", spy)
+
+    async with committing() as probe:
+        await detection.detect_for_project(probe, PROJECT)
+        await probe.commit()
+
+    assert observed["in_transaction"] is False
+
+
+async def test_the_graph_build_stays_off_the_event_loop(monkeypatch):
+    """The build is part of the blocking work, not a cheap preamble: at the
+    2M-edge budget it stalls for ~0.4s, in the process serving capture and
+    retrieval."""
+    import igraph
+
+    threads: list[str] = []
+    real_graph = igraph.Graph
+
+    def recording(*args, **kwargs):
+        threads.append(threading.current_thread().name)
+        return real_graph(*args, **kwargs)
+
+    monkeypatch.setattr(igraph, "Graph", recording)
+
+    result = await leiden.partition_graph(3, [(0, 1), (1, 2)])
+
+    assert result.outcome == "ok"
+    assert threads
+    assert all(name.startswith("leiden") for name in threads), threads
+    assert threading.current_thread().name not in threads
+
+
+async def test_an_aborted_project_journals_the_reason_it_aborted(
+    committing, monkeypatch
+):
+    """`_journal_abort` writes from a fresh session because the abort rolled
+    its own transaction back — a journal row written inside it would have gone
+    with it, and a skipped project would read as one the run never reached."""
+    async with committing() as session:
+        await _seed_two_clusters(session)
+        await session.commit()
+
+    for reason in (repo.CROSS_PROJECT_VIOLATION, repo.STALE_SNAPSHOT):
+        async def raiser(*args, _reason=reason, **kwargs):
+            raise repo.MemberWriteError(_reason, "forced for the drill")
+
+        monkeypatch.setattr(
+            detection, "replace_project_communities", raiser
+        )
+        outcome = await detection.run_topic_detection(committing, batch_size=50)
+        assert outcome.skipped >= 1
+
+        async with committing() as reader:
+            journalled = await reader.scalar(
+                text(
+                    "SELECT count(*) FROM events "
+                    "WHERE event_type = 'consolidated' "
+                    "AND object_type = 'topic' "
+                    "AND project = CAST(:p AS text) "
+                    "AND payload->>'skipped_reason' = CAST(:r AS text)"
+                ),
+                {"p": PROJECT, "r": reason},
+            )
+        assert journalled >= 1, reason
+
+
 # ---------------------------------------------------------------------------
 # The project-move door
 # ---------------------------------------------------------------------------
@@ -1241,41 +1380,69 @@ async def test_writing_the_same_project_leaves_memberships_intact(
 # ---------------------------------------------------------------------------
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
-DETECTOR_MODULE = "app.services.memory_community_detection"
+DETECTOR_BASENAME = "memory_community_detection"
 DETECTOR_PATH = "app/services/memory_community_detection.py"
 
 
-# Anchored at the start of the line and spelled as import *forms* rather than
-# as a bare substring: prose naming the module (this file, and the repository's
-# own docstring explaining why it exists) is not a reference to it, and a
-# substring match would fail the build on documentation.
-_DETECTOR_IMPORT = re.compile(
-    r"^(?:from\s+app\.services\.memory_community_detection\b"
-    r"|import\s+app\.services\.memory_community_detection\b"
-    r"|from\s+app\.services\s+import\s+[^#]*\bmemory_community_detection\b"
-    r"|.*import_module\(\s*[\"\']app\.services\.memory_community_detection)"
-)
+def _docstring_constants(tree: ast.AST) -> set[int]:
+    """Identity of every docstring node, so prose may name the module.
+
+    The repository's own docstring has to name the detector to explain why it
+    exists, and a scan that failed the build on documentation would be loosened
+    away the first time it did.
+    """
+    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, holders):
+            continue
+        first = node.body[0] if node.body else None
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            found.add(id(first.value))
+    return found
 
 
 def _detector_offenders(paths, backend_root) -> list[str]:
-    """Mirrors `tests/test_dream_jobs.py`'s family scan.
+    """Every route from a file under `app/` to the detector module.
 
-    The umbrella's own scan derives its forbidden-module set from
-    `dream_jobs.py`'s imports, so the detector becomes protected there only
-    once T2.53 wires it. This closes that window; T2.53's wiring subsumes it
-    harmlessly.
+    Parsed rather than grepped, and that is the point: a line-based scan misses
+    `from app.services import (\n    memory_community_detection,\n)` — the form
+    an import formatter produces — and misses a dotted path split across
+    adjacent string literals. The parser sees the first as one ImportFrom node
+    regardless of how it is wrapped, and folds the second into a single
+    constant before the scan ever runs.
+
+    `tests/test_dream_jobs.py`'s family scan is line-based and has both holes;
+    it is not fixed here because widening it is not this task's to do.
     """
     offenders: list[str] = []
     for path in paths:
         rel = str(path.relative_to(backend_root))
         if rel == DETECTOR_PATH:
             continue
-        for lineno, line in enumerate(path.read_text().splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            if _DETECTOR_IMPORT.match(stripped):
-                offenders.append(f"{rel}:{lineno}: {stripped}")
+        source = path.read_text()
+        if DETECTOR_BASENAME not in source:
+            continue
+        tree = ast.parse(source, filename=rel)
+        docstrings = _docstring_constants(tree)
+        for node in ast.walk(tree):
+            reached = ""
+            if isinstance(node, ast.Import):
+                reached = " ".join(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                reached = " ".join(
+                    f"{node.module or ''}.{alias.name}" for alias in node.names
+                )
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if id(node) in docstrings:
+                    continue
+                reached = node.value
+            if DETECTOR_BASENAME in reached:
+                offenders.append(f"{rel}:{node.lineno}: {reached.strip()}")
     return offenders
 
 
@@ -1293,32 +1460,78 @@ def test_no_app_code_reaches_the_detector():
     assert not _detector_offenders(paths, BACKEND)
 
 
-def test_the_detector_scan_catches_a_synthetic_offender(tmp_path):
+def _write(tmp_path, body: str):
+    offender = tmp_path / "app" / "services" / "pipeline.py"
+    offender.parent.mkdir(parents=True, exist_ok=True)
+    offender.write_text(body)
+    return offender
+
+
+def test_the_detector_scan_catches_a_plain_import(tmp_path):
     """The negative control: a scan nobody has seen fail is a scan nobody
     knows works."""
-    offender = tmp_path / "app" / "services" / "pipeline.py"
-    offender.parent.mkdir(parents=True)
-    offender.write_text(
-        "from app.services.memory_community_detection import detect_for_project\n"
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_detection import detect_for_project\n",
     )
 
     offenders = _detector_offenders([offender], tmp_path)
 
-    assert offenders == [
-        "app/services/pipeline.py:1: from app.services."
-        "memory_community_detection import detect_for_project"
-    ]
+    assert len(offenders) == 1
+    assert offenders[0].startswith("app/services/pipeline.py:1:")
+
+
+def test_the_detector_scan_catches_a_wrapped_import(tmp_path):
+    """The form an import formatter produces, and the one a line-based scan
+    misses entirely — the import statement spans three lines and no single
+    line carries both the package and the module."""
+    offender = _write(
+        tmp_path,
+        "from app.services import (\n    memory_community_detection,\n)\n",
+    )
+
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_split_dotted_path(tmp_path):
+    """Adjacent string literals concatenate at parse time, so a dynamic reach
+    spelled across two fragments is one constant by the time the scan sees it
+    — which a substring match over the raw source would never find."""
+    offender = _write(
+        tmp_path,
+        'from importlib import import_module\n'
+        'import_module("app.services." "memory_community_detection")\n',
+    )
+
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_relative_import(tmp_path):
+    offender = _write(tmp_path, "from . import memory_community_detection\n")
+
+    assert _detector_offenders([offender], tmp_path)
 
 
 def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
-    """The other half of the control. The repository's own docstring has to
-    name the module to explain why it exists, so a substring match would fail
-    the build on documentation and get loosened away the first time it did."""
+    """The other half of the control. The repository's docstring has to name
+    the module to explain why it exists, so a scan that flagged prose would be
+    loosened away the first time it fired."""
     innocent = tmp_path / "app" / "repositories" / "memory_communities.py"
     innocent.parent.mkdir(parents=True)
     innocent.write_text(
         '"""No file under `app/` may import '
         'app.services.memory_community_detection."""\n'
+    )
+
+    assert _detector_offenders([innocent], tmp_path) == []
+
+
+def test_the_detector_scan_does_not_fail_on_the_sibling_repository(tmp_path):
+    """`memory_communities` is not `memory_community_detection`; a sloppier
+    substring would forbid the repository every consumer must use."""
+    innocent = _write(
+        tmp_path,
+        "from app.repositories import memory_communities\n",
     )
 
     assert _detector_offenders([innocent], tmp_path) == []
