@@ -19,6 +19,8 @@ asserting "at least two communities" is a property rather than a coin flip.
 from __future__ import annotations
 
 import json
+import pathlib
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -1229,3 +1231,91 @@ async def test_writing_the_same_project_leaves_memberships_intact(
 
     assert response.status_code == 200, response.text
     assert {m for _, m in await member_rows(session, PROJECT)} == {a, b}
+
+
+# ---------------------------------------------------------------------------
+# Invariant 15
+# ---------------------------------------------------------------------------
+
+BACKEND = pathlib.Path(__file__).resolve().parent.parent
+DETECTOR_MODULE = "app.services.memory_community_detection"
+DETECTOR_PATH = "app/services/memory_community_detection.py"
+
+
+# Anchored at the start of the line and spelled as import *forms* rather than
+# as a bare substring: prose naming the module (this file, and the repository's
+# own docstring explaining why it exists) is not a reference to it, and a
+# substring match would fail the build on documentation.
+_DETECTOR_IMPORT = re.compile(
+    r"^(?:from\s+app\.services\.memory_community_detection\b"
+    r"|import\s+app\.services\.memory_community_detection\b"
+    r"|from\s+app\.services\s+import\s+[^#]*\bmemory_community_detection\b"
+    r"|.*import_module\(\s*[\"\']app\.services\.memory_community_detection)"
+)
+
+
+def _detector_offenders(paths, backend_root) -> list[str]:
+    """Mirrors `tests/test_dream_jobs.py`'s family scan.
+
+    The umbrella's own scan derives its forbidden-module set from
+    `dream_jobs.py`'s imports, so the detector becomes protected there only
+    once T2.53 wires it. This closes that window; T2.53's wiring subsumes it
+    harmlessly.
+    """
+    offenders: list[str] = []
+    for path in paths:
+        rel = str(path.relative_to(backend_root))
+        if rel == DETECTOR_PATH:
+            continue
+        for lineno, line in enumerate(path.read_text().splitlines(), 1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if _DETECTOR_IMPORT.match(stripped):
+                offenders.append(f"{rel}:{lineno}: {stripped}")
+    return offenders
+
+
+def test_no_app_code_reaches_the_detector():
+    """T13. Detection is Tier C: nothing on a capture or retrieval path may
+    reach it to 'accelerate' a gate."""
+    paths = [
+        p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)
+    ]
+    # A vacuous scan would pass by finding nothing to scan at all.
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the scan below would pass "
+        "vacuously; check BACKEND / the glob path"
+    )
+    assert not _detector_offenders(paths, BACKEND)
+
+
+def test_the_detector_scan_catches_a_synthetic_offender(tmp_path):
+    """The negative control: a scan nobody has seen fail is a scan nobody
+    knows works."""
+    offender = tmp_path / "app" / "services" / "pipeline.py"
+    offender.parent.mkdir(parents=True)
+    offender.write_text(
+        "from app.services.memory_community_detection import detect_for_project\n"
+    )
+
+    offenders = _detector_offenders([offender], tmp_path)
+
+    assert offenders == [
+        "app/services/pipeline.py:1: from app.services."
+        "memory_community_detection import detect_for_project"
+    ]
+
+
+def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
+    """The other half of the control. The repository's own docstring has to
+    name the module to explain why it exists, so a substring match would fail
+    the build on documentation and get loosened away the first time it did."""
+    innocent = tmp_path / "app" / "repositories" / "memory_communities.py"
+    innocent.parent.mkdir(parents=True)
+    innocent.write_text(
+        '"""No file under `app/` may import '
+        'app.services.memory_community_detection."""\n'
+    )
+
+    assert _detector_offenders([innocent], tmp_path) == []
