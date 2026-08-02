@@ -1176,3 +1176,56 @@ def test_the_connected_filter_keeps_isolated_nodes_out_of_a_community():
 
     assert groups == [(0, 1, 2)]
 
+# ---------------------------------------------------------------------------
+# The project-move door
+# ---------------------------------------------------------------------------
+
+
+async def test_moving_a_memory_between_projects_clears_its_memberships(
+    session, client, auth_headers
+):
+    """T19. `PUT /memories/{id}` is a live endpoint and `MemoryUpdate.project`
+    is writable, so once the composite FK is live the update raises unless the
+    memberships go first. The fix has to sit *before* `memory_repo.update`: it
+    flushes, so the post-update project branch that looks like its natural home
+    is unreachable by then."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+    await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+
+    response = await client.put(
+        f"/api/v1/memories/{a}",
+        json={"project": OTHER_PROJECT},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["project"] == OTHER_PROJECT
+    assert {m for _, m in await member_rows(session, PROJECT)} == {b}
+
+
+async def test_writing_the_same_project_leaves_memberships_intact(
+    session, client, auth_headers
+):
+    """T20. Comparing against the memory's current project, not merely the
+    field's presence: a no-op write must not evict a memory from its topic."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await session.flush()
+    await repo.replace_project_communities(
+        session, PROJECT, [repo.CommunityDraft(label="alpha", memory_ids=(a, b))]
+    )
+    await session.flush()
+
+    response = await client.put(
+        f"/api/v1/memories/{a}",
+        json={"project": PROJECT},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert {m for _, m in await member_rows(session, PROJECT)} == {a, b}

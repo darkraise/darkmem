@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.memory import Memory, MemoryBuffer
+from app.repositories import memory_communities
 from app.repositories.relational import (
     PostgresAuditRepository,
     PostgresMemoryRepository,
@@ -263,6 +264,22 @@ class MemoryService:
             update_fields["memory_type"] = normalize_memory_type(
                 update_fields["memory_type"]
             )
+        # Before the update, not after it. `memory_repo.update` flushes, and
+        # `memory_community_members`' composite FK on (memory_id, project) has
+        # no ON UPDATE action, so with a membership row live the flush itself
+        # raises and anything placed in the post-update project branch below
+        # would be unreachable. Deleting is the correct semantic rather than a
+        # workaround: doc 06 §7's lifecycle already decays members out of
+        # communities, and a memory that leaves project A has left A's topic
+        # space. Same shape as the demote-before-delete rule — clear the
+        # dependent rows first, or the constraint aborts the operation.
+        if "project" in update_fields:
+            current = await self.memory_repo.get(memory_id)
+            if current is not None and current.project != update_fields["project"]:
+                await memory_communities.delete_memberships_for_memory(
+                    self.session, memory_id
+                )
+
         memory = await self.memory_repo.update(memory_id, **update_fields)
         if not memory:
             return None
