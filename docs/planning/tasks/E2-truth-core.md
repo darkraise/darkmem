@@ -1300,10 +1300,52 @@ cross-cutting invariant change buried in a feature commit is not reviewable as o
 
 **Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py tests/test_communities.py -q`
 
+#### T2.68 — Two read paths key on a fingerprint that can be a sentinel
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 04 §5, invariant 2` · `Tag: rebuild` · `Gate: standing`
+
+**What.** `LLMOrchestrator.llm_fingerprint()` returns `f"{model}|{cfg.dimensions or 0}"`.
+When the embedding purpose's `dimensions` is unset — **a legal, documented
+configuration**, and the function's own docstring says so — it yields a `|0`
+sentinel, and the true-dimension fingerprint is only registered on demand by a real
+embed call.
+
+Two read paths call it and then read an embedding partition **with no embed anywhere
+on the path**:
+
+| Site | Reads |
+|---|---|
+| `app/api/routes/vectors.py:42` | `get_all_vectors` → `memory_embeddings__<slug>` |
+| `app/services/graph.py:52` | `get_louvain_clustered_vectors` → the same, via `vector.py` |
+
+Boot registers the sentinel partition (`main.py:120`), so under that configuration both
+surfaces **succeed and return empty, forever, with no error and no symptom**. Retrieval
+is unaffected: `hybrid_search` takes its fingerprint from `embed()`'s return value,
+measured as `f"{model}|{len(vec)}"` from an actual vector, so it structurally cannot hit
+the sentinel.
+
+**This is the silent-inert failure class, live in the tree.** The same trap was caught in
+T2.12's plan review before it could ship into the dream job; these two are the instances
+that already exist and that no task owns.
+
+**Done when:**
+- [ ] Neither surface can read the sentinel partition and report success — either the
+      fingerprint is resolved the way retrieval resolves it, or a `|0` result is a loud
+      refusal naming the unset `dimensions` config
+- [ ] The failure is distinguishable from a genuine empty result at the surface, not only
+      in a log
+- [ ] A test fails if either site reverts to the bare `llm_fingerprint()` read
+- [ ] The docstring on `llm_fingerprint()` records which callers may use it and which may
+      not, since its current text explains the sentinel without saying who is entitled to
+      receive one
+
+**Verify.** `cd backend && python -m pytest tests/test_vectors_route.py tests/test_graph.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-02 | T2.68, T2.12, T2.16 | 2 | **T2.68 minted: two shipped read paths key an embedding-partition read on `llm_fingerprint()`, which returns a `|0` sentinel whenever the embedding purpose's `dimensions` is unset — a legal configuration.** `app/api/routes/vectors.py:42` and `app/services/graph.py:52` both call it and read `memory_embeddings__<slug>` with no embed anywhere on the path, and boot registers the sentinel partition, so under that config both surfaces succeed and return **empty forever, with no error and no symptom**. Retrieval is unaffected — `hybrid_search` takes its fingerprint from `embed()`'s return value, measured from an actual vector, so it cannot hit the sentinel | Found by T2.12's plan review as a hazard the *plan* had normalised (every seed skipping was classified 'not an error', which would have left the dream job permanently inert while reporting a green run), then sharpened by the implementer into the observation that no read path under `app/` calls `llm_fingerprint()` safely, then corrected again by the scoped re-reviewer: the implementer's claim that every existing caller 'either follows with a real embed or reads no partition' is **false for these two**, which read partitions directly. So the plan-level trap was caught before shipping and these two are the instances already in the tree. Minted rather than folded into T2.12 because neither site is the dream job's and fixing another surface from a consolidation task is the cross-cutting-change-in-a-feature-commit pattern this epic has now declined three times |
 | 2026-08-02 | T2.67, T2.08, T2.53 | 2 | **T2.67 minted: invariant 15's source scan is bypassed by a parenthesised multi-line import — the form a formatter produces.** Measured, not reasoned: appending `from app.services import (\n    fact_lift,\n)` to the real `app/services/pipeline.py` leaves `test_no_app_code_reaches_a_family_job` passing, while the single-line form fails it. The scan's second arm does not help, and the reason is structural rather than incidental: quoting a job key is how you ask the *registry* for a job, whereas reaching a job's *body* goes through its module and needs no key, so the two arms double-cover the registry route and leave the module route open. Exposure is live and growing — `fact_lift` and `verification_recompute` have shipped bodies today and four more family members land in this epic | Found by T2.18 while closing the identical hole in its **own** detector scan, and reproduced independently by the scoped re-reviewer. T2.18 deliberately declined to widen the family scan from a topics commit, on the grounds that a cross-cutting invariant change buried in a feature commit is not reviewable as one — the same judgement T2.22 and T2.42 made about clause scope, and the right one. Its AST rebuild is the proven template: a strict superset of the regex, catching eight shapes the regex missed. Routed as its own task because the shared utility must be parameterised on a forbidden-module set the family scan derives from the umbrella's imports, and because `_ALLOWED_DREAM_JOB_LINES` must become node-addressable — a line-text allowlist re-introduces the very bug it excepts |
 | 2026-08-02 | T2.65, T2.42, T2.29, T2.24 | 2 | **T2.65 minted: fact-level retrieval heat has no counter, and T2.42 broke the premise the existing proxy rests on.** Doc 08 §6 ranks the review queue by retrieval frequency; the only counter is `memory_access_stats` (T2.29), keyed by `memory_id` and fed from the memory hybrid, and T2.24's landed ranking reaches it through `fact_sources.source_ref` cast to a memory id — a documented proxy that is correct only while facts are read through the memories sourcing them. The facts channel now serves `knowledge_triples` rows directly and records nothing, so a frequently-served fact accrues heat nowhere and §6's consequence ranking degrades toward its salience arm as that channel takes traffic. Minted as a **decision before an implementation**: either a fact-keyed counter fed from the serving path, or the proxy declared permanent with its error bound stated where a ranking reader sees it | Flagged by T2.42's implementer as a controller-facing gap and independently confirmed by its Fable review, which swept T2.29, T2.31, T2.55, T2.56 and this log and found no task owning a fact-keyed counter. Minted rather than folded into T2.43 because the question is which substrate is correct, not where to call it from — and the degradation is silent, with no error and no empty result, only a ranking that weights the wrong thing, which is the failure mode this corpus is least able to notice after the fact |
 | 2026-08-02 | T2.66, T2.42 | 2 | **T2.66 minted: the one-arm-degrade contract does not survive a database-level failure, in both channels.** Doc 07 §2 promises that a one-sided failure degrades to the other modality while a both-sided failure raises. Both the memory hybrid and the new facts channel run their arms on **one shared session**, so a database-level error in the first arm aborts the transaction and the second arm's valid SQL then fails on the aborted transaction — the channel raises where the contract promises degraded service, naming an arm that never independently failed. Both channels' contract tests pass regardless, because they simulate failure by monkeypatching the query *builder*, a pre-SQL failure that leaves the transaction usable. Fix shape is a SAVEPOINT per arm via `begin_nested()`, landed in both channels together | Proved empirically by T2.42's Fable reviewer, which broke only the keyword arm's SQL and watched the name arm's own statement error, rather than reading the contract test and believing it. Non-blocking for T2.42's merge on two grounds the reviewer named: the failure direction is loud rather than a silent empty list, and the shape is copied verbatim from `hybrid_search.py`, which the brief mandated as the template — so the defect is the template's and predates this task. Scoped over both channels deliberately: fixing one would diverge the idiom, which is exactly how the two ranking implementations already drifted |
