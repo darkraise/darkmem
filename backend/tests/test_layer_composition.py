@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import uuid as uuid_module
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -76,11 +77,12 @@ def test_a_fact_and_a_memory_sharing_a_uuid_stay_two_rows():
     memory = lc.memory_candidate(_memory_row(shared), channel_rank=1)
     fact = lc.fact_candidate(_fact_row(shared), channel_rank=1)
 
-    assert memory.key != fact.key
-    assert memory.key == f"memory:{shared}"
-    assert fact.key == f"fact:{shared}"
-    assert memory.layer == "L0"
-    assert fact.layer == "L2"
+    rows = lc.compose([memory, fact]).rows
+
+    assert len(rows) == 2
+    assert {r.key for r in rows} == {f"memory:{shared}", f"fact:{shared}"}
+    assert {r.layer for r in rows} == {"L0", "L2"}
+    assert {r.id for r in rows} == {str(shared)}
 
 
 def test_a_uuid_and_its_string_are_one_row():
@@ -175,8 +177,11 @@ def test_the_dispute_label_carries_no_count():
     label = lc.dispute_label(row, {"payload": {"contradiction": block}})
 
     assert label["enumeration"] == "first_finding"
-    for banned in ("count", "total", "contradiction_count", "contradiction_total"):
-        assert banned not in label
+    # Structural, not a blocklist: any added key fails this, including one
+    # nobody thought to ban.
+    assert set(label) == {
+        "review_state", "claim", "counterpart", "rule", "witness_origin", "enumeration",
+    }
 
 
 @pytest.mark.asyncio
@@ -668,7 +673,15 @@ async def test_a_total_rerank_failure_degrades_to_the_deterministic_order(sessio
     rows = lc.compose(candidates).rows
 
     assert await service.derive_rerank_scores("q", rows) is None
-    assert lc.compose(candidates).reranked is False
+    # The degraded path must serve the deterministic order itself, not merely
+    # report reranked=False: a total outage stamps every doc 0.0, which read
+    # as a rerank would collapse the window into one tier-ordered band.
+    degraded = lc.compose(candidates, rerank_scores=None)
+    assert degraded.reranked is False
+    assert [r.key for r in degraded.rows] == [r.key for r in rows]
+    collapsed = lc.compose(candidates, rerank_scores={c.key: 0.0 for c in candidates})
+    assert {r.band for r in collapsed.rows} == {1}
+    assert [r.band for r in degraded.rows] == [1, 2, 3]
 
 
 @pytest.mark.asyncio
@@ -862,4 +875,186 @@ def test_the_composition_is_on_the_hot_path_floor():
     """
     from tests.test_verification_judge import _HOT_PATH_MODULES
 
+    # Both modules this task minted, not only the entry point. The scan is
+    # per-module and direct-reference, so on the day the judge's reference
+    # allowlist grows, an omitted module is a transitive route into the judge
+    # that nothing fires on.
     assert "app/services/layer_composition.py" in _HOT_PATH_MODULES
+    assert "app/services/verified_evidence.py" in _HOT_PATH_MODULES
+
+
+# ─────────── the reranker reads each layer's own text (F1) ───────────
+
+
+class _PromptSpy:
+    """Captures the prompt each scoring call actually sends."""
+
+    def __init__(self):
+        self.prompts: list[str] = []
+
+    async def chat_completion(self, purpose, messages, **kwargs):
+        self.prompts.append(messages[0]["content"])
+        return json.dumps({"score": 5})
+
+    @property
+    def documents(self) -> list[str]:
+        return [p.split("Document: ", 1)[1] for p in self.prompts]
+
+
+@pytest.mark.asyncio
+async def test_every_layer_is_reranked_against_its_own_text(session):
+    """A fact's text lives under ``fact``, which none of the reranker's own
+    fall-through keys reach. Unnormalised it is scored against an empty
+    document — and because the model then returns a real number rather than a
+    zero, neither the all-zero guard nor the terminal band can see it, so the
+    band recompute would re-rank verified facts on noise while the envelope
+    reported the signal as sound."""
+    spy = _PromptSpy()
+    service = lc.LayerCompositionService(
+        _FakeLLM([0.0], "fp"), session, reranker=RerankerService(spy),
+    )
+    memory = lc.memory_candidate(
+        {**_memory_row(uuid4()), "payload": {"content": "MEMORY-TEXT"}}, channel_rank=1,
+    )
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), fact="FACT-TEXT", verification_status="confirmed"),
+        channel_rank=1,
+    )
+    article = lc.article_candidate(
+        _article_row(uuid4(), content="ARTICLE-TEXT"), channel_rank=1,
+    )
+    rows = lc.compose([memory, fact, article]).rows
+
+    await service.derive_rerank_scores("q", rows)
+
+    documents = spy.documents
+    assert len(documents) == 3
+    assert "FACT-TEXT" in documents
+    assert "MEMORY-TEXT" in documents
+    assert "ARTICLE-TEXT" in documents
+    assert "" not in documents
+
+
+def test_a_layer_with_no_declared_text_field_cannot_be_reranked():
+    row = lc.compose([lc.fact_candidate(_fact_row(uuid4()), channel_rank=1)]).rows[0]
+    assert lc.rerank_document_text(row) == "a fact"
+
+    with pytest.raises(ValueError):
+        lc.rerank_document_text(replace(row, id_kind="code"))
+
+
+# ─────────── the channel outage paths (F4) ───────────
+
+
+def _raises(*args, **kwargs):
+    async def _boom(self, *a, **kw):
+        raise RuntimeError("channel down")
+    return _boom
+
+
+@pytest.mark.asyncio
+async def test_a_memory_channel_outage_still_serves_the_facts(session, monkeypatch):
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[_fact_row(uuid4())])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _raises())
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session).search(
+        "q", project="default",
+    )
+
+    assert result.envelope.partial is True
+    assert result.envelope.channels["memory.semantic"].failed is True
+    assert result.envelope.channels["memory.keyword"].failed is True
+    assert [r.id_kind for r in result.rows] == ["fact"]
+
+
+@pytest.mark.asyncio
+async def test_a_fact_channel_outage_still_serves_the_memories(session, monkeypatch):
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[_memory_row(uuid4())])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _raises())
+
+    result = await lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session).search(
+        "q", project="default",
+    )
+
+    assert result.envelope.partial is True
+    assert result.envelope.channels["fact.keyword"].failed is True
+    assert result.envelope.channels["fact.name"].failed is True
+    assert result.envelope.channels["fact.semantic"].ran is False
+    assert [r.id_kind for r in result.rows] == ["memory"]
+
+
+@pytest.mark.asyncio
+async def test_both_channels_down_raises_rather_than_serving_empty(session, monkeypatch):
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _raises())
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _raises())
+
+    with pytest.raises(RuntimeError):
+        await lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session).search(
+            "q", project="default",
+        )
+
+
+# ─────────── the channel list weights are inert by design (F3) ───────────
+
+
+def test_the_channel_list_weights_are_order_inert_at_any_magnitude():
+    """Not a pending activation: a channel-constant multiplier cancels inside
+    the within-channel re-sort, and cross-channel ordering is rank-only. This
+    pins that, so making them 'matter' cannot be done without re-introducing
+    the cross-modality magnitude comparison doc 07 §3 rejects."""
+    candidates = [
+        lc.fact_candidate(_fact_row(uuid4(), verification_status="confirmed"), channel_rank=1),
+        lc.fact_candidate(_fact_row(uuid4(), verification_status="candidate"), channel_rank=2),
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=1),
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=2),
+    ]
+    baseline = [r.key for r in lc.compose(candidates).rows]
+
+    original = dict(lc.CHANNEL_LIST_WEIGHTS)
+    try:
+        for magnitude in (1e6, 1e-9):
+            lc.CHANNEL_LIST_WEIGHTS["fact"] = magnitude
+            assert [r.key for r in lc.compose(candidates).rows] == baseline
+    finally:
+        lc.CHANNEL_LIST_WEIGHTS.clear()
+        lc.CHANNEL_LIST_WEIGHTS.update(original)
+
+
+# ─────────── the answer budget, and one object per key ───────────
+
+
+@pytest.mark.asyncio
+async def test_the_limit_bounds_the_union_of_the_channels(session, monkeypatch):
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(
+            results=[_memory_row(uuid4()) for _ in range(5)],
+        )
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(
+            results=[_fact_row(uuid4()) for _ in range(5)],
+        )
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session).search(
+        "q", project="default", limit=5,
+    )
+
+    assert len(result.rows) == 5
+
+
+def test_two_candidates_cannot_share_one_composition_key():
+    shared = _fact_row(uuid4())
+    with pytest.raises(ValueError):
+        lc.compose([
+            lc.fact_candidate(shared, channel_rank=1),
+            lc.fact_candidate(shared, channel_rank=2),
+        ])

@@ -47,6 +47,7 @@ candidate-graph row be served as a composed result.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
@@ -99,6 +100,7 @@ __all__ = [
     "composition_key",
     "cross_layer_rrf",
     "dispute_label",
+    "rerank_document_text",
     "fact_candidate",
     "memory_candidate",
     "tier_for",
@@ -108,13 +110,24 @@ LAYERS: frozenset[str] = frozenset({"L0", "L2", "L3"})
 ID_KINDS: frozenset[str] = frozenset({"memory", "fact", "article"})
 LAYER_BY_ID_KIND: dict[str, str] = {"memory": "L0", "fact": "L2", "article": "L3"}
 
-# Per-channel list weights, equal and deliberately **constants rather than
-# config rows**. Doc 07 §11 permits tuning a ranking multiplier only against
-# the harness, and no task owns measuring a cross-layer channel weight — so a
-# config row here would be an operator-visible claim that tuning is sanctioned
-# when no measurement path exists to sanction it. Constants say the true
-# thing: these are equal, and nobody has measured otherwise. Promoting them
-# once a task owns the measurement is a one-line change.
+# Per-channel list weights — **order-inert at every magnitude, and that is a
+# consequence of the design rather than a pending activation.**
+#
+# A channel-constant multiplier cancels inside the within-channel re-sort
+# (every row of the channel scales by the same factor, so their relative order
+# is untouched), and the cross-channel comparison is rank-only by construction
+# (D2). So setting a channel to 1e6 or to 1e-9 changes nothing observable, at
+# any value. This is *not* the ``RANK_ARMS`` situation: those are inert at
+# weight 0 and become live the moment they are activated, whereas these cannot
+# become live at all under the rank-authority geometry.
+#
+# They are kept rather than deleted because they are the per-channel arm of
+# the closed vocabulary and they make the currency visible in the trace. **No
+# measurement path is owed and none should be minted** — minting a task to
+# tune a structurally dead knob is the same order-inert-knob mistake that
+# sank an earlier revision of this design. Making them matter would mean
+# giving a channel-constant score authority across channels, which is exactly
+# the cross-modality magnitude comparison doc 07 §3 rejects.
 CHANNEL_LIST_WEIGHTS: dict[str, float] = {"memory": 1.0, "fact": 1.0, "article": 1.0}
 
 # The per-row scalars an arm may read. A signal this mapping does not carry
@@ -548,6 +561,7 @@ def compose(
     """
     weights = weights or {}
     evidence = evidence or {}
+    candidates = list(candidates)
 
     for candidate in candidates:
         if not isinstance(candidate, LayerCandidate):
@@ -556,6 +570,15 @@ def compose(
                 "memory_candidate() / fact_candidate() / article_candidate(); "
                 f"got {type(candidate).__name__}: {candidate!r}"
             )
+
+    duplicated = sorted(
+        key for key, count in Counter(c.key for c in candidates).items() if count > 1
+    )
+    if duplicated:
+        raise ValueError(
+            f"two candidates share the composition key(s) {duplicated}; a key "
+            "names one object in one space, and T2.55's grouping map keys on it"
+        )
 
     # The context map is keyed by the **namespaced** key, which is why
     # ``rank_fusion.partition_by_context`` cannot be reused here: it looks a
@@ -639,6 +662,44 @@ RERANK_WINDOW = 40
 # whatever id the producer's row happened to carry.
 RERANK_KEY_FIELD = "_composition_key"
 
+# Where each layer keeps the text a reranker must actually read. A **closed
+# dispatch**, not a fall-through chain, because the fall-through is what fails
+# silently: ``RerankerService`` resolves ``content`` then ``payload.content``
+# then ``chunk_content``, and a fact's text lives under ``fact``, so a fact
+# reaching it unnormalised is scored against an empty string. The model then
+# returns a real number rather than a zero, so neither the all-zero guard nor
+# the terminal band can see it, and the band recompute re-ranks verified facts
+# on noise while the envelope reports ``reranked`` as if the signal were
+# sound. An id_kind this table does not know **raises**, for the same reason
+# the tier lookup does: a layer added without teaching the resolver its text
+# field would otherwise be scored on nothing at all.
+RERANK_TEXT_FIELDS: dict[str, tuple[str, ...]] = {
+    "memory": ("content",),
+    "fact": ("fact",),
+    "article": ("content", "title"),
+}
+
+
+def rerank_document_text(row: ComposedRow) -> str:
+    """The text a reranker scores this row against."""
+    try:
+        fields = RERANK_TEXT_FIELDS[row.id_kind]
+    except KeyError:
+        raise ValueError(
+            f"no rerank text field is known for id_kind {row.id_kind!r}; "
+            "a layer must name where its servable text lives before it can "
+            "be reranked, or it is scored against an empty document"
+        ) from None
+    payload = row.row.get("payload")
+    payload = payload if isinstance(payload, Mapping) else {}
+    for name in fields:
+        value = row.row.get(name)
+        if value is None:
+            value = payload.get(name)
+        if value:
+            return str(value)
+    return ""
+
 
 @dataclass(frozen=True)
 class ComposedResult:
@@ -672,6 +733,16 @@ class LayerCompositionService:
     :meth:`search` is the single entry point T2.58 converges Chat onto. It is
     not Chat-aware, and it has no productive caller today: T2.56 and T2.58 are
     its consumers and both are behind this task.
+
+    **It deliberately takes no ``with_trace``**, which is a correction to the
+    seam rather than an omission. On ``memory.py`` that flag chooses between
+    two parallel paths and the off position returns no envelope at all. Here
+    the envelope carries ``partial`` and doc 07 §8's unconditional
+    ``by_context_conflict`` tally, so an off position would either return a
+    result whose degradation cannot be seen — the one thing invariant 14
+    forbids — or be a knob with no observable effect. Neither is worth
+    shipping for symmetry with a method whose analogy does not hold, so
+    T2.58 inherits this signature without the flag.
     """
 
     def __init__(self, llm, session: AsyncSession, *, reranker=None):
@@ -711,7 +782,18 @@ class LayerCompositionService:
         if not window:
             return None
 
-        documents = [{**dict(row.row), RERANK_KEY_FIELD: row.key} for row in window]
+        documents = []
+        for row in window:
+            document_text = rerank_document_text(row)
+            if not document_text:
+                logger.warning(
+                    "Layer composition: %s carries no text to rerank; it will "
+                    "be scored against an empty document",
+                    row.key,
+                )
+            documents.append(
+                {**dict(row.row), "content": document_text, RERANK_KEY_FIELD: row.key}
+            )
         scored = await self.reranker.rerank(
             query,
             documents,
@@ -842,4 +924,9 @@ class LayerCompositionService:
             },
             excluded={"by_context_conflict": result.excluded_by_context_conflict},
         )
-        return ComposedResult(rows=result.rows, envelope=envelope)
+        # Each channel fetches up to ``limit`` of its own, so the union is up
+        # to one limit per layer. ``limit`` is the caller's answer budget, not
+        # a per-channel quota, so the composed order is cut here — after the
+        # ordering, by rank, never by label. Nothing is dropped for its
+        # verification status; this drops the tail of a total order.
+        return ComposedResult(rows=result.rows[:limit], envelope=envelope)
