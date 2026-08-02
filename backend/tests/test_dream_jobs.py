@@ -8,6 +8,7 @@ replaces it.
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 from pathlib import Path
 
@@ -30,6 +31,13 @@ from app.services.dream_jobs import (
     register_dream_jobs,
 )
 from app.services.job_registry import JobBusyError, JobRegistry
+
+from tests._reachability_scan import (
+    ReachabilityRules,
+    app_sources,
+    find_forbidden_reach,
+    service_modules_imported_by,
+)
 
 BACKEND = Path(__file__).resolve().parent.parent
 
@@ -277,62 +285,86 @@ async def test_trigger_route_returns_409_and_does_not_queue_a_run(
 
 # Whole files exempted from the scan entirely: the umbrella module itself,
 # which necessarily names every key. Nothing else gets a blanket pass —
-# app/main.py is scanned line-by-line like everything else (see
-# _ALLOWED_DREAM_JOB_LINES below), so a hot-path call added anywhere else in
-# main.py, outside its one legitimate registration call, still gets caught.
+# app/main.py is scanned like everything else, exempted only at the two
+# specific nodes _main_py_exempt_node_ids resolves below, so a hot-path call
+# added anywhere else in main.py, outside its one legitimate registration
+# site, still gets caught.
 _ALLOWED_DREAM_JOB_FILES = {
     "app/services/dream_jobs.py",
 }
 
-# Exact stripped lines legitimate outside the umbrella module — today, only
-# main.py's one import and one registration call in lifespan(). Keyed by
-# file so a forbidden reference anywhere else in that same file still fails.
-#
-# NOTE (T2.67): this set matches on exact stripped line *text*, which is the
-# defect T2.67 was minted to fix — the scan it belongs to is defeated by a
-# parenthesised multi-line import. When these are reworked into
-# node-addressable exemptions, the registration entry below must come with
-# them rather than being dropped as unrecognised.
-_ALLOWED_DREAM_JOB_LINES: dict[str, set[str]] = {
-    "app/main.py": {
-        "from app.services.dream_jobs import register_dream_jobs",
-        'register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))',
-    },
-}
+
+def _main_py_exempt_node_ids(rel: str, tree: ast.Module) -> set[int]:
+    """main.py's one legitimate wiring, found by structural role rather than
+    by text — the umbrella import and its single registration call, both
+    direct statements of `lifespan`.
+
+    T2.67 replaces the pre-existing exact-stripped-line-text allowlist with
+    this. Text matching has a real defect a formatter can trigger by
+    accident: two occurrences of the identical line — the real one inside
+    `lifespan`, and a second, illegitimate copy pasted in somewhere else in
+    the same file — render as the same string and would both have been
+    silently exempted. Matched by structural role instead — an ImportFrom
+    or Call node of a specific shape, found only inside the `lifespan`
+    function — a textually-identical duplicate outside that scope is not
+    swept in alongside the real node
+    (`test_a_duplicate_registration_outside_lifespan_is_still_flagged`
+    proves it).
+
+    **The `Call` arm exempts nothing for *this* call, even though `ast.Call`
+    nodes became flaggable in general once the loader-call route landed
+    (`_reachability_scan._resolve_relative_loader_call`).** That route only
+    fires for a `Call` to `import_module`/`__import__` shaped with a
+    relative literal name and a literal `package=`; `register_dream_jobs(
+    job_registry, lambda: getattr(app.state, "llm", None))` matches neither
+    the function name nor the argument shape, so it was never reachable by
+    any route before the loader-call route existed and still is not after.
+    Collecting its id here is therefore still a no-op for suppression on
+    this specific node, not because no route can ever flag a `Call` (that
+    claim is no longer true in general) but because this particular call
+    doesn't have the shape any route checks for. It is collected because
+    `test_main_wires_the_family_at_boot` reuses this exact same structural
+    walk as its "is the family actually wired at boot" presence witness,
+    and duplicating the walk in a second function would risk the two
+    drifting out of sync with each other over time.
+    """
+    if rel != "app/main.py":
+        return set()
+    exempt: set[int] = set()
+    lifespan = next(
+        (
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "lifespan"
+        ),
+        None,
+    )
+    if lifespan is None:
+        return exempt
+    for node in ast.walk(lifespan):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 0
+            and node.module == "app.services.dream_jobs"
+            and {alias.name for alias in node.names} == {"register_dream_jobs"}
+        ):
+            exempt.add(id(node))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "register_dream_jobs"
+        ):
+            exempt.add(id(node))
+    return exempt
 
 
 # Modules that are legitimately imported by the umbrella but are shared
 # infrastructure rather than a family job's body. Everything else the umbrella
 # pulls out of `app.services` is a job implementation and inherits the scan.
+# This is the escape valve for the one-hop derivation below: a future shared
+# module a job body needs to expose to outside callers (T2.13's
+# `dream_journal.py`, shared between `memory_dream` and its undo service) is
+# added here, not solved by making the derivation transitive.
 _UMBRELLA_INFRASTRUCTURE = {"job_registry"}
-
-
-def service_modules_imported_by(source: str) -> set[str]:
-    """Every `app.services` module a source file imports, in any import style.
-
-    All three spellings, because coverage has to be total rather than
-    conventional: parsing only `from app.services.X import ...` would silently
-    drop a future member wired with `from app.services import X` or
-    `import app.services.X`, and a guard with a hole nobody can see is the
-    failure mode this whole scan exists to avoid.
-    """
-    modules: set[str] = set()
-    for raw in source.splitlines():
-        line = raw.strip()
-        if line.startswith("#"):
-            continue
-        if line.startswith("from app.services."):
-            modules.add(line[len("from app.services."):].split()[0].split(".")[0])
-        elif line.startswith("from app.services import "):
-            names = line[len("from app.services import "):].split("#")[0]
-            modules.update(
-                name.strip().strip("()").split(" as ")[0].strip()
-                for name in names.split(",")
-                if name.strip().strip("()")
-            )
-        elif line.startswith("import app.services."):
-            modules.add(line[len("import app.services."):].split()[0].split(".")[0])
-    return {module for module in modules if module}
 
 
 def dream_job_implementation_modules() -> set[str]:
@@ -346,60 +378,90 @@ def dream_job_implementation_modules() -> set[str]:
     keeping a hand-maintained list means the next member (T2.09, T2.11, T2.12,
     T2.53) is covered by the act of wiring it up, with nothing to remember —
     a job that is not reachable from the umbrella is not wired at all.
+
+    **This derivation is deliberately ONE HOP — `dream_jobs.py`'s own direct
+    imports, minus `_UMBRELLA_INFRASTRUCTURE`, never a transitive closure —
+    and that is a contract other tasks depend on, not an implementation
+    detail free to "improve" into a full import-graph walk.** A transitive
+    version would forbid every module a job body imports too: T2.12 built
+    `app/repositories/memory_relations.py` for T2.16/T2.17 to import
+    specifically because repositories sit outside `app.services.*` and
+    `service_modules_imported_by` cannot see them — a second shield, but one
+    that only works because the derivation is shallow. T2.13's undo service
+    needs to share a constant with `memory_dream` through a neutral
+    `app/services/dream_journal.py` that *both* import; a transitive walk
+    would fold `dream_journal` into the forbidden set the moment
+    `memory_dream` imports it, and `dream_undo` importing the same module
+    would fail the build, taking that layout down with it. If a future job
+    body needs to import a genuinely shared module that must stay reachable
+    from outside the family, the fix is to add it to
+    `_UMBRELLA_INFRASTRUCTURE` (exactly the category that constant exists
+    for), never to widen this function into a transitive walk.
     """
     umbrella = (BACKEND / "app" / "services" / "dream_jobs.py").read_text()
     return service_modules_imported_by(umbrella) - _UMBRELLA_INFRASTRUCTURE
 
 
+def _dream_job_rules() -> ReachabilityRules:
+    """The family scan's vocabulary, all on the shared AST walk.
+
+    Module route: `app.services.dream_jobs` (the umbrella) and every module
+    `dream_job_implementation_modules()` derives (a shipped member's real
+    body) — matched against parsed import statements, and, since T2.67's
+    Critical fix, against any `str`/`bytes` constant containing one of
+    these dotted paths at an identifier boundary (`exec("import
+    app.services.fact_lift")`, a `bytes` literal decoded before use, a
+    loader-spec string). Attribute route: the same modules' bare basenames,
+    closing T2.18's residual for this scan too — `from app import
+    services; services.fact_lift.run_lift(...)` names no forbidden module
+    in any import statement. Literal route (exact-match half): the six job
+    keys (the registry-trigger vocabulary, `job_registry.trigger("fact_
+    lift")`) plus the same bare basenames the attribute route uses, so
+    `getattr(services, "fact_lift")` is caught by the same literal it would
+    have to spell out. The bare names stay exact-match only — see
+    `_reachability_scan.ReachabilityRules`'s docstring for why a substring
+    check over bare names would flag ordinary prose instead of a real
+    reach.
+    """
+    implementations = dream_job_implementation_modules()
+    modules = {"app.services.dream_jobs"} | {
+        f"app.services.{module}" for module in implementations
+    }
+    attrs = {"dream_jobs"} | implementations
+    literals = set(DREAM_JOB_KEYS) | attrs
+    return ReachabilityRules(
+        forbidden_modules=frozenset(modules),
+        forbidden_attrs=frozenset(attrs),
+        forbidden_literals=frozenset(literals),
+    )
+
+
 def _forbidden_dream_job_references(paths: list[Path], backend_root: Path) -> list[str]:
     """A forbidden reference is an import from `app.services.dream_jobs`, an
-    import from any module holding a family job's real body, or a quoted literal
-    naming one of the six family job keys — in any file outside the umbrella
-    module, and on any line outside the one legitimate registration call site.
+    import from (or attribute reach into) any module holding a family job's
+    real body, or a literal naming one of the six family job keys — in any
+    file outside the umbrella module, and at any node outside the one
+    legitimate registration site `_main_py_exempt_node_ids` resolves.
 
     Mirrors `tests/test_inert_objects.py`'s inert-purpose scan: a source
     scan that fails the build, not a convention a reviewer has to remember.
     """
-    implementations = dream_job_implementation_modules()
-    offenders: list[str] = []
-    for path in paths:
-        rel = str(path.relative_to(backend_root))
-        if rel in _ALLOWED_DREAM_JOB_FILES:
-            continue
-        allowed_lines = _ALLOWED_DREAM_JOB_LINES.get(rel, set())
-        for lineno, line in enumerate(path.read_text().splitlines(), 1):
-            stripped = line.strip()
-            if stripped.startswith("#"):
-                continue
-            forbidden = (
-                "app.services.dream_jobs" in line
-                or "from app.services import dream_jobs" in line
-                or any(
-                    f"app.services.{module}" in line
-                    or f"from app.services import {module}" in line
-                    for module in implementations
-                )
-                or any(f'"{key}"' in line or f"'{key}'" in line for key in DREAM_JOB_KEYS)
-            )
-            if forbidden and stripped not in allowed_lines:
-                offenders.append(f"{rel}:{lineno}: {stripped}")
-    return offenders
-
-
-def _app_sources() -> list[Path]:
-    return [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+    return find_forbidden_reach(
+        paths,
+        backend_root,
+        _dream_job_rules(),
+        skip_files=frozenset(_ALLOWED_DREAM_JOB_FILES),
+        exempt_node_ids=_main_py_exempt_node_ids,
+    )
 
 
 def test_no_app_code_reaches_a_family_job():
-    paths = _app_sources()
-    # A vacuous scan (e.g. BACKEND resolved to the wrong directory) would
-    # pass by finding nothing to scan at all; this floor is well below the
-    # real count (151 at the time of writing) but far above zero, so an
-    # empty or near-empty scan fails loudly instead of silently passing.
-    assert len(paths) > 100, (
-        f"only found {len(paths)} files under app/ — the source scan below "
-        "would pass vacuously; check BACKEND / the glob path"
-    )
+    paths = app_sources(BACKEND)
+    # This floor is well below the real count (151 at the time of writing)
+    # but far above zero, so an empty or near-empty scan fails loudly
+    # instead of silently passing (app_sources already asserts len > 100;
+    # this is the family scan's own belt-and-suspenders on top of it).
+    assert len(paths) > 100
     offenders = _forbidden_dream_job_references(paths, BACKEND)
     assert not offenders, (
         "a Tier-A/B (or any non-umbrella) module reached a dream-job family "
@@ -415,14 +477,251 @@ def test_main_wires_the_family_at_boot():
     `register_dream_jobs`, so none of them would notice if `app/main.py`
     stopped calling it — the family would silently stop existing in the
     running app while the whole suite stayed green. This asserts the one
-    legitimate call site the guard above allowlists actually exists."""
+    legitimate call site the guard above exempts actually exists, by the
+    same structural predicate the guard itself uses rather than a text
+    comparison.
+
+    **Residual, pre-existing and not narrowed by this fix**: this pins a
+    function literally *named* `lifespan`, not the callable FastAPI is
+    actually constructed with (`FastAPI(lifespan=...)`). A class-body
+    `async def lifespan` carrying the same import and call, never passed to
+    `FastAPI`, would satisfy this test while the app boots unwired. The
+    pre-T2.67 text-based version had the identical gap — it checked for the
+    two exact lines anywhere in the file, with no scope check at all — so
+    this is strictly no weaker than before, just not a full fix."""
     main_src = (BACKEND / "app" / "main.py").read_text()
-    stripped_lines = {line.strip() for line in main_src.splitlines()}
-    for expected in _ALLOWED_DREAM_JOB_LINES["app/main.py"]:
-        assert expected in stripped_lines, (
-            f"app/main.py no longer wires the dream-job family at boot: "
-            f"missing {expected!r}"
-        )
+    tree = ast.parse(main_src, filename="app/main.py")
+    exempt = _main_py_exempt_node_ids("app/main.py", tree)
+    kinds = {type(node).__name__ for node in ast.walk(tree) if id(node) in exempt}
+    assert kinds == {"ImportFrom", "Call"}, (
+        "app/main.py no longer wires the dream-job family at boot: expected "
+        "both the umbrella import and the register_dream_jobs() call inside "
+        f"lifespan(), found {kinds!r}"
+    )
+
+
+def test_a_duplicate_registration_outside_lifespan_is_still_flagged(tmp_path):
+    """The node-addressable allowlist's own negative control. A second,
+    textually-identical copy of main.py's one legitimate umbrella import,
+    added outside `lifespan`, is a neighbour with the same *text* as the
+    exempted import but not the same *structural role*. A text-based
+    allowlist (the pre-T2.67 shape, which matched on exact stripped line
+    text) would have silently exempted this duplicate too, since its
+    stripped line is identical to the real one; the node-addressable
+    version must still fail the build on it."""
+    offending = tmp_path / "app" / "main.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        "async def lifespan(app):\n"
+        "    from app.services.dream_jobs import register_dream_jobs\n"
+        '    register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))\n'
+        "    yield\n"
+        "\n"
+        "def _rogue_second_wireup(job_registry):\n"
+        "    from app.services.dream_jobs import register_dream_jobs\n"
+        "    register_dream_jobs(job_registry)\n"
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders == [
+        "app/main.py:7: import route: app.services.dream_jobs.register_dream_jobs"
+    ], offenders
+
+
+def test_the_family_scan_catches_a_wrapped_import(tmp_path):
+    """The form an import formatter produces, and the exact shape that
+    defeated the pre-T2.67 line-based scan: the import spans three lines and
+    no single line names both the package and the module."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(
+        f"from app.services import (\n    {module},\n)\n"
+        "\n"
+        f"async def handle_capture():\n"
+        f"    return {module}\n"
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a parenthesised multi-line import must still be caught"
+
+
+def test_the_family_scan_catches_a_split_dotted_path(tmp_path):
+    """Adjacent string literals concatenate at parse time, so a dynamic reach
+    spelled across two fragments is one constant by the time the scan sees
+    it — a substring match over raw source text would never find this."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        "from importlib import import_module\n"
+        f'import_module("app.services." "{module}")\n'
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a split-string dynamic import must still be caught"
+
+
+def test_the_family_scan_catches_a_relative_symbol_import(tmp_path):
+    """A relative import of a symbol *inside* an implementation module, not
+    the module itself, is a shape a naive combined `base.alias` string
+    misses: `base` alone carries the real module path, and appending the
+    imported symbol name pushes a trailing-segment comparison one slot out
+    of alignment. Found by inventing an evasion the existing battery did not
+    cover, per the mutation-discipline note in T2.67's brief — this closed a
+    real gap discovered while verifying this task, not a hypothetical one."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "app" / "services" / "sneaky.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(f"from .{module} import run_lift\n")
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a relative import of a symbol inside a job body must still be caught"
+
+
+def test_the_family_scan_catches_an_attribute_reach(tmp_path):
+    """T2.18's own residual, closed here for the family scan as well:
+    importing the parent package and reaching a job's body through attribute
+    access names no forbidden module in any import statement — inert today
+    only because nothing imports `app.services` as a bare handle, and live
+    the moment something does (doc 08 §5's own note on T2.53's umbrella)."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        "from app import services\n"
+        "\n"
+        "async def search():\n"
+        f"    return services.{module}.run_lift\n"
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "reach through a parent-package import must still be caught"
+
+
+def test_the_family_scan_catches_an_exec_import(tmp_path):
+    """A named-Critical fix, per re-review: the literal route used to match
+    a `str`/`bytes` constant only by exact equality, so a dotted path
+    spelled inside an `exec`/`eval` body — which is one whole-line string,
+    never equal to the bare path alone — passed clean. Reproduced against
+    the real `app/services/pipeline.py` during verification; this is the
+    permanent tmp_path regression guard for the same shape."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(f'exec("import app.services.{module}")\n')
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "an exec()-wrapped import must still be caught"
+
+
+def test_the_family_scan_catches_an_eval_dynamic_import(tmp_path):
+    # This `eval(...)` text is never executed — it is written to a tmp_path
+    # fixture file that `_forbidden_dream_job_references` only `ast.parse`s,
+    # exercising the evasion shape the scanner must catch, not running it.
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(f'_dyn = eval(\'__import__("app.services.{module}")\')\n')
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "an eval()-wrapped dynamic import must still be caught"
+
+
+def test_the_family_scan_catches_a_bytes_decoded_dynamic_import(tmp_path):
+    """`bytes` constants were not examined at all before this fix — a
+    `b"..."` literal fed through `.decode()` before reaching
+    `import_module` reached the exact same module with none of the `str`
+    literal route's fingerprints."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(
+        "from importlib import import_module\n"
+        f'import_module(b"app.services.{module}".decode())\n'
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a bytes-literal dynamic import must still be caught"
+    assert any("bytes" in o for o in offenders), offenders
+
+
+def test_the_family_scan_catches_a_loader_spec_literal(tmp_path):
+    """The `module:attr` spelling a plugin loader or entry-point resolver
+    takes as configuration — the dotted path is present but followed by a
+    colon, not a dot or end-of-string, so it must still hit the boundary
+    check rather than only an exact-equality one."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(f'_SPEC = "app.services.{module}:run_lift"\n')
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a loader-spec literal naming the module must still be caught"
+
+
+def test_the_family_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """The one Important finding a re-review raised after the Critical fix:
+    `import_module`/`__import__` called with a relative literal name and a
+    literal `package=` is a fully static, literal-spelled executable reach
+    — neither argument is computed — that no prior version of this scan
+    (or T2.18's original AST rebuild) ever recognised. Restored, in the
+    shared walker, so all three scans (family, detector, reports) gain it
+    together."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_retrieval_service.py"
+    offending.write_text(
+        "from importlib import import_module\n"
+        f'import_module(".{module}", package="app.services")\n'
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a relative import_module()+package= reach must be caught"
+    assert any("loader-call" in o for o in offenders), offenders
+
+
+def test_the_family_scan_catches_a_non_docstring_prose_constant(tmp_path):
+    """A constant that is not a docstring (not the first statement of a
+    module/class/function body) gets no exemption at all — only an actual
+    docstring does, and only by structural role, never by matching text."""
+    module = sorted(dream_job_implementation_modules())[0]
+    offending = tmp_path / "fake_capture_route.py"
+    offending.write_text(
+        "def f():\n"
+        "    pass\n"
+        f'_NOTE = "See app.services.{module} for the implementation"\n'
+    )
+    offenders = _forbidden_dream_job_references([offending], tmp_path)
+    assert offenders, "a non-docstring constant naming the module must still be caught"
+
+
+def test_the_family_scan_does_not_flag_a_bare_name_inside_ordinary_prose(tmp_path):
+    """The design choice that keeps `forbidden_literals` (bare job keys and
+    module basenames) exact-match-only rather than boundary-substring, like
+    the dotted-path route: real, currently-shipping log and help text in
+    this repository contains a bare job key as a natural substring
+    (`verification_recompute.py` logs a "verification_recompute:" prefix,
+    `memory_community_detection.py`'s help text says "topic_detection run").
+    A boundary-substring check over bare names would flag that text; this
+    pins that it does not."""
+    offending = tmp_path / "fake_help_text.py"
+    offending.write_text(
+        'HELP = "Projects visited per topic_detection run, in rotating order."\n'
+        'LOG_PREFIX = "verification_recompute: fast-arm recompute failed"\n'
+    )
+    assert _forbidden_dream_job_references([offending], tmp_path) == []
+
+
+def test_the_family_scan_does_not_fail_on_prose(tmp_path):
+    """The umbrella module's own docstring names every job key and every
+    implementation module to explain the guard it belongs to; a scan that
+    flagged its own prose would be loosened away the first time it fired."""
+    innocent = tmp_path / "app" / "services" / "some_other_module.py"
+    innocent.parent.mkdir(parents=True)
+    innocent.write_text(
+        '"""No file under `app/` may import fact_lift or trigger '
+        '"fact_lift" directly."""\n'
+    )
+    assert _forbidden_dream_job_references([innocent], tmp_path) == []
+
+
+def test_the_family_scan_does_not_fail_on_a_docstring_that_is_the_bare_key(tmp_path):
+    """The literal route matches a string constant by exact equality, not by
+    substring — deliberately, so `_STATE_CONFIG_KEY = "memory_dream_state"`
+    in the real `memory_dream.py` is never a false positive (see the module
+    docstring's note on `_reachability_scan`'s literal route). That choice
+    makes the *sentence*-shaped prose test above pass for a reason that has
+    nothing to do with docstring exemption: no English sentence equals a bare
+    job key. This is the case where the exemption is actually load-bearing —
+    a docstring whose entire text *is* exactly the forbidden literal, the
+    shape a "see also" or bare reference comment would take."""
+    innocent = tmp_path / "app" / "services" / "some_other_module.py"
+    innocent.parent.mkdir(parents=True)
+    innocent.write_text('"""fact_lift"""\n')
+    assert _forbidden_dream_job_references([innocent], tmp_path) == []
 
 
 def test_guard_fails_when_a_forbidden_call_is_introduced(tmp_path):

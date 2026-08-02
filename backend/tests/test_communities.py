@@ -1381,83 +1381,53 @@ async def test_writing_the_same_project_leaves_memberships_intact(
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 DETECTOR_BASENAME = "memory_community_detection"
+DETECTOR_MODULE = f"app.services.{DETECTOR_BASENAME}"
 DETECTOR_PATH = "app/services/memory_community_detection.py"
 
+# T2.67 lifted this scan's walk into the shared `_reachability_scan` module
+# so it and `tests/test_dream_jobs.py`'s family scan share one implementation
+# instead of two independently-drifting AST walks. `_docstring_constants` is
+# `_reachability_scan.docstring_node_ids` under its old name — kept as an
+# alias because nothing else in this file needs the rename.
+from tests._reachability_scan import (  # noqa: E402
+    ReachabilityRules,
+    app_sources,
+    docstring_node_ids as _docstring_constants,
+    find_forbidden_reach,
+)
 
-def _docstring_constants(tree: ast.AST) -> set[int]:
-    """Identity of every docstring node, so prose may name the module.
-
-    The repository's own docstring has to name the detector to explain why it
-    exists, and a scan that failed the build on documentation would be loosened
-    away the first time it did.
-    """
-    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    found: set[int] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, holders):
-            continue
-        first = node.body[0] if node.body else None
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            found.add(id(first.value))
-    return found
+# `forbidden_literals` carries only the bare basename (exact-match route);
+# the dotted `DETECTOR_MODULE` path belongs in `forbidden_modules` only —
+# it is covered there by the boundary-substring literal check T2.67's
+# Critical fix added (exec/eval, a bytes-decoded literal, a loader-spec
+# string), and putting it in both would just be redundant, not stronger.
+_DETECTOR_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({DETECTOR_MODULE}),
+    forbidden_attrs=frozenset({DETECTOR_BASENAME}),
+    forbidden_literals=frozenset({DETECTOR_BASENAME}),
+)
 
 
 def _detector_offenders(paths, backend_root) -> list[str]:
     """Every route from a file under `app/` to the detector module.
 
-    Parsed rather than grepped, and that is the point: a line-based scan misses
-    `from app.services import (\n    memory_community_detection,\n)` — the form
-    an import formatter produces — and misses a dotted path split across
-    adjacent string literals. The parser sees the first as one ImportFrom node
-    regardless of how it is wrapped, and folds the second into a single
-    constant before the scan ever runs.
-
-    `tests/test_dream_jobs.py`'s family scan is line-based and has both holes;
-    it is not fixed here because widening it is not this task's to do.
+    Delegates to the shared scanner (`_reachability_scan.find_forbidden_reach`)
+    for all three routes — import, attribute, and literal — rather than the
+    two this function checked before T2.67 (import and literal only). The
+    attribute route is what closes T2.18's own residual: `from app import
+    services` followed by `services.memory_community_detection.detect(...)`
+    named the module in no import statement at all, and was invisible to
+    both the old line-based scan and the first AST rebuild.
     """
-    offenders: list[str] = []
-    for path in paths:
-        rel = str(path.relative_to(backend_root))
-        if rel == DETECTOR_PATH:
-            continue
-        source = path.read_text()
-        if DETECTOR_BASENAME not in source:
-            continue
-        tree = ast.parse(source, filename=rel)
-        docstrings = _docstring_constants(tree)
-        for node in ast.walk(tree):
-            reached = ""
-            if isinstance(node, ast.Import):
-                reached = " ".join(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                reached = " ".join(
-                    f"{node.module or ''}.{alias.name}" for alias in node.names
-                )
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if id(node) in docstrings:
-                    continue
-                reached = node.value
-            if DETECTOR_BASENAME in reached:
-                offenders.append(f"{rel}:{node.lineno}: {reached.strip()}")
-    return offenders
+    return find_forbidden_reach(
+        paths, backend_root, _DETECTOR_RULES, skip_files=frozenset({DETECTOR_PATH})
+    )
 
 
 def test_no_app_code_reaches_the_detector():
     """T13. Detection is Tier C: nothing on a capture or retrieval path may
     reach it to 'accelerate' a gate."""
-    paths = [
-        p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)
-    ]
-    # A vacuous scan would pass by finding nothing to scan at all.
-    assert len(paths) > 100, (
-        f"only found {len(paths)} files under app/ — the scan below would pass "
-        "vacuously; check BACKEND / the glob path"
-    )
-    assert not _detector_offenders(paths, BACKEND)
+    assert not _detector_offenders(app_sources(BACKEND), BACKEND)
 
 
 def _write(tmp_path, body: str):
@@ -1512,6 +1482,115 @@ def test_the_detector_scan_catches_a_relative_import(tmp_path):
     assert _detector_offenders([offender], tmp_path)
 
 
+def test_the_detector_scan_catches_a_relative_symbol_import(tmp_path):
+    """A relative import of a *symbol inside* the detector module, not the
+    module itself, is a second shape a naive combined `base.alias` string
+    misses: `base` alone ("memory_community_detection") carries the real
+    module path, and appending the imported symbol name pushes a
+    trailing-segment comparison one slot out of alignment. Found by
+    inventing an evasion the existing battery did not cover, per the
+    mutation-discipline note in T2.67's brief."""
+    offender = _write(
+        tmp_path, "from .memory_community_detection import detect_for_project\n"
+    )
+
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_parent_package_attribute_reach(tmp_path):
+    """T2.18's own residual, closed here: importing the parent package and
+    reaching the detector through attribute access names the detector in no
+    import statement at all, so the import route alone is structurally blind
+    to it — inert until something imports `app.services` as a bare handle,
+    which is exactly what this shape does."""
+    offender = _write(
+        tmp_path,
+        "from app import services\n"
+        "\n"
+        "def call():\n"
+        "    return services.memory_community_detection.detect_for_project\n",
+    )
+
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_an_exec_import(tmp_path):
+    """T2.67's Critical fix, shared with the family scan: the literal route
+    used to match a `str` constant by exact equality only, so a dotted path
+    spelled inside an `exec` body — one whole-line string, never equal to
+    the bare path alone — passed clean."""
+    offender = _write(tmp_path, 'exec("import app.services.memory_community_detection")\n')
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_bytes_decoded_dynamic_import(tmp_path):
+    """`bytes` constants were not examined at all before this fix."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(b"app.services.memory_community_detection".decode())\n',
+    )
+    offenders = _detector_offenders([offender], tmp_path)
+    assert offenders
+    assert any("bytes" in o for o in offenders), offenders
+
+
+def test_the_detector_scan_catches_a_loader_spec_literal(tmp_path):
+    offender = _write(
+        tmp_path, '_SPEC = "app.services.memory_community_detection:detect_for_project"\n'
+    )
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """Restored after a re-review's Important finding: `import_module`
+    called with a relative literal name and a literal `package=` is a
+    fully static, literal-spelled executable reach that predates this
+    scan's own history of misses — shared across all three scans via the
+    walker rather than fixed here alone."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(".memory_community_detection", package="app.services")\n',
+    )
+    offenders = _detector_offenders([offender], tmp_path)
+    assert offenders
+    assert any("loader-call" in o for o in offenders), offenders
+
+
+def test_the_detector_scan_catches_a_non_docstring_prose_constant(tmp_path):
+    offender = _write(
+        tmp_path,
+        "def f():\n"
+        "    pass\n"
+        '_NOTE = "See app.services.memory_community_detection for the implementation"\n',
+    )
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_does_not_flag_a_bare_name_inside_ordinary_prose(tmp_path):
+    """The bare basename `forbidden_literals` route stays exact-match only.
+    A non-docstring constant that merely *mentions* the detector's own bare
+    basename inside a full sentence — not a docstring (so the docstring
+    exemption is not what is being tested here), not the dotted
+    `app.services.` path (so the boundary-substring module route is not
+    what is being tested here either) — must not be flagged: a
+    boundary-substring check over `forbidden_literals` would catch this
+    sentence (the basename sits at a clean word boundary on both sides),
+    which is exactly the false-positive shape this discipline exists to
+    avoid. Mutating the exact check to `_contains_at_boundary` and rerunning
+    this file's tests during T2.67's re-review verification made only this
+    test (and its family-scan counterpart) fail — confirming it actually
+    exercises the discipline it names, unlike an earlier draft of this test
+    that searched for a dream-job key the detector scan's own vocabulary
+    does not even contain."""
+    offender = _write(
+        tmp_path,
+        'NOTE = "Do not call memory_community_detection directly from a hot path."\n',
+    )
+    assert _detector_offenders([offender], tmp_path) == []
+
+
 def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
     """The other half of the control. The repository's docstring has to name
     the module to explain why it exists, so a scan that flagged prose would be
@@ -1522,6 +1601,22 @@ def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
         '"""No file under `app/` may import '
         'app.services.memory_community_detection."""\n'
     )
+
+    assert _detector_offenders([innocent], tmp_path) == []
+
+
+def test_the_detector_scan_does_not_fail_on_a_docstring_that_is_the_bare_module_path(
+    tmp_path,
+):
+    """The literal route matches a string constant by exact equality, not by
+    substring, so the sentence-shaped prose test above passes for a reason
+    unrelated to docstring exemption: no full sentence equals the bare
+    module path. This is the case where the exemption actually carries
+    weight — a docstring whose entire text *is* exactly the forbidden
+    literal, the shape a bare "see also" reference would take."""
+    innocent = tmp_path / "app" / "repositories" / "memory_communities.py"
+    innocent.parent.mkdir(parents=True)
+    innocent.write_text('"""app.services.memory_community_detection"""\n')
 
     assert _detector_offenders([innocent], tmp_path) == []
 

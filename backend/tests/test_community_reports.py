@@ -34,6 +34,8 @@ from app.repositories import memory_communities as repo
 from app.services import memory_community_reports as reports
 from app.utils.ids import new_id
 
+from tests._reachability_scan import ReachabilityRules, app_sources, find_forbidden_reach
+
 PROJECT = "t219-reports"
 OTHER_PROJECT = "t219-reports-other"
 
@@ -427,72 +429,124 @@ async def test_set_report_merges_properties_without_clobbering_t218s_keys(sessio
 # ---------------------------------------------------------------------------
 
 REPORTS_BASENAME = "memory_community_reports"
+REPORTS_MODULE = f"app.services.{REPORTS_BASENAME}"
 REPORTS_PATH = "app/services/memory_community_reports.py"
+REPORTS_MODULE = f"app.services.{REPORTS_BASENAME}"
+
+# T2.20 amendment (2026-08-02): this module's own docstring names T2.20's
+# browsing surface as the intended consumer of `report_status` — "T2.20
+# inherits `report_status` as the read-time projection its browsing surface
+# renders from, rather than re-deriving the three-state classification
+# against `report_string IS NULL` directly." A blanket module-name ban
+# cannot honour that without also forbidding the only correct way to satisfy
+# it, so the scan is precise at the symbol level for exactly these five pure,
+# side-effect-free names (a plain function of stored columns plus its four
+# string constants; no session, no LLM, no I/O). Every other route to this
+# module — a whole-module import, an attribute-style `from app.services
+# import memory_community_reports`, any of the LLM-calling functions
+# (`generate_report`, `generate_reports`), or a mixed import naming even one
+# unsafe symbol alongside a safe one — is still caught, proven below.
+SAFE_REPORT_PROJECTION_SYMBOLS = frozenset(
+    {
+        "report_status",
+        "REPORT_STATUS_READY",
+        "REPORT_STATUS_PENDING",
+        "REPORT_STATUS_FAILED",
+        "REPORT_STATUS_SKIPPED",
+    }
+)
+
+# T2.67 folds this scan onto the shared `_reachability_scan` walker (raised
+# in that task's re-review as a third instance of the same decorative-guard
+# shape: this scan's own `if REPORTS_BASENAME not in source: continue`
+# prefilter ran on raw source *text* before the AST walk below ever got a
+# chance to run, so `import_module('app.services.memory_community' '_
+# reports')` — two adjacent string literals the parser folds into one
+# constant, exactly the case this scan's own docstring claimed to cover —
+# never even reached the parser: the unsplit basename never appears in the
+# raw text, so the prefilter skipped the file outright. Dropping the
+# prefilter and reusing the shared walker closes that the same way T2.67's
+# Critical fix closed the family/detector scans' literal-route gap.
+#
+# **This is not a pure superset of the scan it replaces — say what changed,
+# not only what was gained.** The old scan matched `REPORTS_BASENAME` by
+# *substring* over every non-docstring `str` constant, with no distinction
+# between a bare mention and a dotted path. The shared walker's
+# `forbidden_literals` is exact-match-only (T2.67's Critical fix made that
+# deliberate, to stop a bare name colliding with ordinary prose elsewhere in
+# the tree); `forbidden_modules` covers the dotted `app.services.<x>` form
+# by boundary-substring, not the bare basename alone. Three shapes that the
+# old substring check caught therefore do not survive unchanged:
+#   1. `import_module(".memory_community_reports", package="app.services")`
+#      — an executable relative-import-plus-package reach. Restored by the
+#      loader-call route (`_resolve_relative_loader_call`), which all three
+#      scans now share, so this one is not actually lost.
+#   2. A prefix-free literal — `"services.memory_community_reports"`,
+#      naming the module without `app.services.` — genuinely lost, and
+#      folded into the documented computed/partial-spelling bound in
+#      `_reachability_scan`'s module docstring rather than chased: turning
+#      it into an executable reach needs the missing prefix reconstructed
+#      from context, which is runtime string surgery, not a literal spelling.
+#   3. A bare mention of the basename inside otherwise-ordinary prose (a
+#      non-docstring constant, e.g. "do not call memory_community_reports
+#      directly") — also genuinely lost, same disclosed bound, and the
+#      same tradeoff the family/detector scans' bare-name exact-match
+#      discipline already accepts for the reasons given there.
+_REPORTS_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({REPORTS_MODULE}),
+    forbidden_attrs=frozenset({REPORTS_BASENAME}),
+    forbidden_literals=frozenset({REPORTS_BASENAME}),
+)
 
 
-def _docstring_constants(tree: ast.AST) -> set[int]:
-    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    found: set[int] = set()
+
+
+def _safe_projection_import_node_ids(rel: str, tree: ast.Module) -> set[int]:
+    """The one legitimate route into this module: a from-import naming only
+    pure, side-effect-free projection symbols.
+
+    All-or-nothing per statement — a single unsafe name alongside safe ones
+    exempts nothing, so `from ... import report_status, generate_reports`
+    is still an offence. Whole-module imports and attribute-style reaches
+    are never exempted here, because the exemption is granted to a specific
+    `ImportFrom` node, not to the module name appearing in a file.
+    """
+    exempt: set[int] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, holders):
-            continue
-        first = node.body[0] if node.body else None
         if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
+            isinstance(node, ast.ImportFrom)
+            and node.module == REPORTS_MODULE
+            and node.level == 0
+            and node.names
+            and all(a.name in SAFE_REPORT_PROJECTION_SYMBOLS for a in node.names)
         ):
-            found.add(id(first.value))
-    return found
-
+            exempt.add(id(node))
+    return exempt
 
 def _report_module_offenders(paths, backend_root) -> list[str]:
     """Every route from a file under `app/` to the report-generation module.
 
-    Parsed, not grepped, for the same reason T2.18's detector scan is parsed:
-    a line-based scan misses a wrapped `from app.services import (\n
-    memory_community_reports,\n)` and a dotted path split across adjacent
-    string literals.
+    Merge resolution (T2.20 + T2.67): T2.67 folds this scan onto the shared
+    walker; T2.20 made it precise at the symbol level. Both are load-bearing
+    and neither branch had the other, so the symbol precision is carried onto
+    the walker as a node exemption rather than as a special case inside the
+    scan — the same mechanism `main.py`'s wiring uses, matched by node
+    identity within this file's own parse, never by rendered text.
     """
-    offenders: list[str] = []
-    for path in paths:
-        rel = str(path.relative_to(backend_root))
-        if rel == REPORTS_PATH:
-            continue
-        source = path.read_text()
-        if REPORTS_BASENAME not in source:
-            continue
-        tree = ast.parse(source, filename=rel)
-        docstrings = _docstring_constants(tree)
-        for node in ast.walk(tree):
-            reached = ""
-            if isinstance(node, ast.Import):
-                reached = " ".join(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                reached = " ".join(
-                    f"{node.module or ''}.{alias.name}" for alias in node.names
-                )
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if id(node) in docstrings:
-                    continue
-                reached = node.value
-            if REPORTS_BASENAME in reached:
-                offenders.append(f"{rel}:{node.lineno}: {reached.strip()}")
-    return offenders
+    return find_forbidden_reach(
+        paths,
+        backend_root,
+        _REPORTS_RULES,
+        skip_files=frozenset({REPORTS_PATH}),
+        exempt_node_ids=_safe_projection_import_node_ids,
+    )
 
 
 def test_no_app_code_reaches_report_generation():
     """Report generation is Tier C: nothing on a capture or retrieval path
     may reach it. This is the structural proof for 'never blocks a read' —
     a call counter cannot show a negative, an AST reachability scan can."""
-    paths = [
-        p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)
-    ]
-    assert len(paths) > 100, (
-        f"only found {len(paths)} files under app/ — the scan would pass "
-        "vacuously; check BACKEND / the glob path"
-    )
-    assert not _report_module_offenders(paths, BACKEND)
+    assert not _report_module_offenders(app_sources(BACKEND), BACKEND)
 
 
 def _write(tmp_path, body: str):
@@ -520,6 +574,42 @@ def test_the_scan_catches_a_wrapped_import(tmp_path):
     assert _report_module_offenders([offender], tmp_path)
 
 
+def test_the_scan_catches_an_adjacent_string_literal_split(tmp_path):
+    """The decorative-guard defect T2.67's re-review found: the prefilter
+    this scan carried before folding onto the shared walker checked whether
+    `REPORTS_BASENAME` appeared in the raw *source text*, before any
+    parsing happened. Splitting the basename across two adjacent string
+    literals — which Python's parser folds into one constant at parse time,
+    long before this scan would ever see it — made the unsplit basename
+    never appear in the raw text, so the prefilter skipped the file outright
+    and the AST walk underneath it, which really could have caught this,
+    never ran at all."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        "import_module('app.services.memory_community' '_reports')\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_catches_a_relative_loader_call_with_package(tmp_path):
+    """The Important finding a re-review raised: the old (pre-fold-in)
+    substring-based scan caught `import_module(".memory_community_reports",
+    package="app.services")`, and folding onto the shared walker's
+    exact-match `forbidden_literals` silently dropped it — the one
+    genuinely executable shape among the three the fold-in traded away.
+    Restored in the shared walker (`_resolve_relative_loader_call`), so all
+    three scans, including this one, catch it again."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(".memory_community_reports", package="app.services")\n',
+    )
+    offenders = _report_module_offenders([offender], tmp_path)
+    assert offenders
+    assert any("loader-call" in o for o in offenders), offenders
+
+
 def test_the_scan_does_not_fail_on_prose(tmp_path):
     innocent = tmp_path / "app" / "repositories" / "memory_communities.py"
     innocent.parent.mkdir(parents=True)
@@ -538,3 +628,50 @@ def test_the_scan_does_not_fail_on_the_detector_module_name(tmp_path):
         "from app.services import memory_community_detection\n",
     )
     assert _report_module_offenders([innocent], tmp_path) == []
+
+
+def test_the_scan_allows_the_pure_report_status_projection(tmp_path):
+    """T2.20's amendment: `report_status` and its four constants are a pure
+    read-time projection of stored columns, named by this module's own
+    docstring as T2.20's browsing surface's intended import — not the
+    LLM-calling capability invariant 15 exists to contain."""
+    innocent = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import (\n"
+        "    REPORT_STATUS_READY,\n"
+        "    report_status,\n"
+        ")\n",
+    )
+    assert _report_module_offenders([innocent], tmp_path) == []
+
+
+def test_the_scan_still_catches_generate_reports_by_precise_name(tmp_path):
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import generate_report\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_still_catches_a_mixed_import_with_one_unsafe_name(tmp_path):
+    """One unsafe symbol in the same import statement voids the exemption —
+    the allowlist is all-or-nothing per statement, not per-name filtering."""
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_reports import (\n"
+        "    report_status,\n"
+        "    generate_reports,\n"
+        ")\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_still_catches_the_whole_module_import(tmp_path):
+    """`import app.services.memory_community_reports` reaches everything in
+    the module through attribute access, so it is never exempt regardless of
+    which attributes are actually used."""
+    offender = _write(
+        tmp_path,
+        "import app.services.memory_community_reports\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
