@@ -727,6 +727,7 @@ async def committing(setup_database):
             # suite's tag-sweep assertions would then count.
             for statement in (
                 "DELETE FROM memory_relations WHERE project LIKE 't212-%'",
+                "DELETE FROM knowledge_triples WHERE project LIKE 't212-%'",
                 "DELETE FROM memories WHERE project LIKE 't212-%'",
                 "DELETE FROM tags WHERE name LIKE 't212-%'",
                 "DELETE FROM config WHERE key = 'memory_dream_state'",
@@ -1608,6 +1609,55 @@ async def _three_action_fixture(committing, project):
         await put_vector(session, dup_a, [0.0, 1.0, 0.0, 0.0])
         await put_vector(session, dup_b, [0.0, 1.0, 0.0, 0.0])
         await put_vector(session, lone, [0.0, 0.0, 1.0, 0.0])
+        # Real references *to* OLD, so the repointing assertion below has
+        # something a merge could move. Without them all four counters read
+        # 0 == 0 and a hard repoint of every one of them passes unnoticed.
+        await session.execute(
+            text(
+                "INSERT INTO memory_relations (id, source_memory_id, "
+                " target_memory_id, rel_type, project, properties) "
+                "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), "
+                "        CAST(:t AS uuid), 'FOLLOWS', CAST(:p AS text), "
+                "        CAST('{}' AS jsonb))"
+            ),
+            {"id": str(new_id()), "s": str(lone), "t": str(older), "p": project},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO memory_relations (id, source_memory_id, "
+                " target_memory_id, rel_type, project, properties) "
+                "VALUES (CAST(:id AS uuid), CAST(:s AS uuid), "
+                "        CAST(:t AS uuid), 'DEPENDS_ON', CAST(:p AS text), "
+                "        CAST('{}' AS jsonb))"
+            ),
+            {"id": str(new_id()), "s": str(older), "t": str(dup_b), "p": project},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO memory_crossrefs (memory_id, related_memory_id, "
+                " score) VALUES (CAST(:m AS uuid), CAST(:r AS uuid), 0.5)"
+            ),
+            {"m": str(older), "r": str(lone)},
+        )
+        fact_id = new_id()
+        await session.execute(
+            text(
+                "INSERT INTO knowledge_triples (id, subject_name, object_name, "
+                " rel_type, reference_time, fact, project, triple_key) "
+                "VALUES (CAST(:id AS uuid), 'api', '8000', 'LISTENS_ON', "
+                "        now(), 'the api listens on 8000', "
+                "        CAST(:p AS text), CAST(:key AS text))"
+            ),
+            {"id": str(fact_id), "p": project, "key": f"{project}-api-8000"},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO fact_sources (id, fact_id, source_kind, "
+                " source_ref) VALUES (CAST(:id AS uuid), CAST(:f AS uuid), "
+                " 'memory', CAST(:ref AS text))"
+            ),
+            {"id": str(new_id()), "f": str(fact_id), "ref": str(older)},
+        )
         await session.commit()
 
     def pair_reply(body: str) -> str:
@@ -1703,6 +1753,9 @@ class TestNoPathDeletesOrHardMerges:
         from the retired memory onto the survivor."""
         fixture = await _three_action_fixture(committing, project)
         before = await _reference_counts(committing, fixture["older"])
+        # Non-vacuity: every counter must have something in it, or a hard
+        # repoint of all four would pass this test unnoticed.
+        assert all(count > 0 for count in before.values()), before
 
         await run_cycle(committing, fixture["stub"])
 
@@ -1825,7 +1878,12 @@ class TestJournalling:
                 },
             )
             await session.commit()
-        assert await edge_count(committing, project) == 0
+        assert await edge_row(
+            committing,
+            payload["after"]["edge"]["source"],
+            payload["after"]["edge"]["target"],
+            payload["after"]["edge"]["rel_type"],
+        ) is None
 
         # Refine: summary and tags, and nothing else.
         payload = events["refine"]
@@ -2042,3 +2100,147 @@ class TestJobWiring:
         )
 
         assert SHIPPED_DREAM_JOBS[MEMORY_DREAM_JOB_KEY] == "memory_dream"
+
+
+# ── the associate arm's own status guard ─────────────────────────────────
+
+
+class TestAssociateStatusGuard:
+    async def test_an_edge_is_never_written_against_a_retired_memory(
+        self, committing, project, run_cycle
+    ):
+        """One cycle, no interleaving: A pairs with B as `subsumes` and with C
+        as `duplicate`, so the subsume retires A before the associate action for
+        (A, C) runs.
+
+        The subsume arm can leave the status question to the primitive, which
+        re-reads the row under the same lock; this arm calls no primitive, so
+        nothing downstream would catch it. Writing the edge anyway files a
+        hygiene item that is permanently `open` against a pair supersession has
+        already resolved — and it never self-corrects, because a retired memory
+        leaves the active probe and the pair is never re-derived."""
+        async with committing() as session:
+            await seed_partition(session)
+            first = await seed_memory(
+                session, project=project, content="one truth", created_at=NOW
+            )
+            corrects = await seed_memory(
+                session,
+                project=project,
+                content="one truth, corrected",
+                created_at=NOW + timedelta(hours=1),
+            )
+            echoes = await seed_memory(
+                session,
+                project=project,
+                content="one truth, restated",
+                created_at=NOW + timedelta(hours=2),
+            )
+            await put_vector(session, first, [1.0, 0.0, 0.0, 0.0])
+            await put_vector(session, corrects, [0.99, 0.1, 0.0, 0.0])
+            await put_vector(session, echoes, [0.99, -0.1, 0.0, 0.0])
+            await session.commit()
+
+        def pair_reply(body: str) -> str:
+            return verdict("duplicate" if "restated" in body else "subsumes")
+
+        stub = StubLLM(pair_verdict=pair_reply, refine=None)
+
+        outcome = await run_cycle(
+            committing, stub, refine_batch=0, near_duplicate_threshold_pct=99
+        )
+
+        assert outcome.subsumed == 1
+        assert outcome.associated == 0
+        assert outcome.stale_skipped == 1
+        assert (await memory_row(committing, first))["status"] == "superseded"
+        assert await edge_count(committing, project) == 0
+        events = await consolidated_events(committing, project)
+        assert [event["payload"]["action"] for event in events] == ["subsume"]
+
+
+# ── refine's before-state is read under the lock, tags included ──────────
+
+
+class TestRefineBeforeState:
+    async def test_a_tag_edit_during_the_compute_phase_is_journalled(
+        self, committing, project, monkeypatch, run_cycle
+    ):
+        """Phase C runs for minutes with no transaction open, so a tag edit can
+        land between the read and the write. `content` is sha-guarded and
+        `summary` is re-read under the lock; tags must be too, or the journal
+        misstates the state an undo restores to and the edit is both clobbered
+        and unrecoverable."""
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session, project=project, content="the sweeper runs hourly"
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await PostgresMemoryRepository(session).set_tags(
+                target, ["t212-before"]
+            )
+            await session.commit()
+
+        original = dream.apply_refine
+
+        async def edit_tags_then_apply(session, action, **kwargs):
+            async with committing() as other:
+                await PostgresMemoryRepository(other).set_tags(
+                    action.memory.memory_id, ["t212-edited-during-phase-c"]
+                )
+                await other.commit()
+            monkeypatch.setattr(dream, "apply_refine", original)
+            return await original(session, action, **kwargs)
+
+        monkeypatch.setattr(dream, "apply_refine", edit_tags_then_apply)
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"),
+            refine=refine(summary="s", tags=["t212-after"]),
+        )
+
+        outcome = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert outcome.refined == 1
+        payload = (await consolidated_events(committing, project, target))[0][
+            "payload"
+        ]
+        assert payload["before"]["tags"] == ["t212-edited-during-phase-c"]
+        assert payload["after"]["tags"] == ["t212-after"]
+
+
+# ── the registered runner's own closure ──────────────────────────────────
+
+
+class TestRegisteredRunner:
+    async def test_triggering_the_job_runs_a_real_cycle(self, committing, project):
+        """The runner closure reads its config every tick and drives the cycle;
+        nothing else in this file executes it, so a wiring regression would
+        leave the whole suite green while the scheduled job did nothing."""
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from app.config import settings
+        from app.services.dream_jobs import MEMORY_DREAM_JOB_KEY, register_dream_jobs
+        from app.services.job_registry import JobRegistry
+
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        engine = create_async_engine(settings.test_database_url)
+        registry = JobRegistry(async_sessionmaker(engine, expire_on_commit=False))
+        register_dream_jobs(registry, lambda: stub)
+        try:
+            await registry.set_config(MEMORY_DREAM_JOB_KEY, {"refine_batch": 0})
+            cfg = await registry.trigger(MEMORY_DREAM_JOB_KEY)
+            assert cfg.last_status == "ok"
+        finally:
+            await registry.stop_all()
+            async with async_sessionmaker(engine)() as cleanup:
+                await cleanup.execute(
+                    text("DELETE FROM config WHERE key = 'job:memory_dream'")
+                )
+                await cleanup.commit()
+            await engine.dispose()
+
+        assert (await memory_row(committing, older))["status"] == "superseded"
+        assert (await memory_row(committing, older))["superseded_by"] == str(newer)
