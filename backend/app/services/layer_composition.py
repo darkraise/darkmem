@@ -54,8 +54,11 @@ from app.services.rank_fusion import (
     RowContext,
     row_context_from_applies_when,
 )
+from app.services.verified_evidence import CONTRADICTION_EVIDENCE_KEY
 
 __all__ = [
+    "COUNTERPART_ABSENT_NO_FINDING",
+    "DISPUTED",
     "ID_KINDS",
     "LAYERS",
     "LAYER_BY_ID_KIND",
@@ -63,6 +66,7 @@ __all__ = [
     "article_candidate",
     "composition_key",
     "cross_layer_rrf",
+    "dispute_label",
     "fact_candidate",
     "memory_candidate",
 ]
@@ -85,6 +89,15 @@ CHANNEL_LIST_WEIGHTS: dict[str, float] = {"memory": 1.0, "fact": 1.0, "article":
 # arm (facts have no heat or recency counter until T2.65) needs no
 # special-casing to be left alone by it.
 SIGNAL_KEYS: tuple[str, ...] = ("confidence", "importance", "heat", "recency")
+
+DISPUTED = "disputed"
+
+# What the composition says when a disputed fact has no counterpart block on
+# its latest verified event. It says "no scan produced one here" and never
+# "no counterpart exists" — the three causes of absence (a recovery, a
+# caller-overridden verdict, a dispute predating the writer) are not
+# distinguishable from the journal.
+COUNTERPART_ABSENT_NO_FINDING = "no_finding_recorded"
 
 
 def composition_key(id_kind: str, wire_id: str) -> str:
@@ -188,6 +201,70 @@ class LayerCandidate:
         if self.channel_rank < 1:
             raise ValueError(f"channel_rank is 1-based, got {self.channel_rank}")
         object.__setattr__(self, "key", composition_key(self.id_kind, self.id))
+
+
+def _triple(subject: object, rel_type: object, obj: object, ident: object) -> dict:
+    """One claim, in the shape both sides of a dispute are rendered in."""
+    return {
+        "subject": subject,
+        "rel_type": rel_type,
+        "object": obj,
+        "id": None if ident is None else str(ident),
+    }
+
+
+def dispute_label(row: Mapping, evidence: Mapping | None) -> dict | None:
+    """A disputed fact's label, with both sides when the journal has both.
+
+    Three shapes, and the three are distinguishable: ``None`` for a fact that
+    is not disputed, a block naming the counterpart, and a block saying no
+    finding was recorded. Collapsing the third into the first would make "we
+    know of a contradiction but not which" read as "there is no contradiction".
+
+    **Both sides are rendered in the same shape**, and neither is privileged
+    by it. A rendering that flattened the counterpart to a string while
+    keeping the fact's own triple structured would have silently picked a
+    winner in the layout.
+
+    ``enumeration`` is copied **verbatim** and never re-derived, and no count
+    or total is emitted. The value exists to say the block names the
+    counterpart the verdict turned on rather than every counterpart in the
+    database; a ``contradiction_count`` beside it would let a renderer say
+    "the only contradiction", which is the claim the value forbids.
+    """
+    if row.get("verification_status") != DISPUTED:
+        return None
+
+    claim = _triple(
+        row.get("subject_name"),
+        row.get("rel_type"),
+        row.get("object_name"),
+        row.get("fact_id") if row.get("fact_id") is not None else row.get("id"),
+    )
+    payload = (evidence or {}).get("payload")
+    block = payload.get(CONTRADICTION_EVIDENCE_KEY) if isinstance(payload, Mapping) else None
+
+    if not isinstance(block, Mapping):
+        return {
+            "review_state": row.get("review_state"),
+            "claim": claim,
+            "counterpart": None,
+            "counterpart_absent": COUNTERPART_ABSENT_NO_FINDING,
+        }
+
+    return {
+        "review_state": row.get("review_state"),
+        "claim": claim,
+        "counterpart": _triple(
+            block.get("counterpart_subject"),
+            block.get("counterpart_rel_type"),
+            block.get("counterpart_object"),
+            block.get("counterpart_id"),
+        ),
+        "rule": block.get("rule"),
+        "witness_origin": block.get("witness_origin"),
+        "enumeration": block.get("enumeration"),
+    }
 
 
 def memory_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:

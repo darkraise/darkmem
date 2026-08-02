@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 
 from app.services import layer_composition as lc
+from app.services.events import record_event
+from app.services.verified_evidence import latest_verified_evidence
+
+PROJECT = "t2-43-layer-composition"
 
 
 def _memory_row(memory_id, **extra) -> dict:
@@ -103,3 +109,97 @@ def test_a_candidate_cannot_claim_a_foreign_layer():
         lc.LayerCandidate(
             id=str(uuid4()), id_kind="fact", layer="L0", channel_rank=1, row={},
         )
+
+
+# ─────────────── the dispute, served with both sides (D8) ───────────────
+
+
+def _counterpart_block(**overrides) -> dict:
+    block = {
+        "counterpart_id": str(uuid4()),
+        "counterpart_subject": "postgres",
+        "counterpart_rel_type": "DEPLOYED_ON",
+        "counterpart_object": "fly.io",
+        "rule": "functional_object_conflict",
+        "witness_origin": "origin-7",
+        "enumeration": "first_finding",
+    }
+    block.update(overrides)
+    return block
+
+
+def test_an_undisputed_fact_has_no_dispute_label():
+    row = _fact_row(uuid4(), verification_status="corroborated")
+    assert lc.dispute_label(row, None) is None
+
+
+def test_both_sides_are_rendered_in_the_same_shape():
+    block = _counterpart_block()
+    row = _fact_row(uuid4(), verification_status="disputed", review_state="open")
+    label = lc.dispute_label(row, {"payload": {"contradiction": block}})
+
+    assert set(label["claim"]) == set(label["counterpart"])
+    assert set(label["claim"]) == {"subject", "rel_type", "object", "id"}
+    assert label["claim"]["subject"] == "postgres"
+    assert label["claim"]["object"] == "homelab"
+    assert label["counterpart"]["object"] == "fly.io"
+    assert label["counterpart"]["id"] == block["counterpart_id"]
+    assert label["rule"] == "functional_object_conflict"
+    assert label["witness_origin"] == "origin-7"
+
+
+def test_an_absent_block_is_not_an_absent_dispute():
+    row = _fact_row(uuid4(), verification_status="disputed", review_state="open")
+    label = lc.dispute_label(row, {"payload": {"outcome": "dispute"}})
+
+    assert label is not None
+    assert label["counterpart"] is None
+    assert label["counterpart_absent"] == lc.COUNTERPART_ABSENT_NO_FINDING
+    assert lc.dispute_label(_fact_row(uuid4()), None) is None
+
+
+def test_the_dispute_label_carries_no_count():
+    block = _counterpart_block()
+    row = _fact_row(uuid4(), verification_status="disputed", review_state="open")
+    label = lc.dispute_label(row, {"payload": {"contradiction": block}})
+
+    assert label["enumeration"] == "first_finding"
+    for banned in ("count", "total", "contradiction_count", "contradiction_total"):
+        assert banned not in label
+
+
+@pytest.mark.asyncio
+async def test_the_counterpart_comes_from_the_latest_verified_event(session):
+    fact_id = uuid4()
+    # The stale event is written *second* so it holds the higher identity
+    # column. Ordering by identity alone would therefore serve it — which is
+    # what makes the created_at term in the reader's ORDER BY breakable.
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=fact_id,
+        project=PROJECT,
+        payload={"contradiction": _counterpart_block(counterpart_object="fresh")},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO events (created_at, event_type, object_type, object_id, "
+            "project, payload) VALUES (now() - interval '1 minute', 'verified', "
+            "'fact', CAST(:id AS uuid), :project, CAST(:payload AS jsonb))"
+        ),
+        {
+            "id": str(fact_id),
+            "project": PROJECT,
+            "payload": json.dumps(
+                {"contradiction": _counterpart_block(counterpart_object="stale")}
+            ),
+        },
+    )
+    await session.commit()
+
+    evidence = await latest_verified_evidence(session, [str(fact_id)])
+    row = _fact_row(fact_id, verification_status="disputed", review_state="open")
+    label = lc.dispute_label(row, evidence.get(str(fact_id)))
+
+    assert label["counterpart"]["object"] == "fresh"
