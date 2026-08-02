@@ -163,18 +163,22 @@ flowchart TD
 1. **The invalidating triple has exactly one live source memory** — so the `superseded_by` pointer is well-defined (which memory replaced it); and
 2. **Every live triple the candidate memory asserts has been expired or invalidated** — a memory whose other facts remain live is never superseded wholesale over one invalidated fact.
 
-When both hold, the primitive flips the memory to `superseded` with the pointer to the successor (via `supersede()`, §2.2, under the atomic-set contract). **The two guards fail differently, and collapsing them into one outcome would retire live knowledge.** Guard 1 failing means the successor is not well-defined: the memory is spent but has no single live replacement to point at, so it goes to `deprecated` with `superseded_by=NULL` (retired without a single live successor). Guard 2 failing means the bridge does not apply at all: the memory still asserts live facts, so its status is **unchanged** — deprecating it would drop a memory that still carries live knowledge out of the active view over one invalidated fact, which is exactly what guard 2 exists to prevent. The composition rules that keep the two axes from fighting: the pointer plus `chk_superseded_has_pointer` is the single source of truth; the bridge only ever *adds* a supersession, never reverts one (monotonicity, §2.1); and a memory-level `CONTRADICTS` edge is only ever a **signal into** the fact-level dispute (§4.2), never itself a verdict that supersedes a memory (doc 01 §3.9). Two entry points can flip a memory's status — the write-time REPLACES detector (§2.1, fast) and this bridge (Tier-C, slow) — and because both write the one pointer under the one CHECK, they never disagree.
+When both hold, the primitive flips the memory to `superseded` with the pointer to the successor (via `supersede()`, §2.2, under the atomic-set contract). **The two guards fail differently, and collapsing them into one outcome would retire live knowledge.** Guard 1 failing means the successor is not well-defined: the memory is spent but has no single live replacement to point at, so it goes to `deprecated` with `superseded_by=NULL` (retired without a single live successor). Guard 2 failing means the bridge does not apply at all: the memory still asserts live facts, so its status is **unchanged** — deprecating it would drop a memory that still carries live knowledge out of the active view over one invalidated fact, which is exactly what guard 2 exists to prevent.
 
-The status bridge — a fact invalidation flips the asserting memory only under both guards; guard 1 falls back to `deprecated`, guard 2 to no change:
+**Guard 2 is absolute and is evaluated first (ruled by the owner, 2026-08-02).** The two guards are not a chain in which guard 1's failure short-circuits the decision — they answer different questions, and guard 2's answer dominates. *May this memory's status change at all?* is guard 2; *which change* is guard 1. Where both fail — a memory asserting one invalidated fact whose replacement has several live sources, plus one fact still open — the earlier presentation of this section chained guard 1 first and routed its failure straight to `deprecated`, which retired a memory still carrying live knowledge and contradicted the sentence immediately above. That cell is ordinary, not a corner case. The evaluation order is therefore: **if the memory still asserts any live fact, nothing happens, whatever guard 1 says**; only once guard 2 holds does guard 1 select between `superseded` (exactly one live source, pointer set) and `deprecated` (otherwise, pointer NULL). This is the reversible reading — it can only ever decline to act, and its cost is a spent memory lingering as active until a later pass retires it, whereas the rejected reading drops live knowledge out of the active view with nothing to put it back. Full adjudication and the rejected alternative at `.superpowers/sdd/rulings/2026-08-02-t2.45-status-bridge-guard-order.md`.
+
+The composition rules that keep the two axes from fighting: the pointer plus `chk_superseded_has_pointer` is the single source of truth; the bridge only ever *adds* a supersession, never reverts one (monotonicity, §2.1); and a memory-level `CONTRADICTS` edge is only ever a **signal into** the fact-level dispute (§4.2), never itself a verdict that supersedes a memory (doc 01 §3.9). Two entry points can flip a memory's status — the write-time REPLACES detector (§2.1, fast) and this bridge (Tier-C, slow) — and because both write the one pointer under the one CHECK, they never disagree.
+
+The status bridge — guard 2 is absolute and gates any change at all; guard 1 then selects which change:
 
 ```mermaid
 flowchart TD
     INV["a fact is invalidated or expired in Tier-C"]
-    INV --> G1{"exactly one live source memory for the invalidating triple?"}
+    INV --> G2{"does the memory still assert any live fact?"}
+    G2 -->|yes| NONE["no status change — guard 2 is absolute"]
+    G2 -->|no| G1{"exactly one live source memory for the invalidating triple?"}
+    G1 -->|yes| SUP["memory to superseded via supersede primitive, pointer set atomically"]
     G1 -->|no| DEP["memory to deprecated, superseded_by NULL"]
-    G1 -->|yes| G2{"every live triple the candidate memory asserts is expired or invalidated?"}
-    G2 -->|no| NONE["no status change — the memory still asserts live facts"]
-    G2 -->|yes| SUP["memory to superseded via supersede primitive, pointer set atomically"]
 ```
 
 ---
