@@ -285,6 +285,25 @@ failures that look exactly like a code regression (unrelated tests, moving betwe
 does not collect). **Set `BENCH_DATABASE_URL` to a per-lane database** (`darkmem_bench_<lane>`) whenever you run harness
 work while other lanes are live. This cost three agents time in a single round on 2026-07-31.
 
+**Commit before you drill, and never revert with a path-wide `git checkout --`.** A mutation
+drill is edit → run → revert, and the revert is where work disappears. Two lanes lost
+uncommitted source this way on 2026-08-02 — once a test fix, once an entire round of
+review fixes — because a `git checkout -- <path>` written to undo the *mutation* also
+undid every uncommitted change under that path. It is silent: the drill output looks
+right, the follow-up run goes red for reasons that read like a real regression, and the
+completion report describes code the tree does not contain. One lane caught it only
+because a commit reported a test-file-only diff. So: **commit the work first, then drill**,
+and revert by restoring a copy you made of the single mutated file rather than by asking
+git to reset a path. Cheap discipline, and it is the difference between a green report and
+a green report over missing code.
+
+**Run tests in the foreground, one at a time, wrapped in an explicit `timeout`.** A lane
+backgrounded its floor run and handed control back twice in one round, leaving two
+concurrent runs against its own database; conftest drops the schema at session start, so a
+collision produces failures indistinguishable from a real regression. If a command needs to
+outlive a step, say so in the report rather than detaching and stopping — handing control
+back mid-verification leaves nothing driving the work.
+
 **A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
 does not populate it and there is no interpreter at the path every **Verify** field names.
 Run the main checkout's interpreter by absolute path
