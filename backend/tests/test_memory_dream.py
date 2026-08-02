@@ -1898,14 +1898,19 @@ class TestJournalling:
         self, committing, project, run_cycle, monkeypatch
     ):
         """Without the per-action savepoint the first action's write would go
-        with the second's failure."""
+        with the second's failure.
+
+        The poisonous action fails at the *database* level rather than with a
+        bare Python raise: an exception thrown before any statement leaves the
+        transaction perfectly usable, so it exercises nothing. It is the
+        aborted transaction that the savepoint has to contain — measured, by
+        running the drill against both shapes."""
         fixture = await _three_action_fixture(committing, project)
-        original = dream.apply_associate
         calls = {"n": 0}
 
         async def explode(session, action, **kwargs):
             calls["n"] += 1
-            raise RuntimeError("poisonous action")
+            await session.execute(text("SELECT 1 / 0"))
 
         monkeypatch.setattr(dream, "apply_associate", explode)
 
