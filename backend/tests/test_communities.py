@@ -19,6 +19,8 @@ asserting "at least two communities" is a property rather than a coin flip.
 from __future__ import annotations
 
 import json
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -29,6 +31,7 @@ from app.services.memory_projection import (
     TRUNCATED_TOO_MANY_EDGES,
     build_projection,
 )
+from app.utils import leiden
 from app.utils.ids import new_id
 
 pytestmark = pytest.mark.asyncio
@@ -348,3 +351,87 @@ async def test_entity_index_carries_display_form_and_members(session):
     assert assertion.n_e == 2
     assert assertion.member_indices == (0, 1)
     assert projection.connected_indices() == (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# The clustering kernel
+# ---------------------------------------------------------------------------
+
+
+class _RecordingExecutor(ThreadPoolExecutor):
+    instances: list["_RecordingExecutor"] = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.shutdown_calls: list[dict] = []
+        _RecordingExecutor.instances.append(self)
+
+    def shutdown(self, wait=True, *, cancel_futures=False):
+        self.shutdown_calls.append({"wait": wait, "cancel_futures": cancel_futures})
+        super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+
+@pytest.fixture
+def recorded_executors(monkeypatch):
+    _RecordingExecutor.instances = []
+    monkeypatch.setattr(
+        leiden, "_make_executor", lambda: _RecordingExecutor(max_workers=1)
+    )
+    return _RecordingExecutor.instances
+
+
+async def test_kernel_partitions_deterministically(recorded_executors):
+    edges = [(0, 1), (1, 2), (0, 2), (3, 4), (4, 5), (3, 5)]
+
+    first = await leiden.partition_graph(6, edges)
+    second = await leiden.partition_graph(6, edges)
+
+    assert first.outcome == "ok"
+    assert first.membership is not None
+    assert len(first.membership) == 6
+    assert first.membership == second.membership
+    assert all(e.shutdown_calls == [{"wait": False, "cancel_futures": True}]
+               for e in recorded_executors)
+
+
+async def test_kernel_reports_timeout_and_still_reaps_its_executor(
+    recorded_executors,
+):
+    result = await leiden.partition_graph(3, [(0, 1), (1, 2)], timeout_seconds=0)
+
+    assert result.outcome == "timeout"
+    assert result.membership is None
+    assert recorded_executors
+    assert all(e.shutdown_calls == [{"wait": False, "cancel_futures": True}]
+               for e in recorded_executors)
+
+
+async def test_kernel_reports_unavailable_when_the_library_is_missing(
+    monkeypatch, recorded_executors
+):
+    """`unavailable` must be distinguishable from `timeout`: the two route to
+    opposite behaviours in the orchestrator."""
+    monkeypatch.setitem(sys.modules, "leidenalg", None)
+
+    result = await leiden.partition_graph(3, [(0, 1), (1, 2)])
+
+    assert result.outcome == "unavailable"
+    assert result.membership is None
+    # Nothing was started, so nothing needed reaping.
+    assert recorded_executors == []
+
+
+async def test_kernel_honours_weights(recorded_executors):
+    """Weighted and unweighted partitions of the same edge list may differ; the
+    kernel must forward weights rather than silently ignore them."""
+    edges = [(0, 1), (1, 2), (2, 3), (3, 0)]
+
+    weighted = await leiden.partition_graph(
+        4, edges, weights=[10.0, 0.01, 10.0, 0.01]
+    )
+
+    assert weighted.outcome == "ok"
+    assert weighted.membership is not None
+    assert weighted.membership[0] == weighted.membership[1]
+    assert weighted.membership[2] == weighted.membership[3]
+    assert weighted.membership[1] != weighted.membership[2]
