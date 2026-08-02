@@ -31,25 +31,70 @@ line text:**
   module route alone is structurally blind to this: `import app.services`
   reaches nothing on its own, and the reach only exists at the attribute
   access that follows it.
-- **Literal route** (`forbidden_literals`): an exact string constant
-  matching one of these, anywhere in the file — an `ast.Constant` walk, not
-  a substring search, so an adjacent-literal split
-  (`"app.services." "fact_lift"`) is folded into one constant by the parser
-  before this walk ever sees it, and a string that merely *contains* a
-  forbidden spelling (`"memory_dream_state"` containing `"memory_dream"`) is
-  not a false positive the way a substring check would make it. A docstring
-  is exempted by structural role, never by matching its text (see
-  `docstring_node_ids`), so prose explaining the guard cannot be "loosened
-  away" by tripping the guard itself.
+- **Literal route** (`forbidden_literals` and `forbidden_modules`): two
+  different match disciplines over `ast.Constant`, deliberately not one,
+  because one discipline cannot serve both vocabularies without either
+  missing real reaches or flagging innocent prose:
+  - `forbidden_literals` (bare names — a job key, a module's own basename)
+    match by **exact equality only**. A bare word is common English and
+    common log-message vocabulary (`memory_community_detection.py`'s own
+    help text says "topic_detection", `verification_recompute.py` logs a
+    "verification_recompute" prefix) — a substring check over bare names
+    would flag that prose, and get "loosened away" the first time it did.
+  - `forbidden_modules` (dotted `app.services.<x>` paths) match by
+    **substring at an identifier boundary** — the match cannot be
+    immediately preceded or followed by an alphanumeric-or-underscore
+    character. This is what a bare-name exact match structurally cannot
+    catch: `exec("import app.services.fact_lift")`, a `bytes` literal
+    fed through `.decode()`, a loader-spec string
+    (`"app.services.fact_lift:run_lift"`), or the same dotted path sitting
+    in an otherwise-ordinary sentence. A dotted path is specific enough
+    that a boundary-scoped substring does not collide with real code —
+    verified against this repository's own tree — the way a bare-name
+    substring does.
+  - Both disciplines run over **both `str` and `bytes` constants**, because
+    `b"app.services.fact_lift".decode()` is exactly as executable as the
+    `str` form and a scan that only looked at `str` would have a
+    documented, exploitable hole through the one path it explicitly claims
+    to close.
+  - An adjacent-literal split (`"app.services." "fact_lift"`) is folded
+    into one constant by the parser before this walk ever runs, on both
+    `str` and `bytes`.
+  - A docstring is exempted by structural role, never by matching its
+    text (see `docstring_node_ids`), so prose explaining the guard cannot
+    be "loosened away" by tripping the guard itself. Because the literal
+    route no longer requires exact equality to the whole forbidden path,
+    the docstring exemption is genuinely load-bearing here (a "see also:
+    app.services.fact_lift" docstring is exactly the shape that would
+    trip the boundary-substring check without it) — narrower-but-still-
+    real coverage than under the exact-match-only design this replaced.
 
-**The bound, stated once here rather than only in a report.** A *computed*
-string — `"a" + "b"`, an f-string with any non-constant part, a name or
-attribute path assembled at runtime (`"fact_" + "lift"`,
-`getattr(mod, dynamic_name)`) — is invisible to a static AST walk. This
-scanner catches every route above that is spelled as a literal, and does not
-claim, and cannot be made by any static rework, to catch a route that is
-computed at runtime. That is a property of static analysis, not a gap in
-this implementation.
+**The bound, stated once here rather than only in a report.** Two shapes
+remain structurally invisible to a static AST walk, and no rework of this
+matching discipline closes them:
+  - A **computed** string assembled from more than one runtime expression
+    — `"a" + "b"` where the two sides are not adjacent literals, an
+    f-string with any non-constant interpolated part, or a name/attribute
+    path built through concatenation, formatting, or `getattr` with a
+    *computed* (non-literal) attribute name.
+  - A reach that never spells the module's own dotted path at all:
+    `from app.services import *` followed by a bare `fact_lift.run(...)`
+    (star-import plus bare-`Name` use — the module route only recognises
+    explicit `Import`/`ImportFrom` nodes and the literal route only
+    recognises the dotted path, and neither fires on a bare name that
+    resolves through `*`), or an attrgetter-style literal that names the
+    module without the `app.services.` prefix at all
+    (`"services.fact_lift.run_lift"`, `operator.attrgetter(...)` fed that
+    same shorter string) — the boundary-substring check is scoped to the
+    full forbidden dotted path specifically to avoid the false-positive
+    collisions a shorter, prefix-free needle would cause against ordinary
+    prose, and that scoping is what leaves this shape uncovered.
+This scanner catches every route above that is spelled as a literal
+reachable by exact-match or boundary-substring; it does not claim, and
+cannot be made by any static rework, to catch a route that is computed at
+runtime or that never spells a forbidden dotted path in full. That is a
+property of static analysis and of the boundary-substring design choice,
+not an oversight in this implementation.
 """
 from __future__ import annotations
 
@@ -125,6 +170,33 @@ def _import_dotted_targets(node: ast.AST) -> list[tuple[int, str]]:
     return targets
 
 
+def _is_identifier_char(unit) -> bool:
+    ch = chr(unit) if isinstance(unit, int) else unit
+    return ch.isalnum() or ch == "_"
+
+
+def _contains_at_boundary(haystack, needle) -> bool:
+    """`needle` occurs in `haystack` with no identifier character touching
+    either end of the match.
+
+    Works over both `str` and `bytes` (indexing a `bytes` object yields
+    `int`, hence `_is_identifier_char`'s dual handling) with the same
+    logic, so the same call site serves the `str` and the `bytes` literal
+    route without a second implementation to keep in sync.
+    """
+    start = 0
+    while True:
+        idx = haystack.find(needle, start)
+        if idx == -1:
+            return False
+        before_ok = idx == 0 or not _is_identifier_char(haystack[idx - 1])
+        end = idx + len(needle)
+        after_ok = end == len(haystack) or not _is_identifier_char(haystack[end])
+        if before_ok and after_ok:
+            return True
+        start = idx + 1
+
+
 def _matches_forbidden_module(level: int, dotted: str, forbidden: str) -> bool:
     if level == 0:
         return dotted == forbidden or dotted.startswith(forbidden + ".")
@@ -140,14 +212,34 @@ def _matches_forbidden_module(level: int, dotted: str, forbidden: str) -> bool:
 class ReachabilityRules:
     """A caller's own forbidden vocabulary for `find_forbidden_reach`.
 
-    `forbidden_modules` are full dotted `app.*` paths (import route).
+    `forbidden_modules` are full dotted `app.*` paths — used by *two*
+    routes: the import route (an exact match, or a submodule prefix match,
+    against a parsed import statement) and, since T2.67's Critical fix, the
+    literal route's boundary-substring check (any `str`/`bytes` constant
+    that contains one of these dotted paths with no identifier character
+    touching either edge of the match — `exec("import app.services.
+    fact_lift")`, a `bytes` literal decoded before use, a loader-spec
+    string, or the same path sitting in a comment-shaped constant).
     `forbidden_attrs` are bare names (attribute route) — normally each
     forbidden module's own final segment, so `from app import services;
     services.fact_lift.run()` is caught without naming the module in any
-    import. `forbidden_literals` are exact strings (literal route) — every
-    forbidden module's dotted path *and* final segment, plus any other
-    literal (a registry key, for instance) reaching the same target by a
-    different spelling than its module path.
+    import. `forbidden_literals` are bare names too (a job key, a module's
+    own basename) — matched by the literal route's *other* check, **exact
+    equality only**, over both `str` and `bytes`. The two literal-route
+    checks are deliberately different disciplines: a bare name is common
+    prose and log-message vocabulary (this repository's own
+    `verification_recompute.py` logs a "verification_recompute" prefix,
+    `memory_community_detection.py`'s help text says "topic_detection"), so
+    a substring check over `forbidden_literals` would flag real,
+    load-bearing strings; a *dotted* path is specific enough that a
+    boundary-scoped substring does not collide with anything in this
+    repository's tree (verified, not assumed — see
+    `tests/test_dream_jobs.py`'s and `tests/test_communities.py`'s exec /
+    bytes / loader-spec / prose test cases). Put a literal in
+    `forbidden_modules` only if it is a full `app.*` dotted path; put it in
+    `forbidden_literals` only if it is a bare name you want matched
+    exactly. Neither field is a general-purpose "flag this string anywhere"
+    list.
 
     **This scanner matches whatever `forbidden_modules` it is handed; how
     deep that set reaches is entirely the caller's derivation, and depth is
@@ -184,11 +276,22 @@ def _offense_detail(
         if node.attr in rules.forbidden_attrs:
             return f"attribute route: .{node.attr}"
         return None
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
         if id(node) in docstrings:
             return None
-        if node.value in rules.forbidden_literals:
-            return f"literal route: {node.value!r}"
+        value = node.value
+        is_bytes = isinstance(value, bytes)
+        for literal in rules.forbidden_literals:
+            needle = literal.encode("utf-8") if is_bytes else literal
+            if value == needle:
+                return f"literal route (exact{' bytes' if is_bytes else ''}): {value!r}"
+        for module in rules.forbidden_modules:
+            needle = module.encode("utf-8") if is_bytes else module
+            if _contains_at_boundary(value, needle):
+                return (
+                    f"literal route (boundary substring"
+                    f"{' bytes' if is_bytes else ''}): {value!r} contains {module!r}"
+                )
         return None
     return None
 
@@ -239,10 +342,23 @@ def app_sources(backend: Path) -> list[Path]:
 
 
 def service_modules_imported_by(source: str) -> set[str]:
-    """Every `app.services` module a source file imports, in any import
-    style — parsed rather than split on lines, so a formatter's
-    parenthesised, multi-line `from app.services import (\n    x,\n)` is one
-    `ImportFrom` node regardless of how many lines it spans.
+    """Every `app.services` module a source file imports, in any *absolute*
+    import style — `from app.services.x import y`, `from app.services
+    import x`, `import app.services.x` — parsed rather than split on lines,
+    so a formatter's parenthesised, multi-line
+    `from app.services import (\n    x,\n)` is one `ImportFrom` node
+    regardless of how many lines it spans.
+
+    A **relative** import (`from .x import y`, `from . import x`) is not
+    recognised here. This is the derivation used to build the *forbidden*
+    module set out of `dream_jobs.py`'s own imports, not the general
+    reachability scan applied to arbitrary files under `app/` — that
+    general scan (`_matches_forbidden_module` above) does handle relative
+    imports when checking whether some *other* file reaches a forbidden
+    module. The umbrella module relative-importing one of its own job
+    bodies would be an unusual, self-referential shape this function would
+    miss; it is not expected to occur, and is called out here rather than
+    silently assumed away.
     """
     tree = ast.parse(source)
     modules: set[str] = set()

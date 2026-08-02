@@ -20,7 +20,6 @@ fixtures.
 """
 from __future__ import annotations
 
-import ast
 import json
 import pathlib
 
@@ -33,6 +32,8 @@ from app.config import settings
 from app.repositories import memory_communities as repo
 from app.services import memory_community_reports as reports
 from app.utils.ids import new_id
+
+from tests._reachability_scan import ReachabilityRules, app_sources, find_forbidden_reach
 
 PROJECT = "t219-reports"
 OTHER_PROJECT = "t219-reports-other"
@@ -427,72 +428,39 @@ async def test_set_report_merges_properties_without_clobbering_t218s_keys(sessio
 # ---------------------------------------------------------------------------
 
 REPORTS_BASENAME = "memory_community_reports"
+REPORTS_MODULE = f"app.services.{REPORTS_BASENAME}"
 REPORTS_PATH = "app/services/memory_community_reports.py"
 
-
-def _docstring_constants(tree: ast.AST) -> set[int]:
-    holders = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    found: set[int] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, holders):
-            continue
-        first = node.body[0] if node.body else None
-        if (
-            isinstance(first, ast.Expr)
-            and isinstance(first.value, ast.Constant)
-            and isinstance(first.value.value, str)
-        ):
-            found.add(id(first.value))
-    return found
+# T2.67 folds this scan onto the shared `_reachability_scan` walker (raised
+# in that task's re-review as a third instance of the same decorative-guard
+# shape: this scan's own `if REPORTS_BASENAME not in source: continue`
+# prefilter ran on raw source *text* before the AST walk below ever got a
+# chance to run, so `import_module('app.services.memory_community' '_
+# reports')` — two adjacent string literals the parser folds into one
+# constant, exactly the case this scan's own docstring claimed to cover —
+# never even reached the parser: the unsplit basename never appears in the
+# raw text, so the prefilter skipped the file outright. Dropping the
+# prefilter and reusing the shared walker closes that the same way T2.67's
+# Critical fix closed the family/detector scans' literal-route gap.
+_REPORTS_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({REPORTS_MODULE}),
+    forbidden_attrs=frozenset({REPORTS_BASENAME}),
+    forbidden_literals=frozenset({REPORTS_BASENAME}),
+)
 
 
 def _report_module_offenders(paths, backend_root) -> list[str]:
-    """Every route from a file under `app/` to the report-generation module.
-
-    Parsed, not grepped, for the same reason T2.18's detector scan is parsed:
-    a line-based scan misses a wrapped `from app.services import (\n
-    memory_community_reports,\n)` and a dotted path split across adjacent
-    string literals.
-    """
-    offenders: list[str] = []
-    for path in paths:
-        rel = str(path.relative_to(backend_root))
-        if rel == REPORTS_PATH:
-            continue
-        source = path.read_text()
-        if REPORTS_BASENAME not in source:
-            continue
-        tree = ast.parse(source, filename=rel)
-        docstrings = _docstring_constants(tree)
-        for node in ast.walk(tree):
-            reached = ""
-            if isinstance(node, ast.Import):
-                reached = " ".join(alias.name for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                reached = " ".join(
-                    f"{node.module or ''}.{alias.name}" for alias in node.names
-                )
-            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if id(node) in docstrings:
-                    continue
-                reached = node.value
-            if REPORTS_BASENAME in reached:
-                offenders.append(f"{rel}:{node.lineno}: {reached.strip()}")
-    return offenders
+    """Every route from a file under `app/` to the report-generation module."""
+    return find_forbidden_reach(
+        paths, backend_root, _REPORTS_RULES, skip_files=frozenset({REPORTS_PATH})
+    )
 
 
 def test_no_app_code_reaches_report_generation():
     """Report generation is Tier C: nothing on a capture or retrieval path
     may reach it. This is the structural proof for 'never blocks a read' —
     a call counter cannot show a negative, an AST reachability scan can."""
-    paths = [
-        p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)
-    ]
-    assert len(paths) > 100, (
-        f"only found {len(paths)} files under app/ — the scan would pass "
-        "vacuously; check BACKEND / the glob path"
-    )
-    assert not _report_module_offenders(paths, BACKEND)
+    assert not _report_module_offenders(app_sources(BACKEND), BACKEND)
 
 
 def _write(tmp_path, body: str):
@@ -516,6 +484,24 @@ def test_the_scan_catches_a_wrapped_import(tmp_path):
     offender = _write(
         tmp_path,
         "from app.services import (\n    memory_community_reports,\n)\n",
+    )
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_scan_catches_an_adjacent_string_literal_split(tmp_path):
+    """The decorative-guard defect T2.67's re-review found: the prefilter
+    this scan carried before folding onto the shared walker checked whether
+    `REPORTS_BASENAME` appeared in the raw *source text*, before any
+    parsing happened. Splitting the basename across two adjacent string
+    literals — which Python's parser folds into one constant at parse time,
+    long before this scan would ever see it — made the unsplit basename
+    never appear in the raw text, so the prefilter skipped the file outright
+    and the AST walk underneath it, which really could have caught this,
+    never ran at all."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        "import_module('app.services.memory_community' '_reports')\n",
     )
     assert _report_module_offenders([offender], tmp_path)
 

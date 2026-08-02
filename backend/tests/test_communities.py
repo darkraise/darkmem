@@ -1396,10 +1396,15 @@ from tests._reachability_scan import (  # noqa: E402
     find_forbidden_reach,
 )
 
+# `forbidden_literals` carries only the bare basename (exact-match route);
+# the dotted `DETECTOR_MODULE` path belongs in `forbidden_modules` only —
+# it is covered there by the boundary-substring literal check T2.67's
+# Critical fix added (exec/eval, a bytes-decoded literal, a loader-spec
+# string), and putting it in both would just be redundant, not stronger.
 _DETECTOR_RULES = ReachabilityRules(
     forbidden_modules=frozenset({DETECTOR_MODULE}),
     forbidden_attrs=frozenset({DETECTOR_BASENAME}),
-    forbidden_literals=frozenset({DETECTOR_BASENAME, DETECTOR_MODULE}),
+    forbidden_literals=frozenset({DETECTOR_BASENAME}),
 )
 
 
@@ -1507,6 +1512,67 @@ def test_the_detector_scan_catches_a_parent_package_attribute_reach(tmp_path):
     )
 
     assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_an_exec_import(tmp_path):
+    """T2.67's Critical fix, shared with the family scan: the literal route
+    used to match a `str` constant by exact equality only, so a dotted path
+    spelled inside an `exec` body — one whole-line string, never equal to
+    the bare path alone — passed clean."""
+    offender = _write(tmp_path, 'exec("import app.services.memory_community_detection")\n')
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_bytes_decoded_dynamic_import(tmp_path):
+    """`bytes` constants were not examined at all before this fix."""
+    offender = _write(
+        tmp_path,
+        "from importlib import import_module\n"
+        'import_module(b"app.services.memory_community_detection".decode())\n',
+    )
+    offenders = _detector_offenders([offender], tmp_path)
+    assert offenders
+    assert any("bytes" in o for o in offenders), offenders
+
+
+def test_the_detector_scan_catches_a_loader_spec_literal(tmp_path):
+    offender = _write(
+        tmp_path, '_SPEC = "app.services.memory_community_detection:detect_for_project"\n'
+    )
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_catches_a_non_docstring_prose_constant(tmp_path):
+    offender = _write(
+        tmp_path,
+        "def f():\n"
+        "    pass\n"
+        '_NOTE = "See app.services.memory_community_detection for the implementation"\n',
+    )
+    assert _detector_offenders([offender], tmp_path)
+
+
+def test_the_detector_scan_does_not_flag_a_bare_name_inside_ordinary_prose(tmp_path):
+    """The bare basename `forbidden_literals` route stays exact-match only.
+    A non-docstring constant that merely *mentions* the detector's own bare
+    basename inside a full sentence — not a docstring (so the docstring
+    exemption is not what is being tested here), not the dotted
+    `app.services.` path (so the boundary-substring module route is not
+    what is being tested here either) — must not be flagged: a
+    boundary-substring check over `forbidden_literals` would catch this
+    sentence (the basename sits at a clean word boundary on both sides),
+    which is exactly the false-positive shape this discipline exists to
+    avoid. Mutating the exact check to `_contains_at_boundary` and rerunning
+    this file's tests during T2.67's re-review verification made only this
+    test (and its family-scan counterpart) fail — confirming it actually
+    exercises the discipline it names, unlike an earlier draft of this test
+    that searched for a dream-job key the detector scan's own vocabulary
+    does not even contain."""
+    offender = _write(
+        tmp_path,
+        'NOTE = "Do not call memory_community_detection directly from a hot path."\n',
+    )
+    assert _detector_offenders([offender], tmp_path) == []
 
 
 def test_the_detector_scan_does_not_fail_on_prose(tmp_path):
