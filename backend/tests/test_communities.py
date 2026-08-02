@@ -28,14 +28,14 @@ import pytest
 from sqlalchemy import text
 
 from app.repositories import memory_communities as repo
+from app.services import memory_community_labels as labels
 from app.services.memory_projection import (
+    EntityAssertion,
     TRUNCATED_TOO_MANY_EDGES,
     build_projection,
 )
 from app.utils import leiden
 from app.utils.ids import new_id
-
-pytestmark = pytest.mark.asyncio
 
 PROJECT = "t218-topics"
 OTHER_PROJECT = "t218-topics-other"
@@ -685,3 +685,101 @@ async def test_community_tables_carry_the_columns_the_writer_assumes(session):
     assert columns[("memory_communities", "properties")] == "YES"
     assert columns[("memory_community_members", "community_id")] == "NO"
     assert columns[("memory_community_members", "memory_id")] == "NO"
+
+
+# ---------------------------------------------------------------------------
+# Labelling
+# ---------------------------------------------------------------------------
+
+
+def _assertion(name, members, *, n_e=None, display_name=None, entity_type="tool"):
+    return EntityAssertion(
+        entity_id=new_id(),
+        name=name,
+        display_name=display_name,
+        entity_type=entity_type,
+        n_e=n_e if n_e is not None else len(members),
+        member_indices=tuple(members),
+    )
+
+
+def test_label_ranks_by_member_count_then_specificity():
+    index = [
+        _assertion("broad", [0, 1, 2], n_e=90),
+        _assertion("narrow", [0, 1, 2], n_e=3),
+        _assertion("minor", [0]),
+    ]
+
+    (labelled,) = labels.label_communities(index, [(0, 1, 2)])
+
+    assert labelled.label == "narrow, broad, minor"
+    assert [e.name for e in labelled.dominant_entities] == [
+        "narrow", "broad", "minor"
+    ]
+    assert labelled.dominant_entities[0].members == 3
+
+
+def test_label_renders_the_display_form_but_ranks_on_the_stored_name():
+    index = [
+        _assertion("postgresql", [0, 1], display_name="PostgreSQL"),
+        _assertion("alembic", [0, 1]),
+    ]
+
+    (labelled,) = labels.label_communities(index, [(0, 1)])
+
+    assert labelled.label == "alembic, PostgreSQL"
+    assert labelled.dominant_entities[1].name == "postgresql"
+    assert labelled.dominant_entities[1].display_name == "PostgreSQL"
+
+
+def test_label_is_deterministic_across_calls():
+    index = [
+        _assertion("a", [0, 1]),
+        _assertion("b", [0, 1]),
+        _assertion("c", [0, 1]),
+        _assertion("d", [1]),
+    ]
+
+    first = labels.label_communities(index, [(0, 1)])
+    second = labels.label_communities(index, [(0, 1)])
+
+    assert [c.label for c in first] == [c.label for c in second]
+
+
+def test_colliding_labels_are_disambiguated_deterministically():
+    """Two communities whose top three entities coincide must not share a
+    label: the journal references communities by label, and doc 09's
+    pin-suggestion diff keys on it."""
+    index = [
+        _assertion("a", [0, 1, 2, 3]),
+        _assertion("b", [0, 1, 2, 3]),
+        _assertion("c", [0, 1, 2, 3]),
+        _assertion("d", [0, 1], n_e=40),
+        _assertion("e", [2, 3], n_e=40),
+    ]
+
+    first, second = labels.label_communities(index, [(2, 3), (0, 1)])
+
+    assert first.label != second.label
+    assert first.label == "a, b, c, e"
+    assert second.label == "a, b, c, d"
+
+
+def test_an_indistinguishable_collision_falls_back_to_a_stable_ordinal():
+    index = [_assertion("only", [0, 1, 2, 3])]
+
+    first, second = labels.label_communities(index, [(2, 3), (0, 1)])
+
+    assert {first.label, second.label} == {"only (1)", "only (2)"}
+    # The ordinal is derived from the sorted member list, not from the order
+    # the communities arrived in, so it survives a reordered partition.
+    reordered = labels.label_communities(index, [(0, 1), (2, 3)])
+    assert reordered[0].label == second.label
+    assert reordered[1].label == first.label
+
+
+def test_a_community_with_no_ranked_entity_is_still_labelled():
+    first, second = labels.label_communities([], [(0, 1), (2, 3)])
+
+    assert first.label == f"{labels.UNLABELLED} (1)"
+    assert second.label == f"{labels.UNLABELLED} (2)"
