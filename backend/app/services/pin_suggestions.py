@@ -115,6 +115,15 @@ from app.repositories.pinned_subjects import (
 )
 from app.services.events import record_event
 
+# Doc 09 §3.4 says growth is measured "past a `config` growth threshold" —
+# these two are plain kwargs with module defaults instead, because no job
+# body exists yet to own a `config_schema` (T2.53's `topic_detection` is
+# still a `PlaceholderJobRunner`). This is a deferral, not a decision that
+# the doc's requirement is satisfied: **T2.53 owns turning
+# `growth_threshold` (and, if it adopts one, `fact_floor`) into a
+# `config`-row field on `topic_detection`'s `config_schema`** when its real
+# runner lands. Left as a bare default forever would silently drop the
+# doc's requirement.
 DEFAULT_GROWTH_THRESHOLD = 2
 DEFAULT_FACT_FLOOR = 1
 
@@ -129,7 +138,6 @@ OBJECT_TYPE = "topic"
 
 VERDICT_ACCEPTED = "accepted"
 VERDICT_DISMISSED = "dismissed"
-PIN_VERDICTS = frozenset({VERDICT_ACCEPTED, VERDICT_DISMISSED})
 
 _VERIFIED_STATUSES = ("corroborated", "confirmed")
 
@@ -152,6 +160,20 @@ _LIVE_ARTICLE_SUBJECT = text(
 def subject_soft_key(name_lower: str, entity_type: str) -> str:
     """See the module docstring's "Subject key is provisional" note."""
     return f"{name_lower}::{entity_type}"
+
+
+def decode_subject_soft_key(subject_key: str) -> tuple[str, str]:
+    """The inverse of `subject_soft_key`.
+
+    `rsplit("::", 1)` is the only safe split: entity names in this domain
+    plausibly contain `::` themselves (`std::vector`, `tokio::spawn`), so a
+    left split or a bare `split("::")` would break on them, while
+    `entity_type` always comes from the closed `ENTITY_TYPES` taxonomy
+    (`app/taxonomy.py`) and never contains `::` — so the last separator is
+    always the one that actually divides name from type.
+    """
+    name_lower, entity_type = subject_key.rsplit("::", 1)
+    return name_lower, entity_type
 
 
 def _dominant_entity(row: CommunityRow) -> tuple[str, str] | None:
@@ -310,9 +332,25 @@ async def compute_pin_suggestions(
 
     Read-only: no event is journalled here (see `journal_pin_suggestions`),
     so this is safe to call on every browsing read without spamming the
-    journal with a row per page view.
+    journal with a row per page view — with one caveat T2.39 needs at the
+    seam: a browsing UI has no pre-rewrite snapshot to pass as `prior`, only
+    the detection job does (see `snapshot_topics`). Calling this with
+    `prior={}` (or `diff_topics({}, current)`) reads every current topic as
+    `new`, which still gates correctly (pinned/dismissed/fact-floor/article
+    checks all still run) but never reports `grown` — a UI-driven read can
+    only ever surface first-appearance nominations, not growth nominations,
+    unless it is handed a real snapshot from the last detection run.
+
+    Deduplicated per call: two distinct communities can share the same
+    dominant entity (e.g. a split leaves "postgres, replication" and
+    "postgres, tuning" both dominated by `postgres`), and without this a
+    caller that also calls `journal_pin_suggestions` on the result would
+    journal one `events` row per duplicate — permanent, since `events` is
+    append-only. Only the first community for a given subject in `diff_entries`
+    order is kept; a second one contributes nothing.
     """
     pinned, dismissed = await get_subject_lists(session, project)
+    seen_subject_keys: set[str] = set()
 
     suggestions: list[PinSuggestion] = []
     for entry in diff_entries:
@@ -322,6 +360,9 @@ async def compute_pin_suggestions(
             continue
 
         subject_key = subject_soft_key(entry.dominant_name, entry.dominant_entity_type)
+        if subject_key in seen_subject_keys:
+            continue
+        seen_subject_keys.add(subject_key)
         if subject_key in pinned or subject_key in dismissed:
             continue
         if await _is_live_article_subject(session, project, subject_key):

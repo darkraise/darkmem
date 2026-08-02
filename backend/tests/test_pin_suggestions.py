@@ -251,6 +251,61 @@ async def test_a_new_community_with_facts_produces_a_suggestion(session):
     assert suggestion.verified_fact_count == 1
 
 
+async def test_two_communities_sharing_a_dominant_entity_produce_one_suggestion(session):
+    """Fable review finding: a split can leave two sibling communities with
+    the same dominant entity in the same pass ("postgres, replication" and
+    "postgres, tuning" both dominated by `postgres`). Without a seen-set,
+    each nominates `postgres::tool` separately, and since `events` is
+    append-only, `journal_pin_suggestions` on the un-deduped result would
+    write two permanent rows for one subject."""
+    a = await seed_memory(session)
+    b = await seed_memory(session)
+    await seed_fact(session, subject_name="postgres")
+    await repo.replace_project_communities(
+        session, PROJECT,
+        [
+            _draft("postgres, replication", (a,), "postgres", "tool"),
+            _draft("postgres, tuning", (b,), "postgres", "tool"),
+        ],
+    )
+    await session.flush()
+    current = await repo.list_with_members(session, PROJECT)
+    entries = pins.diff_topics({}, current)
+    assert len(entries) == 2
+
+    suggestions = await pins.compute_pin_suggestions(session, PROJECT, entries)
+    assert len(suggestions) == 1
+    assert suggestions[0].subject_key == pins.subject_soft_key("postgres", "tool")
+
+    await pins.journal_pin_suggestions(session, PROJECT, suggestions)
+    await session.flush()
+
+    rows = (
+        await session.execute(
+            text(
+                "SELECT payload FROM events WHERE event_type = 'consolidated' "
+                "AND object_type = 'topic' AND project = CAST(:p AS text) "
+                "AND payload->>'action' = 'pin_suggested'"
+            ),
+            {"p": PROJECT},
+        )
+    ).all()
+    assert len(rows) == 1
+
+
+async def test_subject_soft_key_round_trips_through_decode(session):
+    key = pins.subject_soft_key("postgres", "tool")
+    assert pins.decode_subject_soft_key(key) == ("postgres", "tool")
+
+
+async def test_decode_subject_soft_key_handles_a_colon_bearing_name(session):
+    """The reason `rsplit` and not `split`: entity names in this domain can
+    contain `::` themselves (`std::vector`), so only the *last* separator is
+    guaranteed to be the name/type boundary."""
+    key = pins.subject_soft_key("std::vector", "concept")
+    assert pins.decode_subject_soft_key(key) == ("std::vector", "concept")
+
+
 async def test_a_stable_community_never_suggests(session):
     a = await seed_memory(session)
     b = await seed_memory(session)

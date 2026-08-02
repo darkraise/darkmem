@@ -41,8 +41,16 @@ key — only `dominant_entities`, `size`, `fallback`, `resolution`,
 `edge_count`, `hub_cap`. `TopicView.impact_rating` reads
 `properties.get("impact_rating")` and is `None` today for every community;
 this module does not compute one, because doing so would mean inventing a
-ranking metric that belongs to whichever task actually owns it. Recorded as
-an open item, not silently worked around.
+ranking metric that belongs to whichever task actually owns it.
+
+**Open item, no owner.** Doc 09 §3.1 promises "impact rating" as part of
+what browsing surfaces, but no task in the corpus computes one — not T2.18
+(the detector never writes an `impact_rating` key), not this task, and
+nothing downstream is named for it either. `TopicView.impact_rating` is
+therefore always `None`, and that is not "not populated yet" the way a
+`pending` report is — it is a promised field with no writer anywhere. A
+reader (T2.39's UI in particular) should not assume this will start
+returning values without a task landing to compute it.
 """
 from __future__ import annotations
 
