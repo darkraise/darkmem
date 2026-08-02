@@ -1234,6 +1234,99 @@ async def _drive_pipeline_failure_triage(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+async def _drive_dream_cycle_digest(ctx: ProbeContext) -> list[Sighting]:
+    """The dream digest's cycle detail, driven through a real refine action.
+
+    A refine journals the summary it replaced and the one it wrote, which is
+    exactly what makes the action undoable — so memory-derived content crosses
+    this surface by construction. The actions are produced by the pass's own
+    applier rather than by a hand-written payload, so the probe sees the shape
+    the producer really writes.
+
+    Operator-wide by ratification: a cycle is one night's consolidation across
+    the deployment, so serving both projects is correct and what is asserted is
+    that each action carries its own project label. No `memories.status`-shaped
+    lifecycle applies to a journal row, so `true_status` stays None — the same
+    reading `review_queue_facts` gives a fact row.
+    """
+    from sqlalchemy import text
+
+    from app.database import async_session_factory
+    from app.services import memory_dream as dream
+
+    surface = "dream_cycle_digest"
+    door = "GET /api/v1/dream-digest/cycles/{cycle_id}"
+    case = "one night's consolidation across the deployment (ratified operator-wide)"
+
+    cycle = str(uuid.uuid4())
+    refined: dict[str, MemoryFixture] = {}
+    async with async_session_factory() as session:
+        for key in ("a_active", "b_active"):
+            fx = FIXTURES_BY_KEY.get(key)
+            if fx is None:
+                continue
+            memory_id = ctx.memory_ids.get(key)
+            if memory_id is None:
+                continue
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT content, summary, project FROM memories "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(memory_id)},
+                )
+            ).mappings().first()
+            if row is None:
+                continue
+            applied = await dream.apply_refine(
+                session,
+                dream.RefineAction(
+                    memory=dream.MemoryRow(
+                        memory_id=str(memory_id), project=row["project"],
+                        created_at=datetime.now(timezone.utc),
+                        content=row["content"], summary=row["summary"],
+                        metadata={}, tags=(),
+                    ),
+                    verdict=dream.RefineVerdict(
+                        summary=f"{sentinel(fx.key)} refined note", tags=None
+                    ),
+                ),
+                cycle_id=cycle,
+                outcome=dream.DreamOutcome(),
+            )
+            if applied:
+                refined[str(memory_id)] = fx
+        await session.commit()
+
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    if not refined:
+        ctx.notes.append(
+            "dream_cycle_digest: no refine action landed, so the surface was "
+            "not exercised"
+        )
+        return out
+
+    response = await ctx.client.get(
+        f"/api/v1/dream-digest/cycles/{cycle}", headers=ctx.headers
+    )
+    response.raise_for_status()
+    for group in response.json()["objects"]:
+        fx = refined.get(str(group.get("object_id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        for action in group["actions"]:
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=fx.key,
+                kind="content", true_project=fx.project, true_status=None,
+                label_project=action.get("project") == fx.project,
+            ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
 async def _drive_review_queue_facts(ctx: ProbeContext) -> list[Sighting]:
     surface = "review_queue_facts"
     door = "GET /api/v1/review-queue/facts"
@@ -1378,6 +1471,15 @@ async def _drive_event_journal(ctx: ProbeContext) -> list[Sighting]:
             payload = event.get("payload") or {}
             preview = payload.get("content_preview", "")
             key = _row_key(preview) if preview else None
+            if key is None:
+                # The consolidation stream carries memory-derived content in
+                # `before`/`after` rather than in a `content_preview` field —
+                # a refine journals the summary it replaced and the one it
+                # wrote. Modelled here so it is enumerated against the event's
+                # own project label instead of landing in the raw-body net as
+                # an unmodelled crossing.
+                elsewhere = scan_sentinels(json.dumps(payload, default=str))
+                key = sorted(elsewhere)[0] if elsewhere else None
             fx = ids_to_fx.get(str(event.get("object_id")))
             row_name = key or (fx.key if fx else event.get("event_type", "event"))
             if key:
@@ -1394,12 +1496,24 @@ async def _drive_event_journal(ctx: ProbeContext) -> list[Sighting]:
     await list_case(f"?project={OBSERVER}", "scoped project", OBSERVER)
 
     door = "GET /api/v1/events/timeline"
+    case = "timeline of one memory"
     response = await ctx.client.get(
         f"/api/v1/events/timeline?object_type=memory&object_id={ctx.memory_ids['a_active']}",
         headers=ctx.headers,
     )
     response.raise_for_status()
-    out.extend(_account_body(surface, door, "timeline of one memory", response.text, set()))
+    payload = response.json()
+    timeline = payload["items"] if isinstance(payload, dict) else payload
+    accounted = set()
+    for event in timeline:
+        # Every row here is this one memory's own history, so a sentinel in a
+        # payload is that memory's content coming back through its journal —
+        # a consolidation action's before/after summary, for instance.
+        found = scan_sentinels(json.dumps(event.get("payload") or {}, default=str))
+        for key in sorted(found):
+            accounted.add(key)
+            out.append(event_sighting(door, case, key, event, None))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
 
     door = "GET /api/v1/analytics/pipeline-logs"
     response = await ctx.client.get("/api/v1/analytics/pipeline-logs", headers=ctx.headers)
@@ -1500,6 +1614,7 @@ async def _drive_entity_browser(ctx: ProbeContext) -> list[Sighting]:
 
 
 DRIVERS = {
+    "dream_cycle_digest": _drive_dream_cycle_digest,
     "memory_search": _drive_memory_search,
     "memory_reason": _drive_memory_reason,
     "chat_retrieval": _drive_chat_retrieval,

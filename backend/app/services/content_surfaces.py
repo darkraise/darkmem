@@ -315,7 +315,7 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         kind=_S,
         front_doors=("GET /api/v1/events", "GET /api/v1/events/timeline",
                      "GET /api/v1/analytics/pipeline-logs"),
-        crosses=("content_preview",),
+        crosses=("content_preview", "summary"),
         scoping=Scoping.ESCALATED,
         labels=("project",),
         decided_by="T1.29e",
@@ -324,7 +324,15 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "a buffer_discarded row carries a 500-char content_preview in its "
                "payload, events is append-only by design, so deleting a memory "
                "does not remove its content from the journal. Escalated to the "
-               "human; no redaction scheme may be invented here.",
+               "human; no redaction scheme may be invented here. "
+               "T2.13 added `summary` to the crossing list: the consolidation "
+               "stream's refine action journals the summary it replaced and the "
+               "one it wrote, which is what makes the action undoable at all, "
+               "and this door serves those payloads. The crossing predates "
+               "T2.13 — T2.12 shipped the writer — but no probe fixture "
+               "produced one until the dream digest's driver did, so it went "
+               "undeclared. It falls under exactly the same escalated retention "
+               "question and widens it by no new principle.",
     ),
     ContentSurface(
         key="chat_history_citations",

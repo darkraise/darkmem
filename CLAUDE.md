@@ -487,6 +487,33 @@ by design; the retention policy is an escalated, unresolved Tier-3
 question (it spans `events` and chat's `messages.context` citation
 snapshots), not an oversight to fix silently.
 
+`undone` joined the vocabulary with T2.13, and it is the **first by-id
+consumer of `events`** — the composite `PRIMARY KEY (id, created_at)`
+means a bare `WHERE id = :id` scans every monthly child, so every undo
+lookup carries a `created_at` bound and prunes to one or two of them.
+The **dream digest** (`app/services/dream_digest.py`) reads the
+`consolidated` stream grouped by `payload.cycle_id`, and within a cycle
+by object, in `(created_at, id)` order — journal order is application
+order, and regrouping by action kind would describe a cycle that did not
+occur. **Undo is all-or-nothing per request and has no per-action code
+path**: a single-action undo is a batch of one through
+`dream_undo.undo`, whose result types have no field that could carry a
+per-item outcome and whose module owns no savepoint, no commit and no
+`try` — an AST scan fails the build on all five shapes. That makes the
+module unable to self-heal, so it has **three** outcomes, not two: only
+`UndoRefused` guarantees nothing was written, and **any other raise
+leaves restores in the caller's session for the caller to roll back**.
+The HTTP door gets that from the request-scoped session dependency; an
+in-process caller does not. **An undo that could not be journalled does
+not happen** — `record_event` never raises, so the batch counts its own
+`undone` rows back and raises when short. An undone subsumption leaves a
+suppression tombstone at
+`memories.metadata.dream.undone_subsume.<counterpart_id>`, keyed on both
+memories' `content_sha` so it lapses when either text changes; it is
+read at **nomination** time by `generate_pairs`, which is not a
+lifecycle change — `supersede()` still retires that exact pair for any
+caller that asks.
+
 ## MCP endpoint
 
 `/mcp` is unauthenticated (local-network trust model); its only
