@@ -407,6 +407,8 @@ _HOT_PATH_MODULES = {
     "app/services/memory.py",
     "app/services/code_query.py",
     "app/services/reranker.py",
+    "app/services/layer_composition.py",
+    "app/services/verified_evidence.py",
 }
 
 

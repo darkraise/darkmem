@@ -114,6 +114,7 @@ from app.services.review_ranking import (
     consequence_explanation,
     get_ranking_config,
 )
+from app.services.verified_evidence import latest_verified_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -254,37 +255,14 @@ def build_articles_query(project: str | None) -> tuple[str, str]:
 async def _latest_verified_evidence(
     session: AsyncSession, fact_ids: list[str]
 ) -> dict[str, dict[str, Any]]:
-    """Best-effort decision evidence from the most recent ``verified`` event
-    per fact. Empty for a fact with no verification history yet (e.g. a
-    freshly seeded row, or any row before T2.62's writer lands) — that is a
-    legitimate ``None``, not a fetch failure.
+    """Delegates to the one reader of this journal shape.
 
-    One batched query (``DISTINCT ON``) rather than one round trip per row,
-    same reasoning as ``PipelineFailureService.list_unresolved``'s single
-    join: the queue list is a bounded page, not a per-item fan-out.
+    The composition (T2.43) reads the same latest ``verified`` event per fact,
+    and a second copy of the query is how the same shape acquires two
+    behaviours. Kept as a private name here so this module's own call sites and
+    tests are unchanged by where the statement lives.
     """
-    if not fact_ids:
-        return {}
-    result = await session.execute(
-        text(
-            """
-            SELECT DISTINCT ON (object_id) object_id, payload, created_at
-            FROM events
-            WHERE object_type = 'fact'
-              AND event_type = 'verified'
-              AND object_id = ANY(CAST(:ids AS uuid[]))
-            ORDER BY object_id, created_at DESC, id DESC
-            """
-        ),
-        {"ids": fact_ids},
-    )
-    out: dict[str, dict[str, Any]] = {}
-    for row in result.mappings().all():
-        out[str(row["object_id"])] = {
-            "payload": row["payload"],
-            "recorded_at": row["created_at"],
-        }
-    return out
+    return await latest_verified_evidence(session, fact_ids)
 
 
 async def list_open_facts(
