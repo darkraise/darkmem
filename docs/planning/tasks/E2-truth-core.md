@@ -1341,10 +1341,50 @@ that already exist and that no task owns.
 
 **Verify.** `cd backend && python -m pytest tests/test_vectors_route.py tests/test_graph.py -q`
 
+#### T2.69 — The reranker cannot say "asked and failed", and does not say what text it needs
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.43` · `Doc: 07 §3, invariant 14` · `Gate: standing`
+
+**What.** Two defects in `RerankerService`, found from opposite directions and sharing one
+cause: the service takes documents on trust and returns numbers that cannot be
+distinguished from each other.
+
+**It returns `0.0` for a per-document failure.** Inside one window, *asked and failed* is
+therefore indistinguishable from *rated worst*. T2.43's all-zero guard catches a **total**
+outage — every document zero means no usable signal, fall back to the deterministic order
+and report `reranked=False` — but a single failed document inside an otherwise healthy
+window silently becomes the lowest-ranked row.
+
+**And it never declares what field carries a document's text.** It resolves via a
+fall-through chain — `content` → `payload.content` → `chunk_content`. A `knowledge_triples`
+row's text lives under `fact`, so **every L2 fact reaching the reranker was scored against
+an empty string**, and because the model returns a real number for an empty document,
+neither the all-zero guard nor the terminal band could see it. T2.43 fixed this at its own
+construction site with a closed dispatch that raises on an undeclared layer; the producer
+still has no contract, so the next consumer inherits the same trap.
+
+**The shared cause is worth naming**: a `0.0` that means three things, and a text lookup
+that guesses. Both are honest-output defects (invariant 14) rather than ranking defects.
+
+**Done when:**
+- [ ] A per-document failure is distinguishable from a genuine low score at the consumer —
+      a sentinel, not `0.0` — and a consumer can tell how many documents in a window were
+      not really scored
+- [ ] The service declares the text contract it requires, rather than guessing through a
+      fall-through chain; a document it cannot resolve text for is a loud failure, never a
+      scored row
+- [ ] T2.43's construction-site dispatch still passes unchanged, so the fix is at the
+      producer rather than a second copy
+- [ ] Removing the sentinel fails a test; feeding a document with no resolvable text fails
+      a test
+
+**Verify.** `cd backend && python -m pytest tests/test_reranker.py tests/test_layer_composition.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-02 | T2.69, T2.43 | 2 | **T2.69 minted: `RerankerService` returns `0.0` for a per-document failure, and never declares what field carries a document's text.** The first makes *asked and failed* indistinguishable from *rated worst* inside a window — T2.43's all-zero guard catches only a total outage. The second is worse and was found by T2.43's review: the service resolves text through a fall-through chain (`content` → `payload.content` → `chunk_content`), and a fact's text lives under `fact`, so **every L2 fact reaching the reranker was scored against an empty string** — silently, because the model returns a real number for an empty document, so neither the all-zero guard nor the terminal band could see it | Found from two directions in one round: the per-document conflation was reported by T2.43's implementer as O9 and confirmed unowned, and the empty-document defect by its reviewer, which probed the real service and captured `document_text=''` for the fact row beside the memory row's real content. T2.43 fixed its own construction site with a **closed dispatch that raises** on an undeclared layer rather than another fall-through — deliberately, since a fall-through is what produced the bug — but the producer still has no contract, so the next consumer inherits the same trap. Minted rather than folded into T2.43 because both halves live in `reranker.py`, which is not that task's file and which no task owned; scoped S because each half is small, and paired because they share one cause — a service that takes documents on trust and returns numbers that cannot be told apart |
 | 2026-08-02 | T2.23, T2.13, T2.12 | 2 | **`T2.23` gains `Depends: T2.13, T2.12`.** Its third Done-when clause reads "bulk actions are undoable **through the T2.13 primitive**" — naming a task that has not started — while its `Depends` field read `T2.22` alone. So the task graph permitted claiming a task whose acceptance criterion is unsatisfiable in code, exactly as it did for T2.41 before T2.54 and for T2.11 before T2.26's qualification record. `T2.12` is added in the same edit because T2.12 is what actually produces the queue's rows: it writes `memory_relations.properties.dream.near_duplicate.hygiene_state`, and T2.12's re-review established that the marker survives re-derivation through **two** mechanisms — the pass-keyed `jsonb_set` and a Python-side carry-forward — **neither of which may be dropped alone**. A T2.23 built without reading that would re-open triaged items nightly | Caught by the controller at claim time, running runbook §1.5's entry check rather than trusting the `Depends` field, which is what that check exists for. This is the **fourth** instance of the same shape in this epic: a constraint recorded in a task's prose and absent from the edge the scheduler actually consults. Worth noting the pattern rather than only the instance — prose is where these constraints get written because that is where they are discovered, and nothing yet forces the edge to follow. Also note T2.23 is tagged *terminal-by-design*, which is now wrong in one direction: T2.12's re-review routed it a within-cycle ordering item (a duplicate pair outranking a subsume pair writes an edge against a memory retired later in the same cycle), so T2.23 has inherited work rather than being a pure leaf |
 | 2026-08-02 | T2.12, T2.23, T2.13 | 1 | **Five deferred minors recorded from T2.12's scoped re-review, none a defect, each one a thing the next reader would otherwise rediscover.** (1) **The score-ordering mirror of I1**: when a duplicate pair outranks a subsume pair, Phase W applies the associate first, so an edge is written while both halves are active and the subsume retires its target later in the same cycle — reproduced. The write and journal are truthful at their own moment and the same end-state arises across cycles regardless, so no per-action guard can see it; ordering subsume actions before associate actions in Phase W would close the within-cycle instance in one line. **T2.23's domain.** (2) `memory_crossrefs.related_memory_id` is neither seeded nor counted by `_reference_counts`, so a repoint of that column alone passes 90/90 — narrow, since any realistic merge touches the covered primary endpoint, but a two-line extension closes it. (3) I3's after-side fallback has no teeth: with `verdict.tags is None`, journalling `memory.tags` instead of `locked_tags` passes — the code is correct but only the explicit-tags path is guarded. (4) The journal's `project` is still a Phase-R read in all three arms, and `MemoryUpdate.project` is wire-editable, so a project edit during Phase C files the event under the stale project — a mislabel, not a loss, and undo keys on `memory_id`. (5) `pair_arm_skipped_reason` is asserted by no test, as its predecessor was not — untested observability only | All five were found by the re-reviewer running mutations after the three Important findings were closed, which is when a suite is most likely to be trusted and least likely to be probed. Recorded rather than fixed because each is either another task's domain (1), narrower than any realistic failure (2), a correct-but-unguarded fallback (3, 5), or a labelling imprecision with no data loss (4). Logged at Tier 1 because none changes a task's scope or a dependency edge — but logged, because the alternative is that T2.13 and T2.23 each pay to rediscover them |
 | 2026-08-02 | T2.68, T2.12, T2.16 | 2 | **T2.68 minted: two shipped read paths key an embedding-partition read on `llm_fingerprint()`, which returns a `|0` sentinel whenever the embedding purpose's `dimensions` is unset — a legal configuration.** `app/api/routes/vectors.py:42` and `app/services/graph.py:52` both call it and read `memory_embeddings__<slug>` with no embed anywhere on the path, and boot registers the sentinel partition, so under that config both surfaces succeed and return **empty forever, with no error and no symptom**. Retrieval is unaffected — `hybrid_search` takes its fingerprint from `embed()`'s return value, measured from an actual vector, so it cannot hit the sentinel | Found by T2.12's plan review as a hazard the *plan* had normalised (every seed skipping was classified 'not an error', which would have left the dream job permanently inert while reporting a green run), then sharpened by the implementer into the observation that no read path under `app/` calls `llm_fingerprint()` safely, then corrected again by the scoped re-reviewer: the implementer's claim that every existing caller 'either follows with a real embed or reads no partition' is **false for these two**, which read partitions directly. So the plan-level trap was caught before shipping and these two are the instances already in the tree. Minted rather than folded into T2.12 because neither site is the dream job's and fixing another surface from a consolidation task is the cross-cutting-change-in-a-feature-commit pattern this epic has now declined three times |
