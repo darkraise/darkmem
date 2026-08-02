@@ -596,13 +596,17 @@ async def test_a_memory_keyword_outage_still_reads_partial(session, monkeypatch)
     service = lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session)
     result = await service.search("q", project="default")
 
+    # Asserted first, deliberately: an unqualified merge loses the memory
+    # keyword entry entirely, so a key assertion would raise KeyError and mask
+    # whether the flag this test exists for actually flipped.
+    assert result.envelope.partial is True
+
     channels = result.envelope.channels
     assert channels["memory.keyword"].failed is True
     assert channels["fact.keyword"].failed is False
     assert channels["memory.semantic"].failed is False
     assert channels["fact.semantic"].ran is False
     assert channels["article.semantic"].ran is False
-    assert result.envelope.partial is True
 
 
 @pytest.mark.asyncio
