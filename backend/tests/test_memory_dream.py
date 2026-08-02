@@ -134,16 +134,25 @@ class StubLLM:
         self,
         *,
         fingerprint: str = FP,
+        configured_fingerprint: str | None = None,
         embed_error: Exception | None = None,
         pair_verdict=None,
         refine=None,
     ):
         self.fingerprint = fingerprint
+        self.configured_fingerprint = configured_fingerprint or fingerprint
         self.embed_error = embed_error
         self.pair_verdict = pair_verdict
         self.refine = refine
         self.embed_calls: list[str] = []
         self.calls: list[dict] = []
+
+    def llm_fingerprint(self) -> str:
+        """What the orchestrator's own `llm_fingerprint()` answers: the
+        *configured* dimensions, which is the `|0` sentinel whenever they are
+        unset. Present so the drill that swaps the canary for this call is
+        runnable and its outcome differs."""
+        return self.configured_fingerprint
 
     async def embed(self, content: str):
         self.embed_calls.append(content)
@@ -963,6 +972,33 @@ class TestSubsumeArm:
         assert outcome.skipped_reason == "llm_unavailable"
         assert (await memory_row(committing, older))["status"] == "active"
         assert await consolidated_events(committing, project) == []
+
+    async def test_the_canary_beats_a_configured_sentinel(
+        self, committing, project, run_cycle
+    ):
+        """F3's drill target. With the embedding purpose's `dimensions` unset —
+        a legal config — `llm_fingerprint()` answers `model|0` while a real
+        embed measures `model|4`, and boot has already registered the sentinel
+        partition, so it exists and is empty. Resolving from the configured
+        value therefore points every probe at that empty partition: no
+        exception, no log line, a green cycle, and a feature that is inert
+        forever."""
+        older, _, _, _ = await build_pair(committing, project)
+        async with committing() as session:
+            await seed_partition(session, "t212-embedder|0")
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("subsumes"),
+            refine=None,
+            configured_fingerprint="t212-embedder|0",
+        )
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.subsumed == 1
+        assert outcome.pairs_skipped_no_vector == 0
+        assert outcome.skipped_reason is None
+        assert (await memory_row(committing, older))["status"] == "superseded"
 
     async def test_an_unresolvable_fingerprint_stops_the_whole_run(
         self, committing, project, run_cycle
