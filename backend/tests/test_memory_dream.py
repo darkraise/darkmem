@@ -645,3 +645,343 @@ class TestJudge:
             'Sure:\n```json\n{"verdict": "duplicate", "reason": "r"}\n```'
         )
         assert parsed.verdict == "duplicate"
+
+
+# ── the cycle fixtures ───────────────────────────────────────────────────
+
+# T-REF2. Every cycle run through `run_cycle` registers its outcome here, and
+# the module's teardown asserts `refused_not_newer` is zero across all of them.
+# The assertion is tree-wide by default — a new test is covered by the act of
+# existing — and exempting one is the deliberate, greppable act of marking it
+# `expect_refusals`. Narrowing this to a hand-picked list instead would leave a
+# guard that reads far stronger than it is, which is the failure mode this whole
+# file exists to prevent.
+_REFUSAL_LEDGER: list[tuple[str, dream.DreamOutcome]] = []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def successor_not_newer_never_arises():
+    yield
+    offenders = [
+        f"{nodeid}: refused_not_newer={outcome.refused_not_newer}"
+        for nodeid, outcome in _REFUSAL_LEDGER
+        if outcome.refused_not_newer
+    ]
+    assert not offenders, (
+        "a cycle hit `successor_not_newer`, which is unreachable on the happy "
+        "path by construction — order_pair and the primitive call the same "
+        "predicate. That refusal means the two disagreed:\n"
+        + "\n".join(offenders)
+    )
+
+
+@pytest.fixture
+def run_cycle(request):
+    expects = request.node.get_closest_marker("expect_refusals") is not None
+
+    async def _run(factory, llm, **knobs):
+        outcome = await dream.run_memory_dream(factory, lambda: llm, **knobs)
+        if not expects:
+            _REFUSAL_LEDGER.append((request.node.nodeid, outcome))
+        return outcome
+
+    return _run
+
+
+@pytest.fixture
+async def committing(setup_database):
+    """A real session factory with real commits.
+
+    The rollback-isolated `session` fixture cannot express what a cycle does —
+    it commits per write batch through its own sessions — so these tests own
+    their cleanup.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.config import settings
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        yield factory
+    finally:
+        async with factory() as cleanup:
+            # `events` is append-only — a DELETE raises. Every cycle test gets
+            # its own project instead, so one test's journal rows can never be
+            # read by another.
+            for statement in (
+                "DELETE FROM memory_relations WHERE project LIKE 't212-%'",
+                "DELETE FROM memories WHERE project LIKE 't212-%'",
+                "DELETE FROM config WHERE key = 'memory_dream_state'",
+            ):
+                await cleanup.execute(text(statement))
+            await cleanup.commit()
+        await engine.dispose()
+
+
+@pytest.fixture
+def project() -> str:
+    """A project of this test's own. `events` cannot be cleaned up between
+    tests, so isolation comes from the scope key rather than from a DELETE."""
+    return f"t212-{new_id().hex[:12]}"
+
+
+async def build_pair(factory, project, *, older_content=None, newer_content=None):
+    """OLD at T0 and NEW at T0+1h, near-identical, both with a vector; FAR
+    unrelated in the same project; OTHER identical in another project."""
+    async with factory() as session:
+        await seed_partition(session)
+        older = await seed_memory(
+            session,
+            project=project,
+            content=older_content or "the api listens on port 8000",
+            created_at=NOW,
+        )
+        newer = await seed_memory(
+            session,
+            project=project,
+            content=newer_content or "the api listens on port 8000 with keepalive",
+            created_at=NOW + timedelta(hours=1),
+        )
+        far = await seed_memory(
+            session,
+            project=project,
+            content="unrelated: the tag sweeper runs hourly",
+            created_at=NOW + timedelta(hours=2),
+        )
+        other = await seed_memory(
+            session,
+            project=f"{project}-other",
+            content=older_content or "the api listens on port 8000",
+            created_at=NOW,
+        )
+        for identifier in (older, newer, other):
+            await put_vector(session, identifier, [1.0, 0.0, 0.0, 0.0])
+        await put_vector(session, far, [0.0, 0.0, 0.0, 1.0])
+        await session.commit()
+    return older, newer, far, other
+
+
+async def memory_row(factory, memory_id) -> dict:
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT status::text AS status, content, summary, "
+                "       CAST(superseded_by AS text) AS superseded_by, "
+                "       metadata, updated_at "
+                "FROM memories WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": str(memory_id)},
+        )
+        return dict(result.mappings().one())
+
+
+async def consolidated_events(factory, project, memory_id=None) -> list[dict]:
+    async with factory() as session:
+        clause = "AND object_id = CAST(:id AS uuid)" if memory_id else ""
+        params = {"project": project}
+        if memory_id:
+            params["id"] = str(memory_id)
+        result = await session.execute(
+            text(
+                "SELECT CAST(object_id AS text) AS object_id, payload, created_at "
+                "FROM events WHERE event_type = 'consolidated' "
+                f"AND project = CAST(:project AS text) {clause} "
+                "ORDER BY created_at, id"
+            ),
+            params,
+        )
+        return [dict(row) for row in result.mappings()]
+
+
+def verdict(name: str, reason: str = "because"):
+    return json.dumps({"verdict": name, "reason": reason})
+
+
+# ── Step 4: the subsume arm ──────────────────────────────────────────────
+
+
+class TestSubsumeArm:
+    async def test_subsume_fires(self, committing, project, run_cycle):
+        """T-A1."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.subsumed == 1
+        row = await memory_row(committing, older)
+        assert row["status"] == "superseded"
+        assert row["superseded_by"] == str(newer)
+
+        events = await consolidated_events(committing, project, older)
+        assert len(events) == 1
+        payload = events[0]["payload"]
+        assert payload["action"] == "subsume"
+        assert payload["before"] == {"status": "active", "superseded_by": None}
+        assert payload["after"]["status"] == "superseded"
+        assert payload["after"]["superseded_by"] == str(newer)
+        assert payload["detector"] == "dedup"
+        assert payload["pair"] == {"older": str(older), "newer": str(newer)}
+
+    async def test_subsume_declines(self, committing, project, run_cycle):
+        """T-A1b — the differential twin. One verdict string separates it."""
+        older, _, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("distinct"), refine=None)
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.subsumed == 0
+        row = await memory_row(committing, older)
+        assert row["status"] == "active"
+        assert row["superseded_by"] is None
+        assert await consolidated_events(committing, project) == []
+
+    async def test_the_judge_never_sees_an_unordered_pair(
+        self, committing, project, run_cycle
+    ):
+        """D4: the direction is fixed before the model is asked anything."""
+        older, newer, _, _ = await build_pair(committing, project)
+        stub = StubLLM(pair_verdict=verdict("distinct"), refine=None)
+
+        await run_cycle(committing, stub, refine_batch=0)
+
+        body = stub.calls[0]["messages"][-1]["content"]
+        assert body.index("OLDER:") < body.index("NEWER:")
+        older_row = await memory_row(committing, older)
+        newer_row = await memory_row(committing, newer)
+        assert body.index(older_row["content"]) < body.index(newer_row["content"])
+
+    async def test_already_superseded_is_ordinary(
+        self, committing, project, run_cycle
+    ):
+        """T-REF1. Two pairs share the older memory, so the second action finds
+        it already retired by the first — the expected steady state, not an
+        anomaly, and the path D4 names."""
+        async with committing() as session:
+            await seed_partition(session)
+            older = await seed_memory(
+                session, project=project, content="one truth", created_at=NOW
+            )
+            first = await seed_memory(
+                session,
+                project=project,
+                content="one truth, corrected",
+                created_at=NOW + timedelta(hours=1),
+            )
+            second = await seed_memory(
+                session,
+                project=project,
+                content="one truth, corrected again",
+                created_at=NOW + timedelta(hours=2),
+            )
+            await put_vector(session, older, [1.0, 0.0, 0.0, 0.0])
+            await put_vector(session, first, [0.99, 0.1, 0.0, 0.0])
+            await put_vector(session, second, [0.99, -0.1, 0.0, 0.0])
+            await session.commit()
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        outcome = await run_cycle(
+            committing, stub, refine_batch=0, near_duplicate_threshold_pct=99
+        )
+
+        assert outcome.subsumed == 1
+        assert outcome.refused_already_superseded == 1
+        assert (await memory_row(committing, older))["status"] == "superseded"
+        assert len(await consolidated_events(committing, project)) == 1
+
+    @pytest.mark.expect_refusals
+    async def test_a_not_newer_refusal_is_counted_and_never_retried_reversed(
+        self, committing, project, monkeypatch, run_cycle
+    ):
+        """T-REF3. The one test exempted from the tree-wide collector.
+
+        The refusal must never be worked around by swapping the endpoints: that
+        retry supersedes a newer memory with an older one, which is invisible to
+        the promotion blocker."""
+        older, newer, _, _ = await build_pair(committing, project)
+        monkeypatch.setattr(
+            dream,
+            "order_pair",
+            lambda left, right: tuple(reversed(_true_order(left, right))),
+        )
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.refused_not_newer == 1
+        assert outcome.subsumed == 0
+        assert (await memory_row(committing, older))["status"] == "active"
+        assert (await memory_row(committing, newer))["status"] == "active"
+        assert await consolidated_events(committing, project) == []
+
+    async def test_a_row_that_moved_between_phases_is_skipped(
+        self, committing, project, monkeypatch, run_cycle
+    ):
+        """T-STALE. Content is the half only this check can catch: the verdict
+        was reached on text the store has since replaced, so applying it would
+        act on a snapshot that no longer exists."""
+        older, newer, _, _ = await build_pair(committing, project)
+        original = dream.apply_subsume
+
+        async def mutate_then_apply(session, action, **kwargs):
+            async with committing() as other:
+                await other.execute(
+                    text(
+                        "UPDATE memories SET content = 're-extracted content' "
+                        "WHERE id = CAST(:o AS uuid)"
+                    ),
+                    {"o": str(older)},
+                )
+                await other.commit()
+            monkeypatch.setattr(dream, "apply_subsume", original)
+            return await original(session, action, **kwargs)
+
+        monkeypatch.setattr(dream, "apply_subsume", mutate_then_apply)
+        stub = StubLLM(pair_verdict=verdict("subsumes"), refine=None)
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.stale_skipped == 1
+        assert outcome.subsumed == 0
+        assert (await memory_row(committing, older))["status"] == "active"
+        assert await consolidated_events(committing, project) == []
+
+    async def test_no_llm_provider_writes_and_deletes_nothing(self, committing, project):
+        older, _, _, _ = await build_pair(committing, project)
+
+        outcome = await dream.run_memory_dream(committing, lambda: None)
+
+        assert outcome.skipped_reason == "llm_unavailable"
+        assert (await memory_row(committing, older))["status"] == "active"
+        assert await consolidated_events(committing, project) == []
+
+    async def test_an_unresolvable_fingerprint_stops_the_whole_run(
+        self, committing, project, run_cycle
+    ):
+        """F3's drill in test form: `llm_fingerprint()` would have returned the
+        `model|0` sentinel here and every seed would have landed in
+        `pairs_skipped_no_vector` under a green run."""
+        older, _, _, _ = await build_pair(committing, project)
+        stub = StubLLM(fingerprint="stub|0", pair_verdict=verdict("subsumes"))
+
+        outcome = await run_cycle(committing, stub, refine_batch=0)
+
+        assert outcome.skipped_reason == "fingerprint_unresolved"
+        assert outcome.seeds_visited == 0
+        assert outcome.pairs_skipped_no_vector == 0
+        assert (await memory_row(committing, older))["status"] == "active"
+        assert await consolidated_events(committing, project) == []
+
+
+def _true_order(left, right):
+    from app.services.supersede import successor_is_newer
+
+    if successor_is_newer(
+        candidate_created_at=left.created_at,
+        candidate_id=left.memory_id,
+        successor_created_at=right.created_at,
+        successor_id=right.memory_id,
+    ):
+        return left, right
+    return right, left

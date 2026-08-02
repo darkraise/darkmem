@@ -55,9 +55,10 @@ calls take no qualification gate, unlike the verification judge's.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -67,8 +68,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import Config
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.services.embedder_registry import child_table
+from app.services.events import record_event
 from app.services.extraction_clean import _content_seed, _loads_extraction
-from app.services.supersede import successor_is_newer
+from app.services.supersede import successor_is_newer, supersede
+from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +168,6 @@ class DreamOutcome:
     cursor_created_at: datetime | None = None
     cursor_id: str | None = None
     wrapped: bool = False
-    events: list[dict] = field(default_factory=list)
 
 
 # ── persisted cursor state ───────────────────────────────────────────────
@@ -652,3 +654,337 @@ async def judge_refine(llm, memory: MemoryRow) -> RefineVerdict:
         seed=refine_seed(memory),
     )
     return parse_refine(raw)
+
+
+# ── Phase W: apply, one savepoint per action ─────────────────────────────
+
+EVENT_TYPE = "consolidated"
+OBJECT_TYPE = "memory"
+DETECTOR = "dedup"
+
+ACTION_SUBSUME = "subsume"
+ACTION_ASSOCIATE = "associate"
+ACTION_REFINE = "refine"
+
+# Scoped inside each action's SAVEPOINT via `SET LOCAL`, so a wedged row lock
+# becomes an ordinary per-action failure instead of consuming the whole tick's
+# `max_run_seconds` and voiding every action the tick had already taken. A
+# literal rather than a bind parameter: `SET` takes no placeholder, and the
+# value is a fixed internal constant.
+_LOCK_TIMEOUT_MS = 5000
+
+_LOCK_MEMORY = text("""
+    SELECT status::text AS status,
+           content,
+           project,
+           summary,
+           metadata,
+           CAST(superseded_by AS text) AS superseded_by
+    FROM memories
+    WHERE id = CAST(:memory_id AS uuid)
+    FOR UPDATE
+""")
+
+# Every refusal is reported, never swallowed and never worked around.
+_REFUSAL_COUNTERS = {
+    "already_superseded": "refused_already_superseded",
+    "terminal": "refused_terminal",
+    "successor_not_newer": "refused_not_newer",
+    "cross_project": "refused_cross_project",
+    "self_reference": "refused_self_reference",
+    "not_found": "refused_not_found",
+}
+
+# Refusals that mean something upstream is wrong rather than that the store
+# moved: my ordering disagreed with the primitive's, the project filter was
+# dropped, or pair dedup failed.
+_ALARMING_REFUSALS = frozenset(
+    {"successor_not_newer", "cross_project", "self_reference"}
+)
+
+
+@dataclass(frozen=True)
+class SubsumeAction:
+    pair: PairCandidate
+    verdict: PairVerdict
+
+    @property
+    def memory_id(self) -> str:
+        return self.pair.older.memory_id
+
+
+async def _set_local_lock_timeout(session: AsyncSession) -> None:
+    await session.execute(text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}ms'"))
+
+
+async def _locked(session: AsyncSession, memory_id: str) -> dict | None:
+    result = await session.execute(_LOCK_MEMORY, {"memory_id": memory_id})
+    row = result.mappings().first()
+    return dict(row) if row is not None else None
+
+
+async def _journal(
+    session: AsyncSession,
+    *,
+    memory_id: str,
+    project: str,
+    payload: dict,
+) -> None:
+    """One row per real transition, never one per no-op.
+
+    ``events`` is append-only, so a phantom transition row can never be removed
+    once written. Skips, refusals and unchanged edges are counted in the run
+    outcome and logged; they journal nothing.
+    """
+    await record_event(
+        session,
+        event_type=EVENT_TYPE,
+        object_type=OBJECT_TYPE,
+        object_id=UUID(memory_id),
+        project=project,
+        payload=payload,
+    )
+
+
+async def apply_subsume(
+    session: AsyncSession,
+    action: SubsumeAction,
+    *,
+    cycle_id: str,
+    outcome: DreamOutcome,
+) -> bool:
+    """Flip the older half of one judged pair, inside the caller's savepoint.
+
+    Phase C computed on a snapshot; between the read and here a delete could
+    have removed either half, or a re-extraction could have changed its content
+    out from under the verdict. A mismatch is a skip, never a write.
+
+    **The candidate's status is deliberately not re-checked here.** The
+    primitive re-reads it under its own ``FOR UPDATE`` and names the refusal
+    precisely — ``already_superseded`` when an earlier action this same cycle
+    already retired the row, ``terminal`` when it is deprecated. Pre-empting it
+    with a local status check would collapse both into one anonymous skip and
+    leave the refusal table with no reachable path.
+    """
+    await _set_local_lock_timeout(session)
+    older, newer = action.pair.older, action.pair.newer
+
+    locked = await _locked(session, older.memory_id)
+    successor = await _locked(session, newer.memory_id)
+    if locked is None or successor is None:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(locked["content"]) != older.content_sha:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(successor["content"]) != newer.content_sha:
+        outcome.stale_skipped += 1
+        return False
+
+    before = {
+        "status": locked["status"],
+        "superseded_by": locked["superseded_by"],
+    }
+    result = await supersede(
+        session,
+        memory_id=older.memory_id,
+        superseded_by=newer.memory_id,
+    )
+    if not result.applied:
+        counter = _REFUSAL_COUNTERS.get(result.reason)
+        if counter is not None:
+            setattr(outcome, counter, getattr(outcome, counter) + 1)
+        if result.reason in _ALARMING_REFUSALS:
+            # Never retried with the endpoints swapped: a retry in the other
+            # direction supersedes a newer memory with an older one, which the
+            # promotion blocker cannot see.
+            logger.warning(
+                "memory dream: supersede refused %s -> %s with %s",
+                older.memory_id, newer.memory_id, result.reason,
+            )
+        return False
+
+    await _journal(
+        session,
+        memory_id=older.memory_id,
+        project=older.project,
+        payload={
+            "action": ACTION_SUBSUME,
+            "before": before,
+            "after": {
+                "status": result.status,
+                "superseded_by": result.superseded_by,
+            },
+            "pair": {"older": older.memory_id, "newer": newer.memory_id},
+            "detector": DETECTOR,
+            "verdict": action.verdict.verdict,
+            "score": action.pair.score,
+            "cycle_id": cycle_id,
+        },
+    )
+    outcome.subsumed += 1
+    return True
+
+
+# ── the run ──────────────────────────────────────────────────────────────
+
+
+async def _judge_pairs(
+    llm,
+    pairs: list[PairCandidate],
+    *,
+    llm_concurrency: int,
+    outcome: DreamOutcome,
+) -> list[SubsumeAction]:
+    """Phase C for the pair arm: no transaction is open across any of this."""
+    if not pairs:
+        return []
+
+    semaphore = asyncio.Semaphore(max(1, llm_concurrency))
+
+    async def judge(pair: PairCandidate):
+        async with semaphore:
+            try:
+                return pair, await judge_pair(llm, pair.older, pair.newer)
+            except Exception:
+                logger.warning(
+                    "memory dream: the pair judge failed for %s / %s",
+                    pair.older.memory_id, pair.newer.memory_id,
+                    exc_info=True,
+                )
+                return pair, None
+
+    results = await asyncio.gather(*[judge(pair) for pair in pairs])
+
+    actions: list[SubsumeAction] = []
+    for pair, verdict in results:
+        if verdict is None:
+            outcome.judge_failed += 1
+            continue
+        outcome.judged += 1
+        if verdict.verdict == "subsumes":
+            actions.append(SubsumeAction(pair=pair, verdict=verdict))
+    return actions
+
+
+async def _apply(
+    session: AsyncSession, action, *, cycle_id: str, outcome: DreamOutcome
+) -> None:
+    """One action in one savepoint, so a poisonous item settles alone."""
+    try:
+        async with session.begin_nested():
+            if isinstance(action, SubsumeAction):
+                await apply_subsume(
+                    session, action, cycle_id=cycle_id, outcome=outcome
+                )
+    except Exception:
+        logger.warning(
+            "memory dream: an action failed and was rolled back", exc_info=True
+        )
+        outcome.failed += 1
+
+
+async def run_memory_dream(
+    session_factory,
+    llm_provider,
+    *,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    pair_candidates: int = DEFAULT_PAIR_CANDIDATES,
+    near_duplicate_threshold_pct: int = DEFAULT_NEAR_DUPLICATE_THRESHOLD_PCT,
+    judge_fanout: int = DEFAULT_JUDGE_FANOUT,
+    refine_batch: int = DEFAULT_REFINE_BATCH,
+    write_batch: int = DEFAULT_WRITE_BATCH,
+    llm_concurrency: int = DEFAULT_LLM_CONCURRENCY,
+) -> DreamOutcome:
+    """One dreaming cycle: read, judge, apply.
+
+    Writes nothing and deletes nothing when it computed nothing — a missing
+    provider and an unresolvable fingerprint both stop the run before Phase W,
+    the same discipline topic detection applies to a missing clustering
+    library, and for the same reason.
+    """
+    outcome = DreamOutcome(cycle_id=str(new_id()))
+
+    llm = llm_provider() if callable(llm_provider) else llm_provider
+    if llm is None:
+        outcome.skipped_reason = SKIPPED_LLM_UNAVAILABLE
+        logger.warning("memory dream: no LLM provider; the cycle does nothing")
+        return outcome
+
+    fingerprint = await resolve_fingerprint(llm)
+    if fingerprint is None:
+        outcome.skipped_reason = SKIPPED_FINGERPRINT_UNRESOLVED
+        return outcome
+
+    # Phase R. Read-only, and committed before the LLM fan-out so a pooled
+    # connection does not sit `idle in transaction` for minutes.
+    async with session_factory() as session:
+        state = await _load_state(session)
+        seeds, outcome.wrapped = await next_seeds(
+            session, state=state, batch_size=batch_size
+        )
+        outcome.seeds_visited = len(seeds)
+        pairs = await generate_pairs(
+            session,
+            seeds=seeds,
+            fingerprint=fingerprint,
+            pair_candidates=pair_candidates,
+            near_duplicate_threshold_pct=near_duplicate_threshold_pct,
+            judge_fanout=judge_fanout,
+            outcome=outcome,
+        )
+        await session.commit()
+
+    if seeds and outcome.pairs_skipped_no_vector == len(seeds):
+        # The per-seed counter is the honest unit for one memory never
+        # re-embedded after a rotation; it is the wrong unit for "the partition
+        # this job reads is empty", and only the run-level check tells them
+        # apart.
+        outcome.skipped_reason = SKIPPED_NO_SEED_VECTORS
+        logger.warning(
+            "memory dream: no seed in a slice of %d had a vector under %s",
+            len(seeds), fingerprint,
+        )
+
+    # Phase C — no transaction is open across any of this.
+    actions: list = await _judge_pairs(
+        llm, pairs, llm_concurrency=llm_concurrency, outcome=outcome
+    )
+
+    # Phase W.
+    advanced = seeds[-1] if seeds else None
+    batches = [
+        actions[index:index + write_batch]
+        for index in range(0, len(actions), max(1, write_batch))
+    ] or [[]]
+    for index, batch in enumerate(batches):
+        async with session_factory() as session:
+            for action in batch:
+                await _apply(
+                    session, action, cycle_id=outcome.cycle_id, outcome=outcome
+                )
+            if index == len(batches) - 1 and advanced is not None:
+                # The cursor advances in the last batch's commit, not per
+                # batch: one seed's actions can straddle two batches, so no
+                # batch boundary corresponds to a seed the cursor could
+                # honestly point past. A crash re-does at most one slice, and
+                # every action is idempotent on replay.
+                await _save_state(
+                    session,
+                    _State(
+                        seed_created_at=advanced.created_at,
+                        seed_id=advanced.memory_id,
+                    ),
+                )
+                outcome.cursor_created_at = advanced.created_at
+                outcome.cursor_id = advanced.memory_id
+            await session.commit()
+
+    logger.info(
+        "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
+        "%d subsumed, %d stale-skipped, %d failed%s",
+        outcome.cycle_id, outcome.seeds_visited, outcome.judged,
+        outcome.subsumed, outcome.stale_skipped, outcome.failed,
+        f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason else "",
+    )
+    return outcome
