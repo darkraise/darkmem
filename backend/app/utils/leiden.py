@@ -69,7 +69,6 @@ async def partition_graph(
         )
         return PartitionResult(None, "unavailable")
 
-    graph = igraph.Graph(n=n_nodes, edges=list(edges), directed=False)
     kwargs: dict = {
         "resolution_parameter": resolution,
         "n_iterations": n_iterations,
@@ -78,16 +77,20 @@ async def partition_graph(
     if weights is not None:
         kwargs["weights"] = list(weights)
 
+    # The graph build runs in the executor too, not just the partition: at the
+    # 2M-edge budget it stalls for ~0.4s, and this process serves capture and
+    # retrieval on the same event loop.
+    def _partition():
+        graph = igraph.Graph(n=n_nodes, edges=list(edges), directed=False)
+        return leidenalg.find_partition(
+            graph, leidenalg.RBConfigurationVertexPartition, **kwargs
+        )
+
     executor = _make_executor()
     try:
         loop = asyncio.get_running_loop()
         partition = await asyncio.wait_for(
-            loop.run_in_executor(
-                executor,
-                lambda: leidenalg.find_partition(
-                    graph, leidenalg.RBConfigurationVertexPartition, **kwargs
-                ),
-            ),
+            loop.run_in_executor(executor, _partition),
             timeout=timeout_seconds,
         )
     except asyncio.TimeoutError:

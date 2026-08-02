@@ -8,7 +8,9 @@ anywhere in this module. The only model-backed step doc 06 §7 names is
 **Three phases, and the ordering is the whole safety argument.**
 
 - *Phase R* reads the projection. Read-only, so it takes no row locks.
-- *Phase C* computes the partition with **no database connection at all**.
+- *Phase C* computes the partition with **no transaction open**: Phase R
+  commits before it starts, so the connection goes back to the pool rather
+  than sitting `idle in transaction` for the length of the clustering.
 - *Phase W* deletes and rewrites the project's communities in one transaction.
 
 The analogous defect to T1.21 is easy to write and would be invisible: delete
@@ -264,6 +266,15 @@ async def detect_for_project(
     def elapsed_ms() -> int:
         return int((time.monotonic() - started) * 1000)
 
+    # End the read transaction before Phase C. `leiden_timeout_seconds` runs to
+    # 600, so holding it would leave a pooled connection `idle in transaction`
+    # for minutes per project — pinning xmin the whole time, and inviting a
+    # kill on any install with `idle_in_transaction_session_timeout` set.
+    # Committing rather than rolling back because Phase R wrote nothing, so the
+    # two are equivalent here, and a rollback would discard the caller's own
+    # uncommitted setup when the session is one it owns.
+    await session.commit()
+
     if projection.truncated_reason is not None:
         logger.warning(
             "Topic detection skipped project %r: %s",
@@ -281,8 +292,7 @@ async def detect_for_project(
         await _journal(session, outcome, ())
         return outcome
 
-    # Phase C — no database connection is held open by anything below until
-    # the rewrite.
+    # Phase C — no transaction is open across any of this.
     connected = projection.connected_indices()
     fallback: str | None = None
     resolution_used = resolution
