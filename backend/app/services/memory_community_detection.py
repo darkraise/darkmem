@@ -62,7 +62,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.memory_communities import (
     CommunityDraft,
     MemberWriteError,
-    assert_no_cross_project_members,
     replace_project_communities,
 )
 from app.services.events import record_event
@@ -355,7 +354,6 @@ async def detect_for_project(
 
     # Phase W.
     await replace_project_communities(session, project, drafts)
-    await assert_no_cross_project_members(session, project)
 
     assigned = sum(len(group) for group in groups)
     outcome = ProjectOutcome(

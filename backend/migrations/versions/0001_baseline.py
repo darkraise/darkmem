@@ -388,6 +388,10 @@ def _pass_two() -> None:
     # fallback to 'concept' and collide with UNIQUE(name, entity_type).
     # Re-derivation is delete-and-rewrite per project, so community ids CHURN
     # on every run — nothing durable may FK one (doc 04 §8.4).
+    #
+    # UNIQUE (id, project) is trivially satisfiable (id is already the PK) and
+    # exists for the same reason memories_id_project_key does: it is what lets
+    # the members table declare a COMPOSITE endpoint FK.
     op.execute(
         """
         CREATE TABLE memory_communities (
@@ -397,16 +401,34 @@ def _pass_two() -> None:
             report_string TEXT,
             properties    JSONB,
             created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT memory_communities_pkey PRIMARY KEY (id)
+            CONSTRAINT memory_communities_pkey PRIMARY KEY (id),
+            CONSTRAINT memory_communities_id_project_key UNIQUE (id, project)
         )
         """
     )
+    # BOTH endpoint FKs are composite on `project`, and one is not enough.
+    # With only the memory-side key, a member row naming a project-A community,
+    # a project-B memory and project B satisfies every constraint and is still
+    # cross-project. With both, `project` must equal the memory's project AND
+    # the community's project, so those two are equal by transitivity — which
+    # makes a cross-project membership unrepresentable rather than merely
+    # forbidden. All three columns are NOT NULL, so MATCH SIMPLE offers no null
+    # escape. There is deliberately no ON UPDATE action: a memory changing
+    # project must clear its memberships first (app/services/memory.py), the
+    # same shape as the demote-before-delete rule.
     op.execute(
         """
         CREATE TABLE memory_community_members (
-            community_id UUID NOT NULL REFERENCES memory_communities(id) ON DELETE CASCADE,
-            memory_id    UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-            CONSTRAINT memory_community_members_pkey PRIMARY KEY (community_id, memory_id)
+            community_id UUID NOT NULL,
+            memory_id    UUID NOT NULL,
+            project      TEXT NOT NULL,
+            CONSTRAINT memory_community_members_pkey PRIMARY KEY (community_id, memory_id),
+            CONSTRAINT fk_memory_community_members_community
+                FOREIGN KEY (community_id, project)
+                REFERENCES memory_communities(id, project) ON DELETE CASCADE,
+            CONSTRAINT fk_memory_community_members_memory
+                FOREIGN KEY (memory_id, project)
+                REFERENCES memories(id, project) ON DELETE CASCADE
         )
         """
     )

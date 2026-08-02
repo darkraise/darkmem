@@ -95,8 +95,8 @@ _INSERT_COMMUNITY = text(
 # then turns from a silent drop into a loud abort.
 _INSERT_MEMBERS = text(
     """
-    INSERT INTO memory_community_members (community_id, memory_id)
-    SELECT c.id, m.id
+    INSERT INTO memory_community_members (community_id, memory_id, project)
+    SELECT c.id, m.id, c.project
     FROM memory_communities c
     JOIN jsonb_to_recordset(CAST(:rows AS jsonb)) AS d(memory_id uuid) ON TRUE
     JOIN memories m ON m.id = d.memory_id AND m.project = c.project
@@ -111,16 +111,6 @@ _CLASSIFY_SHORTFALL = text(
     LEFT JOIN memories m ON m.id = d.memory_id
     WHERE m.id IS NULL OR m.project <> CAST(:project AS text)
     ORDER BY d.memory_id
-    """
-)
-
-_COUNT_CROSS_PROJECT = text(
-    """
-    SELECT count(*)
-    FROM memory_community_members mm
-    JOIN memory_communities c ON c.id = mm.community_id
-    JOIN memories m ON m.id = mm.memory_id
-    WHERE c.project = CAST(:project AS text) AND m.project <> c.project
     """
 )
 
@@ -231,24 +221,6 @@ async def _raise_for_shortfall(
         f"{len(draft.memory_ids)} members; candidates no longer exist: "
         f"{', '.join(absent) or 'unknown'}",
     )
-
-
-async def assert_no_cross_project_members(
-    session: AsyncSession, project: str
-) -> None:
-    """Post-write backstop over the whole project's membership.
-
-    Deliberately temporary: once the members table carries `project` and both
-    composite foreign keys, no row this looks for can exist, and an assertion
-    with no reachable failure is dead code the runbook cannot prove.
-    """
-    count = await session.scalar(_COUNT_CROSS_PROJECT, {"project": project})
-    if count:
-        raise MemberWriteError(
-            CROSS_PROJECT_VIOLATION,
-            f"{count} cross-project member row(s) survived the rewrite of "
-            f"project {project!r}",
-        )
 
 
 def _to_row(mapping) -> CommunityRow:

@@ -27,6 +27,7 @@ from uuid import UUID
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -621,11 +622,15 @@ async def test_delete_memberships_for_memory_clears_only_that_memory(session):
     assert {m for _, m in await member_rows(session, PROJECT)} == {b}
 
 
-async def test_m4_catches_a_hand_inserted_cross_project_member(session):
-    """T1. Until the members table carries `project` and both composite
-    foreign keys, M4's post-write scan is the only database-level backstop:
-    the member insert's join cannot produce this row, but a hand-written
-    INSERT can, and nothing else notices."""
+async def test_the_database_rejects_a_cross_project_member_row(session):
+    """T17 — the literal proof of "unrepresentable".
+
+    The member insert's join already makes a cross-project row unproducible by
+    the detection path, but that is a property of the write path, not of the
+    table. This is the table refusing the row: a hand-written INSERT with no
+    application code in the way. It replaces the runtime assertion that used to
+    stand in for it, which the composite keys leave with no reachable failure.
+    """
     mine = await seed_memory(session)
     theirs = await seed_memory(session, OTHER_PROJECT)
     await session.flush()
@@ -634,20 +639,28 @@ async def test_m4_catches_a_hand_inserted_cross_project_member(session):
         session, PROJECT, [repo.CommunityDraft(label="mine", memory_ids=(mine,))]
     )
     await session.flush()
-    await repo.assert_no_cross_project_members(session, PROJECT)
 
-    await session.execute(
-        text(
-            "INSERT INTO memory_community_members (community_id, memory_id) "
-            "VALUES (CAST(:c AS uuid), CAST(:m AS uuid))"
-        ),
-        {"c": str(community), "m": str(theirs)},
-    )
-    await session.flush()
+    async def raw_insert(project: str) -> None:
+        await session.execute(
+            text(
+                "INSERT INTO memory_community_members "
+                "(community_id, memory_id, project) "
+                "VALUES (CAST(:c AS uuid), CAST(:m AS uuid), CAST(:p AS text))"
+            ),
+            {"c": str(community), "m": str(theirs), "p": project},
+        )
+        await session.flush()
 
-    with pytest.raises(repo.MemberWriteError) as excinfo:
-        await repo.assert_no_cross_project_members(session, PROJECT)
-    assert excinfo.value.reason == repo.CROSS_PROJECT_VIOLATION
+    # Claiming the community's project fails the memory-side key; claiming the
+    # memory's project fails the community-side key. There is no third value:
+    # the single `project` column has to satisfy both parents at once.
+    for claimed in (PROJECT, OTHER_PROJECT):
+        async with session.begin_nested() as savepoint:
+            with pytest.raises(IntegrityError):
+                await raw_insert(claimed)
+            await savepoint.rollback()
+
+    assert {m for _, m in await member_rows(session, PROJECT)} == {mine}
 
 
 # ---------------------------------------------------------------------------
@@ -656,8 +669,8 @@ async def test_m4_catches_a_hand_inserted_cross_project_member(session):
 
 
 async def test_nothing_durable_references_a_churning_community_id(session):
-    """T14a. Community ids are rewritten every run, so a durable FK onto one
-    would break on the next nightly pass (doc 04 §8.4)."""
+    """T14, first half. Community ids are rewritten every run, so a durable FK
+    onto one would break on the next nightly pass (doc 04 §8.4)."""
     result = await session.execute(
         text(
             "SELECT conname, conrelid::regclass::text AS referencing "
@@ -668,6 +681,39 @@ async def test_nothing_durable_references_a_churning_community_id(session):
     )
     referencing = {row.referencing for row in result}
     assert referencing == {"memory_community_members"}
+
+
+async def test_membership_carries_both_composite_foreign_keys(session):
+    """T14, second half. One composite key is not enough: with only the
+    memory-side key, a row naming a project-A community, a project-B memory and
+    project B satisfies every constraint and is still cross-project."""
+    result = await session.execute(
+        text(
+            "SELECT c.conname, "
+            "       c.confrelid::regclass::text AS parent, "
+            "       ARRAY(SELECT attname FROM unnest(c.conkey) k "
+            "             JOIN pg_attribute a "
+            "               ON a.attrelid = c.conrelid AND a.attnum = k) AS cols "
+            "FROM pg_constraint c "
+            "WHERE c.contype = 'f' "
+            "AND c.conrelid = CAST('memory_community_members' AS regclass)"
+        )
+    )
+    keys = {row.parent: sorted(row.cols) for row in result}
+    assert keys == {
+        "memories": ["memory_id", "project"],
+        "memory_communities": ["community_id", "project"],
+    }
+
+    support = await session.scalar(
+        text(
+            "SELECT count(*) FROM pg_constraint "
+            "WHERE contype = 'u' "
+            "AND conrelid = CAST('memory_communities' AS regclass) "
+            "AND conname = 'memory_communities_id_project_key'"
+        )
+    )
+    assert support == 1
 
 
 async def test_community_tables_carry_the_columns_the_writer_assumes(session):
@@ -689,6 +735,7 @@ async def test_community_tables_carry_the_columns_the_writer_assumes(session):
     assert columns[("memory_communities", "properties")] == "YES"
     assert columns[("memory_community_members", "community_id")] == "NO"
     assert columns[("memory_community_members", "memory_id")] == "NO"
+    assert columns[("memory_community_members", "project")] == "NO"
 
 
 # ---------------------------------------------------------------------------
@@ -1128,3 +1175,4 @@ def test_the_connected_filter_keeps_isolated_nodes_out_of_a_community():
     groups = detection._groups_from_membership(membership, (0, 1, 2), 2)
 
     assert groups == [(0, 1, 2)]
+
