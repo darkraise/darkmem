@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import uuid as uuid_module
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -19,6 +21,7 @@ from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.reranker import RerankerService
 from app.services.verified_evidence import latest_verified_evidence
+from tests._reachability_scan import ReachabilityRules, find_forbidden_reach
 
 PROJECT = "t2-43-layer-composition"
 
@@ -754,3 +757,96 @@ async def test_the_composition_serves_both_channels_end_to_end(session):
         "fact.keyword", "fact.name", "fact.semantic",
         "article.semantic",
     }
+
+
+# ─────────── code search cannot enter: three mechanisms (D9) ───────────
+#
+# M1 is the typed admission that **raises**; M2 is the closed vocabulary,
+# pinned rather than merely declared; M3 is a reachability scan over the one
+# file the vocabulary lives in. Each is independently load-bearing: without M1
+# the closure becomes a silent filter, without M2 someone adds an adapter no
+# scan can see, and without M3 the module can import the door it is closed
+# against.
+
+_BACKEND = Path(__file__).resolve().parent.parent
+_COMPOSITION_PATH = _BACKEND / "app" / "services" / "layer_composition.py"
+
+_CODE_SEARCH_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({"app.services.code_query"}),
+    forbidden_attrs=frozenset({"code_query", "search_code"}),
+    forbidden_literals=frozenset(
+        {"CodeQueryService", "CodeSymbol", "code_chunk_embeddings"}
+    ),
+)
+
+
+def test_a_code_shaped_row_cannot_enter_the_composition():
+    """M1. The literal below is in the **live** code door's shape and carries
+    no ``id`` key at all, which is illustrative of intent rather than the
+    guard itself: the guard is the type check, and no shape passes it.
+
+    The raise is the load-bearing half. Under a skip-based design a code row
+    would be dropped without a word — ``normalize_row_id`` returns ``None``
+    for it and ``rrf_fuse`` would ``continue`` past it — so its absence from
+    the output would be indistinguishable from correct behaviour.
+    """
+    code_row = {
+        "chunk_content": "def search_code(...):",
+        "file_path": "app/services/code_query.py",
+        "repo_id": str(uuid4()),
+        "language": "python",
+        "symbol_name": "search_code",
+        "line_start": 23,
+        "line_end": 105,
+        "rrf_score": 0.016,
+    }
+    assert "id" not in code_row
+
+    with pytest.raises(TypeError):
+        lc.compose([code_row])
+    with pytest.raises(TypeError):
+        lc.compose([lc.memory_candidate(_memory_row(uuid4()), channel_rank=1), code_row])
+
+
+def test_the_layer_vocabulary_is_closed():
+    """M2. The only mechanism that sees an added adapter needing no
+    code-search import at all — widening the vocabulary is invisible to a
+    reachability scan, and this makes it a failing test instead."""
+    assert lc.ID_KINDS == frozenset({"memory", "fact", "article"})
+    assert lc.LAYERS == frozenset({"L0", "L2", "L3"})
+    assert set(lc.LAYER_BY_ID_KIND) == lc.ID_KINDS
+    assert set(lc.LAYER_BY_ID_KIND.values()) == lc.LAYERS
+    assert set(lc.CHANNEL_LIST_WEIGHTS) == lc.ID_KINDS
+
+
+def test_the_composition_cannot_reach_code_search():
+    """M3, a **global** forbid over one file with an empty allowlist.
+
+    A one-file scan gets no floor from ``app_sources()``, so vacuity is ruled
+    out explicitly here: the file exists, parses, and is substantial.
+    """
+    assert _COMPOSITION_PATH.exists()
+    tree = ast.parse(_COMPOSITION_PATH.read_text())
+    assert len(list(ast.walk(tree))) > 200, "the scanned file is too small to be real"
+
+    offenders = find_forbidden_reach([_COMPOSITION_PATH], _BACKEND, _CODE_SEARCH_RULES)
+    assert not offenders, (
+        "the layer composition reached the code-search door:\n" + "\n".join(offenders)
+    )
+
+
+def test_the_code_search_guard_rejects_a_synthesised_reference(tmp_path):
+    """In-suite negative control, through the **same** predicate and the
+    **same** rules, so the guard and its control cannot drift apart."""
+    module = tmp_path / "app" / "services" / "eager_code.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "from app.services.code_query import CodeQueryService\n"
+        "async def compose_with_code(session, query):\n"
+        "    return await CodeQueryService(session).search_code(query)\n"
+    )
+
+    offenders = find_forbidden_reach([module], tmp_path, _CODE_SEARCH_RULES)
+    assert offenders
+    assert any("import route" in offender for offender in offenders)
+    assert any("attribute route" in offender for offender in offenders)
