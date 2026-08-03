@@ -354,7 +354,7 @@ export const CURATED_DREAM_CYCLE: DemoDreamCycle = {
     },
   ],
   disputed: {
-    claim: "disputed: 2 origins assert X, 1 origin asserts not-X, as of T",
+    legend: "disputed: 2 origins assert X, 1 origin asserts not-X, as of T",
     sides: [
       {
         assertion: "asserts X — the reranker is enabled by default in production",
@@ -403,7 +403,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     cycle: 128,
     layer: 0,
     title: "summary rewritten · content unchanged (refine never touches content)",
-    claim:
+    note:
       'before: "note about db retries" · after: "exponential backoff retry policy for transient asyncpg connection errors, max 3 attempts"',
     meta: "refined 2026-07-24 03:02 UTC",
     undone: false,
@@ -415,7 +415,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     cycle: 128,
     layer: 0,
     title: "tags rewritten",
-    claim: "before: [db, retry] · after: [db, retry, asyncpg, backoff]",
+    note: "before: [db, retry] · after: [db, retry, asyncpg, backoff]",
     meta: "refined 2026-07-24 03:02 UTC",
     undone: false,
     undone_note: "undone — prior tags restored; journaled",
@@ -447,7 +447,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     cycle: 128,
     layer: 2,
     title: "hybrid_search_enabled is on by default; RRF k=60",
-    claim:
+    badge_claim:
       "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-24",
     meta: "promoted 2026-07-24 03:02 UTC",
     transition: { from: "candidate", to: "corroborated" },
@@ -461,7 +461,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     layer: 2,
     title:
       "confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero",
-    claim: "origin count dropped below N this cycle — demoted, not disputed",
+    note: "origin count dropped below N this cycle — demoted, not disputed",
     meta: "demoted 2026-07-24 03:02 UTC",
     transition: { from: "corroborated", to: "candidate" },
     caution_tag: "demoted",
@@ -474,7 +474,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     cycle: 128,
     layer: 2,
     title: "the reranker LLM-scores the top 40 RRF-ranked rows after fusion",
-    claim:
+    badge_claim:
       "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-24, human-ratified",
     meta: "ratified 2026-07-24 03:04 UTC",
     transition: { from: "corroborated", to: "confirmed", to_label: "human-ratified" },
@@ -488,7 +488,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     cycle: 128,
     layer: 2,
     title: "the setup wizard requires SETUP_SECRET before /setup can run",
-    claim:
+    note:
       "every live triple asserting this closed its belief window — SETUP_SECRET was removed; no resurrection needed to undo",
     meta: "invalidated 2026-07-24 03:02 UTC",
     transition: {

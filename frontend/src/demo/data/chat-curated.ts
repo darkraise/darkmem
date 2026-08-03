@@ -12,7 +12,7 @@ const RANKING_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-gamma",
       layer: 2,
       verification: "corroborated",
-      claim:
+      subject_text:
         "confidence_rank_gamma defaults to 0 — weighting is inactive until raised above zero",
       badge_line:
         "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-20",
@@ -30,7 +30,7 @@ const RANKING_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-hybrid",
       layer: 2,
       verification: "confirmed",
-      claim: "hybrid_search_enabled is on by default; RRF k=60",
+      subject_text: "hybrid_search_enabled is on by default; RRF k=60",
       badge_line:
         "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-15, human-ratified",
       trace: {
@@ -46,7 +46,7 @@ const RANKING_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-reranker-memory",
       layer: 0,
       verification: null,
-      claim: "“Considering moving the reranker to a cross-encoder model”",
+      subject_text: "“Considering moving the reranker to a cross-encoder model”",
       badge_line:
         "no verification badge on this row — badge: null, verification_status: null (L0 memories carry lifecycle, not the ladder)",
     },
@@ -68,7 +68,7 @@ const DEGRADED_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-cookie-fact",
       layer: 2,
       verification: "corroborated",
-      claim:
+      subject_text:
         "cookie_secure is tri-state: unset = Secure only in production; explicit false allows login over plain-HTTP LAN",
       badge_line:
         "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-18",
@@ -78,7 +78,7 @@ const DEGRADED_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-cookie-memory",
       layer: 0,
       verification: null,
-      claim:
+      subject_text:
         "“Set COOKIE_SECURE=false on the LAN box — login kept bouncing until the Secure flag came off”",
       badge_line:
         "no verification badge on this row — badge: null (L0 memories carry lifecycle, not the ladder)",
@@ -96,7 +96,7 @@ const SUPERSESSION_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-window-fact",
       layer: 2,
       verification: "corroborated",
-      claim: "SUPERSESSION_WINDOW_DAYS defaults to 90",
+      subject_text: "SUPERSESSION_WINDOW_DAYS defaults to 90",
       badge_line:
         "asserted by 3 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-12",
       trace: {
@@ -112,7 +112,7 @@ const SUPERSESSION_TURN_CONTEXT: DemoTurnContext = {
       id: "ctx-window-memory",
       layer: 0,
       verification: null,
-      claim:
+      subject_text:
         "“Candidates older than the window never flip — burned us on the March backfill”",
       badge_line:
         "no verification badge on this row — badge: null (L0 memories carry lifecycle, not the ladder)",
@@ -200,7 +200,7 @@ export const CURATED_CHAT_THREADS: DemoChatThread[] = [
               id: "ctx-savepoint-fact",
               layer: 2,
               verification: "corroborated",
-              claim:
+              subject_text:
                 "Phase-5 writes split into savepoint A (vector) and savepoint B (graph) so a graph failure does not roll back the vector write",
               badge_line:
                 "asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-08",
@@ -226,7 +226,7 @@ export const DEMO_REPLY_CONTEXT: DemoTurnContext = {
       id: "ctx-demo-fact",
       layer: 2,
       verification: "corroborated",
-      claim:
+      subject_text:
         "the demo store serves every surface in this skeleton; no backend calls are made",
       badge_line:
         "asserted by 2 distinct origins of kinds [code, human], no known contradiction, as of 2026-07-25",
@@ -235,7 +235,7 @@ export const DEMO_REPLY_CONTEXT: DemoTurnContext = {
       id: "ctx-demo-memory",
       layer: 0,
       verification: null,
-      claim: "“Wave 3 wires Chat to the demo layer, real streaming comes later”",
+      subject_text: "“Wave 3 wires Chat to the demo layer, real streaming comes later”",
       badge_line:
         "no verification badge on this row — badge: null (L0 memories carry lifecycle, not the ladder)",
     },

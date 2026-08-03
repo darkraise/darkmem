@@ -1,60 +1,66 @@
 import { afterEach, describe, expect, it } from "vitest"
 import {
   ARTICLE_IDS,
-  CURATED_ARTICLES,
-  CURATED_FACTS,
   CURATED_REVIEW_ITEMS,
   FACT_IDS,
 } from "../data/knowledge-curated"
-import { CURATED_CHAT_THREADS, DEMO_REPLY_CONTEXT } from "../data/chat-curated"
 import { validateBadgeClaim } from "../badge-grammar"
 import { useDemoStore } from "../store"
 
-// T2.75: knowledge-curated.ts and chat-curated.ts are the two files T2.71's
-// review found carrying badge-shaped claim strings the backend's own
-// second-producer scan cannot see (it walks backend/app only). This suite
-// is that missing coverage for frontend/ — every `claim` this demo treats
-// as the fact/article badge, and every `badge_line` chat's turn-context
-// rows carry, must be a shape fact_badge.build_claim can actually emit.
+// T2.75 (fix round 2026-08-04a, F4): the original guard imported exactly
+// knowledge-curated.ts and chat-curated.ts by name -- "the two files
+// T2.71's review found" -- and every other demo data file was invisible to
+// it. The reviewer proved the hole by planting a fresh badge paraphrase in
+// activity-curated.ts (the same divergence class this suite exists to
+// catch) and watching the whole frontend suite pass 535/535. This glob
+// discovers every `*-curated.ts` module under `../data` instead of a
+// hand-listed import set, so a new curated file is covered the moment it
+// exists, with no change needed here.
+const CURATED_MODULES = import.meta.glob<Record<string, unknown>>(
+  "../data/*-curated.ts",
+  { eager: true },
+)
 
-function collectStrings(node: unknown, key: string, out: string[] = []): string[] {
+// Exact field-name convention, not a free-text scan (see badge-grammar.ts's
+// module docstring, "What walks this grammar"): a badge string authored
+// under a different key (settings-curated.ts's `inject_items[].text`,
+// memories-curated.ts's `verification_detail`) composes the claim into a
+// longer sentence and is a stated residual, not covered here.
+const CLAIM_KEYS = new Set(["claim", "badge_claim", "badge_line"])
+
+function collectBadgeClaims(node: unknown, out: string[] = []): string[] {
   if (Array.isArray(node)) {
-    for (const item of node) collectStrings(item, key, out)
+    for (const item of node) collectBadgeClaims(item, out)
   } else if (node !== null && typeof node === "object") {
-    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-      if (k === key && typeof v === "string") out.push(v)
-      else collectStrings(v, key, out)
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (CLAIM_KEYS.has(key) && typeof value === "string") {
+        out.push(value)
+      } else {
+        collectBadgeClaims(value, out)
+      }
     }
   }
   return out
 }
 
-describe("every badge claim in frontend/ matches a shape the producer can emit", () => {
-  it("knowledge-curated's fact and article claims", () => {
-    const claims = [
-      ...CURATED_FACTS.map((f) => f.claim),
-      ...CURATED_ARTICLES.map((a) => a.claim),
-    ].filter((c): c is string => typeof c === "string")
+describe("every badge claim in frontend/src/demo/data matches a shape the producer can emit", () => {
+  it("discovers every *-curated.ts module (not a hand-listed import set)", () => {
+    // Pinned to a floor, not an exact count: the glob returning fewer than
+    // the seven curated files on disk today means the pattern or the vitest
+    // glob wiring broke, which is exactly the silent-omission failure mode
+    // this test exists to rule out. A file added later only raises this.
+    expect(Object.keys(CURATED_MODULES).length).toBeGreaterThanOrEqual(7)
+  })
+
+  it("validates every claim/badge_claim/badge_line string found, at any depth, in any module", () => {
+    const claims = Object.values(CURATED_MODULES).flatMap((mod) =>
+      collectBadgeClaims(mod),
+    )
 
     expect(claims.length).toBeGreaterThan(0)
 
     const failures = claims
       .map((c) => ({ c, check: validateBadgeClaim(c) }))
-      .filter(({ check }) => !check.ok)
-
-    expect(failures.map((f) => f.check.reason)).toEqual([])
-  })
-
-  it("chat-curated's badge_line entries, at every nesting depth", () => {
-    const lines = [
-      ...collectStrings(CURATED_CHAT_THREADS, "badge_line"),
-      ...collectStrings(DEMO_REPLY_CONTEXT, "badge_line"),
-    ]
-
-    expect(lines.length).toBeGreaterThan(0)
-
-    const failures = lines
-      .map((line) => ({ line, check: validateBadgeClaim(line) }))
       .filter(({ check }) => !check.ok)
 
     expect(failures.map((f) => f.check.reason)).toEqual([])
@@ -92,7 +98,7 @@ describe("the grammar actually rejects what it claims to reject — proven, not 
     expect(result.reason).toMatch(/matches no shape/)
   })
 
-  it("rejects the forbidden certainty words even inside an otherwise-legal sentence", () => {
+  it("rejects the forbidden certainty words in the template itself, not interpolated data", () => {
     expect(validateBadgeClaim("this fact is verified").ok).toBe(false)
     expect(validateBadgeClaim("this claim is true").ok).toBe(false)
   })
@@ -103,6 +109,29 @@ describe("the grammar actually rejects what it claims to reject — proven, not 
         "asserted by 1 distinct origin of kinds [memory], no known contradiction, as of 2026-07-23",
       ).ok,
     ).toBe(true)
+  })
+
+  // F6: proven against the real backend producer (build_claim(
+  //   verification_status="disputed", origin_count=2, origin_kinds=["code","memory"],
+  //   as_of=2026-07-24, claim_text="reranker_enabled DEFAULTS_TO true",
+  //   counterpart_text="reranker_enabled DEFAULTS_TO false", counterpart_origin_count=1,
+  // )) -- fact_badge._render strips claim_text/counterpart_text before checking
+  // certainty words, so this sentence is legal backend output. The old
+  // whole-string CERTAINTY_WORDS check rejected it; this is the reason it
+  // must not.
+  it("accepts a disputed claim whose interpolated data legally contains 'true' (F6)", () => {
+    const realProducerOutput =
+      "disputed: 2 origins assert reranker_enabled DEFAULTS_TO true, 1 origin asserts reranker_enabled DEFAULTS_TO false, as of 2026-07-24"
+    expect(validateBadgeClaim(realProducerOutput)).toEqual({ ok: true })
+  })
+
+  // Guards the fix itself: interpolated data does not get a free pass on
+  // shape or agreement checks, only on the certainty-word check.
+  it("still rejects a disputed claim with interpolated data if the count/noun disagree", () => {
+    const result = validateBadgeClaim(
+      "disputed: 2 origin asserts reranker_enabled DEFAULTS_TO true, 1 origin asserts reranker_enabled DEFAULTS_TO false, as of 2026-07-24",
+    )
+    expect(result.ok).toBe(false)
   })
 })
 
