@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -294,6 +295,28 @@ class OriginProfile:
 
 
 @dataclass(frozen=True)
+class OriginGroup:
+    """One origin's rows, kept rather than summarised away.
+
+    ``OriginObservation`` answers "how many origins, asserting under which
+    kinds"; this answers "which rows, and what does each one point at" — the
+    audit a human performs against a badge that claims a count. Same
+    normalised ``origin_key``, ``None`` for the merged unknown-identity
+    bucket.
+    """
+
+    origin_key: str | None
+    source_kinds: tuple[str, ...]
+    first_seen: datetime
+    last_seen: datetime
+    sources: tuple[dict, ...]
+
+    @property
+    def is_unknown(self) -> bool:
+        return self.origin_key is None
+
+
+@dataclass(frozen=True)
 class MemorySource:
     """One memory that asserts a fact, carrying what a status decision reads.
 
@@ -442,10 +465,33 @@ class FactSourceRepository:
         under and the first/last time it did — the timestamps the time-gap gate
         needs. The aggregation happens in SQL so the "never rows" rule cannot be
         lost by a caller iterating the wrong thing.
+
+        A thin wrapper over the batched form rather than its own statement:
+        one grouping means one count, and rule 1's "never rows" cannot hold on
+        one path while a second path drifts off it.
         """
+        key = str(fact_id)
+        return (await self.origin_profiles([key]))[key]
+
+    async def origin_profiles(
+        self, fact_ids: Sequence[UUID | str]
+    ) -> dict[str, OriginProfile]:
+        """``origin_profile`` for a bounded page, in one round trip.
+
+        Every requested id appears in the result, including one with no
+        provenance at all — an empty profile is the honest answer for a fact
+        nothing has sourced yet, and a missing key would make a caller's
+        ``KeyError`` indistinguishable from a fetch that failed.
+        """
+        keys = [str(fact_id) for fact_id in fact_ids]
+        profiles = {key: OriginProfile(fact_id=key, origins=()) for key in keys}
+        if not keys:
+            return profiles
+
         result = await self.session.execute(
             text(f"""
                 SELECT
+                    CAST(fact_id AS text) AS fact_id,
                     {_NORMALIZED_ORIGIN} AS origin,
                     array_agg(DISTINCT source_kind)
                         FILTER (WHERE source_kind IS NOT NULL) AS source_kinds,
@@ -453,25 +499,62 @@ class FactSourceRepository:
                     MAX(created_at) AS last_seen,
                     COUNT(*) AS row_count
                 FROM fact_sources
+                WHERE fact_id = ANY(CAST(:fact_ids AS uuid[]))
+                GROUP BY 1, 2
+                ORDER BY 1, MIN(created_at), 2
+            """),
+            {"fact_ids": keys, **_UNKNOWN_ORIGIN_MATCH},
+        )
+        observed: dict[str, list[OriginObservation]] = {}
+        for row in result.mappings().all():
+            observed.setdefault(row["fact_id"], []).append(
+                OriginObservation(
+                    origin_key=(
+                        None if row["origin"] == _UNKNOWN_ORIGIN_BUCKET else row["origin"]
+                    ),
+                    source_kinds=tuple(sorted(row["source_kinds"] or ())),
+                    first_seen=row["first_seen"],
+                    last_seen=row["last_seen"],
+                    row_count=int(row["row_count"]),
+                )
+            )
+        for key, origins in observed.items():
+            profiles[key] = OriginProfile(fact_id=key, origins=tuple(origins))
+        return profiles
+
+    async def sources_by_origin(self, fact_id: UUID | str) -> tuple[OriginGroup, ...]:
+        """Every provenance row, grouped under the origin that wrote it.
+
+        This is what makes the badge's ``origin_count`` auditable rather than
+        asserted: a reader counts the groups and gets the number the badge
+        claims. The grouping expression is ``_NORMALIZED_ORIGIN`` — the same
+        one ``origin_profiles`` counts on, referenced rather than restated, so
+        the audit cannot disagree with the claim it audits.
+        """
+        result = await self.session.execute(
+            text(f"""
+                SELECT {_NORMALIZED_ORIGIN} AS origin, {_COLUMNS}
+                FROM fact_sources
                 WHERE fact_id = CAST(:fact_id AS uuid)
-                GROUP BY 1
-                ORDER BY MIN(created_at), 1
+                ORDER BY 1, created_at, id
             """),
             {"fact_id": str(fact_id), **_UNKNOWN_ORIGIN_MATCH},
         )
-        origins = tuple(
-            OriginObservation(
-                origin_key=(
-                    None if row["origin"] == _UNKNOWN_ORIGIN_BUCKET else row["origin"]
-                ),
-                source_kinds=tuple(sorted(row["source_kinds"] or ())),
-                first_seen=row["first_seen"],
-                last_seen=row["last_seen"],
-                row_count=int(row["row_count"]),
+        grouped: dict[str, list[dict]] = {}
+        for row in result.mappings().all():
+            source = _row_to_dict(row)
+            source.pop("origin", None)
+            grouped.setdefault(row["origin"], []).append(source)
+        return tuple(
+            OriginGroup(
+                origin_key=None if origin == _UNKNOWN_ORIGIN_BUCKET else origin,
+                source_kinds=tuple(sorted({r["source_kind"] for r in rows})),
+                first_seen=min(r["created_at"] for r in rows),
+                last_seen=max(r["created_at"] for r in rows),
+                sources=tuple(rows),
             )
-            for row in result.mappings().all()
+            for origin, rows in grouped.items()
         )
-        return OriginProfile(fact_id=str(fact_id), origins=origins)
 
     async def memory_sources_for_fact(
         self, fact_id: UUID | str

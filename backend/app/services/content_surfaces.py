@@ -283,6 +283,41 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "about live volume.",
     ),
     ContentSurface(
+        key="knowledge_facts_browsing",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/facts",),
+        crosses=("fact_content",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.36a",
+        reason="Doc 13 §5.1's Facts tab lists the vault the deployment holds, "
+               "and `project` is a filter the caller applies rather than a "
+               "scope the door imposes: a browsing surface that silently "
+               "showed one project would make the other projects' facts look "
+               "absent, which on a truth surface reads as 'we know nothing "
+               "about that' rather than 'you are looking elsewhere'. Every "
+               "item carries its own project. Nothing is filtered by "
+               "verification status by default either — doc 08 §6's "
+               "never-a-gate rule — so a candidate and a disputed fact are "
+               "listed alongside a corroborated one, each labelled.",
+    ),
+    ContentSurface(
+        key="knowledge_fact_detail",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/facts/{fact_id}",),
+        crosses=("fact_content",),
+        scoping=Scoping.ID_ADDRESSED,
+        labels=("project",),
+        decided_by="T2.36a",
+        reason="One fact by id, with its provenance rows grouped under the "
+               "origin that wrote them so the badge's distinct-origin count "
+               "can be counted back. The caller already names the row, so a "
+               "project predicate would only decide whether a known id "
+               "answers or 404s. It serves a belief-withdrawn row too: "
+               "retained history that cannot be read answers nothing, and "
+               "the belief window on the response says which it is.",
+    ),
+    ContentSurface(
         key="analytics_recents",
         kind=_S,
         front_doors=("GET /api/v1/analytics/overview",),

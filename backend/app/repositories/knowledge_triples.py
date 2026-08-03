@@ -342,6 +342,83 @@ class KnowledgeTripleRepository:
         )
         return [_row_to_dict(row) for row in result.mappings().all()]
 
+    async def get(self, triple_id: UUID | str) -> dict | None:
+        """One fact by id, whatever its belief window or verification rung.
+
+        Unfiltered on purpose. A window-closed or belief-withdrawn fact is
+        retained history and is exactly what "what did we believe as of X"
+        asks for; a detail read that 404'd on one would make the retention
+        unreachable from the surface that exists to show it.
+        """
+        result = await self.session.execute(
+            text(f"SELECT {_COLUMNS} FROM knowledge_triples WHERE id = CAST(:id AS uuid)"),
+            {"id": str(triple_id)},
+        )
+        row = result.mappings().first()
+        return _row_to_dict(row) if row is not None else None
+
+    async def list_live(
+        self,
+        *,
+        project: str | None,
+        subject_name: str | None = None,
+        rel_type: str | None = None,
+        object_name: str | None = None,
+        verification_status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """A page of live facts, and the total that matched — a browsing read.
+
+        **It does not rank and it does not gate.** The order is arrival
+        (``created_at DESC, id DESC``), a queued, disputed or candidate fact is
+        listed like any other, and ``verification_status`` is a filter the
+        caller opts into rather than a default that hides rungs. Doc 08 §6's
+        rule that the review queue is never a gate on the read path is a rule
+        about *this* kind of surface too.
+
+        ``project`` is required as a keyword but may be ``None``, unlike
+        ``get_live`` and ``as_of`` where it is mandatory. Those two answer a
+        retrieval question and must not serve across projects by omission;
+        this one is the authenticated human's browsing view over their own
+        box, where an all-projects list is a legitimate thing to ask for — the
+        same posture ``review_queue`` takes over the same table. Making the
+        parameter keyword-only and undefaulted is what keeps that a decision
+        at every call site rather than a default nobody noticed.
+        """
+        conditions = [LIVE_PREDICATE]
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        for column, value in (
+            ("project", project),
+            ("subject_name", subject_name),
+            ("rel_type", rel_type),
+            ("object_name", object_name),
+            ("verification_status", verification_status),
+        ):
+            if value is not None:
+                conditions.append(f"{column} = CAST(:{column} AS text)")
+                params[column] = value
+        where_sql = " AND ".join(conditions)
+
+        result = await self.session.execute(
+            text(f"""
+                SELECT {_COLUMNS}
+                FROM knowledge_triples
+                WHERE {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT CAST(:limit AS integer) OFFSET CAST(:offset AS integer)
+            """),
+            params,
+        )
+        rows = [_row_to_dict(row) for row in result.mappings().all()]
+
+        count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+        total = await self.session.execute(
+            text(f"SELECT COUNT(*) FROM knowledge_triples WHERE {where_sql}"),
+            count_params,
+        )
+        return rows, int(total.scalar_one())
+
     async def set_verification_status(
         self,
         triple_id: UUID | str,

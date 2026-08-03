@@ -145,6 +145,8 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/dream-digest/cycles/{cycle_id}"): 200,
     ("POST", "/api/v1/dream-digest/actions/{event_id}/undo"): 200,
     ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
+    ("GET", "/api/v1/knowledge/facts"): 200,
+    ("GET", "/api/v1/knowledge/facts/{fact_id}"): 200,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
@@ -390,6 +392,7 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
         "/api/v1/auth/audit",
         "/api/v1/review-queue/facts",
         "/api/v1/review-queue/articles",
+        "/api/v1/knowledge/facts",
     ]
     for path in paginated_gets:
         response = await client.get(path, headers=auth_headers)

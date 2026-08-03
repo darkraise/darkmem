@@ -462,6 +462,33 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.facts_browsing",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/knowledge/facts"),
+            ("GET", f"{V1}/knowledge/facts/{{fact_id}}"),
+        ),
+        reason=(
+            "The authenticated human's browsing view behind doc 13 section "
+            "5.1's Facts tab. What it serves is an audit of the vault's own "
+            "bookkeeping rather than knowledge an agent retrieves: the "
+            "bi-temporal belief window including window-closed rows that are "
+            "retained history, every provenance row grouped under the "
+            "origin_key that wrote it so the badge's distinct-origin count "
+            "can be counted back, and the arrival-ordered page an agent has "
+            "no query to aim at. Doc 12 section 3 assigns the agent-facing "
+            "reads over these same rows to a separate tool family -- "
+            "knowledge_search's composed, ranked, badged result and "
+            "fact_get's single-row detail -- which the MCP door serves under "
+            "its local-network trust model with no auth at all. This surface "
+            "is auth-gated, and the two postures are the point rather than "
+            "an accident: a provenance audit is a curation act by the box's "
+            "owner, the same conflict-of-interest reasoning doc 12 section 1 "
+            "applies to the review queue, and it is the "
+            "pipeline_failures.triage shape applied to the fact layer."
+        ),
+    ),
+    Surface(
         name="buffer.triage",
         status=REST_ONLY,
         rest=(
