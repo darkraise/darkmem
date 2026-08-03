@@ -16,13 +16,16 @@ Four properties this module exists to pin, each with a mutation that breaks it:
 from __future__ import annotations
 
 import ast
+import contextlib
 import inspect
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 import app.services.facts_channel as facts_channel
 from app.repositories.knowledge_triples import (
@@ -514,6 +517,138 @@ async def test_a_genuine_no_match_is_an_empty_list_not_a_raise(session):
     await _open_fact(session)
 
     assert await FactsChannel(session).search("nothingmatchesthis", project=PROJECT) == []
+
+
+# ── the same contract under a *database-level* failure (T2.66) ───────
+#
+# The section above breaks an arm in Python, before any SQL is sent. That
+# leaves the transaction usable, so those tests pass whether or not the arms
+# are isolated from each other — they cannot see the failure the per-arm
+# savepoints exist for. A database error aborts the whole transaction, so
+# without a savepoint the *next* arm's own valid SQL fails on the aborted
+# transaction and a one-sided outage is reported as a both-sided one, naming
+# an arm that never independently failed. Nothing below patches the channel:
+# each arm is broken in the database.
+
+# Both poisons work by overflowing `plainto_tsquery` past the server's
+# `max_stack_depth`, which is the container's 2048kB default. A server
+# configured with a much larger stack could parse them instead, and the arm
+# under test would then succeed rather than fail.
+
+# 'english' drops stopwords before the tsquery is built, so this overflows
+# the name arm's 'simple' tsquery while the keyword arm still resolves to the
+# single term that matches the seeded fact.
+_NAME_ARM_POISON = "zarquon " + "the of and is a an " * 20_000
+
+# No configuration drops these, so both arms' tsqueries overflow.
+_BOTH_ARMS_POISON = "alpha beta gamma " * 20_000
+
+_ARM_FAILURE_LOG = "app.services.facts_channel"
+
+
+def _the_arm_failure(caplog, arm: str) -> str:
+    (message,) = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith(f"Facts {arm} arm failed:")
+    ]
+    return message
+
+
+@contextlib.asynccontextmanager
+async def _the_keyword_arms_column_retyped(session, channel: FactsChannel):
+    """Make ``to_tsvector('english', fact)`` stop type-checking.
+
+    Every column both arms select stays valid and the name arm's own
+    expression reads different columns, so the break is one-sided and it
+    lands inside the database rather than in front of it.
+
+    Two cached name-arm plans have to be dealt with and they are *different*
+    plans. asyncpg caches prepared statements per connection and that cache is
+    not transactional, so neither the DDL nor the fixture's rollback empties
+    it:
+
+    * The plan cached against the pre-DDL schema, which the DDL invalidates.
+      The suppressed execution below spends that invalidation, so the name arm
+      fails on the poison under test rather than on a stale plan the channel
+      never caused.
+    * The plan that same execution then caches against the *altered* schema.
+      The fixture's rollback restores ``fact text`` and leaves that one stale
+      on a connection about to go back to the pool, where it would fire in
+      whichever later test reaches the name arm first — a failure visible only
+      in full-file runs. So the connection is invalidated on the way out and
+      discarded instead of pooled.
+    """
+    await session.execute(
+        text("ALTER TABLE knowledge_triples DROP COLUMN fact, ADD COLUMN fact bytea")
+    )
+    sql, params = channel.name_query(RARE_TERM, PROJECT, 1)
+    with contextlib.suppress(DBAPIError):
+        async with session.begin_nested():
+            await session.execute(text(sql), params)
+    try:
+        yield
+    finally:
+        await (await session.connection()).invalidate()
+
+
+async def _assert_the_session_survived(session) -> None:
+    assert (await session.execute(text("SELECT 1"))).scalar() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_database_level_keyword_failure_degrades_to_the_name_arm(session):
+    fact = await _open_fact(session)
+    channel = FactsChannel(session)
+
+    async with _the_keyword_arms_column_retyped(session, channel):
+        trace = await channel.search_with_trace("darkmem", project=PROJECT)
+
+        assert trace.keyword_failed is True
+        assert trace.name_failed is False
+        assert _ids(trace.results) == {fact["id"]}
+        await _assert_the_session_survived(session)
+
+
+@pytest.mark.asyncio
+async def test_a_database_level_name_failure_leaves_the_session_usable(session, caplog):
+    """The arm that fails last poisons nothing the caller still needs.
+
+    Its failure is the last thing the channel does, so no sibling arm can
+    observe it — only the caller can, and it holds the request transaction.
+
+    The logged cause is asserted, not just the failed flag: any server-side
+    error aborts the transaction and would satisfy the flag, so a poison
+    leaked in from an earlier test would let this pass while testing
+    something else. Pinning the mechanism makes the verdict independent of
+    what ran before.
+    """
+    fact = await _open_fact(session)
+
+    with caplog.at_level(logging.ERROR, logger=_ARM_FAILURE_LOG):
+        trace = await FactsChannel(session).search_with_trace(
+            _NAME_ARM_POISON, project=PROJECT,
+        )
+
+    assert trace.name_failed is True
+    assert trace.keyword_failed is False
+    assert _ids(trace.results) == {fact["id"]}
+    await _assert_the_session_survived(session)
+
+    failure = _the_arm_failure(caplog, NAME_ARM)
+    assert "stack depth limit exceeded" in failure
+    assert "InvalidCachedStatementError" not in failure
+
+
+@pytest.mark.asyncio
+async def test_a_both_sided_database_failure_raises_rather_than_returning_empty(session):
+    """Invariant 14 does not soften because the failure was a real one."""
+    await _open_fact(session)
+
+    with pytest.raises(RuntimeError, match="both the keyword and name arms"):
+        await FactsChannel(session).search(_BOTH_ARMS_POISON, project=PROJECT)
+
+    await _assert_the_session_survived(session)
 
 
 # ── intra-channel fusion ─────────────────────────────────────────────

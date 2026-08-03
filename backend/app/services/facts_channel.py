@@ -212,15 +212,28 @@ class FactsChannel:
         keyword_failed = False
         name_failed = False
 
+        # Each arm runs inside its own SAVEPOINT. Both share one session, and a
+        # database-level error aborts the entire transaction, so without one
+        # the surviving arm's own valid SQL fails on the aborted transaction: a
+        # one-sided outage reports as a both-sided one, naming an arm that never
+        # independently failed, and the caller's session is poisoned for
+        # everything it does after the search. The memory hybrid carries the
+        # same idiom (``hybrid_search._run_channels``) and they change together.
         try:
-            keyword_rows = await self._run(self.keyword_query(query, project, fetch_n), KEYWORD_ARM)
+            async with self.session.begin_nested():
+                keyword_rows = await self._run(
+                    self.keyword_query(query, project, fetch_n), KEYWORD_ARM,
+                )
         except Exception as e:
             logger.error("Facts keyword arm failed: %s", e)
             keyword_rows = []
             keyword_failed = True
 
         try:
-            name_rows = await self._run(self.name_query(query, project, fetch_n), NAME_ARM)
+            async with self.session.begin_nested():
+                name_rows = await self._run(
+                    self.name_query(query, project, fetch_n), NAME_ARM,
+                )
         except Exception as e:
             logger.error("Facts name arm failed: %s", e)
             name_rows = []

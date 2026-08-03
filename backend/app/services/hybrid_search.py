@@ -103,15 +103,26 @@ class HybridSearchService:
         semantic_failed = False
         keyword_failed = False
 
+        # Each side runs inside its own SAVEPOINT. Both share one session, and
+        # a database-level error aborts the entire transaction, so without one
+        # the surviving side's own valid SQL fails on the aborted transaction:
+        # a one-sided outage reports as a both-sided one, naming a side that
+        # never independently failed, and the caller's session is poisoned for
+        # everything it does after the search. The facts channel carries the
+        # same idiom (``facts_channel._run_arms``) and they change together.
         try:
-            semantic_results = await self._semantic_search(vector, fingerprint, fetch_n, filters)
+            async with self.session.begin_nested():
+                semantic_results = await self._semantic_search(
+                    vector, fingerprint, fetch_n, filters,
+                )
         except Exception as e:
             logger.error("Semantic search failed: %s", e)
             semantic_results = []
             semantic_failed = True
 
         try:
-            keyword_results = await self._keyword_search(query, fetch_n, filters)
+            async with self.session.begin_nested():
+                keyword_results = await self._keyword_search(query, fetch_n, filters)
         except Exception as e:
             logger.error("Keyword search failed: %s", e)
             keyword_results = []
