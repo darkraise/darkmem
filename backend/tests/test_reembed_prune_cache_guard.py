@@ -111,6 +111,23 @@ async def test_a_dimension_no_embed_ever_produced_never_drops_a_live_cache(
     assert response.status_code == 409, response.text
 
 
+async def test_a_registered_fingerprint_whose_cache_child_is_gone_refuses(
+    client, auth_headers, session, live_caches,
+):
+    """The guard's second arm. A registry row without the child table it
+    implies leaves nothing to keep, so the sweep would again take every other
+    cache; registration alone is not enough to authorise a drop."""
+    keep = child_table("entity_embedding_cache", FINGERPRINTS[0])
+    await session.execute(text(f"DROP TABLE {keep}"))
+
+    async with _embedding_purpose(MODEL_A, DIMS):
+        response = await client.post("/api/v1/reembed/prune-cache", headers=auth_headers)
+
+    assert response.status_code == 409, response.text
+    assert keep in response.json()["error"]["message"]
+    assert await _present(session, live_caches) == {live_caches[1]}
+
+
 async def test_a_registered_fingerprint_still_prunes_the_retired_children(
     client, auth_headers, session, live_caches,
 ):
