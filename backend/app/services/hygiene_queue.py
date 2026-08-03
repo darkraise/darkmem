@@ -41,6 +41,29 @@ three are left as an honest, reported gap — a follow-up in the schema-owning
 lane can add partial indexes over the same literal predicates without
 changing this module's queries.
 
+**Ordering is recency, declared rather than left implicit (Fable review
+follow-up).** Doc 08 §6 asks both queues to be "consequence-ranked and never
+FIFO." T2.24 built that for the review queue over facts; this module orders
+every arm by recency instead, and the reason is not laziness — it is that
+T2.24's machinery is fact-shaped and does not drop in over memory rows
+unchanged. Its **retrieval-frequency** arm actually transfers cleanly: it
+bridges ``memory_access_stats`` (keyed directly by ``memory_id``) through
+``fact_sources`` only because a *fact* has no direct access counter of its
+own — a memory row needs no bridge at all, since ``memory_access_stats`` is
+already keyed on exactly the id this module lists. Its **subject-salience**
+arm does not transfer: the SQL joins on a fact's own ``subject_name`` column
+against ``entity_relations``, and memories carry no such column — a memory's
+analogous salience (aggregate graph degree over the entities *it* asserts,
+via ``entity_relations.memory_ids``) is a different derivation this module
+would have to design and prove, not a column rename. The duplicates arm also
+has a candidate signal T2.24 never needed — the near-duplicate cosine score
+already sitting in the block — which argues for a hygiene-specific ranking
+design rather than a verbatim port of T2.24's. Building any of this properly
+(config rows, an EXPLAIN-proved statement, a tested failure mode per input,
+the same rigor T2.24 gave the review queue) is real, separate scope; it is
+reported here rather than bolted on as an unproven ordering. Recommended
+follow-up: a T2.24-shaped task for the hygiene queue, scoped to memories.
+
 **The within-cycle race T2.12's re-review found is closed here, generally.**
 A duplicate pair can outrank a subsume pair in one dreaming cycle, leaving a
 ``near_duplicate`` edge written against a memory retired later in the very
