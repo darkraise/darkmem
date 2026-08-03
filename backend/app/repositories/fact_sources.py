@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -517,6 +518,50 @@ class FactSourceRepository:
             )
             for row in result.mappings().all()
         )
+
+    async def memory_refs_for_facts(
+        self, fact_ids: Sequence[UUID | str]
+    ) -> dict[str, tuple[str, ...]]:
+        """Which memories assert each of several facts — one bounded lookup.
+
+        Doc 07 §5's grouping pass needs the provenance of a whole result set at
+        once, so this takes the set rather than one fact: a per-fact call would
+        put a round trip behind every returned fact. The scan is bounded by the
+        ids handed in and rides ``ix_fact_sources_fact``.
+
+        **This is a provenance read and never a count.** It returns refs so a
+        caller can intersect them with rows it already holds; corroboration
+        arithmetic stays ``count_distinct_origins`` / ``origin_profile``, which
+        group by origin. Counting the refs here — or letting a caller count the
+        tuple — is exactly the row-counting this module exists to forbid, and
+        the two questions are different: several rows of one origin are several
+        supporting memories and one witness.
+
+        Refs come back **as stored**, with no join against ``memories``.
+        ``source_ref`` is a soft reference with no FK, so a ref naming a deleted
+        memory is representable; joining to filter it out would be work the
+        caller's own intersection already does, since nothing in a result set
+        can match a memory that does not exist.
+        """
+        if not fact_ids:
+            return {}
+        result = await self.session.execute(
+            text("""
+                SELECT CAST(fact_id AS text) AS fact_id, source_ref
+                FROM fact_sources
+                WHERE source_kind = CAST(:kind AS text)
+                  AND fact_id = ANY(CAST(:fact_ids AS uuid[]))
+                ORDER BY 1, 2
+            """),
+            {
+                "kind": MEMORY_SOURCE_KIND,
+                "fact_ids": [str(fact_id) for fact_id in fact_ids],
+            },
+        )
+        out: dict[str, list[str]] = {}
+        for row in result.mappings().all():
+            out.setdefault(row["fact_id"], []).append(row["source_ref"])
+        return {fact_id: tuple(refs) for fact_id, refs in out.items()}
 
     async def sourced_triples(self, memory_id: UUID | str) -> tuple[int, int]:
         """``(total, open)`` over the triples a memory sources — both, always.
