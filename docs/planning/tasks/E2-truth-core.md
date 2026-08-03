@@ -1482,6 +1482,43 @@ runs.
 
 **Verify.** `cd backend && python -m pytest tests/test_layer_composition.py tests/test_fact_badge.py -q`
 
+#### T2.73 — Four new surfaces took the isolation probe offline
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.23, T2.36a` · `Doc: 17, invariant 14, CLAUDE.md "the harness can break while the floor stays green"` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** T2.23 and T2.36a each registered new `ContentSurface` rows — `hygiene_queue_duplicates`,
+`hygiene_queue_memories`, `knowledge_facts_browsing`, `knowledge_fact_detail` — and neither
+added the matching driver to `backend/scripts/benchlib/isolation_probe.py`'s `DRIVERS`
+table. That table's completeness check is a hard `RuntimeError`, so **the entire
+cross-project isolation probe is offline**, not merely one assertion: all eight
+`test_isolation_probe.py` tests error or fail on the one cause.
+
+This is the hazard `CLAUDE.md` names in as many words — `pyproject.toml` sets
+`testpaths = ["tests"]`, so `pytest -q` does not collect `scripts/benchlib/tests`, and the
+harness can break while the floor stays green. Both lanes were green on their Verify and
+on the repo floor, both were reviewed, and neither touched benchlib so neither ran it. The
+controller merged on a green floor rather than a green `./scripts/gate.sh`, which is where
+this should have been caught; that is recorded rather than quietly fixed.
+
+**What is actually at risk.** The probe is the guard that proves memory content does not
+cross a project boundary past its declared preview. While the driver table is out of step
+it proves nothing at all, and it would stay silent through any number of future merges.
+
+**Done when:**
+- [ ] A driver exists for each of the four surfaces, seeded and asserted the way the
+      existing `review_queue_*` and `pipeline_failure_triage` drivers are — sightings with
+      `true_project`, `true_status` where a lifecycle applies, and `_account_body` for the
+      raw wire
+- [ ] The four drivers assert against the surfaces' **declared** crossings: the two
+      hygiene arms declare `memory_ids` and `content_preview`, the two knowledge arms
+      declare `fact_content`
+- [ ] `test_driver_table_matches_the_registry` passes without weakening the completeness
+      check
+- [ ] The full benchlib suite is green **run by path**, and its number is recorded
+- [ ] Removing any one of the four drivers fails the build
+
+**Verify.** `cd backend && BENCH_DATABASE_URL=... python -m pytest scripts/benchlib/tests -q`
+
 #### T2.72 — The MCP vault tools, and the door parity doc 12 already assigns
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.36a` · `Doc: 12 §2–§3, invariant 17` · `Tag: target-new` · `Gate: standing`
@@ -1517,6 +1554,7 @@ because doc 12's list-shaped agent twin is `knowledge_search`, not a fact list.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-03 | T2.73, T2.23, T2.36a | 2 | **T2.73 minted: the isolation probe is offline on the epic branch, and the controller's merge process is what let it through.** T2.23 and T2.36a each added `ContentSurface` rows without the matching `isolation_probe.DRIVERS` entry. The table's completeness check raises, so **all eight** `test_isolation_probe.py` tests error or fail — the cross-project leak guard is not weakened but entirely absent. Both lanes were green on Verify and on the repo floor, both passed Fable review, and neither touched benchlib so neither ran it | The mechanism is documented in `CLAUDE.md` verbatim — `testpaths = ["tests"]` means `pytest -q` does not collect `scripts/benchlib/tests`, so "the harness can break while the floor stays green", and the stated remedy is to run `./scripts/gate.sh`. **The controller merged three lanes on a green floor rather than a green gate**, which is the process defect; the reviewers were scoped to their lanes and the briefs asked for the floor. Recorded as an amendment rather than fixed silently because the same gap will recur on every future round that adds a surface: the fix is the merge procedure, not just these four drivers. Note what the guard protects — the probe is the only thing proving memory content does not cross a project boundary past its declared preview, and an offline guard is indistinguishable from a passing one in any report that only quotes the floor |
 | 2026-08-03 | T2.23, T2.13 | 1 | **T2.23 falsified the 2026-08-02 row's "unreachable from today's producer" premise for the empty-string tombstone key, and the code now guards it.** That row recorded `_invert_subsume` writing a tombstone under an empty-string key if a payload lacked `pair.newer`, and closed it as unreachable and one-line-fixable. T2.23's `prune` bulk action journals `pair.newer=None` by design — deprecation retires a memory without a successor — so undoing a prune reached exactly that path. `dream_undo._invert_subsume` now writes `counterpart or "_none"`; the AST atomicity guard re-runs unchanged and `test_dream_undo.py` is 88 passed. The re-review verified the sentinel on disk after a prune→undo round trip and found it **doubly inert**: the by-id reader never asks for it, and a null-counterpart `content_sha` cannot match. **The older row's text is left standing** — an amendment log is a record of what was believed when, not a document to retro-edit | Worth logging as its own row rather than as a footnote to T2.23, because the interesting content is the *shape*: a defect closed as unreachable became reachable two days later when a new caller supplied the one input the old producer never did. "Unreachable from today's producer" is a claim with an expiry date nobody sets. The disclosure also failed the first time — T2.23's own report did not mention it, and the reviewer found it; the fix round is where it was stated plainly. Five deferred minors from the re-review are recorded in the round's review file: the now-dead caller-supplied `cycle_id` parameter (whose only reachable use would relabel a mixed cycle wholesale, since `MIN` ignores NULLs), the untested `created_at` floor clause, the unpinned `_none` sentinel, the read-path guard's perimeter excluding hybrid search, and a `subject_name`/`subject_id` docstring slip whose surrounding argument the reviewer verified holds anyway |
 | 2026-08-03 | T2.36a, T2.71, T2.72 | 2 | **Two tasks minted from T2.36a's review, and one question escalated to the owner.** (1) `T2.71` — `layer_composition.py` contains zero badge references, so every L2 fact retrieval serves today goes out unlabelled; **tagged G-C-blocking**, because T2.40's evidence run makes claims about served output and a gate cleared over unlabelled facts would overstate its coverage. (2) `T2.72` — doc 12 §2 assigns `fact_get` a REST twin at exactly the path T2.36a built, and §3 puts the agent-facing vault reads on MCP's `fact_get`/`knowledge_search`; a scan of every epic file for those names returns **nothing**, so no task owned them. No live invariant-17 breach today, since parity is not violated by a surface absent on both doors' agent side — but T2.36a's REST-only filing rests on a trust-posture argument the reviewer judged weak, every two-door surface in this repo already pairing unauthenticated MCP with authenticated REST. (3) **Escalated, not decided here:** T2.36a emits a fourth `claim` form, `", verification not yet recomputed"`, for a fact with no journalled `verified` event. Doc 12 fixes three forms and is silent on this one, which is the form a cold-start vault renders on *every* fact. The reviewer accepts it and recommends doc 12 gain it; amending the design corpus is the owner's call | Neither task is scope creep: T2.71 is a live honesty gap on the served path, and T2.72 is a contract doc 12 already wrote that nothing was scheduled to satisfy — the sixth instance in this epic of a constraint recorded in the corpus and absent from the graph. T2.71 exists as a separate task only because of round mechanics: T2.36a's brief forbade `layer_composition.py` since T2.55 held it the same round, so the one map over composed rows fell between two lanes. Worth noting the reviewer reached its verdict by extracting doc 12's worked example **by script** and diffing it against a live `build_claim` call, and by inventing two mutation drills the implementer had not run (a quiet `as_of` fallback to `created_at`, and a default `corroborated` list filter) — both of which the suite caught, which is the evidence that the exact-string discipline works |
 | 2026-08-03 | T2.55, T2.70 | 2 | **T2.70 minted: grouping and the result cap drop a row nobody counts, and the controller rules the resolution is to scope nesting to the facts that survive the cut.** T2.55's reviewer built a driver on the real `search()` path and measured it: at `limit=4`, ungrouped serves `[F1, M1, F2, M2]` and grouped serves `[F1, M1, F2, F3]` — the nested memory leaves with its fact, uncounted, and an unrelated row is promoted. Ratified by ruling rather than patched in-lane: the behaviour is the correct reading of T2.55's R2, and it is **not** an invariant-14 violation as doc 07 §8 operationalises that invariant, whose `excluded` vocabulary has never counted the limit tail. But it sits outside doc 07 §5's own warrant — §5 says "a memory covered by a **returned** cited fact" — and the cut makes the fact un-returned *after* nesting decided it was returned | The gap is the plan's, not the implementer's: R2 and R4 were both written by the controller and they meet in a corner neither anticipated, since R4 already says a memory whose fact is absent stays top-level and the cut is a second way for a fact to be absent. Routed to its own task because the fix needs a **window fixpoint** decision — un-nesting returns a memory to the ordering, which changes what survives the cut, which changes what nests — and a reviewer patching that inside a scoped fix round would be choosing a fixpoint silently. Recorded before G-C at the reviewer's recommendation, since G-C's claims are about served output. Note the shape: the review found this by *running the real path*, not by reading the diff, which is the second time this round that an executable check beat an inspection |
