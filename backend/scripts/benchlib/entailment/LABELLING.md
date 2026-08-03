@@ -382,6 +382,21 @@ exists.
 - **2026-08-03 (T2.54 Step 3).** Composition frozen: targets, seed
   20260731, relation classification, contacted-pairs rule, blind
   protocol. No T2.54 pair authored yet as of this entry.
+- **2026-08-03 (T2.54 Step 5).** Two independent blind passes over all
+  241 live pairs (two labellers × five fresh-context batches each; the
+  briefs, committed under `.superpowers/sdd/T2.54-entailment-gold-labelling/`,
+  embed the rulebook verbatim rather than this file, because the Step-4
+  skip log above names pair ids with their slices and would de-blind
+  them). Agreement rates, recorded whatever they are: **pass A vs
+  recorded 239/241 = 0.9917; pass B vs recorded 239/241 = 0.9917; pass A
+  vs pass B 241/241 = 1.0000**. The perfect inter-pass agreement is
+  consistent with two same-family labellers applying one rulebook and is
+  exactly the correlated-error shape Layer 2 cannot bound — the owner's
+  n = 93 resample is the instrument that does. 239 pairs flipped to
+  `adjudicated`; 2 escalated untouched to
+  `entailment/escalation_queue.json` (eg-0023: recorded `unsupported`,
+  both passes `contradicted`; eg-0142: recorded `contradicted`, both
+  passes `unsupported`).
 
 ### Skip log (Step 4)
 

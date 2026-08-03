@@ -33,7 +33,7 @@
         "verbatim"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Surface reorder only: subject, minor version and host all preserved, nothing added or dropped. Entailed under the verbatim rule.",
       "corpus_key": "s03-staging-postgres"
     },
@@ -46,7 +46,7 @@
         "verbatim"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement; the participial clause becomes a coordinate clause with no content change. Entailed under the verbatim rule.",
       "corpus_key": "s09-wireguard-port"
     },
@@ -59,7 +59,7 @@
         "verbatim"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Passivisation plus one function-word swap; identical content. Entailed under the verbatim rule."
     },
     {
@@ -71,7 +71,7 @@
         "verbatim"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "One-word synonym (keeps/retains) and a passivised second clause; both assertions and the 30-day value preserved. Entailed under the verbatim rule.",
       "corpus_key": "s10-loki-retention"
     },
@@ -84,7 +84,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording; same subject, same port, same proxy relationship. No content strengthened or weakened, so entailed.",
       "corpus_key": "s01-grafana-port"
     },
@@ -97,7 +97,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The causal structure is inverted syntactically but identical semantically: same choice, same alternative, same reason. Entailed.",
       "corpus_key": "s06-caddy-decision"
     },
@@ -110,7 +110,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Temporal-clause fronting and lexical substitution (uploads/pushed); the encrypt-then-upload ordering and the tool are preserved. Entailed."
     },
     {
@@ -122,7 +122,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Voice flip plus scrape/poll and double/twice substitutions; interval value and the relation to the default both preserved. Entailed.",
       "corpus_key": "s02-prometheus-scrape"
     },
@@ -135,7 +135,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Requirement restated as its contrapositive gate; both conjuncts (passing e2e, manual approval) preserved. Entailed."
     },
     {
@@ -147,7 +147,7 @@
         "paraphrase"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Clause order swapped, both assertions restated in different words, nothing added. Entailed."
     },
     {
@@ -159,7 +159,7 @@
         "weakening"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict weakening: version 15.6 entails major version 15, and dropping the host drops content. A judge that refuses this fails recall; the deliberate mirror of the overreach pair eg-0027.",
       "corpus_key": "s03-staging-postgres"
     },
@@ -172,7 +172,7 @@
         "weakening"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "v1.29.4 entails 'a v1.29 release'; the board count and hardware are dropped, never contradicted. Entailed by weakening.",
       "corpus_key": "s12-k3s-version"
     },
@@ -185,7 +185,7 @@
         "weakening"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The claim abstracts away the magnitude and the status code and keeps only the existence of per-key limiting, which the fact asserts. Entailed; mirror of the overreach pair eg-0029."
     },
     {
@@ -197,7 +197,7 @@
         "weakening"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Existence claim derived from a fully specified fact; port and subnet dropped. Entailed by weakening.",
       "corpus_key": "s09-wireguard-port"
     },
@@ -210,7 +210,7 @@
         "weakening"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Nightly restic backups entail the volume being backed up nightly; the tool, time and destination are dropped, not altered. Entailed.",
       "corpus_key": "s04-wiki-backup"
     },
@@ -223,7 +223,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "December 2025 lies inside the stated validity window [March 2025, January 2026). A window-scoped claim inside the window is entailed (window rule)."
     },
     {
@@ -235,7 +235,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: a fact valid since February 2026 with no closing event entails the same state at a later reference date. A judge must not demand an explicit revalidation for every later date."
     },
     {
@@ -247,7 +247,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The window is explicitly closed by the upgrade, and the fact names the successor. A present-tense claim over an explicitly ended state contradicts the fact despite near-total lexical overlap."
     },
     {
@@ -259,7 +259,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The fact's second clause asserts the negation of the claim's current state directly. Contradicted."
     },
     {
@@ -271,7 +271,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Closed-window fact, undated present-tense claim. 'Was frozen during Q1' implicates but does not assert that the freeze ended, and asserts nothing about the present either way -- implicature is not contradiction, so the verdict is unsupported, not contradicted."
     },
     {
@@ -283,7 +283,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: the fact fixes a validity window but 'currently' is anchored to an evaluation date the premise does not contain, so the claim is neither entailed nor contradicted. Unsupported."
     },
     {
@@ -295,7 +295,7 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of an exclusive asymmetric relation: one bake-off outcome cannot have both directions, so the reversed claim contradicts the fact (reversal rule, exclusive case)."
     },
     {
@@ -319,7 +319,7 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The same named event with source and destination swapped: one migration cannot have moved the queue both ways. Contradicted."
     },
     {
@@ -331,7 +331,7 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversed dependency. Dependency is not exclusive by meaning -- mutual dependency is not ruled out by the text -- so the reversed claim is merely unasserted. Unsupported."
     },
     {
@@ -343,7 +343,7 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise's second clause explicitly negates the reversed direction, so the reversal is contradicted outright, not just unsupported."
     },
     {
@@ -355,7 +355,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: the minor version and the host are added content the fact does not carry. Not contradicted -- 15.6 is consistent with 15 -- so unsupported. Mirror of eg-0011."
     },
     {
@@ -367,7 +367,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The time and the verification step are unsupported additions; the nightly cadence alone is entailed but the conjunction is not, and a claim is scored whole. Unsupported."
     },
     {
@@ -379,7 +379,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The magnitude and the per-key scope strengthen the bare existence fact. Unsupported; mirror of eg-0013."
     },
     {
@@ -391,7 +391,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Proxy vendor and port are added. Both happen to be true in the wider corpus world, which is exactly the trap: the judge must score against this premise, not against world knowledge. Unsupported."
     },
     {
@@ -403,7 +403,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Quantifier strengthening: 'some' neither entails nor excludes 'every'. Unsupported, not contradicted."
     },
     {
@@ -415,7 +415,7 @@
         "overreach"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "'One contributing factor' to 'the cause' strengthens both the causal strength and the exclusivity. Not excluded by the fact, so unsupported rather than contradicted."
     },
     {
@@ -427,7 +427,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token port swap (3000 -> 3300) with every other token identical. Exclusive-slot rule: the fact states the operative port, so a different value for the same slot contradicts it. The canonical hard negative for an overlap-driven judge.",
       "corpus_key": "s01-grafana-port"
     },
@@ -440,7 +440,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Version swapped to the STAGING instance's real value (15.6, s03), so the wrong claim is corpus-plausible. One instance runs one version: exclusive-slot rule, contradicted.",
       "corpus_key": "d02-prod-postgres"
     },
@@ -453,7 +453,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Interval swap 15 -> 30 seconds. The scrape interval is a single-valued configuration slot, so the differing value contradicts the fact.",
       "corpus_key": "s02-prometheus-scrape"
     },
@@ -466,7 +466,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Bucket entity swapped for a sibling bucket that genuinely exists in the corpus world (artifacts-prod, s07), maximising plausibility. State lives in one bucket: exclusive-slot rule, contradicted.",
       "corpus_key": "s14-terraform-state"
     },
@@ -479,7 +479,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The two magnitudes are crossed while every content word survives -- near-maximal lexical overlap with both slots wrong. Exclusive-slot rule on both conjuncts: contradicted."
     },
     {
@@ -491,7 +491,7 @@
         "unrelated"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The claim is true in the corpus world (s05) but this premise is about the mail relay and says nothing about CI. The judge must ground on the premise, not on plausibility. Unsupported.",
       "corpus_key": "s11-mail-relay"
     },
@@ -504,7 +504,7 @@
         "unrelated"
       ],
       "provenance": "hand-authored-bench-corpus",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Same trap as eg-0038: a corpus-true claim (s15) against a premise about DNS that neither supports nor contradicts it. Unsupported.",
       "corpus_key": "s16-unbound-dns"
     },
@@ -517,7 +517,7 @@
         "unrelated"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "No shared subject, predicate or value; the premise bears on nothing in the claim. Unsupported."
     },
     {
@@ -529,7 +529,7 @@
         "unrelated"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Shared entity (the ops channel) but a disjoint predicate: posting to a channel says nothing about its archival policy. Unsupported."
     },
     {
@@ -541,7 +541,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "6f06fed4-2f25-5d7e-a363-f24002c62128",
@@ -560,7 +560,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording: DEPLOYED_ON restated as hosting, same subject and same host, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
@@ -579,7 +579,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "DEPENDS_ON reworded as reliance with the same two endpoints; nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "cbb3f9de-ea07-5b45-8a09-214a2cb41319",
@@ -598,7 +598,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: articles and casing added, every content token preserved, nothing added or dropped. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
@@ -617,7 +617,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The bare USES predicate is reworded periphrastically with both endpoints intact; no purpose, scope or mechanism is added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "e759f6f2-d05a-552e-bf7e-0e0cc4dbe640",
@@ -636,7 +636,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: the proxy arrangement is added content the fact does not carry. Strengthening breaks entailment (general procedure 3), and the addition is not excluded by the premise, so it is unsupported, not contradicted (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
@@ -655,7 +655,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token swap (udp -> tcp) with the sentence shape preserved. The deployment target of the single named WireGuard instance is a single-valued slot (a single named instance's deployment target), so the differing value contradicts under the exclusive-slot rule; tcp is the corpus-plausible sibling transport.",
       "fact_key": {
         "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
@@ -674,7 +674,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: bare USES is upgraded to a scrape mechanism plus a numeric interval the fact does not carry; the value is corpus-plausible (the seed set's real interval), so plausibility actively misleads. Not excluded by the premise, so unsupported (strengthening breaks entailment; contradiction requires exclusion).",
       "fact_key": {
         "triple_key": "3d8b8266-237f-5431-8f58-691ff67c4f73",
@@ -693,7 +693,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about terraform and tf-state and bears on nothing in the claim. The claim is true in the harvest world (jenkins deployed on ci-01) - the world-knowledge trap: a judge scoring plausibility instead of entailment accepts it. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
@@ -712,7 +712,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: only an article is added, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
@@ -731,7 +731,7 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of HAS_PART with maximal surface overlap: proper parthood is antisymmetric, so one pair of endpoints cannot carry both directions. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table). Hand-authored replacement for a skipped symmetric RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 10."
     },
@@ -744,7 +744,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about unleash's use of oidc and neither supports nor contradicts the claim. The claim is plausible in the harvest world (grafana uses nginx) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
@@ -763,7 +763,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
@@ -782,7 +782,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: naming elk as a part entails the existence of some part; the specific part is dropped, never altered, and part/component is a trivial synonym. Entailed by weakening.",
       "fact_key": {
         "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
@@ -801,7 +801,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - terraform using minio entails that something uses it, and a user of a thing is its consumer by the meaning of USES. Entailed by weakening.",
       "fact_key": {
         "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
@@ -820,7 +820,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: an exclusivity claim ('the only service') is added; the fact places redis on cache-01 but does not exclude other services there. Strengthening breaks entailment (general procedure 3); absence is not exclusion (general procedure 4), so unsupported.",
       "fact_key": {
         "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
@@ -839,7 +839,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of IMPROVES_ON: an improvement ordering over one comparison cannot be mutual, so the reversed claim contradicts the fact. Reversal rule, exclusive case (IMPROVES_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
@@ -858,7 +858,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording: the rooftop modifier becomes a prepositional phrase and USES is restated periphrastically; same station, same gateway, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "77567f40-e068-57b7-b8c3-14cae1b8b01e",
@@ -877,7 +877,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Voice flip plus periphrastic rewording of USES; both endpoints and the direction of use preserved, nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
@@ -896,7 +896,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token port swap (5514 -> 6514) with every other token identical; a configured destination port is a single-valued configuration slot, so the differing value contradicts under the exclusive-slot rule. 6514 is the plausible standard syslog-over-TLS port. Hand-authored replacement for a skipped multi-valued USES assignment (see skips).",
       "notes": "Replacement pair for skipped slot 19."
     },
@@ -909,7 +909,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
@@ -928,7 +928,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
@@ -947,7 +947,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the wiki-specific volume is generalised to an existential over volumes, a category the object's own name supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
@@ -966,7 +966,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "USES reworded as being a consumer of, which by the meaning of USES is the same assertion; both endpoints preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "b7e6e07d-4135-5663-9acd-f3e4e1c12911",
@@ -985,7 +985,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token TTL swap (60 -> 90 minutes) with every other token identical; a token lifetime is one of the exclusive-slot rule's own named single-valued slots, so the differing value is contradicted. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 24."
     },
@@ -998,7 +998,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the specific artifacts bucket is generalised to an existential over buckets, a category the object's own name supplies. Entailed by weakening.",
       "fact_key": {
         "triple_key": "8a0cb86b-70de-555e-b834-80ef8a8a6323",
@@ -1017,7 +1017,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the named host is dropped to an existential; DEPLOYED_ON's own semantics make the object a deployment host, so no outside knowledge is used. Entailed by weakening.",
       "fact_key": {
         "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
@@ -1036,7 +1036,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a minor version is added content this fact does not carry; 15.6 is corpus-plausible (the seed set's real staging value), so plausibility actively misleads. Not excluded by the premise, so unsupported (strengthening breaks entailment; contradiction requires exclusion).",
       "fact_key": {
         "triple_key": "8b0af751-67c2-572d-adfc-db51d823ed3f",
@@ -1055,7 +1055,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
@@ -1074,7 +1074,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Voice flip plus periphrastic rewording of USES; the direction of use and both endpoints preserved, nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
@@ -1093,7 +1093,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "REPLACES reworded as supplanting with a voice flip; the replacement relation and its direction are preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
@@ -1112,7 +1112,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal quantifier ('every submitted receipt') and a workflow mechanism are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes it, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
@@ -1131,7 +1131,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
@@ -1150,7 +1150,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
@@ -1169,7 +1169,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped entirely - iot-gw-1 using the firmware check entails that such a check is in use by something. Entailed by weakening.",
       "fact_key": {
         "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
@@ -1188,7 +1188,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article and copula only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
@@ -1207,7 +1207,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - apps/portal using audit-log entails that something consumes it, by the meaning of USES. Entailed by weakening.",
       "fact_key": {
         "triple_key": "a8abee19-e45b-5503-a90b-709107983352",
@@ -1226,7 +1226,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
@@ -1245,7 +1245,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording of REPLACES as taking the other's place; the replacement relation and its direction are preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
@@ -1264,7 +1264,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: an exclusivity claim ('the only workload') is added; the fact places memcached on cache-02 but does not exclude other workloads there. Strengthening breaks entailment (general procedure 3); absence is not exclusion (general procedure 4), so unsupported.",
       "fact_key": {
         "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
@@ -1283,7 +1283,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
@@ -1302,7 +1302,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Voice flip plus CAUSES reworded as bringing about; the causal relation and its direction are preserved, and no causal strength is added ('brought about' is not upgraded to sole cause). Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
@@ -1321,7 +1321,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "RELATED_TO reworded as the existence of a connection - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
@@ -1340,7 +1340,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
@@ -1359,7 +1359,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the office/label specifiers are dropped, generalising to a category the object's own name supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
@@ -1378,7 +1378,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - grafana using nginx entails that nginx has a consumer, by the meaning of USES. Entailed by weakening.",
       "fact_key": {
         "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
@@ -1397,7 +1397,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Host swap (acs-01 -> apps-02) with the sentence shape preserved; apps-02 is another harvest entry's real name, so the wrong claim is corpus-plausible. A single named instance's deployment host is a single-valued slot, so the differing value contradicts under the exclusive-slot rule.",
       "fact_key": {
         "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
@@ -1416,7 +1416,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a transfer direction ('uploads its files to') and an encryption channel are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "bcafb282-5cd6-5a77-9abd-5d578479b2f9",
@@ -1435,7 +1435,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a version number and a node role are added content the IS_A fact does not carry. Strengthening breaks entailment (general procedure 3); the additions are consistent with the fact, not excluded, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "04ebe769-fa68-5371-9467-f7a8c6aad887",
@@ -1454,7 +1454,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "dea1fc2d-868a-5755-baa3-dea5ae8c184d",
@@ -1473,7 +1473,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "8f37265e-35d6-5fa1-8fd7-7e0c764d818c",
@@ -1492,7 +1492,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of HAS_PART: proper parthood is antisymmetric, so one pair of endpoints cannot carry both directions - a part cannot contain its whole. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "31c1a0ee-0bcb-555a-ab9b-86cd7d898f40",
@@ -1511,7 +1511,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "be4e96f1-635c-5f36-8489-106bfbb63d7c",
@@ -1530,7 +1530,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a bare RELATED_TO association is upgraded to a specific backup function plus a completeness claim ('full'). Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "f6970044-019e-5aba-b03e-5d8af25af9cf",
@@ -1549,7 +1549,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording: DEPLOYED_ON restated as hosting, same subject and same platform, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "3ed12383-bb50-5361-bd65-d5a56a7e04b8",
@@ -1568,7 +1568,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "60502a4d-76a9-5004-8d26-c94a05c4557b",
@@ -1587,7 +1587,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Platform swap (minio -> postgres) with the sentence shape preserved; postgres is another harvest entry's real DEPLOYED_ON value, so the wrong claim is corpus-plausible. A single named instance's deployment target is a single-valued slot, so the differing value contradicts under the exclusive-slot rule.",
       "fact_key": {
         "triple_key": "8eeb62a2-ef08-5622-904f-9b31b246d742",
@@ -1606,7 +1606,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "4e7f472b-5da4-545b-8f41-b30558cf9ba0",
@@ -1625,7 +1625,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the replacer is dropped to an existential - astro replacing mkdocs entails that mkdocs has been replaced by something. Entailed by weakening.",
       "fact_key": {
         "triple_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
@@ -1644,7 +1644,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - the cleanup cron job causing the scratch partition entails that the partition has a cause; no causal strength is added. Entailed by weakening.",
       "fact_key": {
         "triple_key": "12894a6a-ea4c-5811-91e6-5f21705c7917",
@@ -1663,7 +1663,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "RELATED_TO reworded as association - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
@@ -1682,7 +1682,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - vault using apps/portal entails that something consumes it, by the meaning of USES. Entailed by weakening.",
       "fact_key": {
         "triple_key": "3a8ffbdb-90d8-59d2-b478-6e99319fe38d",
@@ -1701,7 +1701,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "6f06fed4-2f25-5d7e-a363-f24002c62128",
@@ -1720,7 +1720,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a runtime configuration ('CUDA acceleration enabled') is added content the fact does not carry, made plausible by the host's name. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes it, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
@@ -1739,7 +1739,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the named dependency is dropped to an existential, a category DEPENDS_ON's own meaning supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "cbb3f9de-ea07-5b45-8a09-214a2cb41319",
@@ -1758,7 +1758,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording with a voice flip: DEPENDS_ON restated as being a dependency of; both endpoints and the direction preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
@@ -1777,7 +1777,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Shared entity (nginx) but a disjoint predicate: nginx's use of client certificates says nothing about caddy improving on it. The claim is true in the harvest world - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "e759f6f2-d05a-552e-bf7e-0e0cc4dbe640",
@@ -1796,7 +1796,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Host swap (lab-vm-3 -> apps-02) with the sentence shape preserved; apps-02 is another harvest entry's real host, so the wrong claim is corpus-plausible. A single named instance's deployment host is a single-valued slot, so the differing value contradicts under the exclusive-slot rule.",
       "fact_key": {
         "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
@@ -1815,7 +1815,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
@@ -1834,7 +1834,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token retention swap (15 -> 45 days) with every other token identical; a retention period is a single-valued configuration slot, so the differing value contradicts under the exclusive-slot rule. Both values are plausible retention settings, so plausibility actively misleads. Hand-authored replacement for a skipped multi-valued USES assignment (see skips).",
       "notes": "Replacement pair for skipped slot 69."
     },
@@ -1847,7 +1847,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "USES reworded as being a consumer of, which by the meaning of USES is the same assertion; both endpoints preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
@@ -1866,7 +1866,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about license-report's dependency on the package mirror and bears on nothing in the claim. The claim is true in the harvest world (status dashboard uses vite) - the world-knowledge trap: a judge scoring plausibility instead of entailment accepts it. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
@@ -1885,7 +1885,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "RELATED_TO reworded as the existence of a link - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "11606722-ee98-5a68-a01f-3f2b5f1e49e7",
@@ -1904,7 +1904,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal quantifier ('every dashboard login') and an authentication mechanism are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes it, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
@@ -1923,7 +1923,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The bare USES predicate is reworded periphrastically with both endpoints intact; no purpose, scope or mechanism is added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
@@ -1942,7 +1942,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token interval swap (2 -> 6 hours) with every other token identical; a configured upload interval is a single-valued configuration slot of the same kind as a scrape interval, so the differing value contradicts under the exclusive-slot rule. Hand-authored replacement for a skipped multi-valued HAS_PART assignment (see skips).",
       "notes": "Replacement pair for skipped slot 75."
     },
@@ -1955,7 +1955,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped entirely - terraform using minio entails that minio is in use by something. Entailed by weakening.",
       "fact_key": {
         "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
@@ -1974,7 +1974,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
@@ -1993,7 +1993,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Model swap with every other token identical; the IS_A kind of a single named unit is one of the exclusive-slot rule's usually-single-valued shapes (an IS_A kind), so the differing value contradicts under the exclusive-slot rule. Both models are plausible rack UPSes, so plausibility actively misleads. Hand-authored replacement for a skipped non-single-valued IMPROVES_ON assignment (see skips).",
       "notes": "Replacement pair for skipped slot 78."
     },
@@ -2006,7 +2006,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a transfer mechanism ('pushes its readings through') and a numeric cadence are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "77567f40-e068-57b7-b8c3-14cae1b8b01e",
@@ -2025,7 +2025,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
@@ -2044,7 +2044,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token port swap (2222 -> 22) with every other token identical; a configured listen port is one of the exclusive-slot rule's own named single-valued slots, so the differing value contradicts under the exclusive-slot rule. 22 is the plausible standard SSH port, so plausibility actively misleads. Hand-authored replacement for a skipped multi-valued USES assignment (see skips).",
       "notes": "Replacement pair for skipped slot 81."
     },
@@ -2057,7 +2057,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a capacity figure ('30 minutes of battery runtime') is added content the fact does not carry. Strengthening breaks entailment (general procedure 3); the addition is not excluded by the premise, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
@@ -2076,7 +2076,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Cleft-sentence reorder plus copula and casing: subject, relation and host all preserved, nothing added or dropped. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
@@ -2095,7 +2095,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about restic and the wiki volume and bears on nothing in the claim. The claim is true in the harvest world (typesense deployed on search-01) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
@@ -2114,7 +2114,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "b7e6e07d-4135-5663-9acd-f3e4e1c12911",
@@ -2133,7 +2133,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Bucket swap (wiki-backups -> tf-state) with every other token identical; the bucket holding a job's output is one of the exclusive-slot rule's own named single-valued slots, so the differing value contradicts under the exclusive-slot rule. tf-state is a bucket that genuinely exists in the harvest world, maximising plausibility. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 86."
     },
@@ -2146,7 +2146,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about the integration suite's use of the artifacts bucket and bears on nothing in the claim. The claim is true in the harvest world (postfix deployed on mail-01) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "8a0cb86b-70de-555e-b834-80ef8a8a6323",
@@ -2165,7 +2165,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - typesense deployed on search-01 entails that some workload is deployed there, DEPLOYED_ON's own semantics making the subject a deployed workload. Entailed by weakening.",
       "fact_key": {
         "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
@@ -2184,7 +2184,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the named host is dropped to an existential; DEPLOYED_ON's own semantics make the object a deployment host, so no outside knowledge is used. Entailed by weakening.",
       "fact_key": {
         "triple_key": "8b0af751-67c2-572d-adfc-db51d823ed3f",
@@ -2203,7 +2203,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the replacer is dropped to an existential and REPLACES is rendered by the trivial synonym 'superseded'; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
@@ -2222,7 +2222,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed - and the reversed claim is the intuitively plausible direction (clients use mirrors), so plausibility actively misleads. Mutual use is coherent and the premise does not exclude the reverse, so it is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
@@ -2241,7 +2241,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording of REPLACES as taking the other's place; the replacement relation and its direction are preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
@@ -2260,7 +2260,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about expense's use of the OCR worker and bears on nothing in the claim. The claim is true in the harvest world (compactor uses loki) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
@@ -2279,7 +2279,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Shared entity (loki) but a disjoint predicate: the compactor's use of loki says nothing about a retention policy. The claim is true in the bench-corpus world - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
@@ -2298,7 +2298,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal quantifier ('for every build job') is added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes it, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
@@ -2317,7 +2317,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the firmware specifier is dropped, generalising to a category the object's own name supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
@@ -2336,7 +2336,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the named host is dropped entirely - being deployed on queue-01 entails being deployed. Entailed by weakening.",
       "fact_key": {
         "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
@@ -2355,7 +2355,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Voice flip plus periphrastic rewording of USES; the direction of use and both endpoints preserved, nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "a8abee19-e45b-5503-a90b-709107983352",
@@ -2374,7 +2374,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
@@ -2412,7 +2412,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
@@ -2431,7 +2431,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal quantifier ('every one of its dashboards') and a provisioning mechanism are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
@@ -2450,7 +2450,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token interval swap (30 -> 60 minutes) with every other token identical; a configured apply interval is a single-valued configuration slot of the same kind as a scrape interval, so the differing value contradicts under the exclusive-slot rule. Hand-authored replacement for a skipped CAUSES assignment whose slots are not single-valued (see skips).",
       "notes": "Replacement pair for skipped slot 103."
     },
@@ -2463,7 +2463,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token version swap (4.2.1 -> 4.3.0) with every other token identical; a pinned firmware version is a single-valued slot (a version of one instance, named by the exclusive-slot rule), so the differing value contradicts under the exclusive-slot rule. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 104."
     },
@@ -2476,7 +2476,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the subject is dropped to an existential - restic using the NAS entails that something consumes it, by the meaning of USES. Entailed by weakening.",
       "fact_key": {
         "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
@@ -2495,7 +2495,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about lp-relay's use of the label printers and bears on nothing in the claim. The claim is true in the harvest world (telegraf uses influxdb) - the world-knowledge trap: a judge scoring plausibility instead of entailment accepts it. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
@@ -2514,7 +2514,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token lifetime swap (8 -> 24 hours) with every other token identical; a session lifetime is one of the exclusive-slot rule's own named single-valued slots (a token lifetime), so the differing value contradicts under the exclusive-slot rule. Hand-authored replacement for a skipped multi-valued USES assignment (see skips).",
       "notes": "Replacement pair for skipped slot 107."
     },
@@ -2527,7 +2527,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
@@ -2546,7 +2546,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: only an article is added, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "bcafb282-5cd6-5a77-9abd-5d578479b2f9",
@@ -2565,7 +2565,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal service scope ('all production search traffic') is added content the IS_A fact does not carry. Strengthening breaks entailment (general procedure 3); the addition is consistent with the fact, not excluded, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "04ebe769-fa68-5371-9467-f7a8c6aad887",
@@ -2584,7 +2584,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "dea1fc2d-868a-5755-baa3-dea5ae8c184d",
@@ -2603,7 +2603,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Platform swap (postgres -> minio) with the sentence shape preserved; minio is another harvest entry's real DEPLOYED_ON value, so the wrong claim is corpus-plausible. A single named instance's deployment target is a single-valued slot, so the differing value contradicts under the exclusive-slot rule.",
       "fact_key": {
         "triple_key": "8f37265e-35d6-5fa1-8fd7-7e0c764d818c",
@@ -2622,7 +2622,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of HAS_PART: proper parthood is antisymmetric - a part cannot contain its whole, so one pair of endpoints cannot carry both directions. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "31c1a0ee-0bcb-555a-ab9b-86cd7d898f40",
@@ -2641,7 +2641,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about billing-sync's host and bears on nothing in the claim. The claim is true in the harvest world (team wiki deployed on lab-vm-3) - the world-knowledge trap: a judge scoring plausibility instead of entailment accepts it. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "be4e96f1-635c-5f36-8489-106bfbb63d7c",
@@ -2660,7 +2660,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "RELATED_TO reworded as association - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "f6970044-019e-5aba-b03e-5d8af25af9cf",
@@ -2679,7 +2679,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about the artifacts-prod bucket's platform and bears on nothing in the claim. The claim is true in the harvest world (ci runners uses docker-in-docker) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "3ed12383-bb50-5361-bd65-d5a56a7e04b8",
@@ -2698,7 +2698,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: an access restriction is added content the fact does not carry, and it is bench-corpus-plausible (the corpus's mail-relay entry states exactly this), so plausibility actively misleads. Strengthening breaks entailment (general procedure 3); the addition is not excluded by the premise, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "60502a4d-76a9-5004-8d26-c94a05c4557b",
@@ -2717,7 +2717,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about arc-store's platform and bears on nothing in the claim. The claim is true in the harvest world (astro replaces mkdocs) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "8eeb62a2-ef08-5622-904f-9b31b246d742",
@@ -2736,7 +2736,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal quantifier ('all of its database credentials'), a retrieval mechanism and a timing are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "4e7f472b-5da4-545b-8f41-b30558cf9ba0",
@@ -2755,7 +2755,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of REPLACES: one replacement event cannot run both ways, so the reversed claim contradicts the fact. Reversal rule, exclusive case (REPLACES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
@@ -2774,7 +2774,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, CAUSES reversed. Feedback between phenomena is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (CAUSES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "12894a6a-ea4c-5811-91e6-5f21705c7917",
@@ -2793,7 +2793,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token port swap (8093 -> 8080) with every other token identical; a configured listen port is one of the exclusive-slot rule's own named single-valued slots, so the differing value contradicts under the exclusive-slot rule. 8080 is the plausible conventional alternate HTTP port, so plausibility actively misleads. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 122."
     },
@@ -2806,7 +2806,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a purpose and a universal quantifier ('all of its notification webhooks') are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "3a8ffbdb-90d8-59d2-b478-6e99319fe38d",
@@ -2825,7 +2825,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about door-badge's use of the directory replica and bears on nothing in the claim. The claim is true in the harvest world (compactor uses loki) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "6f06fed4-2f25-5d7e-a363-f24002c62128",
@@ -2844,7 +2844,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: article, copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
@@ -2863,7 +2863,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: casing only, every content token preserved, nothing added or dropped. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "cbb3f9de-ea07-5b45-8a09-214a2cb41319",
@@ -2882,7 +2882,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the named dependency is generalised to an existential over databases, a category the object's own name supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
@@ -2901,7 +2901,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "USES reworded lexically ('employs') with both endpoints intact; no purpose, scope or mechanism is added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "e759f6f2-d05a-552e-bf7e-0e0cc4dbe640",
@@ -2920,7 +2920,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "A claim is scored whole (general procedure 1): the deployment conjunct is entailed but the backup conjunct is added content the fact does not carry - and it is bench-corpus-plausible (the corpus's nightly wiki-backup entry), so plausibility actively misleads. Strengthening breaks entailment (general procedure 3); nothing excludes the addition, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
@@ -2939,7 +2939,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of DEPLOYED_ON: the claim makes UDP the workload and WireGuard the platform, but host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
@@ -2958,7 +2958,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the node specifier is dropped and the object generalised to an existential over exporters, a category the object's own name supplies; nothing altered. Entailed by weakening.",
       "fact_key": {
         "triple_key": "3d8b8266-237f-5431-8f58-691ff67c4f73",
@@ -2977,7 +2977,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about terraform and tf-state and bears on nothing in the claim. The claim is true in the harvest world (mobile app uses edge-cdn-4) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
@@ -2996,7 +2996,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token schedule swap (first -> fifteenth) with every other token identical; a job's configured run date is a single-valued configuration slot of the same kind as a scrape interval, so the differing value contradicts under the exclusive-slot rule. Hand-authored replacement for a skipped multi-valued DEPENDS_ON assignment (see skips).",
       "notes": "Replacement pair for skipped slot 133."
     },
@@ -3009,7 +3009,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token capacity swap (512 -> 256 MB) with every other token identical; a configured buffer cap is a single-valued configuration slot, so the differing value contradicts under the exclusive-slot rule. Both values are plausible buffer sizes, so plausibility actively misleads. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
       "notes": "Replacement pair for skipped slot 134."
     },
@@ -3022,7 +3022,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
@@ -3041,7 +3041,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about the integration suite's use of JUnit and bears on nothing in the claim. The claim is true in the harvest world (glitchtip replaces sentry) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
@@ -3060,7 +3060,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal of HAS_PART: proper parthood is antisymmetric, so one pair of endpoints cannot carry both directions. The reversed claim is the world-plausible direction (kibana is conventionally a component of an ELK stack), so plausibility actively misleads - but the verdict comes from the premise alone (general procedure 2). Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
@@ -3079,7 +3079,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The bare USES predicate is reworded periphrastically with both endpoints intact; no purpose, scope or mechanism is added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
@@ -3098,7 +3098,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Single-token version swap (7.2 -> 6.2) with every other token identical; the version of one named instance is one of the exclusive-slot rule's own named single-valued slots, so the differing value contradicts under the exclusive-slot rule. Both are real Redis release lines, so plausibility actively misleads. Hand-authored replacement for a skipped DEPLOYED_ON assignment whose host slot is not single-valued for a bare product name (see skips).",
       "notes": "Replacement pair for skipped slot 139."
     },
@@ -3111,7 +3111,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a universal scope ('in every respect') tightens a bare comparative fact. Strengthening breaks entailment (general procedure 3); improving in some respects does not exclude respects where it does not improve - absence is not exclusion (general procedure 4) - so unsupported.",
       "fact_key": {
         "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
@@ -3130,7 +3130,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording: voice flip plus the rooftop modifier restructured as a prepositional phrase; same station, same gateway, same direction of use, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "77567f40-e068-57b7-b8c3-14cae1b8b01e",
@@ -3149,7 +3149,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about telegraf's use of influxdb and bears on nothing in the claim. The claim is true in the harvest world (rooftop weather station uses iot-gw-1) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
@@ -3168,7 +3168,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement: casing only, every content token preserved, nothing added or dropped. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
       "fact_key": {
         "triple_key": "7ff82019-0e6e-5ba1-a679-933ebecb9ac0",
@@ -3187,7 +3187,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording: DEPLOYED_ON restated as running on, same subject and same platform, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
@@ -3206,7 +3206,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "A claim is scored whole (general procedure 1): the deployment conjunct is entailed but the concurrency cap is added content the fact does not carry - and the cap is bench-corpus-plausible (the corpus's CI-runner entry carries exactly that value), so plausibility actively misleads. Strengthening breaks entailment (general procedure 3); nothing excludes the addition, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
@@ -3225,7 +3225,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strict strengthening: a mechanism (snapshots), a cadence and a time-of-day are added to a bare USES fact; all three are bench-corpus-plausible (the corpus's nightly wiki-backup entry), so plausibility actively misleads. Strengthening breaks entailment (general procedure 3); the additions are not excluded, so unsupported (contradiction requires exclusion, general procedure 4).",
       "fact_key": {
         "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
@@ -3244,7 +3244,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
       "fact_key": {
         "triple_key": "b7e6e07d-4135-5663-9acd-f3e4e1c12911",
@@ -3263,7 +3263,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "RELATED_TO reworded as the existence of an association - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
       "fact_key": {
         "triple_key": "37a75f1f-b666-5ca3-9ae6-4cd8c8b8a2e5",
@@ -3282,7 +3282,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise is about the integration suite's use of the artifacts bucket and bears on nothing in the claim. The claim is true in the harvest world (unleash uses oidc) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
       "fact_key": {
         "triple_key": "8a0cb86b-70de-555e-b834-80ef8a8a6323",
@@ -3301,7 +3301,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording of the same assertion ('deployed on' -> 'runs on'), nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
       "fact_key": {
         "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
@@ -3320,7 +3320,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Exclusive-slot rule: a named instance's listen port is a single-valued configuration slot, so a different value for the same slot is contradicted; the swap value 5432 is the corpus-plausible default."
     },
     {
@@ -3332,7 +3332,7 @@
         "direction"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Reversal rule, exclusive case: REPLACES is exclusive per the reversal-exclusivity table (one replacement event cannot run both ways), so the reversed claim is contradicted.",
       "fact_key": {
         "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
@@ -3351,7 +3351,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger than the fact: 'for all artifact fetches' adds a universal scope the premise does not state; strengthening breaks entailment (general decision procedure step 3) and no exclusion is crossed, so unsupported, not contradicted (step 4).",
       "fact_key": {
         "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
@@ -3370,7 +3370,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording of the same replacement assertion with no strengthening or weakening; entailment tolerates rewording (general decision procedure step 3).",
       "fact_key": {
         "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
@@ -3389,7 +3389,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the specific consumer (expense) is dropped and only existence of some consumer is kept; dropping content preserves entailment (general decision procedure step 3). Mirror of the overreach on the same premise (eg-0073).",
       "fact_key": {
         "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
@@ -3408,7 +3408,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger: the deletion behaviour and the 30-day value are added content the premise does not assert; a conjunction with one supported and one unsupported conjunct is unsupported (general decision procedure step 1). The added conjunct is corpus-true (eg-0004's material), so plausibility actively misleads — no exclusion crossed, so not contradicted (step 4).",
       "fact_key": {
         "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
@@ -3427,7 +3427,7 @@
         "verbatim"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Near-literal restatement adding only articles, casing and verb agreement; all content preserved, premise and hypothesis differ as strings (general decision procedure step 3, rewording tolerance).",
       "fact_key": {
         "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
@@ -3446,7 +3446,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording under voice flip and synonym ('uses' -> 'is employed by'), same assertion, nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
       "fact_key": {
         "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
@@ -3465,7 +3465,7 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Exclusive-slot rule: the thumbs queue is a single named service, so its host is a single-valued slot; the swap value cache-01 is another harvest entry's real host, so plausibility actively misleads.",
       "fact_key": {
         "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
@@ -3484,7 +3484,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Exclusive-slot rule: a retention window is a single-valued configuration slot, so a different value for the same slot is contradicted despite no surface negation."
     },
     {
@@ -3496,7 +3496,7 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Full rewording of the same assertion ('uses' -> 'makes use of'), nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
       "fact_key": {
         "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
@@ -3515,7 +3515,7 @@
         "weakening"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly weaker: the replacing party (GlitchTip) is dropped, keeping only that Sentry was superseded; dropping content preserves entailment (general decision procedure step 3).",
       "fact_key": {
         "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
@@ -3534,7 +3534,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
       "fact_key": {
         "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
@@ -3553,7 +3553,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger: the premise says nothing about a repository, alert rules, or universal scope; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
       "fact_key": {
         "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
@@ -3572,7 +3572,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
       "fact_key": {
         "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
@@ -3591,7 +3591,7 @@
         "value-swap"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Exclusive-slot rule: the stated daily run time is a single-valued schedule slot (same category as a scrape interval), so a different value for the same slot is contradicted."
     },
     {
@@ -3603,7 +3603,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger: 'every backup snapshot' tightens an unstated scope to a universal, and 'stores snapshots' specifies a use the premise does not assert; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
       "fact_key": {
         "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
@@ -3622,7 +3622,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger: the count ('all four') and the protocol ('over IPP') are added values the premise does not state; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
       "fact_key": {
         "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
@@ -3641,7 +3641,7 @@
         "unrelated"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
       "fact_key": {
         "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
@@ -3660,7 +3660,7 @@
         "overreach"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Strictly stronger: the read-only-mirror role and the existence of a primary are added content the premise does not assert; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
       "fact_key": {
         "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
@@ -3679,7 +3679,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (June 2024 to April 2026)."
     },
     {
@@ -3691,7 +3691,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the window is explicitly closed by a named successor (AdGuard Home), so a present-tense claim over it is contradicted."
     },
     {
@@ -3703,7 +3703,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: a fact valid since March 2026 with no closing event entails the same state at the later reference date."
     },
     {
@@ -3715,7 +3715,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: whether the 1 May password is still active depends on an evaluation date the premise does not contain; a scheduled future rotation neither fixes the current state nor closes the window."
     },
     {
@@ -3727,7 +3727,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Implicature-is-not-contradiction rule: a rebuild scoped to May 2026 implicates the degraded mode ended, but the premise never asserts recovery; only asserted content can establish the hypothesis, so unsupported."
     },
     {
@@ -3739,7 +3739,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the January 2026 migration to a named successor (k3s) closes the window, so a claim scoped after the close is contradicted."
     },
     {
@@ -3751,7 +3751,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: the state holds since 12 February 2026 with no closing event, so the window is open and the 'currently' claim is decidable and entailed (evaluation-time rule, open-window case)."
     },
     {
@@ -3763,7 +3763,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: a 30-day trial from 20 April 2026 and an unanchored 'currently' — the claim's truth depends on an evaluation date the premise does not contain."
     },
     {
@@ -3775,7 +3775,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (mid-2023 to February 2026)."
     },
     {
@@ -3787,7 +3787,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the cutover to a named successor (VictoriaMetrics) closes the window, so a present-tense claim over it is contradicted."
     },
     {
@@ -3799,7 +3799,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Implicature-is-not-contradiction rule: scoping the pause to the first week of July implicates it ended but does not assert it, so the present-tense claim is neither entailed nor contradicted — unsupported."
     },
     {
@@ -3811,7 +3811,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: valid since the June 2026 update with no closing event, the fact entails the same state at the later reference date."
     },
     {
@@ -3823,7 +3823,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the premise names the end event (closed on 10 May 2026), so a present-tense claim of the open state is contradicted."
     },
     {
@@ -3835,7 +3835,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: a 90-day certificate and an unanchored 'currently' — the claim's truth depends on an evaluation date the premise does not contain."
     },
     {
@@ -3847,7 +3847,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2022 to March 2026)."
     },
     {
@@ -3859,7 +3859,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the window is explicitly closed by a named end event (the March 2026 move to a dedicated NUC), so a present-tense claim over it is contradicted."
     },
     {
@@ -3871,7 +3871,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Implicature-is-not-contradiction rule: a bypass scoped to the 14 June battery swap implicates a return to normal operation but never asserts it; only asserted content can establish the hypothesis, so unsupported."
     },
     {
@@ -3883,7 +3883,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: the state holds since 28 July 2026 with no closing event (the return to writes has not happened), so the fact entails the same state at the later reference date."
     },
     {
@@ -3895,7 +3895,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: an expected stay is not an asserted end event, and 'still' is unanchored — the claim's truth depends on an evaluation date the premise does not contain."
     },
     {
@@ -3907,7 +3907,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the window is explicitly closed by a named successor (Forgejo), so a present-tense claim over it is contradicted."
     },
     {
@@ -3919,7 +3919,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2023 to July 2026)."
     },
     {
@@ -3931,7 +3931,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Implicature-is-not-contradiction rule: 'until Q2 2025' implicates something changed afterwards, but the premise never asserts what followed; the implicated content cannot be treated as asserted, so unsupported."
     },
     {
@@ -3943,7 +3943,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: the state holds since 9 January 2026 with no closing event, so the window is open and the 'currently' claim is decidable and entailed (evaluation-time rule, open-window case)."
     },
     {
@@ -3955,7 +3955,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the May 2026 hardening is a named end event that disabled plaintext, so a claim of the plaintext state after the close is contradicted."
     },
     {
@@ -3967,7 +3967,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Evaluation-time rule: 'about a month' fixes no end event, and 'currently' is unanchored — whether the node is back depends on an evaluation date the premise does not contain."
     },
     {
@@ -3979,7 +3979,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2024 to April 2026)."
     },
     {
@@ -3991,7 +3991,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Window rule, closed-window case: the window is explicitly closed by a named end event (the April 2026 schedule move to 02:30), so a present-tense claim of the old time is contradicted."
     },
     {
@@ -4003,7 +4003,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Implicature-is-not-contradiction rule: a migration scoped to six weeks implicates the old wiki was retired afterwards, but the premise never asserts a shutdown; the implicated content cannot establish the hypothesis, so unsupported."
     },
     {
@@ -4015,7 +4015,7 @@
         "temporal"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
+      "label_source": "adjudicated",
       "rationale": "Open-window rule: the pin holds since March 2026 with no closing event, so the fact entails the same state at the later reference date."
     }
   ]

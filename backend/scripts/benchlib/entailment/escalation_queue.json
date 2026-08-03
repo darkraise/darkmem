@@ -1,0 +1,45 @@
+{
+  "_notes": "T2.54 Step-5 escalation queue: every live pair on which the two blind passes and the recorded label did not all agree. Owner adjudicates per LABELLING.md (retire-and-replace for wrong labels, rule-then-pairs for ambiguous rules). label_source stays 'author' for queued pairs until resolved.",
+  "merged_at": "2026-08-03",
+  "n_live": 241,
+  "adjudicated": 239,
+  "agreement": {
+    "pass_a_vs_recorded": 0.991701244813278,
+    "pass_b_vs_recorded": 0.991701244813278,
+    "pass_a_vs_pass_b": 1.0
+  },
+  "escalations": [
+    {
+      "id": "eg-0023",
+      "premise": "haproxy load-balances incoming requests across the three app nodes.",
+      "hypothesis": "The three app nodes load-balance requests across haproxy instances.",
+      "slice": "direction",
+      "recorded_verdict": "unsupported",
+      "recorded_rationale": "Reversed functional role. The premise does not assert the reverse arrangement, but nothing in it excludes a separate one either, so this is unsupported, not contradicted (reversal rule, non-exclusive case).",
+      "pass_a": {
+        "verdict": "contradicted",
+        "rule": "reversal rule (balancer/backend roles cannot swap for one flow)"
+      },
+      "pass_b": {
+        "verdict": "contradicted",
+        "rule": "reversal rule (balancer/backend roles for one traffic flow cannot carry both directions)"
+      }
+    },
+    {
+      "id": "eg-0142",
+      "premise": "glitchtip replaces sentry",
+      "hypothesis": "GlitchTip replaces MkDocs.",
+      "slice": "value-swap",
+      "recorded_verdict": "contradicted",
+      "recorded_rationale": "Replaced-object swap (sentry -> mkdocs) with the sentence shape preserved; the one thing a named replacement retired is a single-valued slot (the exclusive-slot rule's 'one thing a named migration replaced' shape), so the differing value contradicts under the exclusive-slot rule. mkdocs is corpus-plausible as a replaced tool - it is genuinely replaced (by astro) in the harvest world.",
+      "pass_a": {
+        "verdict": "unsupported",
+        "rule": "general step 4 (absence, not exclusion)"
+      },
+      "pass_b": {
+        "verdict": "unsupported",
+        "rule": "general step 4 (absence)"
+      }
+    }
+  ]
+}

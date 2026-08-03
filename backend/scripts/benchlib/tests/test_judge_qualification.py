@@ -123,16 +123,17 @@ def _synthetic_gold(n_live, n_l2, n_author):
 
 
 def test_the_real_gold_is_refused_with_counts_surfaced():
-    # Post-Step-4 composition: size and the 50% floor now clear, so the one
-    # remaining refusal ground is the pending Step-5/6 adjudication.
+    # Post-Step-5 composition: size and the 50% floor clear, 239/241 pairs
+    # blind-adjudicated; the remaining refusal ground is the two pairs in
+    # the owner's escalation queue, still label_source author.
     eligibility = jq.gate_eligibility(entailment_gold.load_entailment_gold())
     assert eligibility.eligible is False
     assert eligibility.live_pairs == 241
     assert eligibility.l2_fact_pairs == 153
-    assert eligibility.author_labelled_pairs == 241
+    assert eligibility.author_labelled_pairs == 2
     joined = "\n".join(eligibility.reasons)
     assert "l2-fact: 153/241" in joined
-    assert "author-labelled: 241/241" in joined
+    assert "author-labelled: 2/241" in joined
     assert "await" in joined and "adjudication" in joined
 
 
@@ -642,7 +643,7 @@ def test_gate_mode_refuses_the_real_gold_before_any_call(tmp_path):
         _run(tmp_path, stub_cls, gate=True)
     message = str(excinfo.value)
     assert "l2-fact: 153/241" in message
-    assert "author-labelled: 241/241" in message
+    assert "author-labelled: 2/241" in message
     assert seen == [], "eligibility refusal must precede any model call"
 
 
