@@ -11,18 +11,20 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.models.memory import Memory
+from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import facts_channel, hybrid_search
 from app.services import layer_composition as lc
 from app.services import rank_fusion
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
+from app.services.fact_badge import CLAIM_VOCABULARY, Badge, badge_for_fact
 from app.services.reranker import RerankerService
 from app.services.verified_evidence import latest_verified_evidence
-from tests._reachability_scan import ReachabilityRules, find_forbidden_reach
+from tests._reachability_scan import ReachabilityRules, app_sources, find_forbidden_reach
 
 PROJECT = "t2-43-layer-composition"
 
@@ -1058,3 +1060,342 @@ def test_two_candidates_cannot_share_one_composition_key():
             lc.fact_candidate(shared, channel_rank=1),
             lc.fact_candidate(shared, channel_rank=2),
         ])
+
+
+# ─────────── doc 12's badge, mapped over the composed rows (T2.71) ───────────
+#
+# Before this map the module contained no badge reference at all, so every
+# fact the retrieval path served went out unlabelled — and it satisfied doc
+# 12's "null on L0" half by emitting nothing anywhere. Four things are pinned
+# below: the tri-state (never asked / asked), that the badge is the producer's
+# object verbatim, that neither half of the L0 rule can be got wrong without a
+# raise, and that no second claim string exists anywhere under ``app/``.
+
+
+def _badge(**overrides) -> Badge:
+    fields = {
+        "verification_status": "corroborated",
+        "origin_count": 2,
+        "origin_kinds": ("code", "memory"),
+        "as_of": datetime(2026, 7, 20, 9, 14, 0, tzinfo=timezone.utc),
+        "contradiction": False,
+        "human_ratified": False,
+        "stale": False,
+        "claim": (
+            "asserted by 2 distinct origins of kinds [code, memory], "
+            "no known contradiction, as of 2026-07-20"
+        ),
+    }
+    fields.update(overrides)
+    return Badge(**fields)
+
+
+def test_no_badge_lookup_leaves_the_label_absent_rather_than_null():
+    """The tri-state, and the reason it is one.
+
+    ``badge: null`` on an L2 row is doc 12's L0 rule, so a compose that never
+    looked one up must not emit the key at all — otherwise "never asked" is
+    served in the exact shape of "this row is not adjudicated".
+    """
+    result = lc.compose([
+        lc.fact_candidate(_fact_row(uuid4()), channel_rank=1),
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=1),
+    ])
+
+    assert result.badged is False
+    for row in result.rows:
+        assert "badge" not in row.labels
+        assert "lifecycle" not in row.labels
+
+
+def test_a_composed_fact_carries_the_producers_badge_object_verbatim():
+    fact_id = uuid4()
+    badge = _badge()
+    candidate = lc.fact_candidate(_fact_row(fact_id), channel_rank=1)
+
+    result = lc.compose([candidate], badges={candidate.key: badge})
+
+    assert result.badged is True
+    row = result.rows[0]
+    assert row.labels["badge"] == badge.as_dict()
+    assert row.labels["badge"]["claim"] == badge.claim
+    assert row.labels["verification_status"] == "candidate"
+    assert row.labels["lifecycle"] is None
+
+
+def test_a_composed_memory_carries_a_lifecycle_and_a_null_badge():
+    memory = lc.memory_candidate(_memory_row(uuid4(), status="superseded"), channel_rank=1)
+    fact = lc.fact_candidate(_fact_row(uuid4()), channel_rank=1)
+
+    rows = {
+        r.id_kind: r
+        for r in lc.compose([memory, fact], badges={fact.key: _badge()}).rows
+    }
+
+    assert rows["memory"].labels["badge"] is None
+    assert rows["memory"].labels["verification_status"] is None
+    assert rows["memory"].labels["lifecycle"] == "superseded"
+    # The pre-existing lifecycle spelling rides through unchanged, and it is
+    # the same value: two names for one column that could disagree is the
+    # drift the single read closes.
+    assert rows["memory"].labels["status"] == "superseded"
+
+
+def test_a_badge_filed_under_a_memory_key_is_refused():
+    """Half of the L0 rule, and it is the producer's raise rather than a
+    second copy of the rule here. A caller that built a badge for a memory
+    has a bug upstream; dropping it silently would hide that."""
+    memory = lc.memory_candidate(_memory_row(uuid4()), channel_rank=1)
+
+    with pytest.raises(ValueError, match="carries no badge"):
+        lc.compose([memory], badges={memory.key: _badge()})
+
+
+def test_a_fact_missing_from_a_lookup_that_ran_is_refused():
+    """The other half. Serving the fact with ``badge: null`` would be doc
+    12's L0 shape on a row the L0 rule does not govern — the unlabelled fact
+    this whole map exists to make unservable."""
+    fact = lc.fact_candidate(_fact_row(uuid4()), channel_rank=1)
+
+    with pytest.raises(ValueError, match="the badge lookup ran"):
+        lc.compose([fact], badges={})
+
+
+def test_an_article_missing_from_a_lookup_that_ran_is_refused_too():
+    """L3 carries a badge on the same terms as L2 (doc 12 §4). Its channel is
+    T3.02's, so the raise is what that task inherits instead of a serving
+    path that silently under-labels its own rows."""
+    article = lc.article_candidate(_article_row(uuid4()), channel_rank=1)
+
+    with pytest.raises(ValueError, match="the badge lookup ran"):
+        lc.compose([article], badges={})
+
+
+def test_the_badge_map_is_keyed_in_the_composition_keyspace():
+    """A fact and an article sharing a UUID must not trade badges. The bare
+    id ``badges_for_facts`` returns is not enough to tell them apart, so the
+    join happens on the namespaced key or not at all."""
+    shared = uuid4()
+    fact = lc.fact_candidate(_fact_row(shared), channel_rank=1)
+    article = lc.article_candidate(_article_row(shared), channel_rank=1)
+    fact_badge = _badge(claim="the fact's own claim")
+    article_badge = _badge(claim="the article's own claim")
+
+    rows = {
+        r.id_kind: r
+        for r in lc.compose(
+            [fact, article],
+            badges={fact.key: fact_badge, article.key: article_badge},
+        ).rows
+    }
+
+    assert rows["fact"].labels["badge"]["claim"] == "the fact's own claim"
+    assert rows["article"].labels["badge"]["claim"] == "the article's own claim"
+
+
+# ─────────── the badge is read from the one producer, never rebuilt ───────────
+#
+# R1. A second claim string is the drift doc 12 exists to prevent: two copies
+# disagree exactly where they matter, and the honesty surface is the most
+# repeated sentence in the product. The scan below is over **non-docstring**
+# string literals, because the vocabulary's own words are ordinary English —
+# "asserted by" appears in two modules' prose and neither is building a claim.
+# A file is an offender when **two or more** distinct fragments appear in its
+# literals: a producer assembles the sentence from several, and an f-string
+# splits them into separate constants inside one file, so the count is taken
+# per file rather than per literal.
+
+_FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
+
+
+def _claim_fragments_in_literals(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text())
+    docstrings = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+            docstrings.add(id(body[0].value))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in docstrings:
+            continue
+        text_ = node.value.lower()
+        found.update(fragment for fragment in CLAIM_VOCABULARY if fragment in text_)
+    return found
+
+
+def test_the_producer_is_what_the_scan_detects():
+    """Non-vacuity, through the real producer rather than a synthetic one: if
+    the predicate cannot see ``fact_badge.py`` building the sentence, it
+    cannot see a second copy either."""
+    assert len(_claim_fragments_in_literals(_FACT_BADGE_PATH)) >= 2
+
+
+def test_no_second_claim_string_exists_under_app():
+    offenders = {
+        str(path.relative_to(_BACKEND)): sorted(fragments)
+        for path in app_sources(_BACKEND)
+        if path != _FACT_BADGE_PATH
+        for fragments in [_claim_fragments_in_literals(path)]
+        if len(fragments) >= 2
+    }
+    assert not offenders, (
+        "doc 12's claim sentence has a second producer; every consumer reads "
+        f"fact_badge's badge and renders it verbatim: {offenders}"
+    )
+
+
+def test_the_composition_itself_spells_no_part_of_the_claim():
+    assert _claim_fragments_in_literals(_COMPOSITION_PATH) == set()
+
+
+def test_the_second_claim_scan_catches_a_paraphrase(tmp_path):
+    """In-suite negative control, through the same predicate: a module that
+    re-renders the sentence from its own parts is flagged even though every
+    fragment lands in a separate constant of one f-string."""
+    module = tmp_path / "restated_badge.py"
+    module.write_text(
+        "def restate(count, kinds, day):\n"
+        '    return (\n'
+        '        f"asserted by {count} distinct origins of kinds [{kinds}], "\n'
+        '        f"no known contradiction, as of {day}"\n'
+        "    )\n"
+    )
+
+    assert len(_claim_fragments_in_literals(module)) >= 2
+
+
+# ─────────── the served path, end to end and bounded (R2) ───────────
+
+
+class _QueryCounter:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def __call__(self, conn, cursor, statement, parameters, context, executemany):
+        self.statements.append(statement)
+
+    @property
+    def selects(self) -> list[str]:
+        return [
+            statement
+            for statement in self.statements
+            if statement.lstrip().upper().startswith(("SELECT", "WITH"))
+        ]
+
+
+async def _seed_fact(session, project, *, subject, obj, origins=("session-a",)):
+    repo = KnowledgeTripleRepository(session)
+    fact = await repo.insert_open(
+        triple_key=f"k-{uuid4()}",
+        subject_name=subject,
+        object_name=obj,
+        rel_type="DEPLOYED_ON",
+        fact=f"{subject} runs on {obj}",
+        reference_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        project=project,
+    )
+    sources = FactSourceRepository(session)
+    for origin in origins:
+        await sources.add_source(
+            fact_id=fact["id"],
+            source_kind="memory",
+            source_ref=f"memory:{uuid4()}",
+            origin_key=origin,
+        )
+    await session.flush()
+    return fact["id"]
+
+
+@pytest.mark.asyncio
+async def test_every_served_fact_row_carries_the_badge(session):
+    """The whole point of the task, asserted where it is served rather than
+    where it is built: the badge on the row is the producer's own object for
+    that fact, character for character."""
+    project = "t2-71-served"
+    fact_id = await _seed_fact(
+        session, project, subject="postgres", obj="homelab",
+        origins=("session-a", "session-b"),
+    )
+    session.add(Memory(
+        id=uuid4(),
+        content="postgres runs on the homelab box",
+        source="test",
+        project=project,
+    ))
+    await session.commit()
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(
+            results=[_memory_row(uuid4(), project=project, status="active")],
+        )
+
+    service = lc.LayerCompositionService(_FakeLLM([0.0], "fp"), session)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+        result = await service.search("postgres homelab", project=project)
+
+    by_kind = {}
+    for row in result.rows:
+        by_kind.setdefault(row.id_kind, []).append(row)
+
+    assert by_kind["fact"], "the facts channel returned nothing to badge"
+    expected = await badge_for_fact(
+        session, await KnowledgeTripleRepository(session).get(fact_id)
+    )
+    served = next(row for row in by_kind["fact"] if row.id == str(fact_id))
+    assert served.labels["badge"] == expected.as_dict()
+    assert served.labels["badge"]["claim"] == (
+        "asserted by 2 distinct origins of kinds [memory], "
+        "no known contradiction, verification not yet recomputed"
+    )
+    assert served.labels["lifecycle"] is None
+
+    assert by_kind["memory"][0].labels["badge"] is None
+    assert by_kind["memory"][0].labels["verification_status"] is None
+    assert by_kind["memory"][0].labels["lifecycle"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_the_badge_read_does_not_grow_with_the_number_of_facts(session, monkeypatch):
+    """R2, counted rather than timed. A per-fact badge lookup would put three
+    round trips behind every fact a query returns, on the hot read path — and
+    it would pass every assertion above."""
+    from tests.conftest import test_engine
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[_memory_row(uuid4())])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+
+    async def _run(fact_count: int) -> list[str]:
+        rows = [_fact_row(uuid4()) for _ in range(fact_count)]
+
+        async def _facts(self, *args, **kwargs):
+            return facts_channel.FactChannelTrace(results=rows)
+
+        monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+        counter = _QueryCounter()
+        target = test_engine.sync_engine
+        event.listen(target, "before_cursor_execute", counter)
+        try:
+            result = await lc.LayerCompositionService(
+                _FakeLLM([0.0], "fp"), session,
+            ).search("q", project="default", limit=50)
+        finally:
+            event.remove(target, "before_cursor_execute", counter)
+        assert len([r for r in result.rows if r.id_kind == "fact"]) == fact_count
+        return counter.selects
+
+    one = await _run(1)
+    many = await _run(12)
+
+    assert one, "the badge read issued no query at all; the count is vacuous"
+    assert len(many) == len(one), (
+        f"{len(one)} queries for one fact, {len(many)} for twelve:\n"
+        + "\n".join(many)
+    )
