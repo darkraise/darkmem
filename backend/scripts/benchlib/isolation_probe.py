@@ -1751,6 +1751,85 @@ def _preview_boundary(
     ]
 
 
+async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
+    """Doc 12 §3's composed four-layer read, over both layers at once.
+
+    Two queries rather than one because ``plainto_tsquery`` ANDs its terms:
+    a single phrase carrying both a memory's wording and a fact's matches
+    neither, and the driver would report a clean zero over a surface it never
+    reached. So the memory-flavoured and fact-flavoured phrases are asked
+    separately, and each is asked once per project — the foreign pass is what
+    proves the scope *moves* rather than merely being spelled, since a door
+    hard-wired to one project passes an observer-only driver forever.
+
+    ``project`` is required by the composition and pushed down by both
+    channels, so a foreign row arriving here is a V1 on the project axis.
+    The status axis is deliberately wide (``MemoryFilter`` carries no status
+    predicate here), which is why every memory row is checked for its own
+    ``labels.status`` — that label is the whole of what makes the width
+    honest. A fact has no memory lifecycle, so its ``true_status`` is None.
+
+    Supporting memories arrive **nested** under the fact they source, and the
+    walk below descends into them: an enumeration that read only the top level
+    would leave every grouped memory to the raw-body net, which reports a
+    modelled row as an unmodelled crossing.
+    """
+    surface = "knowledge_composed_search"
+    door = "mcp:knowledge_search"
+    out: list[Sighting] = []
+    ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+    ids_to_fact = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+
+    def walk(rows: list[dict], case: str, req_p: str) -> set[str]:
+        accounted: set[str] = set()
+        for row in rows:
+            labels = row.get("labels") or {}
+            if row.get("id_kind") == "memory":
+                fx = ids_to_mem.get(str(row.get("id")))
+                if fx is not None:
+                    accounted.add(fx.key)
+                    out.append(_mem(
+                        surface, door, case, fx, req_p=req_p, req_s=None,
+                        lp=labels.get("project") == fx.project,
+                        ls=labels.get("status") == fx.status,
+                    ))
+            else:
+                fact = ids_to_fact.get(str(row.get("id")))
+                if fact is not None:
+                    accounted.add(fact.key)
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=fact.key,
+                        kind="content", true_project=fact.project, true_status=None,
+                        requested_project=req_p,
+                        label_project=labels.get("project") == fact.project,
+                    ))
+            accounted |= walk(row.get("supported_by") or [], f"{case}: nested", req_p)
+        return accounted
+
+    for req_p in (OBSERVER, FOREIGN):
+        for query, flavour in (
+            ("postgres tuning note", "memory-flavoured query"),
+            ("disputed fact", "fact-flavoured query"),
+        ):
+            case = f"{flavour}, composed read scoped to {req_p}"
+            body = await _call_mcp(
+                "knowledge_search", {"query": query, "project": req_p, "limit": 50},
+            )
+            payload = json.loads(body)
+            if payload.get("status") == "unavailable":
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row="(no rows)",
+                    forced_v1_reason=(
+                        "the composed read reported every channel down; the "
+                        "probe cannot observe a surface it never reached"
+                    ),
+                ))
+                continue
+            accounted = walk(payload["rows"], case, req_p)
+            out.extend(_account_body(surface, door, case, body, accounted))
+    return out
+
+
 async def _drive_knowledge_facts_browsing(ctx: ProbeContext) -> list[Sighting]:
     """Doc 13 §5.1's Facts tab — the vault the deployment holds, browsed.
 
@@ -1804,17 +1883,11 @@ async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
     the rules module's reading and reported as such rather than counted.
     """
     surface = "knowledge_fact_detail"
-    door = "GET /api/v1/knowledge/facts/{fact_id}"
     out: list[Sighting] = []
     ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
 
-    for fx in FACT_FIXTURES:
-        case = f"fact addressed by id, seeded in {fx.project}"
-        response = await ctx.client.get(
-            f"/api/v1/knowledge/facts/{ctx.fact_ids[fx.key]}", headers=ctx.headers,
-        )
-        response.raise_for_status()
-        row = response.json()
+    def one_body(door: str, case: str, body: str) -> None:
+        row = json.loads(body)
         out.append(Sighting(
             surface=surface, door=door, case=case, row=fx.key, kind="content",
             true_project=fx.project, true_status=None,
@@ -1829,7 +1902,21 @@ async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
                     out.append(_mem(
                         surface, door, f"{case}: provenance origin", memory, kind="id",
                     ))
-        out.extend(_account_body(surface, door, case, response.text, {fx.key}))
+        out.extend(_account_body(surface, door, case, body, {fx.key}))
+
+    for fx in FACT_FIXTURES:
+        case = f"fact addressed by id, seeded in {fx.project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/facts/{ctx.fact_ids[fx.key]}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        one_body("GET /api/v1/knowledge/facts/{fact_id}", case, response.text)
+        # Both doors, because the declaration names both: the tool is
+        # unauthenticated where the route is not, so a scope this surface
+        # imposed only in the route's dependency would be reachable here.
+        one_body("mcp:fact_get", case, await _call_mcp(
+            "fact_get", {"fact_id": str(ctx.fact_ids[fx.key])},
+        ))
     return out
 
 
@@ -2232,6 +2319,7 @@ DRIVERS = {
     "bulk_partition_read": _drive_bulk_partition_read,
     "duplicates_probe": _drive_duplicates_probe,
     "memory_overview": _drive_memory_overview,
+    "knowledge_composed_search": _drive_knowledge_composed_search,
     "code_search": _drive_code_search,
     "memory_by_id": _drive_memory_by_id,
     "memory_write_echo": _drive_memory_write_echo,
