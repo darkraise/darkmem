@@ -1508,3 +1508,111 @@ async def test_the_badge_read_does_not_grow_with_the_number_of_facts(session, mo
         + "\n".join(many)
     )
 
+
+async def _journal_dispute(session, fact_id, counterpart_id):
+    """A ``verified`` transition naming a counterpart, written directly.
+
+    ``record_event`` stamps its own ``created_at``; these rows only have to
+    exist and carry the contradiction block, so the partition is ensured and
+    the row inserted at a fixed instant.
+    """
+    at = datetime(2026, 7, 20, 12, 0, 0, tzinfo=timezone.utc)
+    await session.execute(
+        text("SELECT events_ensure_partition(CAST(:at AS timestamptz)::date)"),
+        {"at": at},
+    )
+    await session.execute(
+        text(
+            """
+            INSERT INTO events (created_at, event_type, object_type, object_id,
+                                project, payload)
+            VALUES (
+                CAST(:at AS timestamptz), 'verified', 'fact',
+                CAST(:fid AS uuid), CAST(:project AS text),
+                CAST(:payload AS jsonb)
+            )
+            """
+        ),
+        {
+            "at": at,
+            "fid": str(fact_id),
+            "project": "default",
+            "payload": json.dumps({
+                "before": {"verification_status": "candidate"},
+                "after": {"verification_status": "disputed"},
+                "contradiction": {
+                    "counterpart_id": str(counterpart_id),
+                    "counterpart_subject": "postgres",
+                    "counterpart_rel_type": "RUNS_ON",
+                    "counterpart_object": "kubernetes",
+                    "rule": "functional_uniqueness",
+                    "witness_origin": "session-c",
+                    "enumeration": "first_finding",
+                },
+            }),
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_disputed_arm_of_the_badge_read_is_batched_too(session, monkeypatch):
+    """R2's other arm. A disputed row on the page adds a fourth query — the
+    counterpart provenance profiles — which the producer issues once over every
+    counterpart the page names. Nothing counted it, so a regression to one
+    lookup per counterpart would have passed R2 while putting a round trip
+    behind every dispute a browsing list shows."""
+    from tests.conftest import test_engine
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[_memory_row(uuid4())])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+
+    async def _run(fact_count: int, *, disputed: bool) -> list[str]:
+        ids = [uuid4() for _ in range(fact_count)]
+        if disputed:
+            for fact_id in ids:
+                await _journal_dispute(session, fact_id, uuid4())
+            await session.commit()
+        rows = [
+            _fact_row(
+                fact_id,
+                verification_status="disputed" if disputed else "candidate",
+            )
+            for fact_id in ids
+        ]
+
+        async def _facts(self, *args, **kwargs):
+            return facts_channel.FactChannelTrace(results=rows)
+
+        monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+        counter = _QueryCounter()
+        target = test_engine.sync_engine
+        event.listen(target, "before_cursor_execute", counter)
+        try:
+            result = await lc.LayerCompositionService(
+                _FakeLLM([0.0], "fp"), session,
+            ).search("q", project="default", limit=50)
+        finally:
+            event.remove(target, "before_cursor_execute", counter)
+        served = [r for r in result.rows if r.id_kind == "fact"]
+        assert len(served) == fact_count
+        if disputed:
+            assert all(row.labels["badge"]["contradiction"] for row in served), (
+                "the page carried no dispute, so the counterpart query never "
+                "ran and this count would be the undisputed one"
+            )
+        return counter.selects
+
+    quiet = await _run(1, disputed=False)
+    one = await _run(1, disputed=True)
+    many = await _run(12, disputed=True)
+
+    assert len(one) > len(quiet), (
+        "a disputed page issued no more queries than an undisputed one; the "
+        "counterpart lookup this test bounds did not happen"
+    )
+    assert len(many) == len(one), (
+        f"{len(one)} queries for one dispute, {len(many)} for twelve:\n"
+        + "\n".join(many)
+    )
