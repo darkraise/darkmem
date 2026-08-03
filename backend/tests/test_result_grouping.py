@@ -677,63 +677,48 @@ async def test_three_real_memories_group_under_their_real_fact(session, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_a_group_cut_by_the_limit_takes_its_evidence_with_it(session, monkeypatch):
-    """Today's behaviour where grouping meets the answer budget — recorded, not endorsed.
+async def test_the_collapse_still_holds_where_the_answer_budget_binds(session, monkeypatch):
+    """The tripwire this test used to be, fired — and what replaced it.
 
-    ``search()`` slices ``rows[:limit]`` **after** grouping, so a memory nested
-    under a fact that falls past the cut leaves the served window with that
-    fact, even though the memory alone ranked above the cut. An unrelated row
-    is promoted into the slot it vacated.
+    It previously recorded the opposite outcome: ``search()`` sliced
+    ``rows[:limit]`` after grouping, so a memory nested under a fact that fell
+    past the cut left the result with that fact even though it had ranked above
+    the cut alone. That was ruled a gap in the plan rather than in this lane,
+    and T2.70 closed it by scoping nesting to the facts the budget reaches. The
+    notice worked as intended: the person who moved the slice found out here.
 
-    This is a **known, ruled-on interaction**, not a defect this test is
-    complaining about. It follows from the group's rank being the fact's rank:
-    the memory is no longer an independent row that could hold a position of
-    its own. The doc-consistent alternative — scoping nesting to the facts that
-    survive the cut — needs a window fixpoint (nesting changes which rows
-    survive, which changes what may nest) and is owned by a separate task
-    rather than by this lane.
-
-    What the test buys is notice: the next person to move the slice finds out
-    from a failure here rather than from a support ticket about a memory that
-    stopped being returned.
+    What stays this lane's claim is the collapse itself under a budget — a
+    group is one row against the budget, and its evidence is nested rather than
+    ranked beside it. The budget interaction now belongs to
+    ``test_grouping_cut.py``, which owns the fixpoint and the tally; this
+    asserts only that the collapse survives a limit that binds.
 
     The ordering it relies on: bands run 1..4 over the fact channel and 1..2
     over the memory channel, and the sort is ``(band, -tier, key)``, so a
     corroborated fact precedes a memory of the same band.
     """
-    cut_fact, (nested_memory,) = await _seed_fact_with_sources(session, memory_count=1)
+    grouped_fact, (nested_memory,) = await _seed_fact_with_sources(session, memory_count=1)
     # The filler facts need no rows of their own: the provenance lookup is
     # keyed by fact id and an id it does not find simply sources nothing.
-    served_facts = [uuid4(), uuid4(), uuid4()]
+    filler_facts = [uuid4(), uuid4(), uuid4()]
     lone_memory = uuid4()
 
     _stub_channels(
         monkeypatch,
         [_memory_row(lone_memory), _memory_row(nested_memory)],
-        [_fact_row(fact_id) for fact_id in [*served_facts, cut_fact]],
+        [_fact_row(grouped_fact)] + [_fact_row(fact_id) for fact_id in filler_facts],
     )
     service = lc.LayerCompositionService(_FakeLLM(), session)
 
     cut = await service.search("q", project=PROJECT, limit=4)
 
-    # Ungrouped, these same rows serve [F1, M1, F2, M2] at a limit of four.
-    # Grouped, M2 has gone into F4's group and F4 is the fifth row, so both
-    # drop out together and F3 is promoted into the window.
-    assert [row.id for row in cut.rows] == [
-        str(served_facts[0]), str(lone_memory), str(served_facts[1]), str(served_facts[2]),
-    ]
-    reachable = {row.id for row in cut.rows} | {
-        nested.id for row in cut.rows for nested in row.supported_by
-    }
-    assert str(nested_memory) not in reachable
-    assert str(cut_fact) not in reachable
-
-    # One slot further and the group is served whole, evidence included — so
-    # the disappearance above is the cut, not the collapse.
-    uncut = await service.search("q", project=PROJECT, limit=5)
-
-    assert [row.id for row in uncut.rows][-1] == str(cut_fact)
-    assert [n.id for n in uncut.rows[-1].supported_by] == [str(nested_memory)]
+    # The sourced fact is rank 1, so the budget reaches it and the memory nests
+    # under it: one row for the claim, its evidence named inside.
+    group = cut.rows[0]
+    assert group.id == str(grouped_fact)
+    assert [n.id for n in group.supported_by] == [str(nested_memory)]
+    assert str(nested_memory) not in {row.id for row in cut.rows}
+    assert len(cut.rows) == 4
 
 
 @pytest.mark.asyncio
