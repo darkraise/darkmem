@@ -38,6 +38,7 @@ import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Iterable
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override must run first)
 from benchlib.isolation_rules import (
@@ -59,6 +60,15 @@ ALPHA_REPO = "repo-alpha"
 BETA_REPO = "repo-beta"
 
 ACTIVE_STATUSES = ("active",)
+
+# Declared content_preview truncation lengths, read off each surface's own
+# query. content_surfaces.py's ``crosses=("content_preview",)`` is a
+# qualitative classification, not the exact bound -- the per-surface preview
+# length is an input to _preview_boundary(), not a shared constant (T2.74).
+HYGIENE_PREVIEW_CHARS = 200          # app/services/hygiene_queue.py
+REEMBED_PREVIEW_CHARS = 120          # app/services/reembed.py
+PIPELINE_FAILURE_PREVIEW_CHARS = 80  # app/services/pipeline_failures.py
+CAPTURE_BUFFER_PREVIEW_CHARS = 500   # app/services/buffer_monitor.py
 
 
 def _code_key(repo_name: str) -> str:
@@ -90,10 +100,17 @@ class MemoryFixture:
     confidence: float = 0.75
     ttl_days: int | None = None
     long: bool = False
+    # How far past a surface's preview boundary the tail marker must land.
+    # 260 clears every boundary below it (200, 120, 80); capture_buffer_triage
+    # declares 500, so its own long fixtures need a taller pad (T2.74) — the
+    # per-surface preview length is the input, reusing one padded length for
+    # every surface would false-positive wherever a fixture is shorter than
+    # the boundary it is meant to prove crosses.
+    pad_to: int = 260
 
     @property
     def tail_marker(self) -> str:
-        """The part of ``content`` that lies past a 200-char preview boundary.
+        """The part of ``content`` that lies past ``pad_to`` preview chars.
 
         Same role as ``ArticleFixture.tail_marker``: the sentinel deliberately
         leads the content, so it crosses whether or not a preview truncated,
@@ -111,7 +128,7 @@ class MemoryFixture:
         )
         if not self.long:
             return body
-        padding = "x" * max(0, 260 - len(body))
+        padding = "x" * max(0, self.pad_to - len(body))
         return f"{body} {padding}{self.tail_marker}"
 
     @property
@@ -167,9 +184,21 @@ ECHO_FIXTURES: dict[str, MemoryFixture] = {
     )
 }
 
+# capture_buffer_triage declares a 500-char content_preview (buffer_monitor.py's
+# CONTENT_PREVIEW_CHARS) — buf_alpha/buf_beta's plain "... buffered capture"
+# bodies are ~40 chars, nowhere near that boundary, so they cannot prove
+# truncation either way (T2.74's finding: dropping the hygiene-queue helper in
+# unmodified over these would false-positive rather than pass). These two are
+# padded past 500 specifically for that surface.
+BUFFER_LONG_FIXTURES: tuple[MemoryFixture, ...] = (
+    MemoryFixture("buf_alpha_long", OBSERVER, long=True, pad_to=600),
+    MemoryFixture("buf_beta_long", FOREIGN, long=True, pad_to=600),
+)
+
 BUFFER_KEYS: dict[str, str] = {
     "buf_alpha": OBSERVER,
     "buf_beta": FOREIGN,
+    **{fx.key: fx.project for fx in BUFFER_LONG_FIXTURES},
     **{key: fx.project for key, fx in ECHO_FIXTURES.items()},
 }
 
@@ -641,6 +670,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                       project=OBSERVER, source="probe")
         await enqueue(session, content=f"{sentinel('buf_beta')} buffered capture",
                       project=FOREIGN, source="probe")
+        for fx in BUFFER_LONG_FIXTURES:
+            await enqueue(session, content=fx.content, project=fx.project, source="probe")
 
         failure_service = PipelineFailureService(session)
         for key in ("a_active", "b_active", "a_super"):
@@ -1454,6 +1485,10 @@ async def _drive_reembed_backfill_queue(ctx: ProbeContext) -> list[Sighting]:
             lp="project" in item, ls="status" in item,
         ))
     out.extend(_account_body(surface, door, case, response.text, accounted))
+    out.extend(_preview_boundary(
+        surface, door, case, response.text,
+        [fx for fx in MEMORY_FIXTURES if fx.long], REEMBED_PREVIEW_CHARS,
+    ))
     if payload.get("partition_missing"):
         ctx.notes.append("reembed queue reported partition_missing with the partition present")
 
@@ -1509,6 +1544,11 @@ async def _drive_pipeline_failure_triage(ctx: ProbeContext) -> list[Sighting]:
             ls=row.get("entity_status") == fx.status,
         ))
     out.extend(_account_body(surface, door, case, response.text, accounted))
+    out.extend(_preview_boundary(
+        surface, door, case, response.text,
+        [FIXTURES_BY_KEY[k] for k in ("a_active", "b_active", "a_super")],
+        PIPELINE_FAILURE_PREVIEW_CHARS,
+    ))
     return out
 
 
@@ -1668,24 +1708,46 @@ async def _drive_review_queue_articles(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
-def _preview_boundary(surface: str, door: str, case: str, body: str) -> list[Sighting]:
+def _preview_boundary(
+    surface: str, door: str, case: str, body: str,
+    fixtures: Iterable[MemoryFixture], boundary_chars: int,
+) -> list[Sighting]:
     """Long fixtures whose tail reached a surface declaring ``content_preview``.
 
     The same assertion ``_drive_review_queue_articles`` makes over articles,
     and it is needed for the same reason: ``_account_body`` cannot make it,
-    because the sentinel sits inside the first 200 characters and crosses
-    legitimately whether or not the preview truncated. Without this, a surface
-    that quietly started returning whole ``content`` would keep reporting a
-    clean zero.
+    because the sentinel sits inside the first ``boundary_chars`` characters
+    and crosses legitimately whether or not the preview truncated. Without
+    this, a surface that quietly started returning whole ``content`` would
+    keep reporting a clean zero.
+
+    ``boundary_chars`` is the surface's own declared truncation length, read
+    off its query rather than shared: hygiene_queue_memories truncates at
+    200, reembed_backfill_queue at 120, pipeline_failure_triage at 80,
+    capture_buffer_triage at 500 (T2.74). Reusing one fixture set and one
+    boundary across all of them would false-positive wherever a fixture is
+    shorter than the boundary it is meant to prove crosses -- exactly what
+    naively dropping this helper into capture_buffer_triage did, since its
+    500-char boundary sits past every existing long fixture's ~273-char
+    content. The assertion below is what keeps that from happening silently
+    a second time: a future fixture that shrinks under its surface's own
+    boundary fails the build here rather than disarming the check.
     """
+    fixtures = list(fixtures)
+    for fx in fixtures:
+        assert len(fx.content) > boundary_chars, (
+            f"{surface}: fixture {fx.key!r} is {len(fx.content)} chars, not "
+            f"past the declared {boundary_chars}-char boundary -- this check "
+            "needs a fixture whose tail actually crosses it"
+        )
     return [
         Sighting(
             surface=surface, door=door, case=f"{case} [past preview boundary]",
             row=fx.key, true_project=fx.project, true_status=fx.status,
             forced_v1_reason="memory content crossed past its declared preview",
         )
-        for fx in MEMORY_FIXTURES
-        if fx.long and fx.tail_marker in body
+        for fx in fixtures
+        if fx.tail_marker in body
     ]
 
 
@@ -1914,7 +1976,10 @@ async def _drive_hygiene_queue_memories(ctx: ProbeContext) -> list[Sighting]:
                 ls=row.get("status") == fx.status,
             ))
         out.extend(_account_body(surface, door, case, response.text, accounted))
-        out.extend(_preview_boundary(surface, door, case, response.text))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text,
+            [fx for fx in MEMORY_FIXTURES if fx.long], HYGIENE_PREVIEW_CHARS,
+        ))
 
     for arm, backlog in (
         ("low-confidence", "low-confidence captures"),
@@ -1979,6 +2044,10 @@ async def _drive_capture_buffer_triage(ctx: ProbeContext) -> list[Sighting]:
                 label_project=row.get("project") == buffer_keys[key],
             ))
         out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text,
+            BUFFER_LONG_FIXTURES, CAPTURE_BUFFER_PREVIEW_CHARS,
+        ))
 
     await one_case("", "wide (every project, ratified default)", None)
     await one_case(f"?project={OBSERVER}", "scoped project", OBSERVER)

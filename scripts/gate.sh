@@ -161,9 +161,16 @@ run_gate "frontend build" 900 "$FRONTEND" \
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
 # schema change once broke the harness with the floor still green (T0.17).
+#
+# benchlib/bench_db.py resolves BENCH_DATABASE_URL at import time, separately
+# from TEST_DATABASE_URL above — the harness has its own database on
+# purpose (CLAUDE.md "Three databases, three purposes"), so it needs its own
+# env var passed through here or it silently resets the shared unnumbered
+# darkmem_bench (T2.76).
 run_gate "benchlib tests" 900 "$BACKEND" \
     env -C "$BACKEND" \
         TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+        BENCH_DATABASE_URL="${BENCH_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench}" \
         "$PY" -m pytest scripts/benchlib/tests -q
 
 # The F1 bench in --algo-only mode: it errors rather than calling the LLM if
@@ -183,8 +190,12 @@ if [ "$FULL" -eq 1 ]; then
     # after is a genuine leak from this run and fails the gate loudly.
     PORTS_BEFORE="$(ss -ltn 2>/dev/null | grep -E ':8000|:3636|:3637' | sort || true)"
 
+    # run_retrieval_eval.py imports benchlib.bench_db, same resolution as the
+    # benchlib suite above — it needs BENCH_DATABASE_URL passed through too.
     run_gate "retrieval eval" 3600 "$BACKEND" \
-        env -C "$BACKEND" "$PY" scripts/benchlib/run_retrieval_eval.py
+        env -C "$BACKEND" \
+            BENCH_DATABASE_URL="${BENCH_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench}" \
+            "$PY" scripts/benchlib/run_retrieval_eval.py
 
     # The API e2e suite (T1.64): boots and tears down its own disposable
     # stack, so it never runs concurrently against :8000 with the playwright
