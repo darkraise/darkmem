@@ -17,6 +17,31 @@ _COMMUNITY_SAMPLE_CAP = 10_000
 SEMANTIC_FETCH_MULTIPLIER = 3
 
 
+class EmbedderFingerprintUnresolved(RuntimeError):
+    """A bulk-partition read would key on ``llm_fingerprint()``'s ``|0`` sentinel.
+
+    ``LLMOrchestrator.llm_fingerprint()`` returns ``f"{model}|0"`` when the
+    embedding purpose's ``dimensions`` is unset — a legal, documented
+    configuration (doc 04 §5). No embed call has ever registered a partition
+    under that literal key, so a read keyed on it either hits
+    ``UndefinedTable`` (fresh install) or, if something else happens to have
+    registered that exact slug, returns rows that were never written by this
+    model — either way, a read path must never proceed on the sentinel
+    un-resolved. Raised by :meth:`PostgresVectorRepository.resolve_read_fingerprint`
+    when the model has no live registered fingerprint to fall back to.
+    """
+
+    def __init__(self, model_id: str):
+        self.model_id = model_id
+        super().__init__(
+            f"No registered embedding partition for model {model_id!r}: the "
+            "embedding purpose's 'dimensions' config is unset and no real "
+            "embed call has registered a fingerprint for this model yet. "
+            "Set 'dimensions' on the embedding purpose, or perform an embed "
+            "first so the true fingerprint registers."
+        )
+
+
 @dataclass(frozen=True)
 class MemoryFilter:
     """Project / status / archived scope for the semantic retrieval channel.
@@ -395,6 +420,42 @@ class PostgresVectorRepository:
         g.es["weight"] = weights
         partition = g.community_multilevel(weights="weight")
         return partition.membership
+
+    async def resolve_read_fingerprint(self, llm) -> str:
+        """Resolve the fingerprint a bulk-partition read (projection, clustering)
+        may safely key on.
+
+        ``llm.llm_fingerprint()`` is a pure, session-less formatter: it cannot
+        know the real dimension without an embed and yields a ``|0`` sentinel
+        when the embedding purpose's ``dimensions`` is unset. A read must never
+        trust that sentinel directly (invariant 2, T2.68) — this looks up
+        whether the same model already has a live, real fingerprint registered
+        (a real embed ran at some point) and uses that instead; when none
+        exists there is no partition to read at all, and this raises
+        :class:`EmbedderFingerprintUnresolved` rather than let the caller
+        proceed on a key nothing was ever written under.
+
+        Never used by retrieval — ``hybrid_search`` derives its fingerprint
+        from ``embed()``'s return value (an actual vector's length), which
+        structurally cannot be the sentinel, so it has no need of this lookup.
+        """
+        fingerprint = llm.llm_fingerprint()
+        model_id, _, dims = fingerprint.rpartition("|")
+        if dims != "0":
+            return fingerprint
+        row = (
+            await self.session.execute(
+                text(
+                    "SELECT fingerprint FROM embedders "
+                    "WHERE model_id = :model_id AND retired_at IS NULL "
+                    "ORDER BY registered_at DESC LIMIT 1"
+                ),
+                {"model_id": model_id},
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            return row
+        raise EmbedderFingerprintUnresolved(model_id)
 
     async def find_fingerprint_for_memory(self, memory_id: UUID) -> str | None:
         """Return a registered fingerprint whose child table holds this memory.

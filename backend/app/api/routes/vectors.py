@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
 from app.database import get_session
-from app.repositories.vector import MemoryFilter, PostgresVectorRepository
+from app.repositories.vector import EmbedderFingerprintUnresolved, MemoryFilter, PostgresVectorRepository
 from app.schemas.memory import MemoryStatus
 from app.utils.math import pca_2d
 
@@ -39,8 +39,14 @@ async def get_vector_projection(
         raise HTTPException(status_code=503, detail="LLM service unavailable")
     # Project the active embedder's vectors. Inactive fingerprints live in
     # other partitions; mixing spaces would yield meaningless coordinates.
-    fingerprint = llm.llm_fingerprint()
     repo = PostgresVectorRepository(session)
+    try:
+        fingerprint = await repo.resolve_read_fingerprint(llm)
+    except EmbedderFingerprintUnresolved as e:
+        # A |0 sentinel read either 500s on UndefinedTable (nothing ever
+        # registered under it) or silently returns rows nothing wrote — both
+        # worse than a named refusal (invariant 2, T2.68).
+        raise HTTPException(status_code=503, detail=str(e)) from e
     points = await repo.get_all_vectors(
         fingerprint=fingerprint,
         limit=limit,

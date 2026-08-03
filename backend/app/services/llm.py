@@ -109,6 +109,33 @@ class LLMOrchestrator:
         know the real dimension without embedding, so we surface the same
         ``0`` sentinel the empty-batch paths use; a real embed call then
         registers the true-dimension fingerprint on demand.
+
+        **Who may call this directly, and who may not (T2.68).** This method
+        is pure and session-less, so it cannot check whether the sentinel it
+        may return actually has a partition behind it. Callers that only need
+        a *name* to write under — the empty-batch paths above, and boot-time
+        registration, which registers whatever this returns and is a no-op
+        under the sentinel because ``dims <= 0`` fails validation before any
+        table is created — may call it bare. A caller that checks partition
+        *existence* before reading (``ReembedService``'s ``to_regclass``
+        probe, which treats a missing table as "everything missing" rather
+        than assuming the table is there) is also safe calling it bare, since
+        it never blindly executes a ``SELECT`` against an unchecked name.
+
+        Any other caller about to *read* a per-fingerprint partition without
+        such a check (a bulk vector scan, a clustering view — anything that
+        will run ``SELECT ... FROM <parent>__<slug>`` unconditionally) must
+        NOT call this bare: a ``|0`` result names a partition nothing ever
+        wrote to, so the read either raises ``UndefinedTable`` or, worse,
+        silently returns empty forever if something else happens to have
+        registered that slug. Those read paths go through
+        ``PostgresVectorRepository.resolve_read_fingerprint``, which resolves
+        the sentinel to a real registered fingerprint for the same model or
+        raises ``EmbedderFingerprintUnresolved`` — never proceeds keyed on
+        the sentinel. Retrieval (``hybrid_search``) never calls this method at
+        all: it takes its fingerprint from ``embed()``'s return value, an
+        actual vector's length, so it structurally cannot receive the
+        sentinel.
         """
         cfg = self.config["embedding"]
         return self._fingerprint(cfg.model, cfg.dimensions or 0)
