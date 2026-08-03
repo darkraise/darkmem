@@ -277,3 +277,18 @@ async def test_a_both_sided_database_failure_raises_rather_than_returning_empty(
         await svc.search(_KEYWORD_SIDE_POISON, limit=10)
 
     await _assert_the_session_survived(session)
+
+
+def test_search_code_is_gone():
+    """T2.78: ``search_code`` carried invariant 14's forbidden shape — a
+    swallowed exception returning ``[]``, indistinguishable from a genuine
+    no-match — and duplicated ``CodeQueryService``, the doors' real
+    implementation (both ``POST /api/v1/code/search`` and MCP's
+    ``code_search`` route through it, never through this class). Re-verified
+    with no callers anywhere under ``backend/`` — literal, dynamic
+    (``getattr``/string-keyed), and test-reaching — before deletion; see
+    ``tests/test_code_search_order.py`` and friends for the surviving
+    implementation's coverage.
+    """
+    assert not hasattr(HybridSearchService, "search_code")
+    assert not hasattr(HybridSearchService, "_semantic_code_search")

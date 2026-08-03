@@ -1214,6 +1214,44 @@ def test_the_badge_map_is_keyed_in_the_composition_keyspace():
 # appears as English. The exemption is per-file for docstrings only: an
 # allowlisted file that starts building the sentence in executable code is
 # still an offender.
+#
+# T2.77: the allowlist's staleness guard (below) only ever checked that an
+# entry still *needs* its exemption, never that its docstrings stay prose. A
+# byte-exact docstring-template producer planted inside an allowlisted file —
+# a sibling function's docstring holds the full sentence, and another reads
+# it back through `.__doc__` instead of a string literal — ran the whole
+# suite green, reproduced end to end against the real allowlisted files. A
+# first fix that forbade only `.__doc__` attribute access and a call literally
+# named `getdoc` lost to `getattr(f, "__doc__")` (still 103 green,
+# byte-equal) — the closure named the two demonstrated spellings, not the
+# category. Policing docstring *content* to close it was rejected on
+# purpose: T2.71 already stopped short of a content match because it breaks
+# the build on an ordinary prose reword, and pinning today's fragment set
+# (or even its count) has the same property — a reword that happens to add
+# or drop one of these words fails CI for no behavioural reason.
+# `test_no_source_reflects_a_docstring_under_app` below closes it
+# structurally instead, by matching the *name* `__doc__` or `getdoc` where
+# it appears literally in a module's source — as an attribute, a bare name
+# (including through an import alias), or a str/bytes constant — rather
+# than one enumerated call shape. That is still content-independent —
+# rewording prose never adds any of those — and measured to cost zero false
+# positives: no file under ``app/`` mentions ``__doc__`` or ``getdoc`` in any
+# form today. It is **not** a closure of "every way a docstring's text can
+# become output", and the third review round proved the distinction twice
+# over: a version claiming to match "every syntactic way the name can
+# appear" still lost to ``getattr(inspect, "getdoc")`` and to
+# ``b"__doc__".decode()``, both byte-equal and both green. The honest
+# boundary is narrower than "the caller never writes the name": it is that
+# the name never appears as a *literal* the AST can read. Stated residuals
+# rather than chased: a spelling assembled at runtime (``"__doc" + "__"``,
+# ``"".join(...)``, f-string parts) — though implicit adjacent-string
+# concatenation is caught, since Python folds it before the AST; a helper
+# that reflects on the caller's behalf without the caller naming it
+# (``pydoc.render_doc``, ``help()``, ``inspect.getmembers`` filtered without
+# the literal); and a producer that reconstructs the text without reflection
+# at all — reparsing its own source with ``inspect.getsource`` +
+# ``ast.get_docstring``, or reading the ``.py`` file as plain text. None is
+# this scan's vocabulary; each would need its own guard.
 
 _FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
 
@@ -1318,6 +1356,138 @@ def test_the_docstring_allowlist_is_not_stale():
         elif len(without) >= 2:
             stale[relative] = f"builds the claim outside its docstrings: {sorted(without)}"
     assert not stale, f"the docstring allowlist has rotted: {stale}"
+
+
+_DOC_REFLECTION_ATTRS = frozenset({"__doc__", "getdoc"})
+
+
+def _reflects_a_docstring(path: Path) -> bool:
+    """True if this file's source names ``__doc__`` or ``getdoc`` in any
+    syntactic form a docstring-reading call could take.
+
+    T2.77's first version matched exactly two shapes — ``x.__doc__`` (an
+    ``ast.Attribute``) and a call whose function name was literally
+    ``getdoc``. Both are real, and both are one spelling each: it lost to
+    ``getattr(f, "__doc__")`` (a string constant, not an attribute access),
+    to bare module ``__doc__`` (a name, not an attribute of something), and
+    to ``from inspect import getdoc as g`` (the call site names ``g``, never
+    ``getdoc``), while the byte-equal producer that motivated the guard ran
+    straight through under all three. This version matches the *name*
+    ``__doc__``/``getdoc`` everywhere it can occur in source, not one call
+    shape built from it:
+
+    - as an attribute (``obj.__doc__``, ``inspect.getdoc``, ``mod.getdoc``,
+      whether called or merely referenced);
+    - as a bare name (a module reading its own ``__doc__`` global, or a name
+      bound by ``from inspect import getdoc`` with no alias) — plus any
+      local alias a ``from inspect import getdoc as g`` / ``from pydoc
+      import getdoc as g`` introduces, resolved from the import statement
+      itself so the call site's alias still matches;
+    - as a **str or bytes constant** spelling ``"__doc__"`` or a ``getdoc``
+      alias — every one of ``getattr(f, "__doc__")``,
+      ``f.__getattribute__("__doc__")``, ``operator.attrgetter("__doc__")``,
+      ``vars(f)["__doc__"]``, ``f.__dict__["__doc__"]`` and
+      ``getattr(inspect, "getdoc")(f)`` must spell one of those literals
+      somewhere in the call, so matching the constant catches the family
+      without enumerating its members. Bytes are decoded before matching,
+      because ``getattr(f, b"__doc__".decode())`` is otherwise invisible —
+      the fragment scan in this same file learned that lesson separately and
+      this arm inherits it rather than rediscovering it.
+
+    This is still content-independent for every realistic edit — an ordinary
+    prose reword never adds an occurrence of either name — so it costs
+    nothing on a legitimate docstring change. One exact-equality corner is
+    admitted rather than papered over: a docstring is itself an
+    ``ast.Constant``, so a docstring whose *entire* text is exactly
+    ``__doc__`` or ``getdoc`` would trip this arm. The match is equality,
+    never substring, so no prose containing those words is affected; the
+    corner is recorded because the whole history of this guard is prose that
+    claimed slightly more than the predicate delivered.
+
+    What it does **not** catch. The boundary is *the name never appears in
+    the caller's source in any form this scan can read as a constant or a
+    name*, which is narrower than "the caller never writes the name":
+    a spelling **assembled at runtime** defeats it — ``"__doc" + "__"``,
+    ``"".join(...)``, an f-string built from parts. (Implicit adjacent-string
+    concatenation *is* caught, because Python folds it into one constant
+    before the AST sees it.) Also uncaught, because these never name it at
+    all: a standard-library helper that reflects on the object's behalf,
+    such as ``pydoc.render_doc`` or ``help()``; ``inspect.getmembers``
+    filtered without the literal; and recovering the text without reflection
+    — reparsing the module's own source with ``inspect.getsource`` +
+    ``ast.get_docstring``, or reading the ``.py`` file as plain text.
+    A name-matching AST scan
+    cannot see a call it does not know reflects on a docstring, and cannot
+    see a docstring that was never asked for by name. Those are this
+    guard's stated boundary, not an oversight left for the next reviewer to
+    find.
+    """
+    tree = ast.parse(path.read_text())
+
+    aliases = {"getdoc"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in ("inspect", "pydoc"):
+            for alias in node.names:
+                if alias.name == "getdoc":
+                    aliases.add(alias.asname or alias.name)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _DOC_REFLECTION_ATTRS:
+            return True
+        if isinstance(node, ast.Name) and (node.id == "__doc__" or node.id in aliases):
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+            spelled = (
+                node.value.decode("latin-1")
+                if isinstance(node.value, bytes)
+                else node.value
+            )
+            if spelled == "__doc__" or spelled in aliases:
+                return True
+    return False
+
+
+def test_no_source_reflects_a_docstring_under_app():
+    """Closes the hole the staleness guard above cannot see.
+
+    That guard only ever asked whether an allowlisted entry still *needs*
+    its exemption — never whether its docstrings stay prose. A byte-exact
+    docstring-template producer needs no second literal the fragment scan
+    could catch: reading the exempted text back through any spelling of
+    ``__doc__``/``getdoc`` and rendering it (``.format(...)``, or a bare
+    return) reproduces it byte for byte. Reproduced against the real tree:
+    planting such a producer inside ``app/repositories/fact_sources.py``
+    left the whole suite green before this guard existed, and a
+    ``getattr``-based variant left it green again after the guard's first,
+    narrower version.
+
+    Scoped to every file under ``app/``, not just the four allowlisted
+    ones, because the exemption is what makes an allowlisted file's
+    docstring a legitimate reflection *target* — the reflecting *call* can
+    sit anywhere that imports it. Re-measured zero cost at this branch
+    point: no file under ``app/`` mentions ``__doc__`` or ``getdoc`` in any
+    form today, so nothing legitimate trips this.
+
+    Residual, honestly stated rather than claimed away: a caller that never
+    writes ``__doc__`` or ``getdoc`` in its own source — a helper like
+    ``pydoc.render_doc``/``help()`` that reflects on the object's behalf,
+    or a producer that reparses its own source text instead of reflecting
+    (``inspect.getsource`` + ``ast.get_docstring``, or a raw file read) —
+    is invisible to a scan built on those two names, and would need a
+    different guard.
+    """
+    offenders = [
+        str(path.relative_to(_BACKEND))
+        for path in app_sources(_BACKEND)
+        if _reflects_a_docstring(path)
+    ]
+    assert not offenders, (
+        "naming `__doc__` or `getdoc` (as an attribute, a bare/aliased "
+        "name, or the string constant \"__doc__\") is forbidden under "
+        "app/ — it is one path the claim-fragment scan cannot see, "
+        f"docstring-allowlisted or not; see this guard's docstring for what "
+        f"it cannot see: {offenders}"
+    )
 
 
 def test_the_composition_itself_spells_no_part_of_the_claim():

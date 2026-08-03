@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -136,26 +135,6 @@ class HybridSearchService:
 
         return semantic_results, keyword_results, semantic_failed, keyword_failed
 
-    async def search_code(
-        self,
-        query: str,
-        limit: int = 20,
-        repo_id: UUID | None = None,
-        language: str | None = None,
-        semantic_weight: float = 0.7,  # noqa: ARG002 — kept for call-site stability
-    ) -> list[dict]:
-        # Code search is semantic-only. The per-fingerprint
-        # ``code_chunk_embeddings__<slug>`` child tables carry the embedding
-        # but no FTS column, so there is no keyword side to fuse with.
-        vector, fingerprint = await self.llm.embed(query)
-        try:
-            return await self._semantic_code_search(
-                vector, fingerprint, limit, repo_id, language,
-            )
-        except Exception as e:
-            logger.error("Semantic code search failed: %s", e)
-            return []
-
     async def _semantic_search(
         self,
         vector: list[float],
@@ -243,50 +222,6 @@ class HybridSearchService:
             }
             for row in result
         ]
-
-    async def _semantic_code_search(
-        self,
-        vector: list[float],
-        fingerprint: str,
-        limit: int,
-        repo_id: UUID | None,
-        language: str | None,
-    ) -> list[dict]:
-        table = child_table("code_chunk_embeddings", fingerprint)
-        filters = ""
-        params: dict = {"vec": str(vector), "limit": limit}
-        if repo_id is not None:
-            filters += " AND repo_id = CAST(:repo_id AS uuid)"
-            params["repo_id"] = str(repo_id)
-        if language is not None:
-            filters += " AND language = :language"
-            params["language"] = language
-        if filters:
-            params["limit"] = limit * SEMANTIC_FETCH_MULTIPLIER
-
-        result = await self.session.execute(
-            text(f"""
-                SELECT id, repo_id, file_path, symbol_name, chunk_content,
-                       line_start, line_end,
-                       1 - (embedding <=> CAST(:vec AS vector)) AS score
-                FROM {table}
-                WHERE TRUE {filters}
-                ORDER BY embedding <=> CAST(:vec AS vector)
-                LIMIT :limit
-            """),
-            params,
-        )
-        rows = [
-            {
-                "id": str(row.id), "repo_id": str(row.repo_id),
-                "file_path": row.file_path, "symbol_name": row.symbol_name,
-                "chunk_content": row.chunk_content,
-                "line_start": row.line_start, "line_end": row.line_end,
-                "score": float(row.score), "source": "semantic",
-            }
-            for row in result
-        ]
-        return rows[:limit]
 
     @staticmethod
     def _record_access(rows: list[dict]) -> None:
