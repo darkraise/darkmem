@@ -789,10 +789,14 @@ def _grouped_page(
     inside it under the larger one. That makes ``F`` monotone. ``S₁ = F(S₀) ⊆
     S₀`` because ``S₀`` is everything, and monotonicity carries ``Sₙ₊₁ ⊆ Sₙ``
     by induction — a chain that strictly shrinks until it settles, over a
-    finite set, so it settles within one iteration per fact. Neither half is
-    trusted: a step that does not shrink ``S`` raises rather than spinning, and
-    the loop is bounded, so a later change to the nesting rule that broke
-    monotonicity would fail loudly instead of hanging the read path.
+    finite set, so it settles within one iteration per fact. That is not
+    trusted: a step that does not shrink ``S`` raises rather than spinning, so a
+    later change to the nesting rule that broke monotonicity would fail loudly
+    instead of hanging the read path. The loop's own bound is a second raise
+    behind that one, and it is unreachable while the shrink check stands — a
+    strictly shrinking chain of subsets of ``facts`` runs at most
+    ``len(facts)+1`` steps and the loop allows one more. It is a backstop
+    against that check being deleted, not the argument for termination.
 
     **Why iteration rather than the two alternatives.** *Over-fetching a
     bounded window before grouping* does not address this at all — it changes

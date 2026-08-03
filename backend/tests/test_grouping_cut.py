@@ -29,6 +29,16 @@ nothing looked past that. And the sweep below randomises the support map and
 the budget over one fixed row ordering — it does not randomise band or tier,
 so it exercises the interaction of nesting with the cut and not the ordering
 that feeds them.
+
+Second residual, from T2.81's review: both sweeps draw **at most one** sourcing
+fact per memory (``rng.choice(facts)``, once per memory), so the path where a
+memory sources several facts and only some of them survive the cut — the one
+where grouping has to choose an incumbent — is never generated here. The
+reviewer's own brute force covered it (0–3 facts per memory, 200 configurations,
+``F`` evaluated over the full powerset, 0 violations), and the termination and
+monotonicity arguments are support-map-agnostic, so this is a stated gap in
+these sweeps rather than an untested property. A regression specific to that
+path would not be caught below.
 """
 
 from __future__ import annotations

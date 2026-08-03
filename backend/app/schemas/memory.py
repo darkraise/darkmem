@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.memory import (
     TAG_CATEGORY_MAX_LENGTH,
@@ -81,14 +81,30 @@ class CaptureAck(BaseModel):
     status: Literal["accepted"] = "accepted"
 
 
+# The `MemoryUpdate` fields whose column is NOT NULL, so an explicit `null`
+# names a state the row cannot hold. `tests/test_empty_content_update.py`
+# derives this set from the ORM mapper and fails if a field drifts out of it.
+NOT_NULL_UPDATE_FIELDS = ("content", "importance", "metadata", "is_archived", "project", "status")
+
+
 class MemoryUpdate(BaseModel):
     # The same floor ``MemoryCreate`` carries, because the corpus has two
     # content doors and only one of them had it. An update to ``""`` wrote an
     # empty row, the re-embed refreshed ``payload.content`` to ``""``
     # verbatim, and any later search that reranked that row raised out of the
     # request — ``RerankerService`` refuses to score a document against an
-    # empty string rather than scoring one silently (T2.69). ``None`` is a
-    # different fact and stays legal: it is the field not being updated.
+    # empty string rather than scoring one silently (T2.69).
+    #
+    # ``None`` is a different fact from absent, and — measured, against an
+    # earlier version of this comment that claimed otherwise — it is **not**
+    # "the field is not being updated". Only omitting the field is that:
+    # ``exclude_unset`` keys off ``model_fields_set``, which sending the key
+    # populates, so an explicit ``null`` survives the service's dump and lands
+    # on the column. Where the column is nullable (``memory_type``,
+    # ``expires_at``) that is a real instruction and stays legal — it clears
+    # the field. Where it is NOT NULL it used to reach the flush and raise
+    # ``NotNullViolationError`` out of the request, which the HTTP boundary
+    # serves as a 500; `_refuse_explicit_null` makes it a 422 instead.
     content: str | None = Field(default=None, min_length=1)
     tags: list[str] | None = None
     memory_type: str | None = None
@@ -100,6 +116,24 @@ class MemoryUpdate(BaseModel):
     status: MemoryStatus | None = None
 
     _check_tags = field_validator("tags")(_validate_tag_lengths)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _refuse_explicit_null(cls, data):
+        # Refused rather than dropped, because dropping it would have to guess
+        # what the caller meant on a model where `null` is meaningful for two
+        # other fields. No caller sends one: MCP's `memory_update` builds its
+        # dict from the fields the caller actually set, and the SPA has no
+        # caller of this route at all.
+        if not isinstance(data, dict):
+            return data
+        nulled = [name for name in NOT_NULL_UPDATE_FIELDS if name in data and data[name] is None]
+        if nulled:
+            raise ValueError(
+                f"{', '.join(nulled)}: null is not an update instruction for a "
+                "column that cannot be null — omit the field to leave it unchanged"
+            )
+        return data
 
 
 

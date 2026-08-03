@@ -8,9 +8,18 @@ declared ``content: str | None`` with no length floor, so ``PUT
 ``payload.content = ""`` verbatim, and any later search that reranked that row
 raised out of the request.
 
+The same door had a second degenerate content, found by T2.81's review and
+closed here alongside: ``content: null`` passed validation, survived
+``exclude_unset`` (which drops absent fields, not explicitly-null ones) and
+raised ``NotNullViolationError`` uncaught — a 500 where a 422 belongs. It was
+never only ``content``: ``importance``, ``metadata``, ``is_archived``,
+``project`` and ``status`` are NOT NULL columns reachable through the same
+model, so the refusal is derived from the ORM rather than written out once.
+
 Every link of that chain is executed here rather than argued:
 
-1. the wire accepts (before) and refuses (after) an empty ``content``;
+1. the wire accepts (before) and refuses (after) an empty ``content``, and
+   refuses an explicitly null one;
 2. the **real** pipeline, over the real database, writes ``payload.content``
    as the content it was handed — so an empty content really does produce an
    empty payload;
@@ -21,7 +30,10 @@ Residual, stated rather than implied: this closes the ``PUT`` door. It does not
 make an empty-texted row unrepresentable — a row already in the corpus from
 before this guard, or one written by a direct database write, still reaches the
 same raise. Nothing here backfills those, and T2.69's raise is what surfaces
-them.
+them. Both guards live on ``MemoryUpdate``, so they bind every caller that
+validates that model and no caller that does not: ``MemoryRepo.update`` still
+takes whatever keyword it is handed, and an in-process caller reaching it
+directly gets the same ``NotNullViolationError`` as before.
 """
 
 from __future__ import annotations
@@ -93,6 +105,52 @@ async def test_a_non_empty_content_still_updates(client, session, auth_headers):
     assert response.json()["content"] == "x"
 
 
+@pytest.mark.asyncio
+async def test_an_explicit_null_content_is_refused_at_the_update_door(client, session, auth_headers):
+    """The other degenerate content, which used to be a 500.
+
+    ``exclude_unset`` does not drop an explicitly sent ``null`` — it keys off
+    ``model_fields_set``, and sending the key sets it — so ``{"content": null}``
+    passed validation (``min_length`` constrains only the ``str`` arm of the
+    union), reached the flush and raised ``NotNullViolationError`` out of the
+    request. Nothing persisted, because the transaction aborted; what the
+    caller got was a 500 where a 422 belongs.
+    """
+    memory_id = uuid.uuid4()
+    session.add(Memory(id=memory_id, content="postgres runs on the homelab box",
+                       source="api", importance=0.5, metadata_={}))
+    await session.flush()
+
+    response = await client.put(
+        f"/api/v1/memories/{memory_id}", json={"content": None}, headers=auth_headers,
+    )
+
+    assert response.status_code == 422, response.text
+    refreshed = await session.get(Memory, memory_id)
+    assert refreshed.content == "postgres runs on the homelab box"
+
+
+@pytest.mark.asyncio
+async def test_a_null_on_a_nullable_column_still_clears_it(client, session, auth_headers):
+    """The refusal is scoped, not blanket: ``null`` still means "clear" here.
+
+    ``memories.memory_type`` is nullable, so an explicit null is a real
+    instruction the door can carry out. A guard that refused every null would
+    take that away.
+    """
+    memory_id = uuid.uuid4()
+    session.add(Memory(id=memory_id, content="postgres runs on the homelab box",
+                       source="api", importance=0.5, metadata_={}, memory_type="fact"))
+    await session.flush()
+
+    response = await client.put(
+        f"/api/v1/memories/{memory_id}", json={"memory_type": None}, headers=auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["memory_type"] is None
+
+
 def test_the_floor_sits_on_the_model_both_doors_construct():
     """Door parity, by construction rather than by a second route test.
 
@@ -102,9 +160,11 @@ def test_the_floor_sits_on_the_model_both_doors_construct():
     not the other. What this asserts is the model's own behaviour; the wire
     test above is what proves the route surfaces it as a 422.
 
-    ``None`` and "absent" stay legal and stay different: absent leaves content
-    alone, ``None`` is the same for ``exclude_unset``, and only ``""`` is now
-    unrepresentable.
+    Absent and ``None`` stay different, and neither of them is "the field is
+    not being updated": **only absent** is. An explicitly sent ``None`` is in
+    ``model_fields_set``, so it survives ``exclude_unset`` and reaches the
+    column — which is why it is refused here for a column that cannot hold it,
+    and left alone for one that can.
     """
     from pydantic import ValidationError
 
@@ -113,9 +173,48 @@ def test_the_floor_sits_on_the_model_both_doors_construct():
     with pytest.raises(ValidationError):
         MemoryUpdate(content="")
 
+    with pytest.raises(ValidationError, match="content"):
+        MemoryUpdate(content=None)
+
     assert MemoryUpdate().model_dump(exclude_unset=True) == {}
-    assert MemoryUpdate(content=None).content is None
     assert MemoryUpdate(content="x").content == "x"
+    # The measurement the old docstring here got wrong: an explicit null is
+    # *not* excluded by exclude_unset, on any field.
+    assert MemoryUpdate(memory_type=None).model_dump(exclude_unset=True) == {"memory_type": None}
+
+
+def test_the_null_refusal_covers_every_not_null_column_this_door_writes():
+    """The refused set is the ORM's, not a hand-picked one that can drift.
+
+    ``content`` is the field the review found, but it is not the only one this
+    model can null: ``importance``, ``metadata``, ``is_archived``, ``project``
+    and ``status`` are all NOT NULL columns reachable through the same door and
+    all used to raise the same way. Deriving the expected set from the mapper
+    means a field added to ``MemoryUpdate`` for a non-nullable column fails
+    here instead of shipping a new 500.
+    """
+    from sqlalchemy import inspect as sa_inspect
+
+    from app.models.memory import Memory
+    from app.schemas.memory import NOT_NULL_UPDATE_FIELDS, MemoryUpdate
+
+    columns = sa_inspect(Memory).columns
+    # `tags` is a relationship, not a column, and the service applies it
+    # separately: there `None` really does mean "not updating".
+    derived = {
+        name
+        for name in MemoryUpdate.model_fields
+        if name != "tags"
+        and not columns["metadata_" if name == "metadata" else name].nullable
+    }
+
+    assert derived == set(NOT_NULL_UPDATE_FIELDS)
+
+    from pydantic import ValidationError
+
+    for name in NOT_NULL_UPDATE_FIELDS:
+        with pytest.raises(ValidationError, match=name):
+            MemoryUpdate(**{name: None})
 
 
 # ─────────────── 2. what the re-embed writes ───────────────
