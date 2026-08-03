@@ -38,6 +38,15 @@ a shared entity all look like support and none of them is; a composition
 inferring it would nest — and so remove from view — a row nothing asserts a
 link to.
 
+*The badge is read, never rendered here.* Doc 12 §4 fixes the honest claim as
+a structured field on every L2/L3 row and null on L0, and ``fact_badge`` is
+its sole producer. This module maps that producer's ``row_labels`` over the
+composed rows and spells no part of the sentence itself: a second claim string
+is the drift doc 12 exists to prevent, and it would drift precisely where the
+two copies disagree about what is known. Until this map existed the served
+path emitted no badge at all, which satisfied "null on L0" by emitting nothing
+anywhere.
+
 *Invariant 9 is normalised at admission, not at the merge.* :func:`_admit_id`
 is the single place ``str()`` is spelled; :func:`composition_key` refuses a
 non-``str`` rather than absorbing the same normalisation a second time. Two
@@ -70,6 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
+from app.services.fact_badge import Badge, badges_for_facts, row_labels
 from app.services.facts_channel import (
     KEYWORD_ARM,
     NAME_ARM,
@@ -478,6 +488,50 @@ def _labels(candidate: LayerCandidate) -> dict:
     return labels
 
 
+def _badge_labels(candidate: LayerCandidate, badges: Mapping[str, Badge]) -> dict:
+    """Doc 12 §4's ``{verification_status, lifecycle, badge}`` triplet.
+
+    Emitted **whole, by the producer** — :func:`fact_badge.row_labels` — and
+    never assembled here. That is what makes the L0 rule structural rather
+    than repeated: the producer refuses a badge on a memory row and refuses a
+    lifecycle on a vault row, so a composition that got either backwards
+    raises instead of serving a mislabelled row. Splitting the triplet across
+    two sites would give this module a second opinion about which rows are
+    adjudicated.
+
+    Nothing about the badge is recomputed and no part of the claim sentence is
+    spelled in this file. The badge arrives built, from the one module that
+    reads the rows the ladder wrote and journalled (invariant 15).
+
+    **A badge-bearing row missing from a lookup that ran raises.** Doc 12
+    fixes the badge as present on every L2/L3 row, so ``badge: null`` there is
+    not a degradation the wire can express — it reads exactly like the L0
+    rule firing on a row the L0 rule does not govern, which is the unlabelled
+    fact this whole map exists to make unservable. An article reaching here
+    raises for the same reason and by the same line: its channel is
+    ``ARTICLE_CHANNEL_OWNER``'s, and whoever ships it owes the badge lookup
+    the same way the facts channel does.
+    """
+    if candidate.id_kind == "memory":
+        return row_labels(
+            id_kind=candidate.id_kind,
+            lifecycle=candidate.row.get("status"),
+            badge=badges.get(candidate.key),
+        )
+    badge = badges.get(candidate.key)
+    if badge is None:
+        raise ValueError(
+            f"the badge lookup ran and produced none for {candidate.key}; doc "
+            "12 fixes the badge as present on every L2/L3 row, so serving this "
+            "one unlabelled would under-report what is known about the claim"
+        )
+    return row_labels(
+        id_kind=candidate.id_kind,
+        verification_status=candidate.verification_status,
+        badge=badge,
+    )
+
+
 @dataclass(frozen=True)
 class ComposedRow:
     """One served row, labelled with where it came from and how it ranked.
@@ -539,6 +593,7 @@ class CompositionResult:
     excluded_by_context_conflict: int = 0
     reranked: bool = False
     grouped: bool = False
+    badged: bool = False
 
 
 def _rerank_bands(
@@ -690,6 +745,7 @@ def compose(
     evidence: Mapping[str, Mapping] | None = None,
     rerank_scores: Mapping[str, float] | None = None,
     fact_sources: Mapping[str, frozenset[str]] | None = None,
+    badges: Mapping[str, Badge] | None = None,
 ) -> CompositionResult:
     """Doc 07 §5 steps 1 to 5, as a pure function.
 
@@ -706,6 +762,17 @@ def compose(
     unconditionally would make "never asked" indistinguishable from "asked and
     found none", which is the same collapse the terminal rerank band exists to
     prevent.
+
+    **``badges`` is the same tri-state, and keyed the same way as the rows.**
+    ``None`` says no badge lookup ran, so no row carries doc 12's label
+    triplet at all; a mapping says it ran, so every row carries it and every
+    badge-bearing row carries a real badge or the composition raises. The
+    absent key is what keeps "never asked" distinguishable from "asked and
+    the fact is unlabelled" — and the second of those is unservable, so it is
+    a raise rather than a shape. The mapping is keyed by
+    :func:`composition_key`, not by the bare fact id ``badges_for_facts``
+    returns: a fact and an article sharing a UUID would otherwise trade
+    badges, and this map is the one place the badge and the row are joined.
 
     **The order is ascending on ``(band, -tier, key)``.** ``key`` is the sole
     tie-break because it is input-independent: an insertion-order tie-break
@@ -778,7 +845,11 @@ def compose(
                 # does not order by.
                 weighted_score=base * factor * outcome.boost,
                 context=outcome,
-                labels=_labels(candidate),
+                labels=(
+                    _labels(candidate)
+                    if badges is None
+                    else {**_labels(candidate), **_badge_labels(candidate, badges)}
+                ),
                 dispute=(
                     dispute_label(candidate.row, evidence.get(candidate.id))
                     if candidate.id_kind != "memory"
@@ -815,6 +886,7 @@ def compose(
         excluded_by_context_conflict=excluded_by_context_conflict,
         reranked=reranked,
         grouped=grouped,
+        badged=badges is not None,
     )
 
 
@@ -987,6 +1059,37 @@ class LayerCompositionService:
             return None
         return scores
 
+    async def derive_badges(
+        self, candidates: list[LayerCandidate]
+    ) -> dict[str, Badge]:
+        """Doc 12's badge for every badge-bearing candidate, in the row keyspace.
+
+        **Batched for the whole page, never per row.** ``badges_for_facts``
+        owns that batching and its query count is fixed at three however long
+        the page is; calling it once per fact would put the provenance profile,
+        the journal read and the counterpart profiles behind every fact a query
+        returns, on the hot read path.
+
+        The row handed to the producer carries the **composition's** id rather
+        than whatever spelling the channel put in ``id``, so the badge that
+        comes back cannot belong to a different row than the key it is filed
+        under. ``fact_candidate`` prefers ``fact_id`` and ``badges_for_facts``
+        keys on ``id``; two spellings joined by hand is how a page ends up
+        one badge short and silently unlabelled.
+
+        Articles carry a badge too (doc 12 §4), and this returns none for them:
+        their channel is ``ARTICLE_CHANNEL_OWNER``'s and nothing mints an L3
+        candidate here yet. That is deliberately a raise in :func:`compose`
+        rather than a shrug — an article served with ``badge: null`` would
+        assert the L0 rule about a row the L0 rule does not govern.
+        """
+        facts = [c for c in candidates if c.id_kind == "fact"]
+        if not facts:
+            return {}
+        rows = [{**dict(c.row), "id": c.id} for c in facts]
+        badges = await badges_for_facts(self.session, rows)
+        return {c.key: badges[c.id] for c in facts}
+
     async def derive_support_map(
         self, fact_ids: list[str]
     ) -> dict[str, frozenset[str]]:
@@ -1088,6 +1191,11 @@ class LayerCompositionService:
 
         fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
         evidence = await latest_verified_evidence(self.session, fact_ids)
+        # Derived once and handed to both passes. The badge is a label and
+        # never an ordering signal, so it cannot move a row between the
+        # provisional pass and the final one; deriving it twice would only buy
+        # a second round of the producer's queries.
+        badges = await self.derive_badges(candidates)
 
         # The provisional pass is deliberately **ungrouped**, and that is what
         # implements doc 07 §11's resolved rerank-before-grouping order rather
@@ -1101,6 +1209,7 @@ class LayerCompositionService:
             weights=weights,
             declared_context=declared_context,
             evidence=evidence,
+            badges=badges,
         )
         rerank_scores = await self.derive_rerank_scores(query, provisional.rows)
         result = compose(
@@ -1110,6 +1219,7 @@ class LayerCompositionService:
             evidence=evidence,
             rerank_scores=rerank_scores,
             fact_sources=await self.derive_support_map(fact_ids),
+            badges=badges,
         )
 
         envelope = RetrievalEnvelope(
