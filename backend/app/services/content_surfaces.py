@@ -343,7 +343,7 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         ),
         crosses=("content_preview",),
         scoping=Scoping.OPERATOR_WIDE,
-        labels=("project",),
+        labels=("project", "status"),
         decided_by="T2.23",
         reason="Same triage-queue reasoning as review_queue_facts/articles, "
                "over memories instead of knowledge_triples/knowledge_articles "

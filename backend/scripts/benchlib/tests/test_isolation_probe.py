@@ -101,6 +101,48 @@ async def test_no_memory_content_crosses_past_its_declared_preview(baseline_repo
     assert forced == []
 
 
+async def test_every_hygiene_row_served_can_be_seen_past_the_boundary(baseline_report):
+    """The preview check is only as wide as the fixtures it can see.
+
+    ``_preview_boundary`` can only fail on a fixture whose content runs past
+    200 characters, so a future fixture that lands in one of the three arms
+    while shorter than the boundary would be served with no truncation
+    coverage at all — silently, and with the surface still reporting zero.
+    Derived from the rows the arms actually returned rather than from the
+    fixture table's own comment, so it fails when the two drift."""
+    from benchlib.isolation_probe import _all_content_fixtures
+
+    fixtures = _all_content_fixtures()
+    served = {
+        c.sighting.row for c in baseline_report.classified
+        if c.sighting.surface == "hygiene_queue_memories"
+    }
+    assert served, "the hygiene memory arms returned nothing"
+    for key in sorted(served):
+        fixture = fixtures[key]
+        assert fixture.long and len(fixture.content) > 200, (
+            f"{key} is served by a surface declaring content_preview but does "
+            "not run past the 200-character boundary, so a widened preview "
+            "would cross undetected"
+        )
+
+
+async def test_the_duplicates_arm_observed_every_seeded_pair(baseline_report):
+    """Both cases of the duplicates arm reached it, and both pairs crossed.
+
+    The arm's happy path emits no violation by design — the ids are I1 — so
+    without this a case that returned nothing at all (an empty page, a changed
+    membership predicate, a 200 with no items) would look exactly like a clean
+    one."""
+    sightings = [
+        c.sighting for c in baseline_report.classified
+        if c.sighting.surface == "hygiene_queue_duplicates"
+    ]
+    assert {"a_active", "a_twin", "b_active", "b_succ"} <= {s.row for s in sightings}
+    filtered = [s for s in sightings if "project filter" in s.case]
+    assert filtered, "the filtered case of the duplicates arm observed nothing"
+
+
 async def test_a_dropped_project_predicate_on_a_hygiene_arm_fails_the_probe(
     baseline_report, monkeypatch,
 ):
@@ -126,6 +168,38 @@ async def test_a_dropped_project_predicate_on_a_hygiene_arm_fails_the_probe(
         and any("outside requested" in reason for reason in c.reasons)
     ]
     assert breaches, "no named project-breach row despite the removed predicate"
+
+
+async def test_a_forged_project_label_on_the_duplicates_arm_fails_the_probe(
+    baseline_report, monkeypatch,
+):
+    """The scope check must not ask the surface under test to declare its scope.
+
+    Drop the filter *and* stamp every row's label from the request parameter —
+    one serializer bug, and the shape a check comparing the row's own
+    ``project`` to the request cannot see: every pair looks in-scope while
+    foreign-project memory ids cross. The comparison is against the projects
+    ``DUPLICATE_PAIRS`` seeded, so it survives a lying label."""
+    from app.services import hygiene_queue
+
+    original = hygiene_queue.list_duplicates
+
+    async def leaky(session, *, project=None, limit=50, offset=0):
+        items, total = await original(session, project=None, limit=limit, offset=offset)
+        if project is not None:
+            items = [{**item, "project": project} for item in items]
+        return items, total
+
+    monkeypatch.setattr(hygiene_queue, "list_duplicates", leaky)
+    mutated = await run_probe()
+
+    assert mutated.count() > baseline_report.count()
+    breaches = [
+        c for c in mutated.violations()
+        if c.sighting.surface == "hygiene_queue_duplicates"
+        and c.sighting.forced_v1_reason == "pair outside the requested project"
+    ]
+    assert breaches, "a forged label hid a foreign pair from the scope check"
 
 
 async def test_an_unlabelled_fact_fails_the_probe(baseline_report, monkeypatch):
