@@ -1583,6 +1583,44 @@ is exactly the window in which to fix it.
 
 **Verify.** `cd frontend && npm test -- badge && npm run typecheck`
 
+#### T2.76 — `gate.sh` points the harness at the shared bench database
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: runbook §8, CLAUDE.md "Commands"` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Found by T2.21, 2026-08-03, by running the gate in a live four-lane round and
+getting a red that was not its own. `scripts/gate.sh` exports `TEST_DATABASE_URL` (line
+166) and **not** `BENCH_DATABASE_URL`, so the benchlib arm falls back to the unnumbered
+shared `darkmem_bench` regardless of the lane's assignment. In a concurrent round the
+harness resets a database another lane is holding:
+
+```
+test_arm_ablation … DeadlockDetectedError: DROP SCHEMA IF EXISTS public CASCADE
+```
+
+Re-running with the variable pinned is green. **So the repo's own merge gate is the one
+command that ignores the per-lane isolation the runbook §8 requires**, and it fails in the
+shape the runbook explicitly warns about — "failures that look exactly like a code
+regression".
+
+**The fix has a precedent to follow, not to invent.** T2.54 hit the sibling defect and
+resolved it by deriving a per-checkout database name from a hash of the checkout path, so
+the result stops depending on what a human exported. The same reasoning applies here and
+the two should not diverge: a gate that must be configured correctly per invocation is a
+gate that will be wrong again next round.
+
+**Do not** resolve this by having `gate.sh` require the caller to export the variable. That
+makes a correct gate depend on a human remembering, which is what produced this bug.
+
+**Done when:**
+- [ ] `gate.sh` never points the harness at the unnumbered `darkmem_bench`
+- [ ] Two gates run concurrently from two worktrees without colliding, demonstrated rather
+      than argued
+- [ ] An explicitly exported `BENCH_DATABASE_URL` is still honoured, so a deliberate run
+      can still target a chosen database
+- [ ] The derivation matches T2.54's precedent or states why it must differ
+
+**Verify.** Two concurrent `./scripts/gate.sh` runs from two worktrees, both green.
+
 #### T2.72 — The MCP vault tools, and the door parity doc 12 already assigns
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.36a` · `Doc: 12 §2–§3, invariant 17` · `Tag: target-new` · `Gate: standing`
@@ -1618,6 +1656,7 @@ because doc 12's list-shaped agent twin is `knowledge_search`, not a fact list.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-03 | T2.76, T2.21 | 2 | **T2.76 minted: `gate.sh` sends the harness to the shared `darkmem_bench` in every round.** It exports `TEST_DATABASE_URL` and not `BENCH_DATABASE_URL`, so the benchlib arm ignores a lane's bench assignment entirely; T2.21 hit it as a `DeadlockDetectedError` on `DROP SCHEMA` while a sibling lane held the database, and green on a re-run with the variable pinned. **The repo's own merge gate is therefore the one command that violates the per-lane isolation runbook §8 mandates** | Recorded rather than patched inline because the fix has a precedent worth matching: T2.54 hit the sibling defect *this same day* — a harness test whose result depended on an ambient environment variable — and resolved it by deriving the database name from a hash of the checkout path so the environment stops deciding. Two components solving the same problem two different ways is how the two RRF constants already drifted. Note also the failure's shape: it is indistinguishable from a code regression, which is precisely what the runbook warns about, and it cost the controller a red gate earlier in this round that was attributed to a killed run — a diagnosis that may have been right for the wrong reason |
 | 2026-08-03 | T2.75, T2.71, T2.36a | 2 | **T2.75 minted: the badge guards are backend-only, and the frontend carries claim strings none of them can see.** Doc 13 §5.3 forbids a screen paraphrasing the claim; two demo-fixture files and a component comment do. T2.36a's certainty-word guard and T2.71's second-producer scan both walk `backend/app` exclusively. Two independent sightings the same day: T2.71's implementer flagged the fixtures and took no action, and T2.71's **reviewer reported a fixture at `chat-curated.ts:52` in a claim form the producer can never emit** — a demonstrated divergence rather than a stylistic worry. **That second sighting is explicitly partial**: the review terminated on a Fable-tier limit before writing its verdict, so the line is recorded as needing re-verification, not as established | Logged because the interesting property is the **shape of the blind spot**, not the three files. Two separate guards were built this round to stop a second producer of the honesty sentence, both were mutation-proved, and both stop at the language boundary — so the surface doc 13 actually cares about, the one a human reads, is the one surface neither covers. The UI is still on demo data, so nothing user-visible is wrong today; that is the argument for fixing it now rather than after it is wired. Also worth recording that a partial finding from a terminated review was kept rather than discarded: an unverified sighting with its provenance stated is worth more than a lost one, provided nobody later reads it as settled |
 | 2026-08-03 | T2.74, T2.73 | 2 | **T2.74 minted: three surfaces declare a `content_preview` crossing that no driver checks** — `reembed_backfill_queue`, `pipeline_failure_triage`, `capture_buffer_triage`. Pre-existing, not introduced by this round: each is *asserted* to truncate and none is *proven* to. T2.73's `_preview_boundary()` is the mechanism, but the reviewer measured that it does **not** drop in unmodified — `capture_buffer_triage` declares a 500-character preview while its long fixtures end near 280, so naive reuse false-positives | Recorded as its own task because the interesting part is the shape: T2.73 was minted for a guard that was *absent*, and reviewing it surfaced three more that are *present and vacuous*. A vacuous guard is the worse of the two — the absent one raised loudly and got fixed within the day, while these three have been reporting clean for as long as they have existed. The per-surface preview length being an input rather than a constant is exactly why 'extend the helper to the other three' is not a paste, and is stated here so the next reader does not size it as one |
 | 2026-08-03 | T2.73, T2.23, T2.36a | 2 | **T2.73 minted: the isolation probe is offline on the epic branch, and the controller's merge process is what let it through.** T2.23 and T2.36a each added `ContentSurface` rows without the matching `isolation_probe.DRIVERS` entry. The table's completeness check raises, so **all eight** `test_isolation_probe.py` tests error or fail — the cross-project leak guard is not weakened but entirely absent. Both lanes were green on Verify and on the repo floor, both passed Fable review, and neither touched benchlib so neither ran it | The mechanism is documented in `CLAUDE.md` verbatim — `testpaths = ["tests"]` means `pytest -q` does not collect `scripts/benchlib/tests`, so "the harness can break while the floor stays green", and the stated remedy is to run `./scripts/gate.sh`. **The controller merged three lanes on a green floor rather than a green gate**, which is the process defect; the reviewers were scoped to their lanes and the briefs asked for the floor. Recorded as an amendment rather than fixed silently because the same gap will recur on every future round that adds a surface: the fix is the merge procedure, not just these four drivers. Note what the guard protects — the probe is the only thing proving memory content does not cross a project boundary past its declared preview, and an offline guard is indistinguishable from a passing one in any report that only quotes the floor |
