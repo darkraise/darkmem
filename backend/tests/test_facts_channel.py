@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import inspect
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -529,6 +530,11 @@ async def test_a_genuine_no_match_is_an_empty_list_not_a_raise(session):
 # an arm that never independently failed. Nothing below patches the channel:
 # each arm is broken in the database.
 
+# Both poisons work by overflowing `plainto_tsquery` past the server's
+# `max_stack_depth`, which is the container's 2048kB default. A server
+# configured with a much larger stack could parse them instead, and the arm
+# under test would then succeed rather than fail.
+
 # 'english' drops stopwords before the tsquery is built, so this overflows
 # the name arm's 'simple' tsquery while the keyword arm still resolves to the
 # single term that matches the seeded fact.
@@ -537,19 +543,41 @@ _NAME_ARM_POISON = "zarquon " + "the of and is a an " * 20_000
 # No configuration drops these, so both arms' tsqueries overflow.
 _BOTH_ARMS_POISON = "alpha beta gamma " * 20_000
 
+_ARM_FAILURE_LOG = "app.services.facts_channel"
 
-async def _retype_the_column_the_keyword_arm_reads(session, channel: FactsChannel) -> None:
+
+def _the_arm_failure(caplog, arm: str) -> str:
+    (message,) = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith(f"Facts {arm} arm failed:")
+    ]
+    return message
+
+
+@contextlib.asynccontextmanager
+async def _the_keyword_arms_column_retyped(session, channel: FactsChannel):
     """Make ``to_tsvector('english', fact)`` stop type-checking.
 
     Every column both arms select stays valid and the name arm's own
     expression reads different columns, so the break is one-sided and it
     lands inside the database rather than in front of it.
 
-    The second statement spends the plan invalidation the DDL causes. asyncpg
-    caches prepared statements per connection, and the pooled connection a
-    test gets has usually cached the name arm's plan already; without this the
-    name arm fails on a stale plan the channel never caused, and the test
-    would then report a degrade failure that is not the one under test.
+    Two cached name-arm plans have to be dealt with and they are *different*
+    plans. asyncpg caches prepared statements per connection and that cache is
+    not transactional, so neither the DDL nor the fixture's rollback empties
+    it:
+
+    * The plan cached against the pre-DDL schema, which the DDL invalidates.
+      The suppressed execution below spends that invalidation, so the name arm
+      fails on the poison under test rather than on a stale plan the channel
+      never caused.
+    * The plan that same execution then caches against the *altered* schema.
+      The fixture's rollback restores ``fact text`` and leaves that one stale
+      on a connection about to go back to the pool, where it would fire in
+      whichever later test reaches the name arm first — a failure visible only
+      in full-file runs. So the connection is invalidated on the way out and
+      discarded instead of pooled.
     """
     await session.execute(
         text("ALTER TABLE knowledge_triples DROP COLUMN fact, ADD COLUMN fact bytea")
@@ -558,6 +586,10 @@ async def _retype_the_column_the_keyword_arm_reads(session, channel: FactsChanne
     with contextlib.suppress(DBAPIError):
         async with session.begin_nested():
             await session.execute(text(sql), params)
+    try:
+        yield
+    finally:
+        await (await session.connection()).invalidate()
 
 
 async def _assert_the_session_survived(session) -> None:
@@ -568,33 +600,44 @@ async def _assert_the_session_survived(session) -> None:
 async def test_a_database_level_keyword_failure_degrades_to_the_name_arm(session):
     fact = await _open_fact(session)
     channel = FactsChannel(session)
-    await _retype_the_column_the_keyword_arm_reads(session, channel)
 
-    trace = await channel.search_with_trace("darkmem", project=PROJECT)
+    async with _the_keyword_arms_column_retyped(session, channel):
+        trace = await channel.search_with_trace("darkmem", project=PROJECT)
 
-    assert trace.keyword_failed is True
-    assert trace.name_failed is False
-    assert _ids(trace.results) == {fact["id"]}
-    await _assert_the_session_survived(session)
+        assert trace.keyword_failed is True
+        assert trace.name_failed is False
+        assert _ids(trace.results) == {fact["id"]}
+        await _assert_the_session_survived(session)
 
 
 @pytest.mark.asyncio
-async def test_a_database_level_name_failure_leaves_the_session_usable(session):
+async def test_a_database_level_name_failure_leaves_the_session_usable(session, caplog):
     """The arm that fails last poisons nothing the caller still needs.
 
     Its failure is the last thing the channel does, so no sibling arm can
     observe it — only the caller can, and it holds the request transaction.
+
+    The logged cause is asserted, not just the failed flag: any server-side
+    error aborts the transaction and would satisfy the flag, so a poison
+    leaked in from an earlier test would let this pass while testing
+    something else. Pinning the mechanism makes the verdict independent of
+    what ran before.
     """
     fact = await _open_fact(session)
 
-    trace = await FactsChannel(session).search_with_trace(
-        _NAME_ARM_POISON, project=PROJECT,
-    )
+    with caplog.at_level(logging.ERROR, logger=_ARM_FAILURE_LOG):
+        trace = await FactsChannel(session).search_with_trace(
+            _NAME_ARM_POISON, project=PROJECT,
+        )
 
     assert trace.name_failed is True
     assert trace.keyword_failed is False
     assert _ids(trace.results) == {fact["id"]}
     await _assert_the_session_survived(session)
+
+    failure = _the_arm_failure(caplog, NAME_ARM)
+    assert "stack depth limit exceeded" in failure
+    assert "InvalidCachedStatementError" not in failure
 
 
 @pytest.mark.asyncio
