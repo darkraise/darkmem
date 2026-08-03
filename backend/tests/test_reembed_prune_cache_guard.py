@@ -128,6 +128,30 @@ async def test_a_registered_fingerprint_whose_cache_child_is_gone_refuses(
     assert await _present(session, live_caches) == {live_caches[1]}
 
 
+async def test_a_retired_registry_row_refuses_and_spares_the_live_sibling(
+    client, auth_headers, session, live_caches,
+):
+    """The guard's first arm, isolated. A retired fingerprint still has its
+    registry row and its cache child, so arm 2 admits it; only
+    `retired_at IS NULL` stands between the operator and a sweep that keeps
+    the retired cache and drops every live one."""
+    await session.execute(
+        text("UPDATE embedders SET retired_at = NOW() WHERE fingerprint = :fp"),
+        {"fp": FINGERPRINTS[0]},
+    )
+
+    async with _embedding_purpose(MODEL_A, DIMS):
+        response = await client.post("/api/v1/reembed/prune-cache", headers=auth_headers)
+
+    survivors = await _present(session, live_caches)
+    assert survivors == set(live_caches), (
+        f"prune-cache under a RETIRED keep fingerprint dropped "
+        f"{sorted(set(live_caches) - survivors)}"
+    )
+    assert response.status_code == 409, response.text
+    assert FINGERPRINTS[0] in response.json()["error"]["message"]
+
+
 async def test_a_registered_fingerprint_still_prunes_the_retired_children(
     client, auth_headers, session, live_caches,
 ):
