@@ -283,6 +283,40 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "about live volume.",
     ),
     ContentSurface(
+        key="hygiene_queue_duplicates",
+        kind=_S,
+        front_doors=("GET /api/v1/hygiene-queue/duplicates",),
+        crosses=("memory_ids",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.23",
+        reason="The hygiene queue's job (doc 08 §6) is every open "
+               "candidate-duplicate pair the deployment holds; hiding "
+               "another project's would misreport the housekeeping backlog "
+               "the same way review_queue_facts' scoping argument does. No "
+               "memory content crosses here — only the two endpoint ids, "
+               "score and verdict — but the ids are memory-derived so the "
+               "surface is classified rather than left implicit.",
+    ),
+    ContentSurface(
+        key="hygiene_queue_memories",
+        kind=_S,
+        front_doors=(
+            "GET /api/v1/hygiene-queue/low-confidence",
+            "GET /api/v1/hygiene-queue/expiring-soon",
+            "GET /api/v1/hygiene-queue/superseded",
+        ),
+        crosses=("content_preview",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.23",
+        reason="Same triage-queue reasoning as review_queue_facts/articles, "
+               "over memories instead of knowledge_triples/knowledge_articles "
+               "— low-confidence, expiring-soon and superseded-lineage "
+               "housekeeping, each an operator-wide backlog a project filter "
+               "would misreport the same way pipeline_failure_triage's would.",
+    ),
+    ContentSurface(
         key="analytics_recents",
         kind=_S,
         front_doors=("GET /api/v1/analytics/overview",),
@@ -433,6 +467,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # An adjudication verb, not a read: it withdraws belief and journals the
     # human's verdict, and returns 204, so no memory-derived row crosses it.
     "POST /api/v1/review-queue/facts/{fact_id}/reject",
+    # Aggregate totals across the four hygiene arms, never a row.
+    "GET /api/v1/hygiene-queue/counts",
+    # Bulk-action doors. The response names each item's id, whether it
+    # applied, its event id and its refusal reason — never a memory field's
+    # value (the same shape review-queue's reject door carries).
+    "POST /api/v1/hygiene-queue/bulk/supersede",
+    "POST /api/v1/hygiene-queue/bulk/prune",
+    "POST /api/v1/hygiene-queue/bulk/confirm-dedup",
     "GET /api/v1/reembed/obsolete-counts",
     "GET /api/v1/reembed/obsolete/code-chunks",
     "GET /api/v1/reembed/obsolete/entities",

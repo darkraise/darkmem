@@ -149,6 +149,17 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
     ("POST", "/api/v1/review-queue/facts/{fact_id}/reject"): 204,
+    # T2.23. Bulk actions are 200-with-a-body for the same reason the T2.13
+    # undo doors are: every item's own outcome (including a refusal) is the
+    # point of the response, and a 204 would give the caller nothing to act on.
+    ("GET", "/api/v1/hygiene-queue/duplicates"): 200,
+    ("GET", "/api/v1/hygiene-queue/low-confidence"): 200,
+    ("GET", "/api/v1/hygiene-queue/expiring-soon"): 200,
+    ("GET", "/api/v1/hygiene-queue/superseded"): 200,
+    ("GET", "/api/v1/hygiene-queue/counts"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/supersede"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/prune"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/confirm-dedup"): 200,
     ("POST", "/api/v1/setup"): 200,
     ("GET", "/api/v1/setup/fs/list"): 200,
     ("GET", "/api/v1/setup/fs/roots"): 200,
@@ -390,6 +401,10 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
         "/api/v1/auth/audit",
         "/api/v1/review-queue/facts",
         "/api/v1/review-queue/articles",
+        "/api/v1/hygiene-queue/duplicates",
+        "/api/v1/hygiene-queue/low-confidence",
+        "/api/v1/hygiene-queue/expiring-soon",
+        "/api/v1/hygiene-queue/superseded",
     ]
     for path in paginated_gets:
         response = await client.get(path, headers=auth_headers)
