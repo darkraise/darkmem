@@ -1,0 +1,421 @@
+"""The facts read surface — list and detail (doc 12 §4, doc 13 §5.1, T2.36a).
+
+Two properties get more attention than the rest because they are the ones a
+plausible implementation gets wrong quietly.
+
+**It is a door, not a ranking.** A browsing list over a table that also feeds
+a review queue is exactly where a "show me the good ones" default gets added,
+and a vault filtered to ``corroborated`` looks empty and healthy at the same
+time. Every rung is listed, labelled, in arrival order.
+
+**The badge's count is auditable.** The sources module groups ``fact_sources``
+by ``origin_key`` so a reader can count the groups; the test below asserts
+that number equals the ``origin_count`` the claim asserts, on a fixture where
+a row count would give a different answer.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone
+
+import pytest
+from sqlalchemy import text
+
+from app.repositories.fact_sources import FactSourceRepository
+from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+pytestmark = pytest.mark.asyncio
+
+T0 = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+AS_OF = datetime(2026, 7, 20, 9, 14, 0, tzinfo=timezone.utc)
+PROJECT = "t2-36a-facts"
+FACTS = "/api/v1/knowledge/facts"
+
+
+async def _fact(
+    session,
+    *,
+    subject: str = "postgres",
+    rel: str = "RUNS_ON",
+    obj: str = "docker",
+    project: str = PROJECT,
+    status: str | None = None,
+    applies_when: dict | None = None,
+    review_state: str | None = None,
+    invalid_at: datetime | None = None,
+    expired: bool = False,
+) -> str:
+    repo = KnowledgeTripleRepository(session)
+    row = await repo.insert_open(
+        triple_key=f"k-{uuid.uuid4()}",
+        subject_name=subject,
+        object_name=obj,
+        rel_type=rel,
+        fact=f"{subject} {rel} {obj}",
+        reference_time=T0,
+        project=project,
+        valid_at=T0,
+        applies_when=applies_when,
+        review_state=review_state,
+    )
+    if status is not None:
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET verification_status = CAST(:s AS text) "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"s": status, "id": row["id"]},
+        )
+    if invalid_at is not None:
+        await repo.close_window(row["id"], invalid_at)
+    if expired:
+        await repo.expire(row["id"])
+    await session.flush()
+    return row["id"]
+
+
+async def _source(session, fact_id, *, kind="memory", origin=None, detail=None):
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id,
+        source_kind=kind,
+        source_ref=f"ref-{uuid.uuid4()}",
+        origin_key=origin,
+        detail=detail,
+    )
+
+
+async def _journal_verified(session, fact_id, *, at):
+    await session.execute(
+        text("SELECT events_ensure_partition(CAST(:at AS timestamptz)::date)"),
+        {"at": at},
+    )
+    await session.execute(
+        text(
+            """
+            INSERT INTO events (created_at, event_type, object_type, object_id,
+                                project, payload)
+            VALUES (
+                CAST(:at AS timestamptz), 'verified', 'fact',
+                CAST(:fid AS uuid), CAST(:project AS text),
+                CAST(:payload AS jsonb)
+            )
+            """
+        ),
+        {
+            "at": at,
+            "fid": str(fact_id),
+            "project": PROJECT,
+            "payload": json.dumps(
+                {
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                }
+            ),
+        },
+    )
+    await session.flush()
+
+
+# ─────────────────────────────── the door ───────────────────────────────
+
+
+async def test_the_list_requires_authentication(client):
+    assert (await client.get(FACTS)).status_code == 401
+
+
+async def test_the_detail_requires_authentication(client):
+    assert (await client.get(f"{FACTS}/{uuid.uuid4()}")).status_code == 401
+
+
+async def test_an_unknown_fact_is_a_404(client, auth_headers):
+    response = await client.get(f"{FACTS}/{uuid.uuid4()}", headers=auth_headers)
+    assert response.status_code == 404
+
+
+async def test_an_empty_vault_is_an_empty_list_not_a_failure(client, auth_headers):
+    """Doc 13 §5.1's cold start: a fresh install has no corroborated facts for
+    months, so an empty vault is honest rather than broken."""
+    response = await client.get(f"{FACTS}?project=nothing-here", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"items": [], "total": 0, "limit": 50, "offset": 0}
+
+
+async def test_the_list_answers_the_paginated_envelope(client, auth_headers, session):
+    for index in range(3):
+        fact_id = await _fact(session, obj=f"host-{index}")
+        await _source(session, fact_id, origin=f"session-{index}")
+    await session.flush()
+
+    response = await client.get(
+        f"{FACTS}?project={PROJECT}&limit=2&offset=0", headers=auth_headers
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["total"] == 3
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert len(body["items"]) == 2
+
+    page_two = await client.get(
+        f"{FACTS}?project={PROJECT}&limit=2&offset=2", headers=auth_headers
+    )
+    assert len(page_two.json()["items"]) == 1
+
+
+# ──────────────────────── never a gate on the read ────────────────────────
+
+
+async def test_every_rung_is_listed_and_labelled_none_filtered_by_default(
+    client, auth_headers, session
+):
+    rungs = ("candidate", "corroborated", "disputed", "confirmed")
+    for rung in rungs:
+        fact_id = await _fact(
+            session, obj=f"host-{rung}", status=rung,
+            review_state="open" if rung == "disputed" else None,
+        )
+        await _source(session, fact_id, origin=f"session-{rung}")
+    await session.flush()
+
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    assert body["total"] == 4
+    assert {item["verification_status"] for item in body["items"]} == set(rungs)
+    assert all(item["badge"] is not None for item in body["items"])
+
+
+async def test_a_queued_fact_is_listed_like_any_other(client, auth_headers, session):
+    queued = await _fact(session, obj="queued", status="disputed", review_state="open")
+    await _source(session, queued, origin="session-a")
+    plain = await _fact(session, obj="plain", status="corroborated")
+    await _source(session, plain, origin="session-b")
+    await session.flush()
+
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    ids = [item["id"] for item in body["items"]]
+    assert str(queued) in ids and str(plain) in ids
+    queued_item = next(i for i in body["items"] if i["id"] == str(queued))
+    assert queued_item["review_state"] == "open"
+
+
+async def test_verification_status_is_an_opt_in_filter(client, auth_headers, session):
+    kept = await _fact(session, obj="kept", status="corroborated")
+    await _source(session, kept, origin="session-a")
+    other = await _fact(session, obj="other", status="candidate")
+    await _source(session, other, origin="session-b")
+    await session.flush()
+
+    body = (
+        await client.get(
+            f"{FACTS}?project={PROJECT}&verification_status=corroborated",
+            headers=auth_headers,
+        )
+    ).json()
+    assert [item["id"] for item in body["items"]] == [str(kept)]
+
+
+async def test_belief_withdrawn_facts_leave_the_list(client, auth_headers, session):
+    """The live set, not the open one: a window-closed fact is retained
+    history and still listed, while a withdrawn belief is gone."""
+    closed = await _fact(session, obj="closed", invalid_at=AS_OF)
+    await _source(session, closed, origin="session-a")
+    gone = await _fact(session, obj="gone", expired=True)
+    await _source(session, gone, origin="session-b")
+    await session.flush()
+
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    ids = [item["id"] for item in body["items"]]
+    assert ids == [str(closed)]
+    item = body["items"][0]
+    assert item["belief_window"]["invalid_at"] is not None
+    assert item["belief_window"]["expired_at"] is None
+
+
+async def test_the_list_is_arrival_ordered_not_ranked(client, auth_headers, session):
+    first = await _fact(session, obj="first")
+    await _source(session, first, origin="session-a")
+    second = await _fact(session, obj="second")
+    await _source(session, second, origin="session-b")
+    await session.flush()
+
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    assert [item["id"] for item in body["items"]] == [str(second), str(first)]
+
+
+# ───────────────────── the badge on the wire, verbatim ─────────────────────
+
+
+async def test_the_wire_badge_carries_doc_12s_fields_and_the_exact_claim(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await _source(session, fact_id, kind="code", origin="repo-b")
+    await _journal_verified(session, fact_id, at=AS_OF)
+
+    item = (
+        await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)
+    ).json()
+    assert item["badge"] == {
+        "verification_status": "corroborated",
+        "origin_count": 2,
+        "origin_kinds": ["code", "memory"],
+        "as_of": "2026-07-20T09:14:00Z",
+        "contradiction": False,
+        "human_ratified": False,
+        "stale": False,
+        "claim": (
+            "asserted by 2 distinct origins of kinds [code, memory], "
+            "no known contradiction, as of 2026-07-20"
+        ),
+    }
+
+
+async def test_a_fact_row_carries_no_lifecycle_label(client, auth_headers, session):
+    fact_id = await _fact(session, status="candidate")
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["id_kind"] == "fact"
+    assert item["lifecycle"] is None
+    assert item["verification_status"] == "candidate"
+
+
+# ─────────────────────── the sources module, audited ───────────────────────
+
+
+async def test_sources_are_grouped_by_origin_and_the_count_is_auditable(
+    client, auth_headers, session
+):
+    """The fixture a row count gets wrong: three rows, two origins."""
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await _source(session, fact_id, origin="session-a")
+    await _source(
+        session,
+        fact_id,
+        kind="code",
+        origin="repo-b",
+        detail={"commit_sha": "abc123", "file_path": "app/main.py", "symbol_key": "main"},
+    )
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert len(item["sources"]) == 2
+    assert len(item["sources"]) == item["badge"]["origin_count"]
+    assert sum(len(group["sources"]) for group in item["sources"]) == 3
+
+    code_group = next(g for g in item["sources"] if g["origin_key"] == "repo-b")
+    assert code_group["source_kinds"] == ["code"]
+    assert code_group["sources"][0]["detail"]["commit_sha"] == "abc123"
+
+
+async def test_anonymous_provenance_is_one_labelled_bucket(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session)
+    for _ in range(3):
+        await _source(session, fact_id, origin=None)
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert len(item["sources"]) == 1
+    assert item["sources"][0]["origin_key"] is None
+    assert item["sources"][0]["unknown_origin"] is True
+    assert item["badge"]["origin_count"] == 1
+
+
+async def test_a_fact_nothing_has_sourced_serves_with_an_empty_count(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session)
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["sources"] == []
+    assert item["badge"]["origin_count"] == 0
+    assert item["badge"]["origin_kinds"] == []
+
+
+# ───────────────────── the belief window and the context ─────────────────────
+
+
+async def test_the_detail_serves_the_whole_belief_window(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session, invalid_at=AS_OF)
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["belief_window"]["valid_at"] is not None
+    assert item["belief_window"]["invalid_at"] is not None
+    assert item["belief_window"]["expired_at"] is None
+
+
+async def test_applies_when_is_served_as_normalised_labels(
+    client, auth_headers, session
+):
+    fact_id = await _fact(
+        session, applies_when={"Env": "Prod", "version": "17"}
+    )
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["applies_when"] == {"Env": "Prod", "version": "17"}
+    assert item["applies_when_labels"] == [
+        {"axis": "env", "value": "prod"},
+        {"axis": "version", "value": "17"},
+    ]
+
+
+async def test_a_neutral_context_carries_an_empty_label_set(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["applies_when_labels"] == []
+
+
+async def test_a_withdrawn_fact_is_still_reachable_by_id(
+    client, auth_headers, session
+):
+    """Retained history has to be readable, or the retention answers nothing."""
+    fact_id = await _fact(session, expired=True)
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    response = await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["belief_window"]["expired_at"] is not None
+
+
+async def test_project_scope_filters_the_list(client, auth_headers, session):
+    mine = await _fact(session, obj="mine")
+    await _source(session, mine, origin="session-a")
+    theirs = await _fact(session, obj="theirs", project="somebody-else")
+    await _source(session, theirs, origin="session-b")
+    await session.flush()
+
+    scoped = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    assert [item["id"] for item in scoped["items"]] == [str(mine)]
+
+    unscoped = (await client.get(FACTS, headers=auth_headers)).json()
+    assert {str(mine), str(theirs)} <= {item["id"] for item in unscoped["items"]}
