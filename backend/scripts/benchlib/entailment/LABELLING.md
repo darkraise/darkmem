@@ -402,3 +402,19 @@ skipped slot keeps its id and slice with a hand-authored premise.
   RELATED_TO's object is multi-valued by nature; exclusive-slot rule
   inapplicable. Authored as eg-0066 with a hand-authored token-TTL
   premise.
+
+**Batch 2 (slots 50–99, eg-0092..eg-0141; 5 skips, all `value-swap` on
+non-single-valued relations):**
+
+- slot 69, `3d8b8266…` (USES): generic USES object admits many values.
+  Authored as eg-0111, hand-authored premise.
+- slot 75, `0d272cc9…` (HAS_PART): a whole has many parts and a part may
+  sit in several wholes; neither slot is single-valued. Authored as
+  eg-0117, hand-authored premise.
+- slot 78, `60a400b1…` (IMPROVES_ON): a tool can improve on several
+  predecessors and be improved on by several successors. Authored as
+  eg-0120, hand-authored premise.
+- slot 81, `7ff82019…` (USES): same fact as batch 1's slot-19 skip, same
+  ground. Authored as eg-0123, hand-authored premise.
+- slot 86, `37a75f1f…` (RELATED_TO): same fact as batch 1's slot-24 skip,
+  same ground. Authored as eg-0128, hand-authored premise.

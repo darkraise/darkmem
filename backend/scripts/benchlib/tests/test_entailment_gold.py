@@ -35,19 +35,19 @@ from benchlib.retrieval_gold import load_retrieval_corpus
 # contributor appending pairs updates all of these together -- a silent
 # re-tagging or a drifted count shows up as a failure here.
 DOCUMENTED_SLICE_COUNTS = {
-    "verbatim": 13,
-    "paraphrase": 17,
-    "weakening": 14,
+    "verbatim": 17,
+    "paraphrase": 25,
+    "weakening": 24,
     "temporal": 6,
-    "direction": 12,
-    "overreach": 14,
-    "value-swap": 9,
-    "unrelated": 6,
+    "direction": 21,
+    "overreach": 20,
+    "value-swap": 16,
+    "unrelated": 12,
 }
 DOCUMENTED_VERDICT_COUNTS = {
-    "entailed": 46,
-    "contradicted": 18,
-    "unsupported": 27,
+    "entailed": 68,
+    "contradicted": 28,
+    "unsupported": 45,
 }
 # synthesis-draft is PINNED AT ZERO: no producer exists (article_synthesis
 # is a PlaceholderJobRunner until T3.02). l2-fact moved off its zero pin
@@ -56,10 +56,10 @@ DOCUMENTED_VERDICT_COUNTS = {
 # the loader. Provenance honesty is what keeps G-D's numbers meaning what
 # they claim.
 DOCUMENTED_PROVENANCE_COUNTS = {
-    "hand-authored-synthetic-fact": 28,
+    "hand-authored-synthetic-fact": 33,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 47,
+    "l2-fact": 92,
 }
 
 
