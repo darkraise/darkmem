@@ -1197,18 +1197,47 @@ def test_the_badge_map_is_keyed_in_the_composition_keyspace():
 #
 # R1. A second claim string is the drift doc 12 exists to prevent: two copies
 # disagree exactly where they matter, and the honesty surface is the most
-# repeated sentence in the product. The scan below is over **non-docstring**
-# string literals, because the vocabulary's own words are ordinary English —
-# "asserted by" appears in two modules' prose and neither is building a claim.
-# A file is an offender when **two or more** distinct fragments appear in its
-# literals: a producer assembles the sentence from several, and an f-string
-# splits them into separate constants inside one file, so the count is taken
-# per file rather than per literal.
+# repeated sentence in the product. A file is an offender when **two or more**
+# distinct fragments appear in its constants: a producer assembles the sentence
+# from several, and an f-string splits them into separate constants inside one
+# file, so the count is taken per file rather than per literal.
+#
+# Both ``str`` and ``bytes`` constants count. A template held as bytes and
+# ``.decode()``d renders the sentence byte for byte, and nothing under ``app/``
+# legitimately carries claim vocabulary in a bytes constant.
+#
+# Docstrings count too, except in the files listed below, whose prose describes
+# the sentence rather than building it. The exemption is a named list rather
+# than a blanket rule so that a *new* file holding its template in a docstring —
+# an ordinary Python idiom, and a byte-exact evasion of a non-docstring scan —
+# fails the build, and so that the list itself documents where the sentence
+# appears as English. The exemption is per-file for docstrings only: an
+# allowlisted file that starts building the sentence in executable code is
+# still an offender.
 
 _FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
 
+# Files whose docstrings legitimately carry two or more fragments as prose.
+# Measured, not assumed — `test_the_docstring_allowlist_is_not_stale` fails if
+# an entry no longer needs its exemption.
+_CLAIM_PROSE_IN_DOCSTRINGS = frozenset({
+    "app/repositories/fact_sources.py",
+    "app/repositories/knowledge_triples.py",
+    "app/services/fact_lift.py",
+    "app/services/verification_ladder.py",
+})
 
-def _claim_fragments_in_literals(path: Path) -> set[str]:
+
+def _claim_fragments_in_literals(path: Path, *, docstrings_count: bool = True) -> set[str]:
+    """Distinct claim fragments in one file's constants.
+
+    Known residuals, invisible to any literal scan and deliberately not
+    chased here: a producer scattered one fragment per module across ~6 sibling
+    files, and a true paraphrase that shares fewer than two fragments with the
+    vocabulary. Both are caught by review, not by this test. The scan's scope
+    is ``backend/app`` — ``frontend/`` and ``backend/scripts/`` are unscanned,
+    and neither renders a claim today.
+    """
     tree = ast.parse(path.read_text())
     docstrings = set()
     for node in ast.walk(tree):
@@ -1219,13 +1248,26 @@ def _claim_fragments_in_literals(path: Path) -> set[str]:
             docstrings.add(id(body[0].value))
     found: set[str] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        if not isinstance(node, ast.Constant):
             continue
-        if id(node) in docstrings:
+        if isinstance(node.value, bytes):
+            value = node.value.decode("latin-1")
+        elif isinstance(node.value, str):
+            value = node.value
+        else:
             continue
-        text_ = node.value.lower()
+        if id(node) in docstrings and not docstrings_count:
+            continue
+        text_ = value.lower()
         found.update(fragment for fragment in CLAIM_VOCABULARY if fragment in text_)
     return found
+
+
+def _claim_fragments_under_app(path: Path) -> set[str]:
+    relative = path.relative_to(_BACKEND).as_posix()
+    return _claim_fragments_in_literals(
+        path, docstrings_count=relative not in _CLAIM_PROSE_IN_DOCSTRINGS
+    )
 
 
 def test_the_producer_is_what_the_scan_detects():
@@ -1236,11 +1278,17 @@ def test_the_producer_is_what_the_scan_detects():
 
 
 def test_no_second_claim_string_exists_under_app():
+    """R1's guard, scoped to ``backend/app``.
+
+    ``frontend/`` and ``backend/scripts/`` are out of scope: neither renders a
+    claim today, the frontend half is owned elsewhere, and a Python AST scan
+    could not read TypeScript anyway.
+    """
     offenders = {
         str(path.relative_to(_BACKEND)): sorted(fragments)
         for path in app_sources(_BACKEND)
         if path != _FACT_BADGE_PATH
-        for fragments in [_claim_fragments_in_literals(path)]
+        for fragments in [_claim_fragments_under_app(path)]
         if len(fragments) >= 2
     }
     assert not offenders, (
@@ -1249,14 +1297,42 @@ def test_no_second_claim_string_exists_under_app():
     )
 
 
+def test_the_docstring_allowlist_is_not_stale():
+    """An allowlist that outlives its reason turns into a blanket exemption.
+
+    Every entry must still exist and must still need the exemption — two or
+    more fragments in its docstrings and fewer than two anywhere else — so a
+    file whose prose was rewritten leaves the list instead of carrying a
+    standing pass for whatever lands in it next.
+    """
+    stale = {}
+    for relative in sorted(_CLAIM_PROSE_IN_DOCSTRINGS):
+        path = _BACKEND / relative
+        if not path.exists():
+            stale[relative] = "gone"
+            continue
+        with_docstrings = _claim_fragments_in_literals(path)
+        without = _claim_fragments_in_literals(path, docstrings_count=False)
+        if len(with_docstrings) < 2:
+            stale[relative] = f"no longer needs the exemption: {sorted(with_docstrings)}"
+        elif len(without) >= 2:
+            stale[relative] = f"builds the claim outside its docstrings: {sorted(without)}"
+    assert not stale, f"the docstring allowlist has rotted: {stale}"
+
+
 def test_the_composition_itself_spells_no_part_of_the_claim():
     assert _claim_fragments_in_literals(_COMPOSITION_PATH) == set()
 
 
-def test_the_second_claim_scan_catches_a_paraphrase(tmp_path):
-    """In-suite negative control, through the same predicate: a module that
-    re-renders the sentence from its own parts is flagged even though every
-    fragment lands in a separate constant of one f-string."""
+def test_the_second_claim_scan_catches_a_near_verbatim_restatement(tmp_path):
+    """In-suite negative control, through the same predicate.
+
+    The fixture is a *restatement*, not a paraphrase: all five fragments of the
+    plain sentence survive, split across the constants of one f-string. That is
+    the coverage this predicate has. A genuine paraphrase sharing fewer than
+    two fragments with the vocabulary is undetectable by construction, and no
+    version of this scan will find it.
+    """
     module = tmp_path / "restated_badge.py"
     module.write_text(
         "def restate(count, kinds, day):\n"
@@ -1264,6 +1340,38 @@ def test_the_second_claim_scan_catches_a_paraphrase(tmp_path):
         '        f"asserted by {count} distinct origins of kinds [{kinds}], "\n'
         '        f"no known contradiction, as of {day}"\n'
         "    )\n"
+    )
+
+    assert len(_claim_fragments_in_literals(module)) >= 2
+
+
+def test_the_scan_reads_a_template_held_in_a_docstring(tmp_path):
+    """Negative control for the docstring arm: ``__doc__.format(...)`` renders
+    the sentence as surely as an f-string does, and the exemption list is what
+    keeps this from being the hole it was."""
+    module = tmp_path / "docstring_badge.py"
+    module.write_text(
+        "def _template():\n"
+        '    """asserted by {count} distinct origins of kinds [{kinds}], "\n'
+        '    no known contradiction, as of {day}"""\n'
+        "\n"
+        "def restate(count, kinds, day):\n"
+        "    return _template.__doc__.format(count=count, kinds=kinds, day=day)\n"
+    )
+
+    assert len(_claim_fragments_in_literals(module)) >= 2
+    assert _claim_fragments_in_literals(module, docstrings_count=False) == set()
+
+
+def test_the_scan_reads_a_template_held_in_bytes(tmp_path):
+    """Negative control for the bytes arm: a bytes template plus ``.decode()``
+    is byte-exact output that ``isinstance(node.value, str)`` never saw."""
+    module = tmp_path / "bytes_badge.py"
+    module.write_text(
+        "def restate(count, kinds, day):\n"
+        '    template = b"asserted by %d distinct origins of kinds [%s], "\\\n'
+        '        b"no known contradiction, as of %s"\n'
+        "    return (template % (count, kinds, day)).decode()\n"
     )
 
     assert len(_claim_fragments_in_literals(module)) >= 2
@@ -1399,3 +1507,4 @@ async def test_the_badge_read_does_not_grow_with_the_number_of_facts(session, mo
         f"{len(one)} queries for one fact, {len(many)} for twelve:\n"
         + "\n".join(many)
     )
+
