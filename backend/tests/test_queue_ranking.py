@@ -34,6 +34,7 @@ from app.models.memory import Memory
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import review_queue as review_queue_service
 from app.services import review_ranking
+from app.services.facts_channel import FactsChannel
 from app.services.review_queue import ReviewQueueOrder, build_facts_query
 from app.services.review_ranking import (
     DEFAULT_DISPUTE_STALE_DAYS,
@@ -363,6 +364,65 @@ async def test_adding_a_cold_source_never_lowers_a_facts_rank(session):
     await session.commit()
 
     assert await _order(session) == [subject, rival]
+
+
+# ──────── T2.65: the facts channel's live traffic feeds no heat ────────
+
+
+async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session):
+    """Pins the exact gap T2.65 documents in ``review_ranking``'s "Failure
+    mode" paragraph: ``FactsChannel`` is a *real* serving path (the one
+    ``knowledge_search`` calls through ``layer_composition``), and serving a
+    fact through it leaves ``memory_access_stats`` — and therefore this
+    ranking's frequency arm — completely untouched, no matter how much
+    traffic it carries.
+
+    This does **not** cover the composed path (``LayerCompositionService.
+    search``/``knowledge_search`` itself) — that module is out of this lane's
+    reach this round, and it never adds recording of its own, so the channel
+    tested here is the whole of the gap regardless of which door calls it.
+    Nor does it cover any future partial fix that records heat under some
+    conditions and not others; it only pins today's all-or-nothing shape (no
+    recording at all).
+
+    Watched to fail on purpose: with a throwaway call to
+    ``access_stats.spawn_record_access`` (awaited synchronously) added inside
+    ``FactsChannel.search``, this test failed on the
+    ``memory_access_stats`` assertion, confirming the guard actually detects
+    the behaviour it pins rather than passing vacuously; the mutation was
+    then reverted.
+    """
+    memory_id = await _memory(session, content="zarquon-beacon field notes")
+    fact_id = await _fact(
+        session, subject="zarquon-beacon", obj="signal", created_days_ago=5.0
+    )
+    await _source(session, fact_id, memory_id)
+    await session.commit()
+
+    channel = FactsChannel(session)
+    served = []
+    for _ in range(50):
+        served = await channel.search("zarquon-beacon", project=PROJECT, limit=5)
+    # Sanity: the channel really did serve the fact each time, so the zero
+    # heat asserted below is "this path records nothing", not "nothing was
+    # ever searched".
+    assert any(row["fact_id"] == fact_id for row in served)
+
+    stats_row = (
+        await session.execute(
+            text(
+                "SELECT access_count FROM memory_access_stats "
+                "WHERE memory_id = CAST(:mid AS uuid)"
+            ),
+            {"mid": str(memory_id)},
+        )
+    ).scalar_one_or_none()
+    assert stats_row is None
+
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    row = next(item for item in items if item["id"] == fact_id)
+    assert row["consequence"]["retrieval_frequency"]["decayed_access"] == 0.0
+    assert row["consequence"]["retrieval_frequency"]["peak_access_count"] == 0
 
 
 # ────────────────────────── subject salience ──────────────────────────

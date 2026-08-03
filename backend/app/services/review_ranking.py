@@ -37,9 +37,44 @@ inherits the heat of whichever one happens to be popular. It is also
 cold-start biased — a freshly lifted fact has no access history through no
 fault of its own and scores zero — and blind to non-memory provenance: a fact
 sourced only by ``human`` or ``code`` rows scores zero on this axis forever,
-because those refs name no ``memories`` row. Both biases point the same way
-(understating a new or human-sourced fact), which is why salience is a
-separate arm rather than a tiebreak.
+because those refs name no ``memories`` row.
+
+**T2.42 added a fourth bias, and this one grows rather than sitting still.**
+The proxy above was correct only while a fact was read exclusively through the
+memories that source it — the premise this docstring used to state as if it
+still held. It stopped holding the moment T2.42 shipped
+``facts_channel.FactsChannel``: that channel serves ``knowledge_triples`` rows
+directly off its own keyword and name FTS arms and calls nothing analogous to
+``access_stats.spawn_record_access`` — a served fact touches
+``memory_access_stats`` not at all. This is measured, not assumed: that
+channel is the one ``layer_composition.LayerCompositionService.search`` calls,
+and that composition is wired live behind the ``knowledge_search`` MCP tool
+with no feature flag gating it, so every ``knowledge_search`` call already
+serves facts through exactly this uncounted path today. A fact retrieved daily
+through it and never once through ``memory_search`` scores exactly zero here,
+forever, with no error and no way to tell it apart from a fact nobody has
+asked for.
+
+T2.65 (2026-08-04) is the decision this failure mode forced: build a
+fact-keyed analogue of this substrate (its own table, fed off the facts
+channel's serving path the way ``access_stats.py`` feeds this one off the
+memory hybrid's), or accept the gap as this proxy's bound. **The proxy is
+accepted, but as an interim position, not a permanent one.** A fact-keyed
+counter needs a new table — unlike a memory, a fact has no existing side
+table to grow into, and ``knowledge_triples`` carries no general-purpose
+column a counter could ride without one — and no lane holds baseline-schema
+clearance this round (schema changes serialise through one owner per epic).
+:data:`FACT_KEYED_COUNTER_STATUS` is the machine-checkable marker for that
+decision, and
+``test_facts_channel_traffic_never_feeds_retrieval_frequency``
+(``tests/test_queue_ranking.py``) pins the gap itself — fifty real searches
+through ``FactsChannel`` against a sourced fact, asserting both that
+``memory_access_stats`` stays untouched and that this arm's ranking output
+stays at zero — so a future partial fix cannot silently drift past this
+paragraph without a red test naming it. All four biases point the same way:
+every one of them understates a fact's true retrieval frequency, never
+overstates it, which is why salience is a separate arm rather than a
+tiebreak.
 
 **Subject salience — distinct graph neighbours of the subject entity.** Of the
 three candidates (live facts sharing the ``subject_name``, memories whose
@@ -201,6 +236,12 @@ DEFAULT_ACCESS_HALF_LIFE_DAYS = 30
 # entry behind it.
 W_RETRIEVAL_FREQUENCY = 1.0
 W_SUBJECT_SALIENCE = 0.5
+
+# T2.65 (2026-08-04): recorded as a value, not only in the module docstring
+# above, so a future change to this decision is a diff a reviewer sees rather
+# than prose nobody re-reads. See the "Failure mode" paragraph above for the
+# argument and docs/planning/tasks/E2-truth-core.md (T2.65) for the record.
+FACT_KEYED_COUNTER_STATUS = "deferred pending baseline-schema clearance"
 
 _PARAM_BOUNDS: dict[str, tuple[int, int]] = {
     "dispute_stale_days": (1, 3650),
