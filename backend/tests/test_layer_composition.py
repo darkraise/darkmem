@@ -1220,22 +1220,32 @@ def test_the_badge_map_is_keyed_in_the_composition_keyspace():
 # byte-exact docstring-template producer planted inside an allowlisted file —
 # a sibling function's docstring holds the full sentence, and another reads
 # it back through `.__doc__` instead of a string literal — ran the whole
-# suite green, reproduced end to end against the real allowlisted files.
-# Policing docstring *content* to close it was rejected on purpose: T2.71
-# already stopped short of a content match because it breaks the build on an
-# ordinary prose reword, and pinning today's fragment set (or even its count)
-# has the same property — a reword that happens to add or drop one of these
-# words fails CI for no behavioural reason. `test_no_source_reflects_a_docstring_under_app`
-# below closes it structurally instead: nothing under ``app/`` may fetch an
-# object's own docstring at runtime (``__doc__`` / ``inspect.getdoc`` /
-# ``pydoc.getdoc``), which is the only way a docstring's text ever becomes
-# executable output. That is content-independent — rewording prose never
-# adds an attribute access — and measured to cost zero false positives: no
-# file under ``app/`` reads ``__doc__`` or calls anything named ``getdoc``
-# today. Residual, stated rather than chased: a producer that reconstructs
-# the text some other way — reparsing its own source with
-# ``inspect.getsource`` + ``ast.get_docstring``, say — is not this scan's
-# vocabulary and would need its own guard.
+# suite green, reproduced end to end against the real allowlisted files. A
+# first fix that forbade only `.__doc__` attribute access and a call literally
+# named `getdoc` lost to `getattr(f, "__doc__")` (still 103 green,
+# byte-equal) — the closure named the two demonstrated spellings, not the
+# category. Policing docstring *content* to close it was rejected on
+# purpose: T2.71 already stopped short of a content match because it breaks
+# the build on an ordinary prose reword, and pinning today's fragment set
+# (or even its count) has the same property — a reword that happens to add
+# or drop one of these words fails CI for no behavioural reason.
+# `test_no_source_reflects_a_docstring_under_app` below closes it
+# structurally instead, by matching every syntactic way the *name* `__doc__`
+# or `getdoc` can appear in a module's source — as an attribute, a bare
+# name (including through an import alias), or a string constant — rather
+# than one enumerated call shape. That is still content-independent —
+# rewording prose never adds any of those — and measured to cost zero false
+# positives: no file under ``app/`` mentions ``__doc__`` or ``getdoc`` in any
+# form today. It is **not** a closure of "every way a docstring's text can
+# become output": a caller that never names ``__doc__`` or ``getdoc`` in its
+# own source is invisible to a scan that matches on those names. Stated
+# residuals rather than chased: a helper that reflects on the caller's
+# behalf without the caller ever writing ``__doc__``/``getdoc`` itself
+# (``pydoc.render_doc``, ``help()``); and a producer that reconstructs the
+# text without reflection at all — reparsing its own source with
+# ``inspect.getsource`` + ``ast.get_docstring``, or reading the ``.py`` file
+# as plain text. Neither is this scan's vocabulary; each would need its own
+# guard.
 
 _FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
 
@@ -1342,29 +1352,69 @@ def test_the_docstring_allowlist_is_not_stale():
     assert not stale, f"the docstring allowlist has rotted: {stale}"
 
 
-def _reflects_a_docstring(path: Path) -> bool:
-    """True if this file's code fetches *any* object's own docstring at
-    runtime, via ``.__doc__`` or a call named ``getdoc`` (``inspect.getdoc``,
-    ``pydoc.getdoc``, or an unqualified import of either).
+_DOC_REFLECTION_ATTRS = frozenset({"__doc__", "getdoc"})
 
-    This is the one way a docstring's text ever becomes rendered output, and
-    it is orthogonal to what the text says — so, unlike matching on fragment
-    content, forbidding the reflection itself never breaks on an ordinary
-    prose reword.
+
+def _reflects_a_docstring(path: Path) -> bool:
+    """True if this file's source names ``__doc__`` or ``getdoc`` in any
+    syntactic form a docstring-reading call could take.
+
+    T2.77's first version matched exactly two shapes — ``x.__doc__`` (an
+    ``ast.Attribute``) and a call whose function name was literally
+    ``getdoc``. Both are real, and both are one spelling each: it lost to
+    ``getattr(f, "__doc__")`` (a string constant, not an attribute access),
+    to bare module ``__doc__`` (a name, not an attribute of something), and
+    to ``from inspect import getdoc as g`` (the call site names ``g``, never
+    ``getdoc``), while the byte-equal producer that motivated the guard ran
+    straight through under all three. This version matches the *name*
+    ``__doc__``/``getdoc`` everywhere it can occur in source, not one call
+    shape built from it:
+
+    - as an attribute (``obj.__doc__``, ``inspect.getdoc``, ``mod.getdoc``,
+      whether called or merely referenced);
+    - as a bare name (a module reading its own ``__doc__`` global, or a name
+      bound by ``from inspect import getdoc`` with no alias) — plus any
+      local alias a ``from inspect import getdoc as g`` / ``from pydoc
+      import getdoc as g`` introduces, resolved from the import statement
+      itself so the call site's alias still matches;
+    - as a string constant equal to ``"__doc__"`` — every one of
+      ``getattr(f, "__doc__")``, ``f.__getattribute__("__doc__")``,
+      ``operator.attrgetter("__doc__")``, ``vars(f)["__doc__"]`` and
+      ``f.__dict__["__doc__"]`` must spell that literal somewhere in the
+      call, so matching the constant catches the family without
+      enumerating its members.
+
+    This is still content-independent — an ordinary prose reword never adds
+    an occurrence of either name — so it costs nothing on a legitimate
+    docstring edit.
+
+    What it does **not** catch, because these never write ``__doc__`` or
+    ``getdoc`` in the caller's own source at all: a standard-library helper
+    that reflects on the object's behalf, such as ``pydoc.render_doc`` or
+    ``help()``; and recovering the text without reflection — reparsing the
+    module's own source with ``inspect.getsource`` + ``ast.get_docstring``,
+    or reading the ``.py`` file as plain text. A name-matching AST scan
+    cannot see a call it does not know reflects on a docstring, and cannot
+    see a docstring that was never asked for by name. Those are this
+    guard's stated boundary, not an oversight left for the next reviewer to
+    find.
     """
     tree = ast.parse(path.read_text())
+
+    aliases = {"getdoc"}
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr == "__doc__":
+        if isinstance(node, ast.ImportFrom) and node.module in ("inspect", "pydoc"):
+            for alias in node.names:
+                if alias.name == "getdoc":
+                    aliases.add(alias.asname or alias.name)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _DOC_REFLECTION_ATTRS:
             return True
-        if isinstance(node, ast.Call):
-            func = node.func
-            name = (
-                func.attr if isinstance(func, ast.Attribute)
-                else func.id if isinstance(func, ast.Name)
-                else None
-            )
-            if name == "getdoc":
-                return True
+        if isinstance(node, ast.Name) and (node.id == "__doc__" or node.id in aliases):
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value == "__doc__":
+            return True
     return False
 
 
@@ -1374,23 +1424,28 @@ def test_no_source_reflects_a_docstring_under_app():
     That guard only ever asked whether an allowlisted entry still *needs*
     its exemption — never whether its docstrings stay prose. A byte-exact
     docstring-template producer needs no second literal the fragment scan
-    could catch: ``some_func.__doc__`` reads the exempted text directly, and
-    ``.format(...)`` (or a bare return, as here) renders it byte for byte.
-    Reproduced against the real tree: planting such a producer inside
-    ``app/repositories/fact_sources.py`` left the whole suite green before
-    this guard existed.
+    could catch: reading the exempted text back through any spelling of
+    ``__doc__``/``getdoc`` and rendering it (``.format(...)``, or a bare
+    return) reproduces it byte for byte. Reproduced against the real tree:
+    planting such a producer inside ``app/repositories/fact_sources.py``
+    left the whole suite green before this guard existed, and a
+    ``getattr``-based variant left it green again after the guard's first,
+    narrower version.
 
-    Scoped to every file under ``app/``, not just the four allowlisted ones,
-    because the exemption is what makes an allowlisted file's docstring a
-    legitimate reflection *target* — the reflecting *call* can sit anywhere
-    that imports it. Measured zero cost: no file under ``app/`` reads
-    ``__doc__`` or calls anything named ``getdoc`` today, so nothing
-    legitimate trips this.
+    Scoped to every file under ``app/``, not just the four allowlisted
+    ones, because the exemption is what makes an allowlisted file's
+    docstring a legitimate reflection *target* — the reflecting *call* can
+    sit anywhere that imports it. Re-measured zero cost at this branch
+    point: no file under ``app/`` mentions ``__doc__`` or ``getdoc`` in any
+    form today, so nothing legitimate trips this.
 
-    Residual: a producer that recovers the text without going through
-    ``__doc__`` or a ``getdoc``-named call — reparsing its own source with
-    ``inspect.getsource`` and ``ast.get_docstring``, say — is invisible to
-    this scan and would need its own guard.
+    Residual, honestly stated rather than claimed away: a caller that never
+    writes ``__doc__`` or ``getdoc`` in its own source — a helper like
+    ``pydoc.render_doc``/``help()`` that reflects on the object's behalf,
+    or a producer that reparses its own source text instead of reflecting
+    (``inspect.getsource`` + ``ast.get_docstring``, or a raw file read) —
+    is invisible to a scan built on those two names, and would need a
+    different guard.
     """
     offenders = [
         str(path.relative_to(_BACKEND))
@@ -1398,9 +1453,11 @@ def test_no_source_reflects_a_docstring_under_app():
         if _reflects_a_docstring(path)
     ]
     assert not offenders, (
-        "reflecting on a docstring at runtime (`__doc__` / a `getdoc`-named "
-        "call) is forbidden under app/ — it is the one path the claim-"
-        f"fragment scan cannot see, docstring-allowlisted or not: {offenders}"
+        "naming `__doc__` or `getdoc` (as an attribute, a bare/aliased "
+        "name, or the string constant \"__doc__\") is forbidden under "
+        "app/ — it is one path the claim-fragment scan cannot see, "
+        f"docstring-allowlisted or not; see this guard's docstring for what "
+        f"it cannot see: {offenders}"
     )
 
 
