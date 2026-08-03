@@ -81,7 +81,7 @@ export function DemoContextPanel({
                   </span>
                 )}
               </div>
-              <p className="text-sm">{row.claim}</p>
+              <p className="text-sm">{row.subject_text}</p>
               <p className="text-muted-foreground font-mono text-sm">
                 {row.verification ? "badge — " : ""}
                 <b className="text-foreground font-semibold">

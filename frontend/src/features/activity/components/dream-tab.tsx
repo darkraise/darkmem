@@ -121,8 +121,10 @@ function DreamEntry({ action }: { action: DemoDreamAction }) {
       <LayerChip layer={action.layer} />
       <div className="flex min-w-0 flex-1 basis-60 flex-col gap-1">
         <span className="text-sm">{action.title}</span>
-        {action.claim && (
-          <span className="text-muted-foreground text-sm">{action.claim}</span>
+        {(action.note ?? action.badge_claim) && (
+          <span className="text-muted-foreground text-sm">
+            {action.note ?? action.badge_claim}
+          </span>
         )}
         <span className="text-muted-foreground font-mono text-sm">
           {action.meta}
@@ -326,7 +328,7 @@ export function DreamTab() {
             </span>
             <LayerChip layer={2} />
           </div>
-          <p className="text-sm font-semibold">{cycle.disputed.claim}</p>
+          <p className="text-sm font-semibold">{cycle.disputed.legend}</p>
           <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_1fr]">
             <div className="border-border space-y-1.5 rounded-md border p-2.5">
               <VerificationBadge status="disputed" />
