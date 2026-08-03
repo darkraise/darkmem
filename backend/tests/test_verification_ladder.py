@@ -695,8 +695,19 @@ class TestRecomputeFact:
         assert len(await _verified_events(session, fact_id)) == 1
 
     async def test_below_n_demotes_a_corroborated_fact(self, session):
+        """The demotion arrives, one grace cycle later (T2.46).
+
+        The first cycle labels rather than demotes, so this drives the
+        shipped default's full window: the rung falls on the second cycle
+        that still sees the fact under N.
+        """
         fact_id = await _make_fact(session, status="corroborated")
         await _add_origin(session, fact_id, "sess-a", kind="memory")
+
+        first = await recompute_fact(session, fact_id)
+        await session.commit()
+        assert (first.outcome, first.demotion_pending) == ("hold", True)
+        assert (await _read(session, fact_id))["verification_status"] == "corroborated"
 
         decision = await recompute_fact(session, fact_id)
         await session.commit()
@@ -707,6 +718,8 @@ class TestRecomputeFact:
     async def test_a_fact_with_no_sources_demotes_and_does_not_expire(self, session):
         """Demotion only. Expiry on last-source-withdrawal is T2.47's."""
         fact_id = await _make_fact(session, status="corroborated")
+        await recompute_fact(session, fact_id)
+        await session.commit()
         decision = await recompute_fact(session, fact_id)
         await session.commit()
 

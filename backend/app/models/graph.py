@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import REAL, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    REAL,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -76,4 +85,10 @@ class KnowledgeTriple(Base):
     learned_in: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     review_state: Mapped[str | None] = mapped_column(Text)
     source_file: Mapped[str | None] = mapped_column(Text)
+    # Doc 08 §4.3's demotion hysteresis. The marker is the `under-sourced`
+    # label — an overlay on a still-`corroborated` row, never a fifth
+    # verification_status — and the counter is the grace bookkeeping, since
+    # the window is fixed in consecutive recompute cycles rather than in time.
+    demotion_pending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    demotion_pending_cycles: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

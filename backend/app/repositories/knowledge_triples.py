@@ -22,6 +22,7 @@ while staying live.
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -76,11 +77,66 @@ class _UnsetReviewState:
 
 UNSET_REVIEW_STATE = _UnsetReviewState()
 
+
+@dataclass(frozen=True)
+class DemotionPending:
+    """Doc 08 §4.3's hysteresis bookkeeping, as one value.
+
+    ``since`` is the marker: ``IS NOT NULL`` is the ``under-sourced`` label
+    and the review-queue predicate at once. ``cycles`` counts how many
+    consecutive recompute cycles have already observed the pending demotion,
+    because the grace window is fixed in cycles and a timestamp cannot count
+    them.
+
+    The two travel as one value so "marker set with a zero count" and "count
+    set with no marker" are not shapes a caller can write by passing one
+    argument and forgetting the other. Which value to write is the ladder's
+    decision (``verification_ladder.apply_demotion_hysteresis``); this type
+    only refuses the incoherent pairs.
+    """
+
+    since: datetime | None
+    cycles: int
+
+    def __post_init__(self) -> None:
+        if self.cycles < 0:
+            raise ValueError(f"demotion_pending_cycles must be >= 0, got {self.cycles}")
+        if self.since is None and self.cycles != 0:
+            raise ValueError(
+                "a cleared demotion marker carries no cycle count: "
+                f"since=None with cycles={self.cycles} would leave the next "
+                "pending demotion counting from a window that already closed"
+            )
+        if self.since is not None and self.cycles < 1:
+            raise ValueError(
+                "an open demotion marker has been observed at least once: "
+                "since is set, so the cycle that set it already counts"
+            )
+
+
+class _UnsetDemotionPending:
+    """Sentinel: this caller has no opinion about the hysteresis columns.
+
+    The ``UNSET_REVIEW_STATE`` distinction, for the same reason — a bare
+    status write must not silently clear a fact's pending demotion, and
+    ``None`` is not available as "no opinion" because a cleared marker is a
+    real value this column takes.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET_DEMOTION_PENDING"
+
+
+UNSET_DEMOTION_PENDING = _UnsetDemotionPending()
+
 _COLUMNS = """
     id, subject_id, object_id, subject_name, object_name, rel_type,
     valid_at, invalid_at, expired_at, reference_time, fact, project,
     triple_key, verification_status, confidence, applies_when,
-    learned_in, review_state, source_file, created_at
+    learned_in, review_state, source_file, demotion_pending_since,
+    demotion_pending_cycles, created_at
 """
 
 
@@ -434,6 +490,7 @@ class KnowledgeTripleRepository:
         supersession_blocked: bool = False,
         contradiction: dict[str, Any] | None = None,
         review_state: str | None | _UnsetReviewState = UNSET_REVIEW_STATE,
+        demotion_pending: DemotionPending | _UnsetDemotionPending = UNSET_DEMOTION_PENDING,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
 
@@ -462,6 +519,29 @@ class KnowledgeTripleRepository:
         ``None`` means *clear*; ``UNSET_REVIEW_STATE`` is what keeps those two
         apart, because collapsing them would make every bare-status caller
         silently drain the review queue.
+
+        ``demotion_pending`` rides that same UPDATE and for the identical
+        reason (doc 08 §4.3, T2.46). The marker is the ``under-sourced``
+        label on a still-``corroborated`` row, so a statement that moved the
+        status without the marker — or the marker without the status — makes
+        two contradictory states reachable by a later refactor: a fact
+        demoted to ``candidate`` while still wearing the caution overlay that
+        promised it had not been demoted yet, and a fact whose demotion was
+        suppressed with nothing on the row recording that a demotion is
+        owed. Both are silent. One statement under one lock is what makes
+        them unrepresentable rather than merely unwritten.
+
+        **This column pair is never a journal trigger**, exactly as
+        ``review_state`` is not (see the T2.62 paragraph below). Entering,
+        holding and cancelling an under-sourced state are not verification
+        transitions — the rung does not move — so counting them would put
+        rows carrying no status change into a ``verified`` stream whose
+        premise is "one row means one transition", and
+        ``benchlib.promotion_metrics`` refuses an unexplained ``hold`` for
+        precisely that reason. The eventual demotion journals normally, on
+        its own status change, with the payload shape unchanged. The marker
+        *is* the durable record of the interim state: it carries the instant
+        the pending demotion opened, on the row, on every read path.
 
         **Opening is unconditional; clearing carries the burden of proof.**
         Writing ``'open'`` can only *add* a row to the review queue, so it hides
@@ -613,6 +693,7 @@ class KnowledgeTripleRepository:
             status is None
             and confidence is None
             and isinstance(review_state, _UnsetReviewState)
+            and isinstance(demotion_pending, _UnsetDemotionPending)
         ):
             return
 
@@ -654,6 +735,15 @@ class KnowledgeTripleRepository:
                     triple_id,
                     REVIEW_STATE_OPEN,
                 )
+        if not isinstance(demotion_pending, _UnsetDemotionPending):
+            assignments.append(
+                "demotion_pending_since = CAST(:demotion_pending_since AS timestamptz)"
+            )
+            params["demotion_pending_since"] = demotion_pending.since
+            assignments.append(
+                "demotion_pending_cycles = CAST(:demotion_pending_cycles AS integer)"
+            )
+            params["demotion_pending_cycles"] = demotion_pending.cycles
         if assignments:
             await self.session.execute(
                 text(

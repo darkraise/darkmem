@@ -3,11 +3,35 @@
 A fact's verification axis climbs ``candidate -> corroborated`` on
 distinct-origin diversity, and is vetoed sideways to ``disputed`` by a single
 non-echo contradiction (T2.04). This module owns that decision and nothing else:
-it never reaches ``confirmed`` (T2.05, structurally refused by the repository),
-never schedules itself (T2.09), and never applies demotion hysteresis (T2.46).
-It also owns the review queue's ``review_state`` flag, which is *derived* from
-the decision rather than assigned by each opener in turn — the ruling and what
-it binds T2.46 and T2.22 to is in ``derive_review_state``.
+it never reaches ``confirmed`` (T2.05, structurally refused by the repository)
+and never schedules itself (T2.09). It also owns the review queue's
+``review_state`` flag, which is *derived* from the decision rather than
+assigned by each opener in turn — the ruling and what it binds T2.22 to is in
+``derive_review_state``.
+
+**Demotion carries hysteresis, and the decision layer does not** (doc 08 §4.3,
+T2.46). ``decide`` still rules a below-N ``corroborated`` fact a ``demote``,
+unconditionally and with no state to consult; ``apply_demotion_hysteresis``
+then holds that demotion for ``verification_demote_grace_cycles`` consecutive
+cycles, labelling the fact ``under-sourced`` in the meantime. The label is an
+overlay on a still-``corroborated`` row — ``demotion_pending_since IS NOT
+NULL``, never a fifth ``verification_status``, which the database CHECK would
+refuse anyway — and it is **served, never withheld**: no path filters a fact
+out on the marker, and no path drops the row while keeping the label off it.
+
+**Carrying the label is per-surface, and the list is finite** (corrected
+2026-08-03; the earlier claim here — "the marker rides ``_COLUMNS``, so every
+fact read path carries it" — was broader than the code, and two serving
+surfaces did not carry it). ``_COLUMNS`` covers the repository reads (``get``,
+``get_live``, ``list_live``, ``as_of``), but a surface that hand-enumerates its
+own projection has to name the marker itself: today that is
+``facts_read._base_item`` with ``FactListItem`` behind it (doc 13 §5.1's Facts
+tab, where §5.3's caution overlay renders), ``facts_channel``'s row payload,
+and the review queue's item. Every *other* reader of ``knowledge_triples``
+selects a narrow projection for an internal decision — adjudication, ranking,
+counting — and serves no label at all. **A new surface that enumerates its own
+columns is a new place the label can go missing**, and it goes missing
+silently, because nothing is withheld: the fact arrives looking healthy.
 
 **The veto is absolute and reads no configuration.** However many origins
 corroborate a fact, one contradiction beats them (doc 08 §4.2) — not a weight,
@@ -35,7 +59,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -45,6 +70,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import Config
 from app.repositories.knowledge_triples import (
     REVIEW_STATE_OPEN,
+    UNSET_DEMOTION_PENDING,
+    DemotionPending,
     KnowledgeTripleRepository,
 )
 from app.repositories.fact_sources import (
@@ -64,6 +91,30 @@ logger = logging.getLogger(__name__)
 
 LADDER_CONFIG_KEY = "verification_ladder"
 LADDER_MEASUREMENTS_KEY = "ladder_measurements"
+
+# Doc 08 §4.3's demotion grace, in *consecutive recompute cycles*. Its own
+# `config` row rather than a fourth key on `verification_ladder`'s, because
+# that row is the promotion thresholds and its clamp is a floor: a value
+# below the shipped default is refused without a measurement. This knob's
+# conservative direction is the opposite one — fewer cycles demotes sooner,
+# which under-claims — so routing it through that machinery would clamp it
+# backwards. Doc 17 §5.1 puts it under the same *tuning protocol*, which is a
+# statement about how an operator arrives at a number, not about which way
+# the runtime refuses one.
+DEMOTE_GRACE_CONFIG_KEY = "verification_demote_grace_cycles"
+DEMOTE_GRACE_VALUE_KEY = "cycles"
+
+# Doc 08 §9's shipped value: one full cycle of persistence under N.
+DEMOTE_GRACE_DEFAULT = 1
+
+# A ceiling, not a tuning range. Grace has no natural upper bound in the
+# corpus, and an operator typo of one extra digit would hold a fact's
+# `corroborated` rung indefinitely on evidence that no longer supports it.
+# The `under-sourced` label keeps that honest while the window runs, which is
+# why an unbounded hold is a bounded harm rather than a silent lie — but the
+# rung must still eventually fall, so the value is clamped rather than
+# trusted.
+DEMOTE_GRACE_MAX = 100
 
 # The tuning task whose measurement is the only thing that may loosen a floor.
 # Named in every clamp warning so the log line says what to do about it.
@@ -227,6 +278,64 @@ async def get_ladder_config(session: AsyncSession) -> LadderConfig:
     return LadderConfig(**values)
 
 
+async def get_demote_grace_cycles(session: AsyncSession) -> int:
+    """How many consecutive recompute cycles a demotion is held for.
+
+    Same degrade-never-raise posture as ``get_ladder_config``: the row is
+    operator-edited with no schema in front of it, so a malformed shape falls
+    back to the shipped default with a warning rather than taking the
+    recompute down.
+
+    ``0`` is a legitimate value and means "no hysteresis" — the demotion
+    applies on the cycle that detects it, which is the pre-T2.46 behaviour and
+    the conservative end of this knob. It is reachable deliberately, so a
+    deployment that measures hysteresis costing more than it saves can turn it
+    off without a code change.
+    """
+    result = await session.execute(
+        select(Config).where(Config.key == DEMOTE_GRACE_CONFIG_KEY)
+    )
+    row = result.scalar_one_or_none()
+    raw = row.value if row and isinstance(row.value, dict) else {}
+    if DEMOTE_GRACE_VALUE_KEY not in raw:
+        return DEMOTE_GRACE_DEFAULT
+
+    candidate = raw[DEMOTE_GRACE_VALUE_KEY]
+    # bool is an int subclass, and True would read as one cycle -- the default
+    # by accident, which is worse than the default on purpose.
+    if isinstance(candidate, bool) or not isinstance(candidate, int):
+        logger.warning(
+            "%s.%s is %r, not an integer; falling back to the default %d",
+            DEMOTE_GRACE_CONFIG_KEY,
+            DEMOTE_GRACE_VALUE_KEY,
+            candidate,
+            DEMOTE_GRACE_DEFAULT,
+        )
+        return DEMOTE_GRACE_DEFAULT
+    if candidate < 0:
+        logger.warning(
+            "%s.%s=%d is negative; raising to 0, which is the no-hysteresis "
+            "end of this knob rather than a demotion that never fires",
+            DEMOTE_GRACE_CONFIG_KEY,
+            DEMOTE_GRACE_VALUE_KEY,
+            candidate,
+        )
+        return 0
+    if candidate > DEMOTE_GRACE_MAX:
+        logger.warning(
+            "%s.%s=%d exceeds the ceiling %d; clamping. A grace this long "
+            "holds a `corroborated` rung on evidence that stopped supporting "
+            "it, and the `under-sourced` label bounds that harm without "
+            "ending it",
+            DEMOTE_GRACE_CONFIG_KEY,
+            DEMOTE_GRACE_VALUE_KEY,
+            candidate,
+            DEMOTE_GRACE_MAX,
+        )
+        return DEMOTE_GRACE_MAX
+    return candidate
+
+
 # ─────────────────────────── the decision ───────────────────────────
 
 # The machine's reachable targets. `confirmed` is a human's floor above the
@@ -275,6 +384,14 @@ class LadderDecision:
     # metric that reads it counts blocked promotions, so a flag set on a
     # decision that was never going to promote would inflate that count.
     supersession_blocked: bool = False
+    # T2.46, and defaulted for the same extensibility reason the field above
+    # is. It means exactly "this decision is a demotion the grace window is
+    # holding", never "this fact is short of origins": a fact already at
+    # `candidate` is short of origins and is not under-sourced, because there
+    # is no rung left for the hysteresis to protect. `decide` never sets it —
+    # the marker is durable state the applier reads, and `decide` has no
+    # session and no clock.
+    demotion_pending: bool = False
 
 
 def compute_confidence(*, origin_count: int, required_n: int, gate_fired: str) -> float:
@@ -441,12 +558,121 @@ def decide(
             return settled(current_status, "hold", superseded=True)
         return settled("corroborated", "promote")
 
-    # Below N. Demotion is immediate here; doc 08 §4.3's hysteresis and the
-    # `under-sourced` label are T2.46's, interposed at the applier on this
-    # first-class `demote` outcome without touching this function.
+    # Below N. Demotion is immediate *here*, and stays that way: doc 08 §4.3's
+    # hysteresis reads durable per-fact state and a clock, neither of which
+    # this function may have, so it is interposed at the applier on this
+    # first-class `demote` outcome (`apply_demotion_hysteresis`, below).
     if current_status == "corroborated":
         return settled("candidate", "demote")
     return settled("candidate", "hold")
+
+
+# ──────────────────────── the demotion hysteresis ────────────────────────
+
+
+@dataclass(frozen=True)
+class HysteresisOutcome:
+    """What the grace window did to a decision, and what to persist.
+
+    ``marker`` is ``None`` when the hysteresis columns must be left untouched
+    — which is not the same as ``DemotionPending(since=None, cycles=0)``, the
+    value that *clears* them. Collapsing the two would make every ordinary
+    recompute of an ordinary fact write two columns it has no opinion about.
+    """
+
+    decision: LadderDecision
+    marker: DemotionPending | None
+
+
+def apply_demotion_hysteresis(
+    decision: LadderDecision,
+    *,
+    pending_since: datetime | None,
+    pending_cycles: int,
+    grace_cycles: int,
+    now: datetime,
+) -> HysteresisOutcome:
+    """Doc 08 §4.3: a fact that loses a source does not drop rung immediately.
+
+    **Pure — no I/O, no session, no clock of its own.** ``now`` is supplied by
+    the applier, for the same reason ``decide`` reads no clock: replaying the
+    same inputs must produce the same answer as the calendar moves. It is
+    stamped, never compared, so the answer does not depend on it at all; it
+    is the *record* of when the window opened, which is what a human reading
+    an under-sourced row wants to know.
+
+    The window is counted in **consecutive recompute cycles**, not in wall
+    time, and "consecutive" is enforced by the marker rather than by the
+    count: every outcome that is not a demotion clears it, so any cycle
+    counted here is one that immediately followed another. That is also why a
+    re-corroboration cancels cleanly — cancellation is the same clear, not a
+    separate path that could forget a residue.
+
+    **The under-sourced state is a label on a still-``corroborated`` row.**
+    The held decision's ``target_status`` is the fact's own current status, so
+    no status is written and no ``verified`` row is journalled: the rung did
+    not move, and a journal row that claimed it did would be counted by G-C's
+    promotion-rate SQL as a transition that never happened. The interim state
+    is durable on the row instead (``demotion_pending_since``), served on the
+    surfaces this module's own docstring enumerates, and on the review queue.
+
+    ``grace_cycles == 0`` disables the hysteresis outright: the demotion
+    applies on the cycle that detects it, no marker is ever written, and the
+    label never appears. That is the conservative end of the knob, so it is
+    the one value that needs no protection.
+
+    **Confidence is not held back.** The decision's ``confidence`` was
+    computed from the *current* origin count, so an under-sourced fact's
+    support estimate drops on the cycle the source is lost even though its
+    rung does not. That is the intended asymmetry: the badge's claim is
+    "asserted by K distinct origins", and K really did fall.
+    """
+    demoting = decision.outcome == "demote"
+
+    if not demoting:
+        # Every non-demotion cancels, including a dispute and a recovery. A
+        # fact the veto moved to `disputed` has already lost the rung the
+        # window was protecting, so carrying the marker across would resume a
+        # count for a demotion from a status the fact no longer holds.
+        if pending_since is None:
+            return HysteresisOutcome(decision, None)
+        return HysteresisOutcome(decision, DemotionPending(since=None, cycles=0))
+
+    if grace_cycles <= 0:
+        # No window to open. The marker is cleared rather than left alone so
+        # that turning the knob off drains whatever it had already opened,
+        # instead of stranding rows wearing a label nothing will ever clear.
+        if pending_since is None:
+            return HysteresisOutcome(decision, None)
+        return HysteresisOutcome(decision, DemotionPending(since=None, cycles=0))
+
+    if pending_since is None:
+        held = replace(
+            decision,
+            target_status=decision.current_status,
+            outcome="hold",
+            demotion_pending=True,
+        )
+        return HysteresisOutcome(held, DemotionPending(since=now, cycles=1))
+
+    observed = pending_cycles + 1
+    if observed > grace_cycles:
+        # The window closed while the fact was still under N. The demotion
+        # goes through as `decide` ruled it, and the marker clears with it:
+        # the fact is a plain `candidate` now, honestly, with no overlay
+        # promising a demotion that has already happened.
+        return HysteresisOutcome(decision, DemotionPending(since=None, cycles=0))
+
+    held = replace(
+        decision,
+        target_status=decision.current_status,
+        outcome="hold",
+        demotion_pending=True,
+    )
+    # `since` is deliberately not re-stamped: it records when the window
+    # opened, and moving it every cycle would make an under-sourced row look
+    # freshly under-sourced however long it had been held.
+    return HysteresisOutcome(held, DemotionPending(since=pending_since, cycles=observed))
 
 
 # ────────────────────── the review queue's open flag ──────────────────────
@@ -468,12 +694,41 @@ def _dispute_opens_review(decision: LadderDecision) -> bool:
     return decision.target_status == "disputed"
 
 
-# Every condition that puts a fact on the review queue. **T2.46's
-# ``under-sourced`` hysteresis joins this tuple; it must not be plumbed past
-# it**, exactly as ``CONTRADICTION_DETECTORS`` binds T2.11. Registering is what
+def _under_sourced_opens_review(decision: LadderDecision) -> bool:
+    """Doc 08 §6's second fact-side opener: a fact held in demotion hysteresis.
+
+    Keyed off the decision's ``demotion_pending`` flag rather than off the
+    ``demotion_pending_since`` column, because the decision is what this cycle
+    is about to make true — reading the column would queue on the *previous*
+    cycle's state, so the cycle that cancels a demotion would leave the fact
+    queued for one more round, and the cycle that opens one would not queue it
+    at all.
+
+    The flag is false on the cycle the grace window finally closes, and that
+    is correct: the fact demotes to a plain ``candidate``, which is a rung, not
+    a condition needing a human. Nothing was silently resolved — the demotion
+    it was queued about is exactly what happened, and that transition journals.
+    """
+    return decision.demotion_pending
+
+
+# Every condition that puts a fact on the review queue. Registering is what
 # makes an opener's condition both able to open the queue and *required* to
-# keep it open.
-REVIEW_OPENERS: tuple[ReviewOpener, ...] = (_dispute_opens_review,)
+# keep it open — ``derive_review_state`` clears only on the absence of every
+# member, so a condition plumbed past this tuple would be a queue entry the
+# next recompute silently drops. The same binding ``CONTRADICTION_DETECTORS``
+# has on T2.11.
+#
+# The two members cannot both fire on one decision today: the veto is checked
+# before every count, so a contradicted fact leaves ``decide`` on a ``dispute``
+# or a disputed hold, which is not a ``demote`` and therefore cancels the
+# hysteresis. That is a property of today's branch order, not of the
+# derivation, and the derivation is written to survive its loss — which is the
+# whole reason it derives rather than assigns.
+REVIEW_OPENERS: tuple[ReviewOpener, ...] = (
+    _dispute_opens_review,
+    _under_sourced_opens_review,
+)
 
 
 def derive_review_state(decision: LadderDecision) -> str | None:
@@ -503,19 +758,19 @@ def derive_review_state(decision: LadderDecision) -> str | None:
     ("no opinion on this branch") would reintroduce exactly the ownership
     ambiguity this ruling exists to remove.
 
-    **What T2.46 must do to stay consistent.** Carry its hysteresis state as a
-    field on ``LadderDecision`` — the shape T2.06's ruling already prescribes
-    for T2.60's ``supersession_blocked`` — and register a predicate over it
-    here. It must not write ``review_state`` itself. And it must not put the
-    ``under-sourced`` *label* in this column: the queue predicate and the
-    partial index are both the literal ``'open'``, so a row labelled
-    ``'under-sourced'`` is a row that has silently left the queue, which is the
-    very failure this ruling exists to forbid. Doc 08 §4.3 already names the
-    marker that carries the label — ``demotion_pending_since``, §9's one small
-    schema amendment and T2.46's to land — and ``demotion_pending_since IS NOT
-    NULL`` is simultaneously the label the UI renders and the predicate this
-    tuple wants. So the companion column this ruling would otherwise need
-    already has an owner, and T2.62 needs no schema change of its own.
+    **What T2.46 did, and it is what this ruling asked for.** The hysteresis
+    state is a field on ``LadderDecision`` (``demotion_pending``) — the shape
+    T2.06's ruling prescribes for T2.60's ``supersession_blocked`` — with
+    ``_under_sourced_opens_review`` registered over it above. T2.46 writes no
+    ``review_state`` of its own, and it did not put the ``under-sourced``
+    label in this column: the queue predicate and the partial index are both
+    the literal ``'open'``, so a row labelled ``'under-sourced'`` is a row
+    that has silently left the queue, which is the very failure this ruling
+    exists to forbid. The label lives where doc 08 §4.3 put it,
+    ``demotion_pending_since``, whose ``IS NOT NULL`` is simultaneously what
+    the UI renders and what this tuple's second member is derived from. So the
+    companion column this ruling would otherwise have needed already had an
+    owner, and T2.62 needed no schema change of its own.
 
     **What T2.22 must do to stay consistent.** Read the column; do not ship a
     bare "clear review_state" action on it. A bare clear does not survive the
@@ -629,6 +884,7 @@ async def recompute_fact(
     *,
     open_contradiction: ContradictionVerdict = NO_DETECTOR,
     supersession_blocked: bool | None = None,
+    now: datetime | None = None,
 ) -> LadderDecision:
     """Recompute one fact's verification status, and return why.
 
@@ -672,11 +928,20 @@ async def recompute_fact(
     append-only journal, permanently. The opening dispute's own row keeps that
     history.
 
+    T2.46's demotion hysteresis is applied here too, and for the third time
+    for the same reason: the grace window's bookkeeping is two columns on the
+    row this function already holds under ``FOR UPDATE``, read in the same
+    statement as the status so the count cannot be taken against a row the
+    applier no longer holds. ``now`` stamps the marker and is a seam for a
+    replay or a test; nothing compares it, so supplying it changes what the
+    row records and never what the ladder decides.
+
     A ``fact_id`` with no row returns a hold that writes nothing. The drain
     that will call this races deletion by construction, so raising would turn
     an ordinary race into a failed job.
     """
     config = await get_ladder_config(session)
+    grace_cycles = await get_demote_grace_cycles(session)
     profile = await FactSourceRepository(session).origin_profile(fact_id)
 
     # FOR UPDATE, and it is load-bearing rather than defensive. Without it the
@@ -690,12 +955,14 @@ async def recompute_fact(
     # caller of either side exists, but T2.04 and T2.09 will run concurrently.
     row = await session.execute(
         text(
-            "SELECT verification_status FROM knowledge_triples "
+            "SELECT verification_status, demotion_pending_since, "
+            "demotion_pending_cycles FROM knowledge_triples "
             "WHERE id = CAST(:id AS uuid) FOR UPDATE"
         ),
         {"id": str(fact_id)},
     )
-    current = row.scalar_one_or_none()
+    locked = row.mappings().first()
+    current = locked["verification_status"] if locked is not None else None
     if current is None:
         logger.debug("recompute_fact: no knowledge_triples row for id %s", fact_id)
         return LadderDecision(
@@ -730,6 +997,15 @@ async def recompute_fact(
         supersession_blocked=blocked,
     )
 
+    hysteresis = apply_demotion_hysteresis(
+        decision,
+        pending_since=locked["demotion_pending_since"],
+        pending_cycles=locked["demotion_pending_cycles"],
+        grace_cycles=grace_cycles,
+        now=now or datetime.now(timezone.utc),
+    )
+    decision = hysteresis.decision
+
     repo = KnowledgeTripleRepository(session)
     # A held fact writes confidence alone: `confirmed` cannot be passed its own
     # status back (the repository refuses it before any read), and a status
@@ -759,5 +1035,8 @@ async def recompute_fact(
         contradiction_blocked=decision.contradiction_blocked,
         supersession_blocked=decision.supersession_blocked,
         contradiction=contradiction_evidence(finding) if finding is not None else None,
+        demotion_pending=(
+            hysteresis.marker if hysteresis.marker is not None else UNSET_DEMOTION_PENDING
+        ),
     )
     return decision

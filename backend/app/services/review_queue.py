@@ -32,16 +32,16 @@ there is no agent-facing retrieval surface over ``knowledge_triples`` yet — no
 hybrid-search fusion arm, no REST GET beyond this module's own queue list).
 
 **The "reason" a fact is queued is derived from the fact's own columns, never
-from the ``review_state`` value itself** — the brief for T2.62 (running
-concurrently) is still settling how one ``review_state`` column serves three
-independent openers (dispute, T2.46's under-sourced hysteresis, doc 09's
-ungrounded articles) plus a human clear, so this module does not guess at a
-vocabulary T2.62 may define. Today the only column that reliably distinguishes
-a reason is ``verification_status`` / ``status``: ``'disputed'`` renders as
-the ``disputed`` reason, and every other open row renders as ``unspecified``
-(honest: an ``unspecified`` row's opener is one of T2.46's hysteresis or doc
-09's ungrounded-article check, neither of which has landed a distinguishing
-column yet).
+from the ``review_state`` value itself.** T2.62 settled how one
+``review_state`` column serves three independent openers plus a human clear —
+it derives the flag from the decision instead of letting each opener assign it
+— so this module reads two columns and names two of those three reasons.
+``verification_status = 'disputed'`` renders as ``disputed``;
+``demotion_pending_since IS NOT NULL`` renders as ``under-sourced``, the
+column T2.46 landed and the reason this docstring previously had to report as
+``unspecified``. ``unspecified`` survives for the third opener, doc 09's
+ungrounded articles, which live in a different table and still carry no
+distinguishing column.
 
 **"Both sides" — closed by T2.64 (2026-08-02).** T2.06's enriched ``verified``
 events journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
@@ -158,6 +158,7 @@ _FACT_COLUMN_NAMES = (
     "verification_status",
     "confidence",
     "review_state",
+    "demotion_pending_since",
     "created_at",
 )
 
@@ -170,10 +171,28 @@ _ARTICLE_COLUMNS = (
 )
 
 
-def _fact_reason(verification_status: str | None) -> str:
-    """Derived from the fact's own column, never from ``review_state``."""
+def _fact_reason(
+    verification_status: str | None, demotion_pending_since: Any = None
+) -> str:
+    """Derived from the fact's own columns, never from ``review_state``.
+
+    T2.46 supplied the distinguishing column the module docstring said did not
+    exist yet, so an under-sourced fact now names its own reason instead of
+    falling through to ``unspecified``. ``unspecified`` survives for doc 09's
+    ungrounded articles, which are a different table and still have no
+    distinguishing column of their own.
+
+    ``disputed`` wins a tie on the graver condition, and the tie is
+    unreachable today: the veto is adjudicated before every count, so a
+    contradicted fact never leaves ``decide`` on a ``demote`` and its marker
+    is cleared on that same cycle. Ordered anyway, because a reason that
+    depended on which condition the reader checked first is the ambiguity
+    ``derive_review_state`` was written to remove.
+    """
     if verification_status == "disputed":
         return "disputed"
+    if demotion_pending_since is not None:
+        return "under-sourced"
     return "unspecified"
 
 
@@ -273,9 +292,9 @@ async def list_open_facts(
     offset: int = 0,
     order: ReviewQueueOrder | None = None,
 ) -> tuple[list[dict], int]:
-    """Facts whose ``review_state = 'open'`` — disputed and (once T2.46 lands)
-    under-sourced facts. Membership is exactly the partial index's predicate;
-    see ``build_facts_query``.
+    """Facts whose ``review_state = 'open'`` — disputed and under-sourced
+    facts. Membership is exactly the partial index's predicate; see
+    ``build_facts_query``.
 
     Consequence-ranked by default (doc 08 §6). Each item carries a
     ``consequence`` block naming every input that moved its score, so the
@@ -317,7 +336,10 @@ async def list_open_facts(
                 "verification_status": row["verification_status"],
                 "confidence": row["confidence"],
                 "review_state": row["review_state"],
-                "reason": _fact_reason(row["verification_status"]),
+                "demotion_pending_since": row["demotion_pending_since"],
+                "reason": _fact_reason(
+                    row["verification_status"], row["demotion_pending_since"]
+                ),
                 "evidence": evidence_by_id.get(fid),
                 "consequence": consequence_explanation(row, ranking) if ranked else None,
                 "created_at": row["created_at"],

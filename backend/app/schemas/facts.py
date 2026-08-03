@@ -75,6 +75,7 @@ class FactListItem(BaseModel):
     badge: FactBadge | None
     confidence: float | None
     review_state: str | None
+    demotion_pending_since: datetime | None = None
     belief_window: BeliefWindow
     applies_when: dict[str, Any] | None
     applies_when_labels: list[AppliesWhenLabel]

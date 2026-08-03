@@ -123,6 +123,7 @@ _NAME_QUERY = "plainto_tsquery('simple', :q)"
 _ROW_COLUMNS = """
     id, fact, subject_name, object_name, rel_type, project,
     verification_status, review_state, confidence, applies_when,
+    demotion_pending_since,
     valid_at, invalid_at, expired_at, reference_time, created_at
 """
 
@@ -348,6 +349,11 @@ def _row_to_candidate(row, arm: str) -> dict:
         "review_state": row["review_state"],
         "confidence": row["confidence"],
         "applies_when": row["applies_when"],
+        # The ``under-sourced`` overlay (doc 08 §4.3) rides the row for the
+        # same reason ``review_state`` does: a corroborated fact one lost
+        # source from demotion is not the same claim as a healthy one, and a
+        # consumer that cannot see the difference presents it as one.
+        "demotion_pending_since": row["demotion_pending_since"],
         # ``invalid_at`` and ``expired_at`` are NULL on every row this channel
         # can return, by its own predicate — and carrying them anyway is what
         # makes that observable. A non-NULL one reaching a consumer is the

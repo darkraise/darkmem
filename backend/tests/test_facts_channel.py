@@ -214,6 +214,32 @@ async def test_every_row_carries_its_verification_state_and_belief_window(sessio
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("marked", [True, False])
+async def test_a_row_carries_the_under_sourced_overlay_it_is_wearing(session, marked):
+    """T2.46's caution overlay, on the channel's own projection.
+
+    Both halves matter: without the marked case the channel serves a fact one
+    lost source from demotion as if it were healthy, and without the unmarked
+    case a constant would pass.
+    """
+    fact = await _open_fact(session)
+    await _set_status(session, fact["id"], "corroborated")
+    if marked:
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET demotion_pending_since = "
+                "CAST(:t AS timestamptz) WHERE id = CAST(:id AS uuid)"
+            ),
+            {"t": NOW, "id": fact["id"]},
+        )
+
+    (row,) = await FactsChannel(session).search(RARE_TERM, project=PROJECT)
+
+    assert row["verification_status"] == "corroborated"
+    assert row["demotion_pending_since"] == (NOW if marked else None)
+
+
+@pytest.mark.asyncio
 async def test_the_belief_window_labels_show_the_scope_actually_held(session):
     """Constant-NULL by the channel's own predicate — and carrying them anyway
     is what makes a scope failure observable instead of silent."""
