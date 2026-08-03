@@ -4,9 +4,50 @@ Database-name discipline is pure and always runs. The reproducibility half
 is the anti-forgery detector Ruling 2 leans on: the harvest runs TWICE
 in-process and the two ``facts`` sections must be byte-identical -- warm
 cache -> byte-identical extraction -> identical canonicalisation ->
-identical triple_key set. It needs the warm retrieval cache (gitignored,
-machine-local) and the bench Postgres; a checkout without the cache skips
-loudly rather than paying live model calls from a test floor.
+identical triple_key set.
+
+**T2.79.** This test used to read its cache from the shared, gitignored
+``retrieval/cache/`` and skip when that directory was empty -- which is
+every lane worktree and every fresh clone, because ``git worktree add``
+never populates a gitignored path. The skip was silent (exit 0, "1
+skipped" easy to misread as informational) and it was skipping exactly the
+guarantee this file exists to prove: T2.54's byte-identical-manifest
+anchor, which the entailment gold's reviewer relied on as evidence the
+``facts`` section is reproducible, gating G-D and transitively G-C. A
+green run in that state was not evidence the guarantee held.
+
+Fix chosen: **stop the input being gitignored**, scoped to exactly what
+this test touches rather than the whole shared cache. ``harvest_l2_cache_fixture/``
+next to this file is a **committed** (not gitignored) copy of the ~300
+cache entries ``run_harvest`` actually reads for this corpus -- collected
+by wrapping ``CachingLLMOrchestrator._read`` to copy every file it served
+during one real, warm-cache run, then verified to reproduce
+``live_calls == 0`` from the fixture alone with nothing else on disk. It
+is deliberately not the whole 6.9 MB shared ``retrieval/cache/`` (which
+also serves ``run_retrieval_eval.py`` and ``arm_ablation.py`` for the
+``--full`` gate and stays gitignored and dev-warmed): committing only the
+subset this test needs keeps the artifact bounded (~3.7 MB, plain JSON)
+and keeps the shared dev cache's "gitignored, regenerate freely" contract
+intact for everyone else. Consequence of this choice, stated rather than
+hidden: the fixture must be re-collected the same way (instrument
+``_read``, run the harvest once against the warm shared cache, copy the
+touched keys here) if the retrieval corpus, the extraction/classification
+prompts, or the pinned model changes, because the cache key folds in
+content and resolved purpose config. A stale fixture does not skip and
+does not silently pass -- ``run_harvest`` raises the vendor error for the
+mismatched key (the test's API key is an offline sentinel), so staleness
+fails loudly, the same trade the production cache already makes (module
+docstring below).
+
+**Why not the other two shapes.** A hard failure with no fixture (make the
+missing prerequisite loud, full stop) would turn every fresh clone red
+until someone manually copies a gitignored directory in -- trading a
+silent false-green for a mandatory manual step nobody would remember
+correctly, which just relocates the defect. Counting the skip somewhere a
+reader sees it (a distinct exit code, a summary banner) was rejected per
+R3: it still does not run the test, and the acceptance bar here is that
+the guarantee is actually checked in the environment every lane and every
+fresh clone uses -- not that its absence is merely better advertised.
 
 The reproducibility test **selects its own bench database** -- a numbered
 name derived from this checkout's path -- instead of reading
@@ -27,7 +68,6 @@ import pytest
 
 from benchlib import bench_db, harvest_l2_facts
 from benchlib.harvest_l2_facts import (
-    CACHE_DIR,
     MANIFEST_PATH,
     assert_bench_db_allowed,
     bench_db_name,
@@ -36,6 +76,7 @@ from benchlib.harvest_l2_facts import (
 )
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
+FIXTURE_CACHE_DIR = Path(__file__).resolve().parent / "harvest_l2_cache_fixture"
 
 
 def dedicated_bench_url() -> str:
@@ -122,21 +163,32 @@ def test_the_dedicated_database_name_passes_the_guard():
     assert_bench_db_allowed(name)
 
 
+def test_fixture_cache_is_committed_and_present():
+    """The committed fixture is the whole fix: if this fails, the test below
+    is not proving anything and must not be read as having run. Unlike the
+    old gitignored-cache check, this is not a skip condition -- an absent or
+    empty fixture is a hard failure, because after T2.79 there is no lawful
+    reason for it to be missing in any checkout that has this file at all."""
+    assert FIXTURE_CACHE_DIR.is_dir(), FIXTURE_CACHE_DIR
+    assert any(FIXTURE_CACHE_DIR.iterdir()), FIXTURE_CACHE_DIR
+
+
 @pytest.mark.asyncio
 async def test_harvest_is_byte_reproducible_and_fully_cached():
-    if not CACHE_DIR.is_dir() or not any(CACHE_DIR.iterdir()):
-        pytest.skip(
-            "warm retrieval cache absent (gitignored); copy it in from the "
-            "main checkout before running the harvest reproducibility test"
-        )
-
     # The key is a sentinel on purpose: a warm cache makes zero live calls,
     # and a cache miss must fail loudly at the vendor rather than be paid
     # for silently from a test floor. The bench database is the test's own
-    # per-checkout one -- never the environment's.
+    # per-checkout one -- never the environment's. The cache is the
+    # committed fixture (T2.79), not the shared gitignored dev cache, so
+    # this runs identically in a fresh clone, a lane worktree and the main
+    # checkout.
     url = dedicated_bench_url()
-    first = await run_harvest(api_key="offline-warm-cache-only", bench_url=url)
-    second = await run_harvest(api_key="offline-warm-cache-only", bench_url=url)
+    first = await run_harvest(
+        api_key="offline-warm-cache-only", bench_url=url, cache_dir=FIXTURE_CACHE_DIR
+    )
+    second = await run_harvest(
+        api_key="offline-warm-cache-only", bench_url=url, cache_dir=FIXTURE_CACHE_DIR
+    )
 
     assert first.live_calls == 0, (
         "harvest made live LLM calls against a cache that was expected to be "
