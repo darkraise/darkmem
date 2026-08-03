@@ -848,7 +848,8 @@ class TestCountsRouteAcceptsOverrides:
     ):
         await seed_memory(session, confidence=0.6)
         await seed_memory(
-            session, expires_at=datetime.now(timezone.utc) + timedelta(days=20)
+            session, confidence=0.9,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=20),
         )
         await session.commit()
 
