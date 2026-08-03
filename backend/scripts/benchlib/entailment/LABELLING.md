@@ -333,6 +333,56 @@ pairs: the reversal is entailed, and the slice admits no such verdict.
 This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 (16 relations, checked against the source on 2026-08-03).
 
+## Step-5 rulebook fork — proposed extensions, UNRATIFIED (2026-08-03)
+
+The Step-4 authoring protocol and the Step-5 blind-pass briefs embedded a
+condensed rulebook instead of this file (to keep the skip log above from
+de-blinding pairs). The Steps 0–5 review measured that the condensation was
+**not** faithful: it extended the exclusive-slot rule in ways this file
+never ratified, and the two rulebooks even differ from each other. Both
+Step-5 escalations trace to this fork, and the six host-swap agreements
+below rest on it. **Ratifying a labelling rule is the owner's act** —
+rule-then-pairs — so the extensions are recorded here as *proposed*, with
+their evidence, and nothing more. The owner's sitting must adjudicate them
+**before** the escalation queue and before the resample: the resample's
+`contradicted` census contains all six host-swap pairs, and resampling them
+against this file *without* deciding these extensions would manufacture a
+spurious failure that is about the rulebook, not the labels.
+
+1. **Proposed: the host/platform slot of a single named instance is
+   single-valued** (exclusive-slot). Applied by the authoring protocol
+   *and* by both blind passes (their shared brief text: "the host a single
+   named instance runs on"). Governs six live `value-swap` pairs, all
+   recorded `contradicted` and blind-confirmed under the same extended
+   text — the agreement was manufactured by the shared fork, not
+   independently reached from this file: **eg-0048, eg-0088, eg-0098,
+   eg-0109, eg-0154, eg-0201**. If rejected: their verdicts fall to
+   `unsupported`, which `value-swap` does not admit → retire-and-replace
+   all six, replacements re-blinded under the Step-5 protocol.
+2. **Proposed: the kind a named instance is (`IS_A`) is single-valued**
+   (exclusive-slot). Present in both forked rulebooks ("an IS_A kind" /
+   "the kind a named instance is"). Governs **zero** live pairs' verdicts
+   today — the only IS_A-premise pairs (eg-0090, eg-0152) are `overreach`
+   and untouched by the exclusive-slot rule. If rejected: no current label
+   changes; the category is struck from future authoring.
+3. **Proposed: the object of a named replacement/migration (`REPLACES`) is
+   single-valued** (exclusive-slot). Present **only** in the authoring
+   protocol ("the one thing a named migration replaced") and absent from
+   the blind rulebook — this asymmetry is the direct cause of the
+   **eg-0142** escalation: the author recorded `contradicted` under the
+   category, both blind passes (lacking it) said `unsupported` (absence,
+   not exclusion). If ratified: the recorded label stands and the
+   divergence was a rulebook gap. If rejected: eg-0142 is a mislabel →
+   retire-and-replace, replacement re-blinded.
+4. **Omission, not an extension:** the blind rulebook's reversal table
+   dropped this file's explicit "load-balancing roles" precedent
+   (non-exclusive, eg-0023/eg-0025), which plausibly caused the
+   **eg-0023** escalation (both passes: `contradicted`; recorded:
+   `unsupported`, which follows the ratified text). Nothing to ratify —
+   this file already decides it — but the owner may want to name
+   balancer/backend explicitly in the reversal rule so a condensed
+   restatement cannot lose it again.
+
 ## The contacted-pairs rule (Rule B)
 
 The 41 T2.25 pairs were contacted twice by judge identity
@@ -385,18 +435,32 @@ exists.
 - **2026-08-03 (T2.54 Step 5).** Two independent blind passes over all
   241 live pairs (two labellers × five fresh-context batches each; the
   briefs, committed under `.superpowers/sdd/T2.54-entailment-gold-labelling/`,
-  embed the rulebook verbatim rather than this file, because the Step-4
-  skip log above names pair ids with their slices and would de-blind
-  them). Agreement rates, recorded whatever they are: **pass A vs
-  recorded 239/241 = 0.9917; pass B vs recorded 239/241 = 0.9917; pass A
-  vs pass B 241/241 = 1.0000**. The perfect inter-pass agreement is
-  consistent with two same-family labellers applying one rulebook and is
-  exactly the correlated-error shape Layer 2 cannot bound — the owner's
-  n = 93 resample is the instrument that does. 239 pairs flipped to
+  embed a **condensed** rulebook rather than this file, because the
+  Step-4 skip log above names pair ids with their slices and would
+  de-blind them — and the Steps 0–5 review later measured that the
+  condensation forked from this file; see the unratified-extensions
+  section above). Agreement rates, recorded whatever they are: **pass A
+  vs recorded 239/241 = 0.9917; pass B vs recorded 239/241 = 0.9917;
+  pass A vs pass B 241/241 = 1.0000**. 239 pairs flipped to
   `adjudicated`; 2 escalated untouched to
   `entailment/escalation_queue.json` (eg-0023: recorded `unsupported`,
   both passes `contradicted`; eg-0142: recorded `contradicted`, both
   passes `unsupported`).
+- **2026-08-03 (T2.54 Steps 0–5 review, settled).** The 1.0000 inter-pass
+  figure is the correlated-error signature, empirically confirmed: pass B
+  added approximately zero independent bits — both of its divergences
+  from the recorded labels were identical to pass A's, down to the rule
+  citations. The double-agreement merge therefore degenerated to a single
+  same-family check, and the 239 `adjudicated` flips carry **one**
+  independent reading's assurance, not two. **The 1.0000 figure may enter
+  G-D only as rule-determinism and procedural evidence, with this caveat
+  attached — never as label-accuracy evidence.** The owner's n = 93
+  resample is the **first** independent accuracy measurement this gold
+  will have received, not a confirmation of an existing one; quoting
+  1.0000 as agreement without this caveat would be overclaiming, and
+  T2.41's report must not do it. Both escalations trace to the Step-5
+  rulebook fork (unratified-extensions section above), which the owner
+  adjudicates rule-then-pairs before the queue and before the resample.
 
 ### Skip log (Step 4)
 
