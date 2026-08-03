@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 22 | 2 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 69 | 31 | 4 | 1 | 0 | 33 | 0 | G-C, G-D open |
+| E2 — Truth core | 70 | 32 | 4 | 1 | 0 | 33 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **229** | **87** | **4** | **1** | **0** | **136** | **1** | |
+| **Total** | **230** | **88** | **4** | **1** | **0** | **136** | **1** | |
 
 ---
 
@@ -173,7 +173,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.67 | Retire the dead real-API-type re-export from `src/demo` | S | Sonnet | low | | done | b265e12, b053fd2, e8c9f1a | — (Sonnet tier; Fable review owed before G-B) | **Falsified its own premise and was rewritten to what was true.** The controller's claim that 65 files import `@/demo/types` for the real API types was wrong — **zero** do; the re-export was dead code with one internal dependent. Deleted it, repointed the dependent, added an `importNames`-scoped rule that **errors** if those four types return to a demo path, proven able to fail. The importer count is unchanged because the task never had a mechanism to change it; the real relocation became T1.68. |
 | T1.68 | Relocate the shared frontend types out of `src/demo` | M | Sonnet | high | | done | c2b22d5 | — (Sonnet tier; Fable review owed before G-B) | 33 names moved into five feature-local modules, **judged by consumer rather than prefix** — and that mattered: `DemoRepo`, handed down as real-consumed, was **not** moved because every consumer is demo-gated. Also caught that the 65-importer count included a comment mention, so the truth was 64. New error-level rule blocks reintroducing any of the 33 from a demo path, falsified live. Broad warn count 150 → 116 across 80 → 67 files, pinned literal re-measured. Six real files keep a documented legitimate need for a demo-shaped type — recorded rather than gutted away to force a green rule. **Its reported "pre-existing non-deterministic benchlib failures" were its own collision**: `TEST_DATABASE_URL` set to a bench database name with `BENCH_DATABASE_URL` never set, so benchlib fell back to the shared database and deadlocked. Corrected in the log. Frontend 525 across 89 files; floor 2480; benchlib 284 alone. |
 
-## E2 — Truth core (69 tasks)
+## E2 — Truth core (70 tasks)
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
@@ -212,7 +212,8 @@ and the Note says so. That rule is the whole point of this file.
 | T2.33 | `triple_embeddings` writer, miss-rate gated | M | Opus | high | | todo | | | |
 | T2.34 | `expires_at` self-expiring dated facts | M | Opus | high | | todo | | | |
 | T2.35 | `applies_when` magnitude tuning | M | Fable | high | | todo | | | |
-| T2.36 | Facts tab — bi-temporal, multi-origin browsing | M | Sonnet | high | claude/e2-lane-w | wip | | | |
+| T2.36a | The `badge` object and the facts read surface | M | Opus | high | claude/e2-lane-w | wip | | | Split out of T2.36 on 2026-08-03; T2.36's backend producer did not exist |
+| T2.36 | Facts tab — bi-temporal, multi-origin browsing | M | Sonnet | high | | todo | | | Unclaimed again — waits on T2.36a |
 | T2.37 | Review / Hygiene triage shell | M | Sonnet | high | | todo | | | |
 | T2.38 | Dream digest UI with undo | M | Sonnet | high | | todo | | | |
 | T2.39 | Topics tab | M | Sonnet | high | | todo | | | |
