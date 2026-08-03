@@ -1548,6 +1548,41 @@ is the input, not a constant.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_isolation_probe.py -q`
 
+#### T2.75 — The frontend spells the claim the backend owns
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.36a` · `Doc: 12 (the badge field), 13 §5.3, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Doc 13 §5.3 is explicit that the badge string is a contract and **no screen
+paraphrases it**. `frontend/src/demo/data/chat-curated.ts` and `memories-curated.ts` carry
+badge-shaped claim strings as demo fixtures, and `verification-badge.tsx` documents the
+claim in a comment. T2.36a's `assert_no_certainty_words` guard and T2.71's second-producer
+scan both walk `backend/app` only, so **no guard in this repo can see any of them**.
+
+Two independent sightings, 2026-08-03. T2.71's implementer reported the fixtures as an
+adjacent finding and correctly took no action. T2.71's reviewer, before terminating on a
+model-tier limit, reported that **a fixture at `chat-curated.ts:52` is a claim form the
+shipping producer can never emit** — which turns a stylistic worry into a demonstrated
+divergence. **That second sighting is partial and unverified**: the review never completed
+and its verdict was never written, so the specific line must be re-checked rather than
+taken on faith.
+
+**Why it is not merely cosmetic.** A fixture is what a developer reads when deciding what
+the UI should render, and a comment is what they read when deciding what the string means.
+Both currently disagree with the one producer, and the disagreement is invisible to CI. The
+UI is still on demo data (`useDemoFacts`), so nothing user-visible is wrong today — which
+is exactly the window in which to fix it.
+
+**Done when:**
+- [ ] Every badge-shaped string in `frontend/` is either produced by the backend payload or
+      is provably a fixture that matches a form the producer can emit
+- [ ] A guard covers `frontend/` the way `fact_badge`'s covers `backend/app` — a new
+      paraphrase fails the build rather than being noticed by a reviewer
+- [ ] The `chat-curated.ts:52` sighting is re-verified, and either corrected or recorded as
+      a false positive with the reasoning
+- [ ] The forbidden words "true" and "verified" are checked on the frontend side too
+
+**Verify.** `cd frontend && npm test -- badge && npm run typecheck`
+
 #### T2.72 — The MCP vault tools, and the door parity doc 12 already assigns
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.36a` · `Doc: 12 §2–§3, invariant 17` · `Tag: target-new` · `Gate: standing`
@@ -1583,6 +1618,7 @@ because doc 12's list-shaped agent twin is `knowledge_search`, not a fact list.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-03 | T2.75, T2.71, T2.36a | 2 | **T2.75 minted: the badge guards are backend-only, and the frontend carries claim strings none of them can see.** Doc 13 §5.3 forbids a screen paraphrasing the claim; two demo-fixture files and a component comment do. T2.36a's certainty-word guard and T2.71's second-producer scan both walk `backend/app` exclusively. Two independent sightings the same day: T2.71's implementer flagged the fixtures and took no action, and T2.71's **reviewer reported a fixture at `chat-curated.ts:52` in a claim form the producer can never emit** — a demonstrated divergence rather than a stylistic worry. **That second sighting is explicitly partial**: the review terminated on a Fable-tier limit before writing its verdict, so the line is recorded as needing re-verification, not as established | Logged because the interesting property is the **shape of the blind spot**, not the three files. Two separate guards were built this round to stop a second producer of the honesty sentence, both were mutation-proved, and both stop at the language boundary — so the surface doc 13 actually cares about, the one a human reads, is the one surface neither covers. The UI is still on demo data, so nothing user-visible is wrong today; that is the argument for fixing it now rather than after it is wired. Also worth recording that a partial finding from a terminated review was kept rather than discarded: an unverified sighting with its provenance stated is worth more than a lost one, provided nobody later reads it as settled |
 | 2026-08-03 | T2.74, T2.73 | 2 | **T2.74 minted: three surfaces declare a `content_preview` crossing that no driver checks** — `reembed_backfill_queue`, `pipeline_failure_triage`, `capture_buffer_triage`. Pre-existing, not introduced by this round: each is *asserted* to truncate and none is *proven* to. T2.73's `_preview_boundary()` is the mechanism, but the reviewer measured that it does **not** drop in unmodified — `capture_buffer_triage` declares a 500-character preview while its long fixtures end near 280, so naive reuse false-positives | Recorded as its own task because the interesting part is the shape: T2.73 was minted for a guard that was *absent*, and reviewing it surfaced three more that are *present and vacuous*. A vacuous guard is the worse of the two — the absent one raised loudly and got fixed within the day, while these three have been reporting clean for as long as they have existed. The per-surface preview length being an input rather than a constant is exactly why 'extend the helper to the other three' is not a paste, and is stated here so the next reader does not size it as one |
 | 2026-08-03 | T2.73, T2.23, T2.36a | 2 | **T2.73 minted: the isolation probe is offline on the epic branch, and the controller's merge process is what let it through.** T2.23 and T2.36a each added `ContentSurface` rows without the matching `isolation_probe.DRIVERS` entry. The table's completeness check raises, so **all eight** `test_isolation_probe.py` tests error or fail — the cross-project leak guard is not weakened but entirely absent. Both lanes were green on Verify and on the repo floor, both passed Fable review, and neither touched benchlib so neither ran it | The mechanism is documented in `CLAUDE.md` verbatim — `testpaths = ["tests"]` means `pytest -q` does not collect `scripts/benchlib/tests`, so "the harness can break while the floor stays green", and the stated remedy is to run `./scripts/gate.sh`. **The controller merged three lanes on a green floor rather than a green gate**, which is the process defect; the reviewers were scoped to their lanes and the briefs asked for the floor. Recorded as an amendment rather than fixed silently because the same gap will recur on every future round that adds a surface: the fix is the merge procedure, not just these four drivers. Note what the guard protects — the probe is the only thing proving memory content does not cross a project boundary past its declared preview, and an offline guard is indistinguishable from a passing one in any report that only quotes the floor |
 | 2026-08-03 | T2.23, T2.13 | 1 | **T2.23 falsified the 2026-08-02 row's "unreachable from today's producer" premise for the empty-string tombstone key, and the code now guards it.** That row recorded `_invert_subsume` writing a tombstone under an empty-string key if a payload lacked `pair.newer`, and closed it as unreachable and one-line-fixable. T2.23's `prune` bulk action journals `pair.newer=None` by design — deprecation retires a memory without a successor — so undoing a prune reached exactly that path. `dream_undo._invert_subsume` now writes `counterpart or "_none"`; the AST atomicity guard re-runs unchanged and `test_dream_undo.py` is 88 passed. The re-review verified the sentinel on disk after a prune→undo round trip and found it **doubly inert**: the by-id reader never asks for it, and a null-counterpart `content_sha` cannot match. **The older row's text is left standing** — an amendment log is a record of what was believed when, not a document to retro-edit | Worth logging as its own row rather than as a footnote to T2.23, because the interesting content is the *shape*: a defect closed as unreachable became reachable two days later when a new caller supplied the one input the old producer never did. "Unreachable from today's producer" is a claim with an expiry date nobody sets. The disclosure also failed the first time — T2.23's own report did not mention it, and the reviewer found it; the fix round is where it was stated plainly. Five deferred minors from the re-review are recorded in the round's review file: the now-dead caller-supplied `cycle_id` parameter (whose only reachable use would relabel a mixed cycle wholesale, since `MIN` ignores NULLs), the untested `created_at` floor clause, the unpinned `_none` sentinel, the read-path guard's perimeter excluding hybrid search, and a `subject_name`/`subject_id` docstring slip whose surrounding argument the reviewer verified holds anyway |
