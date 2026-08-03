@@ -29,14 +29,14 @@ engine = create_async_engine(BENCH_DATABASE_URL)
 session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
-async def _reset_schema() -> None:
-    async with engine.begin() as conn:
+async def _reset_schema(target_engine=None) -> None:
+    async with (target_engine or engine).begin() as conn:
         await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
 
 
-def _run_alembic_upgrade() -> None:
-    env = {**os.environ, "DATABASE_URL": BENCH_DATABASE_URL}
+def _run_alembic_upgrade(url: str = BENCH_DATABASE_URL) -> None:
+    env = {**os.environ, "DATABASE_URL": url}
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=str(BACKEND_DIR), env=env, capture_output=True, text=True,
@@ -80,3 +80,63 @@ def _forget_registered_embedders() -> None:
     from app.services.embedder_registry import embedder_registry
     for fingerprint in list(embedder_registry._known):
         embedder_registry.forget(fingerprint)
+
+
+class BenchDatabase:
+    """A bench database chosen by URL rather than by ambient environment.
+
+    Exists so a test whose whole purpose is an in-process double run (the
+    T2.54 harvest reproducibility check) can select its own disposable
+    database instead of inheriting whatever ``BENCH_DATABASE_URL`` happens
+    to be exported -- the module-level default above is pinned at import
+    time and points at the shared unnumbered ``darkmem_bench`` under
+    ``./scripts/gate.sh``, which is exactly the database a self-sufficient
+    test must not clobber. The full ingest pipeline is session-factory
+    driven end to end, so handing ``session_factory`` down is sufficient
+    to redirect every write.
+    """
+
+    def __init__(self, url: str):
+        self.url = url
+        self.database = url.rsplit("/", 1)[-1].split("?", 1)[0]
+        self.engine = create_async_engine(url)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def ensure_created(self) -> None:
+        """CREATE DATABASE if missing, via the server's ``postgres``
+        maintenance database (CREATE DATABASE cannot run in a transaction,
+        hence AUTOCOMMIT). Concurrent creators race benignly: the loser's
+        'already exists' is swallowed."""
+        if not self.database.replace("_", "").isalnum():
+            raise ValueError(f"unsafe database name {self.database!r}")
+        maintenance_url = self.url.rsplit("/", 1)[0] + "/postgres"
+        maintenance = create_async_engine(
+            maintenance_url, isolation_level="AUTOCOMMIT"
+        )
+        try:
+            async with maintenance.connect() as conn:
+                exists = await conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                    {"name": self.database},
+                )
+                if exists.scalar_one_or_none() is None:
+                    try:
+                        await conn.execute(text(f'CREATE DATABASE "{self.database}"'))
+                    except Exception as exc:  # noqa: BLE001
+                        if "already exists" not in str(exc):
+                            raise
+        finally:
+            await maintenance.dispose()
+
+    async def reset(self) -> None:
+        """Mirror of ``reset_bench_db`` against this target: create if
+        missing, drop + recreate the schema, dispose the pool (stale
+        prepared-statement OIDs), migrate to head, forget embedders."""
+        await self.ensure_created()
+        await _reset_schema(self.engine)
+        await self.engine.dispose()
+        _run_alembic_upgrade(self.url)
+        _forget_registered_embedders()
+
+    async def dispose(self) -> None:
+        await self.engine.dispose()

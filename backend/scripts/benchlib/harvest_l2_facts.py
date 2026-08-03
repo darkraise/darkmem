@@ -212,19 +212,54 @@ async def run_harvest(
     *,
     api_key: str,
     allow_unnumbered: bool = False,
-    session_factory=bench_db.session_factory,
+    bench_url: str | None = None,
     cache_dir: str | Path = CACHE_DIR,
     corpus_path: str | Path = retrieval_gold.CORPUS_PATH,
     manifest_path: str | Path = MANIFEST_PATH,
     write: bool = False,
 ) -> HarvestResult:
-    db_name = bench_db_name()
+    """One harvest run. ``bench_url`` selects an explicit bench database,
+    engine and all -- the invocation-independent path a test must use; when
+    omitted, the run targets the environment's ``BENCH_DATABASE_URL`` via
+    the ``bench_db`` module (the CLI's deliberate, operator-owned path).
+    The name guard applies identically to both."""
+    target = bench_db.BenchDatabase(bench_url) if bench_url else None
+    db_name = target.database if target else bench_db_name()
     assert_bench_db_allowed(db_name, allow_unnumbered=allow_unnumbered)
+    try:
+        return await _run_harvest_on(
+            target,
+            api_key=api_key,
+            cache_dir=cache_dir,
+            corpus_path=corpus_path,
+            manifest_path=manifest_path,
+            write=write,
+            db_name=db_name,
+        )
+    finally:
+        if target is not None:
+            await target.dispose()
+
+
+async def _run_harvest_on(
+    target: "bench_db.BenchDatabase | None",
+    *,
+    api_key: str,
+    cache_dir: str | Path,
+    corpus_path: str | Path,
+    manifest_path: str | Path,
+    write: bool,
+    db_name: str,
+) -> HarvestResult:
+    session_factory = target.session_factory if target else bench_db.session_factory
 
     corpus_bytes = Path(corpus_path).read_bytes()
     entries = retrieval_gold.load_retrieval_corpus(corpus_path)
 
-    await bench_db.reset_bench_db()
+    if target is not None:
+        await target.reset()
+    else:
+        await bench_db.reset_bench_db()
     await run_smoke.seed_llm_purpose_configs(session_factory, api_key)
 
     async with session_factory() as session:

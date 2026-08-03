@@ -7,12 +7,25 @@ cache -> byte-identical extraction -> identical canonicalisation ->
 identical triple_key set. It needs the warm retrieval cache (gitignored,
 machine-local) and the bench Postgres; a checkout without the cache skips
 loudly rather than paying live model calls from a test floor.
+
+The reproducibility test **selects its own bench database** -- a numbered
+name derived from this checkout's path -- instead of reading
+``BENCH_DATABASE_URL``. An in-process double run exists only for the byte
+comparison, so it has no reason to care what a human exported; reading the
+environment made its result depend on the invocation (green in a lane with
+an assigned database, red under ``./scripts/gate.sh`` where the default is
+the guarded unnumbered ``darkmem_bench``, and -- worse -- a silent reset of
+a sibling lane's database wherever one was exported). Only the server
+coordinates come from the environment default; the database is the test's
+own, per checkout, so concurrent worktree floors cannot collide.
 """
+import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
-from benchlib import harvest_l2_facts
+from benchlib import bench_db, harvest_l2_facts
 from benchlib.harvest_l2_facts import (
     CACHE_DIR,
     MANIFEST_PATH,
@@ -21,6 +34,14 @@ from benchlib.harvest_l2_facts import (
     facts_json,
     run_harvest,
 )
+
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+
+def dedicated_bench_url() -> str:
+    checkout = hashlib.sha256(str(BACKEND_DIR).encode("utf-8")).hexdigest()[:10]
+    server = bench_db.BENCH_DATABASE_URL.rsplit("/", 1)[0]
+    return f"{server}/darkmem_bench_t{checkout}"
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +115,13 @@ def test_every_committed_fact_carries_its_traceability_fields(committed_manifest
 # Reproducibility: the harvest, twice in-process, byte-identical facts.
 # ---------------------------------------------------------------------------
 
+def test_the_dedicated_database_name_passes_the_guard():
+    url = dedicated_bench_url()
+    name = url.rsplit("/", 1)[-1]
+    assert name.startswith("darkmem_bench_t")
+    assert_bench_db_allowed(name)
+
+
 @pytest.mark.asyncio
 async def test_harvest_is_byte_reproducible_and_fully_cached():
     if not CACHE_DIR.is_dir() or not any(CACHE_DIR.iterdir()):
@@ -104,9 +132,11 @@ async def test_harvest_is_byte_reproducible_and_fully_cached():
 
     # The key is a sentinel on purpose: a warm cache makes zero live calls,
     # and a cache miss must fail loudly at the vendor rather than be paid
-    # for silently from a test floor.
-    first = await run_harvest(api_key="offline-warm-cache-only")
-    second = await run_harvest(api_key="offline-warm-cache-only")
+    # for silently from a test floor. The bench database is the test's own
+    # per-checkout one -- never the environment's.
+    url = dedicated_bench_url()
+    first = await run_harvest(api_key="offline-warm-cache-only", bench_url=url)
+    second = await run_harvest(api_key="offline-warm-cache-only", bench_url=url)
 
     assert first.live_calls == 0, (
         "harvest made live LLM calls against a cache that was expected to be "
