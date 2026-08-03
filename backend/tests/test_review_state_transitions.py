@@ -517,9 +517,16 @@ class TestTheDerivationItself:
             )
 
     def test_the_opener_set_is_a_registry_not_a_hard_coded_branch(self):
-        """T2.46 extends this tuple; it must not add a second writer."""
+        """T2.46 extended this tuple, and added no second writer.
+
+        Two members now: the veto's and the hysteresis'. The count is pinned
+        rather than merely bounded so that an opener added *outside* the
+        registry — the failure this registry exists to prevent — cannot pass
+        by leaving the tuple untouched while a new condition writes the column
+        for itself.
+        """
         assert isinstance(verification_ladder.REVIEW_OPENERS, tuple)
-        assert len(verification_ladder.REVIEW_OPENERS) == 1
+        assert len(verification_ladder.REVIEW_OPENERS) == 2
 
 
 # ───────── D4 — the journal population and the memories axis ─────────

@@ -126,6 +126,27 @@ per run. ``confirmed`` facts are excluded from the slice because
 ``decide()`` always holds them (T2.05); scanning them would only spend
 budget on a guaranteed no-op.
 
+**One recompute per fact per tick, and it is load-bearing rather than a
+saving.** When the slow arm is due it can slice over a fact the fast arm
+already recomputed moments earlier in the same tick — always, on any vault
+smaller than the slice size — so the slow arm skips whatever the fast arm just
+did (``DrainOutcome.recomputed_ids`` in, ``facts_skipped_fresh`` out). Both
+looks run in the same session and the same transaction, so the second one
+reads exactly the state the first one wrote and cannot possibly observe
+anything new. Before T2.46 that made it merely wasteful: a lock, a read and a
+no-op write per duplicated fact. With demotion hysteresis it is a correctness
+bug, because the grace window is counted in recompute cycles: a fact would
+burn two cycles on one tick, and at the shipped grace of 1 the whole window
+would collapse into the tick that opened it — the hysteresis silently not
+applying, exactly on the ticks the slow arm happens to be due. The skip is
+what makes "a cycle" mean "an opportunity for the fact to have been
+re-corroborated" rather than "a call".
+
+This does not weaken the backstop. The slow arm exists to reach facts the fast
+arm *missed*; a fact the fast arm just recomputed is by definition not one of
+them, and the cursor still advances over it, so the rotation period is
+unchanged.
+
 **Slow-arm cadence.** It only runs when ``slow_arm_interval_seconds`` has
 elapsed since its last run, checked against a persisted
 ``slow_arm_last_run_at`` — never on every tick. Running it every tick would
@@ -456,6 +477,9 @@ class DrainOutcome:
     facts_failed: int = 0
     facts_skipped_expired: int = 0
     transitions: int = 0
+    # Which facts this arm recomputed, so the slow arm can decline to recompute
+    # them again inside the same tick. See `run_recompute`.
+    recomputed_ids: frozenset[str] = frozenset()
 
 
 async def _drain_sources_changed(
@@ -482,6 +506,7 @@ async def _drain_sources_changed(
             fact_ids.append(fact_id)
 
     recomputed = failed = transitions = skipped_expired = 0
+    recomputed_ids: set[str] = set()
     for fact_id in fact_ids:
         try:
             async with session.begin_nested():
@@ -498,6 +523,7 @@ async def _drain_sources_changed(
             )
             continue
         recomputed += 1
+        recomputed_ids.add(str(fact_id))
         if decision.outcome != "hold":
             transitions += 1
 
@@ -514,6 +540,7 @@ async def _drain_sources_changed(
         facts_failed=failed,
         facts_skipped_expired=skipped_expired,
         transitions=transitions,
+        recomputed_ids=frozenset(recomputed_ids),
     )
     return outcome, new_state
 
@@ -578,11 +605,16 @@ class ReconcileOutcome:
     facts_scanned: int = 0
     facts_healed: int = 0
     facts_skipped_expired: int = 0
+    facts_skipped_fresh: int = 0
     wrapped: bool = False
 
 
 async def _reconcile_from_fact_sources(
-    session: AsyncSession, state: _State, *, batch_size: int
+    session: AsyncSession,
+    state: _State,
+    *,
+    batch_size: int,
+    already_recomputed: frozenset[str] = frozenset(),
 ) -> tuple[ReconcileOutcome, _State]:
     cur_ts = state.slow_cursor_created_at or _EPOCH
     cur_id = state.slow_cursor_id or _NIL_UUID
@@ -591,9 +623,12 @@ async def _reconcile_from_fact_sources(
     )
     rows = result.mappings().all()
 
-    healed = skipped_expired = 0
+    healed = skipped_expired = skipped_fresh = 0
     for row in rows:
         fact_id = str(row["id"])
+        if fact_id in already_recomputed:
+            skipped_fresh += 1
+            continue
         try:
             async with session.begin_nested():
                 await _set_local_lock_timeout(session)
@@ -624,7 +659,8 @@ async def _reconcile_from_fact_sources(
         )
     outcome = ReconcileOutcome(
         facts_scanned=len(rows), facts_healed=healed,
-        facts_skipped_expired=skipped_expired, wrapped=wrapped,
+        facts_skipped_expired=skipped_expired, facts_skipped_fresh=skipped_fresh,
+        wrapped=wrapped,
     )
     return outcome, new_state
 
@@ -667,7 +703,10 @@ async def run_recompute(
     )
     if due:
         reconcile_outcome, state = await _reconcile_from_fact_sources(
-            session, state, batch_size=slow_arm_batch_size
+            session,
+            state,
+            batch_size=slow_arm_batch_size,
+            already_recomputed=drain_outcome.recomputed_ids,
         )
         state = replace(state, slow_arm_last_run_at=moment)
     else:

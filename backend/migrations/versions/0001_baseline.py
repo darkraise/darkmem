@@ -479,6 +479,17 @@ def _pass_two() -> None:
     # table's contract is invalidate-not-delete, so expired triples must
     # survive their endpoints. The denormalised lowercase names carry the
     # durable identity instead.
+    #
+    # demotion_pending_since / demotion_pending_cycles are doc 08 §4.3's
+    # demotion hysteresis, and they are NOT a fifth rung: the CHECK below
+    # still admits exactly four verification_status values, and an
+    # under-sourced fact is a still-`corroborated` row wearing an overlay
+    # (doc 13 §5.3, doc 14). `demotion_pending_since IS NOT NULL` is
+    # simultaneously the label a consumer renders and the review-queue
+    # predicate `verification_ladder.derive_review_state` registers, which is
+    # why the marker is nullable rather than defaulted. The companion counter
+    # is what makes the grace measurable at all: doc 08 §4.3 fixes the window
+    # in *consecutive recompute cycles*, and a timestamp cannot count cycles.
     op.execute(
         """
         CREATE TABLE knowledge_triples (
@@ -501,6 +512,8 @@ def _pass_two() -> None:
             learned_in          TEXT[],
             review_state        TEXT,
             source_file         TEXT,
+            demotion_pending_since  TIMESTAMPTZ,
+            demotion_pending_cycles INTEGER NOT NULL DEFAULT 0,
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT knowledge_triples_pkey PRIMARY KEY (id),
             CONSTRAINT knowledge_triples_verification_status_check

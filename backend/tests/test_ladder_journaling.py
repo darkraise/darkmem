@@ -160,6 +160,13 @@ class TestEveryTransitionJournals:
         fact_id = await _make_fact(session, key="demote-1", status="corroborated")
         await _add_origin(session, fact_id, "sess-a", kind="memory")
 
+        # T2.46's grace cycle first, and it journals nothing: the rung has not
+        # moved, so a row here would be a transition G-C's SQL counts and no
+        # fact made.
+        await recompute_fact(session, fact_id)
+        await session.commit()
+        assert await _events_for(session, fact_id) == []
+
         decision = await recompute_fact(session, fact_id)
         await session.commit()
 
@@ -714,6 +721,11 @@ class TestTheVerifiedPopulationIsUnchanged:
         demoted = await _make_fact(session, key="pop-demote", status="corroborated")
         await _add_origin(session, demoted, "sess-c", kind="memory")
         fact_ids.append(demoted)
+        # Two cycles, because T2.46's grace window holds the first one. The
+        # hold is silent — target == current, neither blocker set — so it adds
+        # a recompute and no row, which is the property this count is for.
+        decisions.append(await recompute_fact(session, demoted))
+        await session.commit()
         decisions.append(await recompute_fact(session, demoted))
         await session.commit()
 
@@ -777,7 +789,7 @@ class TestTheVerifiedPopulationIsUnchanged:
 
         assert expected == 5, (
             "promote, demote, dispute, blocked hold, recover — five journalling "
-            "decisions out of eight recomputes"
+            "decisions out of nine recomputes"
         )
         assert actual == expected
 

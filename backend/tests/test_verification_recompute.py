@@ -27,6 +27,7 @@ from app.services.events import record_event
 from app.services.job_registry import JobRegistry
 from app.services.verification_recompute import (
     DEFAULT_FAST_BATCH,
+    DEFAULT_SLOW_ARM_INTERVAL_SECONDS,
     DEFAULT_SLOW_BATCH,
     RECOMPUTE_CONFIG_SCHEMA,
     run_recompute,
@@ -269,6 +270,13 @@ class TestWithdrawalDemotes:
     pytestmark = pytest.mark.usefixtures("_reset_recompute_state")
 
     async def test_withdrawn_source_demotes_corroborated_to_candidate(self, session):
+        """The withdrawal demotes — one grace cycle after it is detected.
+
+        Two ticks, because T2.46's hysteresis holds the first one. The second
+        tick reaches the fact through the slow arm: the fast arm's watermark
+        has already passed the withdrawal's event, which is precisely the
+        shape that makes the two arms a pair rather than a duplicate.
+        """
         # Same-kind, close-in-time origins: no diversity gate, no time gate,
         # so N = CORROBORATION_N_DEFAULT = 3.
         fact_id = await _make_fact(session, key="demote-1", status="corroborated")
@@ -279,11 +287,25 @@ class TestWithdrawalDemotes:
         await _remove_source(session, s1)
         await _emit_sources_changed(session, fact_id=fact_id, memory_ref="memory:sess-a")
 
-        outcome = await run_recompute(session, now=_safe_now())
+        first = await run_recompute(session, now=_safe_now())
+        await session.commit()
+
+        # Labelled, not demoted, and not journalled: the rung has not moved.
+        assert await _status_of(session, fact_id) == "corroborated"
+        assert first.drain.transitions == 0
+        assert await _verified_events(session, fact_id) == []
+        # The slow arm ran on this tick too and declined to re-look at the
+        # fact the fast arm had just recomputed. Without that skip the window
+        # would have closed inside the tick that opened it.
+        assert first.reconcile.facts_skipped_fresh == 1
+
+        outcome = await run_recompute(
+            session, now=_safe_now() + timedelta(seconds=DEFAULT_SLOW_ARM_INTERVAL_SECONDS)
+        )
         await session.commit()
 
         assert await _status_of(session, fact_id) == "candidate"
-        assert outcome.drain.transitions == 1
+        assert outcome.reconcile.facts_healed == 1
         events = await _verified_events(session, fact_id)
         assert len(events) == 1
         assert events[0]["outcome"] == "demote"

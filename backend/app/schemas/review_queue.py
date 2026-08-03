@@ -75,6 +75,11 @@ class ReviewQueueFactItem(BaseModel):
     verification_status: str
     confidence: float | None
     review_state: str | None
+    # Doc 08 §4.3's under-sourced marker, carried beside `reason` rather than
+    # folded into it: `reason` says why the row is queued, this says since
+    # when the demotion has been pending, which is what a human triaging one
+    # needs to judge whether the grace window is about to close.
+    demotion_pending_since: datetime | None = None
     reason: str
     evidence: dict[str, Any] | None
     # None only when a caller pins ARRIVAL_DESC, which computes no ranking.
