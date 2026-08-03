@@ -123,15 +123,17 @@ def _synthetic_gold(n_live, n_l2, n_author):
 
 
 def test_the_real_gold_is_refused_with_counts_surfaced():
+    # Post-Step-4 composition: size and the 50% floor now clear, so the one
+    # remaining refusal ground is the pending Step-5/6 adjudication.
     eligibility = jq.gate_eligibility(entailment_gold.load_entailment_gold())
     assert eligibility.eligible is False
-    assert eligibility.live_pairs == 41
-    assert eligibility.l2_fact_pairs == 0
-    assert eligibility.author_labelled_pairs == 41
+    assert eligibility.live_pairs == 241
+    assert eligibility.l2_fact_pairs == 153
+    assert eligibility.author_labelled_pairs == 241
     joined = "\n".join(eligibility.reasons)
-    assert "41 < 200" in joined
-    assert "l2-fact: 0/41" in joined
-    assert "author-labelled: 41/41" in joined
+    assert "l2-fact: 153/241" in joined
+    assert "author-labelled: 241/241" in joined
+    assert "await" in joined and "adjudication" in joined
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
@@ -639,9 +641,8 @@ def test_gate_mode_refuses_the_real_gold_before_any_call(tmp_path):
     with pytest.raises(RuntimeError) as excinfo:
         _run(tmp_path, stub_cls, gate=True)
     message = str(excinfo.value)
-    assert "41 < 200" in message
-    assert "l2-fact: 0/41" in message
-    assert "author-labelled: 41/41" in message
+    assert "l2-fact: 153/241" in message
+    assert "author-labelled: 241/241" in message
     assert seen == [], "eligibility refusal must precede any model call"
 
 
@@ -681,4 +682,4 @@ def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
     fixture = result.twin.channels["fixture_call"]
     gold = result.twin.channels["judge_call"]
     assert fixture.live.n == len(SANITY_PREMISES)
-    assert gold.live.n == result.score.n_pairs == 41
+    assert gold.live.n == result.score.n_pairs == 241
