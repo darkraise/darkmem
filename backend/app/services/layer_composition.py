@@ -1,17 +1,25 @@
-"""Doc 07 §5's four-layer composition — steps 1 to 4 (T2.43).
+"""Doc 07 §5's four-layer composition — all five steps (T2.43, T2.55).
 
 One ordered, total, deterministic list of rows drawn from more than one
 epistemic layer, each labelled with where it came from and how well it is
-believed. Steps 1 to 4 live here: merge the channel lists in their own key
-spaces, label and order them, optionally re-band by a rerank, and apply the
-deterministic multipliers. **Step 5 — grouping supporting memories under a
-returned fact — is T2.55's**, and this module deliberately emits no
-``grouping`` key: emitting one would claim a grouping pass ran. The sectioned
-and fused output shapes are T2.56's; Chat's convergence onto this entry point
-is T2.58's. Nothing here has a productive caller yet, and the envelope says so
+believed. Merge the channel lists in their own key spaces, label and order
+them, optionally re-band by a rerank, apply the deterministic multipliers, and
+finally group each returned memory under the fact it sources. The sectioned and
+fused output shapes are T2.56's; Chat's convergence onto this entry point is
+T2.58's. Nothing here has a productive caller yet, and the envelope says so
 rather than reporting deferred arms as if they had run.
 
-**Three properties the layers below are built on, none of them incidental.**
+**Grouping is composition's last step, never a renderer's first.** Doc 07 §5
+fixes the order and §11 records it as a resolved question rather than a
+preference: the reranker scores individual rows for query-relevance, so it must
+see a supporting memory *before* the provenance collapse hides it. So step 5
+runs after the rerank and after the multipliers, inside :func:`compose`, and
+both output shapes consume a list that is already grouped. A collapse
+implemented in one renderer would be absent from the other, and the fused shape
+— the one a token budget takes — is precisely where a triple count is least
+affordable.
+
+**Four properties the layers below are built on, none of them incidental.**
 
 *Keys are namespaced.* The merge key is ``"<id_kind>:<raw_id>"``, minted by
 :func:`composition_key`. ``rank_fusion.normalize_row_id`` reads ``memory_id``
@@ -21,8 +29,14 @@ table each came from — and ``rrf_fuse`` has no notion of an unexpected merge,
 so it would sum their mass in silence. The likelier accident is the reverse: a
 caller reshapes a fact row as ``{"memory_id": ...}`` to make an existing helper
 work and the fact becomes indistinguishable from a memory downstream. A
-namespaced key makes both unrepresentable, and gives T2.55's ``grouped_under``
+namespaced key makes both unrepresentable, and gives ``grouped_under``
 something that can name one object in one space.
+
+*Support is read, never inferred.* ``fact_sources`` is the sole authority for
+which memories back a fact (doc 04 §8.3). Text overlap, embedding proximity and
+a shared entity all look like support and none of them is; a composition
+inferring it would nest — and so remove from view — a row nothing asserts a
+link to.
 
 *Invariant 9 is normalised at admission, not at the merge.* :func:`_admit_id`
 is the single place ``str()`` is spelled; :func:`composition_key` refuses a
@@ -48,11 +62,12 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
 from app.services.facts_channel import (
@@ -88,6 +103,7 @@ __all__ = [
     "LAYERS",
     "LAYER_BY_ID_KIND",
     "MEMORY_TIER",
+    "SUPPORTS_FACT_RELATION",
     "TIER_BY_VERIFICATION_STATUS",
     "ComposedRow",
     "CompositionResult",
@@ -103,6 +119,7 @@ __all__ = [
     "rerank_document_text",
     "fact_candidate",
     "memory_candidate",
+    "support_map",
     "tier_for",
 ]
 
@@ -137,6 +154,12 @@ CHANNEL_LIST_WEIGHTS: dict[str, float] = {"memory": 1.0, "fact": 1.0, "article":
 SIGNAL_KEYS: tuple[str, ...] = ("confidence", "importance", "heat", "recency")
 
 DISPUTED = "disputed"
+
+# Doc 12's composed-row field table fixes this string verbatim. The trailing
+# ``F`` is part of the literal and not a placeholder for the fact's own id or
+# text: ``grouped_under`` already names the fact, and a consumer interpolating
+# something there would render a relation no other consumer speaks.
+SUPPORTS_FACT_RELATION = "supports fact F"
 
 # What the composition says when a disputed fact has no counterpart block on
 # its latest verified event. It says "no scan produced one here" and never
@@ -239,6 +262,26 @@ def _admit_id(raw: object) -> str:
     if raw is None:
         raise TypeError("a candidate row carries no id; the composition cannot key it")
     return str(raw)
+
+
+def support_map(pairs: Iterable[tuple[object, object]]) -> dict[str, frozenset[str]]:
+    """``(fact_id, memory_id)`` provenance pairs, in the composition's keyspace.
+
+    The one place raw ``fact_sources`` identity becomes composition identity, so
+    invariant 9's normalisation and the namespacing are each spelled once for
+    the grouping pass. Keying this map on bare ids instead would reintroduce the
+    exact drift :func:`composition_key` exists to close: the value side is
+    matched against ``ComposedRow.key``, so a bare id matches nothing at all,
+    and a fact and a memory that happen to share a UUID would collide into one
+    entry the moment anything else keyed the same way.
+    """
+    out: dict[str, set[str]] = {}
+    for fact_id, memory_id in pairs:
+        fact_key = composition_key("fact", _admit_id(fact_id))
+        out.setdefault(fact_key, set()).add(
+            composition_key("memory", _admit_id(memory_id))
+        )
+    return {fact_key: frozenset(members) for fact_key, members in out.items()}
 
 
 def _signals(row: Mapping) -> dict[str, float]:
@@ -444,9 +487,19 @@ class ComposedRow:
     so a client is handed a bare id it can look up. ``key ==
     f"{id_kind}:{id}"`` always.
 
-    There is deliberately **no** ``grouping`` key. Emitting
-    ``{grouped_under: None}`` would claim a grouping pass ran; T2.55 adds the
-    key when it adds the pass.
+    ``grouping`` is doc 12's ``{grouped_under, relation}`` object, and its
+    **presence is the evidence that the grouping pass ran**. ``None`` means
+    :func:`compose` was handed no provenance, so nothing was grouped and
+    nothing could have been; ``{grouped_under: None, relation: None}`` means
+    the pass ran and this row is nested under nothing. Collapsing the two would
+    let a caller that never looked up provenance read exactly like one that
+    looked and found none.
+
+    ``supported_by`` carries the nested evidence, and carries it **whole**: a
+    nested row is the identical ``ComposedRow`` it would have been at the top
+    level, scores included, because doc 07 §5 requires a grouped memory to keep
+    its own rrf/rerank scores in the trace. Nothing about the enclosing row
+    moves in response — the group's rank is the fact's rank.
     """
 
     key: str
@@ -464,6 +517,8 @@ class ComposedRow:
     labels: Mapping[str, object]
     dispute: Mapping[str, object] | None
     row: Mapping[str, object]
+    grouping: Mapping[str, object] | None = None
+    supported_by: tuple["ComposedRow", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -473,11 +528,17 @@ class CompositionResult:
     ``excluded_by_context_conflict`` is doc 07 §8's ``by_context_conflict``
     and is reported unconditionally, including when it is zero — a suppressed
     count hides exactly the case a reader needs.
+
+    ``rows`` is the **top level only** once grouping has run: a nested memory
+    lives under its fact and nowhere else, so ``len(rows)`` counts a group as
+    one. Every count a consumer takes off this list — the answer budget
+    included — inherits that, which is the whole of the no-triple-count rule.
     """
 
     rows: list[ComposedRow]
     excluded_by_context_conflict: int = 0
     reranked: bool = False
+    grouped: bool = False
 
 
 def _rerank_bands(
@@ -533,6 +594,94 @@ def _reband_within_channels(rows: list[ComposedRow]) -> list[ComposedRow]:
     return out
 
 
+def _grouping(fact_id: str | None) -> dict:
+    """Doc 12's ``grouping`` object, in the one shape both cases share.
+
+    The two fields move together by construction: a row nested under a fact
+    always names the relation, and a row nested under nothing never does. Split
+    across two spellings they could drift into ``{grouped_under: None,
+    relation: "supports fact F"}``, which asserts a support with no supported
+    object.
+    """
+    return {
+        "grouped_under": fact_id,
+        "relation": SUPPORTS_FACT_RELATION if fact_id is not None else None,
+    }
+
+
+def _group_under_fact(
+    rows: list[ComposedRow], support: Mapping[str, frozenset[str]]
+) -> list[ComposedRow]:
+    """Doc 07 §5 step 5 — nest each returned memory under the fact it sources.
+
+    Four properties, and each of them is the no-triple-count rule seen from a
+    different side.
+
+    *A nested row leaves the top level entirely.* Keeping it in both places is
+    the triple count with an indent: every count taken off the returned list
+    would still see three hits where the system has one claim, and the answer
+    budget would spend three slots on it.
+
+    *Nothing about the enclosing fact moves.* Its band, tier and weighted score
+    are the group's, unchanged. The nested rows keep their own scores for the
+    trace and those scores are never summed, averaged or folded in — evidence
+    re-entering the ranking through the row it is nested under would be counted
+    twice by arithmetic rather than by row, which is the same inflation in a
+    place no row count can see.
+
+    *The nesting is scoped to what is being served.* A memory whose fact is
+    absent from ``rows`` stays a top-level row, because nesting it under a fact
+    the caller was never handed would remove it from view altogether. The same
+    test is what makes a dangling ``source_ref`` inert rather than
+    special-cased: ``fact_sources`` has no FK to ``memories``, so a ref naming a
+    deleted memory is representable, and it simply matches no returned row.
+
+    *A memory sourcing two returned facts nests once, under the higher-ranked
+    one.* Splitting it across both would restore exactly the duplication the
+    pass exists to remove, and the position tie-break keeps the choice
+    deterministic rather than dictionary-ordered.
+
+    **Only an L0 row may be nested, and that is checked here rather than
+    assumed.** ``add_source`` already refuses a derived ``source_kind`` — a
+    fact or an article re-asserting a claim must not inflate the very fact it
+    cites — and :func:`support_map` can only mint ``memory:`` on the value
+    side. Both of those sit upstream, so neither survives a caller assembling
+    a map by hand. Nesting an article would remove an L3 row from the top level
+    on the strength of provenance that cannot exist, so the last line of
+    defence is spelled where the removal happens.
+    """
+    position = {row.key: index for index, row in enumerate(rows)}
+    by_key = {row.key: row for row in rows}
+    facts = {row.key for row in rows if row.id_kind == "fact"}
+    nestable = {row.key for row in rows if row.id_kind == "memory"}
+
+    nest_under: dict[str, str] = {}
+    for fact_key, memory_keys in support.items():
+        if fact_key not in facts:
+            continue
+        for memory_key in memory_keys:
+            if memory_key not in nestable:
+                continue
+            incumbent = nest_under.get(memory_key)
+            if incumbent is None or position[fact_key] < position[incumbent]:
+                nest_under[memory_key] = fact_key
+
+    nested: dict[str, list[ComposedRow]] = {}
+    for row in rows:
+        fact_key = nest_under.get(row.key)
+        if fact_key is None:
+            continue
+        nested.setdefault(fact_key, []).append(
+            replace(row, grouping=_grouping(by_key[fact_key].id))
+        )
+
+    return [
+        replace(row, grouping=_grouping(None), supported_by=tuple(nested.get(row.key, ())))
+        for row in rows
+        if row.key not in nest_under
+    ]
+
+
 def compose(
     candidates,
     *,
@@ -540,13 +689,23 @@ def compose(
     declared_context: DeclaredContext | None = None,
     evidence: Mapping[str, Mapping] | None = None,
     rerank_scores: Mapping[str, float] | None = None,
+    fact_sources: Mapping[str, frozenset[str]] | None = None,
 ) -> CompositionResult:
-    """Doc 07 §5 steps 1 to 4, as a pure function.
+    """Doc 07 §5 steps 1 to 5, as a pure function.
 
     No session, no clock, no LLM — the same split the verification ladder
     keeps between its decision and its applier, and for the same reason: it
     makes every ordering, tier and keyspace property a fast test that can be
     mutated cheaply and often.
+
+    **``fact_sources`` is a tri-state, exactly as ``rerank_scores`` is.**
+    ``None`` says no provenance was looked up, so step 5 does not run and no
+    row carries a ``grouping`` key; a mapping — **including an empty one** —
+    says the lookup ran, so every row carries the key and an empty mapping
+    honestly reports that nothing was found to group. A default that grouped
+    unconditionally would make "never asked" indistinguishable from "asked and
+    found none", which is the same collapse the terminal rerank band exists to
+    prevent.
 
     **The order is ascending on ``(band, -tier, key)``.** ``key`` is the sole
     tie-break because it is input-independent: an insertion-order tie-break
@@ -577,7 +736,7 @@ def compose(
     if duplicated:
         raise ValueError(
             f"two candidates share the composition key(s) {duplicated}; a key "
-            "names one object in one space, and T2.55's grouping map keys on it"
+            "names one object in one space, and the grouping map keys on it"
         )
 
     # The context map is keyed by the **namespaced** key, which is why
@@ -640,10 +799,22 @@ def compose(
     else:
         rows = _reband_within_channels(rows)
 
+    # Step 5 is last, and last after the rerank specifically (doc 07 §11,
+    # resolved). It reads the finished order rather than producing one: a
+    # nested row keeps the band the rerank gave it, and the gaps grouping
+    # leaves in the top-level bands are not closed, because renumbering the
+    # survivors would be evidence re-entering the ranking it was just removed
+    # from.
+    ordered = sorted(rows, key=lambda r: (r.band, -r.tier, r.key))
+    grouped = fact_sources is not None
+    if grouped:
+        ordered = _group_under_fact(ordered, fact_sources)
+
     return CompositionResult(
-        rows=sorted(rows, key=lambda r: (r.band, -r.tier, r.key)),
+        rows=ordered,
         excluded_by_context_conflict=excluded_by_context_conflict,
         reranked=reranked,
+        grouped=grouped,
     )
 
 
@@ -816,6 +987,30 @@ class LayerCompositionService:
             return None
         return scores
 
+    async def derive_support_map(
+        self, fact_ids: list[str]
+    ) -> dict[str, frozenset[str]]:
+        """Step 5's input: which memories source each fact in this result set.
+
+        **One bounded lookup for the whole set**, never one per returned fact —
+        a per-fact call would put a round trip behind every fact a query
+        returns, on the hot read path.
+
+        ``fact_sources`` is the sole authority (doc 07 §5, doc 04 §8.3). Nothing
+        here derives support from text overlap, embedding proximity or a shared
+        entity: those resemble support without asserting it, and a wrongly
+        nested row is a row removed from view rather than merely mislabelled.
+
+        An empty mapping is a real answer and is returned as one — the lookup
+        ran and this result set has no provenance to group on.
+        """
+        if not fact_ids:
+            return {}
+        refs = await FactSourceRepository(self.session).memory_refs_for_facts(fact_ids)
+        return support_map(
+            (fact_id, ref) for fact_id, group in refs.items() for ref in group
+        )
+
     async def search(
         self,
         query: str,
@@ -894,6 +1089,13 @@ class LayerCompositionService:
         fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
         evidence = await latest_verified_evidence(self.session, fact_ids)
 
+        # The provisional pass is deliberately **ungrouped**, and that is what
+        # implements doc 07 §11's resolved rerank-before-grouping order rather
+        # than merely documenting it: the reranker is handed this list, so a
+        # memory that will end up nested is still scored for query-relevance
+        # here. Grouping it first would hide a highly-relevant supporting
+        # memory from the model that was supposed to rate it, and the trace
+        # would then carry a nested row with no rerank verdict at all.
         provisional = compose(
             candidates,
             weights=weights,
@@ -901,16 +1103,13 @@ class LayerCompositionService:
             evidence=evidence,
         )
         rerank_scores = await self.derive_rerank_scores(query, provisional.rows)
-        result = (
-            provisional
-            if rerank_scores is None
-            else compose(
-                candidates,
-                weights=weights,
-                declared_context=declared_context,
-                evidence=evidence,
-                rerank_scores=rerank_scores,
-            )
+        result = compose(
+            candidates,
+            weights=weights,
+            declared_context=declared_context,
+            evidence=evidence,
+            rerank_scores=rerank_scores,
+            fact_sources=await self.derive_support_map(fact_ids),
         )
 
         envelope = RetrievalEnvelope(
@@ -929,4 +1128,10 @@ class LayerCompositionService:
         # a per-channel quota, so the composed order is cut here — after the
         # ordering, by rank, never by label. Nothing is dropped for its
         # verification status; this drops the tail of a total order.
+        #
+        # The cut lands **after** grouping, so it spends the budget on ``limit``
+        # distinct claims rather than on ``limit`` rows that may restate one.
+        # The consequence is deliberate and follows from the group's rank being
+        # the fact's: a memory nested under a fact that falls past the cut goes
+        # with it, even if the memory alone would have ranked above the cut.
         return ComposedResult(rows=result.rows[:limit], envelope=envelope)
