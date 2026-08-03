@@ -34,6 +34,7 @@ from app.services.fact_badge import (
     badges_for_facts,
     build_badge,
     build_claim,
+    counterpart_claim,
     row_labels,
 )
 
@@ -159,6 +160,35 @@ def test_a_fact_verification_has_never_reached_claims_no_timestamp():
         "no known contradiction, verification not yet recomputed"
     )
     assert "as of" not in claim
+
+
+def test_a_fact_nothing_asserts_renders_the_zero_origin_sentence():
+    """Reachable in production, not only in a fixture: the withdrawal sweep
+    deletes a fact's provenance before expiring the fact it orphans, so a fact
+    with no sources exists between those two writes. Pinned rather than
+    special-cased — the sentence says nothing currently asserts this, which is
+    what a reader of a just-withdrawn row most needs to see."""
+    assert build_claim(
+        verification_status="candidate",
+        origin_count=0,
+        origin_kinds=[],
+        as_of=AS_OF,
+    ) == (
+        "asserted by 0 distinct origins of kinds [], "
+        "no known contradiction, as of 2026-07-20"
+    )
+
+
+def test_the_zero_origin_sentence_survives_having_no_transition_either():
+    assert build_claim(
+        verification_status="candidate",
+        origin_count=0,
+        origin_kinds=[],
+        as_of=None,
+    ) == (
+        "asserted by 0 distinct origins of kinds [], "
+        "no known contradiction, verification not yet recomputed"
+    )
 
 
 def test_the_claimed_day_is_utc_whatever_offset_the_row_arrives_in():
@@ -478,6 +508,49 @@ async def test_a_disputed_fact_with_no_block_degrades_rather_than_inventing(sess
         "disputed: 1 origin asserts postgres RUNS_ON docker, "
         "the contradicting claim was not recorded, as of 2026-07-20"
     )
+
+
+@pytest.mark.parametrize("malformed_id", ["", "   ", None])
+async def test_a_malformed_counterpart_id_degrades_rather_than_raising(
+    session, malformed_id
+):
+    """``events`` is append-only, so a malformed historical row cannot be
+    pruned and every reader has to survive one forever. No writer produces
+    these today; that is the reason to handle them here rather than the
+    reason not to."""
+    fact_id = await _fact(session, status="disputed")
+    await _source(session, fact_id, origin="session-a")
+    await _journal_verified(
+        session,
+        fact_id,
+        at=AS_OF,
+        contradiction={
+            "counterpart_id": malformed_id,
+            "counterpart_subject": "postgres",
+            "counterpart_rel_type": "RUNS_ON",
+            "counterpart_object": "kubernetes",
+            "rule": "functional_uniqueness",
+            "witness_origin": "session-c",
+            "enumeration": "first_finding",
+        },
+    )
+
+    badge = await badge_for_fact(session, await _row(session, fact_id))
+    assert badge.contradiction is True
+    assert badge.claim == (
+        "disputed: 1 origin asserts postgres RUNS_ON docker, "
+        "the contradicting claim was not recorded, as of 2026-07-20"
+    )
+
+
+def test_a_blank_counterpart_id_reports_as_absent_not_as_a_lookup_key():
+    block = {
+        "counterpart_id": "  ",
+        "counterpart_subject": "postgres",
+        "counterpart_rel_type": "RUNS_ON",
+        "counterpart_object": "kubernetes",
+    }
+    assert counterpart_claim(block) == (None, "postgres RUNS_ON kubernetes")
 
 
 async def test_human_ratified_tracks_a_human_kind_source(session):

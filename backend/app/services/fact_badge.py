@@ -49,6 +49,16 @@ recorded. It never falls back to the plain one-sided form, because "no known
 contradiction" on a fact we know is disputed is the one sentence this module
 exists to make unwritable.
 
+**Zero origins is a sentence, not a special case.** ``asserted by 0 distinct
+origins of kinds []`` renders, and is pinned by a vector like every other form.
+The state is reachable in production rather than only in a fixture: the
+withdrawal sweep deletes a fact's provenance rows before expiring the fact they
+orphan, so a fact with no sources at all exists between those two writes. The
+sentence is also the honest one — it says nothing currently asserts this, which
+is exactly what a reader of a row whose evidence has just been withdrawn most
+needs to know. Suppressing the badge or refusing to build one would hide that,
+and refusing would put a read-path failure on a legitimate transient state.
+
 **The forbidden words are guarded on the badge's own vocabulary, not on the
 data.** The rule is that the *badge* never says "true" or "verified"; a fact
 whose object is literally the word ``verified`` is the badge quoting evidence,
@@ -270,6 +280,12 @@ def counterpart_claim(block: Mapping[str, Any] | None) -> tuple[str | None, str 
     triple. The three causes of a missing block are indistinguishable from the
     journal (see ``verified_evidence``), so this reports absence and never
     guesses which one it is.
+
+    An id that is blank or whitespace reports as absent rather than as a
+    lookup key. ``events`` is append-only, so a malformed historical row
+    cannot be pruned once written and every reader has to survive one
+    forever; the id it yields is either ``None`` or usable, never something
+    in between that one caller filters and the next dereferences.
     """
     if not isinstance(block, Mapping):
         return None, None
@@ -278,8 +294,19 @@ def counterpart_claim(block: Mapping[str, Any] | None) -> tuple[str | None, str 
         block.get("counterpart_rel_type"),
         block.get("counterpart_object"),
     )
-    counterpart_id = block.get("counterpart_id")
-    return (str(counterpart_id) if counterpart_id is not None else None), text
+    raw_id = block.get("counterpart_id")
+    counterpart_id = str(raw_id).strip() if raw_id is not None else ""
+    return (counterpart_id or None), text
+
+
+def _names_a_counterpart(counterpart_id: str | None, counterpart_text: str | None) -> bool:
+    """The one predicate deciding whether the two-sided form has both sides.
+
+    Spelled once and called from both the id-gathering pass and the per-row
+    build. Two spellings of "we have a counterpart" is how the gathering pass
+    skips a key the build then looks up.
+    """
+    return bool(counterpart_id) and bool(counterpart_text)
 
 
 def build_badge(
@@ -366,7 +393,11 @@ async def badges_for_facts(
         counterpart_by_fact[fid] = counterpart_claim(block)
 
     counterpart_ids = sorted(
-        {cid for cid, text in counterpart_by_fact.values() if cid and text}
+        {
+            cid
+            for cid, text in counterpart_by_fact.values()
+            if _names_a_counterpart(cid, text)
+        }
     )
     counterpart_profiles = (
         await sources.origin_profiles(counterpart_ids) if counterpart_ids else {}
@@ -377,7 +408,7 @@ async def badges_for_facts(
         fid = str(row["id"])
         counterpart_id, counterpart_text = counterpart_by_fact.get(fid, (None, None))
         counterpart_count = None
-        if counterpart_id is not None and counterpart_text is not None:
+        if _names_a_counterpart(counterpart_id, counterpart_text):
             counterpart_count = counterpart_profiles[counterpart_id].origin_count
         badges[fid] = build_badge(
             verification_status=row.get("verification_status"),
