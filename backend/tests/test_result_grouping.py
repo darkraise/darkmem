@@ -279,23 +279,61 @@ def test_a_memory_sourcing_two_returned_facts_nests_once():
     assert holder.id == str(first)
 
 
-def test_an_article_is_never_nested_and_never_a_group():
-    """Only ``source_kind='memory'`` provenance exists, so L3 stays top level."""
-    fact_id, article_id = uuid4(), uuid4()
+def _article_row(article_id) -> dict:
+    return {
+        "article_id": article_id,
+        "title": "an article",
+        "project": PROJECT,
+        "verification_status": "candidate",
+        "review_state": None,
+    }
+
+
+def test_an_article_is_never_nested_even_when_the_map_says_to():
+    """Only an L0 row may be nested, asserted against a map that asks otherwise.
+
+    The map here is built **by hand**, not through ``support_map``, and that is
+    the point: ``support_map`` can only mint ``memory:`` on the value side and
+    ``add_source`` refuses a derived ``source_kind`` outright, so both upstream
+    defences are unreachable from a test that goes through them — it would pass
+    with the rule deleted. A hand-built article entry is the construction that
+    would nest an article if the composition let it, so this fails the moment
+    the id_kind check in ``_group_under_fact`` is removed.
+    """
+    fact_id, article_id, memory_id = uuid4(), uuid4(), uuid4()
     candidates = [
         lc.fact_candidate(_fact_row(fact_id), channel_rank=1),
-        lc.article_candidate(
-            {"article_id": article_id, "title": "an article", "project": PROJECT,
-             "verification_status": "candidate", "review_state": None},
-            channel_rank=1,
-        ),
+        lc.article_candidate(_article_row(article_id), channel_rank=1),
+        lc.memory_candidate(_memory_row(memory_id), channel_rank=1),
     ]
+    support = {
+        f"fact:{fact_id}": frozenset(
+            {f"article:{article_id}", f"memory:{memory_id}"}
+        )
+    }
 
-    rows = lc.compose(candidates, fact_sources=lc.support_map([])).rows
+    rows = lc.compose(candidates, fact_sources=support).rows
 
+    # The article survives at the top level; only the memory is collapsed.
     assert {row.id for row in rows} == {str(fact_id), str(article_id)}
-    for row in rows:
-        assert row.supported_by == ()
+    by_kind = {row.id_kind: row for row in rows}
+    assert by_kind["article"].grouping == {"grouped_under": None, "relation": None}
+    assert by_kind["article"].supported_by == ()
+    assert [n.id for n in by_kind["fact"].supported_by] == [str(memory_id)]
+
+
+def test_support_map_cannot_mint_an_article_on_the_value_side():
+    """The upstream half of the same rule: the minter has one spelling."""
+    fact_id, article_id = uuid4(), uuid4()
+
+    mapping = lc.support_map([(fact_id, article_id)])
+
+    assert mapping == {f"fact:{fact_id}": frozenset({f"memory:{article_id}"})}
+    assert not any(
+        member.startswith("article:")
+        for members in mapping.values()
+        for member in members
+    )
 
 
 # ─────────────── the keyspace: a fact and a memory may share a UUID ───────────────
@@ -636,6 +674,66 @@ async def test_three_real_memories_group_under_their_real_fact(session, monkeypa
     assert all(
         n.grouping["relation"] == lc.SUPPORTS_FACT_RELATION for n in group.supported_by
     )
+
+
+@pytest.mark.asyncio
+async def test_a_group_cut_by_the_limit_takes_its_evidence_with_it(session, monkeypatch):
+    """Today's behaviour where grouping meets the answer budget — recorded, not endorsed.
+
+    ``search()`` slices ``rows[:limit]`` **after** grouping, so a memory nested
+    under a fact that falls past the cut leaves the served window with that
+    fact, even though the memory alone ranked above the cut. An unrelated row
+    is promoted into the slot it vacated.
+
+    This is a **known, ruled-on interaction**, not a defect this test is
+    complaining about. It follows from the group's rank being the fact's rank:
+    the memory is no longer an independent row that could hold a position of
+    its own. The doc-consistent alternative — scoping nesting to the facts that
+    survive the cut — needs a window fixpoint (nesting changes which rows
+    survive, which changes what may nest) and is owned by a separate task
+    rather than by this lane.
+
+    What the test buys is notice: the next person to move the slice finds out
+    from a failure here rather than from a support ticket about a memory that
+    stopped being returned.
+
+    The ordering it relies on: bands run 1..4 over the fact channel and 1..2
+    over the memory channel, and the sort is ``(band, -tier, key)``, so a
+    corroborated fact precedes a memory of the same band.
+    """
+    cut_fact, (nested_memory,) = await _seed_fact_with_sources(session, memory_count=1)
+    # The filler facts need no rows of their own: the provenance lookup is
+    # keyed by fact id and an id it does not find simply sources nothing.
+    served_facts = [uuid4(), uuid4(), uuid4()]
+    lone_memory = uuid4()
+
+    _stub_channels(
+        monkeypatch,
+        [_memory_row(lone_memory), _memory_row(nested_memory)],
+        [_fact_row(fact_id) for fact_id in [*served_facts, cut_fact]],
+    )
+    service = lc.LayerCompositionService(_FakeLLM(), session)
+
+    cut = await service.search("q", project=PROJECT, limit=4)
+
+    # Ungrouped, these same rows serve [F1, M1, F2, M2] at a limit of four.
+    # Grouped, M2 has gone into F4's group and F4 is the fifth row, so both
+    # drop out together and F3 is promoted into the window.
+    assert [row.id for row in cut.rows] == [
+        str(served_facts[0]), str(lone_memory), str(served_facts[1]), str(served_facts[2]),
+    ]
+    reachable = {row.id for row in cut.rows} | {
+        nested.id for row in cut.rows for nested in row.supported_by
+    }
+    assert str(nested_memory) not in reachable
+    assert str(cut_fact) not in reachable
+
+    # One slot further and the group is served whole, evidence included — so
+    # the disappearance above is the cut, not the collapse.
+    uncut = await service.search("q", project=PROJECT, limit=5)
+
+    assert [row.id for row in uncut.rows][-1] == str(cut_fact)
+    assert [n.id for n in uncut.rows[-1].supported_by] == [str(nested_memory)]
 
 
 @pytest.mark.asyncio

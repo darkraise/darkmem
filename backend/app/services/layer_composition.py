@@ -640,17 +640,27 @@ def _group_under_fact(
     one.* Splitting it across both would restore exactly the duplication the
     pass exists to remove, and the position tie-break keeps the choice
     deterministic rather than dictionary-ordered.
+
+    **Only an L0 row may be nested, and that is checked here rather than
+    assumed.** ``add_source`` already refuses a derived ``source_kind`` — a
+    fact or an article re-asserting a claim must not inflate the very fact it
+    cites — and :func:`support_map` can only mint ``memory:`` on the value
+    side. Both of those sit upstream, so neither survives a caller assembling
+    a map by hand. Nesting an article would remove an L3 row from the top level
+    on the strength of provenance that cannot exist, so the last line of
+    defence is spelled where the removal happens.
     """
     position = {row.key: index for index, row in enumerate(rows)}
     by_key = {row.key: row for row in rows}
     facts = {row.key for row in rows if row.id_kind == "fact"}
+    nestable = {row.key for row in rows if row.id_kind == "memory"}
 
     nest_under: dict[str, str] = {}
     for fact_key, memory_keys in support.items():
         if fact_key not in facts:
             continue
         for memory_key in memory_keys:
-            if memory_key not in position:
+            if memory_key not in nestable:
                 continue
             incumbent = nest_under.get(memory_key)
             if incumbent is None or position[fact_key] < position[incumbent]:
