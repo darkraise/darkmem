@@ -82,7 +82,14 @@ class CaptureAck(BaseModel):
 
 
 class MemoryUpdate(BaseModel):
-    content: str | None = None
+    # The same floor ``MemoryCreate`` carries, because the corpus has two
+    # content doors and only one of them had it. An update to ``""`` wrote an
+    # empty row, the re-embed refreshed ``payload.content`` to ``""``
+    # verbatim, and any later search that reranked that row raised out of the
+    # request — ``RerankerService`` refuses to score a document against an
+    # empty string rather than scoring one silently (T2.69). ``None`` is a
+    # different fact and stays legal: it is the field not being updated.
+    content: str | None = Field(default=None, min_length=1)
     tags: list[str] | None = None
     memory_type: str | None = None
     importance: float | None = None

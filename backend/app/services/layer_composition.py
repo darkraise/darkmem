@@ -6,8 +6,9 @@ believed. Merge the channel lists in their own key spaces, label and order
 them, optionally re-band by a rerank, apply the deterministic multipliers, and
 finally group each returned memory under the fact it sources. The sectioned and
 fused output shapes are T2.56's; Chat's convergence onto this entry point is
-T2.58's. Nothing here has a productive caller yet, and the envelope says so
-rather than reporting deferred arms as if they had run.
+T2.58's. MCP's ``knowledge_search`` is the live caller (T2.72); the article
+channel and the reranker arm are still deferred, and the envelope says so
+rather than reporting them as if they had run.
 
 **Grouping is composition's last step, never a renderer's first.** Doc 07 §5
 fixes the order and §11 records it as a resolved question rather than a
@@ -1091,8 +1092,11 @@ class LayerCompositionService:
     fast test that can be mutated cheaply.
 
     :meth:`search` is the single entry point T2.58 converges Chat onto. It is
-    not Chat-aware, and it has no productive caller today: T2.56 and T2.58 are
-    its consumers and both are behind this task.
+    not Chat-aware. MCP's ``knowledge_search`` spends it today (T2.72); T2.56
+    and T2.58 are the remaining consumers. **No caller constructs this with a
+    ``reranker``**, so :meth:`derive_rerank_scores` returns before it looks at
+    a row — which is why the empty-text raise in it is a guard against a
+    future caller rather than a live path.
 
     **It deliberately takes no ``with_trace``**, which is a correction to the
     seam rather than an omission. On ``memory.py`` that flag chooses between
@@ -1135,6 +1139,12 @@ class LayerCompositionService:
         that rated everything 0; serving that as a rerank would collapse the
         whole window into one band ordered by tier alone — a large silent
         behaviour change out of an outage.
+
+        **A row with no text raises here rather than being logged past**
+        (T2.81). The producer refuses an empty document (T2.69), so passing one
+        through was a warning that promised a scoring that could not happen;
+        the two had to move together, and the raise names the composed row
+        instead of the producer's contract.
         """
         if self.reranker is None:
             return None
@@ -1146,10 +1156,16 @@ class LayerCompositionService:
         for row in window:
             document_text = rerank_document_text(row)
             if not document_text:
-                logger.warning(
-                    "Layer composition: %s carries no text to rerank; it will "
-                    "be scored against an empty document",
-                    row.key,
+                # Not a warning-and-carry-on. ``RerankerService`` refuses an
+                # empty document rather than scoring one (T2.69), so passing
+                # this through would raise a few lines later from inside the
+                # producer, naming the producer's contract instead of the row
+                # that broke it. Raising here says which composed row carries
+                # no text, which is the only question a reader has.
+                raise ValueError(
+                    f"{row.key} resolves to no text under "
+                    f"{RERANK_TEXT_FIELDS[row.id_kind]}, so it cannot be "
+                    "reranked; a row is never scored against an empty document"
                 )
             documents.append(
                 {**dict(row.row), "content": document_text, RERANK_KEY_FIELD: row.key}
