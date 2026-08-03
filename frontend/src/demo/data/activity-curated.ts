@@ -475,7 +475,7 @@ export const CURATED_DREAM_ACTIONS: DemoDreamAction[] = [
     layer: 2,
     title: "the reranker LLM-scores the top 40 RRF-ranked rows after fusion",
     claim:
-      "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-24, human-ratified — ratified by q.tran, 2026-07-24",
+      "asserted by 4 distinct origins of kinds [code, human, memory], no known contradiction, as of 2026-07-24, human-ratified",
     meta: "ratified 2026-07-24 03:04 UTC",
     transition: { from: "corroborated", to: "confirmed", to_label: "human-ratified" },
     undone: false,
