@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**48 surfaces: 14 two-door, 34 single-door with a stated reason (28 REST-only, 6 MCP-only), 0 divergent.**
+**49 surfaces: 15 two-door, 34 single-door with a stated reason (28 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -60,6 +60,7 @@ the test rather than quietly joining the surface.
 | `code.search` | `POST /api/v1/code/search` | `code_search` | two-door | Both doors fuse through CodeQueryService.search_code and publish the same rrf_score under the same score key (T1.42c). With no embedder configured the doors answer differently on purpose: the tool returns doc 12 section 3's typed degradation envelope, the route degrades to the keyword arm. |
 | `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Only the name-to-id resolution is the tool's; the recursive traversal is the service's (T1.42c). |
 | `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Two doors, two implementations: both tools build their own SQLAlchemy query instead of spending CodeQueryService.list_symbols. Not yet observably divergent -- the tools emit a subset of the service's keys and no row differs -- but it is the same latent drift T1.42c found already realised on code_search and code_blast_radius. Delegating is not a no-behaviour-change edit (the service caps at limit=50 and the tools are uncapped), so it needs an owner, not a one-liner. |
+| `knowledge.overview` | `GET /api/v1/knowledge/overview` | `memory_overview` | two-door | Doc 12 section 3's tool table pairs the tool with this route, and both doors call memory_overview.get_overview -- the map selection, the single summarization reduce, the community-set cache and the declared drops are the service's, so neither door can answer a partial overview the other reports as complete. The REST door is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
 | `memory.stats` | `GET /api/v1/analytics/stats` | `memory_stats` | two-door | T1.42f closed the audit's one recorded divergence: neither door called a service before, so the shared counts (plus the entities and relationships pair from PostgresGraphRepository.get_stats(), with its SQLAlchemyError rollback guard intact) were lifted into AnalyticsService.get_stats() and both doors now call it. |
 | `auth.session` | `POST /api/v1/auth/login`<br>`POST /api/v1/auth/logout`<br>`POST /api/v1/auth/refresh`<br>`POST /api/v1/auth/change-password`<br>`GET /api/v1/auth/me` | — | REST single-door | The MCP door is unauthenticated by design (invariant 20, doc 12 section 6), so a session surface on it is a contradiction in terms: there is no session to establish, and a change-password twin would let any LAN peer seize the admin account. |
 | `auth.audit` | `GET /api/v1/auth/audit` | — | REST single-door | A human security-review read of the doc 12 section 7 observability class: it enumerates login attempts and token events, which is precisely the material an unauthenticated caller must not be able to page through. |

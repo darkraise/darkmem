@@ -180,6 +180,21 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.overview",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/knowledge/overview"),),
+        mcp=("memory_overview",),
+        note=(
+            "Doc 12 section 3's tool table pairs the tool with this route, and "
+            "both doors call memory_overview.get_overview -- the map "
+            "selection, the single summarization reduce, the community-set "
+            "cache and the declared drops are the service's, so neither door "
+            "can answer a partial overview the other reports as complete. The "
+            "REST door is auth-gated and the tool is not, the same posture "
+            "every two-door read on this table carries."
+        ),
+    ),
+    Surface(
         name="memory.stats",
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/analytics/stats"),),

@@ -364,6 +364,25 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
 
 
 @mcp.tool(
+    description="Get a project-wide organizational overview of what the memory store contains, organized by topic. This is a map-reduce over precomputed topic reports, not a ranked search: use memory_search when you want the memories most relevant to a query, and this when you want to know what is in here at all. Carries no verification badge — it describes what is stored, it does not assert it is true. The per-topic reports are precomputed off the hot path, so the answer costs at most one model call and is cached until the topic set changes."
+)
+async def memory_overview(project: str = "default") -> str:
+    """
+    Args:
+        project: The project to summarize (default "default"). The overview is always scoped to one project.
+    """
+    from app.services.memory_overview import OverviewUnavailable, get_overview
+
+    async with _code_service_context() as session:
+        llm = _pipeline.llm if _pipeline is not None else None
+        try:
+            result = await get_overview(session, llm, project)
+        except OverviewUnavailable as exc:
+            return json.dumps(_degraded(str(exc), project=project))
+        return json.dumps(result.to_dict())
+
+
+@mcp.tool(
     description="Get statistics about the memory system: total memories, tags, active sources, plus entity and relationship counts from the knowledge graph."
 )
 async def memory_stats() -> str:

@@ -155,6 +155,27 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "from the caller, so neither door can widen it.",
     ),
     ContentSurface(
+        key="memory_overview",
+        kind=_R,
+        front_doors=("GET /api/v1/knowledge/overview", "mcp:memory_overview"),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.21",
+        reason="A community's report_string is prose the summarization purpose "
+               "wrote about that community's member memories, so memory-derived "
+               "content crosses here even though no memories row does. The door "
+               "has no wide mode at all: `project` is a single bind parameter on "
+               "`list_with_members`, so both doors read one project's "
+               "memory_communities and there is no request that spans two. Every "
+               "topic still names its project, and the reduce sees only the "
+               "reports of the project asked for — a foreign community's report "
+               "reaching the prompt would put another project's content into "
+               "this project's overview text, where no label could recover it. "
+               "No status axis exists: a community is not a memory and carries "
+               "no lifecycle.",
+    ),
+    ContentSurface(
         key="code_search",
         kind=_R,
         front_doors=("POST /api/v1/code/search", "mcp:code_search"),

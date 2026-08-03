@@ -219,6 +219,43 @@ DUPLICATE_PAIRS: tuple[tuple[str, str, str], ...] = (
 
 
 @dataclass(frozen=True)
+class CommunityFixture:
+    """One `memory_communities` row, for the `memory_overview` map-reduce.
+
+    ``report_of`` is the member memory whose sentinel is planted inside the
+    community's ``report_string``. A real report is prose the summarization
+    purpose wrote *about* those memories, so a community's report is
+    memory-derived content even though no `memories` row crosses the door —
+    planting a member's sentinel in it is what lets the sentinel machinery
+    see that content the way it sees a preview. ``report_of=None`` is the
+    pending community: it must render as a topic with no report, and the
+    probe's job there is to confirm nothing generates one on a read.
+    """
+
+    label: str
+    project: str
+    member_keys: tuple[str, ...]
+    report_of: str | None
+
+    @property
+    def report_string(self) -> str | None:
+        if self.report_of is None:
+            return None
+        return (
+            f"{sentinel(self.report_of)} topic report about postgres tuning "
+            f"in {self.project}"
+        )
+
+
+COMMUNITY_FIXTURES: tuple[CommunityFixture, ...] = (
+    CommunityFixture("alpha tuning", OBSERVER, ("a_active", "a_twin", "a_super"), "a_active"),
+    CommunityFixture("alpha pending", OBSERVER, ("a_succ", "a_oldfp"), None),
+    CommunityFixture("beta tuning", FOREIGN, ("b_active", "b_super"), "b_active"),
+)
+COMMUNITY_FIXTURES_BY_LABEL = {c.label: c for c in COMMUNITY_FIXTURES}
+
+
+@dataclass(frozen=True)
 class ArticleFixture:
     key: str
     project: str
@@ -391,6 +428,11 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
     from app.models.config import Config
     from app.models.memory import Memory
     from app.repositories.fact_sources import FactSourceRepository
+    from app.repositories.memory_communities import (
+        CommunityDraft,
+        replace_project_communities,
+    )
+    from app.repositories.memory_communities import set_report as set_community_report
     from app.repositories.memory_relations import upsert_edge
     from app.services.dream_journal import NEAR_DUPLICATE_PASS
     from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
@@ -510,6 +552,24 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                     detected_at="2026-07-28T00:00:00+00:00",
                 ),
             )
+
+        for project in (OBSERVER, FOREIGN):
+            drafts = [
+                CommunityDraft(
+                    label=cf.label,
+                    memory_ids=tuple(memory_ids[k] for k in cf.member_keys),
+                    properties={"size": len(cf.member_keys), "dominant_entities": []},
+                )
+                for cf in COMMUNITY_FIXTURES
+                if cf.project == project
+            ]
+            written = await replace_project_communities(session, project, drafts)
+            for community_id, draft in zip(written, drafts):
+                report = COMMUNITY_FIXTURES_BY_LABEL[draft.label].report_string
+                if report is not None:
+                    await set_community_report(
+                        session, community_id, report_string=report,
+                    )
 
         for repo_name in (ALPHA_REPO, BETA_REPO):
             rid = uuid.uuid4()
@@ -1133,6 +1193,115 @@ async def _drive_code_search(ctx: ProbeContext) -> list[Sighting]:
     payload = json.loads(body)
     rows = payload if isinstance(payload, list) else payload.get("results", [])
     await account_code("mcp:code_search", "MCP scoped to repo-alpha", body, rows, ALPHA_REPO)
+    return out
+
+
+async def _drive_memory_overview(ctx: ProbeContext) -> list[Sighting]:
+    """The project-scoped map-reduce, driven on both doors and both projects.
+
+    Two things are observed here that no other driver observes, because this
+    is the only probed surface whose declared crossing is a *derived* report
+    rather than a memory row:
+
+    * **The wire.** Every topic the door returns is enumerated against the
+      seeded community set, so a foreign community arriving under a scoped
+      request is a V1 on the ordinary axis, and the raw-body net catches a
+      report crossing through any field the enumeration missed.
+    * **The prompt.** The reduce is the one place this surface hands
+      memory-derived content to a model, and the prompt never reaches the
+      wire — a foreign report folded into it would leak into *this* project's
+      overview text on a real model while the response body stayed clean.
+      The stub records every completion, so the new calls a case makes are
+      scanned for sentinels belonging to another project's fixtures and a
+      match is a forced V1. A driver that only read the response would report
+      that leak as a clean zero.
+
+    The MCP case runs after the REST case on the same project deliberately:
+    the community set is unchanged, so it must be served from the
+    `overview:<project>` config row with no completion at all, which is the
+    same enumeration through a second door plus evidence the cache is real.
+    """
+    surface = "memory_overview"
+    out: list[Sighting] = []
+
+    def foreign_sentinels(project: str) -> set[str]:
+        return {
+            cf.report_of
+            for cf in COMMUNITY_FIXTURES
+            if cf.project != project and cf.report_of is not None
+        }
+
+    async def one_case(door: str, case: str, body_text: str, payload: dict, req_p: str,
+                       prompts: list[str]):
+        accounted: set[str] = set()
+        for topic in payload.get("topics", []):
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(topic.get("label"))
+            if cf is None:
+                continue
+            if cf.report_of is not None:
+                accounted.add(cf.report_of)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None,
+                requested_project=req_p,
+                label_project=topic.get("project") == cf.project,
+            ))
+        for prompt in prompts:
+            for key in sorted(scan_sentinels(prompt) & foreign_sentinels(req_p)):
+                out.append(Sighting(
+                    surface=surface, door=door, case=f"{case} [reduce prompt]",
+                    row=key, kind="content",
+                    true_project=FIXTURES_BY_KEY[key].project,
+                    forced_v1_reason="another project's community report reached "
+                                     "this project's reduce prompt",
+                ))
+        out.extend(_account_body(surface, door, case, body_text, accounted))
+
+    async def rest_case(project: str, case: str):
+        door = "GET /api/v1/knowledge/overview"
+        before = len(ctx.stub.chat_calls)
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/overview?project={project}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        prompts = [
+            m["content"]
+            for _, messages in ctx.stub.chat_calls[before:]
+            for m in messages
+        ]
+        await one_case(door, case, response.text, payload, project, prompts)
+        return payload, len(ctx.stub.chat_calls) - before
+
+    payload, calls = await rest_case(OBSERVER, "scoped to the observer project")
+    if calls != 1:
+        ctx.notes.append(
+            f"memory_overview: cold observer overview spent {calls} completions, expected 1"
+        )
+    payload_beta, _ = await rest_case(FOREIGN, "scoped to the foreign project")
+
+    door = "mcp:memory_overview"
+    before = len(ctx.stub.chat_calls)
+    body = await _call_mcp("memory_overview", {"project": OBSERVER})
+    tool_payload = json.loads(body)
+    prompts = [
+        m["content"] for _, messages in ctx.stub.chat_calls[before:] for m in messages
+    ]
+    await one_case(
+        door, "MCP door, same project (must serve the cached reduce)",
+        body, tool_payload, OBSERVER, prompts,
+    )
+    if len(ctx.stub.chat_calls) != before:
+        ctx.notes.append(
+            "memory_overview: the MCP door re-ran the reduce over an unchanged "
+            "community set instead of reading the cache"
+        )
+    ctx.notes.append(
+        "memory_overview: reduce input "
+        f"{payload.get('reduce_input_chars')}/{payload.get('reduce_input_bound')} chars "
+        f"over {payload.get('reports_used')} reports "
+        f"(foreign project served {payload_beta.get('reports_used')} separately)"
+    )
     return out
 
 
@@ -1974,6 +2143,7 @@ DRIVERS = {
     "graph_memory_context": _drive_graph_memory_context,
     "bulk_partition_read": _drive_bulk_partition_read,
     "duplicates_probe": _drive_duplicates_probe,
+    "memory_overview": _drive_memory_overview,
     "code_search": _drive_code_search,
     "memory_by_id": _drive_memory_by_id,
     "memory_write_echo": _drive_memory_write_echo,
