@@ -228,8 +228,10 @@ class CommunityFixture:
     memory-derived content even though no `memories` row crosses the door —
     planting a member's sentinel in it is what lets the sentinel machinery
     see that content the way it sees a preview. ``report_of=None`` is the
-    pending community: it must render as a topic with no report, and the
-    probe's job there is to confirm nothing generates one on a read.
+    pending community: it must render as a topic with no report. What the
+    probe adds there is an *observation* that no completion was spent on it,
+    reported as a note — the guarantee itself is enforced by
+    `backend/tests/test_memory_overview.py`, not by this probe's bar.
     """
 
     label: str
@@ -1220,6 +1222,18 @@ async def _drive_memory_overview(ctx: ProbeContext) -> list[Sighting]:
     the community set is unchanged, so it must be served from the
     `overview:<project>` config row with no completion at all, which is the
     same enumeration through a second door plus evidence the cache is real.
+
+    **What the completion counts below are, and are not.** They are notes, not
+    violations, and deliberately so: `isolation_rules.py` defines the bar as
+    V1 (scope breach) plus V2 (unlabelled escape), so counting a cost
+    regression there would report "this surface leaked across projects" for
+    something that is not a crossing, and would make the ledger's number mean
+    something other than what the metric says. So this driver's "0 violations"
+    covers isolation only — it is not a statement that the single-reduce and
+    cache guarantees held. Those are hard-failed by
+    `backend/tests/test_memory_overview.py` in the repo floor, which is where
+    they belong; the notes here are a second pair of eyes on the same
+    properties from an end-to-end run, not their guard.
     """
     surface = "memory_overview"
     out: list[Sighting] = []
@@ -1276,7 +1290,10 @@ async def _drive_memory_overview(ctx: ProbeContext) -> list[Sighting]:
     payload, calls = await rest_case(OBSERVER, "scoped to the observer project")
     if calls != 1:
         ctx.notes.append(
-            f"memory_overview: cold observer overview spent {calls} completions, expected 1"
+            f"memory_overview: cold observer overview spent {calls} completions, "
+            "expected 1 — NOT counted by the isolation bar (V1+V2 is scope "
+            "breaches only); the guard for this is "
+            "tests/test_memory_overview.py in the repo floor"
         )
     payload_beta, _ = await rest_case(FOREIGN, "scoped to the foreign project")
 
@@ -1294,7 +1311,9 @@ async def _drive_memory_overview(ctx: ProbeContext) -> list[Sighting]:
     if len(ctx.stub.chat_calls) != before:
         ctx.notes.append(
             "memory_overview: the MCP door re-ran the reduce over an unchanged "
-            "community set instead of reading the cache"
+            "community set instead of reading the cache — NOT counted by the "
+            "isolation bar (V1+V2 is scope breaches only); the guard for this "
+            "is tests/test_memory_overview.py in the repo floor"
         )
     ctx.notes.append(
         "memory_overview: reduce input "
