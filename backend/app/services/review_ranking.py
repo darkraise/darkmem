@@ -50,10 +50,20 @@ directly off its own keyword and name FTS arms and calls nothing analogous to
 channel is the one ``layer_composition.LayerCompositionService.search`` calls,
 and that composition is wired live behind the ``knowledge_search`` MCP tool
 with no feature flag gating it, so every ``knowledge_search`` call already
-serves facts through exactly this uncounted path today. A fact retrieved daily
-through it and never once through ``memory_search`` scores exactly zero here,
-forever, with no error and no way to tell it apart from a fact nobody has
-asked for.
+serves facts through exactly this uncounted path today.
+
+**The bound is narrower than a clean zero, though.** ``knowledge_search``'s
+own memory arm records heat too: ``HybridSearchService.search_with_trace``
+calls ``_record_access`` on every memory row it co-surfaces
+(``hybrid_search.py:86``), and that arm runs inside the same composed call
+this channel's facts ride alongside. So a memory-sourced fact accrues proxy
+heat whenever a query co-surfaces its source memory in that arm — live, but
+partial, and dependent on co-surfacing rather than on any dedicated count —
+with **no** ``memory_search`` call required. The hard zero, forever, with no
+error and no way to tell it apart from a fact nobody has asked for, lands
+only where co-surfacing is structurally impossible: every fact sourced
+solely by ``human`` or ``code`` rows (named above), which point at no
+``memories`` row for that arm to ever pick up.
 
 T2.65 (2026-08-04) is the decision this failure mode forced: build a
 fact-keyed analogue of this substrate (its own table, fed off the facts
@@ -64,17 +74,35 @@ counter needs a new table — unlike a memory, a fact has no existing side
 table to grow into, and ``knowledge_triples`` carries no general-purpose
 column a counter could ride without one — and no lane holds baseline-schema
 clearance this round (schema changes serialise through one owner per epic).
-:data:`FACT_KEYED_COUNTER_STATUS` is the machine-checkable marker for that
-decision, and
+:data:`FACT_KEYED_COUNTER_STATUS` records that decision as a value a reviewer
+sees in a diff rather than only in prose; nothing reads it back, so it is not
+a check, only a record. :data:`FACT_KEYED_COUNTER_OWNER` names the task that
+replaces it, the same idiom ``facts_channel.SEMANTIC_ARM_OWNER`` and
+``DISPUTE_COUNTERPART_OWNER`` already use for a deferred piece with a real
+owner rather than an open-ended TODO.
 ``test_facts_channel_traffic_never_feeds_retrieval_frequency``
-(``tests/test_queue_ranking.py``) pins the gap itself — fifty real searches
-through ``FactsChannel`` against a sourced fact, asserting both that
+(``tests/test_queue_ranking.py``) pins the gap on **both** of
+``FactsChannel``'s public methods, ``search`` and ``search_with_trace`` —
+fifty real searches through each against a sourced fact, asserting both that
 ``memory_access_stats`` stays untouched and that this arm's ranking output
-stays at zero — so a future partial fix cannot silently drift past this
-paragraph without a red test naming it. All four biases point the same way:
-every one of them understates a fact's true retrieval frequency, never
-overstates it, which is why salience is a separate arm rather than a
-tiebreak.
+stays at zero. A recording path landed on only one of the two methods turns
+that parametrization red; a single-method version of this test would not
+have (this was demonstrated, not assumed, in this task's own review round).
+It does not cover the composed door (``LayerCompositionService.search``)
+itself, which is out of this module's reach, nor a future fix that records
+heat under some conditions and not others rather than none at all — either
+still needs its own red test naming it.
+
+Only two of the four biases point the same way, and it is not all four: the
+cold-start gap and the non-memory blind spot two paragraphs up both score a
+fact exactly zero when it should not, and both understate. This gap
+understates too, but not uniformly — it is a clean zero only for the
+non-co-surfacing case above, and merely partial (still an undercount, never
+an overcount) for the rest. The *first* bias in this list — a fact
+inheriting the heat of whichever popular, unrelated source memory it
+happens to share — is the one exception: it **overstates**. Salience is a
+separate arm rather than a tiebreak precisely because this arm's error does
+not point in one safe direction only.
 
 **Subject salience — distinct graph neighbours of the subject entity.** Of the
 three candidates (live facts sharing the ``subject_name``, memories whose
@@ -241,7 +269,13 @@ W_SUBJECT_SALIENCE = 0.5
 # above, so a future change to this decision is a diff a reviewer sees rather
 # than prose nobody re-reads. See the "Failure mode" paragraph above for the
 # argument and docs/planning/tasks/E2-truth-core.md (T2.65) for the record.
+# Nothing reads this back — it is a record, not a machine-checkable marker.
 FACT_KEYED_COUNTER_STATUS = "deferred pending baseline-schema clearance"
+
+# The task that will mint the fact-keyed counter this proxy defers to,
+# carrying T2.65's recorded design. Named the way
+# ``facts_channel.SEMANTIC_ARM_OWNER`` names its own deferred piece's owner.
+FACT_KEYED_COUNTER_OWNER = "T2.84"
 
 _PARAM_BOUNDS: dict[str, tuple[int, int]] = {
     "dispute_stale_days": (1, 3650),

@@ -369,13 +369,23 @@ async def test_adding_a_cold_source_never_lowers_a_facts_rank(session):
 # ──────── T2.65: the facts channel's live traffic feeds no heat ────────
 
 
-async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session):
+@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session, method_name):
     """Pins the exact gap T2.65 documents in ``review_ranking``'s "Failure
     mode" paragraph: ``FactsChannel`` is a *real* serving path (the one
     ``knowledge_search`` calls through ``layer_composition``), and serving a
     fact through it leaves ``memory_access_stats`` — and therefore this
     ranking's frequency arm — completely untouched, no matter how much
     traffic it carries.
+
+    Parametrized over **both** public methods. ``search_with_trace`` is the
+    one production caller (``layer_composition.py:1160``) actually uses;
+    ``search`` has no production caller at all. A recording path added to
+    only one of them must turn this test red regardless of which one — a
+    single-method version would stay green forever against a fix landed on
+    the other, which is exactly what happened during this task's own review
+    (recording added to ``search_with_trace`` alone left a ``search``-only
+    pin, and the whole channel suite, green).
 
     This does **not** cover the composed path (``LayerCompositionService.
     search``/``knowledge_search`` itself) — that module is out of this lane's
@@ -385,12 +395,14 @@ async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session):
     conditions and not others; it only pins today's all-or-nothing shape (no
     recording at all).
 
-    Watched to fail on purpose: with a throwaway call to
-    ``access_stats.spawn_record_access`` (awaited synchronously) added inside
-    ``FactsChannel.search``, this test failed on the
-    ``memory_access_stats`` assertion, confirming the guard actually detects
-    the behaviour it pins rather than passing vacuously; the mutation was
-    then reverted.
+    Watched to fail on purpose, against **each** parametrization independently:
+    with a throwaway call to ``access_stats.record_access`` added inside
+    ``FactsChannel.search`` only, the ``search`` case failed on the
+    ``memory_access_stats`` assertion while ``search_with_trace`` stayed
+    green; with the same call added inside ``search_with_trace`` only, the
+    ``search_with_trace`` case failed while ``search`` stayed green. Both
+    mutations were then reverted. Neither single-method version of this test
+    would have caught the other mutation.
     """
     memory_id = await _memory(session, content="zarquon-beacon field notes")
     fact_id = await _fact(
@@ -400,13 +412,15 @@ async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session):
     await session.commit()
 
     channel = FactsChannel(session)
-    served = []
+    method = getattr(channel, method_name)
     for _ in range(50):
-        served = await channel.search("zarquon-beacon", project=PROJECT, limit=5)
-    # Sanity: the channel really did serve the fact each time, so the zero
-    # heat asserted below is "this path records nothing", not "nothing was
-    # ever searched".
-    assert any(row["fact_id"] == fact_id for row in served)
+        result = await method("zarquon-beacon", project=PROJECT, limit=5)
+        served = result.results if method_name == "search_with_trace" else result
+        # Sanity, checked on every one of the 50 calls (not just the last):
+        # the channel really did serve the fact each time, so the zero heat
+        # asserted below is "this path records nothing", not "nothing was
+        # ever searched".
+        assert any(row["fact_id"] == fact_id for row in served)
 
     stats_row = (
         await session.execute(

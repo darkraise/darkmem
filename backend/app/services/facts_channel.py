@@ -54,10 +54,13 @@ caller-overridden verdict, and on any dispute predating that commit.
 
 **This channel records no retrieval heat (T2.65, 2026-08-04).** Every serve
 here is invisible to doc 08 §6's consequence ranking, which reads only
-``memory_access_stats``. See :data:`RETRIEVAL_HEAT_STATUS` and
+``memory_access_stats`` (partially offset when the composed door's own
+memory arm co-surfaces the fact's source memory — see ``review_ranking``'s
+"Failure mode" paragraph). See :data:`RETRIEVAL_HEAT_STATUS` and
 ``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision and its
 reasoning — the short version is that a fact-keyed counter needs its own
 table, and no lane holds baseline-schema clearance this round.
+:data:`RETRIEVAL_HEAT_OWNER` names T2.84, the task that will build it.
 """
 
 from __future__ import annotations
@@ -81,6 +84,7 @@ __all__ = [
     "KEYWORD_ARM",
     "LAYER",
     "NAME_ARM",
+    "RETRIEVAL_HEAT_OWNER",
     "RETRIEVAL_HEAT_STATUS",
     "SEMANTIC_ARM",
     "SEMANTIC_ARM_OWNER",
@@ -111,10 +115,18 @@ DISPUTE_COUNTERPART_OWNER = "T2.64"
 # channel is the one ``layer_composition.LayerCompositionService.search``
 # calls, which is itself wired live behind the ``knowledge_search`` MCP tool
 # with no feature flag gating it, so every ``knowledge_search`` call already
-# serves facts through exactly this uncounted path. See
-# ``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision this forced
-# and the reasoning behind it.
+# serves facts through exactly this uncounted path (partially offset when a
+# query co-surfaces the fact's source memory through the composed door's own
+# memory arm — see ``review_ranking``'s "Failure mode" paragraph for the
+# bound). See ``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision
+# this forced and the reasoning behind it. Nothing reads this value back —
+# it is a record, not a machine-checkable marker.
 RETRIEVAL_HEAT_STATUS = "not recorded; see review_ranking.FACT_KEYED_COUNTER_STATUS (T2.65)"
+
+# The task that will mint the fact-keyed counter this channel's serves
+# currently feed nowhere. Named the same way ``SEMANTIC_ARM_OWNER`` and
+# ``DISPUTE_COUNTERPART_OWNER`` above name theirs.
+RETRIEVAL_HEAT_OWNER = "T2.84"
 
 # The two arms split the channel's weight evenly, and the even split is a
 # deliberate non-claim: no measurement says fact text outranks an endpoint name
