@@ -1064,3 +1064,65 @@ async def code_rename(
         "total_references": len(references),
         "references": references,
     })
+
+
+# ---------------------------------------------------------------------------
+# Vault tools — the agent's side of L2/L3 (doc 12 §3)
+# ---------------------------------------------------------------------------
+#
+# Both tools spend the service the REST door spends and reshape nothing:
+# ``fact_get`` serialises through ``FactDetailResponse``, the very model
+# ``GET /api/v1/knowledge/facts/{fact_id}`` declares as its response, so the
+# two doors cannot answer different shapes for one fact. Neither tool spells
+# any part of the verification claim — ``fact_badge`` is its sole producer and
+# the badge rides through whole.
+
+
+@mcp.tool(
+    description="Read one fact from the knowledge vault by its UUID: the subject/relation/object triple, its verification status and honest claim badge, the provenance groups behind that badge's distinct-origin count, the applies_when context labels, the bi-temporal belief window and the review state. Use this after knowledge_search or memory_search surfaces a fact id and you need the evidence behind it. The badge's claim is shown verbatim or not at all — never paraphrase it."
+)
+async def fact_get(fact_id: str) -> str:
+    """
+    Args:
+        fact_id: The UUID of the fact to retrieve.
+    """
+    from app.schemas.facts import FactDetailResponse
+    from app.services import facts_read
+
+    fid = _validate_uuid(fact_id)
+    async with _code_service_context() as session:
+        item = await facts_read.get_fact(session, fid)
+        if item is None:
+            raise ValueError(f"Fact not found: {fact_id}")
+        return FactDetailResponse.model_validate(item).model_dump_json()
+
+
+@mcp.tool(
+    description="Search the knowledge vault across epistemic layers at once: stored memories (L0) and lifted facts (L2), merged into one ranked list where every fact carries its verification badge and the memories that source it are nested under it. Use this instead of memory_search when you want what is believed rather than what was said, and read the envelope: it names which channels ran, which failed, and how many rows were excluded by a context conflict, so a degraded answer is never mistaken for an empty vault."
+)
+async def knowledge_search(
+    query: str,
+    project: str = "default",
+    limit: int = 20,
+) -> str:
+    """
+    Args:
+        query: Natural language query. Both layers are searched with it.
+        project: The project to search (default "default"). Every channel scopes to it.
+        limit: Maximum number of composed rows to return (default: 20). A fact and the memories nested under it count as one.
+    """
+    from app.schemas.knowledge import knowledge_search_response
+    from app.services.layer_composition import LayerCompositionService
+
+    limit = _clamp_limit(limit, default=20)
+    async with _code_service_context() as session:
+        llm = _pipeline.llm if _pipeline is not None else None
+        service = LayerCompositionService(llm, session)
+        try:
+            result = await service.search(query, project=project, limit=limit)
+        except RuntimeError as exc:
+            # Every channel down is recoverable unavailability, not a caller
+            # error: doc 12 §3 says say so in a typed envelope rather than
+            # returning rows a client cannot tell from a genuine no-match.
+            return json.dumps(_degraded(str(exc), project=project, rows=[]))
+        return knowledge_search_response(result).model_dump_json()

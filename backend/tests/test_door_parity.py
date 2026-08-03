@@ -195,6 +195,25 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.fact_detail",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/knowledge/facts/{{fact_id}}"),),
+        mcp=("fact_get",),
+        note=(
+            "Doc 12 section 2's route table assigns fact_get a REST twin at "
+            "exactly this path and section 3 puts the agent-facing single-"
+            "object vault read on the tool, so T2.72 built the tool rather "
+            "than leaving the route filed single-door on a posture argument. "
+            "Both doors call facts_read.get_fact and both serialise through "
+            "FactDetailResponse -- the tool does not reshape the dict, so a "
+            "field the model does not declare is dropped on both doors and "
+            "the badge's claim sentence crosses byte for byte "
+            "(test_fact_detail_doors_serve_the_same_row). The REST door is "
+            "auth-gated and the tool is not, the same posture every two-door "
+            "read on this table carries."
+        ),
+    ),
+    Surface(
         name="memory.stats",
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/analytics/stats"),),
@@ -477,30 +496,27 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
-        name="knowledge.facts_browsing",
+        name="knowledge.facts_list",
         status=REST_ONLY,
-        rest=(
-            ("GET", f"{V1}/knowledge/facts"),
-            ("GET", f"{V1}/knowledge/facts/{{fact_id}}"),
-        ),
+        rest=(("GET", f"{V1}/knowledge/facts"),),
         reason=(
-            "The authenticated human's browsing view behind doc 13 section "
-            "5.1's Facts tab. What it serves is an audit of the vault's own "
-            "bookkeeping rather than knowledge an agent retrieves: the "
+            "Doc 12 section 3 assigns the agent one list-shaped vault read "
+            "and it is knowledge_search, not a fact list: a composed, ranked, "
+            "badged answer to a query, with the memories that source each "
+            "fact nested under it and an envelope naming what was excluded. "
+            "This route answers a different question -- doc 13 section 5.1's "
+            "Facts tab, the vault's own bookkeeping in arrival order: the "
             "bi-temporal belief window including window-closed rows that are "
-            "retained history, every provenance row grouped under the "
-            "origin_key that wrote it so the badge's distinct-origin count "
-            "can be counted back, and the arrival-ordered page an agent has "
-            "no query to aim at. Doc 12 section 3 assigns the agent-facing "
-            "reads over these same rows to a separate tool family -- "
-            "knowledge_search's composed, ranked, badged result and "
-            "fact_get's single-row detail -- which the MCP door serves under "
-            "its local-network trust model with no auth at all. This surface "
-            "is auth-gated, and the two postures are the point rather than "
-            "an accident: a provenance audit is a curation act by the box's "
-            "owner, the same conflict-of-interest reasoning doc 12 section 1 "
-            "applies to the review queue, and it is the "
-            "pipeline_failures.triage shape applied to the fact layer."
+            "retained history, and exact-match filters on subject, relation, "
+            "object and verification_status. There is no query for an agent "
+            "to aim at it, and an agent that paged the vault would be reading "
+            "the corpus rather than retrieving from it. T2.72 replaced the "
+            "trust-posture argument this row used to carry, which was weak "
+            "for the reason its reviewer gave: every two-door read on this "
+            "table already pairs an unauthenticated tool with an "
+            "authenticated route, so posture does not decide door count. The "
+            "detail half of this surface is no longer here -- it is "
+            "knowledge.fact_detail, two-door with fact_get."
         ),
     ),
     Surface(
@@ -685,6 +701,32 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     # ── MCP single door, each with its reason ───────────────────────
+    Surface(
+        name="knowledge.composed_search",
+        status=MCP_ONLY,
+        mcp=("knowledge_search",),
+        reason=(
+            "Doc 12 section 3's composed four-layer read: one ranked list "
+            "drawn from L0 memories and L2 facts at once, every row labelled "
+            "and every fact badged, the memories that source a fact nested "
+            "under it, and an envelope naming which channels ran and how many "
+            "rows a context conflict excluded. It is the agent-shaped "
+            "projection this audit names as its third sanctioned kind. The "
+            "rows are REST-reachable in their own key spaces -- L0 through "
+            "POST /api/v1/memories/search and L2 through GET "
+            "/api/v1/knowledge/facts -- and what is single-door is the "
+            "cross-layer ranked question, because the browser's consumer is "
+            "three tabs and the agent's is one prompt on a token budget. Doc "
+            "12 section 2's route table does assign a twin at POST "
+            "/knowledge/search, and no task in the corpus owns it; T2.72 "
+            "records that discrepancy here, exactly as the six code rows "
+            "below record theirs, rather than inventing a justification that "
+            "would outlive it. The serialiser both doors need already lives "
+            "outside the tool, in app/schemas/knowledge.py, so a twin spends "
+            "the same function instead of reshaping the same service's result "
+            "-- which is how code_search and code_blast_radius drifted."
+        ),
+    ),
     Surface(
         name="code.context",
         status=MCP_ONLY,
@@ -1135,6 +1177,143 @@ async def test_get_stats_survives_a_failing_graph_count(session):
     # PendingRollbackError by SQLAlchemy) on the next query instead.
     still_usable = (await session.execute(select(func.count()).select_from(Memory))).scalar()
     assert still_usable is not None
+
+
+# ---------------------------------------------------------------------------
+# knowledge.fact_detail: the vault's detail read, on both doors (T2.72)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_badged_fact(session) -> str:
+    """One corroborated fact with two distinct origins and a verified event.
+
+    Two origins rather than one because the badge's ``origin_count`` is a
+    ``DISTINCT origin_key`` count: a single-origin fixture agrees with a row
+    count and would pass against a door that published either number.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
+    from app.repositories.fact_sources import FactSourceRepository
+    from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+    project = "t272-parity"
+    at = datetime(2026, 7, 20, 9, 14, 0, tzinfo=timezone.utc)
+    repo = KnowledgeTripleRepository(session)
+    row = await repo.insert_open(
+        triple_key=f"t272-{uuid.uuid4()}",
+        subject_name="darkmem",
+        object_name="postgres",
+        rel_type="USES",
+        fact="darkmem USES postgres",
+        reference_time=at,
+        project=project,
+        valid_at=at,
+    )
+    await session.execute(
+        text(
+            "UPDATE knowledge_triples SET verification_status = 'corroborated' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": row["id"]},
+    )
+    sources = FactSourceRepository(session)
+    for origin in ("origin-a", "origin-b"):
+        await sources.add_source(
+            fact_id=row["id"],
+            source_kind="memory",
+            source_ref=str(uuid.uuid4()),
+            origin_key=origin,
+        )
+    await session.execute(
+        text("SELECT events_ensure_partition(CAST(:at AS timestamptz)::date)"),
+        {"at": at},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO events (created_at, event_type, object_type, object_id, "
+            "project, payload) VALUES (CAST(:at AS timestamptz), 'verified', "
+            "'fact', CAST(:fid AS uuid), CAST(:project AS text), "
+            "CAST(:payload AS jsonb))"
+        ),
+        {
+            "at": at,
+            "fid": str(row["id"]),
+            "project": project,
+            "payload": json.dumps(
+                {
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                }
+            ),
+        },
+    )
+    await session.flush()
+    return str(row["id"])
+
+
+async def test_fact_detail_doors_serve_the_same_row(
+    client, auth_headers, session, monkeypatch
+):
+    """A row shape that diverges between the doors fails here (T2.72).
+
+    The whole document is compared, not a field list: a key-presence check
+    passes a door that dropped a value, and a field list passes a door that
+    grew a key nobody enumerated. Both doors serialise through
+    ``FactDetailResponse``, so the assertion below holds structurally rather
+    than by agreement -- which is the point. The failure this catches is the
+    realistic one: a tool that reshapes the service's dict itself, exactly as
+    ``code_search`` and ``code_blast_radius`` did before T1.42c consolidated
+    them.
+    """
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+    fact_id = await _seed_badged_fact(session)
+
+    response = await client.get(f"{V1}/knowledge/facts/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200
+    tool_text = await mcp_server.fact_get(fact_id=fact_id)
+
+    rest_row = json.loads(response.content)
+    tool_row = json.loads(tool_text)
+    assert tool_row == rest_row, (
+        "GET /knowledge/facts/{fact_id} and fact_get answered different "
+        "shapes for one fact; both doors must serialise through "
+        "FactDetailResponse rather than reshaping the service's dict"
+    )
+
+
+async def test_the_badge_crosses_both_doors_byte_for_byte(
+    client, auth_headers, session, monkeypatch
+):
+    """Doc 12 §4's claim is shown verbatim or not at all, so the two doors
+    must publish the same bytes and not merely the same meaning.
+
+    Asserted against the raw payloads rather than the parsed ones: a door
+    that rebuilt the sentence with different punctuation, a different origin
+    count or a softened verb would still parse into a plausible dict, and
+    the raw-bytes check is what makes the second producer T2.71's guard
+    forbids visible here too.
+    """
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+    fact_id = await _seed_badged_fact(session)
+
+    response = await client.get(f"{V1}/knowledge/facts/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200
+    tool_text = await mcp_server.fact_get(fact_id=fact_id)
+
+    rest_badge = json.loads(response.content)["badge"]
+    tool_badge = json.loads(tool_text)["badge"]
+    assert rest_badge is not None, "the fixture produced no badge to compare"
+    assert tool_badge == rest_badge
+
+    claim = rest_badge["claim"]
+    assert claim, "the badge carries no claim sentence"
+    assert claim.encode("utf-8") in response.content
+    assert claim in tool_text
+    assert json.dumps(rest_badge, sort_keys=True) == json.dumps(
+        tool_badge, sort_keys=True
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -176,6 +176,27 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "no lifecycle.",
     ),
     ContentSurface(
+        key="knowledge_composed_search",
+        kind=_R,
+        front_doors=("mcp:knowledge_search",),
+        crosses=("content", "fact_content"),
+        scoping=Scoping.SCOPED,
+        labels=("project", "status"),
+        decided_by="T2.72",
+        reason="Doc 12 §3's composed four-layer read. `project` is a required "
+               "keyword on `LayerCompositionService.search` and is pushed down "
+               "by both channels it fans out to — `MemoryFilter(project=…)` on "
+               "the memory hybrid and the facts channel's own bind parameter — "
+               "so there is no wide mode to request and no arm that could "
+               "answer one. It is a retrieval channel rather than an "
+               "operational surface for the ordinary reason: the caller names "
+               "a query, not rows, so which rows come back is the answer. Each "
+               "memory row keeps the hybrid's `status` label and each fact its "
+               "project, and a fact's supporting memories arrive nested inside "
+               "it carrying their own labels rather than flattened into the "
+               "parent's.",
+    ),
+    ContentSurface(
         key="code_search",
         kind=_R,
         front_doors=("POST /api/v1/code/search", "mcp:code_search"),
@@ -325,11 +346,11 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
     ContentSurface(
         key="knowledge_fact_detail",
         kind=_S,
-        front_doors=("GET /api/v1/knowledge/facts/{fact_id}",),
+        front_doors=("GET /api/v1/knowledge/facts/{fact_id}", "mcp:fact_get"),
         crosses=("fact_content",),
         scoping=Scoping.ID_ADDRESSED,
         labels=("project",),
-        decided_by="T2.36a",
+        decided_by="T2.36a, T2.72",
         reason="One fact by id, with its provenance rows grouped under the "
                "origin that wrote them so the badge's distinct-origin count "
                "can be counted back. The caller already names the row, so a "
