@@ -47,12 +47,12 @@ and the Note says so. That rule is the whole point of this file.
 |---|---|---|---|---|---|---|---|---|
 | E0 — Baseline & harness | 22 | 2 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 70 | 32 | 4 | 1 | 0 | 33 | 0 | G-C, G-D open |
+| E2 — Truth core | 71 | 33 | 3 | 1 | 0 | 34 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 26 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 17 | 17 | 0 | 0 | 0 | 0 | 0 | G-F open |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **230** | **88** | **4** | **1** | **0** | **136** | **1** | |
+| **Total** | **231** | **89** | **3** | **1** | **0** | **137** | **1** | |
 
 ---
 
@@ -173,7 +173,7 @@ and the Note says so. That rule is the whole point of this file.
 | T1.67 | Retire the dead real-API-type re-export from `src/demo` | S | Sonnet | low | | done | b265e12, b053fd2, e8c9f1a | — (Sonnet tier; Fable review owed before G-B) | **Falsified its own premise and was rewritten to what was true.** The controller's claim that 65 files import `@/demo/types` for the real API types was wrong — **zero** do; the re-export was dead code with one internal dependent. Deleted it, repointed the dependent, added an `importNames`-scoped rule that **errors** if those four types return to a demo path, proven able to fail. The importer count is unchanged because the task never had a mechanism to change it; the real relocation became T1.68. |
 | T1.68 | Relocate the shared frontend types out of `src/demo` | M | Sonnet | high | | done | c2b22d5 | — (Sonnet tier; Fable review owed before G-B) | 33 names moved into five feature-local modules, **judged by consumer rather than prefix** — and that mattered: `DemoRepo`, handed down as real-consumed, was **not** moved because every consumer is demo-gated. Also caught that the 65-importer count included a comment mention, so the truth was 64. New error-level rule blocks reintroducing any of the 33 from a demo path, falsified live. Broad warn count 150 → 116 across 80 → 67 files, pinned literal re-measured. Six real files keep a documented legitimate need for a demo-shaped type — recorded rather than gutted away to force a green rule. **Its reported "pre-existing non-deterministic benchlib failures" were its own collision**: `TEST_DATABASE_URL` set to a bench database name with `BENCH_DATABASE_URL` never set, so benchlib fell back to the shared database and deadlocked. Corrected in the log. Frontend 525 across 89 files; floor 2480; benchlib 284 alone. |
 
-## E2 — Truth core (70 tasks)
+## E2 — Truth core (71 tasks)
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
@@ -232,7 +232,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.52 | Contradiction-shortlist miss-rate runner | M | Sonnet | high | | todo | | | |
 | T2.53 | Register `topic_detection` on the schedule | S | Haiku | high | | todo | | | |
 | T2.54 | Label the entailment gold set | L | Fable | high | claude/e2-lane-t | wip | | | Executing the reviewed step-level plan `docs/superpowers/plans/2026-07-31-t2.54-entailment-gold.md`; Step 6 is a human sitting |
-| T2.55 | Grouping under the fact, and the no-triple-count rule | M | Opus | high | claude/e2-lane-u | wip | | | |
+| T2.55 | Grouping under the fact, and the no-triple-count rule | M | Opus | high | claude/e2-lane-u | done | f890697 | fable adversarial: spec PASS all 3 clauses, quality **Approved** — 1 Important + 3 Minor; scoped fix round closed 2 | Composition step 5, after the rerank and the multipliers, keyed on the namespaced `composition_key`. The reviewer reproduced every number and re-derived all four drills from their own edits. **Its Important is now T2.70**: measured on a driver over the real `search()` path, the cap slices after grouping, so at `limit=4` the grouped result drops a nested memory with its fact and promotes an unrelated row — ratified by ruling (the correct reading of R2; doc 07 §8's `excluded` vocabulary never counted the limit tail) but outside doc 07 §5's "**returned** cited fact" warrant, and the fix needs a window fixpoint decision. **The vacuous article test hid a real gap**: `_group_under_fact` filtered on `memory_key not in position` while `position` holds every row, so a hand-assembled support map would have nested an L3 article and removed it from the top level; the two upstream guards that made it unreachable both sit outside the function. Verify 29 passed; floor 3565 on the merged tree, matching the lane |
 | T2.56 | Cold-start behaviour and the output shapes | M | Sonnet | high | | todo | | | |
 | T2.57 | Contradiction-pair gold set | M | Fable | high | | todo | | | |
 | T2.58 | Converge Chat onto the one ranking path | M | Opus | high | | todo | | | |
@@ -247,6 +247,7 @@ and the Note says so. That rule is the whole point of this file.
 | T2.67 | Invariant 15's scan is bypassed by ordinary import formatting | M | Sonnet | high | claude/e2-lane-r | done | b5e2f40 | fable adversarial: **BLOCKED** on a Critical (superset claim refuted by running it); re-review found 1 further Important; both closed, **merges** | All three reachability scans now share one AST walker with four routes — import, attribute, literal, relative loader call. **The literal route uses two disciplines**, because one does not fit both token kinds: bare names and job keys match exactly, so real log prefixes and help text do not collide; dotted module paths match at identifier boundaries over `str` **and** `bytes`, so exec'd, decoded and spec-string spellings are caught. The forbidden set stays derived **one hop** from the umbrella and that is now a documented contract naming its dependents, because T2.12's landed repository and T2.13's planned module both rely on it. **Review blocked the first attempt**: exact matching had regressed five shapes the old scan caught, one demonstrated live in a capture-path module. A scoped re-review then found the third scan's fold-in had traded away an executable route while claiming pure gain — restored. Also folded in T2.19's raw-source prefilter, which defeated its own documented adjacent-literal coverage. **Controller resolved a semantic merge conflict**: the lane branched before T2.20, so its rewrite lacked T2.20's symbol-precise exemption; carried onto the walker as a node exemption and mutation-proven both ways. Verify 103 passed; floor 3401 passed; harness 410 |
 | T2.68 | Two read paths key on a fingerprint that can be a sentinel | S | Sonnet | high | | todo | | | |
 | T2.69 | The reranker cannot say "asked and failed", and does not say what text it needs | S | Sonnet | high | | todo | | | |
+| T2.70 | Grouping and the result cap drop a row nobody counts | M | Opus | high | | todo | | | Minted 2026-08-03 from T2.55's review; the resolution is ruled, the fixpoint is not |
 
 ## E3 — Synthesis & reach (26 tasks)
 
