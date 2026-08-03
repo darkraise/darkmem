@@ -34,10 +34,17 @@ hidden: the fixture must be re-collected the same way (instrument
 touched keys here) if the retrieval corpus, the extraction/classification
 prompts, or the pinned model changes, because the cache key folds in
 content and resolved purpose config. A stale fixture does not skip and
-does not silently pass -- ``run_harvest`` raises the vendor error for the
-mismatched key (the test's API key is an offline sentinel), so staleness
-fails loudly, the same trade the production cache already makes (module
-docstring below).
+does not silently pass, but ``run_harvest`` itself does not raise: the
+pipeline swallows a stale chat key's 401 per memory (``extraction_clean``
+logs ``Extraction failed: ... 401`` and returns an empty graph for that
+memory) and completes with ``n_facts=0``. The loud failure is this test's
+own ``live_calls == 0`` assertion below (F2, fix round 2026-08-04a --
+corrected; the prior wording here misattributed the failure to
+``run_harvest`` raising). A stale *embed* key is different again and is
+F1/F3 below: the embedding purpose targets a live, keyless LAN endpoint,
+so a miss there succeeds as a real network call rather than erroring, and
+that live result must never be allowed to land back inside the committed
+fixture (F1's fix: ``cache_dir`` is a copy, made fresh per test run).
 
 **Why not the other two shapes.** A hard failure with no fixture (make the
 missing prerequisite loud, full stop) would turn every fresh clone red
@@ -62,6 +69,7 @@ own, per checkout, so concurrent worktree floors cannot collide.
 """
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -174,20 +182,39 @@ def test_fixture_cache_is_committed_and_present():
 
 
 @pytest.mark.asyncio
-async def test_harvest_is_byte_reproducible_and_fully_cached():
-    # The key is a sentinel on purpose: a warm cache makes zero live calls,
-    # and a cache miss must fail loudly at the vendor rather than be paid
-    # for silently from a test floor. The bench database is the test's own
-    # per-checkout one -- never the environment's. The cache is the
-    # committed fixture (T2.79), not the shared gitignored dev cache, so
-    # this runs identically in a fresh clone, a lane worktree and the main
-    # checkout.
+async def test_harvest_is_byte_reproducible_and_fully_cached(tmp_path):
+    # The key is a sentinel on purpose: a warm cache makes zero live calls.
+    # A cache miss does NOT fail loudly at the vendor -- the pipeline
+    # swallows the per-memory 401 (extraction_clean logs it and the memory
+    # comes back with an empty graph), so `run_harvest` itself completes;
+    # the loud failure is this test's own `live_calls == 0` assertion below
+    # (F2, fix round 2026-08-04a -- the previous wording here was wrong).
+    # The bench database is the test's own per-checkout one -- never the
+    # environment's.
+    #
+    # F1 (same round): `cache_dir` is a throwaway copy of the committed
+    # fixture, never the fixture itself. `CachingLLMOrchestrator._write`
+    # targets whatever `cache_dir` it is given, and an embed-side cache miss
+    # is a real, successful call against the LAN Ollama embedder (api_key is
+    # ignored there, so the offline sentinel above does not stop it) --
+    # which used to land inside the committed
+    # `harvest_l2_cache_fixture/` directory. That let an embed-only
+    # staleness go red once and then self-heal to green from
+    # machine-locally regenerated state a fresh clone never has, reopening
+    # the exact worktree-vs-clone divergence T2.79 was minted to kill.
+    # Copying first makes the fixture read-only in this test path: whatever
+    # `_write` does lands in `tmp_path` and is discarded when the test ends,
+    # so a stale fixture stays red on every subsequent run, in every
+    # checkout, forever -- it can never repair its own evidence.
+    cache_dir = tmp_path / "harvest_l2_cache_fixture"
+    shutil.copytree(FIXTURE_CACHE_DIR, cache_dir)
+
     url = dedicated_bench_url()
     first = await run_harvest(
-        api_key="offline-warm-cache-only", bench_url=url, cache_dir=FIXTURE_CACHE_DIR
+        api_key="offline-warm-cache-only", bench_url=url, cache_dir=cache_dir
     )
     second = await run_harvest(
-        api_key="offline-warm-cache-only", bench_url=url, cache_dir=FIXTURE_CACHE_DIR
+        api_key="offline-warm-cache-only", bench_url=url, cache_dir=cache_dir
     )
 
     assert first.live_calls == 0, (
