@@ -47,6 +47,38 @@ reembed_locks = ReembedLockSet()
 BroadcastFn = Callable[[str, dict], Awaitable[None]]
 
 
+class CachePruneFingerprintUnresolved(RuntimeError):
+    """A cache prune was asked to keep a fingerprint nothing ever registered.
+
+    ``prune_obsolete_cache_entries`` keeps the one ``entity_embedding_cache``
+    child the active fingerprint names and drops every other child it finds.
+    That makes the keep key load-bearing in a way no read path is: an
+    unregistered fingerprint has no child table, so the keep matches nothing
+    and the sweep takes every live cache in the deployment.
+
+    ``LLMOrchestrator.llm_fingerprint()`` yields such a key from a legal
+    configuration — ``f"{model}|0"`` when the embedding purpose's
+    ``dimensions`` is unset, which ``parse_fingerprint`` rejects before any
+    partition is created (doc 04 §5, T2.68) — and a ``dimensions`` that
+    contradicts the width the model emits yields an equally unregistered
+    non-zero key. The guard therefore keys on registration rather than on the
+    ``|0`` literal: destroying data on an ambiguous key has no safe default,
+    so the prune refuses rather than pruning a best guess.
+    """
+
+    def __init__(self, fingerprint: str, reason: str) -> None:
+        self.fingerprint = fingerprint
+        self.reason = reason
+        super().__init__(
+            f"Refusing to prune entity-embedding caches: the active embedder "
+            f"fingerprint {fingerprint!r} {reason}, so no cache child can be "
+            f"told apart from a retired one. Nothing was dropped. Set the "
+            f"embedding purpose's 'dimensions' to the width the model actually "
+            f"emits (or clear it and run one embed so the true fingerprint "
+            f"registers), then retry."
+        )
+
+
 def _where(clause: str | None) -> str:
     return f" WHERE {clause}" if clause else ""
 
@@ -288,13 +320,49 @@ class ReembedService:
         ]
         return items, total, False
 
+    async def _assert_prunable(self, fingerprint: str) -> None:
+        """Refuse a prune whose keep fingerprint is not resolved and registered.
+
+        The predicate is exactly two conditions, and neither mentions the
+        ``|0`` sentinel: the fingerprint is a live (non-retired) row in
+        ``embedders``, and the cache child it names exists. Both are what
+        ``embedder_registry.register`` establishes together, so a fingerprint a
+        real embed produced satisfies them and an invented one satisfies
+        neither.
+
+        What this does NOT do: it does not resolve the fingerprint to some
+        other registered one the way ``resolve_read_fingerprint`` does for
+        reads. A read that guesses wrong returns rows; a drop that guesses
+        wrong destroys tables, so the ambiguous case ends here rather than in a
+        fallback.
+        """
+        registered = (await self.session.execute(
+            text("SELECT 1 FROM embedders WHERE fingerprint = :fp AND retired_at IS NULL"),
+            {"fp": fingerprint},
+        )).scalar_one_or_none()
+        if registered is None:
+            raise CachePruneFingerprintUnresolved(
+                fingerprint, "is not a live row in the embedder registry"
+            )
+        keep = child_table("entity_embedding_cache", fingerprint)
+        if not await self._table_exists(keep):
+            raise CachePruneFingerprintUnresolved(
+                fingerprint, f"is registered but its cache child {keep} does not exist"
+            )
+
     async def prune_obsolete_cache_entries(self, fingerprint: str) -> int:
         """Drop entity-embedding-cache child tables for retired fingerprints.
 
         Walks every child of ``entity_embedding_cache`` whose slug does not
         correspond to ``fingerprint``, drops them, and returns the count of
         tables dropped.
+
+        Refuses with :class:`CachePruneFingerprintUnresolved` — before any DDL
+        runs — when ``fingerprint`` is not resolved and registered, because the
+        keep is what separates a retired cache from a live one and an
+        unregistered keep matches nothing at all.
         """
+        await self._assert_prunable(fingerprint)
         rows = (
             await self.session.execute(
                 text(

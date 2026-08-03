@@ -110,17 +110,27 @@ class LLMOrchestrator:
         ``0`` sentinel the empty-batch paths use; a real embed call then
         registers the true-dimension fingerprint on demand.
 
-        **Who may call this directly, and who may not (T2.68).** This method
-        is pure and session-less, so it cannot check whether the sentinel it
-        may return actually has a partition behind it. Callers that only need
-        a *name* to write under — the empty-batch paths above, and boot-time
-        registration, which registers whatever this returns and is a no-op
-        under the sentinel because ``dims <= 0`` fails validation before any
-        table is created — may call it bare. A caller that checks partition
-        *existence* before reading (``ReembedService``'s ``to_regclass``
-        probe, which treats a missing table as "everything missing" rather
-        than assuming the table is there) is also safe calling it bare, since
-        it never blindly executes a ``SELECT`` against an unchecked name.
+        **Who may call this directly, and who may not (T2.68, T2.82).** This
+        method is pure and session-less, so it cannot check whether the
+        sentinel it may return actually has a partition behind it. Callers
+        that only need a *name* to write under — the empty-batch paths above,
+        and boot-time registration, which registers whatever this returns and
+        is a no-op under the sentinel because ``dims <= 0`` fails validation
+        before any table is created — may call it bare.
+
+        ``ReembedService`` as a whole is **not** safe calling it bare, and
+        this docstring claimed it was until T2.82. Its counting and listing
+        paths are: they probe partition existence with ``to_regclass`` and
+        treat a missing table as "everything missing" rather than running a
+        ``SELECT`` against an unchecked name. Its cache prune is not, because
+        it never reads the partition — it keeps the one
+        ``entity_embedding_cache`` child the fingerprint names and DROPs every
+        other one, so a fingerprint nothing registered keeps nothing and takes
+        every live cache in the deployment. That path now asks the question
+        itself (``ReembedService._assert_prunable``: a live ``embedders`` row
+        plus the child table it implies) and raises
+        ``CachePruneFingerprintUnresolved`` rather than dropping on a key
+        nothing was ever written under.
 
         Any other caller about to *read* a per-fingerprint partition without
         such a check (a bulk vector scan, a clustering view — anything that
