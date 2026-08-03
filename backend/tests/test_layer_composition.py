@@ -1214,6 +1214,28 @@ def test_the_badge_map_is_keyed_in_the_composition_keyspace():
 # appears as English. The exemption is per-file for docstrings only: an
 # allowlisted file that starts building the sentence in executable code is
 # still an offender.
+#
+# T2.77: the allowlist's staleness guard (below) only ever checked that an
+# entry still *needs* its exemption, never that its docstrings stay prose. A
+# byte-exact docstring-template producer planted inside an allowlisted file —
+# a sibling function's docstring holds the full sentence, and another reads
+# it back through `.__doc__` instead of a string literal — ran the whole
+# suite green, reproduced end to end against the real allowlisted files.
+# Policing docstring *content* to close it was rejected on purpose: T2.71
+# already stopped short of a content match because it breaks the build on an
+# ordinary prose reword, and pinning today's fragment set (or even its count)
+# has the same property — a reword that happens to add or drop one of these
+# words fails CI for no behavioural reason. `test_no_source_reflects_a_docstring_under_app`
+# below closes it structurally instead: nothing under ``app/`` may fetch an
+# object's own docstring at runtime (``__doc__`` / ``inspect.getdoc`` /
+# ``pydoc.getdoc``), which is the only way a docstring's text ever becomes
+# executable output. That is content-independent — rewording prose never
+# adds an attribute access — and measured to cost zero false positives: no
+# file under ``app/`` reads ``__doc__`` or calls anything named ``getdoc``
+# today. Residual, stated rather than chased: a producer that reconstructs
+# the text some other way — reparsing its own source with
+# ``inspect.getsource`` + ``ast.get_docstring``, say — is not this scan's
+# vocabulary and would need its own guard.
 
 _FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
 
@@ -1318,6 +1340,68 @@ def test_the_docstring_allowlist_is_not_stale():
         elif len(without) >= 2:
             stale[relative] = f"builds the claim outside its docstrings: {sorted(without)}"
     assert not stale, f"the docstring allowlist has rotted: {stale}"
+
+
+def _reflects_a_docstring(path: Path) -> bool:
+    """True if this file's code fetches *any* object's own docstring at
+    runtime, via ``.__doc__`` or a call named ``getdoc`` (``inspect.getdoc``,
+    ``pydoc.getdoc``, or an unqualified import of either).
+
+    This is the one way a docstring's text ever becomes rendered output, and
+    it is orthogonal to what the text says — so, unlike matching on fragment
+    content, forbidding the reflection itself never breaks on an ordinary
+    prose reword.
+    """
+    tree = ast.parse(path.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == "__doc__":
+            return True
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr if isinstance(func, ast.Attribute)
+                else func.id if isinstance(func, ast.Name)
+                else None
+            )
+            if name == "getdoc":
+                return True
+    return False
+
+
+def test_no_source_reflects_a_docstring_under_app():
+    """Closes the hole the staleness guard above cannot see.
+
+    That guard only ever asked whether an allowlisted entry still *needs*
+    its exemption — never whether its docstrings stay prose. A byte-exact
+    docstring-template producer needs no second literal the fragment scan
+    could catch: ``some_func.__doc__`` reads the exempted text directly, and
+    ``.format(...)`` (or a bare return, as here) renders it byte for byte.
+    Reproduced against the real tree: planting such a producer inside
+    ``app/repositories/fact_sources.py`` left the whole suite green before
+    this guard existed.
+
+    Scoped to every file under ``app/``, not just the four allowlisted ones,
+    because the exemption is what makes an allowlisted file's docstring a
+    legitimate reflection *target* — the reflecting *call* can sit anywhere
+    that imports it. Measured zero cost: no file under ``app/`` reads
+    ``__doc__`` or calls anything named ``getdoc`` today, so nothing
+    legitimate trips this.
+
+    Residual: a producer that recovers the text without going through
+    ``__doc__`` or a ``getdoc``-named call — reparsing its own source with
+    ``inspect.getsource`` and ``ast.get_docstring``, say — is invisible to
+    this scan and would need its own guard.
+    """
+    offenders = [
+        str(path.relative_to(_BACKEND))
+        for path in app_sources(_BACKEND)
+        if _reflects_a_docstring(path)
+    ]
+    assert not offenders, (
+        "reflecting on a docstring at runtime (`__doc__` / a `getdoc`-named "
+        "call) is forbidden under app/ — it is the one path the claim-"
+        f"fragment scan cannot see, docstring-allowlisted or not: {offenders}"
+    )
 
 
 def test_the_composition_itself_spells_no_part_of_the_claim():
