@@ -384,6 +384,35 @@ async def test_the_cache_row_is_the_documented_config_key(session):
     assert set(value) >= {"community_set_hash", "text"}
 
 
+async def test_a_narrower_report_budget_is_not_the_same_cache_entry(session):
+    """The cached text is a function of the budget as well as of the topics.
+
+    No door passes `max_reports` today, which is why this is cheap to hold
+    now: the first one that does would otherwise be served text written under
+    a different bound, next to `reports_used` counted against its own.
+    """
+
+    await seed_communities(session, PROJECT, communities=3, members_each=2)
+    llm = CountingLLM("the whole project")
+    await overview.get_overview(session, llm, PROJECT)
+
+    llm.answer = "only the biggest topic"
+    narrow = await overview.get_overview(session, llm, PROJECT, max_reports=1)
+    assert narrow.cached is False
+    assert narrow.text == "only the biggest topic"
+    assert (narrow.reports_used, narrow.reports_omitted) == (1, 2)
+
+    llm.answer = "the whole project, recomputed"
+    wide = await overview.get_overview(session, llm, PROJECT)
+    assert wide.cached is False
+    assert wide.text == "the whole project, recomputed"
+    assert len(llm.calls) == 3
+
+    repeat = await overview.get_overview(session, ExplodingLLM(), PROJECT)
+    assert repeat.cached is True
+    assert repeat.text == "the whole project, recomputed"
+
+
 class BarrierLLM:
     """Holds every racer inside the reduce until all of them have arrived.
 

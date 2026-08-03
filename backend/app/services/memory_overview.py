@@ -41,6 +41,14 @@ detection run. Between runs the community set is immutable (nothing but the
 detector writes those rows), so a repeated overview request is a `config`-row
 read and zero model calls.
 
+The stored `max_reports` is part of that identity, not decoration: the prompt
+is a function of the budget as well as of the community set, so a hit has to
+match both or a caller asking for a narrower overview would be served the
+wider one's text beside `reports_used` recomputed against its own budget. The
+row stays one per project rather than one per budget — a non-default request
+evicts the default entry and costs the next default request a call, which is
+the cheap direction to be wrong in.
+
 **No verification badge, ever.** The reduce is a summary of summaries — a
 *report*, not a grounded article — so it reuses `summarization` rather than
 the truth-critical `synthesis` purpose (doc 11 §6), and its output is an
@@ -368,7 +376,11 @@ async def get_overview(
         )
 
     cached = await _read_cache(session, project)
-    if cached is not None and cached.get("community_set_hash") == set_hash:
+    if (
+        cached is not None
+        and cached.get("community_set_hash") == set_hash
+        and cached.get("max_reports") == max_reports
+    ):
         return OverviewResult(
             text=cached.get("text"),
             generated_at=cached.get("generated_at") or _now(),
@@ -390,6 +402,7 @@ async def get_overview(
         project,
         {
             "community_set_hash": set_hash,
+            "max_reports": max_reports,
             "text": text,
             "generated_at": generated_at,
             "reports_used": len(used),
