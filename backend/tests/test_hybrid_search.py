@@ -11,6 +11,10 @@ Two layers:
   asserts the returned ``memory_id`` is a *string* that round-trips to the
   seeded UUID. This is the str/UUID boundary the codebase relies on — hybrid
   search emits string ids and every consumer must normalize to ``UUID``.
+* The honest-partial-results contract (doc 07 §2, invariant 14) is pinned
+  against *database-level* failures, which is the only kind that can poison
+  the sibling channel: both channels run on one shared session, so an aborted
+  transaction is what a per-channel savepoint exists to contain.
 """
 from __future__ import annotations
 
@@ -184,3 +188,92 @@ async def test_search_keyword_side_matches_via_fts(session):
     ids = {r["memory_id"] for r in results}
     assert str(mem_id) in ids
     assert all(isinstance(r["memory_id"], str) for r in results)
+
+
+# ── the honest-partial-results contract, broken in the database (T2.66) ──
+#
+# A channel broken in Python — a patched query builder, an exception raised
+# before ``execute`` — leaves the transaction usable, so it cannot observe
+# what the per-channel savepoints exist for: a database error aborts the
+# whole transaction, and without a savepoint the *other* channel's own valid
+# SQL then fails on the aborted one. A one-sided outage is then reported as a
+# both-sided one, naming a channel that never independently failed. Nothing
+# below patches the service; each side is broken in the database.
+
+# The semantic side reads ``memory_embeddings__<slug>``, and no such child
+# table exists for a fingerprint nobody registered — the shape a rotated
+# embedder produces when its partition write never happened.
+_UNREGISTERED_FINGERPRINT = "never-registered-embedder|4"
+
+# Only the keyword side spells the query into SQL, and no text search
+# configuration drops these, so the tsquery the database is asked to build
+# overflows. The semantic side never sees the string: it searches by vector.
+_KEYWORD_SIDE_POISON = "alpha beta gamma " * 20_000
+
+
+async def _seed_memory(session, content: str) -> uuid.UUID:
+    mem = Memory(
+        id=uuid.uuid4(), content=content, source="test", project="hybrid-search-test",
+    )
+    session.add(mem)
+    await session.flush()
+    return mem.id
+
+
+async def _assert_the_session_survived(session) -> None:
+    assert (await session.execute(text("SELECT 1"))).scalar() == 1
+
+
+@pytest.mark.asyncio
+async def test_a_database_level_semantic_failure_degrades_to_the_keyword_side(session):
+    mem_id = await _seed_memory(session, "kubernetes ingress controller tuning notes")
+
+    svc = HybridSearchService(_FakeLLM([1.0, 0.0, 0.0, 0.0], _UNREGISTERED_FINGERPRINT), session)
+    trace = await svc.search_with_trace("kubernetes ingress", limit=10)
+
+    assert trace.semantic_failed is True
+    assert trace.keyword_failed is False
+    assert str(mem_id) in {row["memory_id"] for row in trace.results}
+    await _assert_the_session_survived(session)
+
+
+@pytest.mark.asyncio
+async def test_a_database_level_keyword_failure_leaves_the_session_usable(session):
+    """The side that fails last poisons nothing the search itself needs.
+
+    It runs second, so no sibling channel can observe its failure — only the
+    caller can, and the caller is holding the request transaction.
+    """
+    fingerprint = "fake-embedder|4"
+    vector = [1.0, 0.0, 0.0, 0.0]
+    mem_id = await _seed_memory(session, "postgres connection pooling with pgbouncer")
+    await _seed_embedding_partition(session, fingerprint, 4)
+    child = child_table("memory_embeddings", fingerprint)
+    await session.execute(
+        text(
+            f"INSERT INTO {child} (memory_id, fingerprint, embedding, payload) "
+            "VALUES (:mid, :fp, CAST(:vec AS vector), '{}'::jsonb)"
+        ),
+        {"mid": mem_id, "fp": fingerprint, "vec": str(vector)},
+    )
+    await session.flush()
+
+    svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
+    trace = await svc.search_with_trace(_KEYWORD_SIDE_POISON, limit=10)
+
+    assert trace.keyword_failed is True
+    assert trace.semantic_failed is False
+    assert str(mem_id) in {row["memory_id"] for row in trace.results}
+    await _assert_the_session_survived(session)
+
+
+@pytest.mark.asyncio
+async def test_a_both_sided_database_failure_raises_rather_than_returning_empty(session):
+    """Invariant 14 does not soften because the failure was a real one."""
+    await _seed_memory(session, "postgres connection pooling with pgbouncer")
+
+    svc = HybridSearchService(_FakeLLM([1.0, 0.0, 0.0, 0.0], _UNREGISTERED_FINGERPRINT), session)
+    with pytest.raises(RuntimeError, match="both semantic and keyword"):
+        await svc.search(_KEYWORD_SIDE_POISON, limit=10)
+
+    await _assert_the_session_survived(session)
