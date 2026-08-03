@@ -1,0 +1,773 @@
+{
+  "_reproducible": "Everything in this file except header.generated_at and header.git_sha is byte-identical across re-runs on an unchanged tree with a warm cache; the sorted 'facts' section is the forgery detector T2.41's --gate evidence re-derives and diffs.",
+  "facts": [
+    {
+      "fact": "search-01 is a typesense",
+      "object_name": "typesense",
+      "project": "default",
+      "rel_type": "IS_A",
+      "source_memory_ids": [
+        "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d"
+      ],
+      "subject_name": "search-01",
+      "triple_key": "04ebe769-fa68-5371-9467-f7a8c6aad887",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "github actions replaces jenkins",
+      "object_name": "jenkins",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "0219c208-1122-5c1e-8fbf-0996a051b4e7"
+      ],
+      "subject_name": "github actions",
+      "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "grafana uses nginx",
+      "object_name": "nginx",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4f366064-1277-5ed4-bd74-63ebdf4259ec"
+      ],
+      "subject_name": "grafana",
+      "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "restic uses nas",
+      "object_name": "nas",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "35d04f41-31cd-5c7c-ae05-565a9c27490f"
+      ],
+      "subject_name": "restic",
+      "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "directory replica deployed on acs-01",
+      "object_name": "acs-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "364b3d94-96cf-5163-af94-bb665dbe1486"
+      ],
+      "subject_name": "directory replica",
+      "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "kibana has part elk",
+      "object_name": "elk",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "efefa9eb-814a-53e9-a820-ba77281806c3"
+      ],
+      "subject_name": "kibana",
+      "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "internal package mirror uses client",
+      "object_name": "client",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "11abfa7f-8f0c-5cc4-a7a5-9445adb2de7d"
+      ],
+      "subject_name": "internal package mirror",
+      "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vector related to telegraf",
+      "object_name": "telegraf",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "5b815f89-99f7-5b1f-b0c1-0428f8371903"
+      ],
+      "subject_name": "vector",
+      "triple_key": "11606722-ee98-5a68-a01f-3f2b5f1e49e7",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "cleanup cron job causes scratch partition",
+      "object_name": "scratch partition",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
+      ],
+      "subject_name": "cleanup cron job",
+      "triple_key": "12894a6a-ea4c-5811-91e6-5f21705c7917",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "status dashboard uses vite",
+      "object_name": "vite",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "f63bb43f-c662-5e8e-bc57-c082334f580d"
+      ],
+      "subject_name": "status dashboard",
+      "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "jenkins deployed on ci-01",
+      "object_name": "ci-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "21e2b38f-4dd7-569a-8736-6b2b4b5afac4"
+      ],
+      "subject_name": "jenkins",
+      "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "terraform uses tf-state",
+      "object_name": "tf-state",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c565d8a5-efb0-5c2e-b739-0d07c1812253"
+      ],
+      "subject_name": "terraform",
+      "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "hv-27 has part scratch partition",
+      "object_name": "scratch partition",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "d00a000f-f2d8-551e-bbcd-4776d8ec62d5"
+      ],
+      "subject_name": "hv-27",
+      "triple_key": "31c1a0ee-0bcb-555a-ab9b-86cd7d898f40",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nightly integration suite uses junit",
+      "object_name": "junit",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "60249037-7964-557d-a6d1-5ee795667aff"
+      ],
+      "subject_name": "nightly integration suite",
+      "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vault related to .env files",
+      "object_name": ".env files",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "6a99747f-58b0-5faf-886a-3129e6455b84"
+      ],
+      "subject_name": "vault",
+      "triple_key": "37a75f1f-b666-5ca3-9ae6-4cd8c8b8a2e5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "wireguard deployed on udp",
+      "object_name": "udp",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "fa63d628-6fde-5901-9174-24e81062ed83"
+      ],
+      "subject_name": "wireguard",
+      "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vault uses apps/portal",
+      "object_name": "apps/portal",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "00c4e4d0-7539-590d-9c9b-af30d523ab5f"
+      ],
+      "subject_name": "vault",
+      "triple_key": "3a8ffbdb-90d8-59d2-b478-6e99319fe38d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "prometheus uses node exporters",
+      "object_name": "node exporters",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b40ee9bb-a6a8-554e-a043-78afd9c05bd0"
+      ],
+      "subject_name": "prometheus",
+      "triple_key": "3d8b8266-237f-5431-8f58-691ff67c4f73",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "artifacts-prod deployed on minio",
+      "object_name": "minio",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "0ba49298-7814-590d-bd48-917e6505b347"
+      ],
+      "subject_name": "artifacts-prod",
+      "triple_key": "3ed12383-bb50-5361-bd65-d5a56a7e04b8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ocr worker deployed on gpu-01",
+      "object_name": "gpu-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "40ea85bd-9359-5256-b42f-625b725c29a1"
+      ],
+      "subject_name": "ocr worker",
+      "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "iot-gw-1 uses firmware check",
+      "object_name": "firmware check",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "05b752a0-aa7a-5a74-a543-b74684e79fa2"
+      ],
+      "subject_name": "iot-gw-1",
+      "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "customer-portal uses vault",
+      "object_name": "vault",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e2d647bc-446c-53f2-8da6-489bda083db4"
+      ],
+      "subject_name": "customer-portal",
+      "triple_key": "4e7f472b-5da4-545b-8f41-b30558cf9ba0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "grafana uses infra",
+      "object_name": "infra",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "6d10a0dc-d884-5159-ab96-75909d411d54"
+      ],
+      "subject_name": "grafana",
+      "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "terraform uses minio",
+      "object_name": "minio",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c565d8a5-efb0-5c2e-b739-0d07c1812253"
+      ],
+      "subject_name": "terraform",
+      "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "postfix deployed on mail-01",
+      "object_name": "mail-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "14fe0a84-d444-53ff-8bf4-97148e2e9b77"
+      ],
+      "subject_name": "postfix",
+      "triple_key": "60502a4d-76a9-5004-8d26-c94a05c4557b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "caddy improves on nginx",
+      "object_name": "nginx",
+      "project": "default",
+      "rel_type": "IMPROVES_ON",
+      "source_memory_ids": [
+        "4001d61d-1c72-5a01-9c49-cc3ee30af59d"
+      ],
+      "subject_name": "caddy",
+      "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "apps-02 deployed on rack ups",
+      "object_name": "rack ups",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "38d507a9-7fd0-54e2-9980-701e04df1cc3"
+      ],
+      "subject_name": "apps-02",
+      "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "license-report depends on internal package mirror",
+      "object_name": "internal package mirror",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "5ab45131-c6ef-59dd-a26f-9c236f503eb8"
+      ],
+      "subject_name": "license-report",
+      "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "door-badge uses directory replica",
+      "object_name": "directory replica",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "364b3d94-96cf-5163-af94-bb665dbe1486"
+      ],
+      "subject_name": "door-badge",
+      "triple_key": "6f06fed4-2f25-5d7e-a363-f24002c62128",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "fleet-cfg related to booking schedule",
+      "object_name": "booking schedule",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "3d0bdc78-4e41-5455-9c60-cc397745ac3c"
+      ],
+      "subject_name": "fleet-cfg",
+      "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "redis replaces memcached",
+      "object_name": "memcached",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "a1b72e41-3103-5b35-b241-441913cbc6aa"
+      ],
+      "subject_name": "redis",
+      "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "rooftop weather station uses iot-gw-1",
+      "object_name": "iot-gw-1",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e33098f6-78d6-5469-87c0-e8fdbc508f10"
+      ],
+      "subject_name": "rooftop weather station",
+      "triple_key": "77567f40-e068-57b7-b8c3-14cae1b8b01e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "sftp-02 uses dns",
+      "object_name": "dns",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "bb411aa9-0f79-59b5-ba6b-d5805bc57792"
+      ],
+      "subject_name": "sftp-02",
+      "triple_key": "7ff82019-0e6e-5ba1-a679-933ebecb9ac0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nightly integration suite uses artifacts bucket",
+      "object_name": "artifacts bucket",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "60249037-7964-557d-a6d1-5ee795667aff"
+      ],
+      "subject_name": "nightly integration suite",
+      "triple_key": "8a0cb86b-70de-555e-b834-80ef8a8a6323",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "postgres deployed on stg-db-01",
+      "object_name": "stg-db-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "8bb0fed2-3886-535f-9f48-5d96c574eb22"
+      ],
+      "subject_name": "postgres",
+      "triple_key": "8b0af751-67c2-572d-adfc-db51d823ed3f",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "arc-store deployed on minio",
+      "object_name": "minio",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "8ece58ef-ebee-5453-a0c8-458bb2621455"
+      ],
+      "subject_name": "arc-store",
+      "triple_key": "8eeb62a2-ef08-5622-904f-9b31b246d742",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "prod-db-01 deployed on postgres",
+      "object_name": "postgres",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "7c60d074-64b0-579b-8c04-517c3bd508f1"
+      ],
+      "subject_name": "prod-db-01",
+      "triple_key": "8f37265e-35d6-5fa1-8fd7-7e0c764d818c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "glitchtip replaces sentry",
+      "object_name": "sentry",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "1ffca2a1-ed6a-5195-99ba-92ced36116f0"
+      ],
+      "subject_name": "glitchtip",
+      "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "redis deployed on cache-01",
+      "object_name": "cache-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "84e01d06-a718-5192-9371-d907a92e5d3a"
+      ],
+      "subject_name": "redis",
+      "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "apps/portal uses audit-log",
+      "object_name": "audit-log",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "00c4e4d0-7539-590d-9c9b-af30d523ab5f"
+      ],
+      "subject_name": "apps/portal",
+      "triple_key": "a8abee19-e45b-5503-a90b-709107983352",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "config management agent causes lp-relay",
+      "object_name": "lp-relay",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "89333823-a2e6-506a-a0c4-06f8e4cc88a6"
+      ],
+      "subject_name": "config management agent",
+      "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "expense uses ocr worker",
+      "object_name": "ocr worker",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "40ea85bd-9359-5256-b42f-625b725c29a1"
+      ],
+      "subject_name": "expense",
+      "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "telegraf uses influxdb",
+      "object_name": "influxdb",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "aad9fa2a-1b75-5cd8-9c30-f7b3ca5c80fe"
+      ],
+      "subject_name": "telegraf",
+      "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "team wiki deployed on lab-vm-3",
+      "object_name": "lab-vm-3",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "a66e992b-7d1b-5432-9072-e552d17232af"
+      ],
+      "subject_name": "team wiki",
+      "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "mobile app uses edge-cdn-4",
+      "object_name": "edge-cdn-4",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "d0479f79-36c5-5042-83b8-b8629e68a305"
+      ],
+      "subject_name": "mobile app",
+      "triple_key": "b7e6e07d-4135-5663-9acd-f3e4e1c12911",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "monthly payroll export uses sftp-02",
+      "object_name": "sftp-02",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "33062433-dd83-55ea-a6d9-4460dd337c12"
+      ],
+      "subject_name": "monthly payroll export",
+      "triple_key": "bcafb282-5cd6-5a77-9abd-5d578479b2f9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "billing-sync deployed on apps-02",
+      "object_name": "apps-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "3fbb7781-1891-5b97-8aeb-58ed402dfe5b"
+      ],
+      "subject_name": "billing-sync",
+      "triple_key": "be4e96f1-635c-5f36-8489-106bfbb63d7c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "lp-relay uses office label printers",
+      "object_name": "office label printers",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b03bbc85-9576-5260-88d7-961a7371867b"
+      ],
+      "subject_name": "lp-relay",
+      "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ntfy related to sms",
+      "object_name": "sms",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "efda09df-0023-55a8-9ef2-badd96de55a1"
+      ],
+      "subject_name": "ntfy",
+      "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "thumbs queue deployed on queue-01",
+      "object_name": "queue-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "cf006c00-0489-5b59-afbe-ea40bf01b398"
+      ],
+      "subject_name": "thumbs queue",
+      "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "typesense deployed on search-01",
+      "object_name": "search-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "9637a80e-4e23-5137-9cf8-14bd5c4f8b4d"
+      ],
+      "subject_name": "typesense",
+      "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "acs-01 depends on ntp",
+      "object_name": "ntp",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "4a286983-385c-5ceb-b9e9-b09d36bb9497"
+      ],
+      "subject_name": "acs-01",
+      "triple_key": "cbb3f9de-ea07-5b45-8a09-214a2cb41319",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "unleash uses oidc",
+      "object_name": "oidc",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "38b71b50-3a9d-5631-9d13-6c090c22faee"
+      ],
+      "subject_name": "unleash",
+      "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "astro replaces mkdocs",
+      "object_name": "mkdocs",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "f34c78e9-c53b-5a6e-8a47-51c74a3f4d7f"
+      ],
+      "subject_name": "astro",
+      "triple_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "compactor uses loki",
+      "object_name": "loki",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b76b13e7-625b-5566-b64c-b66fcc28ed8d"
+      ],
+      "subject_name": "compactor",
+      "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "redis deployed on queue-01",
+      "object_name": "queue-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "b1bfebf5-1e0f-5f4e-88e1-57ddd64848cb"
+      ],
+      "subject_name": "redis",
+      "triple_key": "dea1fc2d-868a-5755-baa3-dea5ae8c184d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "restic uses wiki volume",
+      "object_name": "wiki volume",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "35d04f41-31cd-5c7c-ae05-565a9c27490f"
+      ],
+      "subject_name": "restic",
+      "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "memcached deployed on cache-02",
+      "object_name": "cache-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "b94043b3-61ba-545f-926f-0cf70ae088eb"
+      ],
+      "subject_name": "memcached",
+      "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "analytics etl depends on orders database",
+      "object_name": "orders database",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "2c93598f-be9a-5eae-981a-8340dfbc35da"
+      ],
+      "subject_name": "analytics etl",
+      "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nginx uses client certificates",
+      "object_name": "client certificates",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b4b901ed-ccbc-56b5-9bf2-48e6a0ffee06"
+      ],
+      "subject_name": "nginx",
+      "triple_key": "e759f6f2-d05a-552e-bf7e-0e0cc4dbe640",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ci runners uses docker-in-docker",
+      "object_name": "docker-in-docker",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "d09737c7-2b2c-5b86-8744-30ccccdbadc8"
+      ],
+      "subject_name": "ci runners",
+      "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nightly dump related to orders database",
+      "object_name": "orders database",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "b58795ae-3e47-5b88-a760-768074eef323"
+      ],
+      "subject_name": "nightly dump",
+      "triple_key": "f6970044-019e-5aba-b03e-5d8af25af9cf",
+      "verification_status": "candidate"
+    }
+  ],
+  "header": {
+    "assignment_seed": 20260731,
+    "bench_db": "darkmem_bench_1",
+    "corpus_entries": 94,
+    "corpus_path": "corpus.json",
+    "corpus_sha256": "1c1d4959d5ae442b8b9b86e5fd5bc285a834956e9bceb775f99943102cfc48be",
+    "embedder_fingerprint": "qwen3-embedding:0.6b|1024",
+    "gate_config": {
+      "classification_mode": "simple",
+      "classifier_kind": null,
+      "relation_rescue": true
+    },
+    "generated_at": "2026-08-03T10:47:53.806803+00:00",
+    "git_sha": "cd0f685f1e9e12d2acbb7d7756130814811b6f17",
+    "ingest_live_calls": 0,
+    "lift": {
+      "facts_created": 62,
+      "salience_min_asserting_memories": 1,
+      "sources_added": 62,
+      "stalled_candidates": 0,
+      "ticks": 2
+    },
+    "pairs_per_premise_cap": 4
+  }
+}

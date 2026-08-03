@@ -25,10 +25,22 @@ Label against that file, not from memory of what a slice name suggests.
 
 Provenance is a closed vocabulary declared per pair and counted at the top
 level, because G-D's numbers inherit any overstatement of where a pair came
-from. ``synthesis-draft`` and ``l2-fact`` are reserved values with no
-producer yet (T3.02 and T2.10 respectively); the current file must carry
-zero of each, pinned by test, so the first real harvest from either source
-is a visible diff, never a silent relabel.
+from. ``synthesis-draft`` stays reserved with no producer (T3.02).
+``l2-fact`` has a producer since T2.54's recorded harvest: a pair claiming
+it must carry a ``fact_key`` that resolves against the committed harvest
+manifest (``entailment/l2_harvest.json``), with the manifest row as source
+of truth -- the pair's key fields byte-equal the row's and the premise
+byte-equals the row's minted ``fact`` text. The manifest itself is
+validated once per load against the imported ``compute_triple_key`` and
+``fact_sentence`` (parity-by-import, never re-implemented), which also
+makes any future change to ``fact_sentence``'s rendering fail this loader
+loudly -- that is the sunset tripwire for the temporal slice's
+hand-authored-premise exemption (doc 17 §11). The byte-binding's
+brittleness is deliberate: an id anchor would dangle silently after every
+bench schema reset, and a recomputation from the pair's own fields would
+accept cased premises ``fact_lift`` never produced, because
+``compute_triple_key`` canonicalises names while ``fact_sentence``
+lowercases only the predicate.
 
 File discipline mirrors the retrieval gold (doc 17 §11): append-only,
 ascending ``eg-`` ids, wrong pairs retired in place with ``"retired": true``
@@ -40,8 +52,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.services.fact_lift import fact_sentence
+from app.services.triple_key import compute_triple_key
+
 ENTAILMENT_DIR = Path(__file__).resolve().parent / "entailment"
 GOLD_PATH = ENTAILMENT_DIR / "gold.json"
+HARVEST_PATH = ENTAILMENT_DIR / "l2_harvest.json"
 
 VARIANT = "claim-fact"
 
@@ -92,8 +108,83 @@ PROVENANCES = frozenset({
     "l2-fact",
 })
 CORPUS_PROVENANCES = frozenset({"hand-authored-bench-corpus"})
+L2_PROVENANCE = "l2-fact"
+
+# The anchor object an l2-fact pair must carry, resolved against the harvest
+# manifest by triple_key with the manifest row as source of truth.
+FACT_KEY_FIELDS = (
+    "triple_key", "subject_name", "rel_type", "object_name", "project",
+)
 
 LABEL_SOURCES = frozenset({"author", "adjudicated"})
+
+
+def load_l2_harvest(path: str | Path = HARVEST_PATH) -> dict:
+    """Load the harvest manifest and validate its self-consistency.
+
+    Every row must satisfy, against the *imported* shipping functions:
+    ``compute_triple_key(project, subject_name, rel_type, object_name) ==
+    triple_key`` and ``fact_sentence(subject_name, rel_type, object_name) ==
+    fact``. That pins the manifest to the shipping identity and rendering,
+    so drift in either fails the floor loudly instead of letting anchored
+    pairs verify against a rendering ``fact_lift`` no longer produces. Rows
+    must be sorted by ``triple_key`` with no duplicates -- the sorted,
+    timestamp-free ``facts`` section is what a re-harvest byte-diffs to
+    detect a hand-written row (T2.41's --gate evidence re-runs that diff).
+
+    Raises:
+        ValueError: naming the offending row and the check it failed.
+    """
+    path = Path(path)
+    with open(path, encoding="utf-8") as fh:
+        manifest = json.load(fh)
+
+    facts = manifest.get("facts")
+    if not isinstance(facts, list):
+        raise ValueError(f"harvest manifest {path}: 'facts' must be a list")
+
+    keys: list[str] = []
+    for idx, row in enumerate(facts):
+        for field in (*FACT_KEY_FIELDS, "fact"):
+            value = row.get(field)
+            if not isinstance(value, str) or not value:
+                raise ValueError(
+                    f"harvest manifest {path}: row {idx} is missing a "
+                    f"non-empty {field!r}"
+                )
+        recomputed = compute_triple_key(
+            row["project"], row["subject_name"], row["rel_type"],
+            row["object_name"],
+        )
+        if recomputed != row["triple_key"]:
+            raise ValueError(
+                f"harvest manifest {path}: row {idx} triple_key "
+                f"{row['triple_key']!r} is not the shipping "
+                f"compute_triple_key identity of its own fields "
+                f"({recomputed!r}) -- the manifest must be re-harvested, "
+                "never hand-edited"
+            )
+        rendered = fact_sentence(
+            row["subject_name"], row["rel_type"], row["object_name"]
+        )
+        if rendered != row["fact"]:
+            raise ValueError(
+                f"harvest manifest {path}: row {idx} fact {row['fact']!r} is "
+                f"not the shipping fact_sentence rendering of its own fields "
+                f"({rendered!r}); if fact_sentence's rendering changed, every "
+                "l2-fact pair must be re-adjudicated under retire-and-replace "
+                "and the temporal exemption re-argued (doc 17 §11)"
+            )
+        keys.append(row["triple_key"])
+
+    if keys != sorted(keys):
+        raise ValueError(
+            f"harvest manifest {path}: facts must be sorted by triple_key"
+        )
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"harvest manifest {path}: duplicate triple_key rows")
+
+    return manifest
 
 
 def is_grounded(pair: dict) -> bool:
@@ -102,27 +193,43 @@ def is_grounded(pair: dict) -> bool:
     return pair["verdict"] in GROUNDED_VERDICTS
 
 
-def load_entailment_gold(path: str | Path = GOLD_PATH) -> dict:
+def load_entailment_gold(
+    path: str | Path = GOLD_PATH,
+    harvest_path: str | Path = HARVEST_PATH,
+) -> dict:
     """Load and structurally validate the entailment gold file.
 
     Returns the parsed document (``version``, ``variant``,
     ``declared_slice_counts``, ``declared_verdict_counts``,
     ``declared_provenance_counts``, ``pairs``). The cross-file check that
     corpus-derived premises still match the retrieval corpus belongs to
-    ``validate_gold_against_corpus``.
+    ``validate_gold_against_corpus``; the ``l2-fact`` anchor is validated
+    *inline* here against the committed harvest manifest -- a deliberate
+    asymmetry, because the manifest is this gold's own required sibling
+    while the retrieval corpus belongs to another subsystem.
 
     Raises:
         ValueError: On any shape violation -- a wrong variant, an untabled
             verdict, slice, provenance or label source, a live pair whose
             verdict falls outside its slice's allowed set, a corpus-derived
             pair without its ``corpus_key`` (or a non-corpus pair carrying
-            one), a live pair without a labelling rationale, duplicate or
+            one), an ``l2-fact`` pair whose ``fact_key`` is missing, does
+            not resolve in the manifest, disagrees with the manifest row's
+            fields, or whose premise is not byte-equal to the row's minted
+            ``fact`` (or a non-``l2-fact`` pair carrying a ``fact_key``),
+            a live pair without a labelling rationale, duplicate or
             out-of-order pair ids, a duplicate live (premise, hypothesis)
             pair, or declared counts that disagree with the live pairs.
     """
     path = Path(path)
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
+
+    # Once per load, unconditionally: the manifest self-consistency check is
+    # also the fact_sentence-rendering tripwire, so it must bite even while
+    # the file holds zero l2-fact pairs.
+    manifest = load_l2_harvest(harvest_path)
+    manifest_by_key = {row["triple_key"]: row for row in manifest["facts"]}
 
     if data.get("variant") != VARIANT:
         raise ValueError(
@@ -236,6 +343,45 @@ def load_entailment_gold(path: str | Path = GOLD_PATH) -> dict:
                 f"pair {pid}: 'corpus_key' is only lawful under a corpus "
                 f"provenance ({sorted(CORPUS_PROVENANCES)}); {provenance!r} "
                 "pairs must not carry one"
+            )
+
+        fact_key = pair.get("fact_key")
+        if provenance == L2_PROVENANCE:
+            if not isinstance(fact_key, dict) or set(fact_key) != set(FACT_KEY_FIELDS):
+                raise ValueError(
+                    f"pair {pid}: provenance {L2_PROVENANCE!r} requires a "
+                    f"'fact_key' object with exactly the fields "
+                    f"{sorted(FACT_KEY_FIELDS)} anchoring the premise to the "
+                    "harvest manifest row that minted it"
+                )
+            row = manifest_by_key.get(fact_key["triple_key"])
+            if row is None:
+                raise ValueError(
+                    f"pair {pid}: fact_key.triple_key "
+                    f"{fact_key['triple_key']!r} does not resolve to a "
+                    "harvest manifest row -- re-adjudicate under "
+                    "retire-and-replace"
+                )
+            for field in ("subject_name", "rel_type", "object_name", "project"):
+                if fact_key[field] != row[field]:
+                    raise ValueError(
+                        f"pair {pid}: fact_key.{field} {fact_key[field]!r} "
+                        f"!= the manifest row's {row[field]!r} -- the "
+                        "manifest row is the source of truth; the pair never "
+                        "self-supplies the authoritative values"
+                    )
+            if pair["premise"] != row["fact"]:
+                raise ValueError(
+                    f"pair {pid}: premise is not byte-equal to the minted "
+                    f"fact {row['fact']!r} -- an {L2_PROVENANCE!r} premise is "
+                    "the knowledge_triples.fact text verbatim, never a "
+                    "recomputation from the pair's own (possibly cased) "
+                    "fields; re-adjudicate under retire-and-replace"
+                )
+        elif fact_key is not None:
+            raise ValueError(
+                f"pair {pid}: 'fact_key' is only lawful under provenance "
+                f"{L2_PROVENANCE!r}; {provenance!r} pairs must not carry one"
             )
 
         texts = (pair["premise"].strip(), pair["hypothesis"].strip())

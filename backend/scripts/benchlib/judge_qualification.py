@@ -11,12 +11,16 @@ show it.
 
 ``gate_eligibility`` is the mechanical half of the doc 17 §11 composition
 rule: G-D's gate mode refuses a gold that is too small (< 200 live pairs),
-synthetic-only (zero ``l2-fact`` premises), or not yet adjudicated (any live
-``label_source == "author"``). The ``>= 1`` real-pair floor is deliberately
-the minimum decodable reading — it blocks the named vector (a
-grown-but-still-synthetic set) in code, while the adequacy of a barely-real
-composition is T2.41's human adjudication, which is why the counts are always
-surfaced (``l2-fact: 1/200``), never collapsed into a boolean.
+majority-synthetic (``l2-fact`` premises below 50% of live pairs — ratified
+by the owner 2026-07-31; §11's own clause says a ``199 synthetic / 1 real``
+set must not pass), or not yet adjudicated (any live
+``label_source == "author"``). The floor is 50% rather than 100% because
+``temporal`` pairs *cannot* carry real premises today — ``fact_lift`` never
+renders a validity window into fact text — and the windowed slice guards
+the veto's window semantics, so it stays hand-authored inside the other
+half. The counts are always surfaced (``l2-fact: 130/241``), never
+collapsed into a boolean, so T2.41's human adjudication still sees the raw
+composition.
 """
 from __future__ import annotations
 
@@ -154,10 +158,12 @@ def gate_eligibility(gold_doc: dict) -> Eligibility:
         reasons.append(
             f"live pairs {n_live} < {MIN_GOLD_PAIRS} (doc 17 §11 size floor)"
         )
-    if n_l2 == 0:
+    if 2 * n_l2 < n_live:
         reasons.append(
-            f"synthetic-only gold rejected: l2-fact: {n_l2}/{n_live} "
-            "(doc 17 §11; real premises land with T2.54 after T2.10)"
+            f"l2-fact premises {n_l2}/{n_live} sit below the >=50% floor "
+            "(doc 17 §11, ratified 2026-07-31: a grown-but-still-synthetic "
+            "set must not pass; temporal's hand-authored premises live "
+            "inside the other half)"
         )
     if n_author > 0:
         reasons.append(

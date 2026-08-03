@@ -149,13 +149,14 @@ recall inherit any overstatement and nobody downstream can see it.
   the job is a `PlaceholderJobRunner` until T3.02, which is *behind* the
   gate this gold feeds. The task text's "run it manually" path was
   verified unavailable on 2026-07-31 (see the E2 amendment log).
-- `l2-fact` — **reserved, zero pairs today.** For premises taken from live
-  `knowledge_triples` rows; the table has no producer until `fact_lift`
-  (T2.10).
+- `l2-fact` — premises taken verbatim from `knowledge_triples.fact` texts
+  minted by the shipping `fact_lift` in the recorded harvest run. See the
+  T2.54 composition-freeze section below for the full definition and the
+  `fact_key` anchor contract; the loader enforces both.
 
-The two reserved counts are pinned to zero by test. When a producer lands,
-harvesting from it is a deliberate, visible edit to that pin — never a
-silent relabel of existing pairs.
+`synthesis-draft`'s count is pinned to zero by test until T3.02 exists.
+When a producer lands, harvesting from it is a deliberate, visible edit to
+that pin — never a silent relabel of existing pairs.
 
 ## File discipline (doc 17 §11, inherited from the retrieval gold)
 
@@ -192,3 +193,338 @@ What remains, in T2.54's scope, none of it started here:
 4. **First real harvests.** When T3.02 drafts or T2.10 facts exist, pairs
    from them enter under the reserved provenances with the pinned zero
    counts updated — the seed pairs are not retroactively relabelled.
+
+---
+
+# T2.54 composition freeze — 2026-08-03
+
+Everything below was frozen **before any T2.54 pair was authored**; the git
+history of this file against the pair-appending commits is the proof. The
+seed, the targets and the relation classification are functions of
+pre-judge data only (Rule A of the T2.54 plan): nothing here was chosen by,
+about, or in sight of any judge model's behaviour.
+
+## `l2-fact` — the definition (doc 17 §11, ruled 2026-07-31)
+
+An `l2-fact` premise is **verbatim-equal to a `knowledge_triples.fact` text
+minted by the shipping `fact_lift` in the recorded harvest run** — the run
+whose manifest is committed at `entailment/l2_harvest.json`, naming the
+bench database, corpus sha256, gate config, embedder fingerprint and git
+sha. "Real" governs the premise **distribution**, not authorship or the
+database of origin: a premise is real because the production code path
+(extraction → clean → dedup → `fact_lift` → `fact_sentence`) produced it.
+A hand-authored premise **never** qualifies, however faithfully it imitates
+the shape — that is the clause's own does-not-license sentence, enforced by
+the anchor below.
+
+## The anchor contract (`fact_key`)
+
+Every live `l2-fact` pair carries a `fact_key` object —
+`{triple_key, subject_name, rel_type, object_name, project}` — and the
+loader (`entailment_gold.py`) enforces three checks on every load:
+
+1. **Manifest resolution, manifest as source of truth**: `triple_key`
+   resolves to exactly one manifest row and the pair's other four fields
+   byte-equal that row's. The pair never self-supplies the authoritative
+   values.
+2. **Verbatim premise binding, in bytes**: `premise == row["fact"]`.
+   Never a recomputation from the pair's own fields — `compute_triple_key`
+   canonicalises names while `fact_sentence` lowercases only the
+   predicate, so cased fields could smuggle in a premise `fact_lift`
+   never produced.
+3. **Manifest self-consistency, once per load**: every manifest row
+   re-derives its `triple_key` and `fact` through the *imported*
+   `compute_triple_key` and `fact_sentence`. This is also the **sunset
+   tripwire** for the temporal exemption below: the day `fact_sentence`
+   renders validity windows, this check fails the floor loudly and the
+   exemption is re-argued.
+
+The byte-binding is deliberately brittle: drift fails loudly and forces
+re-adjudication under retire-and-replace, exactly like corpus drift. A
+forged manifest row is caught by reproducibility — the harvest re-run and
+byte-diff of the sorted `facts` section (`tests/test_harvest_l2_facts.py`
+on every floor run; T2.41's `--gate` evidence re-runs it against the
+committed file).
+
+## Frozen composition for the T2.54 authoring round (200 new pairs)
+
+T2.25's slice proportions (fixed 2026-07-30) scaled to 200 by
+largest-remainder rounding, ties broken alphabetically:
+
+| slice | T2.25 | exact ×200/41 | target |
+|---|---|---|---|
+| verbatim | 4 | 19.51 | 20 |
+| paraphrase | 6 | 29.27 | 29 |
+| weakening | 5 | 24.39 | 24 |
+| temporal | 6 | 29.27 | 29 |
+| direction | 5 | 24.39 | 25 |
+| overreach | 6 | 29.27 | 29 |
+| value-swap | 5 | 24.39 | 24 |
+| unrelated | 4 | 19.51 | 20 |
+| **sum** | 41 | | **200** |
+
+(197 floors + 3 remainders: verbatim .51, unrelated .51, then the .39
+three-way tie → alphabetically `direction`.) Near-misses are 131/200 =
+65.5%, matching T2.25's 65.9% by construction, not by choice.
+
+**Premise assignment is mechanical.** The 171 non-`temporal` slots take
+manifest premises via the seeded assignment in
+`benchlib/entailment_assignment.py`: RNG seed **20260731** (committed in
+the manifest header before any pair existed), a seeded shuffle of the slot
+list and of the fact order, facts cycling so no premise exceeds the
+**≤ 4 live pairs per premise** cap. Anyone can re-derive the assignment
+with `python scripts/benchlib/entailment_assignment.py`. Authoring runs in
+four batches over contiguous slot ranges (0–49, 50–99, 100–149, 150–170
+plus the 29 temporal slots).
+
+**Skips are visible, never silent.** An author may skip an infeasible
+(premise, slice) assignment **only** with a recorded reason in the skip
+log (History section below); the slot is then authored with a
+hand-authored premise for the same slice, so slice targets stay exact and
+only the `l2-fact` count moves. Known-infeasible shapes, named now: a
+`direction` slot on a symmetric relation (see the table below), and a
+`value-swap` slot on a fact whose swapped slot is not single-valued (the
+exclusive-slot rule cannot fix `contradicted`, and `value-swap` admits no
+other verdict). The authoring target is **≥ 130 `l2-fact` pairs** — 41
+skips of margin — and the gate floor is ≥ 50% of live pairs (doc 17 §11,
+ratified 2026-07-31).
+
+**`temporal` is hand-authored, exempt, and disclosed.** `fact_lift`
+renders no validity window into fact text (measured: `fact_lift.py`'s
+one-reachable-branch finding), so no real premise can exercise the window
+rules today. The 29 temporal pairs use hand-authored windowed premises;
+the exemption sunsets the day a producer renders windows — the anchor
+contract's check 3 is the tripwire. T2.41's gate report must carry this
+caveat: the temporal slice is not representative of today's production
+premise distribution.
+
+## Reversal-exclusivity, pre-classified for every relation
+
+Decided per relation from its **semantics alone** — before any pair
+existed — so a `direction` pair's verdict falls out mechanically from
+which relation the seeded assignment handed its author, never from a
+per-pair judgment call. **Exclusive** means one pair of endpoints cannot
+carry both directions at once, so the reversed claim is `contradicted`
+(reversal rule, exclusive case); **non-exclusive** means the reverse is
+possible alongside the fact, so the reversed claim is `unsupported` —
+unless the premise itself negates the reverse explicitly (eg-0026), which
+always contradicts. **Symmetric** relations are ineligible for `direction`
+pairs: the reversal is entailed, and the slice admits no such verdict.
+
+| relation | class | reversed-claim verdict | why |
+|---|---|---|---|
+| `USES` | non-exclusive | unsupported | mutual use is coherent (two services calling each other) |
+| `DEPENDS_ON` | non-exclusive | unsupported | circular dependency is not excluded by meaning (eg-0025) |
+| `HAS_PART` | exclusive | contradicted | proper parthood is antisymmetric: a part cannot contain its whole |
+| `IMPLEMENTS` | exclusive | contradicted | spec and implementation are incompatible roles for one ordered pair |
+| `EXTENDS` | exclusive | contradicted | extension is a strict order; mutual extension is incoherent |
+| `REPLACES` | exclusive | contradicted | one replacement event cannot run both ways (eg-0022) |
+| `IMPROVES_ON` | exclusive | contradicted | an improvement ordering over one comparison cannot be mutual |
+| `IS_A` | exclusive | contradicted | instance/kind (and proper subkind) is antisymmetric for distinct terms |
+| `DEPLOYED_ON` | exclusive | contradicted | host and guest cannot swap for the same pair: a platform is not deployed on its own workload |
+| `CAUSES` | non-exclusive | unsupported | feedback between phenomena is coherent (stress causes insomnia causes stress) |
+| `AUTHORED_BY` | exclusive | contradicted | a work's author cannot be authored by that work; holds under the legacy folds (WORKS_AT, PUBLISHED_IN) too |
+| `HAPPENED_ON` | exclusive | contradicted | the occurrent and its date/place cannot swap roles; holds under the legacy folds (VISITED, LIVES_IN) |
+| `MENTIONS` | non-exclusive | unsupported | two documents can mention each other |
+| `CITES` | non-exclusive | unsupported | mutual citation is coherent (companion papers) |
+| `INSPIRED_BY` | non-exclusive | unsupported | mutual inspiration between ongoing works/projects is not excluded |
+| `RELATED_TO` | symmetric | — (direction-ineligible) | the reversal is entailed by symmetry; a direction slot landing here is a mandatory logged skip |
+
+This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
+(16 relations, checked against the source on 2026-08-03).
+
+## Step-5 rulebook fork — proposed extensions, UNRATIFIED (2026-08-03)
+
+The Step-4 authoring protocol and the Step-5 blind-pass briefs embedded a
+condensed rulebook instead of this file (to keep the skip log above from
+de-blinding pairs). The Steps 0–5 review measured that the condensation was
+**not** faithful: it extended the exclusive-slot rule in ways this file
+never ratified, and the two rulebooks even differ from each other. Both
+Step-5 escalations trace to this fork, and the six host-swap agreements
+below rest on it. **Ratifying a labelling rule is the owner's act** —
+rule-then-pairs — so the extensions are recorded here as *proposed*, with
+their evidence, and nothing more. The owner's sitting must adjudicate them
+**before** the escalation queue and before the resample: the resample's
+`contradicted` census contains all six host-swap pairs, and resampling them
+against this file *without* deciding these extensions would manufacture a
+spurious failure that is about the rulebook, not the labels.
+
+1. **Proposed: the host/platform slot of a single named instance is
+   single-valued** (exclusive-slot). Applied by the authoring protocol
+   *and* by both blind passes (their shared brief text: "the host a single
+   named instance runs on"). Governs six live `value-swap` pairs, all
+   recorded `contradicted` and blind-confirmed under the same extended
+   text — the agreement was manufactured by the shared fork, not
+   independently reached from this file: **eg-0048, eg-0088, eg-0098,
+   eg-0109, eg-0154, eg-0201**. If rejected: their verdicts fall to
+   `unsupported`, which `value-swap` does not admit → retire-and-replace
+   all six, replacements re-blinded under the Step-5 protocol.
+2. **Proposed: the kind a named instance is (`IS_A`) is single-valued**
+   (exclusive-slot). Present in both forked rulebooks ("an IS_A kind" /
+   "the kind a named instance is"). Governs **zero** live pairs' verdicts
+   today — the only IS_A-premise pairs (eg-0090, eg-0152) are `overreach`
+   and untouched by the exclusive-slot rule. If rejected: no current label
+   changes; the category is struck from future authoring.
+3. **Proposed: the object of a named replacement/migration (`REPLACES`) is
+   single-valued** (exclusive-slot). Present **only** in the authoring
+   protocol ("the one thing a named migration replaced") and absent from
+   the blind rulebook — this asymmetry is the direct cause of the
+   **eg-0142** escalation: the author recorded `contradicted` under the
+   category, both blind passes (lacking it) said `unsupported` (absence,
+   not exclusion). If ratified: the recorded label stands and the
+   divergence was a rulebook gap. If rejected: eg-0142 is a mislabel →
+   retire-and-replace, replacement re-blinded.
+4. **Omission, not an extension:** the blind rulebook's reversal table
+   dropped this file's explicit "load-balancing roles" precedent
+   (non-exclusive, eg-0023/eg-0025), which plausibly caused the
+   **eg-0023** escalation (both passes: `contradicted`; recorded:
+   `unsupported`, which follows the ratified text). Nothing to ratify —
+   this file already decides it — but the owner may want to name
+   balancer/backend explicitly in the reversal rule so a condensed
+   restatement cannot lose it again.
+
+## The contacted-pairs rule (Rule B)
+
+The 41 T2.25 pairs were contacted twice by judge identity
+`66df91cee44d2415` and **stay live**: contact without response is not
+tuning, and their labels are the only fully human-scale cross-checked
+core. But the ≥ 200 new pairs are grown as a set **no judge identity has
+ever contacted**, and T2.41 must report every barred metric on **both**
+populations — all live pairs, and the never-contacted subset — with the
+gate verdict required to hold on both. Stated here before any number
+exists.
+
+## The blind-adjudication protocol (Ruling 3)
+
+- **The judge labels nothing.** No DeepSeek model, and no model of the
+  judge's family, contributes any label; every labelling dispatch runs
+  keyless. Authors and labellers are Claude-family agents working from
+  this file.
+- **Layer 1 — construction.** Five slices admit exactly one lawful verdict
+  (`SLICE_VERDICTS`); their labels are properties of the construction the
+  rationale documents.
+- **Layer 2 — two independent blind passes over every live pair** (the 41
+  legacy pairs included; this is their mandated re-adjudication). The
+  stripped export (`entailment_adjudication.strip_for_blind`) carries
+  **only** id, premise and hypothesis — a slice tag alone would leak the
+  lawful verdict set. Two separately-dispatched labellers, no shared
+  context, no access to recorded labels or to each other; batches within
+  one labeller never see other batches' verdicts. Each returns a three-way
+  verdict plus the rule cited by name. Merge rule: both passes agree with
+  the recorded verdict → `label_source: "adjudicated"`; anything else →
+  the owner's escalation queue, untouched. Both passes' agreement rates
+  are recorded in the History section, whatever they are.
+- **Layer 3 — the owner.** Escalation adjudication first (wrong label →
+  retire-and-replace; ambiguous rule → fix this file first, then
+  re-adjudicate the affected slice — rule-then-pairs). Then, only after
+  the set is stable, the seeded blind resample: **n = 93, bar ≤ 1
+  disagreement** (ratified 2026-07-31; certifies label error < 5% at ~95%
+  confidence), stratified by gold verdict class — full census of
+  `contradicted`, then `unsupported`, remainder `entailed` proportionally.
+  On failure: classify each disagreement, apply rule-then-pairs, draw a
+  fresh seeded sample; two consecutive failures stop the task (plan
+  blocker B4).
+
+## History
+
+- **2026-07-30 (T2.25).** 41 pairs seeded, author-labelled; 41/41
+  blind-agreement on the pre-commit check.
+- **2026-08-03 (T2.54 Step 3).** Composition frozen: targets, seed
+  20260731, relation classification, contacted-pairs rule, blind
+  protocol. No T2.54 pair authored yet as of this entry.
+- **2026-08-03 (T2.54 Step 5).** Two independent blind passes over all
+  241 live pairs (two labellers × five fresh-context batches each; the
+  briefs, committed under `.superpowers/sdd/T2.54-entailment-gold-labelling/`,
+  embed a **condensed** rulebook rather than this file, because the
+  Step-4 skip log above names pair ids with their slices and would
+  de-blind them — and the Steps 0–5 review later measured that the
+  condensation forked from this file; see the unratified-extensions
+  section above). Agreement rates, recorded whatever they are: **pass A
+  vs recorded 239/241 = 0.9917; pass B vs recorded 239/241 = 0.9917;
+  pass A vs pass B 241/241 = 1.0000**. 239 pairs flipped to
+  `adjudicated`; 2 escalated untouched to
+  `entailment/escalation_queue.json` (eg-0023: recorded `unsupported`,
+  both passes `contradicted`; eg-0142: recorded `contradicted`, both
+  passes `unsupported`).
+- **2026-08-03 (T2.54 Steps 0–5 review, settled).** The 1.0000 inter-pass
+  figure is the correlated-error signature, empirically confirmed: pass B
+  added approximately zero independent bits — both of its divergences
+  from the recorded labels were identical to pass A's, down to the rule
+  citations. The double-agreement merge therefore degenerated to a single
+  same-family check, and the 239 `adjudicated` flips carry **one**
+  independent reading's assurance, not two. **The 1.0000 figure may enter
+  G-D only as rule-determinism and procedural evidence, with this caveat
+  attached — never as label-accuracy evidence.** The owner's n = 93
+  resample is the **first** independent accuracy measurement this gold
+  will have received, not a confirmation of an existing one; quoting
+  1.0000 as agreement without this caveat would be overclaiming, and
+  T2.41's report must not do it. Both escalations trace to the Step-5
+  rulebook fork (unratified-extensions section above), which the owner
+  adjudicates rule-then-pairs before the queue and before the resample.
+
+### Skip log (Step 4)
+
+Every skipped (premise, slice) slot with its reason, per Rule A. The
+skipped slot keeps its id and slice with a hand-authored premise.
+
+**Batch 1 (slots 0–49, eg-0042..eg-0091; 3 skips):**
+
+- slot 10, `direction`, `11606722-ee98-5a68-a01f-3f2b5f1e49e7`
+  (`vector related to telegraf`): RELATED_TO is symmetric and
+  direction-ineligible per the reversal-exclusivity table. Authored as
+  eg-0052 with a hand-authored HAS_PART premise.
+- slot 19, `value-swap`, `7ff82019-0e6e-5ba1-a679-933ebecb9ac0`: the
+  swappable slot is not single-valued (a generic USES object), so the
+  exclusive-slot rule cannot fix `contradicted`. Authored as eg-0061
+  with a hand-authored single-valued-port premise.
+- slot 24, `value-swap`, `37a75f1f-b666-5ca3-9ae6-4cd8c8b8a2e5`:
+  RELATED_TO's object is multi-valued by nature; exclusive-slot rule
+  inapplicable. Authored as eg-0066 with a hand-authored token-TTL
+  premise.
+
+**Batch 2 (slots 50–99, eg-0092..eg-0141; 5 skips, all `value-swap` on
+non-single-valued relations):**
+
+- slot 69, `3d8b8266…` (USES): generic USES object admits many values.
+  Authored as eg-0111, hand-authored premise.
+- slot 75, `0d272cc9…` (HAS_PART): a whole has many parts and a part may
+  sit in several wholes; neither slot is single-valued. Authored as
+  eg-0117, hand-authored premise.
+- slot 78, `60a400b1…` (IMPROVES_ON): a tool can improve on several
+  predecessors and be improved on by several successors. Authored as
+  eg-0120, hand-authored premise.
+- slot 81, `7ff82019…` (USES): same fact as batch 1's slot-19 skip, same
+  ground. Authored as eg-0123, hand-authored premise.
+- slot 86, `37a75f1f…` (RELATED_TO): same fact as batch 1's slot-24 skip,
+  same ground. Authored as eg-0128, hand-authored premise.
+
+**Batch 3 (slots 100–149, eg-0142..eg-0191; 7 skips, all `value-swap` on
+non-single-valued slots):**
+
+- slot 103, `ad6f7451…` (CAUSES): an effect can have several contributing
+  causes; neither slot single-valued. Authored as eg-0145.
+- slot 104, `702b3d82…` (RELATED_TO): multi-valued by nature. eg-0146.
+- slot 107, `08cf924b…` (USES): generic USES object. eg-0149.
+- slot 122, `c2cff8f6…` (RELATED_TO): multi-valued by nature. eg-0164.
+- slot 133, `6c47ab46…` (DEPENDS_ON): generic dependency object admits
+  many values. eg-0175.
+- slot 134, `11606722…` (RELATED_TO): multi-valued by nature. eg-0176.
+- slot 139, `a02af11e…` (DEPLOYED_ON): the subject names a bare product,
+  not a single instance, and the harvest itself mints redis on two hosts
+  — the host slot is not single-valued for it. eg-0181.
+
+**Batch 4 (slots 150–170 + the 29 temporal pairs, eg-0192..eg-0241;
+3 skips, all `value-swap`):**
+
+- slot 151, `8b0af751…` (DEPLOYED_ON): bare-product subject, host slot
+  not single-valued. Authored as eg-0193.
+- slot 160, `a8abee19…` (USES): generic USES object. eg-0202.
+- slot 166, `702b3d82…` (RELATED_TO): multi-valued by nature, same fact
+  and ground as batch 3's slot 104. eg-0208.
+
+**Authoring round closed 2026-08-03:** 241 live pairs, `l2-fact`
+153/241 (63.5%, target ≥ 130 met with 23 of the 41-skip margin unused;
+18 skips total, every one logged above), slice counts exactly the frozen
+targets plus T2.25's seed, every non-temporal slice carrying live
+`l2-fact` pairs, all 200 new pairs `label_source: "author"` pending the
+Step-5 blind passes.
