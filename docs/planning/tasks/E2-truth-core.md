@@ -1451,10 +1451,73 @@ prefix known to survive — rather than picking one silently.
 
 **Verify.** `cd backend && python -m pytest tests/test_result_grouping.py tests/test_grouping_cut.py -q`
 
+#### T2.71 — Composition serves fact rows with no badge
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.36a, T2.55` · `Doc: 12 (the badge is a structured field), 07 §5` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Found by T2.36a's Fable review, 2026-08-03, and ruled "real and live":
+`layer_composition.py` contains **zero** badge references, so every L2 fact the retrieval
+path serves today goes out without one. Doc 12 fixes the badge as present on L2/L3 rows
+and null on L0; composition satisfies half of that by accident, since it emits no badge at
+all.
+
+Not a defect in T2.36a — its brief forbade touching `layer_composition.py`, because T2.55
+held that file in the same round. The producer exists and is shaped for this:
+`fact_badge.row_labels(...)` already encodes the L0 rule and refuses a badge on a memory
+row, `badges_for_facts` batches its queries, and `ComposedRow` already carries `id_kind`
+plus a `verification_status` that is `None` for memory. This is the map over composed rows
+that nobody's lane could write.
+
+**This blocks G-C.** T2.40's evidence run makes claims about served output; a gate cleared
+while every served fact is unlabelled would overstate its coverage. Land this before T2.40
+runs.
+
+**Done when:**
+- [ ] Every served L2/L3 row carries the badge doc 12 fixes; every L0 row carries
+      `badge: null` and `verification_status: null` with `lifecycle` instead
+- [ ] The badge is read from the producer, never recomputed at the composition site — a
+      second `claim` string anywhere fails a test
+- [ ] The per-page query count does not grow with the number of facts returned
+- [ ] Removing the badge from a composed fact row fails a test
+
+**Verify.** `cd backend && python -m pytest tests/test_layer_composition.py tests/test_fact_badge.py -q`
+
+#### T2.72 — The MCP vault tools, and the door parity doc 12 already assigns
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.36a` · `Doc: 12 §2–§3, invariant 17` · `Tag: target-new` · `Gate: standing`
+
+**What.** Found by T2.36a's Fable review, 2026-08-03. Doc 12 §2's route table assigns
+`fact_get` a REST twin at `GET /knowledge/facts/{id}` — the path T2.36a built — and §3 puts
+the agent-facing vault reads on MCP's `fact_get` and `knowledge_search`. **Neither MCP tool
+exists, and no task owned them**: a scan of every epic file for `fact_get`,
+`knowledge_search` or an MCP vault tool returns nothing.
+
+**There is no live invariant-17 breach today**, precisely because no MCP vault tool exists
+— parity is not violated by a surface that is absent on both doors' agent side. T2.36a
+filed its routes as REST single-door on a trust-posture argument the reviewer judged
+**weak**: every two-door surface in this repo already pairs an unauthenticated MCP tool
+with an authenticated REST route, so posture is not what decides single-door.
+
+So this task builds the agent's side of the vault and re-files the parity row: the
+**detail** route becomes `fact_get`'s twin; the **list** route legitimately stays REST-only,
+because doc 12's list-shaped agent twin is `knowledge_search`, not a fact list.
+
+**Done when:**
+- [ ] `fact_get` and `knowledge_search` exist on MCP, serving the same rows the REST door
+      serves, through the same service layer — not a parallel implementation
+- [ ] The badge rides both doors identically, byte for byte
+- [ ] `docs/two-door-parity.md`'s row for the detail route is re-filed as two-door, and the
+      list route's REST-only classification carries doc 12's reason rather than a posture
+      argument
+- [ ] A row shape that diverges between the doors fails a test
+
+**Verify.** `cd backend && python -m pytest tests/test_door_parity.py tests/test_mcp_vault_tools.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-03 | T2.36a, T2.71, T2.72 | 2 | **Two tasks minted from T2.36a's review, and one question escalated to the owner.** (1) `T2.71` — `layer_composition.py` contains zero badge references, so every L2 fact retrieval serves today goes out unlabelled; **tagged G-C-blocking**, because T2.40's evidence run makes claims about served output and a gate cleared over unlabelled facts would overstate its coverage. (2) `T2.72` — doc 12 §2 assigns `fact_get` a REST twin at exactly the path T2.36a built, and §3 puts the agent-facing vault reads on MCP's `fact_get`/`knowledge_search`; a scan of every epic file for those names returns **nothing**, so no task owned them. No live invariant-17 breach today, since parity is not violated by a surface absent on both doors' agent side — but T2.36a's REST-only filing rests on a trust-posture argument the reviewer judged weak, every two-door surface in this repo already pairing unauthenticated MCP with authenticated REST. (3) **Escalated, not decided here:** T2.36a emits a fourth `claim` form, `", verification not yet recomputed"`, for a fact with no journalled `verified` event. Doc 12 fixes three forms and is silent on this one, which is the form a cold-start vault renders on *every* fact. The reviewer accepts it and recommends doc 12 gain it; amending the design corpus is the owner's call | Neither task is scope creep: T2.71 is a live honesty gap on the served path, and T2.72 is a contract doc 12 already wrote that nothing was scheduled to satisfy — the sixth instance in this epic of a constraint recorded in the corpus and absent from the graph. T2.71 exists as a separate task only because of round mechanics: T2.36a's brief forbade `layer_composition.py` since T2.55 held it the same round, so the one map over composed rows fell between two lanes. Worth noting the reviewer reached its verdict by extracting doc 12's worked example **by script** and diffing it against a live `build_claim` call, and by inventing two mutation drills the implementer had not run (a quiet `as_of` fallback to `created_at`, and a default `corroborated` list filter) — both of which the suite caught, which is the evidence that the exact-string discipline works |
 | 2026-08-03 | T2.55, T2.70 | 2 | **T2.70 minted: grouping and the result cap drop a row nobody counts, and the controller rules the resolution is to scope nesting to the facts that survive the cut.** T2.55's reviewer built a driver on the real `search()` path and measured it: at `limit=4`, ungrouped serves `[F1, M1, F2, M2]` and grouped serves `[F1, M1, F2, F3]` — the nested memory leaves with its fact, uncounted, and an unrelated row is promoted. Ratified by ruling rather than patched in-lane: the behaviour is the correct reading of T2.55's R2, and it is **not** an invariant-14 violation as doc 07 §8 operationalises that invariant, whose `excluded` vocabulary has never counted the limit tail. But it sits outside doc 07 §5's own warrant — §5 says "a memory covered by a **returned** cited fact" — and the cut makes the fact un-returned *after* nesting decided it was returned | The gap is the plan's, not the implementer's: R2 and R4 were both written by the controller and they meet in a corner neither anticipated, since R4 already says a memory whose fact is absent stays top-level and the cut is a second way for a fact to be absent. Routed to its own task because the fix needs a **window fixpoint** decision — un-nesting returns a memory to the ordering, which changes what survives the cut, which changes what nests — and a reviewer patching that inside a scoped fix round would be choosing a fixpoint silently. Recorded before G-C at the reviewer's recommendation, since G-C's claims are about served output. Note the shape: the review found this by *running the real path*, not by reading the diff, which is the second time this round that an executable check beat an inspection |
 | 2026-08-03 | T2.36, T2.36a | 2 | **T2.36 split; `T2.36a` minted to own doc 12's `badge` object and the facts read surface, and T2.36 gains `Depends: T2.36a`.** T2.36's first Done-when is "badges verbatim from the backend", and there is no backend producer: `rg "no known contradiction" backend/app` returns nothing, and the canonical sentence exists only inside `verification_ladder.py`'s `compute_confidence` docstring. There is also no read surface over `knowledge_triples` for a browsing tab to call — `review_queue.py`'s docstring states it in as many words ("no REST GET beyond this module's own queue list"). The Facts tab is meanwhile a demo-data surface (`useDemoFacts`), so nothing would have failed loudly; a lane could have satisfied "verbatim" by formatting the string client-side, which is precisely what invariant 14 forbids and what the Done-when's word *verbatim* exists to prevent | Caught by the controller at brief-writing time, reading the tree rather than the task text. This is the **fifth** instance of this epic's recurring shape — a constraint recorded in prose and absent from the code and the graph — and the second in which the missing producer would have been silently substituted by the consumer. Split rather than widened because the two halves are different tiers and different failure modes: the badge is an honesty contract whose string doc 12 fixes byte-exactly and whose `origin_count` must be `COUNT(DISTINCT origin_key)` (Opus, silent-correctness-drift), while the tab is a UI surface on an existing component (Sonnet). Widening T2.36 in place would have run it at the lower tier and pushed a Size-M task to L without the reviewed step-level plan runbook §3 requires. Note the 2026-07-29 amendment already treats the badge as T2.36's — "three later tasks read this number: T2.06's journal evidence, **T2.36's badge**, and the review queue's consequence ranking" — so the ownership is not new, only its unbuilt state |
 | 2026-08-03 | T2.43, T2.13, T2.58, T2.55 | 1 | **Five deferred minors recorded from the two final re-reviews, each found after the named findings were closed — the point at which a suite is most trusted and least probed.** From T2.43: (a) the F3 guard pinning that channel weights are order-inert **has a blind spot** — inserting `-weighted_score` as a tie-break *after* band and tier passes all 46 tests, because no fixture holds an equal-tier cross-channel pair, so the guard catches the realistic mutation and not the subtle one; (b) the empty-text rerank warning is reachable but unasserted, and a row whose declared text field is empty is still scored against an empty document, warned only; (c) the article title-fallback in `RERANK_TEXT_FIELDS` is untested, its producer being T3.02's; (d) **plan §2.3 still names `with_trace` in the seam signature** though the parameter was deliberately not built, so **T2.58's brief must state the flagless seam** or §2.3 be amended by the corpus owner; (e) the `limit` test pins the length of the cut, not that the cut keeps the head of the total order. From T2.13: (f) in the combined `action` + `event_ids` form the stray-id check computes membership *after* the action filter, so an in-cycle id of another kind is refused with a message saying it is not in the cycle — the refusal is right, only the message misleads; (g) the new `unsupported_action` reason's **ladder position is untested** — hoisting the comparator check above all three older reasons survives all 88 tests, so the tuple order is pinned but no test proves an older reason wins at runtime | All seven were found by re-reviewers running mutations after the Important findings were closed. None is a defect in shipped behaviour: (a), (e) and (g) are guards narrower than they read, (b) and (c) are unasserted paths, (d) is a plan/code divergence with a named owner, and (f) is a message. Recorded rather than looped because each is either another task's input (d), a fixture gap whose producer does not exist yet (c), or a one-line hardening better bundled with the next change to its file — and because the alternative is that T2.55, T2.56 and T2.58 each pay to rediscover them. **Note (a) and (g) are the same shape**: a guard proven against the mutation its author imagined, blind to one they did not |
