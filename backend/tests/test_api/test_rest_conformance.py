@@ -147,6 +147,7 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
     ("GET", "/api/v1/knowledge/facts"): 200,
     ("GET", "/api/v1/knowledge/facts/{fact_id}"): 200,
+    ("GET", "/api/v1/knowledge/overview"): 200,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
