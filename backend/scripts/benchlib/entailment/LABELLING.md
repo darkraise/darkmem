@@ -433,3 +433,19 @@ non-single-valued slots):**
 - slot 139, `a02af11e…` (DEPLOYED_ON): the subject names a bare product,
   not a single instance, and the harvest itself mints redis on two hosts
   — the host slot is not single-valued for it. eg-0181.
+
+**Batch 4 (slots 150–170 + the 29 temporal pairs, eg-0192..eg-0241;
+3 skips, all `value-swap`):**
+
+- slot 151, `8b0af751…` (DEPLOYED_ON): bare-product subject, host slot
+  not single-valued. Authored as eg-0193.
+- slot 160, `a8abee19…` (USES): generic USES object. eg-0202.
+- slot 166, `702b3d82…` (RELATED_TO): multi-valued by nature, same fact
+  and ground as batch 3's slot 104. eg-0208.
+
+**Authoring round closed 2026-08-03:** 241 live pairs, `l2-fact`
+153/241 (63.5%, target ≥ 130 met with 23 of the 41-skip margin unused;
+18 skips total, every one logged above), slice counts exactly the frozen
+targets plus T2.25's seed, every non-temporal slice carrying live
+`l2-fact` pairs, all 200 new pairs `label_source: "author"` pending the
+Step-5 blind passes.

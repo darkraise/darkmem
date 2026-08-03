@@ -3,25 +3,25 @@
   "variant": "claim-fact",
   "_notes": "Claim/fact entailment gold (doc 17 §6, G-D). Labelling rules, slice decision procedures and edge rulings: LABELLING.md beside this file. Append-only; retire in place; declared counts track live pairs. Loader: benchlib/entailment_gold.py.",
   "declared_slice_counts": {
-    "direction": 29,
-    "overreach": 29,
-    "paraphrase": 31,
-    "temporal": 6,
-    "unrelated": 21,
-    "value-swap": 25,
-    "verbatim": 23,
-    "weakening": 27
+    "direction": 30,
+    "overreach": 35,
+    "paraphrase": 35,
+    "temporal": 35,
+    "unrelated": 24,
+    "value-swap": 29,
+    "verbatim": 24,
+    "weakening": 29
   },
   "declared_verdict_counts": {
-    "contradicted": 42,
-    "entailed": 83,
-    "unsupported": 66
+    "contradicted": 55,
+    "entailed": 101,
+    "unsupported": 85
   },
   "declared_provenance_counts": {
-    "hand-authored-synthetic-fact": 40,
+    "hand-authored-synthetic-fact": 72,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 135
+    "l2-fact": 153
   },
   "pairs": [
     {
@@ -3291,6 +3291,732 @@
         "object_name": "artifacts bucket",
         "project": "default"
       }
+    },
+    {
+      "id": "eg-0192",
+      "premise": "typesense deployed on search-01",
+      "hypothesis": "Typesense runs on the search-01 host.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording of the same assertion ('deployed on' -> 'runs on'), nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
+      "fact_key": {
+        "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
+        "subject_name": "typesense",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "search-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0193",
+      "premise": "The staging Postgres instance on stg-db-01 listens on port 5433.",
+      "hypothesis": "The staging Postgres instance on stg-db-01 listens on port 5432.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Exclusive-slot rule: a named instance's listen port is a single-valued configuration slot, so a different value for the same slot is contradicted; the swap value 5432 is the corpus-plausible default."
+    },
+    {
+      "id": "eg-0194",
+      "premise": "github actions replaces jenkins",
+      "hypothesis": "Jenkins replaces GitHub Actions.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Reversal rule, exclusive case: REPLACES is exclusive per the reversal-exclusivity table (one replacement event cannot run both ways), so the reversed claim is contradicted.",
+      "fact_key": {
+        "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+        "subject_name": "github actions",
+        "rel_type": "REPLACES",
+        "object_name": "jenkins",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0195",
+      "premise": "internal package mirror uses client",
+      "hypothesis": "The internal package mirror uses the client for all artifact fetches.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger than the fact: 'for all artifact fetches' adds a universal scope the premise does not state; strengthening breaks entailment (general decision procedure step 3) and no exclusion is crossed, so unsupported, not contradicted (step 4).",
+      "fact_key": {
+        "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
+        "subject_name": "internal package mirror",
+        "rel_type": "USES",
+        "object_name": "client",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0196",
+      "premise": "redis replaces memcached",
+      "hypothesis": "Redis is the replacement for Memcached.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording of the same replacement assertion with no strengthening or weakening; entailment tolerates rewording (general decision procedure step 3).",
+      "fact_key": {
+        "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
+        "subject_name": "redis",
+        "rel_type": "REPLACES",
+        "object_name": "memcached",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0197",
+      "premise": "expense uses ocr worker",
+      "hypothesis": "The OCR worker has at least one consumer.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the specific consumer (expense) is dropped and only existence of some consumer is kept; dropping content preserves entailment (general decision procedure step 3). Mirror of the overreach on the same premise (eg-0073).",
+      "fact_key": {
+        "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
+        "subject_name": "expense",
+        "rel_type": "USES",
+        "object_name": "ocr worker",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0198",
+      "premise": "compactor uses loki",
+      "hypothesis": "The compactor uses Loki and deletes chunks older than 30 days.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger: the deletion behaviour and the 30-day value are added content the premise does not assert; a conjunction with one supported and one unsupported conjunct is unsupported (general decision procedure step 1). The added conjunct is corpus-true (eg-0004's material), so plausibility actively misleads — no exclusion crossed, so not contradicted (step 4).",
+      "fact_key": {
+        "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
+        "subject_name": "compactor",
+        "rel_type": "USES",
+        "object_name": "loki",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0199",
+      "premise": "ci runners uses docker-in-docker",
+      "hypothesis": "The CI runners use Docker-in-Docker.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement adding only articles, casing and verb agreement; all content preserved, premise and hypothesis differ as strings (general decision procedure step 3, rewording tolerance).",
+      "fact_key": {
+        "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+        "subject_name": "ci runners",
+        "rel_type": "USES",
+        "object_name": "docker-in-docker",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0200",
+      "premise": "iot-gw-1 uses firmware check",
+      "hypothesis": "A firmware check is employed by iot-gw-1.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording under voice flip and synonym ('uses' -> 'is employed by'), same assertion, nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
+      "fact_key": {
+        "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
+        "subject_name": "iot-gw-1",
+        "rel_type": "USES",
+        "object_name": "firmware check",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0201",
+      "premise": "thumbs queue deployed on queue-01",
+      "hypothesis": "The thumbs queue is deployed on cache-01.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Exclusive-slot rule: the thumbs queue is a single named service, so its host is a single-valued slot; the swap value cache-01 is another harvest entry's real host, so plausibility actively misleads.",
+      "fact_key": {
+        "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
+        "subject_name": "thumbs queue",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "queue-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0202",
+      "premise": "apps/portal keeps audit-log entries for 180 days.",
+      "hypothesis": "apps/portal keeps audit-log entries for 90 days.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Exclusive-slot rule: a retention window is a single-valued configuration slot, so a different value for the same slot is contradicted despite no surface negation."
+    },
+    {
+      "id": "eg-0203",
+      "premise": "status dashboard uses vite",
+      "hypothesis": "The status dashboard makes use of Vite.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording of the same assertion ('uses' -> 'makes use of'), nothing strengthened or weakened; entailment tolerates rewording (general decision procedure step 3).",
+      "fact_key": {
+        "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
+        "subject_name": "status dashboard",
+        "rel_type": "USES",
+        "object_name": "vite",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0204",
+      "premise": "glitchtip replaces sentry",
+      "hypothesis": "Sentry has been superseded.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the replacing party (GlitchTip) is dropped, keeping only that Sentry was superseded; dropping content preserves entailment (general decision procedure step 3).",
+      "fact_key": {
+        "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+        "subject_name": "glitchtip",
+        "rel_type": "REPLACES",
+        "object_name": "sentry",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0205",
+      "premise": "memcached deployed on cache-02",
+      "hypothesis": "The analytics ETL depends on the orders database.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
+      "fact_key": {
+        "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
+        "subject_name": "memcached",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "cache-02",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0206",
+      "premise": "grafana uses infra",
+      "hypothesis": "Grafana uses the infra repository for all of its alert rules.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger: the premise says nothing about a repository, alert rules, or universal scope; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
+      "fact_key": {
+        "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "infra",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0207",
+      "premise": "config management agent causes lp-relay",
+      "hypothesis": "Restic uses the wiki volume.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
+      "fact_key": {
+        "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
+        "subject_name": "config management agent",
+        "rel_type": "CAUSES",
+        "object_name": "lp-relay",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0208",
+      "premise": "The booking schedule sync runs at 04:15 every morning.",
+      "hypothesis": "The booking schedule sync runs at 05:45 every morning.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Exclusive-slot rule: the stated daily run time is a single-valued schedule slot (same category as a scrape interval), so a different value for the same slot is contradicted."
+    },
+    {
+      "id": "eg-0209",
+      "premise": "restic uses nas",
+      "hypothesis": "Restic stores every backup snapshot on the NAS.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger: 'every backup snapshot' tightens an unstated scope to a universal, and 'stores snapshots' specifies a use the premise does not assert; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
+      "fact_key": {
+        "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
+        "subject_name": "restic",
+        "rel_type": "USES",
+        "object_name": "nas",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0210",
+      "premise": "lp-relay uses office label printers",
+      "hypothesis": "lp-relay drives all four office label printers over IPP.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger: the count ('all four') and the protocol ('over IPP') are added values the premise does not state; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
+      "fact_key": {
+        "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
+        "subject_name": "lp-relay",
+        "rel_type": "USES",
+        "object_name": "office label printers",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0211",
+      "premise": "grafana uses nginx",
+      "hypothesis": "The monthly payroll export uses sftp-02.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The premise bears on nothing in the hypothesis; the hypothesis is corpus-true (another harvest fact), which is inadmissible — only the premise counts (general decision procedure step 2).",
+      "fact_key": {
+        "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "nginx",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0212",
+      "premise": "directory replica deployed on acs-01",
+      "hypothesis": "The directory replica is deployed on acs-01 as a read-only mirror of the primary directory.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly stronger: the read-only-mirror role and the existence of a primary are added content the premise does not assert; strengthening breaks entailment (general decision procedure step 3), no exclusion crossed, so unsupported (step 4).",
+      "fact_key": {
+        "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
+        "subject_name": "directory replica",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "acs-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0213",
+      "premise": "Pi-hole handled DNS for the lab from June 2024 until it was replaced by AdGuard Home in April 2026.",
+      "hypothesis": "In early 2025, DNS in the lab was handled by Pi-hole.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (June 2024 to April 2026)."
+    },
+    {
+      "id": "eg-0214",
+      "premise": "Pi-hole handled DNS for the lab from June 2024 until it was replaced by AdGuard Home in April 2026.",
+      "hypothesis": "Pi-hole currently handles DNS for the lab.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the window is explicitly closed by a named successor (AdGuard Home), so a present-tense claim over it is contradicted."
+    },
+    {
+      "id": "eg-0215",
+      "premise": "Since the March 2026 rebuild, the hypervisor fleet has run Proxmox 8.2.",
+      "hypothesis": "As of August 2026, the hypervisor fleet runs Proxmox 8.2.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: a fact valid since March 2026 with no closing event entails the same state at the later reference date."
+    },
+    {
+      "id": "eg-0216",
+      "premise": "The guest Wi-Fi password was rotated on 1 May 2026 and is scheduled to rotate again after 60 days.",
+      "hypothesis": "The guest Wi-Fi password set on 1 May 2026 is still the active one.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: whether the 1 May password is still active depends on an evaluation date the premise does not contain; a scheduled future rotation neither fixes the current state nor closes the window."
+    },
+    {
+      "id": "eg-0217",
+      "premise": "The NAS ran in degraded mode during the disk rebuild in May 2026.",
+      "hypothesis": "The NAS is no longer in degraded mode.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Implicature-is-not-contradiction rule: a rebuild scoped to May 2026 implicates the degraded mode ended, but the premise never asserts recovery; only asserted content can establish the hypothesis, so unsupported."
+    },
+    {
+      "id": "eg-0218",
+      "premise": "Docker Swarm orchestrated the lab's containers from 2023 until the January 2026 migration to k3s.",
+      "hypothesis": "In March 2026, the lab's containers were orchestrated by Docker Swarm.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the January 2026 migration to a named successor (k3s) closes the window, so a claim scoped after the close is contradicted."
+    },
+    {
+      "id": "eg-0219",
+      "premise": "Since 12 February 2026, the reverse proxy role has been held by Traefik, with no successor planned or deployed.",
+      "hypothesis": "Traefik currently serves as the reverse proxy.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: the state holds since 12 February 2026 with no closing event, so the window is open and the 'currently' claim is decidable and entailed (evaluation-time rule, open-window case)."
+    },
+    {
+      "id": "eg-0220",
+      "premise": "A trial Tailscale mesh was enabled on 20 April 2026 with a 30-day evaluation window.",
+      "hypothesis": "The Tailscale mesh is currently enabled.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: a 30-day trial from 20 April 2026 and an unanchored 'currently' — the claim's truth depends on an evaluation date the premise does not contain."
+    },
+    {
+      "id": "eg-0221",
+      "premise": "The lab's metrics were stored in InfluxDB 1.8 from mid-2023 until the February 2026 cutover to VictoriaMetrics.",
+      "hypothesis": "During 2024, lab metrics lived in InfluxDB 1.8.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (mid-2023 to February 2026)."
+    },
+    {
+      "id": "eg-0222",
+      "premise": "The lab's metrics were stored in InfluxDB 1.8 from mid-2023 until the February 2026 cutover to VictoriaMetrics.",
+      "hypothesis": "Lab metrics are stored in InfluxDB 1.8 today.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the cutover to a named successor (VictoriaMetrics) closes the window, so a present-tense claim over it is contradicted."
+    },
+    {
+      "id": "eg-0223",
+      "premise": "Deploys were paused for the datacentre move during the first week of July 2026.",
+      "hypothesis": "Deploys are paused.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Implicature-is-not-contradiction rule: scoping the pause to the first week of July implicates it ended but does not assert it, so the present-tense claim is neither entailed nor contradicted — unsupported."
+    },
+    {
+      "id": "eg-0224",
+      "premise": "Since the June 2026 firmware update, the access point broadcasts the IoT SSID on channel 6.",
+      "hypothesis": "As of July 2026, the IoT SSID is broadcast on channel 6.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: valid since the June 2026 update with no closing event, the fact entails the same state at the later reference date."
+    },
+    {
+      "id": "eg-0225",
+      "premise": "The temporary port-forward for the game server was opened on 3 May 2026 and closed on 10 May 2026.",
+      "hypothesis": "The port-forward for the game server is still open.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the premise names the end event (closed on 10 May 2026), so a present-tense claim of the open state is contradicted."
+    },
+    {
+      "id": "eg-0226",
+      "premise": "The Let's Encrypt certificate for cloud.lab.internal was issued on 2 June 2026 with a 90-day lifetime.",
+      "hypothesis": "The cloud.lab.internal certificate is currently within its validity period.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: a 90-day certificate and an unanchored 'currently' — the claim's truth depends on an evaluation date the premise does not contain."
+    },
+    {
+      "id": "eg-0227",
+      "premise": "Home Assistant ran in a VM on hv-27 from its installation in 2022 until it moved to a dedicated NUC in March 2026.",
+      "hypothesis": "In 2024, Home Assistant was running in a VM on hv-27.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2022 to March 2026)."
+    },
+    {
+      "id": "eg-0228",
+      "premise": "Home Assistant ran in a VM on hv-27 from its installation in 2022 until it moved to a dedicated NUC in March 2026.",
+      "hypothesis": "Home Assistant currently runs in a VM on hv-27.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the window is explicitly closed by a named end event (the March 2026 move to a dedicated NUC), so a present-tense claim over it is contradicted."
+    },
+    {
+      "id": "eg-0229",
+      "premise": "The rack UPS ran on bypass while its batteries were swapped on 14 June 2026.",
+      "hypothesis": "The rack UPS has returned to normal operation.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Implicature-is-not-contradiction rule: a bypass scoped to the 14 June battery swap implicates a return to normal operation but never asserts it; only asserted content can establish the hypothesis, so unsupported."
+    },
+    {
+      "id": "eg-0230",
+      "premise": "The orders database has been in read-only mode since the 28 July 2026 incident; the incident review has not yet cleared a return to writes.",
+      "hypothesis": "As of 3 August 2026, the orders database is in read-only mode.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: the state holds since 28 July 2026 with no closing event (the return to writes has not happened), so the fact entails the same state at the later reference date."
+    },
+    {
+      "id": "eg-0231",
+      "premise": "The loaner switch was installed on 5 March 2026 for an expected six-to-eight-week stay.",
+      "hypothesis": "The loaner switch is still installed.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: an expected stay is not an asserted end event, and 'still' is unanchored — the claim's truth depends on an evaluation date the premise does not contain."
+    },
+    {
+      "id": "eg-0232",
+      "premise": "Gitea hosted the lab's repositories until the November 2025 migration to Forgejo.",
+      "hypothesis": "The lab's repositories are hosted on Gitea.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the window is explicitly closed by a named successor (Forgejo), so a present-tense claim over it is contradicted."
+    },
+    {
+      "id": "eg-0233",
+      "premise": "The guest VLAN used the 192.168.50.0/24 range from its creation in 2023 until the July 2026 renumbering to 10.60.0.0/24.",
+      "hypothesis": "In 2025, the guest VLAN used 192.168.50.0/24.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2023 to July 2026)."
+    },
+    {
+      "id": "eg-0234",
+      "premise": "Alerting was routed to email only until Q2 2025.",
+      "hypothesis": "After Q2 2025, alerting was routed to additional channels beyond email.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Implicature-is-not-contradiction rule: 'until Q2 2025' implicates something changed afterwards, but the premise never asserts what followed; the implicated content cannot be treated as asserted, so unsupported."
+    },
+    {
+      "id": "eg-0235",
+      "premise": "The backup target has been the offsite MinIO bucket since 9 January 2026, with no change since.",
+      "hypothesis": "Backups currently go to the offsite MinIO bucket.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: the state holds since 9 January 2026 with no closing event, so the window is open and the 'currently' claim is decidable and entailed (evaluation-time rule, open-window case)."
+    },
+    {
+      "id": "eg-0236",
+      "premise": "The mosquitto broker listened on 1883 without TLS until the May 2026 hardening, when plaintext was disabled.",
+      "hypothesis": "Since June 2026, the mosquitto broker has accepted plaintext connections on 1883.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the May 2026 hardening is a named end event that disabled plaintext, so a claim of the plaintext state after the close is contradicted."
+    },
+    {
+      "id": "eg-0237",
+      "premise": "The spare node was lent to the robotics club on 15 July 2026 for about a month.",
+      "hypothesis": "The spare node is currently in the lab.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Evaluation-time rule: 'about a month' fixes no end event, and 'currently' is unanchored — whether the node is back depends on an evaluation date the premise does not contain."
+    },
+    {
+      "id": "eg-0238",
+      "premise": "Nightly backups ran at 01:00 from 2024 until the schedule moved to 02:30 in April 2026.",
+      "hypothesis": "In January 2026, nightly backups ran at 01:00.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule: the claim is time-scoped inside the fact's validity window (2024 to April 2026)."
+    },
+    {
+      "id": "eg-0239",
+      "premise": "Nightly backups ran at 01:00 from 2024 until the schedule moved to 02:30 in April 2026.",
+      "hypothesis": "Nightly backups currently run at 01:00.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Window rule, closed-window case: the window is explicitly closed by a named end event (the April 2026 schedule move to 02:30), so a present-tense claim of the old time is contradicted."
+    },
+    {
+      "id": "eg-0240",
+      "premise": "The old wiki stayed online in read-only mode during the six-week content migration that began in June 2026.",
+      "hypothesis": "The old wiki has been taken offline.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Implicature-is-not-contradiction rule: a migration scoped to six weeks implicates the old wiki was retired afterwards, but the premise never asserts a shutdown; the implicated content cannot establish the hypothesis, so unsupported."
+    },
+    {
+      "id": "eg-0241",
+      "premise": "hv-27 has pinned kernel 6.8 since the March 2026 GPU passthrough regression; the pin has never been lifted.",
+      "hypothesis": "As of August 2026, hv-27 still runs a pinned 6.8 kernel.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "temporal"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: the pin holds since March 2026 with no closing event, so the fact entails the same state at the later reference date."
     }
   ]
 }
