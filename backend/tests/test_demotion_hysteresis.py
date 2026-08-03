@@ -170,6 +170,17 @@ async def _under_sourced_fact(session, *, key="hys-1", subject="darkmem"):
     return fact_id
 
 
+def _wire_instant(value):
+    """A JSON timestamp as the instant it denotes.
+
+    The app's encoder spells UTC as ``Z`` where ``isoformat`` spells it
+    ``+00:00``; comparing instants keeps the assertion about the label rather
+    than about the spelling.
+    """
+    assert value is not None
+    return datetime.fromisoformat(value)
+
+
 def _decision(outcome: str, *, current="corroborated", target="candidate"):
     return LadderDecision(
         fact_id="fact-1",
@@ -648,12 +659,22 @@ class TestCancellation:
     async def test_the_cancellation_leaves_nothing_that_demotes_later(self, session):
         """The clause's real content, and the one a partial clear fails.
 
-        Kill target: a cancellation that clears the marker but leaves the
-        cycle counter behind. Every assertion in the test above still passes —
-        the fact is corroborated, unmarked and unqueued — and the fact demotes
-        on the *first* cycle of its next dip instead of the second, silently
-        skipping the window it is entitled to. So the proof has to be the next
-        dip's behaviour, not the state right after the clear.
+        Two kill targets, and both are invisible to the test above — after
+        either one the fact is corroborated, unmarked and unqueued:
+
+        * a cancellation that does not write the clear at all, so the next dip
+          inherits a spent window and demotes on its *first* cycle instead of
+          being held;
+        * a clear that moves only one of the two columns, so the counter the
+          next window is measured against is not the one the marker implies.
+
+        Both show up only in the next dip's behaviour, never in the state
+        right after the clear — which is why the test dips a second time.
+
+        Note the residue the reader expects first — marker cleared, counter
+        left behind — is *not* one of them: the open branch keys on
+        ``pending_since is None`` alone and rewrites ``cycles=1``
+        unconditionally, so that shape is self-healing and unreachable.
         """
         fact_id = await _under_sourced_fact(session)
         await _add_origin(session, fact_id, "repo-b", kind="code")
@@ -779,6 +800,49 @@ class TestServedLabelled:
         row = await KnowledgeTripleRepository(session).get(fact_id)
         assert row is not None
         assert row["demotion_pending_since"] == NOW
+
+    async def test_the_rest_facts_list_renders_the_label(
+        self, session, client, auth_headers
+    ):
+        """Renderable, not merely stored.
+
+        ``_base_item`` hand-enumerates the wire item and ``FactListItem``
+        gates what survives serialisation, so a marker that reaches
+        ``_COLUMNS`` still stops at either of them. Doc 13 §5.3's overlay
+        renders on this tab; reaching it by elimination
+        (``corroborated`` + ``review_state='open'``) is not the same guarantee,
+        because a second queue opener makes that inference wrong.
+        """
+        healthy = await _make_fact(session, key="hys-healthy", subject="healthy")
+        await _add_origin(session, healthy, "h-sess-a")
+        await _add_origin(session, healthy, "h-repo-b", kind="code")
+        await recompute_fact(session, healthy, now=NOW)
+        await session.commit()
+
+        under = await _under_sourced_fact(session, key="hys-under", subject="under")
+
+        response = await client.get(
+            f"/api/v1/knowledge/facts?project={PROJECT}", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        served = {item["id"]: item for item in response.json()["items"]}
+        assert {healthy, under} <= set(served)
+        assert _wire_instant(served[under]["demotion_pending_since"]) == NOW
+        assert served[under]["verification_status"] == "corroborated"
+        assert served[healthy]["demotion_pending_since"] is None
+
+    async def test_the_rest_facts_detail_renders_the_label(
+        self, session, client, auth_headers
+    ):
+        fact_id = await _under_sourced_fact(session)
+
+        response = await client.get(
+            f"/api/v1/knowledge/facts/{fact_id}", headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        assert _wire_instant(response.json()["demotion_pending_since"]) == NOW
 
     async def test_the_review_queue_names_the_reason(self, session):
         """R3: T2.46 supplies the distinguishing column ``review_queue``'s
