@@ -64,6 +64,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
@@ -271,27 +272,34 @@ def _messages_chars(messages: list[dict]) -> int:
 
 
 async def _read_cache(session: AsyncSession, project: str) -> dict | None:
-    row = (
+    # Column-level, so the value never comes from the identity map: the write
+    # below is a Core upsert that leaves any ORM-loaded `Config` for this key
+    # holding the pre-upsert dict.
+    value = (
         await session.execute(
-            select(Config).where(Config.key == config_key(project))
+            select(Config.value).where(Config.key == config_key(project))
         )
     ).scalar_one_or_none()
-    if row is None or not isinstance(row.value, dict):
+    if not isinstance(value, dict):
         return None
-    return row.value
+    return value
 
 
 async def _write_cache(session: AsyncSession, project: str, value: dict) -> None:
-    row = (
-        await session.execute(
-            select(Config).where(Config.key == config_key(project))
-        )
-    ).scalar_one_or_none()
-    if row is None:
-        session.add(Config(key=config_key(project), value=value))
-    else:
-        row.value = value
-    await session.flush()
+    """One statement, because the two racers are a realistic pair.
+
+    Both cold requests for a project miss the cache, both spend the reduce and
+    both then write `overview:<project>` — and the window between the miss and
+    the write is the whole model round-trip. Select-then-insert loses that race
+    with a `config_pkey` unique violation *after* a fully successful compute:
+    a 500 on REST, a raw tool error on MCP, for a request that had the answer
+    in hand. The upsert makes the loser's write land on the winner's row.
+    """
+    await session.execute(
+        pg_insert(Config)
+        .values(key=config_key(project), value=value)
+        .on_conflict_do_update(index_elements=[Config.key], set_={"value": value})
+    )
 
 
 def _topics(rows: list[CommunityRow], used_ids: set) -> tuple[TopicSection, ...]:

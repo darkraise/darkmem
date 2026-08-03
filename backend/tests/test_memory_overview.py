@@ -23,16 +23,19 @@ negative — the AST reachability scan below can.
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import pathlib
 
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.repositories import memory_communities as repo
 from app.services import memory_overview as overview
 from app.utils.ids import new_id
 
 from tests._reachability_scan import ReachabilityRules, find_forbidden_reach
+from tests.conftest import test_engine
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 
@@ -379,6 +382,100 @@ async def test_the_cache_row_is_the_documented_config_key(session):
         )
     ).scalar_one()
     assert set(value) >= {"community_set_hash", "text"}
+
+
+class BarrierLLM:
+    """Holds every racer inside the reduce until all of them have arrived.
+
+    The race this drives is not a narrow interleaving: the window is the whole
+    model round-trip, from the cache miss to the cache write. The barrier makes
+    that window deterministic instead of hoping for it — every racer has missed
+    the cache before any of them writes, which is exactly the state two cold
+    requests for one project reach on their own.
+    """
+
+    def __init__(self, barrier: asyncio.Barrier, answer: str):
+        self.barrier = barrier
+        self.answer = answer
+        self.calls: list[dict] = []
+
+    async def chat_completion(self, purpose, messages, **kwargs):
+        self.calls.append({"purpose": purpose, "messages": messages})
+        await self.barrier.wait()
+        return self.answer
+
+
+async def test_two_cold_requests_for_one_project_do_not_collide(setup_database):
+    """A concurrent cold start must not 500 the loser after it computed.
+
+    Committing sessions on separate connections, because the failure being
+    guarded is a `config_pkey` unique violation between two transactions and a
+    single fixture session cannot conflict with itself. Sequential calls prove
+    nothing here: the second one reads the first one's committed row and takes
+    the cache-hit path, which is not the path that breaks.
+    """
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    project = "t221-overview-race"
+    barrier = asyncio.Barrier(2)
+
+    async def racer(answer: str):
+        async with factory() as racing_session:
+            llm = BarrierLLM(barrier, answer)
+            result = await overview.get_overview(racing_session, llm, project)
+            await racing_session.commit()
+            return result, len(llm.calls)
+
+    try:
+        async with factory() as seed:
+            await seed_communities(seed, project, communities=2, members_each=2)
+            await seed.commit()
+
+        results = await asyncio.gather(racer("overview A"), racer("overview B"))
+
+        # Neither racer is refused, and neither pays twice for being refused:
+        # the per-request cost bound survives the race.
+        assert [r.cached for r, _ in results] == [False, False]
+        assert [r.model_calls for r, _ in results] == [1, 1]
+        assert [calls for _, calls in results] == [1, 1]
+        assert len({r.community_set_hash for r, _ in results}) == 1
+
+        async with factory() as after:
+            stored = (
+                await after.execute(
+                    text("SELECT value FROM config WHERE key = :k"),
+                    {"k": f"overview:{project}"},
+                )
+            ).scalar_one()
+            assert stored["text"] in {"overview A", "overview B"}
+            assert stored["community_set_hash"] == results[0][0].community_set_hash
+
+            # The surviving row is a usable cache, not a wreck the next
+            # request has to recompute around.
+            third = await overview.get_overview(after, ExplodingLLM(), project)
+            assert third.cached is True
+            assert third.text == stored["text"]
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text(
+                    "DELETE FROM memory_community_members WHERE project = "
+                    "CAST(:p AS text)"
+                ),
+                {"p": project},
+            )
+            await cleanup.execute(
+                text("DELETE FROM memory_communities WHERE project = CAST(:p AS text)"),
+                {"p": project},
+            )
+            await cleanup.execute(
+                text("DELETE FROM memories WHERE project = CAST(:p AS text)"),
+                {"p": project},
+            )
+            await cleanup.execute(
+                text("DELETE FROM config WHERE key = :k"),
+                {"k": f"overview:{project}"},
+            )
+            await cleanup.commit()
 
 
 # ---------------------------------------------------------------------------
