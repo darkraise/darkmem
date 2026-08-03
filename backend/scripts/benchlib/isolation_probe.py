@@ -1590,22 +1590,47 @@ async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
     verdict cross here — no memory content — and that distinction is the whole
     shape of this driver. The endpoint ids are the declared payload and are
     ``I1`` by the rules module (existence across scope, without content:
-    exactly what ``entity_browser``'s ``memory_ids`` arrays are), so the
-    labelling of a pair is observed but not counted. What *can* fail is the
-    other two:
+    exactly what ``entity_browser``'s ``memory_ids`` arrays are), so no pair is
+    counted for being served. What *can* fail is the other three:
 
     * a pair outside a project the caller named. ``classify`` short-circuits
       on ``kind='id'`` before it reaches the scope axis, so a scope breach on
       an id-only row is a breach the axis model cannot express — that is what
-      ``forced_v1_reason`` is for.
+      ``forced_v1_reason`` is for. **The comparison is against
+      ``DUPLICATE_PAIRS``, never against the row's own ``project``.** This is
+      the probe's one hand-rolled scope check, and a check that asks the
+      surface under test to declare its own scope passes a serializer that
+      stamps the label from the request parameter while serving every
+      project — a leak reported as clean, which is worse than no driver.
+    * a pair whose declared project disagrees with the project its endpoints
+      were seeded in. The label is the only thing an operator reads off a
+      deployment-wide queue, so a label that lies is a defect even when the
+      rows themselves are in scope.
     * any memory sentinel at all in the body. Here the raw-body net is the
       sharpest assertion rather than a backstop, because the declaration
       permits no content crossing whatsoever.
+
+    Every endpoint of every observed pair is enumerated, in or out of scope —
+    unlike ``entity_browser``, which filters to keep a large ``memory_ids``
+    array readable. Here there are two pairs and the ids *are* the whole
+    declared payload, so enumerating them all is what makes "this case reached
+    the arm" a fact in the report rather than an inference from silence.
+
+    The fourth forced V1 — a pair outside ``DUPLICATE_PAIRS`` — is a
+    **probe-integrity signal, not a leak claim**, and the two must not be read
+    as the same thing. It can only fire on a database ``run_probe`` reset and
+    seeded itself, so an unseeded pair means the fixture table and the seeding
+    disagree and the scope check above has nothing to compare against. It is
+    reported as V1 because a scope check that silently skips the rows it
+    cannot ground-truth is the failure this whole task exists to remove; it is
+    not a statement about the surface. The probe never runs against a
+    deployment's own data.
     """
     surface = "hygiene_queue_duplicates"
     door = "GET /api/v1/hygiene-queue/duplicates"
     out: list[Sighting] = []
     ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+    seeded_projects = {(src, tgt): project for src, tgt, project in DUPLICATE_PAIRS}
 
     async def one_case(params: str, case: str, req_p: str | None):
         response = await ctx.client.get(
@@ -1622,16 +1647,35 @@ async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
             # Named by fixture keys, never by the relation's id: the bench
             # database is rebuilt per run, so an id in a row or case name
             # would make two runs render differently.
-            pair = "+".join(fx.key if fx else "unknown" for fx in endpoints)
-            if req_p is not None and row.get("project") != req_p:
+            keys = tuple(fx.key if fx else "unknown" for fx in endpoints)
+            pair = "+".join(keys)
+            true_project = seeded_projects.get(keys)
+            if true_project is None:
                 out.append(Sighting(
                     surface=surface, door=door, case=case, row=pair, kind="id",
-                    true_project=row.get("project"), true_status=None,
                     requested_project=req_p,
-                    forced_v1_reason="pair outside the requested project",
+                    forced_v1_reason="candidate pair the probe did not seed, so the "
+                                     "scope check has no ground truth (probe "
+                                     "integrity, not a surface leak)",
                 ))
+            else:
+                if req_p is not None and true_project != req_p:
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=pair, kind="id",
+                        true_project=true_project, true_status=None,
+                        requested_project=req_p,
+                        forced_v1_reason="pair outside the requested project",
+                    ))
+                if row.get("project") != true_project:
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=pair, kind="id",
+                        true_project=true_project, true_status=None,
+                        requested_project=req_p,
+                        forced_v1_reason="pair labelled with a project its "
+                                         "endpoints were not seeded in",
+                    ))
             for fx in endpoints:
-                if fx is not None and (fx.project != OBSERVER or fx.status != "active"):
+                if fx is not None:
                     out.append(_mem(
                         surface, door, f"{case}: pair {pair}", fx, kind="id",
                     ))
