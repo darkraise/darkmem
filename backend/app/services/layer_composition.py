@@ -62,6 +62,14 @@ weight splits. Rank is the one currency §3 recognises as comparable across
 modalities, so the merge interleaves ``channel_rank`` and the multipliers act
 *inside* a channel, where magnitudes are commensurable.
 
+**Grouping and the answer budget settle together, at a fixpoint** (T2.70).
+Doc 07 §5's grouping predicate is "a memory covered by a **returned** cited
+fact", so a fact past the cut is not one a memory may be nested under. But the
+two passes are mutually dependent — un-nesting a memory returns it to the
+top-level ordering, which moves the cut, which changes which facts are
+returned — so they cannot run in sequence. :func:`_grouped_page` iterates them
+to stability and carries the termination argument.
+
 **L1 is absent from :data:`LAYERS` on purpose** (doc 07 §8: "L1 candidate graph
 is not directly served"). A vocabulary admitting ``L1`` would let a
 candidate-graph row be served as a composed result.
@@ -587,10 +595,21 @@ class CompositionResult:
     lives under its fact and nowhere else, so ``len(rows)`` counts a group as
     one. Every count a consumer takes off this list — the answer budget
     included — inherits that, which is the whole of the no-triple-count rule.
+
+    ``excluded_by_result_limit`` is the answer budget's own tally and it is
+    **counted from the served output, not from the arithmetic**: it is the
+    number of composed rows reachable nowhere in ``rows``, neither as a
+    top-level row nor nested under one. Deriving it as "rows minus limit"
+    would have re-stated the assumption rather than measured it, and the
+    assumption is exactly what T2.70 found to be false. It counts rows this
+    request ordered and did not serve; it is **not** a count of further
+    matches in the corpus, because each channel fetched at most ``limit`` of
+    its own and nothing looked past that.
     """
 
     rows: list[ComposedRow]
     excluded_by_context_conflict: int = 0
+    excluded_by_result_limit: int = 0
     reranked: bool = False
     grouped: bool = False
     badged: bool = False
@@ -665,7 +684,9 @@ def _grouping(fact_id: str | None) -> dict:
 
 
 def _group_under_fact(
-    rows: list[ComposedRow], support: Mapping[str, frozenset[str]]
+    rows: list[ComposedRow],
+    support: Mapping[str, frozenset[str]],
+    nestable_facts: frozenset[str],
 ) -> list[ComposedRow]:
     """Doc 07 §5 step 5 — nest each returned memory under the fact it sources.
 
@@ -690,6 +711,9 @@ def _group_under_fact(
     test is what makes a dangling ``source_ref`` inert rather than
     special-cased: ``fact_sources`` has no FK to ``memories``, so a ref naming a
     deleted memory is representable, and it simply matches no returned row.
+    ``nestable_facts`` narrows "handed to the caller" from "in ``rows``" to
+    "inside the answer budget" — being composed is not being returned, and
+    :func:`_grouped_page` owns deciding which facts pass that second test.
 
     *A memory sourcing two returned facts nests once, under the higher-ranked
     one.* Splitting it across both would restore exactly the duplication the
@@ -707,7 +731,7 @@ def _group_under_fact(
     """
     position = {row.key: index for index, row in enumerate(rows)}
     by_key = {row.key: row for row in rows}
-    facts = {row.key for row in rows if row.id_kind == "fact"}
+    facts = {row.key for row in rows if row.id_kind == "fact"} & nestable_facts
     nestable = {row.key for row in rows if row.id_kind == "memory"}
 
     nest_under: dict[str, str] = {}
@@ -737,6 +761,79 @@ def _group_under_fact(
     ]
 
 
+def _grouped_page(
+    rows: list[ComposedRow],
+    support: Mapping[str, frozenset[str]],
+    limit: int | None,
+) -> list[ComposedRow]:
+    """Doc 07 §5's grouping and the answer budget, settled together (T2.70).
+
+    These are not two passes that can be run in sequence. Doc 07 §5's own
+    predicate is "a memory covered by a **returned** cited fact", so the cut
+    decides who may be nested under; and nesting decides how many top-level
+    rows precede each fact, so it decides what the cut reaches. Grouping first
+    and cutting afterwards is what let a memory that ranked above the cut leave
+    the result under a fact that fell below it — served nowhere, counted
+    nowhere.
+
+    **The rule: nest only under a fact that survives the cut, at the fixpoint
+    of that rule.** Write ``F(S)`` for the set of facts left inside the cut
+    when only the facts in ``S`` may be nested under. Iterate ``S₀ = every
+    fact in the ordering``, ``Sₙ₊₁ = F(Sₙ)``, and serve the page of the first
+    ``S`` with ``F(S) = S``.
+
+    **Why it terminates.** Shrinking ``S`` can only *un*-nest memories, never
+    nest new ones, so the top-level list grows and no row's position in it can
+    move earlier; a fact inside the cut under the smaller ``S`` was therefore
+    inside it under the larger one. That makes ``F`` monotone. ``S₁ = F(S₀) ⊆
+    S₀`` because ``S₀`` is everything, and monotonicity carries ``Sₙ₊₁ ⊆ Sₙ``
+    by induction — a chain that strictly shrinks until it settles, over a
+    finite set, so it settles within one iteration per fact. Neither half is
+    trusted: a step that does not shrink ``S`` raises rather than spinning, and
+    the loop is bounded, so a later change to the nesting rule that broke
+    monotonicity would fail loudly instead of hanging the read path.
+
+    **Why iteration rather than the two alternatives.** *Over-fetching a
+    bounded window before grouping* does not address this at all — it changes
+    which rows exist, not whether a nested memory's fact survives the cut, so
+    the same loss reappears at the new depth and the bound's exhaustion is
+    silent. *Nesting only within a prefix known to survive* (the first
+    ``limit`` rows of the ungrouped order, whose positions can only improve) is
+    sound and single-pass, but it under-nests: it refuses a fact that the cut
+    does in fact reach, and then serves that fact beside its own source memory
+    as two top-level rows — the triple count this pass exists to remove. The
+    descending iteration lands on the **greatest** consistent ``S``, so it
+    nests as much as the budget allows and no such pair can be served.
+
+    At the fixpoint every nesting target is inside the served window, so the
+    only rows that leave are the top-level tail — which :func:`compose` counts
+    off the served output for the envelope.
+    """
+    facts = frozenset(row.key for row in rows if row.id_kind == "fact")
+    if limit is None:
+        return _group_under_fact(rows, support, facts)
+
+    allowed = facts
+    for _ in range(len(facts) + 2):
+        page = _group_under_fact(rows, support, allowed)[:limit]
+        surviving = frozenset(row.key for row in page if row.id_kind == "fact")
+        if surviving == allowed:
+            return page
+        if not surviving < allowed:
+            raise RuntimeError(
+                "the grouping fixpoint stopped decreasing: restricting the "
+                f"nestable facts to {sorted(allowed)} left {sorted(surviving)} "
+                "inside the cut, so the step is not monotone and the iteration "
+                "has no termination argument"
+            )
+        allowed = surviving
+    raise RuntimeError(
+        f"the grouping fixpoint did not settle over {len(facts)} facts; the "
+        "iteration is bounded rather than trusted, so this is a broken nesting "
+        "rule and not a slow page"
+    )
+
+
 def compose(
     candidates,
     *,
@@ -746,6 +843,7 @@ def compose(
     rerank_scores: Mapping[str, float] | None = None,
     fact_sources: Mapping[str, frozenset[str]] | None = None,
     badges: Mapping[str, Badge] | None = None,
+    limit: int | None = None,
 ) -> CompositionResult:
     """Doc 07 §5 steps 1 to 5, as a pure function.
 
@@ -784,6 +882,13 @@ def compose(
     **Nothing is dropped for its verification status.** An all-``candidate``
     input composes to a full, labelled result, which is the floor T2.56's
     cold start inherits rather than a rule it has to unpick.
+
+    **``limit`` is the caller's answer budget, and it is applied here rather
+    than by the caller** (T2.70). It has to be: the cut and the grouping pass
+    decide each other (:func:`_grouped_page`), so a caller slicing the returned
+    list would be running the second half of one decision against a first half
+    that never knew about it. ``None`` means no budget, every fact may be
+    nested under, and nothing is cut.
     """
     weights = weights or {}
     evidence = evidence or {}
@@ -879,11 +984,23 @@ def compose(
     ordered = sorted(rows, key=lambda r: (r.band, -r.tier, r.key))
     grouped = fact_sources is not None
     if grouped:
-        ordered = _group_under_fact(ordered, fact_sources)
+        ordered = _grouped_page(ordered, fact_sources, limit)
+    elif limit is not None:
+        ordered = ordered[:limit]
+
+    # Counted off what is actually reachable in the output, top level and
+    # nested, rather than derived from ``len`` arithmetic: the arithmetic
+    # encodes the belief that nesting and the cut compose cleanly, which is the
+    # belief T2.70 found to be false. Measuring the served set instead means a
+    # future regression in the fixpoint shows up as a number the envelope
+    # already carries rather than as rows nobody counts.
+    served = {row.key for row in ordered}
+    served |= {nested.key for row in ordered for nested in row.supported_by}
 
     return CompositionResult(
         rows=ordered,
         excluded_by_context_conflict=excluded_by_context_conflict,
+        excluded_by_result_limit=len(rows) - len(served),
         reranked=reranked,
         grouped=grouped,
         badged=badges is not None,
@@ -1220,6 +1337,21 @@ class LayerCompositionService:
             rerank_scores=rerank_scores,
             fact_sources=await self.derive_support_map(fact_ids),
             badges=badges,
+            # Each channel fetches up to ``limit`` of its own, so the union is
+            # up to one limit per layer. ``limit`` is the caller's answer
+            # budget, not a per-channel quota, so the composed order is cut —
+            # after the ordering, by rank, never by label. Nothing is dropped
+            # for its verification status; this drops the tail of a total
+            # order.
+            #
+            # The cut is **handed to compose() rather than applied to its
+            # return** (T2.70). It spends the budget on ``limit`` distinct
+            # claims rather than on ``limit`` rows that may restate one, and
+            # grouping is scoped to the facts that budget actually reaches, so
+            # a memory ranked above the cut is never carried out of the result
+            # by a fact ranked below it. Slicing here instead would put the two
+            # halves of that one decision in two places again.
+            limit=limit,
         )
 
         envelope = RetrievalEnvelope(
@@ -1231,17 +1363,14 @@ class LayerCompositionService:
                 for key, value in weights.items()
                 if isinstance(value, (int, float)) and not isinstance(value, bool)
             },
-            excluded={"by_context_conflict": result.excluded_by_context_conflict},
+            # Both tallies unconditionally, including at zero. ``by_result_limit``
+            # is the answer budget's own: the number of rows this request
+            # composed, ordered and then did not serve anywhere. It is bounded
+            # by the over-fetch and says nothing about how many further matches
+            # the corpus holds — no channel looked past its own ``limit``.
+            excluded={
+                "by_context_conflict": result.excluded_by_context_conflict,
+                "by_result_limit": result.excluded_by_result_limit,
+            },
         )
-        # Each channel fetches up to ``limit`` of its own, so the union is up
-        # to one limit per layer. ``limit`` is the caller's answer budget, not
-        # a per-channel quota, so the composed order is cut here — after the
-        # ordering, by rank, never by label. Nothing is dropped for its
-        # verification status; this drops the tail of a total order.
-        #
-        # The cut lands **after** grouping, so it spends the budget on ``limit``
-        # distinct claims rather than on ``limit`` rows that may restate one.
-        # The consequence is deliberate and follows from the group's rank being
-        # the fact's: a memory nested under a fact that falls past the cut goes
-        # with it, even if the memory alone would have ranked above the cut.
-        return ComposedResult(rows=result.rows[:limit], envelope=envelope)
+        return ComposedResult(rows=result.rows, envelope=envelope)
