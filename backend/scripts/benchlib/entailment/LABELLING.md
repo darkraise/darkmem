@@ -385,5 +385,20 @@ exists.
 
 ### Skip log (Step 4)
 
-*(appended by authoring batches; every skipped (premise, slice) slot with
-its reason, per Rule A)*
+Every skipped (premise, slice) slot with its reason, per Rule A. The
+skipped slot keeps its id and slice with a hand-authored premise.
+
+**Batch 1 (slots 0–49, eg-0042..eg-0091; 3 skips):**
+
+- slot 10, `direction`, `11606722-ee98-5a68-a01f-3f2b5f1e49e7`
+  (`vector related to telegraf`): RELATED_TO is symmetric and
+  direction-ineligible per the reversal-exclusivity table. Authored as
+  eg-0052 with a hand-authored HAS_PART premise.
+- slot 19, `value-swap`, `7ff82019-0e6e-5ba1-a679-933ebecb9ac0`: the
+  swappable slot is not single-valued (a generic USES object), so the
+  exclusive-slot rule cannot fix `contradicted`. Authored as eg-0061
+  with a hand-authored single-valued-port premise.
+- slot 24, `value-swap`, `37a75f1f-b666-5ca3-9ae6-4cd8c8b8a2e5`:
+  RELATED_TO's object is multi-valued by nature; exclusive-slot rule
+  inapplicable. Authored as eg-0066 with a hand-authored token-TTL
+  premise.

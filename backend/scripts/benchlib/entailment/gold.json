@@ -3,25 +3,25 @@
   "variant": "claim-fact",
   "_notes": "Claim/fact entailment gold (doc 17 §6, G-D). Labelling rules, slice decision procedures and edge rulings: LABELLING.md beside this file. Append-only; retire in place; declared counts track live pairs. Loader: benchlib/entailment_gold.py.",
   "declared_slice_counts": {
-    "direction": 5,
-    "overreach": 6,
-    "paraphrase": 6,
+    "direction": 12,
+    "overreach": 14,
+    "paraphrase": 17,
     "temporal": 6,
-    "unrelated": 4,
-    "value-swap": 5,
-    "verbatim": 4,
-    "weakening": 5
+    "unrelated": 6,
+    "value-swap": 9,
+    "verbatim": 13,
+    "weakening": 14
   },
   "declared_verdict_counts": {
-    "contradicted": 10,
-    "entailed": 17,
-    "unsupported": 14
+    "contradicted": 18,
+    "entailed": 46,
+    "unsupported": 27
   },
   "declared_provenance_counts": {
-    "hand-authored-synthetic-fact": 25,
+    "hand-authored-synthetic-fact": 28,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 0
+    "l2-fact": 47
   },
   "pairs": [
     {
@@ -531,6 +531,938 @@
       "provenance": "hand-authored-synthetic-fact",
       "label_source": "author",
       "rationale": "Shared entity (the ops channel) but a disjoint predicate: posting to a channel says nothing about its archival policy. Unsupported."
+    },
+    {
+      "id": "eg-0042",
+      "premise": "door-badge uses directory replica",
+      "hypothesis": "The directory replica uses door-badge.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "6f06fed4-2f25-5d7e-a363-f24002c62128",
+        "subject_name": "door-badge",
+        "rel_type": "USES",
+        "object_name": "directory replica",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0043",
+      "premise": "ocr worker deployed on gpu-01",
+      "hypothesis": "The OCR worker is hosted on gpu-01.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording: DEPLOYED_ON restated as hosting, same subject and same host, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
+        "subject_name": "ocr worker",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "gpu-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0044",
+      "premise": "acs-01 depends on ntp",
+      "hypothesis": "acs-01 relies on NTP.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "DEPENDS_ON reworded as reliance with the same two endpoints; nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "cbb3f9de-ea07-5b45-8a09-214a2cb41319",
+        "subject_name": "acs-01",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "ntp",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0045",
+      "premise": "analytics etl depends on orders database",
+      "hypothesis": "The analytics ETL depends on the orders database.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: articles and casing added, every content token preserved, nothing added or dropped. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
+        "subject_name": "analytics etl",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "orders database",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0046",
+      "premise": "nginx uses client certificates",
+      "hypothesis": "Nginx makes use of client certificates.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The bare USES predicate is reworded periphrastically with both endpoints intact; no purpose, scope or mechanism is added. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "e759f6f2-d05a-552e-bf7e-0e0cc4dbe640",
+        "subject_name": "nginx",
+        "rel_type": "USES",
+        "object_name": "client certificates",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0047",
+      "premise": "team wiki deployed on lab-vm-3",
+      "hypothesis": "The team wiki is deployed on lab-vm-3 behind the nginx reverse proxy.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: the proxy arrangement is added content the fact does not carry. Strengthening breaks entailment (general procedure 3), and the addition is not excluded by the premise, so it is unsupported, not contradicted (contradiction requires exclusion, general procedure 4).",
+      "fact_key": {
+        "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
+        "subject_name": "team wiki",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "lab-vm-3",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0048",
+      "premise": "wireguard deployed on udp",
+      "hypothesis": "WireGuard is deployed on TCP.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Single-token swap (udp -> tcp) with the sentence shape preserved. The deployment target of the single named WireGuard instance is a single-valued slot (a single named instance's deployment target), so the differing value contradicts under the exclusive-slot rule; tcp is the corpus-plausible sibling transport.",
+      "fact_key": {
+        "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+        "subject_name": "wireguard",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "udp",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0049",
+      "premise": "prometheus uses node exporters",
+      "hypothesis": "Prometheus scrapes the node exporters every 15 seconds.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: bare USES is upgraded to a scrape mechanism plus a numeric interval the fact does not carry; the value is corpus-plausible (the seed set's real interval), so plausibility actively misleads. Not excluded by the premise, so unsupported (strengthening breaks entailment; contradiction requires exclusion).",
+      "fact_key": {
+        "triple_key": "3d8b8266-237f-5431-8f58-691ff67c4f73",
+        "subject_name": "prometheus",
+        "rel_type": "USES",
+        "object_name": "node exporters",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0050",
+      "premise": "terraform uses tf-state",
+      "hypothesis": "Jenkins runs on the ci-01 host.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The premise is about terraform and tf-state and bears on nothing in the claim. The claim is true in the harvest world (jenkins deployed on ci-01) - the world-knowledge trap: a judge scoring plausibility instead of entailment accepts it. Unsupported (use only the premise, general procedure 2).",
+      "fact_key": {
+        "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+        "subject_name": "terraform",
+        "rel_type": "USES",
+        "object_name": "tf-state",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0051",
+      "premise": "license-report depends on internal package mirror",
+      "hypothesis": "license-report depends on the internal package mirror.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: only an article is added, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
+        "subject_name": "license-report",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "internal package mirror",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0052",
+      "premise": "The monitoring stack has the alert router as one of its parts.",
+      "hypothesis": "The alert router has the monitoring stack as one of its parts.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Reversal of HAS_PART with maximal surface overlap: proper parthood is antisymmetric, so one pair of endpoints cannot carry both directions. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table). Hand-authored replacement for a skipped symmetric RELATED_TO assignment (see skips).",
+      "notes": "Replacement pair for skipped slot 10."
+    },
+    {
+      "id": "eg-0053",
+      "premise": "unleash uses oidc",
+      "hypothesis": "Grafana is fronted by nginx.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "unrelated"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "The premise is about unleash's use of oidc and neither supports nor contradicts the claim. The claim is plausible in the harvest world (grafana uses nginx) - the world-knowledge trap. Unsupported (use only the premise, general procedure 2).",
+      "fact_key": {
+        "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
+        "subject_name": "unleash",
+        "rel_type": "USES",
+        "object_name": "oidc",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0054",
+      "premise": "nightly integration suite uses junit",
+      "hypothesis": "The nightly integration suite uses JUnit.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
+        "subject_name": "nightly integration suite",
+        "rel_type": "USES",
+        "object_name": "junit",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0055",
+      "premise": "kibana has part elk",
+      "hypothesis": "Kibana has at least one component.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: naming elk as a part entails the existence of some part; the specific part is dropped, never altered, and part/component is a trivial synonym. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
+        "subject_name": "kibana",
+        "rel_type": "HAS_PART",
+        "object_name": "elk",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0056",
+      "premise": "terraform uses minio",
+      "hypothesis": "MinIO has at least one consumer.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the subject is dropped to an existential - terraform using minio entails that something uses it, and a user of a thing is its consumer by the meaning of USES. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
+        "subject_name": "terraform",
+        "rel_type": "USES",
+        "object_name": "minio",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0057",
+      "premise": "redis deployed on cache-01",
+      "hypothesis": "Redis is deployed on cache-01 as the only service on that host.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: an exclusivity claim ('the only service') is added; the fact places redis on cache-01 but does not exclude other services there. Strengthening breaks entailment (general procedure 3); absence is not exclusion (general procedure 4), so unsupported.",
+      "fact_key": {
+        "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
+        "subject_name": "redis",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "cache-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0058",
+      "premise": "caddy improves on nginx",
+      "hypothesis": "Nginx improves on Caddy.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Reversal of IMPROVES_ON: an improvement ordering over one comparison cannot be mutual, so the reversed claim contradicts the fact. Reversal rule, exclusive case (IMPROVES_ON row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
+        "subject_name": "caddy",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "nginx",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0059",
+      "premise": "rooftop weather station uses iot-gw-1",
+      "hypothesis": "The weather station on the roof makes use of iot-gw-1.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording: the rooftop modifier becomes a prepositional phrase and USES is restated periphrastically; same station, same gateway, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "77567f40-e068-57b7-b8c3-14cae1b8b01e",
+        "subject_name": "rooftop weather station",
+        "rel_type": "USES",
+        "object_name": "iot-gw-1",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0060",
+      "premise": "telegraf uses influxdb",
+      "hypothesis": "InfluxDB is put to use by Telegraf.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Voice flip plus periphrastic rewording of USES; both endpoints and the direction of use preserved, nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
+        "subject_name": "telegraf",
+        "rel_type": "USES",
+        "object_name": "influxdb",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0061",
+      "premise": "sftp-02 ships its syslog stream to the log collector on port 5514.",
+      "hypothesis": "sftp-02 ships its syslog stream to the log collector on port 6514.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Single-token port swap (5514 -> 6514) with every other token identical; a configured destination port is a single-valued configuration slot, so the differing value contradicts under the exclusive-slot rule. 6514 is the plausible standard syslog-over-TLS port. Hand-authored replacement for a skipped multi-valued USES assignment (see skips).",
+      "notes": "Replacement pair for skipped slot 19."
+    },
+    {
+      "id": "eg-0062",
+      "premise": "apps-02 deployed on rack ups",
+      "hypothesis": "The rack UPS is deployed on apps-02.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
+        "subject_name": "apps-02",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "rack ups",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0063",
+      "premise": "jenkins deployed on ci-01",
+      "hypothesis": "Jenkins is deployed on ci-01.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: copula and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
+        "subject_name": "jenkins",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "ci-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0064",
+      "premise": "restic uses wiki volume",
+      "hypothesis": "Restic makes use of at least one volume.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the wiki-specific volume is generalised to an existential over volumes, a category the object's own name supplies; nothing altered. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+        "subject_name": "restic",
+        "rel_type": "USES",
+        "object_name": "wiki volume",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0065",
+      "premise": "mobile app uses edge-cdn-4",
+      "hypothesis": "The mobile app is a consumer of edge-cdn-4.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "USES reworded as being a consumer of, which by the meaning of USES is the same assertion; both endpoints preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "b7e6e07d-4135-5663-9acd-f3e4e1c12911",
+        "subject_name": "mobile app",
+        "rel_type": "USES",
+        "object_name": "edge-cdn-4",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0066",
+      "premise": "Vault issues CI job tokens with a TTL of 60 minutes.",
+      "hypothesis": "Vault issues CI job tokens with a TTL of 90 minutes.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Single-token TTL swap (60 -> 90 minutes) with every other token identical; a token lifetime is one of the exclusive-slot rule's own named single-valued slots, so the differing value is contradicted. Hand-authored replacement for a skipped multi-valued RELATED_TO assignment (see skips).",
+      "notes": "Replacement pair for skipped slot 24."
+    },
+    {
+      "id": "eg-0067",
+      "premise": "nightly integration suite uses artifacts bucket",
+      "hypothesis": "The nightly integration suite makes use of at least one bucket.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the specific artifacts bucket is generalised to an existential over buckets, a category the object's own name supplies. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "8a0cb86b-70de-555e-b834-80ef8a8a6323",
+        "subject_name": "nightly integration suite",
+        "rel_type": "USES",
+        "object_name": "artifacts bucket",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0068",
+      "premise": "typesense deployed on search-01",
+      "hypothesis": "Typesense is deployed on at least one host.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the named host is dropped to an existential; DEPLOYED_ON's own semantics make the object a deployment host, so no outside knowledge is used. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
+        "subject_name": "typesense",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "search-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0069",
+      "premise": "postgres deployed on stg-db-01",
+      "hypothesis": "Postgres 15.6 is deployed on stg-db-01.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: a minor version is added content this fact does not carry; 15.6 is corpus-plausible (the seed set's real staging value), so plausibility actively misleads. Not excluded by the premise, so unsupported (strengthening breaks entailment; contradiction requires exclusion).",
+      "fact_key": {
+        "triple_key": "8b0af751-67c2-572d-adfc-db51d823ed3f",
+        "subject_name": "postgres",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "stg-db-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0070",
+      "premise": "github actions replaces jenkins",
+      "hypothesis": "GitHub Actions replaces Jenkins.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+        "subject_name": "github actions",
+        "rel_type": "REPLACES",
+        "object_name": "jenkins",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0071",
+      "premise": "internal package mirror uses client",
+      "hypothesis": "The client is put to use by the internal package mirror.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Voice flip plus periphrastic rewording of USES; the direction of use and both endpoints preserved, nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "0e91af7b-4b37-5ce2-afdd-0f6c1d0c751d",
+        "subject_name": "internal package mirror",
+        "rel_type": "USES",
+        "object_name": "client",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0072",
+      "premise": "redis replaces memcached",
+      "hypothesis": "Memcached has been supplanted by Redis.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "REPLACES reworded as supplanting with a voice flip; the replacement relation and its direction are preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
+        "subject_name": "redis",
+        "rel_type": "REPLACES",
+        "object_name": "memcached",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0073",
+      "premise": "expense uses ocr worker",
+      "hypothesis": "expense runs every submitted receipt through the OCR worker.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: a universal quantifier ('every submitted receipt') and a workflow mechanism are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes it, so unsupported (contradiction requires exclusion, general procedure 4).",
+      "fact_key": {
+        "triple_key": "af9706e3-0c61-5a4b-944a-29504a498035",
+        "subject_name": "expense",
+        "rel_type": "USES",
+        "object_name": "ocr worker",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0074",
+      "premise": "compactor uses loki",
+      "hypothesis": "The compactor uses Loki.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
+        "subject_name": "compactor",
+        "rel_type": "USES",
+        "object_name": "loki",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0075",
+      "premise": "ci runners uses docker-in-docker",
+      "hypothesis": "Docker-in-Docker uses the CI runners.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+        "subject_name": "ci runners",
+        "rel_type": "USES",
+        "object_name": "docker-in-docker",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0076",
+      "premise": "iot-gw-1 uses firmware check",
+      "hypothesis": "A firmware check is in use.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the subject is dropped entirely - iot-gw-1 using the firmware check entails that such a check is in use by something. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "49ae7c87-e610-5a39-b93b-7fcdf01bcedc",
+        "subject_name": "iot-gw-1",
+        "rel_type": "USES",
+        "object_name": "firmware check",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0077",
+      "premise": "thumbs queue deployed on queue-01",
+      "hypothesis": "The thumbs queue is deployed on queue-01.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: article and copula only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "c51c06e3-a505-52c8-972d-d8abb6285c01",
+        "subject_name": "thumbs queue",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "queue-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0078",
+      "premise": "apps/portal uses audit-log",
+      "hypothesis": "audit-log has at least one consumer.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the subject is dropped to an existential - apps/portal using audit-log entails that something consumes it, by the meaning of USES. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "a8abee19-e45b-5503-a90b-709107983352",
+        "subject_name": "apps/portal",
+        "rel_type": "USES",
+        "object_name": "audit-log",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0079",
+      "premise": "status dashboard uses vite",
+      "hypothesis": "The status dashboard uses Vite.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
+        "subject_name": "status dashboard",
+        "rel_type": "USES",
+        "object_name": "vite",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0080",
+      "premise": "glitchtip replaces sentry",
+      "hypothesis": "GlitchTip has taken Sentry's place.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Full rewording of REPLACES as taking the other's place; the replacement relation and its direction are preserved, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+        "subject_name": "glitchtip",
+        "rel_type": "REPLACES",
+        "object_name": "sentry",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0081",
+      "premise": "memcached deployed on cache-02",
+      "hypothesis": "Memcached is the only workload deployed on cache-02.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: an exclusivity claim ('the only workload') is added; the fact places memcached on cache-02 but does not exclude other workloads there. Strengthening breaks entailment (general procedure 3); absence is not exclusion (general procedure 4), so unsupported.",
+      "fact_key": {
+        "triple_key": "e5737d01-742c-5adf-acbc-d4694bbc849f",
+        "subject_name": "memcached",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "cache-02",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0082",
+      "premise": "grafana uses infra",
+      "hypothesis": "Infra uses Grafana.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "infra",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0083",
+      "premise": "config management agent causes lp-relay",
+      "hypothesis": "lp-relay is brought about by the config management agent.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Voice flip plus CAUSES reworded as bringing about; the causal relation and its direction are preserved, and no causal strength is added ('brought about' is not upgraded to sole cause). Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
+        "subject_name": "config management agent",
+        "rel_type": "CAUSES",
+        "object_name": "lp-relay",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0084",
+      "premise": "fleet-cfg related to booking schedule",
+      "hypothesis": "There is a connection between fleet-cfg and the booking schedule.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "RELATED_TO reworded as the existence of a connection - a symmetric restatement of a symmetric relation with both endpoints preserved and nothing added. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "fact_key": {
+        "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+        "subject_name": "fleet-cfg",
+        "rel_type": "RELATED_TO",
+        "object_name": "booking schedule",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0085",
+      "premise": "restic uses nas",
+      "hypothesis": "Restic uses the NAS.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Near-literal restatement: article and casing only, all content preserved. Entailed under the verbatim rule; strings differ, satisfying the loader's non-identity check.",
+      "fact_key": {
+        "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
+        "subject_name": "restic",
+        "rel_type": "USES",
+        "object_name": "nas",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0086",
+      "premise": "lp-relay uses office label printers",
+      "hypothesis": "lp-relay makes use of printers.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the office/label specifiers are dropped, generalising to a category the object's own name supplies; nothing altered. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "c03b1b8e-db87-5360-989d-07ee46a59ecc",
+        "subject_name": "lp-relay",
+        "rel_type": "USES",
+        "object_name": "office label printers",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0087",
+      "premise": "grafana uses nginx",
+      "hypothesis": "There is at least one consumer of nginx.",
+      "verdict": "entailed",
+      "slice_tags": [
+        "weakening"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strictly weaker: the subject is dropped to an existential - grafana using nginx entails that nginx has a consumer, by the meaning of USES. Entailed by weakening.",
+      "fact_key": {
+        "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "nginx",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0088",
+      "premise": "directory replica deployed on acs-01",
+      "hypothesis": "The directory replica is deployed on apps-02.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Host swap (acs-01 -> apps-02) with the sentence shape preserved; apps-02 is another harvest entry's real name, so the wrong claim is corpus-plausible. A single named instance's deployment host is a single-valued slot, so the differing value contradicts under the exclusive-slot rule.",
+      "fact_key": {
+        "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
+        "subject_name": "directory replica",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "acs-01",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0089",
+      "premise": "monthly payroll export uses sftp-02",
+      "hypothesis": "The monthly payroll export uploads its files to sftp-02 over TLS.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: a transfer direction ('uploads its files to') and an encryption channel are added to a bare USES fact. Strengthening breaks entailment (general procedure 3); nothing in the premise excludes the additions, so unsupported (contradiction requires exclusion, general procedure 4).",
+      "fact_key": {
+        "triple_key": "bcafb282-5cd6-5a77-9abd-5d578479b2f9",
+        "subject_name": "monthly payroll export",
+        "rel_type": "USES",
+        "object_name": "sftp-02",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0090",
+      "premise": "search-01 is a typesense",
+      "hypothesis": "search-01 is a typesense node running version 0.25.",
+      "verdict": "unsupported",
+      "slice_tags": [
+        "overreach"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Strict strengthening: a version number and a node role are added content the IS_A fact does not carry. Strengthening breaks entailment (general procedure 3); the additions are consistent with the fact, not excluded, so unsupported (contradiction requires exclusion, general procedure 4).",
+      "fact_key": {
+        "triple_key": "04ebe769-fa68-5371-9467-f7a8c6aad887",
+        "subject_name": "search-01",
+        "rel_type": "IS_A",
+        "object_name": "typesense",
+        "project": "default"
+      }
+    },
+    {
+      "id": "eg-0091",
+      "premise": "redis deployed on queue-01",
+      "hypothesis": "queue-01 is deployed on Redis.",
+      "verdict": "contradicted",
+      "slice_tags": [
+        "direction"
+      ],
+      "provenance": "l2-fact",
+      "label_source": "author",
+      "rationale": "Reversal of DEPLOYED_ON: host and guest cannot swap for the same pair - a platform is not deployed on its own workload. Contradicted under the reversal rule, exclusive case (DEPLOYED_ON row of the reversal-exclusivity table).",
+      "fact_key": {
+        "triple_key": "dea1fc2d-868a-5755-baa3-dea5ae8c184d",
+        "subject_name": "redis",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "queue-01",
+        "project": "default"
+      }
     }
   ]
 }

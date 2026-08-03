@@ -35,30 +35,31 @@ from benchlib.retrieval_gold import load_retrieval_corpus
 # contributor appending pairs updates all of these together -- a silent
 # re-tagging or a drifted count shows up as a failure here.
 DOCUMENTED_SLICE_COUNTS = {
-    "verbatim": 4,
-    "paraphrase": 6,
-    "weakening": 5,
+    "verbatim": 13,
+    "paraphrase": 17,
+    "weakening": 14,
     "temporal": 6,
-    "direction": 5,
-    "overreach": 6,
-    "value-swap": 5,
-    "unrelated": 4,
+    "direction": 12,
+    "overreach": 14,
+    "value-swap": 9,
+    "unrelated": 6,
 }
 DOCUMENTED_VERDICT_COUNTS = {
-    "entailed": 17,
-    "contradicted": 10,
-    "unsupported": 14,
+    "entailed": 46,
+    "contradicted": 18,
+    "unsupported": 27,
 }
-# synthesis-draft and l2-fact are PINNED AT ZERO: neither producer exists
-# (article_synthesis is a PlaceholderJobRunner until T3.02; knowledge_triples
-# has no writer until T2.10). The first real harvest from either source is a
-# deliberate edit to this pin, never a silent relabel -- provenance honesty
-# is what keeps G-D's numbers meaning what they claim.
+# synthesis-draft is PINNED AT ZERO: no producer exists (article_synthesis
+# is a PlaceholderJobRunner until T3.02). l2-fact moved off its zero pin
+# with T2.54's recorded harvest -- each authoring batch moves it again,
+# visibly, and every l2-fact pair is anchored to the harvest manifest by
+# the loader. Provenance honesty is what keeps G-D's numbers meaning what
+# they claim.
 DOCUMENTED_PROVENANCE_COUNTS = {
-    "hand-authored-synthetic-fact": 25,
+    "hand-authored-synthetic-fact": 28,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 0,
+    "l2-fact": 47,
 }
 
 
@@ -163,7 +164,6 @@ def test_every_live_pair_declares_an_honest_provenance(gold):
     assert computed == DOCUMENTED_PROVENANCE_COUNTS
     # No pair may claim material from a producer that does not exist yet.
     assert computed["synthesis-draft"] == 0
-    assert computed["l2-fact"] == 0
 
 
 def test_corpus_provenance_pairs_anchor_to_the_retrieval_corpus(gold, corpus):
@@ -566,7 +566,10 @@ def test_gold_load_validates_the_manifest_it_is_pointed_at(tmp_path, gold, manif
 # covered, and the final state is every slice except temporal -- the one
 # slice whose premises CANNOT be real today (fact_lift renders no validity
 # window; doc 17 §11's exemption, sunset by the rendering tripwire above).
-L2_TARGET_ASSIGNED_SLICES: frozenset[str] = frozenset()
+L2_TARGET_ASSIGNED_SLICES: frozenset[str] = frozenset({
+    "verbatim", "paraphrase", "weakening", "direction", "overreach",
+    "value-swap", "unrelated",
+})
 
 
 def test_temporal_is_never_l2_target_assigned():
