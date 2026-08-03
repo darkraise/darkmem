@@ -85,6 +85,74 @@ async def test_no_article_content_crosses_past_its_declared_preview(baseline_rep
     assert forced == []
 
 
+async def test_no_memory_content_crosses_past_its_declared_preview(baseline_report):
+    """The same assertion one surface up, over memories instead of articles.
+
+    ``hygiene_queue_memories`` declares it crosses ``content_preview``, and
+    every fixture its three arms return runs past the ``[:200]`` boundary with
+    a distinct tail. The raw-body net cannot see this — the sentinel leads the
+    content, so it crosses identically whether or not the preview truncated —
+    which is precisely why the marker exists."""
+    forced = [
+        c for c in baseline_report.classified
+        if c.sighting.forced_v1_reason
+        == "memory content crossed past its declared preview"
+    ]
+    assert forced == []
+
+
+async def test_a_dropped_project_predicate_on_a_hygiene_arm_fails_the_probe(
+    baseline_report, monkeypatch,
+):
+    """A caller-applied project filter that stops riding the SQL is a V1.
+
+    The hygiene arms are operator-wide by ratification, so their teeth are not
+    in the default read — they are in the filtered one: a caller who names a
+    project and is served another project's rows has been lied to, however
+    well those rows are labelled."""
+    from app.services import hygiene_queue
+
+    original = hygiene_queue.build_superseded_query
+    monkeypatch.setattr(
+        hygiene_queue, "build_superseded_query", lambda project: original(None),
+    )
+    mutated = await run_probe()
+
+    assert mutated.count() > baseline_report.count()
+    breaches = [
+        c for c in mutated.violations()
+        if c.verdict is Verdict.V1
+        and c.sighting.surface == "hygiene_queue_memories"
+        and any("outside requested" in reason for reason in c.reasons)
+    ]
+    assert breaches, "no named project-breach row despite the removed predicate"
+
+
+async def test_an_unlabelled_fact_fails_the_probe(baseline_report, monkeypatch):
+    """Both fact surfaces are wide on the project axis — one by ratification,
+    one because the caller named the row — so the label is the whole defence.
+    Blank it and the foreign-project fact must land as a named V2."""
+    from app.services import facts_read
+
+    original = facts_read._base_item
+
+    def unlabelled(row, badge):
+        item = original(row, badge)
+        item["project"] = ""
+        return item
+
+    monkeypatch.setattr(facts_read, "_base_item", unlabelled)
+    mutated = await run_probe()
+
+    assert mutated.count() > baseline_report.count()
+    escapes = [
+        c for c in mutated.violations()
+        if c.verdict is Verdict.V2
+        and c.sighting.surface in {"knowledge_facts_browsing", "knowledge_fact_detail"}
+    ]
+    assert escapes, "no unlabelled cross-project fact despite the blanked label"
+
+
 async def test_a_removed_status_predicate_fails_the_probe(baseline_report, monkeypatch):
     """The gate's teeth: strip the status clause out of MemoryFilter's SQL
     rendering (the exact shape of a real regression) and the probe must

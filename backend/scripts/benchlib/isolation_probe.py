@@ -17,8 +17,11 @@ Fixtures are the hostile cases, not the passing ones: a superseded row with a
 live successor, an entity asserted by memories in two projects, archived
 rows, rows embedded only under an inactive fingerprint, rows missing from the
 active partition (the backfill-queue state), a ghost fingerprint whose
-partition does not exist (the degraded-anti-join state), and content persisted
-into append-only stores past its memory's deletion. Every memory content
+partition does not exist (the degraded-anti-join state), content persisted
+into append-only stores past its memory's deletion, a candidate-duplicate pair
+in each project, a fact whose provenance points at a memory in the other one,
+and rows long enough that a declared preview and the whole content can be told
+apart on the wire. Every memory content
 string leads with a per-fixture sentinel so an 80-char preview still carries
 it, and every raw response body is sentinel-scanned after row enumeration —
 a crossing through a field no driver modelled is a forced V1, not a pass.
@@ -34,7 +37,7 @@ import json
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override must run first)
 from benchlib.isolation_rules import (
@@ -84,28 +87,63 @@ class MemoryFixture:
     embed: str = "active"  # "active" | "old" | "none"
     dup: bool = False
     superseded_by: str | None = None
+    confidence: float = 0.75
+    ttl_days: int | None = None
+    long: bool = False
+
+    @property
+    def tail_marker(self) -> str:
+        """The part of ``content`` that lies past a 200-char preview boundary.
+
+        Same role as ``ArticleFixture.tail_marker``: the sentinel deliberately
+        leads the content, so it crosses whether or not a preview truncated,
+        and ``scan_sentinels`` therefore cannot tell the two apart. This
+        marker is the only thing that can, and the drivers over surfaces
+        declaring ``content_preview`` force a V1 when it reaches the wire.
+        """
+        return f"-TAIL-{self.key}"
 
     @property
     def content(self) -> str:
-        return (
+        body = (
             f"{sentinel(self.key)} postgres tuning note about "
             f"{self.key.replace('_', ' ')}"
         )
+        if not self.long:
+            return body
+        padding = "x" * max(0, 260 - len(body))
+        return f"{body} {padding}{self.tail_marker}"
+
+    @property
+    def expires_at(self) -> datetime | None:
+        if self.ttl_days is None:
+            return None
+        return datetime.now(timezone.utc) + timedelta(days=self.ttl_days)
 
 
 # Insertion order satisfies the superseded_by FK: successors first.
+#
+# `confidence`, `ttl_days` and `long` exist for the hygiene queue's three
+# memory arms: its membership predicates are `confidence < threshold`,
+# `expires_at` approaching and `status = 'superseded'`, and a fixture set with
+# no low-confidence row and no TTL would leave two of the three arms served an
+# empty page — a driver that observed nothing while reporting a clean zero.
+# `long` puts the rows those arms return past the LEFT(content, 200) boundary
+# the surface declares it crosses.
 MEMORY_FIXTURES: tuple[MemoryFixture, ...] = (
     MemoryFixture("a_succ", OBSERVER),
-    MemoryFixture("b_succ", FOREIGN),
-    MemoryFixture("a_active", OBSERVER, dup=True),
-    MemoryFixture("a_twin", OBSERVER, dup=True),
-    MemoryFixture("a_super", OBSERVER, status="superseded", superseded_by="a_succ", dup=True),
+    MemoryFixture("b_succ", FOREIGN, ttl_days=3, long=True),
+    MemoryFixture("a_active", OBSERVER, dup=True, confidence=0.2, long=True),
+    MemoryFixture("a_twin", OBSERVER, dup=True, ttl_days=3, long=True),
+    MemoryFixture("a_super", OBSERVER, status="superseded", superseded_by="a_succ", dup=True,
+                  long=True),
     MemoryFixture("a_arch", OBSERVER, archived=True, dup=True),
     MemoryFixture("a_depr", OBSERVER, status="deprecated"),
-    MemoryFixture("b_active", FOREIGN, dup=True),
-    MemoryFixture("b_super", FOREIGN, status="superseded", superseded_by="b_succ"),
+    MemoryFixture("b_active", FOREIGN, dup=True, confidence=0.2, long=True),
+    MemoryFixture("b_super", FOREIGN, status="superseded", superseded_by="b_succ", long=True),
     MemoryFixture("a_oldfp", OBSERVER, embed="old"),
-    MemoryFixture("a_super_nofp", OBSERVER, status="superseded", superseded_by="a_succ", embed="none"),
+    MemoryFixture("a_super_nofp", OBSERVER, status="superseded", superseded_by="a_succ",
+                  embed="none", long=True),
     MemoryFixture("b_nofp", FOREIGN, embed="none"),
     # Created, journaled, cited — then deleted: the retention fixture.
     MemoryFixture("a_del", OBSERVER, embed="none"),
@@ -155,6 +193,29 @@ FACT_FIXTURES: tuple[FactFixture, ...] = (
     FactFixture("fact_b_open", FOREIGN),
 )
 FACT_FIXTURES_BY_KEY = {f.key: f for f in FACT_FIXTURES}
+
+# `(fact key, memory key)` — the provenance rows the fact detail door groups by
+# origin. The middle row is the hostile one: an observer-project fact whose
+# second origin is a memory in the foreign project, so the detail door reveals
+# a foreign memory id to a caller who addressed a local fact. That is id-only
+# exposure by the rules module's reading, and it is what makes the door's
+# provenance block something the probe has observed rather than assumed.
+FACT_PROVENANCE: tuple[tuple[str, str], ...] = (
+    ("fact_a_open", "a_active"),
+    ("fact_a_open", "b_active"),
+    ("fact_b_open", "b_active"),
+)
+
+# `(source key, target key, project)` — candidate-duplicate pairs for the
+# hygiene queue's duplicates arm. Both endpoints of each pair must be `active`
+# or `build_duplicates_query` excludes the pair by design, and the pair's
+# `project` is the newer endpoint's, which is what `memory_dream`'s associate
+# arm writes. One pair per project: the foreign one is what a deployment-wide
+# queue must still serve, and what the caller's project filter must exclude.
+DUPLICATE_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("a_active", "a_twin", OBSERVER),
+    ("b_active", "b_succ", FOREIGN),
+)
 
 
 @dataclass(frozen=True)
@@ -329,10 +390,15 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
     from app.config import FEATURE_FLAGS_DEFAULTS
     from app.models.config import Config
     from app.models.memory import Memory
+    from app.repositories.fact_sources import FactSourceRepository
+    from app.repositories.memory_relations import upsert_edge
+    from app.services.dream_journal import NEAR_DUPLICATE_PASS
     from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
     from app.services.events import record_event
+    from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
     from app.services.feature_flags import FEATURE_FLAGS_KEY
     from app.services.memory_buffer import enqueue
+    from app.services.memory_dream import near_duplicate_block
     from app.services.pipeline_failures import PipelineFailureService
 
     active_fp = stub.llm_fingerprint()
@@ -358,7 +424,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 memory_type="fact", importance=0.5, metadata_={},
                 project=fx.project, status=fx.status,
                 superseded_by=memory_ids[fx.superseded_by] if fx.superseded_by else None,
-                is_archived=fx.archived,
+                is_archived=fx.archived, expires_at=fx.expires_at,
+                confidence=fx.confidence,
             )
             session.add(memory)
             memory_ids[fx.key] = memory.id
@@ -429,6 +496,20 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
             ),
             {"a": str(memory_ids["a_super"]), "b": str(memory_ids["b_active"])},
         )
+
+        for source_key, target_key, project in DUPLICATE_PAIRS:
+            await upsert_edge(
+                session,
+                source_memory_id=memory_ids[source_key],
+                target_memory_id=memory_ids[target_key],
+                rel_type="RELATES_TO",
+                project=project,
+                pass_key=NEAR_DUPLICATE_PASS,
+                block=near_duplicate_block(
+                    score=0.93, verdict="duplicate", existing=None,
+                    detected_at="2026-07-28T00:00:00+00:00",
+                ),
+            )
 
         for repo_name in (ALPHA_REPO, BETA_REPO):
             rid = uuid.uuid4()
@@ -526,6 +607,15 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 review_state="open",
             )
             fact_ids[fx.key] = uuid.UUID(row["id"])
+
+        source_repo = FactSourceRepository(session)
+        for fact_key, memory_key in FACT_PROVENANCE:
+            await source_repo.add_source(
+                fact_id=fact_ids[fact_key],
+                source_kind=MEMORY_SOURCE_KIND,
+                source_ref=memory_source_ref(memory_ids[memory_key]),
+                origin_key=f"probe-origin-{memory_key}",
+            )
 
         article_ids: dict[str, uuid.UUID] = {}
         for fx in ARTICLE_FIXTURES:
@@ -1390,6 +1480,225 @@ async def _drive_review_queue_articles(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+def _preview_boundary(surface: str, door: str, case: str, body: str) -> list[Sighting]:
+    """Long fixtures whose tail reached a surface declaring ``content_preview``.
+
+    The same assertion ``_drive_review_queue_articles`` makes over articles,
+    and it is needed for the same reason: ``_account_body`` cannot make it,
+    because the sentinel sits inside the first 200 characters and crosses
+    legitimately whether or not the preview truncated. Without this, a surface
+    that quietly started returning whole ``content`` would keep reporting a
+    clean zero.
+    """
+    return [
+        Sighting(
+            surface=surface, door=door, case=f"{case} [past preview boundary]",
+            row=fx.key, true_project=fx.project, true_status=fx.status,
+            forced_v1_reason="memory content crossed past its declared preview",
+        )
+        for fx in MEMORY_FIXTURES
+        if fx.long and fx.tail_marker in body
+    ]
+
+
+async def _drive_knowledge_facts_browsing(ctx: ProbeContext) -> list[Sighting]:
+    """Doc 13 §5.1's Facts tab — the vault the deployment holds, browsed.
+
+    ``project`` is a filter the caller applies rather than a scope the door
+    imposes, so the two cases assert different things: on the wide read, that
+    the foreign-project fact still arrives naming its project; on the filtered
+    read, that the project the caller named rode the SQL. No
+    ``memories.status``-shaped lifecycle applies to a fact row, so
+    ``true_status`` stays None — the reading ``review_queue_facts`` gives the
+    same rows, and the verification axis is deliberately not a lifecycle
+    (doc 08 §6's never-a-gate rule).
+    """
+    surface = "knowledge_facts_browsing"
+    door = "GET /api/v1/knowledge/facts"
+    out: list[Sighting] = []
+    ids_to_fx = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+
+    async def one_case(params: str, case: str, req_p: str | None):
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/facts{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            fx = ids_to_fx.get(str(row.get("id")))
+            if fx is None:
+                continue
+            accounted.add(fx.key)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=fx.key, kind="content",
+                true_project=fx.project, true_status=None, requested_project=req_p,
+                label_project=row.get("project") == fx.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+
+    await one_case("", "the whole vault (ratified operator-wide browse)", None)
+    await one_case(
+        f"?project={OBSERVER}", "project filter applied by the caller", OBSERVER,
+    )
+    return out
+
+
+async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
+    """One fact by id, with the provenance groups the badge's count audits.
+
+    Id-addressed, so no scope is requested and nothing here can be a V1 on the
+    project axis: what the surface owes instead is a label, and the foreign
+    fixture is what proves it pays. The provenance groups are the half of this
+    response the list door does not have — they name the memories that assert
+    the fact, one of them in the other project, which is id-only exposure by
+    the rules module's reading and reported as such rather than counted.
+    """
+    surface = "knowledge_fact_detail"
+    door = "GET /api/v1/knowledge/facts/{fact_id}"
+    out: list[Sighting] = []
+    ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+
+    for fx in FACT_FIXTURES:
+        case = f"fact addressed by id, seeded in {fx.project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/facts/{ctx.fact_ids[fx.key]}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        row = response.json()
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="content",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+        for group in row.get("sources", []):
+            for source in group.get("sources", []):
+                memory = ids_to_mem.get(str(source.get("source_ref")))
+                if memory is not None and (
+                    memory.project != OBSERVER or memory.status != "active"
+                ):
+                    out.append(_mem(
+                        surface, door, f"{case}: provenance origin", memory, kind="id",
+                    ))
+        out.extend(_account_body(surface, door, case, response.text, {fx.key}))
+    return out
+
+
+async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
+    """The candidate-duplicate arm, whose declared crossing is ids alone.
+
+    ``content_surfaces`` says only the two endpoint ids, the score and the
+    verdict cross here — no memory content — and that distinction is the whole
+    shape of this driver. The endpoint ids are the declared payload and are
+    ``I1`` by the rules module (existence across scope, without content:
+    exactly what ``entity_browser``'s ``memory_ids`` arrays are), so the
+    labelling of a pair is observed but not counted. What *can* fail is the
+    other two:
+
+    * a pair outside a project the caller named. ``classify`` short-circuits
+      on ``kind='id'`` before it reaches the scope axis, so a scope breach on
+      an id-only row is a breach the axis model cannot express — that is what
+      ``forced_v1_reason`` is for.
+    * any memory sentinel at all in the body. Here the raw-body net is the
+      sharpest assertion rather than a backstop, because the declaration
+      permits no content crossing whatsoever.
+    """
+    surface = "hygiene_queue_duplicates"
+    door = "GET /api/v1/hygiene-queue/duplicates"
+    out: list[Sighting] = []
+    ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+
+    async def one_case(params: str, case: str, req_p: str | None):
+        response = await ctx.client.get(
+            f"/api/v1/hygiene-queue/duplicates{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        for row in response.json()["items"]:
+            endpoints = [
+                ids_to_fx.get(str(row.get("source_memory_id"))),
+                ids_to_fx.get(str(row.get("target_memory_id"))),
+            ]
+            if not any(endpoints):
+                continue
+            # Named by fixture keys, never by the relation's id: the bench
+            # database is rebuilt per run, so an id in a row or case name
+            # would make two runs render differently.
+            pair = "+".join(fx.key if fx else "unknown" for fx in endpoints)
+            if req_p is not None and row.get("project") != req_p:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=pair, kind="id",
+                    true_project=row.get("project"), true_status=None,
+                    requested_project=req_p,
+                    forced_v1_reason="pair outside the requested project",
+                ))
+            for fx in endpoints:
+                if fx is not None and (fx.project != OBSERVER or fx.status != "active"):
+                    out.append(_mem(
+                        surface, door, f"{case}: pair {pair}", fx, kind="id",
+                    ))
+        out.extend(_account_body(surface, door, case, response.text, set()))
+
+    await one_case("", "every open candidate pair (ratified operator-wide)", None)
+    await one_case(
+        f"?project={OBSERVER}", "project filter applied by the caller", OBSERVER,
+    )
+    return out
+
+
+async def _drive_hygiene_queue_memories(ctx: ProbeContext) -> list[Sighting]:
+    """The three memory-shaped hygiene arms, each a deployment-wide backlog.
+
+    Unlike a fact or a journal row, every row here *is* a memory, so its
+    lifecycle is the ``memories.status`` one and ``true_status`` carries it —
+    which is what makes the superseded arm load-bearing: it serves superseded
+    rows on a read that requested no status at all, so each one must name the
+    state it came from or it is a V2.
+
+    The declared crossing is ``content_preview``, so every fixture the three
+    arms return runs past the ``[:200]`` boundary and ``_preview_boundary``
+    fails the surface if a tail reaches the wire.
+    """
+    surface = "hygiene_queue_memories"
+    out: list[Sighting] = []
+    ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+
+    async def one_case(arm: str, params: str, case: str, req_p: str | None):
+        door = f"GET /api/v1/hygiene-queue/{arm}"
+        response = await ctx.client.get(
+            f"/api/v1/hygiene-queue/{arm}{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            fx = ids_to_fx.get(str(row.get("id")))
+            if fx is None:
+                key = _row_key(row.get("content_preview", ""))
+                fx = _all_content_fixtures().get(key or "")
+            if fx is None:
+                continue
+            accounted.add(fx.key)
+            out.append(_mem(
+                surface, door, case, fx, kind="preview", req_p=req_p,
+                lp=row.get("project") == fx.project,
+                ls=row.get("status") == fx.status,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(surface, door, case, response.text))
+
+    for arm, backlog in (
+        ("low-confidence", "low-confidence captures"),
+        ("expiring-soon", "rows approaching their TTL"),
+        ("superseded", "superseded lineage"),
+    ):
+        await one_case(
+            arm, "", f"{backlog}, deployment-wide (ratified operator-wide)", None,
+        )
+        await one_case(
+            arm, f"?project={OBSERVER}",
+            f"{backlog}, project filter applied by the caller", OBSERVER,
+        )
+    return out
+
+
 async def _drive_analytics_recents(ctx: ProbeContext) -> list[Sighting]:
     surface = "analytics_recents"
     door = "GET /api/v1/analytics/overview"
@@ -1628,6 +1937,10 @@ DRIVERS = {
     "pipeline_failure_triage": _drive_pipeline_failure_triage,
     "review_queue_facts": _drive_review_queue_facts,
     "review_queue_articles": _drive_review_queue_articles,
+    "knowledge_facts_browsing": _drive_knowledge_facts_browsing,
+    "knowledge_fact_detail": _drive_knowledge_fact_detail,
+    "hygiene_queue_duplicates": _drive_hygiene_queue_duplicates,
+    "hygiene_queue_memories": _drive_hygiene_queue_memories,
     "analytics_recents": _drive_analytics_recents,
     "capture_buffer_triage": _drive_capture_buffer_triage,
     "event_journal": _drive_event_journal,
