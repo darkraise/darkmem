@@ -1230,22 +1230,28 @@ def test_the_badge_map_is_keyed_in_the_composition_keyspace():
 # (or even its count) has the same property — a reword that happens to add
 # or drop one of these words fails CI for no behavioural reason.
 # `test_no_source_reflects_a_docstring_under_app` below closes it
-# structurally instead, by matching every syntactic way the *name* `__doc__`
-# or `getdoc` can appear in a module's source — as an attribute, a bare
-# name (including through an import alias), or a string constant — rather
+# structurally instead, by matching the *name* `__doc__` or `getdoc` where
+# it appears literally in a module's source — as an attribute, a bare name
+# (including through an import alias), or a str/bytes constant — rather
 # than one enumerated call shape. That is still content-independent —
 # rewording prose never adds any of those — and measured to cost zero false
 # positives: no file under ``app/`` mentions ``__doc__`` or ``getdoc`` in any
 # form today. It is **not** a closure of "every way a docstring's text can
-# become output": a caller that never names ``__doc__`` or ``getdoc`` in its
-# own source is invisible to a scan that matches on those names. Stated
-# residuals rather than chased: a helper that reflects on the caller's
-# behalf without the caller ever writing ``__doc__``/``getdoc`` itself
-# (``pydoc.render_doc``, ``help()``); and a producer that reconstructs the
-# text without reflection at all — reparsing its own source with
-# ``inspect.getsource`` + ``ast.get_docstring``, or reading the ``.py`` file
-# as plain text. Neither is this scan's vocabulary; each would need its own
-# guard.
+# become output", and the third review round proved the distinction twice
+# over: a version claiming to match "every syntactic way the name can
+# appear" still lost to ``getattr(inspect, "getdoc")`` and to
+# ``b"__doc__".decode()``, both byte-equal and both green. The honest
+# boundary is narrower than "the caller never writes the name": it is that
+# the name never appears as a *literal* the AST can read. Stated residuals
+# rather than chased: a spelling assembled at runtime (``"__doc" + "__"``,
+# ``"".join(...)``, f-string parts) — though implicit adjacent-string
+# concatenation is caught, since Python folds it before the AST; a helper
+# that reflects on the caller's behalf without the caller naming it
+# (``pydoc.render_doc``, ``help()``, ``inspect.getmembers`` filtered without
+# the literal); and a producer that reconstructs the text without reflection
+# at all — reparsing its own source with ``inspect.getsource`` +
+# ``ast.get_docstring``, or reading the ``.py`` file as plain text. None is
+# this scan's vocabulary; each would need its own guard.
 
 _FACT_BADGE_PATH = _BACKEND / "app" / "services" / "fact_badge.py"
 
@@ -1377,23 +1383,40 @@ def _reflects_a_docstring(path: Path) -> bool:
       local alias a ``from inspect import getdoc as g`` / ``from pydoc
       import getdoc as g`` introduces, resolved from the import statement
       itself so the call site's alias still matches;
-    - as a string constant equal to ``"__doc__"`` — every one of
-      ``getattr(f, "__doc__")``, ``f.__getattribute__("__doc__")``,
-      ``operator.attrgetter("__doc__")``, ``vars(f)["__doc__"]`` and
-      ``f.__dict__["__doc__"]`` must spell that literal somewhere in the
-      call, so matching the constant catches the family without
-      enumerating its members.
+    - as a **str or bytes constant** spelling ``"__doc__"`` or a ``getdoc``
+      alias — every one of ``getattr(f, "__doc__")``,
+      ``f.__getattribute__("__doc__")``, ``operator.attrgetter("__doc__")``,
+      ``vars(f)["__doc__"]``, ``f.__dict__["__doc__"]`` and
+      ``getattr(inspect, "getdoc")(f)`` must spell one of those literals
+      somewhere in the call, so matching the constant catches the family
+      without enumerating its members. Bytes are decoded before matching,
+      because ``getattr(f, b"__doc__".decode())`` is otherwise invisible —
+      the fragment scan in this same file learned that lesson separately and
+      this arm inherits it rather than rediscovering it.
 
-    This is still content-independent — an ordinary prose reword never adds
-    an occurrence of either name — so it costs nothing on a legitimate
-    docstring edit.
+    This is still content-independent for every realistic edit — an ordinary
+    prose reword never adds an occurrence of either name — so it costs
+    nothing on a legitimate docstring change. One exact-equality corner is
+    admitted rather than papered over: a docstring is itself an
+    ``ast.Constant``, so a docstring whose *entire* text is exactly
+    ``__doc__`` or ``getdoc`` would trip this arm. The match is equality,
+    never substring, so no prose containing those words is affected; the
+    corner is recorded because the whole history of this guard is prose that
+    claimed slightly more than the predicate delivered.
 
-    What it does **not** catch, because these never write ``__doc__`` or
-    ``getdoc`` in the caller's own source at all: a standard-library helper
-    that reflects on the object's behalf, such as ``pydoc.render_doc`` or
-    ``help()``; and recovering the text without reflection — reparsing the
-    module's own source with ``inspect.getsource`` + ``ast.get_docstring``,
-    or reading the ``.py`` file as plain text. A name-matching AST scan
+    What it does **not** catch. The boundary is *the name never appears in
+    the caller's source in any form this scan can read as a constant or a
+    name*, which is narrower than "the caller never writes the name":
+    a spelling **assembled at runtime** defeats it — ``"__doc" + "__"``,
+    ``"".join(...)``, an f-string built from parts. (Implicit adjacent-string
+    concatenation *is* caught, because Python folds it into one constant
+    before the AST sees it.) Also uncaught, because these never name it at
+    all: a standard-library helper that reflects on the object's behalf,
+    such as ``pydoc.render_doc`` or ``help()``; ``inspect.getmembers``
+    filtered without the literal; and recovering the text without reflection
+    — reparsing the module's own source with ``inspect.getsource`` +
+    ``ast.get_docstring``, or reading the ``.py`` file as plain text.
+    A name-matching AST scan
     cannot see a call it does not know reflects on a docstring, and cannot
     see a docstring that was never asked for by name. Those are this
     guard's stated boundary, not an oversight left for the next reviewer to
@@ -1413,8 +1436,14 @@ def _reflects_a_docstring(path: Path) -> bool:
             return True
         if isinstance(node, ast.Name) and (node.id == "__doc__" or node.id in aliases):
             return True
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value == "__doc__":
-            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+            spelled = (
+                node.value.decode("latin-1")
+                if isinstance(node.value, bytes)
+                else node.value
+            )
+            if spelled == "__doc__" or spelled in aliases:
+                return True
     return False
 
 
