@@ -135,24 +135,36 @@ def test_the_real_gold_is_refused_with_counts_surfaced():
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
-    eligibility = jq.gate_eligibility(_synthetic_gold(200, 25, 0))
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
     assert eligibility.eligible is True
-    assert "l2-fact: 25/200" in "\n".join(eligibility.reasons)
+    assert "l2-fact: 100/200" in "\n".join(eligibility.reasons)
 
 
 def test_199_pairs_is_refused_exactly_at_the_boundary():
-    eligibility = jq.gate_eligibility(_synthetic_gold(199, 25, 0))
+    eligibility = jq.gate_eligibility(_synthetic_gold(199, 100, 0))
     assert eligibility.eligible is False
     assert "199 < 200" in "\n".join(eligibility.reasons)
 
 
-def test_one_real_pair_in_200_is_accepted_and_loud():
-    # The intended minimum-decodable reading of §11: >= 1 real pair blocks
-    # the synthetic-only vector mechanically; the adequacy of 1/200 is
-    # T2.41's human adjudication, handed the count.
+def test_the_50_percent_floor_bites_exactly_at_the_boundary():
+    # Ratified 2026-07-31 (doc 17 §11): l2-fact premises must be >= 50% of
+    # live pairs. 100/200 clears; 99/200 is refused with the floor named.
+    at_floor = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
+    assert at_floor.eligible is True
+
+    below = jq.gate_eligibility(_synthetic_gold(200, 99, 0))
+    assert below.eligible is False
+    joined = "\n".join(below.reasons)
+    assert ">=50% floor" in joined
+    assert "l2-fact: 99/200" in joined
+
+
+def test_the_199_synthetic_1_real_vector_is_refused():
+    # §11's own clause: "a 199 synthetic / 1 real set must not pass". Under
+    # the pre-2026-07-31 >= 1 floor this exact composition WAS eligible.
     eligibility = jq.gate_eligibility(_synthetic_gold(200, 1, 0))
-    assert eligibility.eligible is True
-    assert "l2-fact: 1/200" in "\n".join(eligibility.reasons)
+    assert eligibility.eligible is False
+    assert ">=50% floor" in "\n".join(eligibility.reasons)
 
 
 def test_a_single_author_labelled_pair_blocks_eligibility():
@@ -162,7 +174,7 @@ def test_a_single_author_labelled_pair_blocks_eligibility():
 
 
 def test_retired_pairs_do_not_count_as_live():
-    doc = _synthetic_gold(200, 25, 0)
+    doc = _synthetic_gold(200, 100, 0)
     doc["pairs"].append({
         "id": "eg-9999", "verdict": "entailed",
         "label_source": "author", "retired": True,
@@ -258,14 +270,14 @@ def test_report_interim_banner_follows_eligibility():
     for reason in ineligible.reasons:
         assert reason in text
 
-    eligible = jq.gate_eligibility(_synthetic_gold(200, 25, 0))
+    eligible = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
     text = jq.render_report(score, eligible, twin, _mini_meta())
     assert "INTERIM" not in text
 
 
 def test_report_carries_bars_verdicts_and_attempts():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
-    eligibility = jq.gate_eligibility(_synthetic_gold(200, 25, 0))
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
     text = jq.render_report(score, eligibility, _mini_twin(), _mini_meta())
     assert "groundedness_gate_precision_bar" in text
     assert "0.95" in text
@@ -279,7 +291,7 @@ def test_report_carries_bars_verdicts_and_attempts():
 
 def test_granularity_arithmetic_is_computed_not_hardcoded():
     twin = _mini_twin()
-    eligibility = jq.gate_eligibility(_synthetic_gold(200, 25, 0))
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
 
     def gold_with_entailed(n_entailed):
         pairs, verdicts = [], {}
@@ -302,7 +314,7 @@ def test_granularity_arithmetic_is_computed_not_hardcoded():
 
 def test_reproducible_metrics_are_serving_invariant():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
-    eligibility = jq.gate_eligibility(_synthetic_gold(200, 25, 0))
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
 
     all_live = {"verification": {
         "live_calls": 41, "live_prompt_tokens": 4100, "live_completion_tokens": 820,
@@ -347,7 +359,7 @@ def test_record_writer_schema_and_handshake(tmp_path, monkeypatch):
 
     jq.write_qualification_record(
         record_path, gold_path=gold_path, identity=identity, score=perfect,
-        gold_doc=_synthetic_gold(200, 25, 0), ledger_run_id="run-1",
+        gold_doc=_synthetic_gold(200, 100, 0), ledger_run_id="run-1",
         bars=dict(vj.VERIFICATION_BAR_DEFAULTS), git_sha="deadbeef",
         timestamp="2026-07-31T00:00:00+00:00",
     )
@@ -374,7 +386,7 @@ def test_minting_lock_four_legs(tmp_path, monkeypatch):
     fixture_gold = tmp_path / "easy_gold.json"
     fixture_gold.write_text("{}")
     common = dict(
-        identity=identity, score=score, gold_doc=_synthetic_gold(200, 25, 0),
+        identity=identity, score=score, gold_doc=_synthetic_gold(200, 100, 0),
         ledger_run_id="run-1", bars=dict(vj.VERIFICATION_BAR_DEFAULTS),
         git_sha="deadbeef", timestamp="2026-07-31T00:00:00+00:00",
     )
@@ -468,16 +480,37 @@ def _run(tmp_path, stub_cls, **kwargs):
 
 
 def _write_eligible_gold(tmp_path):
-    n, n_l2 = 200, 25
+    # 100/200 l2-fact: the 50% floor exactly. The l2 pairs anchor to REAL
+    # committed-manifest rows (premise byte-equal to the minted fact, full
+    # fact_key) because the loader refuses any other l2-fact shape.
+    n, n_l2 = 200, 100
+    manifest_facts = entailment_gold.load_l2_harvest()["facts"]
     pairs = []
     for i in range(n):
+        if i < n_l2:
+            row = manifest_facts[i % len(manifest_facts)]
+            pairs.append({
+                "id": f"eg-{i:04d}",
+                "premise": row["fact"],
+                "hypothesis": f"Blind fixture hypothesis {i} restates the fact.",
+                "verdict": "entailed",
+                "slice_tags": ["verbatim"],
+                "provenance": "l2-fact",
+                "label_source": "adjudicated",
+                "rationale": "synthetic eligibility fixture",
+                "fact_key": {
+                    field: row[field]
+                    for field in entailment_gold.FACT_KEY_FIELDS
+                },
+            })
+            continue
         pairs.append({
             "id": f"eg-{i:04d}",
             "premise": f"Synthetic fact {i} holds value {i}.",
             "hypothesis": f"Value {i} is held by synthetic fact {i}.",
             "verdict": "entailed",
             "slice_tags": ["verbatim"],
-            "provenance": "l2-fact" if i < n_l2 else "hand-authored-synthetic-fact",
+            "provenance": "hand-authored-synthetic-fact",
             "label_source": "adjudicated",
             "rationale": "synthetic eligibility fixture",
         })
