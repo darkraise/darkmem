@@ -19,6 +19,19 @@ pass's own fan-out limits, at most fifty rows a night.
 ``detector`` filters the stream so a future producer emitting ``consolidated``
 rows of its own does not silently appear in this digest wearing an action name
 this module has no inverse for.
+
+**A human curation batch (T2.23's hygiene queue) journals through this same
+stream, and the projection says so.** Its bulk actions reuse the dreaming
+pass's journal shape (same ``event_type``, same ``detector="dedup"``, so
+``dream_undo`` can invert them) but carry an extra ``payload.origin`` key and a
+real ``actor``, which memory_dream's own actions never set. ``detector`` is
+what a *detector* found; a human clicking "supersede" or "confirm" is not one,
+so an action carrying ``origin`` never renders ``detector`` — rendering
+``"dedup"`` for a human-initiated prune would be a false provenance claim,
+not a detail. ``origin`` and ``actor`` are projected instead, at both the
+per-action (``DreamActionView``) and per-cycle (``DreamCycleSummary``) level —
+a cycle is homogeneous in origin by construction, since a human bulk-action
+request and an automated dreaming tick never share a ``cycle_id``.
 """
 from __future__ import annotations
 
@@ -47,6 +60,8 @@ class DreamActionView:
     object_id: str
     project: str | None
     detector: str | None
+    origin: str | None
+    actor: str | None
     before: dict
     after: dict
     detail: dict
@@ -74,6 +89,10 @@ class DreamCycleSummary:
     total: int
     counts: dict[str, int]
     undone_count: int
+    # None means an automated dreaming tick; a value (e.g. "hygiene_queue")
+    # names the human surface that ran the batch. Homogeneous within a cycle
+    # by construction — see the module docstring.
+    origin: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,7 +126,11 @@ _CYCLES = text("""
            COALESCE(
                array_agg(DISTINCT project) FILTER (WHERE project IS NOT NULL),
                CAST(ARRAY[] AS text[])
-           ) AS projects
+           ) AS projects,
+           -- Homogeneous within a cycle by construction (a human bulk-action
+           -- request and an automated tick never share a cycle_id), so any
+           -- aggregate agrees; MIN is the cheapest that ignores NULLs.
+           min(payload ->> 'origin') AS origin
     FROM events
     WHERE event_type = CAST(:event_type AS text)
       AND object_type = CAST(:object_type AS text)
@@ -151,6 +174,7 @@ _CYCLE_ACTIONS = text("""
            created_at,
            CAST(object_id AS text) AS object_id,
            project,
+           actor,
            payload
     FROM events
     WHERE event_type = CAST(:event_type AS text)
@@ -253,6 +277,7 @@ async def list_cycles(
                 journal.ACTION_REFINE: int(row["refine"]),
             },
             undone_count=undone.get(row["cycle_id"], 0),
+            origin=row["origin"],
         )
         for row in rows
     ], int(total)
@@ -310,6 +335,7 @@ async def read_cycle_actions(
     for row in rows:
         payload = row["payload"] or {}
         undo = undone_by_action.get(str(row["event_id"]))
+        origin = payload.get("origin")
         views.append(
             DreamActionView(
                 event_id=int(row["event_id"]),
@@ -317,7 +343,14 @@ async def read_cycle_actions(
                 action=str(payload.get("action") or ""),
                 object_id=row["object_id"],
                 project=row["project"],
-                detector=payload.get("detector"),
+                # `detector` names what a *detector* found. An action carrying
+                # `origin` came from a human curation surface, not a detector,
+                # so rendering the payload's literal "dedup" (kept only for
+                # dream_undo's resolve() to match on) would be a false
+                # provenance claim.
+                detector=payload.get("detector") if not origin else None,
+                origin=origin,
+                actor=row["actor"],
                 before=payload.get("before") or {},
                 after=payload.get("after") or {},
                 detail=action_detail(payload),

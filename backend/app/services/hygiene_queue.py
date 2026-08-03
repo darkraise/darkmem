@@ -121,7 +121,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Literal
+from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -141,11 +142,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.5
 DEFAULT_EXPIRING_SOON_DAYS = 7
 
+# T2.12's own vocabulary (`dream_journal.HYGIENE_STATE_OPEN`) declares exactly
+# one value. `confirm a dedup` (doc 08 §6) is the only triage verb the doc
+# names, so this is the only transition this module makes — a `dismissed`
+# verdict is not declared anywhere the vocabulary lives and was dropped
+# rather than shipped as a silent, undeclared widening. Add it back, taxonomy-
+# first, in the module that owns the vocabulary, the day a real second state
+# is designed.
 HYGIENE_STATE_CONFIRMED = "confirmed"
-HYGIENE_STATE_DISMISSED = "dismissed"
-CONFIRM_DEDUP_STATES: frozenset[str] = frozenset(
-    {HYGIENE_STATE_CONFIRMED, HYGIENE_STATE_DISMISSED}
-)
 
 # Informational only — an extra key on the shared journal payload naming
 # which surface produced the row. Neither `dream_undo` nor `dream_digest`
@@ -429,18 +433,42 @@ _EDGE_BY_ID = text(
 # Read-your-own-write within the same session/transaction: `record_event`
 # reports nothing back, and it is the one writer (CLAUDE.md), so this reads
 # the row it just committed to its own SAVEPOINT rather than inserting a
-# second time through a different path. Scoped by (event_type, object_type,
-# object_id) and taking the newest row, which is correct for one caller on
-# one session; a concurrent writer on the same memory in the same instant is
-# a known, narrow race this module accepts rather than solves by widening
-# `record_event`'s own contract.
+# second time through a different path.
+#
+# **Scoped by `cycle_id` and a `created_at` floor, not by `object_id` alone.**
+# `record_event` degrades loudly and never raises (CLAUDE.md): if its own
+# insert fails, this module's caller sees nothing wrong and moves on believing
+# the action journalled. An `object_id`-only readback would then return the
+# id of whatever *prior* `consolidated` event that memory carries — a
+# supersession from an earlier cycle, say — reporting it as this action's
+# `event_id`. That is silent false attribution on the wire (a caller trusts a
+# stale id as its own) and a silently unjournalled, un-undoable action. The
+# `cycle_id` this batch just minted cannot collide with any event from a
+# different batch or an automated tick, so scoping on it is what makes "no
+# row" mean "the write did not land" rather than "an old row happened to
+# match". The floor is the same discipline `dream_undo`'s by-id lookups use
+# (CLAUDE.md: "every undo lookup carries a created_at bound and prunes to one
+# or two [partitions]") — a correctness backstop is not a reason to scan every
+# monthly child.
 _LAST_EVENT = text(
     "SELECT id FROM events "
     "WHERE event_type = CAST(:event_type AS text) "
     "  AND object_type = CAST(:object_type AS text) "
     "  AND object_id = CAST(:object_id AS uuid) "
+    "  AND payload ->> 'cycle_id' = CAST(:cycle_id AS text) "
+    "  AND created_at >= CAST(:floor AS timestamptz) "
     "ORDER BY created_at DESC, id DESC LIMIT 1"
 )
+
+_SERVER_NOW = text("SELECT now() AS now")
+
+
+async def _server_now(session: AsyncSession) -> datetime:
+    """The batch's floor, read from the server rather than the app clock —
+    the same reason every other timestamp bound in this codebase that guards
+    correctness (not just display) is server-side."""
+    row = (await session.execute(_SERVER_NOW)).mappings().one()
+    return row["now"]
 
 
 async def _memory_state(session: AsyncSession, memory_id: str) -> dict | None:
@@ -455,7 +483,9 @@ async def _read_edge_by_id(session: AsyncSession, relation_id: str) -> dict | No
     return dict(row) if row else None
 
 
-async def _last_event_id(session: AsyncSession, *, object_id: str) -> int | None:
+async def _last_event_id(
+    session: AsyncSession, *, object_id: str, cycle_id: str, floor: datetime
+) -> int | None:
     row = (
         await session.execute(
             _LAST_EVENT,
@@ -463,6 +493,8 @@ async def _last_event_id(session: AsyncSession, *, object_id: str) -> int | None
                 "event_type": journal.EVENT_TYPE,
                 "object_type": journal.OBJECT_TYPE,
                 "object_id": object_id,
+                "cycle_id": cycle_id,
+                "floor": floor,
             },
         )
     ).mappings().first()
@@ -478,6 +510,7 @@ async def _journal_subsume(
     after: dict,
     pair: dict,
     cycle_id: str,
+    batch_floor: datetime,
     actor: str,
     hygiene_reason: str,
 ) -> int | None:
@@ -504,7 +537,9 @@ async def _journal_subsume(
             "hygiene_reason": hygiene_reason,
         },
     )
-    return await _last_event_id(session, object_id=memory_id)
+    return await _last_event_id(
+        session, object_id=memory_id, cycle_id=cycle_id, floor=batch_floor
+    )
 
 
 async def bulk_supersede(
@@ -517,6 +552,7 @@ async def bulk_supersede(
     """Human-directed supersession — the primitive memory_dream calls, plus
     the shared journal shape that makes it undoable through T2.13."""
     batch_cycle_id = cycle_id or str(new_id())
+    batch_floor = await _server_now(session)
     results: list[HygieneActionResult] = []
     for item in items:
         memory_id = str(item["memory_id"])
@@ -556,6 +592,7 @@ async def bulk_supersede(
                 after={"status": result.status, "superseded_by": result.superseded_by},
                 pair={"older": memory_id, "newer": successor_id},
                 cycle_id=batch_cycle_id,
+                batch_floor=batch_floor,
                 actor=actor,
                 hygiene_reason="supersede",
             )
@@ -579,6 +616,7 @@ async def bulk_prune(
     reuse and not a stretch of its contract. Never a hard delete (doc 01 F6).
     """
     batch_cycle_id = cycle_id or str(new_id())
+    batch_floor = await _server_now(session)
     results: list[HygieneActionResult] = []
     for raw_id in memory_ids:
         memory_id = str(raw_id)
@@ -614,6 +652,7 @@ async def bulk_prune(
                 after={"status": result.status, "superseded_by": result.superseded_by},
                 pair={"older": memory_id, "newer": None},
                 cycle_id=batch_cycle_id,
+                batch_floor=batch_floor,
                 actor=actor,
                 hygiene_reason="prune",
             )
@@ -629,20 +668,18 @@ async def bulk_confirm_dedup(
     session: AsyncSession,
     relation_ids: list[str],
     *,
-    hygiene_state: Literal["confirmed", "dismissed"],
     actor: str,
     cycle_id: str | None = None,
 ) -> tuple[str, list[HygieneActionResult]]:
     """Triage a duplicate candidate — rewrites the same ``near_duplicate``
     pass-block ``memory_dream``'s associate arm owns, changing only
-    ``hygiene_state``, journalled as the same associate shape so it is
-    independently undoable and so the *original* associate action's own undo
-    correctly refuses via ``state_changed`` (the amendment log's own
-    prediction for this exact write).
+    ``hygiene_state`` to ``HYGIENE_STATE_CONFIRMED``, journalled as the same
+    associate shape so it is independently undoable and so the *original*
+    associate action's own undo correctly refuses via ``state_changed`` (the
+    amendment log's own prediction for this exact write).
     """
-    if hygiene_state not in CONFIRM_DEDUP_STATES:
-        raise ValueError(f"{hygiene_state!r} is outside {sorted(CONFIRM_DEDUP_STATES)}")
     batch_cycle_id = cycle_id or str(new_id())
+    batch_floor = await _server_now(session)
     results: list[HygieneActionResult] = []
     for raw_id in relation_ids:
         relation_id = str(raw_id)
@@ -678,7 +715,7 @@ async def bulk_confirm_dedup(
                     )
                 )
                 continue
-            if existing_block.get("hygiene_state") == hygiene_state:
+            if existing_block.get("hygiene_state") == HYGIENE_STATE_CONFIRMED:
                 results.append(
                     HygieneActionResult(
                         item_id=relation_id, applied=False, event_id=None,
@@ -687,7 +724,7 @@ async def bulk_confirm_dedup(
                 )
                 continue
 
-            new_block = {**existing_block, "hygiene_state": hygiene_state}
+            new_block = {**existing_block, "hygiene_state": HYGIENE_STATE_CONFIRMED}
             write = await upsert_edge(
                 session,
                 source_memory_id=edge["source_memory_id"],
@@ -726,10 +763,12 @@ async def bulk_confirm_dedup(
                     "score": existing_block.get("score"),
                     "cycle_id": batch_cycle_id,
                     "origin": ORIGIN_HYGIENE,
-                    "hygiene_reason": f"confirm_dedup:{hygiene_state}",
+                    "hygiene_reason": "confirm_dedup",
                 },
             )
-            event_id = await _last_event_id(session, object_id=object_id)
+            event_id = await _last_event_id(
+                session, object_id=object_id, cycle_id=batch_cycle_id, floor=batch_floor
+            )
         results.append(
             HygieneActionResult(
                 item_id=relation_id, applied=True, event_id=event_id, reason=None

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -70,7 +69,6 @@ class BulkPruneRequest(BaseModel):
 
 class BulkConfirmDedupRequest(BaseModel):
     relation_ids: list[UUID] = Field(min_length=1, max_length=MAX_BULK_ITEMS)
-    hygiene_state: Literal["confirmed", "dismissed"] = "confirmed"
 
 
 class HygieneActionItemResult(BaseModel):

@@ -116,10 +116,19 @@ async def list_superseded(
 @router.get("/counts", response_model=HygieneCountsResponse)
 async def counts(
     project: str | None = None,
+    threshold: float = Query(
+        default=hygiene_queue_service.DEFAULT_LOW_CONFIDENCE_THRESHOLD, ge=0.0, le=1.0,
+    ),
+    within_days: int = Query(
+        default=hygiene_queue_service.DEFAULT_EXPIRING_SOON_DAYS, ge=0, le=365,
+    ),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    return await hygiene_queue_service.counts(session, project=project)
+    return await hygiene_queue_service.counts(
+        session, project=project,
+        low_confidence_threshold=threshold, expiring_soon_days=within_days,
+    )
 
 
 @router.post("/bulk/supersede", response_model=HygieneBulkActionResponse)
@@ -162,7 +171,6 @@ async def bulk_confirm_dedup(
     cycle_id, results = await hygiene_queue_service.bulk_confirm_dedup(
         session,
         [str(relation_id) for relation_id in body.relation_ids],
-        hygiene_state=body.hygiene_state,
         actor=user.sub,
     )
     await session.commit()

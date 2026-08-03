@@ -30,6 +30,8 @@ from sqlalchemy import text
 
 from app.repositories import memory_relations as edges
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.relational import PostgresMemoryRepository
+from app.services import dream_digest as digest
 from app.services import dream_journal as journal
 from app.services import dream_undo as undo
 from app.services import hygiene_queue
@@ -427,7 +429,7 @@ class TestPerItemJournal:
             edge_ids.append(await seed_duplicate_edge(session, source=newer, target=older))
 
         cycle_id, results = await hygiene_queue.bulk_confirm_dedup(
-            session, edge_ids, hygiene_state="confirmed", actor="tester",
+            session, edge_ids, actor="tester",
         )
         assert all(result.applied for result in results)
         rows = await event_rows(session, cycle_id=cycle_id)
@@ -445,7 +447,7 @@ class TestPerItemJournal:
             block=_near_duplicate_block(hygiene_state="confirmed"),
         )
         cycle_id, results = await hygiene_queue.bulk_confirm_dedup(
-            session, [edge_id], hygiene_state="confirmed", actor="tester",
+            session, [edge_id], actor="tester",
         )
         assert results[0].applied is False
         assert results[0].reason == "unchanged"
@@ -493,7 +495,7 @@ class TestUndoIntegration:
         edge_id = await seed_duplicate_edge(session, source=newer, target=older)
 
         cycle_id, results = await hygiene_queue.bulk_confirm_dedup(
-            session, [edge_id], hygiene_state="confirmed", actor="tester",
+            session, [edge_id], actor="tester",
         )
         event_id = results[0].event_id
         assert event_id is not None
@@ -564,7 +566,7 @@ class TestUndoIntegration:
 
         # A human confirms it through hygiene.
         await hygiene_queue.bulk_confirm_dedup(
-            session, [edge_id], hygiene_state="confirmed", actor="tester",
+            session, [edge_id], actor="tester",
         )
 
         with pytest.raises(undo.UndoRefused) as excinfo:
@@ -590,7 +592,7 @@ class TestMarkerSurvivesRederivation:
         edge_id = await seed_duplicate_edge(session, source=newer, target=older)
 
         await hygiene_queue.bulk_confirm_dedup(
-            session, [edge_id], hygiene_state="confirmed", actor="tester",
+            session, [edge_id], actor="tester",
         )
 
         # memory_dream re-derives the same pair on a later cycle: same
@@ -667,3 +669,204 @@ class TestSupersededIndexUsage:
         plan = "\n".join(r[0] for r in plan_rows)
         assert "ix_memories_status" not in plan, plan
         assert "Seq Scan on memories" in plan, plan
+
+
+# ───────── F1 (Fable review): the digest must not misdescribe a batch ──────
+
+
+class TestDigestDistinguishesOrigin:
+    async def test_a_hygiene_batch_carries_origin_and_actor_not_a_false_detector(
+        self, session
+    ):
+        older = await seed_memory(session)
+        newer = await seed_memory(session)
+        cycle_id, results = await hygiene_queue.bulk_supersede(
+            session, [{"memory_id": older, "superseded_by": newer}], actor="alice",
+        )
+        assert results[0].applied
+
+        cycles, _ = await digest.list_cycles(session, project=PROJECT)
+        cycle = next(c for c in cycles if c.cycle_id == cycle_id)
+        assert cycle.origin == hygiene_queue.ORIGIN_HYGIENE
+
+        actions = await digest.read_cycle_actions(session, cycle_id)
+        assert len(actions) == 1
+        action = actions[0]
+        assert action.origin == hygiene_queue.ORIGIN_HYGIENE
+        assert action.actor == "alice"
+        assert action.detector is None, (
+            "a human-initiated action must never render a detector it did "
+            f"not use: {action.detector!r}"
+        )
+
+    async def test_an_automated_action_still_renders_its_detector_and_no_origin(
+        self, session
+    ):
+        """Differential control: an automated memory_dream-shaped action (no
+        `origin` key at all) must still show `detector='dedup'` and no
+        origin/actor, so the fix distinguishes the two rather than hiding
+        both."""
+        older = await seed_memory(session)
+        newer = await seed_memory(session)
+        cycle_id = str(new_id())
+        await record_event(
+            session, event_type=journal.EVENT_TYPE, object_type=journal.OBJECT_TYPE,
+            object_id=UUID(older), project=PROJECT,
+            payload={
+                "action": journal.ACTION_SUBSUME,
+                "before": {"status": "active", "superseded_by": None},
+                "after": {"status": "superseded", "superseded_by": newer},
+                "pair": {"older": older, "newer": newer},
+                "detector": journal.DETECTOR,
+                "cycle_id": cycle_id,
+            },
+        )
+
+        cycles, _ = await digest.list_cycles(session, project=PROJECT)
+        cycle = next(c for c in cycles if c.cycle_id == cycle_id)
+        assert cycle.origin is None
+
+        actions = await digest.read_cycle_actions(session, cycle_id)
+        assert actions[0].origin is None
+        assert actions[0].actor is None
+        assert actions[0].detector == journal.DETECTOR
+
+
+# ───────── F2 (Fable review): the readback must be scoped to the batch ─────
+
+
+class TestEventReadbackIsScopedToTheBatch:
+    async def test_a_degraded_journal_write_is_reported_honestly_not_as_a_stale_id(
+        self, session, monkeypatch
+    ):
+        """R2/F2: `_last_event_id` must not return a *different* action's
+        event id when this action's own journal write silently degrades
+        (`record_event` never raises -- CLAUDE.md). This drives the real
+        degradation path by making `record_event` itself a no-op -- the same
+        technique `test_dream_undo.py` uses for the same class of claim --
+        rather than mocking this module's own readback helper."""
+        stale_older = await seed_memory(session)
+        stale_target = await seed_memory(session)
+        # A real, unrelated prior action against `stale_older`, from a
+        # different cycle: exactly what an unscoped-by-object-id readback
+        # would find and misreport as this test's own event.
+        await record_event(
+            session, event_type=journal.EVENT_TYPE, object_type=journal.OBJECT_TYPE,
+            object_id=UUID(stale_older), project=PROJECT, actor="someone-else",
+            payload={
+                "action": journal.ACTION_SUBSUME,
+                "before": {"status": "active", "superseded_by": None},
+                "after": {"status": "superseded", "superseded_by": stale_target},
+                "pair": {"older": stale_older, "newer": stale_target},
+                "detector": journal.DETECTOR,
+                "cycle_id": str(new_id()),
+            },
+        )
+
+        newer = await seed_memory(session)
+
+        async def _noop_record_event(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(hygiene_queue, "record_event", _noop_record_event)
+
+        cycle_id, results = await hygiene_queue.bulk_supersede(
+            session, [{"memory_id": stale_older, "superseded_by": newer}],
+            actor="tester",
+        )
+
+        assert results[0].applied is True
+        assert (await memory_status(session, stale_older))["status"] == "superseded"
+        assert results[0].event_id is None, (
+            "the readback returned a stale event id from an unrelated prior "
+            f"action instead of reporting the degraded journal honestly: "
+            f"{results[0].event_id}"
+        )
+
+
+# ───────── F4: never a gate on the read path (invariant 14) ────────────────
+
+
+class TestNeverAGateOnTheReadPath:
+    async def test_an_open_duplicate_marker_never_gates_or_reorders_list_memories(
+        self, session
+    ):
+        """T2.22 proves its analogue against `KnowledgeTripleRepository.
+        get_live`; this pins it against `PostgresMemoryRepository.
+        list_memories` -- today's plain memory read path, which never joins
+        `memory_relations` at all. The near_duplicate marker T2.12 introduced
+        and this module reads is exactly the new signal invariant 14 is at
+        risk from, so the fixture proves against it rather than against a
+        column retrieval already filtered on."""
+        repo = PostgresMemoryRepository(session)
+        base = datetime.now(timezone.utc)
+        ids = []
+        for index in range(3):
+            ids.append(
+                await seed_memory(
+                    session, content=f"read-path-{index}",
+                    created_at=base + timedelta(seconds=index),
+                )
+            )
+
+        async def _order():
+            rows, _ = await repo.list_memories(offset=0, limit=50)
+            return [str(row.id) for row in rows]
+
+        before = await _order()
+        assert set(ids) <= set(before)
+
+        older, newer = ids[0], ids[1]
+        await seed_duplicate_edge(session, source=newer, target=older)
+
+        after_open = await _order()
+        assert after_open == before, (
+            "an 'open' duplicate marker changed the plain memory read "
+            "path's set or order"
+        )
+
+        edge = await edges.get_edge(
+            session, source_memory_id=newer, target_memory_id=older,
+            rel_type="RELATES_TO",
+        )
+        await hygiene_queue.bulk_confirm_dedup(
+            session, [str(edge["id"])], actor="tester",
+        )
+        after_confirm = await _order()
+        assert after_confirm == before, (
+            "confirming a duplicate changed the plain memory read path's "
+            "set or order"
+        )
+
+
+# ───────── Minor: /counts must accept the same overrides its siblings do ───
+
+
+class TestCountsRouteAcceptsOverrides:
+    async def test_counts_route_honours_threshold_and_within_days(
+        self, client, auth_headers, session
+    ):
+        await seed_memory(session, confidence=0.6)
+        await seed_memory(
+            session, expires_at=datetime.now(timezone.utc) + timedelta(days=20)
+        )
+        await session.commit()
+
+        default_response = await client.get(
+            "/api/v1/hygiene-queue/counts", params={"project": PROJECT},
+            headers=auth_headers,
+        )
+        assert default_response.status_code == 200
+        assert default_response.json() == {
+            "duplicates": 0, "low_confidence": 0, "expiring_soon": 0, "superseded": 0,
+        }
+
+        widened_response = await client.get(
+            "/api/v1/hygiene-queue/counts",
+            params={"project": PROJECT, "threshold": 0.8, "within_days": 30},
+            headers=auth_headers,
+        )
+        assert widened_response.status_code == 200
+        assert widened_response.json() == {
+            "duplicates": 0, "low_confidence": 1, "expiring_soon": 1, "superseded": 0,
+        }
