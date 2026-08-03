@@ -16,8 +16,22 @@ then holds that demotion for ``verification_demote_grace_cycles`` consecutive
 cycles, labelling the fact ``under-sourced`` in the meantime. The label is an
 overlay on a still-``corroborated`` row — ``demotion_pending_since IS NOT
 NULL``, never a fifth ``verification_status``, which the database CHECK would
-refuse anyway — and it is **served, never withheld**: the marker rides
-``_COLUMNS``, so every fact read path carries it and nothing filters on it.
+refuse anyway — and it is **served, never withheld**: no path filters a fact
+out on the marker, and no path drops the row while keeping the label off it.
+
+**Carrying the label is per-surface, and the list is finite** (corrected
+2026-08-03; the earlier claim here — "the marker rides ``_COLUMNS``, so every
+fact read path carries it" — was broader than the code, and two serving
+surfaces did not carry it). ``_COLUMNS`` covers the repository reads (``get``,
+``get_live``, ``list_live``, ``as_of``), but a surface that hand-enumerates its
+own projection has to name the marker itself: today that is
+``facts_read._base_item`` with ``FactListItem`` behind it (doc 13 §5.1's Facts
+tab, where §5.3's caution overlay renders), ``facts_channel``'s row payload,
+and the review queue's item. Every *other* reader of ``knowledge_triples``
+selects a narrow projection for an internal decision — adjudication, ranking,
+counting — and serves no label at all. **A new surface that enumerates its own
+columns is a new place the label can go missing**, and it goes missing
+silently, because nothing is withheld: the fact arrives looking healthy.
 
 **The veto is absolute and reads no configuration.** However many origins
 corroborate a fact, one contradiction beats them (doc 08 §4.2) — not a weight,
@@ -599,8 +613,8 @@ def apply_demotion_hysteresis(
     no status is written and no ``verified`` row is journalled: the rung did
     not move, and a journal row that claimed it did would be counted by G-C's
     promotion-rate SQL as a transition that never happened. The interim state
-    is durable on the row instead (``demotion_pending_since``), served on
-    every read path, and on the review queue.
+    is durable on the row instead (``demotion_pending_since``), served on the
+    surfaces this module's own docstring enumerates, and on the review queue.
 
     ``grace_cycles == 0`` disables the hysteresis outright: the demotion
     applies on the cycle that detects it, no marker is ever written, and the

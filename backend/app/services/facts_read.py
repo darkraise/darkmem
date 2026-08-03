@@ -19,6 +19,13 @@ empty vault and the surface says nothing more than that. The one thing it must
 not do is imply a fault, and the one thing a caller must not do is read
 ``total: 0`` as a degraded read.
 
+**The caution overlay is carried, not derivable.** ``demotion_pending_since``
+rides the wire item because doc 13 §5.3's ``under-sourced`` overlay renders on
+this tab, and the only other way to reach it from here is elimination —
+``corroborated`` plus ``review_state='open'`` — which is the derivation T2.62
+rejected for the review queue and which stops being sound the moment a second
+condition opens the queue.
+
 The sources module is the badge's audit: ``fact_sources`` grouped by
 ``origin_key`` so a reader can count the groups and get the ``origin_count``
 the claim asserts. The two numbers come from one grouping expression in
@@ -85,6 +92,7 @@ def _base_item(row: Mapping[str, Any], badge) -> dict[str, Any]:
         "project": row["project"],
         "confidence": row["confidence"],
         "review_state": row["review_state"],
+        "demotion_pending_since": row["demotion_pending_since"],
         "belief_window": _belief_window(row),
         "applies_when": row["applies_when"],
         "applies_when_labels": applies_when_labels(row["applies_when"]),
