@@ -418,3 +418,18 @@ non-single-valued relations):**
   ground. Authored as eg-0123, hand-authored premise.
 - slot 86, `37a75f1f…` (RELATED_TO): same fact as batch 1's slot-24 skip,
   same ground. Authored as eg-0128, hand-authored premise.
+
+**Batch 3 (slots 100–149, eg-0142..eg-0191; 7 skips, all `value-swap` on
+non-single-valued slots):**
+
+- slot 103, `ad6f7451…` (CAUSES): an effect can have several contributing
+  causes; neither slot single-valued. Authored as eg-0145.
+- slot 104, `702b3d82…` (RELATED_TO): multi-valued by nature. eg-0146.
+- slot 107, `08cf924b…` (USES): generic USES object. eg-0149.
+- slot 122, `c2cff8f6…` (RELATED_TO): multi-valued by nature. eg-0164.
+- slot 133, `6c47ab46…` (DEPENDS_ON): generic dependency object admits
+  many values. eg-0175.
+- slot 134, `11606722…` (RELATED_TO): multi-valued by nature. eg-0176.
+- slot 139, `a02af11e…` (DEPLOYED_ON): the subject names a bare product,
+  not a single instance, and the harvest itself mints redis on two hosts
+  — the host slot is not single-valued for it. eg-0181.
