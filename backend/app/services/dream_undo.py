@@ -612,7 +612,13 @@ async def _invert_subsume(
             "memory_id": action.object_id,
             "status": status,
             "superseded_by": before.get("superseded_by"),
-            "tombstone_path": [*journal.SUBSUME_TOMBSTONE_PATH, counterpart],
+            # `counterpart or "_none"`: a subsume with no counterpart (T2.23's
+            # prune, reusing this inverse) journals `pair.newer=None`, and an
+            # empty-string jsonb key is not a key any real memory id could
+            # ever collide with or that `subsume_tombstone_of`'s by-id lookup
+            # would ever ask for, but it is still a fragile thing to leave on
+            # disk. The sentinel says plainly what the row means.
+            "tombstone_path": [*journal.SUBSUME_TOMBSTONE_PATH, counterpart or "_none"],
             "tombstone": json.dumps(tombstone),
         },
     )

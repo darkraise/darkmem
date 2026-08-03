@@ -14,6 +14,9 @@ class DreamCycleSummary(BaseModel):
     total: int
     counts: dict[str, int]
     undone_count: int
+    # None for an automated dreaming tick; names the human surface (e.g.
+    # "hygiene_queue") that ran the batch otherwise. Homogeneous per cycle.
+    origin: str | None = None
 
 
 class DreamCycleListResponse(BaseModel):
@@ -29,7 +32,12 @@ class DreamAction(BaseModel):
     action: str
     object_id: str
     project: str | None = None
+    # Absent for an action carrying `origin` — that action came from a human
+    # curation surface, not a detector, and rendering "dedup" for it would be
+    # a false provenance claim (see app/services/dream_digest.py).
     detector: str | None = None
+    origin: str | None = None
+    actor: str | None = None
     before: dict
     after: dict
     detail: dict

@@ -489,6 +489,29 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="hygiene_queue.triage",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/hygiene-queue/duplicates"),
+            ("GET", f"{V1}/hygiene-queue/low-confidence"),
+            ("GET", f"{V1}/hygiene-queue/expiring-soon"),
+            ("GET", f"{V1}/hygiene-queue/superseded"),
+            ("GET", f"{V1}/hygiene-queue/counts"),
+            ("POST", f"{V1}/hygiene-queue/bulk/supersede"),
+            ("POST", f"{V1}/hygiene-queue/bulk/prune"),
+            ("POST", f"{V1}/hygiene-queue/bulk/confirm-dedup"),
+        ),
+        reason=(
+            "The same review_queue.triage shape (doc 08 section 6) over "
+            "memories/memory_relations instead of facts/articles: a human "
+            "curation surface for housekeeping, not an agent capability. The "
+            "bulk actions are a human deciding what to retire or triage in "
+            "its own store, the same conflict-of-interest review_queue's "
+            "reject door declines to hand an agent; there is no dispute_inspect-"
+            "shaped agent need for a housekeeping backlog either."
+        ),
+    ),
+    Surface(
         name="buffer.triage",
         status=REST_ONLY,
         rest=(
