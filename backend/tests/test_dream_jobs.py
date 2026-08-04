@@ -883,9 +883,15 @@ async def test_topic_detection_registers_with_its_real_schema_and_bounds():
         assert job.default_cron == "0 4 * * *"
         assert job.min_interval_seconds == 300
         assert job.max_run_seconds == 900
+        # Named explicitly, not compared to the schema object the job
+        # registers — that comparison holds for any schema content and asserts
+        # nothing. These are T2.18's five knobs; a lost one is a knob the
+        # operator's `PUT /jobs/{key}/config` starts rejecting as unknown.
         keys = {field.key for field in job.config_schema}
-        assert keys == {field.key for field in TOPIC_DETECTION_CONFIG_SCHEMA}
-        assert "hub_cap" in keys
+        assert keys == {
+            "batch_size", "hub_cap", "min_community_size",
+            "leiden_timeout_seconds", "max_projection_edges",
+        }
         # The placeholder's key, default and ceiling survive the swap, so no
         # value already persisted under the generic schema is orphaned.
         batch = next(f for f in job.config_schema if f.key == "batch_size")
@@ -909,7 +915,10 @@ async def test_topic_detection_persists_its_rotation_cursor(monkeypatch):
 
     async def fake_run(session_factory, *, batch_size, after_project, **knobs):
         seen.append(after_project)
-        return DetectionOutcome(last_project=f"project-{len(seen)}")
+        # A full batch: more projects may remain, so the cursor advances.
+        return DetectionOutcome(
+            last_project=f"project-{len(seen)}", visited=batch_size
+        )
 
     try:
         monkeypatch.setattr(dream_jobs, "run_topic_detection", fake_run)
@@ -939,7 +948,9 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
     registry, engine = _fresh_registry()
 
     async def fake_run(session_factory, *, batch_size, after_project, **knobs):
-        return DetectionOutcome(last_project="wedged", skipped=1)
+        return DetectionOutcome(
+            last_project="wedged", skipped=1, visited=batch_size
+        )
 
     try:
         monkeypatch.setattr(dream_jobs, "run_topic_detection", fake_run)
@@ -947,5 +958,76 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
         async with registry.session_factory() as session:
             assert await dream_jobs._load_topic_cursor(session) == "wedged"
     finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_the_rotation_wraps_instead_of_pinning_at_the_last_project():
+    """The Critical the monkeypatched cursor tests structurally could not see.
+
+    `next_projects` selects strictly `project > :after_project`, so once the
+    cursor reaches the lexicographically last project every later tick claims
+    nothing — forever, while still logging and recording `last_status="ok"`.
+    A project created after that point sorts *before* the cursor and is never
+    detected at all. The fake in the tests above always returns a fresh project
+    name, so the empty-batch echo — the one case that matters at the end of a
+    rotation — was unrepresentable in it.
+
+    This drives the real runner over the real detector against the real
+    database, past the end of the rotation, and asserts the cursor resets.
+    """
+    from sqlalchemy import text as _text
+
+    from app.services import dream_jobs
+
+    registry, engine = _fresh_registry()
+    project = "t253-wrap"
+    try:
+        # One project, and a batch size of one, so a single tick reaches the
+        # end of the rotation.
+        async with registry.session_factory() as session:
+            await session.execute(
+                _text(
+                    "INSERT INTO memories (id, content, source, project, status) "
+                    "VALUES (gen_random_uuid(), 'wrap probe', 'api', "
+                    "CAST(:project AS text), CAST('active' AS memory_status))"
+                ),
+                {"project": project},
+            )
+            await session.commit()
+        await registry.set_config(TOPIC_DETECTION_JOB_KEY, {"batch_size": 1})
+
+        job = registry.get(TOPIC_DETECTION_JOB_KEY)
+
+        # Tick until the rotation wraps. A *full* batch means more projects may
+        # remain, so the wrap lands on the first short one — the same shape
+        # `verification_recompute`'s slow arm uses. The bound is what makes this
+        # a real assertion: before the fix the cursor pinned and this loop would
+        # exhaust without ever seeing None.
+        cursors = []
+        for _ in range(12):
+            await job.runner()
+            async with registry.session_factory() as session:
+                cursors.append(await dream_jobs._load_topic_cursor(session))
+            if cursors[-1] is None:
+                break
+
+        assert None in cursors, (
+            f"the rotation never wrapped in 12 ticks; cursors were {cursors}. "
+            f"A cursor that only ever advances pins at the last project and "
+            f"every later tick claims nothing, forever."
+        )
+
+        # And a tick from the wrapped cursor claims work again rather than
+        # stalling: the project is re-visited.
+        await job.runner()
+    finally:
+        async with registry.session_factory() as session:
+            await session.execute(
+                _text("DELETE FROM memories WHERE project = CAST(:p AS text)"),
+                {"p": project},
+            )
+            await session.commit()
         await registry.stop_all()
         await engine.dispose()
