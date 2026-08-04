@@ -41,12 +41,17 @@ three are left as an honest, reported gap — a follow-up in the schema-owning
 lane can add partial indexes over the same literal predicates without
 changing this module's queries.
 
-**Ordering is recency, declared rather than left implicit (Fable review
-follow-up).** Doc 08 §6 asks both queues to be "consequence-ranked and never
-FIFO." T2.24 built that for the review queue over facts; this module orders
-every arm by recency instead, and the reason is not laziness — it is that
-T2.24's machinery is fact-shaped and does not drop in over memory rows
-unchanged. Its **retrieval-frequency** arm actually transfers cleanly: it
+**Ordering states each arm's real primary key, not a blanket "recency"
+claim (Fable review follow-up).** Doc 08 §6 asks both queues to be
+"consequence-ranked and never FIFO." T2.24 built that for the review queue
+over facts; none of this module's four arms do — ``duplicates`` and
+``superseded`` sort by ``created_at DESC`` (newest first), ``low_confidence``
+by ``confidence ASC`` (lowest first, ties by newest), ``expiring_soon`` by
+``expires_at ASC`` (soonest first) — see ``build_*_query`` below for the
+literal ``ORDER BY`` clauses. None of the four is consequence-ranked, and
+the reason is not laziness — it is that T2.24's machinery is fact-shaped and
+does not drop in over memory rows unchanged. Its **retrieval-frequency** arm
+actually transfers cleanly: it
 bridges ``memory_access_stats`` (keyed directly by ``memory_id``) through
 ``fact_sources`` only because a *fact* has no direct access counter of its
 own — a memory row needs no bridge at all, since ``memory_access_stats`` is

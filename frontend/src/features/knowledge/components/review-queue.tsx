@@ -27,6 +27,7 @@ import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { toast } from "darkraise-ui/components/sonner"
 import { LayerChip, VerificationBadge, useDetailLevel } from "@/components/darkmem"
+import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import { useRatifyFact, useRejectFact } from "@/hooks/api"
@@ -272,6 +273,14 @@ export function ReviewQueue({ project }: { project?: string }) {
   // Neither door had an `onError` before this fix: a 500 or a stale-id 404
   // closed the confirm dialog and left the queue looking unchanged, a failed
   // action indistinguishable from a slow one (F2).
+  //
+  // `ApiError` means the backend answered with an error status; `get_session`
+  // rolls back on that path, so "the fact was not changed" is a claim this
+  // client can stand behind. Any other rejection (a dropped connection, no
+  // response at all) leaves the outcome unknown — the request may have
+  // committed with no answer reaching this client — so it gets its own,
+  // non-committal wording instead. Same split as `runUndo` in
+  // hygiene-queue.tsx (F3).
   const runRatify = (fact: ReviewFactRowData) => {
     if (DEMO) {
       demoRatify(fact.id, "q.tran")
@@ -279,11 +288,19 @@ export function ReviewQueue({ project }: { project?: string }) {
       ratifyMutation.mutate(
         { factId: fact.id },
         {
-          onError: (error) =>
-            toast.error("Ratify failed — the fact was not changed", {
-              description:
-                error instanceof Error ? error.message : "the request did not complete",
-            }),
+          onError: (error) => {
+            if (error instanceof ApiError) {
+              toast.error("Ratify failed — the fact was not changed", {
+                description: error.message,
+              })
+              return
+            }
+            toast.error("Ratify failed — state unknown", {
+              description: `${
+                error instanceof Error ? error.message : "the request did not complete"
+              }. Re-check the fact before retrying.`,
+            })
+          },
         },
       )
     }
@@ -296,11 +313,19 @@ export function ReviewQueue({ project }: { project?: string }) {
       rejectMutation.mutate(
         { factId: fact.id },
         {
-          onError: (error) =>
-            toast.error("Reject failed — the fact was not changed", {
-              description:
-                error instanceof Error ? error.message : "the request did not complete",
-            }),
+          onError: (error) => {
+            if (error instanceof ApiError) {
+              toast.error("Reject failed — the fact was not changed", {
+                description: error.message,
+              })
+              return
+            }
+            toast.error("Reject failed — state unknown", {
+              description: `${
+                error instanceof Error ? error.message : "the request did not complete"
+              }. Re-check the fact before retrying.`,
+            })
+          },
         },
       )
     }
