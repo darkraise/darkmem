@@ -47,6 +47,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "PaginatedSearchParams.project is caller-supplied (the Memories page's own project filter), not yet the global switcher",
   },
+  knowledge: {
+    kind: "manual",
+    reason:
+      "GET /knowledge/facts takes an explicit `project` the Facts tab supplies from its own filter (doc 13 §5.1), not yet the global switcher",
+  },
   events: {
     kind: "manual",
     reason: "EventListParams.project is caller-supplied, not yet the global switcher",

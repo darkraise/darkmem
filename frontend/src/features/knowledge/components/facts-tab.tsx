@@ -17,13 +17,7 @@ import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
-import { useDemoFacts } from "@/demo/hooks"
-import {
-  distinctFactProjects,
-  distinctFactRelations,
-  filterFacts,
-} from "@/demo/knowledge"
-import type { DemoFact } from "@/demo/types"
+import { useFactRows, type FactRowData } from "../use-facts"
 import { ListSurface } from "./list-surface"
 import { AppliesWhenChips, FactTriple } from "./fact-parts"
 
@@ -32,10 +26,15 @@ const SORTS = { newest: "newest first", rung: "verification rung" } as const
 type SortKey = keyof typeof SORTS
 
 const FACTS_PAGE = 25
+
+// Weakest first, so "verification rung" sorts strongest-first when reversed.
+// `disputed` sits below every machine rung: a contradicted fact is served
+// labelled, never promoted above one nothing contradicts.
+const RUNG_ORDER = ["disputed", "candidate", "corroborated", "confirmed"]
 const ROW_GAP = 10
 const ROW_ESTIMATE = 118
 
-function FactRow({ fact, focused }: { fact: DemoFact; focused: boolean }) {
+function FactRow({ fact, focused }: { fact: FactRowData; focused: boolean }) {
   const candidate = fact.verification_status === "candidate"
   const disputed = fact.verification_status === "disputed"
   return (
@@ -77,22 +76,23 @@ function FactRow({ fact, focused }: { fact: DemoFact; focused: boolean }) {
           object={fact.object_name}
         />
         <p className="text-muted-foreground text-sm">
-          {disputed && fact.dispute ? fact.dispute.summary : fact.fact_text}
+          {fact.fact_text}
         </p>
       </Link>
       {fact.verification_status === "corroborated" && (
         <p className="font-mono text-sm">{fact.claim}</p>
       )}
       <AppliesWhenChips items={fact.applies_when} />
-      {fact.candidate_note && (
-        <p className="text-muted-foreground text-sm">{fact.candidate_note}</p>
+      {fact.under_sourced && (
+        <p className="text-muted-foreground text-sm">
+          under-sourced — a demotion is pending and this fact is still served
+        </p>
       )}
     </div>
   )
 }
 
 export function FactsTab() {
-  const facts = useDemoFacts()
   const [subject, setSubject] = useState("")
   const [relation, setRelation] = useState("any")
   const [status, setStatus] = useState("any")
@@ -105,21 +105,47 @@ export function FactsTab() {
   const focusTimer = useRef<number | undefined>(undefined)
   const loadingRef = useRef(false)
 
-  const relations = useMemo(() => distinctFactRelations(facts), [facts])
-  const projects = useMemo(() => distinctFactProjects(facts), [facts])
+  // Project, relation and status are **server-side** predicates: the route
+  // filters and pages, so the list is never the page pretending to be the
+  // corpus. `subject` is the exception and is scoped to the fetched page on
+  // purpose — the route matches `subject_name` exactly, and a substring search
+  // sent as an exact filter would silently return nothing for every partial
+  // word the user typed.
+  const {
+    rows: fetched,
+    total,
+    loading,
+    error,
+    projects,
+    relations,
+  } = useFactRows({
+    project: project === "any" ? undefined : project,
+    rel_type: relation === "any" ? undefined : relation,
+    verification_status: status === "any" ? undefined : status,
+    limit,
+    offset: 0,
+  })
 
-  // filterFacts orders by rung; the time scrubber needs a chronological
-  // axis, so "newest" re-sorts the same filtered set by as_of.
   const scoped = useMemo(() => {
-    const matched = filterFacts(facts, { subject, relation, status, project })
-    if (sort === "rung") return matched
+    const needle = subject.trim().toLowerCase()
+    const matched = needle
+      ? fetched.filter((f) => f.subject_name.toLowerCase().includes(needle))
+      : fetched
+    if (sort === "rung") {
+      return [...matched].sort(
+        (a, b) =>
+          RUNG_ORDER.indexOf(b.verification_status) -
+            RUNG_ORDER.indexOf(a.verification_status) ||
+          b.as_of.localeCompare(a.as_of),
+      )
+    }
     return [...matched].sort(
       (a, b) => b.as_of.localeCompare(a.as_of) || a.id.localeCompare(b.id),
     )
-  }, [facts, subject, relation, status, project, sort])
+  }, [fetched, subject, sort])
 
-  const rows = useMemo(() => scoped.slice(0, limit), [scoped, limit])
-  const hasMore = scoped.length > limit
+  const rows = scoped
+  const hasMore = total > fetched.length
   const chronological = sort === "newest"
 
   const scale = useMemo(
@@ -203,11 +229,10 @@ export function FactsTab() {
   }
 
   const projectLabel = project === "all" ? "all projects" : project
-  const totalInProject = useMemo(
-    () =>
-      facts.filter((f) => project === "all" || f.project === project).length,
-    [facts, project],
-  )
+  // The server's count behind the project/relation/status filters — never
+  // `rows.length`, which is the page. Reporting the page as the total is how
+  // a paged surface quietly tells the user the corpus is smaller than it is.
+  const totalInProject = total
   const filtered =
     subject.trim() !== "" || relation !== "any" || status !== "any"
 
@@ -345,6 +370,21 @@ export function FactsTab() {
                 )
               })}
             </div>
+          ) : loading ? (
+            <EmptyState
+              icon={<Loader2 aria-hidden className="h-6 w-6 animate-spin" />}
+              title="Loading facts"
+              description="Reading the vault."
+            />
+          ) : error ? (
+            // Invariant 14: a failed read is never rendered as an empty vault.
+            // "No facts" and "we could not tell you" are different sentences,
+            // and collapsing them is how a broken surface looks healthy.
+            <EmptyState
+              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              title="Could not load facts"
+              description="The vault did not answer. This is a failed read, not an empty vault — nothing here says how many facts exist."
+            />
           ) : filtered ? (
             <EmptyState
               icon={<SearchX aria-hidden className="h-6 w-6" />}
