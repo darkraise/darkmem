@@ -1829,6 +1829,19 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
             ),
         ))
 
+    def composed_rows(payload: dict) -> list[dict]:
+        """The row list, whichever of doc 07 §5's two shapes was served.
+
+        No ``fuse`` key rides the request below, so this is the sectioned
+        shape a real caller receives by default (T2.56 fix round 2) — flattened
+        back to one list so ``walk`` need not know which shape it is looking
+        at, same as `_account_body`'s raw-body net covers either.
+        """
+        sections = payload.get("sections")
+        if sections is not None:
+            return sections["memory"] + sections["facts"] + sections["articles"]
+        return payload["rows"]
+
     for req_p in (OBSERVER, FOREIGN):
         for query, flavour in (
             ("postgres tuning note", "memory-flavoured query"),
@@ -1839,19 +1852,19 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
             door = "mcp:knowledge_search"
             body = await _call_mcp(
                 "knowledge_search",
-                {"query": query, "project": req_p, "limit": 50, "fuse": True},
+                {"query": query, "project": req_p, "limit": 50},
             )
             payload = json.loads(body)
             if payload.get("status") == "unavailable":
                 unreachable(door, case)
             else:
-                accounted = walk(payload["rows"], case, req_p, door)
+                accounted = walk(composed_rows(payload), case, req_p, door)
                 out.extend(_account_body(surface, door, case, body, accounted))
 
             door = "POST /api/v1/knowledge/search"
             response = await ctx.client.post(
                 "/api/v1/knowledge/search",
-                json={"query": query, "project": req_p, "limit": 50, "fuse": True},
+                json={"query": query, "project": req_p, "limit": 50},
                 headers=ctx.headers,
             )
             # 503 is the route's outage, not a probe failure: the same
@@ -1860,7 +1873,7 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
                 unreachable(door, case)
                 continue
             response.raise_for_status()
-            accounted = walk(response.json()["rows"], case, req_p, door)
+            accounted = walk(composed_rows(response.json()), case, req_p, door)
             out.extend(_account_body(surface, door, case, response.text, accounted))
     return out
 
