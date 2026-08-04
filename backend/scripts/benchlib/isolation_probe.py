@@ -39,6 +39,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
+from urllib.parse import quote
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override must run first)
 from benchlib.isolation_rules import (
@@ -1926,6 +1927,142 @@ async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+async def _drive_knowledge_topics_browsing(ctx: ProbeContext) -> list[Sighting]:
+    """T2.39a's browsing door over the same `memory_communities` rows
+    `memory_overview` reads (T2.21) -- a required `project` bind parameter
+    with no wide mode, so every list case here is a scope case rather than
+    a label case. The list door is driven scoped to each project in turn;
+    the detail door is driven addressed by (project, label) for every
+    seeded community, plus a same-label cross-project read that must 404
+    rather than answer with the other project's topic.
+    """
+    surface = "knowledge_topics_browsing"
+    out: list[Sighting] = []
+
+    def foreign_labels(project: str) -> list[str]:
+        return [cf.label for cf in COMMUNITY_FIXTURES if cf.project != project]
+
+    async def list_case(project: str):
+        door = "GET /api/v1/knowledge/topics"
+        case = f"list scoped to {project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics?project={project}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        accounted: set[str] = set()
+        seen_labels: set[str] = set()
+        for item in payload["items"]:
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(item.get("label"))
+            if cf is None:
+                continue
+            seen_labels.add(cf.label)
+            if cf.report_of is not None:
+                accounted.add(cf.report_of)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None, requested_project=project,
+                label_project=item.get("project") == cf.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        for other in foreign_labels(project):
+            if other in seen_labels:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=other, kind="content",
+                    true_project=COMMUNITY_FIXTURES_BY_LABEL[other].project,
+                    forced_v1_reason="a foreign project's topic label reached a "
+                                     "scoped list",
+                ))
+
+    await list_case(OBSERVER)
+    await list_case(FOREIGN)
+
+    door = "GET /api/v1/knowledge/topics/{label}"
+    for cf in COMMUNITY_FIXTURES:
+        case = f"detail addressed by label, seeded in {cf.project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/{quote(cf.label, safe='')}?project={cf.project}",
+            headers=ctx.headers,
+        )
+        response.raise_for_status()
+        row = response.json()
+        accounted = {cf.report_of} if cf.report_of is not None else set()
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=cf.label, kind="content",
+            true_project=cf.project, true_status=None, requested_project=cf.project,
+            label_project=row.get("project") == cf.project,
+        ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+
+        foreign_project = FOREIGN if cf.project == OBSERVER else OBSERVER
+        cross_response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/{quote(cf.label, safe='')}?project={foreign_project}",
+            headers=ctx.headers,
+        )
+        if cross_response.status_code != 404:
+            out.append(Sighting(
+                surface=surface, door=door,
+                case=f"{case}: cross-project read must 404", row=cf.label,
+                kind="content", true_project=cf.project,
+                forced_v1_reason="a label seeded in one project answered under "
+                                 "another project's request instead of 404ing",
+            ))
+        out.extend(_account_body(
+            surface, door, f"{case}: cross-project read", cross_response.text, set(),
+        ))
+    return out
+
+
+async def _drive_knowledge_pin_suggestions(ctx: ProbeContext) -> list[Sighting]:
+    """The diff/suggestion door over the same rows, scoped the same way.
+
+    `COMMUNITY_FIXTURES` seed no `dominant_entities` (T2.21's fixture never
+    needed one), so `compute_pin_suggestions` never nominates anything from
+    these rows -- this driver exercises the diff's project scope, not the
+    fact-floor/article gate, which `tests/test_pin_suggestions.py` and
+    `tests/test_topics_read_surface.py` already cover offline / against a
+    real app instance respectively.
+    """
+    surface = "knowledge_pin_suggestions"
+    door = "GET /api/v1/knowledge/topics/pin-suggestions"
+    out: list[Sighting] = []
+
+    def foreign_labels(project: str) -> list[str]:
+        return [cf.label for cf in COMMUNITY_FIXTURES if cf.project != project]
+
+    async def one_case(project: str):
+        case = f"diff scoped to {project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/pin-suggestions?project={project}",
+            headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        seen_labels: set[str] = set()
+        for entry in payload.get("diff", []):
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(entry.get("label"))
+            if cf is None:
+                continue
+            seen_labels.add(cf.label)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None, requested_project=project,
+                label_project=entry.get("project") == cf.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, set()))
+        for other in foreign_labels(project):
+            if other in seen_labels:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=other, kind="content",
+                    true_project=COMMUNITY_FIXTURES_BY_LABEL[other].project,
+                    forced_v1_reason="a foreign project's topic reached a scoped diff",
+                ))
+
+    await one_case(OBSERVER)
+    await one_case(FOREIGN)
+    return out
+
+
 _DUPLICATE_ENDPOINT_KEYS = tuple(
     dict.fromkeys(key for src, tgt, _ in DUPLICATE_PAIRS for key in (src, tgt))
 )
@@ -2367,6 +2504,8 @@ DRIVERS = {
     "review_queue_articles": _drive_review_queue_articles,
     "knowledge_facts_browsing": _drive_knowledge_facts_browsing,
     "knowledge_fact_detail": _drive_knowledge_fact_detail,
+    "knowledge_topics_browsing": _drive_knowledge_topics_browsing,
+    "knowledge_pin_suggestions": _drive_knowledge_pin_suggestions,
     "hygiene_queue_duplicates": _drive_hygiene_queue_duplicates,
     "hygiene_queue_memories": _drive_hygiene_queue_memories,
     "analytics_recents": _drive_analytics_recents,
