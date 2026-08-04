@@ -362,4 +362,127 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     expect(screen.getByText(/undone — journaled/)).toBeInTheDocument()
     expect(screen.getByText(/status:/)).toBeInTheDocument()
   })
+
+  // ─────────────────────── fix round 1 (review findings) ───────────────────
+
+  it("F1/F6: whole-cycle undo names exactly the eligible actions (never the body-less form) and the dialog previews their identities", async () => {
+    mockReads()
+    const user = userEvent.setup()
+    render(<LiveDreamDigest />, { wrapper })
+
+    await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
+    // Fixture has two eligible (undoable, not-undone) actions across the two
+    // object groups: 101 (associate, object A) and 103 (refine, object B).
+    const cycleButton = screen.getByRole("button", {
+      name: /undo remaining in cycle \(2\)/i,
+    })
+    await user.click(cycleButton)
+
+    const dialog = await screen.findByRole("alertdialog")
+    // The dialog names what it will act on, not just a count.
+    expect(within(dialog).getByText(/#101 associate edge/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/#103 refine/i)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole("button", { name: /^undo 2$/i }))
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        `/dream-digest/cycles/${CYCLE_ID}/undo`,
+        expect.objectContaining({
+          method: "POST",
+          // The named event_ids form — exactly the two ids the dialog
+          // previewed, never a body-less request (which the server would
+          // expand to every not-undone action, including blocked ones).
+          body: JSON.stringify({ event_ids: [101, 103] }),
+        }),
+      ),
+    )
+  })
+
+  it("F2: the cycle picker discloses the server total and can fetch more, never implying its first page is complete", async () => {
+    const pageOne = {
+      items: [{ ...CYCLES_RESPONSE.items[0]!, cycle_id: "cycle-1" }],
+      total: 2,
+      limit: 20,
+      offset: 0,
+    }
+    const pageTwo = {
+      items: [{ ...CYCLES_RESPONSE.items[0]!, cycle_id: "cycle-2" }],
+      total: 2,
+      limit: 20,
+      offset: 1,
+    }
+    vi.mocked(apiFetch).mockImplementation((path: string, opts?: RequestInit) => {
+      if (opts && opts.method !== undefined) {
+        return Promise.reject(new Error(`unexpected mutation call: ${path}`))
+      }
+      if (path.startsWith("/dream-digest/cycles/")) {
+        return Promise.resolve(digestResponse())
+      }
+      if (path.includes("offset=1")) return Promise.resolve(pageTwo)
+      if (path.startsWith("/dream-digest/cycles")) return Promise.resolve(pageOne)
+      return Promise.reject(new Error(`unexpected apiFetch call: ${path}`))
+    })
+    const user = userEvent.setup()
+    render(<LiveDreamDigest />, { wrapper })
+
+    await screen.findByText(/1 of 2 cycles loaded/i)
+    const loadMore = screen.getByRole("button", { name: /load more cycles/i })
+    await user.click(loadMore)
+
+    await screen.findByText(/2 of 2 cycles loaded/i)
+    // Once every cycle behind the server's own count is loaded, the button
+    // offering more must go away rather than linger uselessly.
+    expect(
+      screen.queryByRole("button", { name: /load more cycles/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("F3: the surface chip reads error, not EMPTY, during a failed cycle-digest read", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string, opts?: RequestInit) => {
+      if (!opts || opts.method === undefined) {
+        if (path.startsWith("/dream-digest/cycles/")) {
+          return Promise.reject(new Error("digest read failed"))
+        }
+        if (path.startsWith("/dream-digest/cycles")) {
+          return Promise.resolve(CYCLES_RESPONSE)
+        }
+      }
+      return Promise.reject(new Error(`unexpected apiFetch call: ${path}`))
+    })
+    render(<LiveDreamDigest />, { wrapper })
+
+    await screen.findByText(/could not load this cycle/i)
+    expect(screen.getByText(/^error$/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^empty$/i)).not.toBeInTheDocument()
+  })
+
+  it("F4: a malformed 409 entry is dropped rather than rendered as undefined text", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string, opts?: RequestInit) => {
+      if (opts?.method === "POST") {
+        return Promise.reject(
+          new ApiError("conflict", 409, [
+            { oops: true },
+            { event_id: 101, action: "associate", reason: "state_changed" },
+          ]),
+        )
+      }
+      if (path.startsWith("/dream-digest/cycles/")) return Promise.resolve(digestResponse())
+      return Promise.resolve(CYCLES_RESPONSE)
+    })
+    const user = userEvent.setup()
+    render(<LiveDreamDigest />, { wrapper })
+
+    await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
+    await user.click(screen.getAllByRole("button", { name: /^undo$/i })[0]!)
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [, options] = vi.mocked(toast.error).mock.calls[0]!
+    const description = (options as { description: string }).description
+    // The malformed entry must not leak through as literal `undefined`
+    // text; the well-formed entry alongside it must still render.
+    expect(description).not.toMatch(/undefined/)
+    expect(description).toMatch(/101/)
+    expect(description).toMatch(/changed since this action ran/i)
+  })
 })

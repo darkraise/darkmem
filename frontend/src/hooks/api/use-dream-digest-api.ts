@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
 
@@ -104,18 +109,38 @@ function dreamCyclesQueryString(params: DreamCycleListParams): string {
   return qs.toString()
 }
 
-/** `GET /dream-digest/cycles` — doc 13 §6.3's cycle picker substrate. */
+export const DREAM_CYCLE_PAGE_SIZE = 20
+
+/** `GET /dream-digest/cycles` — doc 13 §6.3's cycle picker substrate, page by
+ *  page. `total` is the server's count behind the (optional) project filter,
+ *  not the number of pages fetched — a caller that reports `items.length` as
+ *  the corpus is claiming the first page is complete, which is exactly the
+ *  shape the T2.36 review named and this surface must not repeat.
+ *
+ *  Paging is an infinite query over `offset`, not a growing `limit` folded
+ *  into the key — see `useFactPages`' identical reasoning: a growing limit
+ *  re-keys the query on every page and drops already-loaded rows to
+ *  `undefined` under the reader. */
 export function useDreamCycles(
-  params: DreamCycleListParams = {},
+  params: Omit<DreamCycleListParams, "limit" | "offset"> = {},
   options?: { enabled?: boolean },
 ) {
-  const query = dreamCyclesQueryString(params)
-  return useQuery<DreamCycleListResponse>({
-    queryKey: ["dreamDigest", "cycles", query],
-    queryFn: () =>
+  const base: DreamCycleListParams = { ...params, limit: DREAM_CYCLE_PAGE_SIZE }
+  const baseQuery = dreamCyclesQueryString(base)
+  return useInfiniteQuery<DreamCycleListResponse>({
+    queryKey: ["dreamDigest", "cycles", baseQuery],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       apiFetch<DreamCycleListResponse>(
-        `/dream-digest/cycles${query ? `?${query}` : ""}`,
+        `/dream-digest/cycles?${dreamCyclesQueryString({ ...base, offset: pageParam as number })}`,
       ),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, page) => n + page.items.length, 0)
+      // An empty page terminates regardless of what `total` says: a total
+      // that outruns the rows would otherwise refetch the same offset forever.
+      if (last.items.length === 0 || loaded >= last.total) return undefined
+      return loaded
+    },
     enabled: options?.enabled ?? true,
   })
 }
