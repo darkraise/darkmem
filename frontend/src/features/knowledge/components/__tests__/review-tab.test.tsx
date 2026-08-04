@@ -520,7 +520,7 @@ describe("HygieneQueue: every arm states its ordering honestly, in both detail m
       render(withQuery(<ReviewTab />))
       await switchToHygiene()
 
-      expect(screen.getByText(/newest detected first/)).toBeInTheDocument()
+      expect(screen.getByText(/^newest first —/)).toBeInTheDocument()
       expect(screen.getByText(/lowest confidence first/)).toBeInTheDocument()
       expect(screen.getByText(/soonest expires_at first/)).toBeInTheDocument()
       expect(screen.getByText(/newest first, read-only/)).toBeInTheDocument()
@@ -533,4 +533,269 @@ describe("HygieneQueue: every arm states its ordering honestly, in both detail m
       ).not.toBeInTheDocument()
     },
   )
+})
+
+// T2.37 fix round 2 — N3. The round-1 guards for F1 and F4 each covered one
+// representative site (review-queue's facts arm) and left the hygiene side's
+// four independently-computed branches unguarded; a mutant reverting any one
+// of them stayed green against the full suite. These widen the guard to
+// every hygiene site rather than narrowing the finding to the one already
+// covered.
+
+const LOW_CONF_ITEM = {
+  id: "m-low-1",
+  project: "darkmem",
+  content_preview: "a low confidence capture",
+  confidence: 0.2,
+  expires_at: null,
+  status: "active",
+  superseded_by: null,
+  reason: "low_confidence",
+  created_at: "2026-07-01T00:00:00Z",
+}
+
+const EXPIRING_ITEM = {
+  id: "m-exp-1",
+  project: "darkmem",
+  content_preview: "a memory about to expire",
+  confidence: 0.6,
+  expires_at: "2026-08-10T00:00:00Z",
+  status: "active",
+  superseded_by: null,
+  reason: "expiring_soon",
+  created_at: "2026-07-01T00:00:00Z",
+}
+
+describe("HygieneQueue: a stranded page shows a way back on every arm, not just one (N3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("renders the stranded recovery message independently on all four hygiene arms", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 5, low_confidence: 6, expiring_soon: 7, superseded: 8 }
+      }
+      // Each arm's own query returns rows.length === 0 while total > 0 — the
+      // exact shape a stale offset produces (F1's finding), isolated per arm
+      // with a distinct total so each arm's own message is independently
+      // verifiable, not one shared assertion that could pass on a single arm.
+      if (url.startsWith("/hygiene-queue/duplicates")) return { items: [], total: 5, limit: 10, offset: 0 }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return { items: [], total: 6, limit: 10, offset: 0 }
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return { items: [], total: 7, limit: 10, offset: 0 }
+      if (url.startsWith("/hygiene-queue/superseded")) return { items: [], total: 8, limit: 10, offset: 0 }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    expect(await screen.findByText(/5 rows still remain/)).toBeInTheDocument()
+    expect(screen.getByText(/6 rows still remain/)).toBeInTheDocument()
+    expect(screen.getByText(/7 rows still remain/)).toBeInTheDocument()
+    expect(screen.getByText(/8 rows still remain/)).toBeInTheDocument()
+    expect(screen.getAllByText("Back to the first page")).toHaveLength(4)
+    // Never the caught-up phrasing for a queue the backend still says is
+    // non-empty (invariant 14) — the defect this whole finding guards.
+    expect(
+      screen.queryByText("Candidate duplicates — none flagged by the last dream cycle"),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe("HygieneQueue: the counts header never fabricates a zero while loading (N3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows a loading line until the hygiene counts door actually answers", async () => {
+    let resolveCounts: (value: {
+      duplicates: number
+      low_confidence: number
+      expiring_soon: number
+      superseded: number
+    }) => void = () => {}
+    const countsPromise = new Promise<{
+      duplicates: number
+      low_confidence: number
+      expiring_soon: number
+      superseded: number
+    }>((resolve) => {
+      resolveCounts = resolve
+    })
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) return countsPromise
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    expect(screen.getByText(/counts loading…/)).toBeInTheDocument()
+    expect(screen.queryByText(/0 duplicate/)).not.toBeInTheDocument()
+
+    resolveCounts({ duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 })
+    await waitFor(() =>
+      expect(screen.getByText(/1 duplicate pair/)).toBeInTheDocument(),
+    )
+  })
+})
+
+// T2.37 fix round 2 — N3, widening F2. Round 1's guard covered only
+// confirm-dedup; prune-low, prune-expiring, ratify and reject each had their
+// own `onError` deleted entirely by a mutant and the full suite stayed
+// green. Each test below fails specifically when *that* site's error
+// handling is removed — it does not, and is not meant to, catch a
+// regression on a sibling site.
+
+describe("HygieneQueue: the prune (low-confidence) door reports a failed apply (N3 / F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows an error toast naming the low-confidence arm when the prune POST fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 0, low_confidence: 1, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) return emptyList()
+      if (url.startsWith("/hygiene-queue/low-confidence")) {
+        return { items: [LOW_CONF_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/prune") throw new ApiError("Internal Server Error", 500)
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    fireEvent.click(await screen.findByLabelText("Select a low confidence capture"))
+    fireEvent.click(screen.getByText("Prune"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Prune \(low-confidence\).*action failed/i)
+  })
+})
+
+describe("HygieneQueue: the prune (expiring-soon) door reports a failed apply (N3 / F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows an error toast naming the expiring-soon arm when the prune POST fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 0, low_confidence: 0, expiring_soon: 1, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) return emptyList()
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) {
+        return { items: [EXPIRING_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/prune") throw new ApiError("Internal Server Error", 500)
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    fireEvent.click(await screen.findByLabelText("Select a memory about to expire"))
+    fireEvent.click(screen.getByText("Prune now"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Prune \(expiring soon\).*action failed/i)
+  })
+})
+
+describe("ReviewTab: the ratify door reports a failed apply, not silence (N3 / F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows an error toast when the ratify POST fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/knowledge/facts/") && init?.method === "POST") {
+        throw new ApiError("Internal Server Error", 500)
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+
+    await screen.findByText(/why ranked here:/)
+    fireEvent.click(screen.getByText("Ratify → confirmed"))
+    fireEvent.click(await screen.findByText("Ratify as confirmed"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Ratify failed/i)
+  })
+})
+
+describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows an error toast when the reject POST fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
+      // The reject-POST check must run before the facts-list GET check:
+      // "/review-queue/facts/f1/reject" also starts with "/review-queue/facts",
+      // so a looser ordering would let the list branch swallow it.
+      if (url.startsWith("/review-queue/facts/") && init?.method === "POST") {
+        throw new ApiError("Internal Server Error", 500)
+      }
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+
+    await screen.findByText(/why ranked here:/)
+    fireEvent.click(screen.getByText("Reject"))
+    // The row's own action button and the confirm dialog's action button are
+    // both literally labelled "Reject" — the dialog's copy is the second to
+    // appear once it opens.
+    await waitFor(() => expect(screen.getAllByText("Reject")).toHaveLength(2))
+    const rejectButtons = screen.getAllByText("Reject")
+    fireEvent.click(rejectButtons[rejectButtons.length - 1]!)
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Reject failed/i)
+  })
 })

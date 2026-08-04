@@ -444,10 +444,24 @@ export function HygieneQueue({ project }: { project?: string }) {
   // queue looked unchanged: a failed action was indistinguishable from a slow
   // one (F2). This never fires for a per-item refusal inside a 200 — those
   // ride `results[].reason` and are surfaced by `ActionNotice` instead.
+  //
+  // `ApiError` is an HTTP error response: `get_session`'s rollback on that
+  // path guarantees nothing was written, so "nothing was applied" is a claim
+  // this client can actually stand behind. Anything else — a dropped
+  // connection, no response at all — leaves the write's outcome unknown; the
+  // request may have committed server-side with no answer ever reaching this
+  // client. Same split `runUndo` already makes below (F3).
   const onBulkActionError = (arm: string) => (error: unknown) => {
-    toast.error(`${arm} — action failed, nothing was applied`, {
-      description:
-        error instanceof Error ? error.message : "the request did not complete",
+    if (error instanceof ApiError) {
+      toast.error(`${arm} — action failed, nothing was applied`, {
+        description: error.message,
+      })
+      return
+    }
+    toast.error(`${arm} — state unknown`, {
+      description: `${
+        error instanceof Error ? error.message : "the request did not complete"
+      }. Re-check the queue before retrying.`,
     })
   }
 
@@ -556,7 +570,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Copy aria-hidden />}
         title="Candidate duplicates"
-        meta="newest detected first — no consequence ranking here yet (doc 08 §6)"
+        meta="newest first — no consequence ranking here yet (doc 08 §6)"
         isEmpty={duplicates.total === 0}
         isError={duplicates.error}
         isLoading={duplicates.loading && duplicates.rows.length === 0}
