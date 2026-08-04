@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -107,6 +107,7 @@ function detailItem(overrides: Record<string, unknown> = {}) {
         },
       },
     ],
+    ladder_total: 1,
     dispute: null,
     ...overrides,
   }
@@ -130,6 +131,20 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     // Distinct copy from the failed-read state below — a reader must not
     // confuse "nothing here" with "the read broke".
     expect(screen.queryByText(/Couldn't load/)).not.toBeInTheDocument()
+  })
+
+  // T2.86 fix round (F6): the path param is a UUID, so a malformed id 422s
+  // before any lookup runs — no retry could ever turn that into success. It
+  // used to fold into "failed", which offered a Retry button that could
+  // never succeed and copy that called it "a fetch problem", both wrong.
+  it("renders a malformed id as a distinct, non-retryable state", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new ApiError("Unprocessable", 422))
+    render(<FactDetail factId="not-a-uuid" />, { wrapper })
+
+    await screen.findByText("Not a valid fact id")
+    expect(screen.queryByText("Fact not found")).not.toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load this fact")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
   })
 
   it("renders a failed read as a failed read, distinct from a missing fact", async () => {
@@ -225,12 +240,144 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.getByText("2026-06-02T00:00:00Z")).toBeInTheDocument()
   })
 
+  // T2.86 fix round (F1): a ladder truncated by the backend's LADDER_LIMIT
+  // must say so, not present a partial list as the whole history —
+  // invariant 14's shape. `ladder.length !== ladder_total` is the signal;
+  // reusing the loaded/total idiom already established for the Facts tab's
+  // footer (T2.36) and the dream digest's cycle picker (T2.38).
+  it("discloses a truncated ladder instead of presenting it as complete", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        ladder: [
+          {
+            id: 6,
+            created_at: "2026-06-06T00:00:00Z",
+            event_type: "sources_changed",
+            actor: null,
+            payload: { seq: 5 },
+          },
+        ],
+        ladder_total: 55,
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(BADGE.claim)
+    expect(screen.getByText("1 of 55 loaded")).toBeInTheDocument()
+    fireEvent.click(screen.getByText("Verification ladder"))
+    expect(
+      screen.getByText(/the 1 most recent of 55 .* not loaded here/),
+    ).toBeInTheDocument()
+  })
+
+  it("an untruncated ladder reports a plain count, not a fraction", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(detailItem())
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(BADGE.claim)
+    expect(screen.getByText("1 event")).toBeInTheDocument()
+    expect(screen.queryByText(/of 1 loaded/)).not.toBeInTheDocument()
+  })
+
+  // T2.86 fix round (F7): the only fixture anywhere exercised the
+  // verification_status rung transition. These three rows cover the ladder's
+  // other reachable shapes: no before/after at all, a non-rung field's
+  // generic "field: from → to" line, and the `to === null → "candidate"`
+  // fallback a blocked promotion can produce on real data
+  // (`knowledge_triples.py` can write `after.verification_status: null`).
+  it("renders the ladder's non-rung transition shapes", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        ladder: [
+          {
+            id: 1,
+            created_at: "2026-06-01T00:00:00Z",
+            event_type: "sources_changed",
+            actor: null,
+            payload: { outcome: "corroborated" },
+          },
+          {
+            id: 2,
+            created_at: "2026-06-03T00:00:00Z",
+            event_type: "invalidated",
+            actor: null,
+            payload: {
+              before: { invalid_at: null },
+              after: { invalid_at: "2026-06-03T00:00:00Z" },
+            },
+          },
+          {
+            id: 3,
+            created_at: "2026-06-04T00:00:00Z",
+            event_type: "verified",
+            actor: null,
+            payload: {
+              before: { verification_status: "corroborated" },
+              after: { verification_status: null },
+            },
+          },
+        ],
+        ladder_total: 3,
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+    await screen.findByText(BADGE.claim)
+    fireEvent.click(screen.getByText("Verification ladder"))
+
+    // No before/after at all: the badge and nothing else — no stray arrow.
+    const noTransitionRow = screen.getByText("2026-06-01T00:00:00Z").parentElement
+    expect(noTransitionRow).not.toBeNull()
+    expect(within(noTransitionRow!).getByText("sources_changed")).toBeInTheDocument()
+    expect(within(noTransitionRow!).queryByText(/→/)).not.toBeInTheDocument()
+
+    // A non-rung field: the generic "field: from → to" line.
+    const genericRow = screen.getByText("2026-06-03T00:00:00Z").parentElement
+    expect(genericRow).not.toBeNull()
+    expect(
+      within(genericRow!).getByText(/invalid_at: — → 2026-06-03T00:00:00Z/),
+    ).toBeInTheDocument()
+
+    // `after.verification_status: null` — a blocked promotion — falls back
+    // to the weakest rung, never a blank pill.
+    const fallbackRow = screen.getByText("2026-06-04T00:00:00Z").parentElement
+    expect(fallbackRow).not.toBeNull()
+    expect(within(fallbackRow!).getByText("corroborated")).toBeInTheDocument()
+    expect(within(fallbackRow!).getByText("candidate")).toBeInTheDocument()
+  })
+
   it("renders the sources door's grouping, auditable against origin_count", async () => {
     vi.mocked(apiFetch).mockResolvedValue(detailItem())
     render(<FactDetail factId="f1" />, { wrapper })
 
     await screen.findByText(BADGE.claim)
     expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
+  })
+
+  // T2.86 fix round (F8): the belief window section's `meta` used to read
+  // `fact.project` — every other section's meta is a count or a state, and
+  // this one read like a stray copy from the Record section below it. It
+  // now reports the window's own open/closed state.
+  it("the belief window section's meta reports the window's own state, not the project", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        project: "darkmem",
+        belief_window: {
+          valid_at: "2026-01-01T00:00:00Z",
+          invalid_at: "2026-02-01T00:00:00Z",
+          expired_at: null,
+        },
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(BADGE.claim)
+    // Scoped to the section's own header: the Record section below it also
+    // (correctly, by design) shows `fact.project` as its meta, so a
+    // page-wide query for "darkmem" would pass for the wrong reason.
+    const windowHeader = screen.getByText("Belief window").parentElement
+    expect(windowHeader).not.toBeNull()
+    expect(within(windowHeader!).getByText("closed")).toBeInTheDocument()
+    expect(within(windowHeader!).queryByText("darkmem")).not.toBeInTheDocument()
   })
 })
 
@@ -264,5 +411,38 @@ describe("FactDetail — Simple/Advanced (T2.86, own file)", () => {
     // Never collapsed: the honesty labels.
     expect(screen.getByText("corroborated")).toBeInTheDocument()
     expect(screen.getByText(BADGE.claim)).toBeInTheDocument()
+  })
+
+  // T2.86 fix round (F5): `dispute.enumeration` rode the wire, asserted by a
+  // backend test, and was never rendered — the 17-row table had no row for
+  // it either. Advanced-mode only, alongside `rule`/`witness_origin`, which
+  // already carry the same "structured detail behind the sentence" role.
+  it("renders the dispute's enumeration alongside rule and witness_origin", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        verification_status: "disputed",
+        review_state: "open",
+        badge: { ...BADGE, verification_status: "disputed", claim: DISPUTED_CLAIM },
+        dispute: {
+          review_state: "open",
+          claim: { subject: "darkmem", rel_type: "USES", object: "postgres", id: "f1" },
+          counterpart: {
+            subject: "darkmem",
+            rel_type: "AVOIDS",
+            object: "postgres",
+            id: "f2",
+          },
+          counterpart_absent: null,
+          rule: "functional_object_conflict",
+          witness_origin: "origin-7",
+          enumeration: "first_finding",
+        },
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(DISPUTED_CLAIM)
+    expect(screen.getByText("enumeration")).toBeInTheDocument()
+    expect(screen.getByText("first_finding")).toBeInTheDocument()
   })
 })

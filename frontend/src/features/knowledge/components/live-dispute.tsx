@@ -53,7 +53,7 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
           </Link>
         )}
       </div>
-      {advanced && (dispute.rule || dispute.witness_origin) && (
+      {advanced && (dispute.rule || dispute.witness_origin || dispute.enumeration) && (
         <dl className="text-muted-foreground col-span-full grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 font-mono text-[10px] tracking-wide uppercase">
           {dispute.rule && (
             <>
@@ -65,6 +65,12 @@ export function LiveDisputePanel({ dispute }: { dispute: FactDispute }) {
             <>
               <dt>witness_origin</dt>
               <dd className="lowercase">{dispute.witness_origin}</dd>
+            </>
+          )}
+          {dispute.enumeration && (
+            <>
+              <dt>enumeration</dt>
+              <dd className="lowercase">{dispute.enumeration}</dd>
             </>
           )}
         </dl>

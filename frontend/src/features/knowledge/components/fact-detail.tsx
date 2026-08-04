@@ -409,13 +409,25 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
         <DetailSection
           value="ladder"
           title="Verification ladder"
-          meta={`${fact.ladder.length} ${fact.ladder.length === 1 ? "event" : "events"}`}
-          hint="every object_type='fact' events row for this id, oldest to newest — the raw journal, not a narrative built on top of it."
+          meta={
+            fact.ladder.length === fact.ladder_total
+              ? `${fact.ladder.length} ${fact.ladder.length === 1 ? "event" : "events"}`
+              : `${fact.ladder.length} of ${fact.ladder_total} loaded`
+          }
+          hint={
+            fact.ladder.length === fact.ladder_total
+              ? "every object_type='fact' events row for this id, oldest to newest — the raw journal, not a narrative built on top of it."
+              : `the ${fact.ladder.length} most recent of ${fact.ladder_total} object_type='fact' events rows for this id, oldest to newest — the earlier history exists but is not loaded here.`
+          }
         >
           <FactLadderHistory events={fact.ladder} />
         </DetailSection>
 
-        <DetailSection value="window" title="Belief window" meta={fact.project}>
+        <DetailSection
+          value="window"
+          title="Belief window"
+          meta={fact.belief_window.invalid_at ? "closed" : "open"}
+        >
           <BeliefWindowRow window={fact.belief_window} />
           {fact.demotion_pending_since && (
             <p className="text-muted-foreground text-sm">
@@ -476,6 +488,14 @@ function LiveFactDetail({ factId }: { factId: string }) {
           icon={<FileQuestion aria-hidden className="h-6 w-6" />}
           title="Fact not found"
           description="No fact exists with this id."
+          action={<BackToFacts />}
+        />
+      )}
+      {state.status === "invalid" && (
+        <EmptyState
+          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          title="Not a valid fact id"
+          description="This link is malformed — retrying it will not help."
           action={<BackToFacts />}
         />
       )}

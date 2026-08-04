@@ -212,7 +212,14 @@ export interface FactDetailItem extends FactListItem {
   learned_in: string[] | null
   source_file: string | null
   reference_time: string | null
+  /** The newest `ladder_total <= 50 ? ladder_total : 50` journal rows,
+   *  oldest-to-newest — the most recent transitions, not the earliest ones,
+   *  when the full history exceeds the cap. */
   ladder: FactLadderEvent[]
+  /** The full journalled count behind `ladder`. Compare the two before
+   *  claiming the ladder is complete — a capped list presented as complete
+   *  is invariant 14's shape. */
+  ladder_total: number
   dispute: FactDispute | null
 }
 
