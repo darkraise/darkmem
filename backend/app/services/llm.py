@@ -128,14 +128,20 @@ class LLMOrchestrator:
         NOT call this bare: a ``|0`` result names a partition nothing ever
         wrote to, so the read either raises ``UndefinedTable`` or, worse,
         silently returns empty forever if something else happens to have
-        registered that slug. Those read paths go through
+        registered that slug. The same is true, more insidiously, of a wrong
+        *non-zero* ``dimensions`` (768 configured, 1024 real, T2.83): boot
+        registration does not reject a positive dims value, so it happily
+        creates an empty, syntactically valid partition nothing will ever
+        embed into (``_check_dims`` below refuses every real embed attempt
+        under the mismatch) — a bare read against that fingerprint never even
+        raises, it just reads zero rows forever. Those read paths go through
         ``PostgresVectorRepository.resolve_read_fingerprint``, which resolves
-        the sentinel to a real registered fingerprint for the same model or
-        raises ``EmbedderFingerprintUnresolved`` — never proceeds keyed on
-        the sentinel. Retrieval (``hybrid_search``) never calls this method at
-        all: it takes its fingerprint from ``embed()``'s return value, an
-        actual vector's length, so it structurally cannot receive the
-        sentinel.
+        to whichever live fingerprint for the same model actually holds data,
+        or raises ``EmbedderFingerprintUnresolved`` when none does — never
+        proceeds keyed on an unconfirmed fingerprint, sentinel or not.
+        Retrieval (``hybrid_search``) never calls this method at all: it
+        takes its fingerprint from ``embed()``'s return value, an actual
+        vector's length, so it structurally cannot receive a wrong one.
         """
         cfg = self.config["embedding"]
         return self._fingerprint(cfg.model, cfg.dimensions or 0)

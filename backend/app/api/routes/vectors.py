@@ -43,9 +43,10 @@ async def get_vector_projection(
     try:
         fingerprint = await repo.resolve_read_fingerprint(llm)
     except EmbedderFingerprintUnresolved as e:
-        # A |0 sentinel read either 500s on UndefinedTable (nothing ever
-        # registered under it) or silently returns rows nothing wrote — both
-        # worse than a named refusal (invariant 2, T2.68).
+        # A read keyed on an unconfirmed fingerprint (the |0 sentinel, or a
+        # wrong non-zero dims that boot happily registered anyway) either
+        # 500s on UndefinedTable or silently returns rows nothing wrote —
+        # both worse than a named refusal (invariant 2, T2.68/T2.83).
         raise HTTPException(status_code=503, detail=str(e)) from e
     points = await repo.get_all_vectors(
         fingerprint=fingerprint,
