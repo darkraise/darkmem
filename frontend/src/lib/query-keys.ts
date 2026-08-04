@@ -60,7 +60,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   reviewQueue: {
     kind: "manual",
     reason:
-      "GET /review-queue/{facts,articles} take an explicit `project` the Review queue supplies from its own filter (doc 13 §6.2); GET /review-queue/counts itself has no project parameter at all and is rendered as unscoped",
+      "GET /review-queue/{facts,articles,counts} all take an explicit `project` the Review queue supplies from its own filter (doc 13 §6.2), not yet the global switcher. The counts door gained that parameter in T2.88; until then it had none and the surface rendered its number with an explicit unscoped qualifier",
   },
   hygieneQueue: {
     kind: "manual",
