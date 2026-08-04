@@ -28,15 +28,19 @@ Plus the constant scan Done-when 3 asks for, which is a *declaration* check
 rather than a literal check; its exact reach and its blind spots are stated on
 the test itself.
 
-**What none of this can see.** The two doors agree exactly while the rank arms
-sit at their default zero, which is the shipped state and the state every gate
-measures. They are not proven to agree under an activated arm: the memory search
-surface multiplies the arm factor onto ``rrf_score`` and re-sorts, while the
-composition multiplies it onto a rank-derived magnitude and re-sorts within the
-channel, so the two can order the same rows differently at a non-zero weight.
-That is a property of converging on the composition rather than something this
-task introduced — it is equally true of ``knowledge_search`` today — and it is
-recorded here so an arm activation re-measures both doors instead of one.
+**Where the two doors still part, and who owns it.** They agree exactly while
+every rank arm sits at its default zero — the shipped state, and the state every
+gate measures. They do **not** agree under an activated arm, and that is
+asserted here rather than described: ``test_an_activated_rank_arm_still_moves_
+one_door_and_not_the_other`` drives both doors at a non-zero
+``confidence_rank_gamma`` and pins which one moves. The mechanism is not a
+weight but a missing signal — the memory hybrid's arms select no ``confidence``
+column, so the composition's factor is 1.0 at every gamma while the search
+surface reads the column off the ORM row. Inherited rather than introduced (it
+is equally true of ``knowledge_search``), but that test is what makes T2.30's
+and T2.31's both-doors obligation fail a build instead of living in prose: it
+goes red the moment the doors are converged, which is the moment this file's
+parity claim needs re-reading.
 """
 
 from __future__ import annotations
@@ -294,6 +298,55 @@ async def test_the_doors_rank_alike_on_a_corpus_deeper_than_a_turn_fetches(sessi
     # second ranking.
     assert len(surface) > len(chat)
     assert chat == surface[:len(chat)]
+
+
+async def test_an_activated_rank_arm_still_moves_one_door_and_not_the_other(session):
+    """The one divergence the parity above does **not** cover, measured.
+
+    The doors agree while every rank arm sits at its default zero, which is the
+    shipped state and the state every gate measures. They do not agree under an
+    activated arm, and the reason is not a weight: the memory hybrid's arms
+    select ``memory_id``, ``score``, ``payload`` and the two scope labels, so
+    ``confidence`` never reaches the composition's ``_signals`` at all. Its
+    factor is 1.0 for every memory row at every gamma, while the search surface
+    reads the column off the ORM row and re-sorts on it.
+
+    So an arm activation moves the search surface and leaves chat and
+    ``knowledge_search`` exactly where they were — with no error, no log and
+    nothing in either trace that names the difference. **T2.30 and T2.31 must
+    re-measure both doors, not one**, and this test is where that obligation
+    lives: it fails the moment the two are converged, which is the moment the
+    parity claim above needs re-reading rather than re-asserting.
+    """
+    from app.models.config import Config
+
+    await _seed_partition(session)
+    # Two rows the keyword arm cannot see, adjacent in the semantic order, so
+    # their fused scores differ by one rank step — a small gamma is enough to
+    # reorder them wherever the signal is actually read.
+    first = await _add_memory(
+        session, vector=[1.0, 0.0, 0.0, 0.0], confidence=0.75,
+        content="the box runs a database proxy, note one",
+    )
+    second = await _add_memory(
+        session, vector=[0.999, 0.045, 0.0, 0.0], confidence=1.0,
+        content="the box runs a database proxy, note two",
+    )
+    session.add(Config(key="feature_flags", value={"confidence_rank_gamma": 1.0}))
+    await session.flush()
+
+    surface = await _search_surface_ids(session)
+    chat = await _chat_ids(session)
+
+    assert surface[:2] == [str(second.id), str(first.id)], (
+        "the search surface spends the arm: the more confident row moves up"
+    )
+    assert chat[:2] == [str(first.id), str(second.id)], (
+        "chat's composed channel never receives the confidence signal, so the "
+        "arm is inert there — if this now matches the surface, the doors have "
+        "been converged and the T2.30/T2.31 both-doors obligation is discharged"
+    )
+    assert chat != surface
 
 
 async def test_chat_ranks_by_the_fused_order_and_not_by_the_semantic_one(session):
