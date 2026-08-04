@@ -156,15 +156,23 @@ _QUOTE_CHARS = '"“”«»`'
 # turns their protection into the deletion date. The person most likely to
 # write it is the person least able to afford the failure.
 #
-# Scoped to a short window before the match rather than the whole memory, so a
-# negation in an unrelated earlier sentence does not suppress a real
-# instruction. The window is generous enough to clear "Please never purge".
-_NEGATION_WINDOW = 40
+# Scoped to the **current sentence**, not a fixed character count. A 40-char
+# window was the first attempt and the finding's own example defeated it: "Do
+# not, whatever the compliance team says on Friday about the retention ladder,
+# delete this note after 2026-12-31." puts more than 40 characters between the
+# negation and the verb, so the literal reported shape still armed. The regex
+# already ends in `[^.;!?]*$`, which *is* the same-sentence requirement, so the
+# character cap was the only thing losing the negation — the lookback now runs
+# to the previous sentence terminator and the tail does the scoping.
 _NEGATED = re.compile(
-    r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|never|no\s+need\s+to|"
-    r"must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t)\b[^.;!?]*$",
+    r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|did\s+not|didn'?t|never|"
+    r"no\s+need\s+to|no\s+circumstances|under\s+no\b|"
+    r"rather\s+than|instead\s+of|"
+    r"must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|"
+    r"will\s+not|won'?t)\b[^.;!?]*$",
     re.IGNORECASE,
 )
+_SENTENCE_END = re.compile(r"[.;!?]")
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 
@@ -249,14 +257,43 @@ def _quoted_spans(content: str) -> list[tuple[int, int]]:
     memory simply lives on; under-suppressing deletes it.
     """
     spans: list[tuple[int, int]] = []
-    for quote in set(_QUOTE_CHARS):
+    # Only the symmetric quotes phase-guess. The directional pairs are handled
+    # below, and including them here paired “ with “ and ” with ”, so two
+    # balanced smart-quoted regions produced a span covering the *unquoted*
+    # middle and swallowed a genuine instruction between them.
+    for quote in ('"', "`"):
         positions = [i for i, char in enumerate(content) if char == quote]
         if len(positions) < 2:
             continue
-        phases = [positions] if len(positions) % 2 == 0 else [positions, positions[1:]]
-        for phase in phases:
-            for opener, closer in zip(phase[::2], phase[1::2]):
-                spans.append((opener, closer + 1))
+
+        # An inch or foot mark is digit-preceded, and it is disqualified as an
+        # **opener only** — never as a closer. `Rack has 19" rails.` was
+        # consuming the real opening quote and un-quoting the reported
+        # instruction after it, and a *pair* of stray marks preserves parity so
+        # the odd-count union below could not see it either. Disqualifying it
+        # as a closer as well is the mistake this comment exists to prevent: a
+        # quoted string that *ends* in a date ("… by 2026-06-30") has a
+        # perfectly ordinary digit-preceded closing quote, and dropping it
+        # un-quotes the whole region.
+        opener: int | None = None
+        unclosed = False
+        for index in positions:
+            if opener is None:
+                if index and content[index - 1].isdigit():
+                    continue
+                opener = index
+            else:
+                spans.append((opener, index + 1))
+                opener = None
+        unclosed = opener is not None
+
+        # A leftover opener means the pairing is ambiguous, so the alternate
+        # phasing is unioned in as well: a match suppressed under *either*
+        # reading is suppressed. Over-suppressing costs a missed TTL and the
+        # memory lives on; under-suppressing deletes it.
+        if unclosed:
+            for first, second in zip(positions[1::2], positions[2::2]):
+                spans.append((first, second + 1))
 
     # Smart-quote and guillemet pairs are directional, so they pair across
     # different characters and need no phase guessing.
@@ -295,7 +332,11 @@ def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime 
             if any(start <= match.start() < end for start, end in quoted):
                 continue
             # A negated instruction means the opposite of what it matches.
-            if _NEGATED.search(content[max(0, match.start() - _NEGATION_WINDOW):match.start()]):
+            # The lookback starts at the previous sentence terminator, so a
+            # negation anywhere in the same sentence counts however far it
+            # sits from the verb, and one in an earlier sentence never does.
+            terminators = [m.end() for m in _SENTENCE_END.finditer(content, 0, match.start())]
+            if _NEGATED.search(content[terminators[-1] if terminators else 0:match.start()]):
                 continue
             instant = _instant_from(match)
             # Strictly future: a derived expiry already spent would let capture
