@@ -179,6 +179,13 @@ DEFAULT_EXPIRING_SOON_DAYS = 7
 # is designed.
 HYGIENE_STATE_CONFIRMED = "confirmed"
 
+# Single source of truth for this surface's content-preview truncation.
+# `scripts/benchlib/isolation_probe.py` imports this rather than declaring
+# its own copy, so the probe's boundary check and the service's actual
+# truncation cannot drift apart the way `code_query.py`'s private `RRF_K`
+# once did.
+HYGIENE_PREVIEW_CHARS = 200
+
 # Informational only — an extra key on the shared journal payload naming
 # which surface produced the row. Neither `dream_undo` nor `dream_digest`
 # reads it; it exists for an operator reading the raw event.
@@ -310,9 +317,9 @@ def _duplicate_item(row: dict) -> dict:
         "hygiene_state": (block or {}).get("hygiene_state"),
         "detected_at": (block or {}).get("detected_at"),
         "created_at": row["created_at"],
-        "source_content_preview": (row["source_content"] or "")[:200],
+        "source_content_preview": (row["source_content"] or "")[:HYGIENE_PREVIEW_CHARS],
         "source_created_at": row["source_created_at"],
-        "target_content_preview": (row["target_content"] or "")[:200],
+        "target_content_preview": (row["target_content"] or "")[:HYGIENE_PREVIEW_CHARS],
         "target_created_at": row["target_created_at"],
     }
 
@@ -339,7 +346,7 @@ def _memory_item(row: dict, *, reason: str) -> dict:
     return {
         "id": row["id"],
         "project": row["project"],
-        "content_preview": (row["content"] or "")[:200],
+        "content_preview": (row["content"] or "")[:HYGIENE_PREVIEW_CHARS],
         "confidence": row.get("confidence"),
         "expires_at": row.get("expires_at"),
         "status": row["status"],

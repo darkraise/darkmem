@@ -48,6 +48,8 @@ from benchlib.isolation_rules import (
     sentinel,
 )
 
+from app.services.hygiene_queue import HYGIENE_PREVIEW_CHARS
+
 DIMS = 8
 ACTIVE_MODEL = "probe-embedder"
 OLD_MODEL = "probe-embedder-old"
@@ -64,8 +66,12 @@ ACTIVE_STATUSES = ("active",)
 # Declared content_preview truncation lengths, read off each surface's own
 # query. content_surfaces.py's ``crosses=("content_preview",)`` is a
 # qualitative classification, not the exact bound -- the per-surface preview
-# length is an input to _preview_boundary(), not a shared constant (T2.74).
-HYGIENE_PREVIEW_CHARS = 200          # app/services/hygiene_queue.py
+# length is an input to _preview_boundary(), not a shared constant across
+# surfaces (T2.74). ``HYGIENE_PREVIEW_CHARS`` is imported above rather than
+# redeclared here: within one surface the app-side truncation and this
+# probe's boundary check must be the same number by construction, the same
+# discipline `code_query.py` adopted for `RRF_K` (T2.58) after the two
+# copies drifted apart silently.
 REEMBED_PREVIEW_CHARS = 120          # app/services/reembed.py
 PIPELINE_FAILURE_PREVIEW_CHARS = 80  # app/services/pipeline_failures.py
 CAPTURE_BUFFER_PREVIEW_CHARS = 500   # app/services/buffer_monitor.py

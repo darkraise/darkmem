@@ -46,19 +46,38 @@ export interface DuplicateDirection {
   newerCreatedAt: string
 }
 
+/** ISO instants compare correctly as plain strings only when every field is
+ *  fixed-width. Pydantic drops the fractional-seconds field entirely when
+ *  microseconds are exactly zero (`"...12:00:00Z"`) but emits a fixed
+ *  6-digit fraction otherwise (`"...12:00:00.000001Z"`), and `'Z'` (0x5A)
+ *  sorts after `'.'` (0x2E) — so the zero-fraction instant string-compares
+ *  as *later* than one a microsecond after it, even though it is earlier.
+ *  Padding the missing fraction before comparing restores fixed-width,
+ *  order-faithful comparison without losing the microsecond precision a
+ *  `Date.parse`-based comparison would (JS `Date` only resolves to the
+ *  millisecond) (fix round 1, F1). */
+function toComparableInstant(iso: string): string {
+  return /\.\d+/.test(iso) ? iso : iso.replace(/(Z|[+-]\d{2}:\d{2})$/, ".000000$1")
+}
+
 /** Which endpoint of a duplicate pair is older — the direction a "Supersede
  *  instead" action needs to show before it applies (T2.87). This is a
  *  **display and default-payload** heuristic, not the final word:
  *  `supersede()` is the actual arbiter and refuses `successor_not_newer` if
  *  the guess is wrong. It approximates the server's own `(created_at, id)`
- *  tie-break (`successor_is_newer` in `app/services/supersede.py`) with a
- *  plain string comparison, since the UI has no access to Postgres's UUID
- *  byte ordering — good enough for a default the backend still checks. */
+ *  tie-break (`successor_is_newer` in `app/services/supersede.py`):
+ *  the id half of that tie-break is safe as a plain string comparison —
+ *  canonical lowercase UUID text order matches Postgres's UUID byte order,
+ *  the same bytes the server's own tie-break compares (verified over 200k
+ *  pairs) — but the timestamp half is not safe as a raw string comparison;
+ *  see `toComparableInstant` above for why, and normalize through it before
+ *  comparing. */
 export function duplicateDirection(row: HygieneDuplicateRowData): DuplicateDirection {
+  const sourceInstant = toComparableInstant(row.source_created_at)
+  const targetInstant = toComparableInstant(row.target_created_at)
   const sourceIsOlder =
-    row.source_created_at < row.target_created_at ||
-    (row.source_created_at === row.target_created_at &&
-      row.source_memory_id < row.target_memory_id)
+    sourceInstant < targetInstant ||
+    (sourceInstant === targetInstant && row.source_memory_id < row.target_memory_id)
   return sourceIsOlder
     ? {
         olderId: row.source_memory_id,

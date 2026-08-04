@@ -218,19 +218,31 @@ class TestDuplicatesArm:
     ):
         """T2.87: a supersede direction cannot be told from two ids and a
         score alone — the whole point is that one side of the pair is
-        older, and this proves the response says which. The two
-        ``created_at`` values are seeded apart on purpose: if either one
-        collapsed (dropped from the schema, or both echoing the relation's
-        own ``created_at`` instead of the endpoint's), the ordering
-        assertion below is what catches it, not just a presence check.
+        older, and this proves the response says which endpoint. Fix round
+        1 (F2): the edge's own ``created_at`` is seeded apart from *both*
+        endpoints and moved to the future, and every timestamp is asserted
+        by exact value. The original fixture let the edge and the newer
+        memory share one server-side ``now()``, so a mutant that echoed
+        the relation's ``created_at`` for the source side alone (instead of
+        ``src.created_at``) was indistinguishable from the real value and
+        the ordering-only assertion (``target < source``) still held —
+        this is the surviving-mutant shape the review demonstrated.
         """
         older_at = datetime.now(timezone.utc) - timedelta(days=5)
         newer_at = datetime.now(timezone.utc)
+        edge_at = datetime.now(timezone.utc) + timedelta(days=1)
         older = await seed_memory(session, content="uses postgres 14", created_at=older_at)
         newer = await seed_memory(
             session, content="uses postgres 14 as well", created_at=newer_at
         )
-        await seed_duplicate_edge(session, source=newer, target=older)
+        edge_id = await seed_duplicate_edge(session, source=newer, target=older)
+        await session.execute(
+            text(
+                "UPDATE memory_relations SET created_at = :edge_at "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"edge_at": edge_at, "id": edge_id},
+        )
 
         items, total = await hygiene_queue.list_duplicates(session, project=PROJECT)
 
@@ -238,9 +250,8 @@ class TestDuplicatesArm:
         item = items[0]
         assert item["source_content_preview"] == "uses postgres 14 as well"
         assert item["target_content_preview"] == "uses postgres 14"
-        assert item["source_created_at"] is not None
-        assert item["target_created_at"] is not None
-        assert item["target_created_at"] < item["source_created_at"]
+        assert item["source_created_at"] == newer_at
+        assert item["target_created_at"] == older_at
 
     async def test_within_cycle_race_excludes_a_pair_with_a_retired_endpoint(
         self, session
