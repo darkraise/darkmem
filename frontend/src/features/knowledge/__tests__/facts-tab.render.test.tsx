@@ -171,8 +171,13 @@ describe("FactsTab — a disputed row renders both sides, on the row", () => {
     await screen.findByText(DISPUTED_CLAIM)
     // A link that dead-ends on "this fact does not exist in the demo store"
     // is worse than no link: it tells the reader the second side is one
-    // click away when it is not.
-    expect(screen.queryAllByRole("link")).toHaveLength(0)
+    // click away when it is not. Asserted by the link's own text — the
+    // router's Link is mocked to a bare anchor here, and an anchor with no
+    // href carries no `link` role, so a role query would pass either way.
+    expect(
+      screen.queryByText(/sources, ladder and windows/),
+    ).not.toBeInTheDocument()
+    expect(document.querySelectorAll("a")).toHaveLength(0)
   })
 })
 
