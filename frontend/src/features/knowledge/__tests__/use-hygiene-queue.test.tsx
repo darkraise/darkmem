@@ -220,4 +220,21 @@ describe("duplicateDirection", () => {
     expect(direction.olderPreview).toBe("source text")
     expect(direction.newerPreview).toBe("target text")
   })
+
+  // Fix round 1, F1: pydantic omits the fractional-seconds field entirely
+  // when microseconds are exactly zero ("...12:00:00Z") but emits a fixed
+  // 6-digit fraction otherwise ("...12:00:00.000001Z"). Comparing those two
+  // wire strings directly is unsound — 'Z' (0x5A) sorts after '.' (0x2E),
+  // so the zero-fraction instant reads as *later* than the instant one
+  // microsecond after it, inverting the badges even though the server's own
+  // (created_at, id) tie-break would order them correctly.
+  it("compares timestamps as instants, not wire strings — a zero-fraction Z does not outrank a later fractional instant", () => {
+    const direction = duplicateDirection({
+      ...baseRow,
+      source_created_at: "2026-07-30T12:00:00Z",
+      target_created_at: "2026-07-30T12:00:00.000001Z",
+    })
+    expect(direction.olderId).toBe("m-source")
+    expect(direction.newerId).toBe("m-target")
+  })
 })
