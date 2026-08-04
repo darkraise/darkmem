@@ -126,6 +126,7 @@ __all__ = [
     "TIER_BY_VERIFICATION_STATUS",
     "ComposedRow",
     "CompositionResult",
+    "CompositionUnavailable",
     "ComposedResult",
     "LayerCandidate",
     "LayerCompositionService",
@@ -138,6 +139,7 @@ __all__ = [
     "rerank_document_text",
     "fact_candidate",
     "memory_candidate",
+    "outage_channels",
     "support_map",
     "tier_for",
 ]
@@ -1098,6 +1100,50 @@ def _namespaced(prefix: str, statuses: Mapping[str, ChannelStatus]) -> dict:
     return {f"{prefix}.{arm}": status for arm, status in statuses.items()}
 
 
+class CompositionUnavailable(RuntimeError):
+    """Every channel the composition asked was down.
+
+    Carries the channel record :meth:`LayerCompositionService.search` had
+    already built when it gave up, so a caller degrading around it **reports
+    what happened rather than a plausible story about what happened**. That
+    distinction is not cosmetic: a degraded chat turn persists its envelope
+    into ``messages.context`` forever, and an envelope that asserts
+    ``ran=True, failed=True`` for a channel no request ever reached is a
+    fabricated claim that outlives the incident it misdescribes.
+
+    A ``RuntimeError`` subclass so the doors that already narrow to that type
+    keep catching it, and so a ``TypeError`` from a bug inside the composition
+    still reaches the caller instead of being dressed up as an outage.
+    """
+
+    def __init__(self, message: str, *, channels: dict[str, ChannelStatus]):
+        super().__init__(message)
+        self.channels = channels
+
+
+def outage_channels(*, fact_asked: bool) -> dict[str, ChannelStatus]:
+    """The channel record a both-sides-down :meth:`search` would have raised
+    with, for a caller that caught something *else* and still owes its reader
+    an envelope.
+
+    Kept beside the raise, and pinned equal to it by test, because the arm
+    names and the not-asked idiom are this module's vocabulary: a consumer
+    spelling them out for itself is the drift that makes two surfaces describe
+    one outage two ways.
+    """
+    channels = _namespaced("memory", {
+        "semantic": ChannelStatus(ran=True, failed=True),
+        "keyword": ChannelStatus(ran=True, failed=True),
+    })
+    channels.update(_namespaced("fact", {
+        KEYWORD_ARM: ChannelStatus(ran=fact_asked, failed=fact_asked),
+        NAME_ARM: ChannelStatus(ran=fact_asked, failed=fact_asked),
+        SEMANTIC_ARM: ChannelStatus(ran=False),
+    }))
+    channels["article.semantic"] = ChannelStatus(ran=False)
+    return channels
+
+
 class LayerCompositionService:
     """The impure half: run the channels, read the journal, assemble the envelope.
 
@@ -1367,6 +1413,14 @@ class LayerCompositionService:
                     for row_id, scores in fact_trace.arm_scores.items()
                 })
 
+        # Present and ran=False, never omitted: an absent key makes "this layer
+        # has no such modality" indistinguishable from "the composition never
+        # asked", while marking a deferred writer failed would put it into
+        # partial, which is a different lie. Stamped before the outage raise
+        # below so a caller degrading around that raise inherits the same
+        # complete channel list a successful call would have carried.
+        channels["article.semantic"] = ChannelStatus(ran=False)
+
         # A one-sided outage degrades to the surviving layer and says so; both
         # sides down would make an empty result indistinguishable from a
         # genuine no-match, which is the one case invariant 14 forbids serving.
@@ -1374,16 +1428,11 @@ class LayerCompositionService:
         # already both of them — reading ``fact_failed`` alone would serve that
         # outage as an empty vault.
         if memory_failed and (fact_failed or not fact_asked):
-            raise RuntimeError(
+            raise CompositionUnavailable(
                 "Layer composition failed on the memory channel and "
-                + ("the fact channel" if fact_failed else "no fact channel was asked")
+                + ("the fact channel" if fact_failed else "no fact channel was asked"),
+                channels=dict(channels),
             )
-
-        # Present and ran=False, never omitted: an absent key makes "this layer
-        # has no such modality" indistinguishable from "the composition never
-        # asked", while marking a deferred writer failed would put it into
-        # partial, which is a different lie.
-        channels["article.semantic"] = ChannelStatus(ran=False)
 
         fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
         evidence = await latest_verified_evidence(self.session, fact_ids)

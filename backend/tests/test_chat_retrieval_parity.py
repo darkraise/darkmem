@@ -550,6 +550,105 @@ async def test_a_one_sided_channel_outage_reaches_the_turn_as_partial(session):
     assert retrieval["memories"], "a one-sided outage degrades, it does not empty"
 
 
+async def _degraded_envelope(session, monkeypatch, *, context: dict | None) -> dict:
+    """A turn taken while the composition's every channel is down."""
+    async def _memory_down(self, *args, **kwargs):
+        raise RuntimeError("memory arm down")
+
+    async def _facts_down(self, *args, **kwargs):
+        raise RuntimeError("fact arm down")
+
+    from app.services import facts_channel
+
+    monkeypatch.setattr(HybridSearchService, "_semantic_search", _memory_down)
+    monkeypatch.setattr(HybridSearchService, "_keyword_search", _memory_down)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts_down)
+
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+    retrieval = await svc._retrieve(QUERY, context)
+    assert retrieval["memories"] == []
+    return retrieval["envelope"]
+
+
+async def test_a_degraded_turn_reports_the_channels_the_composition_recorded(
+    session, monkeypatch,
+):
+    """The degraded envelope repeats the outage's own record and invents none.
+
+    It is persisted into ``messages.context`` and re-served for the life of the
+    conversation, so a claim it makes about a channel outlives the incident by
+    a long way. The fact arms are named here because omitting them — which this
+    envelope used to do — makes "asked and failed" indistinguishable from "this
+    layer has no such modality" for exactly the layer that has one.
+    """
+    channels = (await _degraded_envelope(session, monkeypatch, context=_SCOPED))["channels"]
+
+    assert channels["memory.semantic"] == {"ran": True, "failed": True}
+    assert channels["memory.keyword"] == {"ran": True, "failed": True}
+    assert channels["fact.keyword"] == {"ran": True, "failed": True}
+    assert channels["fact.name"] == {"ran": True, "failed": True}
+    assert channels["fact.semantic"] == {"ran": False, "failed": False}
+    assert channels["article.semantic"] == {"ran": False, "failed": False}
+
+
+async def test_a_wide_degraded_turn_never_claims_a_channel_it_did_not_ask(
+    session, monkeypatch,
+):
+    """A wide turn asks no fact channel, so a memory outage must not report one
+    as having run and failed. Fabricating a failure for a request that was
+    never made is the same defect as hiding a real one, pointing the opposite
+    way."""
+    channels = (await _degraded_envelope(session, monkeypatch, context=None))["channels"]
+
+    assert channels["memory.semantic"] == {"ran": True, "failed": True}
+    assert channels["fact.keyword"] == {"ran": False, "failed": False}
+    assert channels["fact.name"] == {"ran": False, "failed": False}
+
+
+@pytest.mark.parametrize("fact_asked", [True, False])
+def test_the_outage_fallback_says_what_the_outage_itself_says(fact_asked):
+    """``outage_channels`` is the record a caller falls back to when the raise
+    carried none, so it has to be the same record — two spellings of one
+    outage is how two surfaces come to describe it two ways."""
+    from app.services.layer_composition import CompositionUnavailable, outage_channels
+
+    raised = CompositionUnavailable(
+        "both channels down", channels=outage_channels(fact_asked=fact_asked),
+    )
+
+    assert isinstance(raised, RuntimeError)
+    assert raised.channels == outage_channels(fact_asked=fact_asked)
+    assert set(raised.channels) == {
+        "memory.semantic", "memory.keyword",
+        "fact.keyword", "fact.name", "fact.semantic",
+        "article.semantic",
+    }
+
+
+async def test_a_bug_inside_the_composition_is_not_degraded_into_a_turn(
+    session, monkeypatch,
+):
+    """The narrowing that keeps the two doors' error behaviour equal.
+
+    MCP's ``knowledge_search`` catches only ``RuntimeError``, so a ``TypeError``
+    from a bug in the composition is a 500 there. Catching ``Exception`` here
+    made the same bug a warning log and a degraded turn on this door: every
+    answer context-free under a "channel failed" banner, with the chat tests
+    that only assert degradation still green, and an operator sent to look at
+    channels and the database rather than at the code.
+    """
+    from app.services.layer_composition import LayerCompositionService
+
+    async def _bug(self, *args, **kwargs):
+        raise TypeError("composition post-processing is broken")
+
+    monkeypatch.setattr(LayerCompositionService, "search", _bug)
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+
+    with pytest.raises(TypeError):
+        await svc._retrieve(QUERY, _SCOPED)
+
+
 async def test_the_persisted_turn_keeps_the_envelope_it_answered_under(session):
     """The stored snapshot is what the panel renders for every past turn, so an
     envelope that lives only on the live stream leaves history unexplainable."""
@@ -575,12 +674,17 @@ APP_ROOT = pathlib.Path(__file__).resolve().parents[1] / "app"
 CANONICAL = APP_ROOT / "services" / "rank_fusion.py"
 
 # Names that could carry an RRF constant, in either of the two spellings one
-# can arrive in: the constant convention (``RRF_K``, upper case, any value at
-# all), and a lower-case name bound to a bare number, which is what a constant
-# smuggled in as an ordinary variable looks like. A lower-case name bound to
-# anything else — ``cross_layer_rrf`` the function, ``rrf_score`` off a row —
-# is a computation over the one constant rather than a second copy of it, and
+# can arrive in: the constant convention (upper case, any value at all), and a
+# lower-case name bound to a bare number, which is what a constant smuggled in
+# as an ordinary variable looks like. A lower-case name bound to anything else
+# — ``cross_layer_rrf`` the function, ``rrf_score`` off a row — is a
+# computation over the one constant rather than a second copy of it, and
 # flagging those would make the scan noise a reader learns to skip.
+#
+# The letters are matched **anywhere in the name** rather than as an
+# underscore-delimited token. A token match reads as the tighter rule and is
+# the weaker one: ``RRFK = 60`` carries the letters, carries the meaning, and
+# walks through a token boundary untouched.
 RRF_NAME = re.compile(r"(^|_)rrf(_|$)", re.IGNORECASE)
 RRF_CONSTANT_NAME = re.compile(r"(^|_)RRF(_|$)")
 
@@ -631,16 +735,22 @@ def test_no_second_rrf_constant_is_declared_outside_rank_fusion():
     """``code_query.py`` held one for long enough that CLAUDE.md recorded the
     drift and named no owner for it. This is the owner.
 
-    **What this catches:** any module under ``app/`` binding an upper-case
-    ``RRF``-named name at any value, or a lower-case ``rrf`` name bound to a
-    bare number — module level, class body or function body, plain, annotated,
-    augmented or walrus.
+    **What this catches:** any module under ``app/`` binding a name whose
+    upper-case letters contain ``RRF`` at any value, or a name containing
+    ``rrf`` in any case bound to a bare number — module level, class body or
+    function body, plain, annotated, augmented or walrus. ``RRF_K``, ``RRFK``
+    and ``my_rrf_constant`` are all one name to it.
 
-    **What it does not:** a constant named without the letters ``rrf``
-    (``K = 60``, ``FUSION_K``), a bare inlined ``1.0 / (60 + rank)`` that binds
-    nothing at all, a value smuggled through a mutable container
-    (``TUNING["rrf_k"] = 55``, a ``Subscript`` target rather than a ``Name``),
-    and anything outside ``backend/app``. The second leg below narrows the
+    **What it does not:** a constant whose name drops the letters altogether
+    (``K = 60``, ``FUSION_K``) — the earlier phrasing of this list said the
+    scan missed a constant named "without the letters rrf", which read as
+    ``RRFK`` being caught when the token boundary let it through; a bare
+    inlined ``1.0 / (60 + rank)`` that binds nothing at all; a value smuggled
+    through a mutable container (``TUNING["rrf_k"] = 55``, a ``Subscript``
+    target rather than a ``Name``) or onto an object (``self.rrf_k = 55``, an
+    ``Attribute`` target); a binding made dynamically (``setattr``,
+    ``globals()``); and anything outside ``backend/app``, which is why
+    ``scripts/benchlib`` is not scanned. The second leg below narrows the
     first blind spot from the other side; the arithmetic one is deliberately
     left to review, because a scan able to recognise it would flag every
     unrelated reciprocal in the tree.

@@ -156,13 +156,16 @@ class TestChatServiceRetrieveSourcesId:
         assert result["memories"][0]["id"] == str(memory.id)
 
     @pytest.mark.asyncio
-    async def test_retrieve_reports_a_degraded_turn_when_a_row_cannot_be_keyed(
+    async def test_retrieve_lets_an_unkeyable_row_raise_rather_than_degrade(
         self, chat_service, monkeypatch
     ):
         # A row missing memory_id is structurally impossible from either
-        # hybrid arm. If one ever arrives, the composition refuses to key it
-        # and the turn says so through the envelope rather than serving a
-        # shorter context that reads exactly like a smaller corpus.
+        # hybrid arm, so one arriving is a defect in the producer and not an
+        # outage in it. The composition refuses to key it, and chat lets that
+        # refusal out: reported as a degraded turn instead, it would claim the
+        # channels failed when they answered perfectly well, and would send an
+        # operator to the database for a bug that lives in the code. The
+        # sibling MCP door propagates the same class of error.
         self._stub_memory_channel(monkeypatch, [
             {
                 "score": 0.9,
@@ -172,7 +175,5 @@ class TestChatServiceRetrieveSourcesId:
             }
         ])
 
-        result = await chat_service._retrieve("question")
-
-        assert result["memories"] == []
-        assert result["envelope"]["partial"] is True
+        with pytest.raises(TypeError):
+            await chat_service._retrieve("question")
