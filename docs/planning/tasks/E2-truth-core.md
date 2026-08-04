@@ -642,6 +642,88 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.91 — Pin suggestions have no durable prior to diff against
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.39a, T2.53` · `Doc: 09 §3` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-05 from T2.39a's Fable review (F1), which ruled T2.39a's
+clause 3 met at the **mechanism** level and unmet at the **observable** level.
+
+`GET /knowledge/topics/pin-suggestions` calls `diff_topics({}, current)` — an empty
+prior — so `prior_member_count` is always null and **every entry reads `new`,
+permanently**. `grown` / `stable` / `decayed` can never surface. The review
+established this is not merely a pre-T2.53 condition that time will fix: **the only
+snapshot that ever exists lives in memory inside the detection job's body, mid-run,
+and is discarded.** No durable prior exists anywhere for a read door to diff against.
+
+The consequence names the epic's own recurring failure: **T2.39's Done-when "pin
+suggestions show what changed between runs" is unbuildable against live data** —
+which is the exact demo-data failure the T2.39/T2.39a split was created to prevent,
+reappearing one level up.
+
+**Where it belongs is a real decision, not an obvious one.** The review verified the
+direction claim: invariant 15's scans forbid app code from reaching dream-family job
+bodies, but **nothing forbids the job body calling `pin_suggestions.py`**. So
+persisting a snapshot from `topic_detection`'s body is permitted. Whether the prior
+belongs there, in a table the door reads, or in the door itself, is this task's to
+settle and to write down.
+
+**Done when:**
+- [ ] A durable prior exists that survives across detection runs, and the door diffs
+      against it rather than against `{}`
+- [ ] `grown`, `stable` and `decayed` are all reachable on the wire, each proven by a
+      test spanning **two real detection runs** — a single-run fixture cannot see any
+      of them, which is why this was invisible until review
+- [ ] The prior keys on the stable dominant-entity label, never the churning
+      community id — the same identity rule T2.20 fixed and T2.39a mutation-proved
+- [ ] Invariant 15 is not weakened: whatever writes the snapshot, no capture or
+      retrieval path reaches a dream-family job body, and the source scan still passes
+- [ ] T2.39's clause 3 becomes satisfiable, and T2.39a's amended clause is retired
+
+**Verify.** `cd backend && python -m pytest tests/test_pin_suggestions.py tests/test_topics_read_surface.py -q`
+
+#### T2.92 — An empty LLM completion is written, read as pending, and re-billed forever
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.19` · `Doc: 09, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Minted 2026-08-05 from T2.39a's Fable review (F2), and **confirmed in the
+tree by the controller**. This is a live defect with a running cost, not a
+theoretical one.
+
+`LLMOrchestrator.chat_completion` (`app/services/llm.py:330-343`) returns the
+vendor's `content` with **no empty-content guard** — it raises on a malformed
+envelope and on truncation, and passes `""` straight through. `generate_report`
+(`app/services/memory_community_reports.py:222`) returns that raw, and its own
+docstring promises it "never swallows an error into a placeholder string" — which is
+true of exceptions and false of an empty success.
+
+So an empty completion writes `report_string = ""`. `report_status()` treats empty
+and unset identically **by design**, so the topic reads `pending` forever, and the
+next cycle regenerates it — **billing a model call every cycle, indefinitely, for a
+topic that will never leave pending.** Nothing surfaces it: `pending` is a legitimate
+state and the operator sees a topic that simply never finishes.
+
+This also invalidates a defence T2.39a made in good faith — that `ready` + empty is
+"unreachable in production". The *current* producer can write it.
+
+**The fix belongs in T2.19's module, not in the read surface.** A read door cannot
+distinguish "never generated" from "generated empty" once the empty string is on
+disk; the write path has to refuse it.
+
+**Done when:**
+- [ ] An empty or whitespace-only completion for the report purpose fails loudly
+      rather than being stored — recorded as `failed`, with the reason, so the state
+      is visible instead of silently re-attempted
+- [ ] A test drives an empty vendor completion and fails if it lands as `pending`
+- [ ] The re-billing loop is closed: a topic whose generation failed is not
+      regenerated every cycle without limit; state which policy was chosen
+- [ ] `generate_report`'s docstring stops promising something the empty case breaks
+- [ ] Whether the guard belongs on `chat_completion` (every purpose) or on the report
+      path alone is decided and written down — a global guard is the stronger fix and
+      the wider blast radius, so it is a decision, not a default
+
+**Verify.** `cd backend && python -m pytest tests/test_community_reports.py -q`
+
 #### T2.90 — The knowledge e2e cannot seed its own subject
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.86` · `Doc: 17, invariant 14` · `Tag: rebuild` · `Gate: G-C`
@@ -876,9 +958,18 @@ churn T2.20's Done-when exists to exclude.
       including a **pending** report as pending rather than as absent
 - [ ] The injectable report is served through `get_injectable_report`, and a topic whose
       report has not been generated is distinguishable on the wire from one whose report
-      is empty
-- [ ] Pin suggestions are readable with the diff `diff_topics` computes — what changed
-      between runs, not just the current set
+      is **failed or skipped** *(amended 2026-08-05: the original clause said "empty".
+      An empty report and an ungenerated one **do** collapse on the wire — both read
+      `pending`/`null` — and the read door cannot separate them, because the write path
+      stores `""` on an empty completion. That is **T2.92**, in T2.19's module. This
+      clause is reduced to the distinction this door can actually make.)*
+- [ ] Pin suggestions are readable with the diff `diff_topics` computes — the door
+      serves that shape faithfully *(amended 2026-08-05: the original clause said "what
+      changed between runs". No durable prior exists anywhere to diff against — the only
+      snapshot lives in memory inside the detection job mid-run — so every entry reads
+      `new` permanently and `grown`/`stable`/`decayed` are unreachable. That is
+      **T2.91**. This clause is reduced to the mechanism; the observable belongs to the
+      task that builds the prior.)*
 - [ ] Accept and dismiss are `POST` doors that persist through `accept_pin_suggestion` /
       `dismiss_pin_suggestion`, keyed on the **dominant-entity label**; a test fails if
       the route keys on the community id
@@ -2216,6 +2307,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-05 | T2.39a, T2.39, T2.91, T2.92 | 2 | **T2.39a's clauses 2 and 3 amended down to what the door can actually deliver, and the two gaps minted as their own tasks.** The Fable review returned spec **FAIL** on both while rating quality Approved, because both are inherited cross-task gaps the lane surfaced loudly instead of papering over. **Clause 3:** the door calls `diff_topics({}, current)` — no durable prior exists **anywhere**, since the only snapshot ever in existence lives in memory inside the detection job's body mid-run — so every entry reads `new` permanently and `grown`/`stable`/`decayed` are unreachable. -> **T2.91**. **Clause 2:** an empty report and an ungenerated one collapse on the wire, and the lane's defence that empty is unreachable is **false** — `chat_completion` has no empty-content guard and `generate_report` returns it raw, so an empty completion stores `""`, reads `pending` forever, and is **re-billed every cycle**. Controller confirmed both in the tree. -> **T2.92** | Amended rather than left failing because the runbook's alternative is worse: leaving two clauses permanently unmet on a `done` task teaches the next reader that Done-when checkboxes are aspirational. The clauses now describe what this door can do; the observables move to the tasks that can build them, and T2.39a's amended text names both so the reduction is auditable rather than quiet. **Note the shape**: T2.39a exists because T2.39's clause was unbuildable against live data, and its own clause 3 turned out unbuildable for the same reason one level up — the split fixed the door and not the absent prior behind it. That is the third time this epic has found a constraint recorded in prose with nothing in the code to satisfy it |
 | 2026-08-05 | T2.80 | 3 | **ESCALATED, not decided: doc 12 §3 fixes the MCP degradation shape and is silent on REST's, so T2.80 had to mint one.** `POST /knowledge/search` returns 503 through the app's `ErrorEnvelope` with `error.code = "unavailable"` and the shared unavailability object at **`error.details[0]`** — a *positional* slot in a list the app otherwise fills with validation errors. The route had no alternative: `HTTPException` keeps a string `message` **or** a list of `details`, never both (`main.py:553-555`), so raising one would have left this door naming neither the outage nor its channels while its MCP twin named both. The Fable review verified that constraint is real and called the shape coherent — but ruled it **an unratified contract on a wire surface** | Tier 3 because amending the design corpus is the owner's call, and this is the corpus being *silent* rather than wrong — the same shape as T2.36a's fourth claim form, which was escalated rather than decided in-task. **The cost of deciding late is asymmetric**: doc 15's SDK reads this contract, and a positional slot is the worst thing to bake in — a consumer that learns to read `details[0]` breaks the moment a validation error occupies index 0. The review's own recommendation, offered as input rather than a decision: ratify in doc 12 §3, and key detection on `error.code` plus the object's own `status` field, **never on position**. Cheap to change now, expensive after an SDK ships against it |
 | 2026-08-04 | T2.87 | 1 | **T2.87's premise was half wrong: the supersede door already existed.** The task text said doc 08 §6's fourth bulk verb was "backend-blocked", but `POST /hygiene-queue/bulk/supersede` and `bulk_supersede()` were already live at the branch point, covered by existing tests including `TestUndoIntegration::test_bulk_supersede_is_undone_by_dream_undo`. What was actually missing was only the **data to decide a direction** — `HygieneDuplicateItem` carried two ids and a score, so no caller could tell which endpoint was older. The implementer verified rather than rebuilt that half | Corrected here rather than left, because the wrong premise was **load-bearing for a scheduling decision**: T2.37's review ruled the missing verb backend-blocked and the controller minted T2.87 on that basis. The task was still worth doing and its Done-when still describes real work — the previews and timestamps genuinely did not exist — but a reader of the original text would look for a route that was already there. Independently corroborated the same round: T2.37's round-2 re-review ruled `REFUSAL_REASON_LABELS`' `successor_not_newer` entry **not** dead for exactly this reason, noting the door was live and only the UI verb unbuilt |
 | 2026-08-04 | T2.38, T2.13, T2.23 | 2 | **The dream digest's whole-cycle undo now sends the named `event_ids` form, not the body-less form — a change to what "undo this cycle" means, logged by the controller because the fix round disclosed it but never filed the row.** The body-less door takes every not-yet-undone action *including* ones blocked by `state_changed` or a missing object, and one blocked action refuses the whole batch — so a dialog listing only the undoable actions and then firing the body-less form promised a set the door would not act on. The named form makes the dialog's promise the request. **Before:** attempt everything, refuse loudly if any member is blocked. **After:** undo exactly the displayed subset; blocked actions are excluded, and the dialog says so in an explicit exclusion sentence. **This leaves the two surfaces disagreeing about what the verb means** — the hygiene queue (`use-hygiene-queue-api.ts:213`) still calls the same door body-less, where "attempt everything, refuse loudly" is the right semantic for a bulk-action batch | Ruled **not** the client-side prefilter the 2026-08-02 amendment forbids, and the distinction is the useful part: that defect was a layer shrinking a set *after* the caller named it, whereas here the set is composed **before** confirmation, displayed, sent exactly as displayed, and then goes through whole — the backend applies no prefilter to named sets and a stale member still 409s. The race is **better**, not worse: a concurrently-undone member now 409s on `already_undone` and the 409-then-refetch flow re-reads, where the body-less form would have silently hidden the other curator's edit. Tier 2 rather than Tier 3 because doc 13 §6.3 asks only for per-action and per-batch undo and the backend contract is untouched. Filed anyway because it changes a user-facing operation's semantics **two days after a logged amendment defined them**, removes the digest's only body-less caller, and leaves the review corpus describing a tree that no longer exists — the shape of drift that is invisible until someone reads the old row and believes it |
