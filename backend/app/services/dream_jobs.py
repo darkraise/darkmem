@@ -25,7 +25,7 @@ members whose owning task has since landed:
 | `contradiction_scan` | T2.11 | placeholder |
 | memory dreaming | T2.12 | shipped |
 | `article_synthesis` | T3.02 | placeholder |
-| `topic_detection` | T2.53 | placeholder |
+| `topic_detection` | T2.53 | shipped |
 
 Each owning task replaces its job's `runner=` (and, if it needs one, its
 `config_schema=`) with the real implementation; the registration shape,
@@ -46,7 +46,11 @@ none needs stripping. T2.09 does the same: `RECOMPUTE_CONFIG_SCHEMA`'s
 `batch_size` field keeps the placeholder's key, default (100) and ceiling
 (2000) verbatim, and its two new fields (`slow_arm_batch_size`,
 `slow_arm_interval_seconds`) are additions, not renames, so nothing
-persisted under the placeholder schema is orphaned by the swap.
+persisted under the placeholder schema is orphaned by the swap. T2.53
+inherits that for free: `TOPIC_DETECTION_CONFIG_SCHEMA`'s `batch_size`
+carries the same key, the same default (5) and the same ceiling (100) the
+generic placeholder knob had, so no persisted value is orphaned and its
+four additional fields are additions rather than renames.
 """
 from __future__ import annotations
 
@@ -60,6 +64,11 @@ from app.services.fact_lift import (
     run_lift,
 )
 from app.services.job_registry import FieldDescriptor, Job, JobRegistry, JobRunner
+from app.services.memory_community_detection import (
+    DEFAULT_BATCH_SIZE as DEFAULT_TOPIC_BATCH_SIZE,
+    TOPIC_DETECTION_CONFIG_SCHEMA,
+    run_topic_detection,
+)
 from app.services.memory_dream import (
     MEMORY_DREAM_CONFIG_SCHEMA,
     run_memory_dream,
@@ -133,6 +142,7 @@ SHIPPED_DREAM_JOBS: dict[str, str] = {
     FACT_LIFT_JOB_KEY: "fact_lift",
     VERIFICATION_RECOMPUTE_JOB_KEY: "verification_recompute",
     MEMORY_DREAM_JOB_KEY: "memory_dream",
+    TOPIC_DETECTION_JOB_KEY: "memory_community_detection",
 }
 
 
@@ -231,6 +241,95 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
             outcome.reconcile.facts_scanned, outcome.reconcile.facts_healed,
             outcome.reconcile.facts_skipped_expired,
             " (wrapped to start)" if outcome.reconcile.wrapped else "",
+        )
+
+    return run
+
+
+# The rotation cursor, in its own `config` row rather than in the job's
+# `config` dict. Same reasoning `verification_recompute` records for its
+# watermark: `JobRegistry.set_config` validates every write against the job's
+# schema and is the operator-facing surface behind
+# `PUT /api/v1/jobs/{key}/config`, so a cursor routed through `cfg.config`
+# would either be rejected as an unknown key or — if added to the schema to
+# make it pass — become an operator-editable field. It is neither a tunable
+# nor a thing an operator should set to an arbitrary project name.
+_TOPIC_STATE_CONFIG_KEY = "topic_detection_state"
+
+
+async def _load_topic_cursor(session) -> str | None:
+    from sqlalchemy import select
+
+    from app.models.config import Config
+
+    row = (
+        await session.execute(select(Config).where(Config.key == _TOPIC_STATE_CONFIG_KEY))
+    ).scalar_one_or_none()
+    if row is None or not isinstance(row.value, dict):
+        return None
+    cursor = row.value.get("last_project")
+    return cursor if isinstance(cursor, str) and cursor else None
+
+
+async def _save_topic_cursor(session, last_project: str | None) -> None:
+    from sqlalchemy import select
+
+    from app.models.config import Config
+
+    row = (
+        await session.execute(select(Config).where(Config.key == _TOPIC_STATE_CONFIG_KEY))
+    ).scalar_one_or_none()
+    value = {"last_project": last_project}
+    if row is None:
+        session.add(Config(key=_TOPIC_STATE_CONFIG_KEY, value=value))
+    else:
+        row.value = value
+
+
+def _make_topic_runner(registry: JobRegistry, key: str) -> JobRunner:
+    """The topic-detection tick (T2.53), bound to the registry's session factory.
+
+    Config is re-read every tick rather than closed over, so an operator's edit
+    takes effect on the next run without a restart — the same shape the lift
+    and recompute runners carry.
+
+    **The cursor is saved even when the batch partly failed.**
+    ``run_topic_detection`` advances ``last_project`` per project *before*
+    attempting it and swallows a per-project failure into ``skipped``, so the
+    outcome's cursor names the last project *visited*, not the last one that
+    succeeded. Persisting it regardless is what keeps the rotation moving: a
+    project that fails deterministically would otherwise pin the cursor and
+    starve every project behind it, which is the failure this job's whole
+    rotating design exists to avoid. The failure itself is not lost — the
+    detector journals an abort per project from its own session.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings_ = {**registry.get(key).default_config, **cfg.config}
+        async with registry.session_factory() as session:
+            after_project = await _load_topic_cursor(session)
+
+        knobs = {
+            field.key: settings_[field.key]
+            for field in TOPIC_DETECTION_CONFIG_SCHEMA
+            if field.key != "batch_size" and field.key in settings_
+        }
+        outcome = await run_topic_detection(
+            registry.session_factory,
+            batch_size=int(settings_.get("batch_size", DEFAULT_TOPIC_BATCH_SIZE)),
+            after_project=after_project,
+            **knobs,
+        )
+
+        async with registry.session_factory() as session:
+            await _save_topic_cursor(session, outcome.last_project)
+            await session.commit()
+
+        logger.info(
+            "Topic detection visited %d project(s) from cursor %r: %d "
+            "communities written, %d skipped; cursor now %r",
+            outcome.projects_processed, after_project, outcome.communities,
+            outcome.skipped, outcome.last_project,
         )
 
     return run
@@ -366,15 +465,24 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         max_run_seconds=1800,
         config_schema=MEMORY_DREAM_CONFIG_SCHEMA,
     ))
-    registry.register(_placeholder_job(
-        TOPIC_DETECTION_JOB_KEY, "Topic Detection",
-        "Leiden community detection per active project and report_string "
-        "generation (doc 06 mechanics, scheduled under this umbrella per "
-        f"doc 08 §5.6). Placeholder — real work lands in "
-        f"{DREAM_JOB_OWNERS[TOPIC_DETECTION_JOB_KEY]}.",
+    registry.register(Job(
+        key=TOPIC_DETECTION_JOB_KEY,
+        display_name="Topic Detection",
+        description=(
+            "Leiden community detection per active project, rotating over a "
+            "bounded batch of projects per run (doc 06 mechanics, scheduled "
+            "under this umbrella per doc 08 §5.6). Each project is detected "
+            "and rewritten in its own transaction, so one project's failure "
+            "costs that project's slice and not the batch."
+        ),
         default_cron="0 4 * * *", min_interval_seconds=300,
+        runner=_make_topic_runner(registry, TOPIC_DETECTION_JOB_KEY),
         max_run_seconds=900,
-        config_schema=_generic_batch_schema(default=5, maximum=100),
+        # T2.18's own schema, not the generic batch stand-in the placeholder
+        # carried: the detector has four knobs beyond batch size, and an
+        # operator editing `hub_cap` through `PUT /jobs/{key}/config` would
+        # have been rejected as an unknown key by the placeholder's schema.
+        config_schema=TOPIC_DETECTION_CONFIG_SCHEMA,
     ))
     registry.register(_placeholder_job(
         ARTICLE_SYNTHESIS_JOB_KEY, "Article Synthesis",
