@@ -487,3 +487,85 @@ async def test_counts_route_reports_both_arms(client, auth_headers, session):
     body = response.json()
     assert body["facts"] >= 1
     assert body["articles"] >= 1
+
+
+# ─────────────── T2.88: counts must agree with the lists it labels ───────────────
+
+
+async def test_counts_service_matches_project_scoped_list_totals(session):
+    """The whole defect, pinned directly: seed two projects so an unscoped or
+    mis-scoped counts query would visibly diverge from what the same-project
+    list endpoints return. If ``counts()`` ever goes back to a hand-rolled
+    predicate that drops the ``project`` filter (or applies a different one
+    than the list builders), this reds without needing a second live server —
+    a project-A count that also swallows project-B rows fails the equality
+    below."""
+    other_project = f"{PROJECT}-counts-other"
+
+    await _fact(session, subject="a", obj="b", review_state="open")
+    await _fact(session, subject="c", obj="d", review_state="open")
+    await _fact(session, subject="e", obj="f", project=other_project, review_state="open")
+    await _article(session, subject_key="s1", review_state="open")
+    await _article(session, subject_key="s2", project=other_project, review_state="open")
+    await _article(session, subject_key="s3", project=other_project, review_state="open")
+
+    _, mine_facts_total = await review_queue_service.list_open_facts(session, project=PROJECT)
+    _, other_facts_total = await review_queue_service.list_open_facts(
+        session, project=other_project,
+    )
+    _, mine_articles_total = await review_queue_service.list_open_articles(
+        session, project=PROJECT,
+    )
+    _, other_articles_total = await review_queue_service.list_open_articles(
+        session, project=other_project,
+    )
+
+    mine_counts = await review_queue_service.counts(session, project=PROJECT)
+    other_counts = await review_queue_service.counts(session, project=other_project)
+
+    assert mine_counts == {"facts": mine_facts_total, "articles": mine_articles_total}
+    assert mine_counts == {"facts": 2, "articles": 1}
+    assert other_counts == {"facts": other_facts_total, "articles": other_articles_total}
+    assert other_counts == {"facts": 1, "articles": 2}
+
+
+async def test_counts_without_project_still_means_all_projects(session):
+    """Backward compatibility is a Done-when clause, not a nicety: an absent
+    ``project`` must keep meaning "every project", so no existing caller of
+    ``counts(session)`` changes behaviour."""
+    other_project = f"{PROJECT}-counts-unscoped"
+    await _fact(session, subject="a", obj="b", review_state="open")
+    await _fact(session, subject="c", obj="d", project=other_project, review_state="open")
+    await _article(session, subject_key="s1", review_state="open")
+
+    unscoped = await review_queue_service.counts(session)
+    scoped_mine = await review_queue_service.counts(session, project=PROJECT)
+    scoped_other = await review_queue_service.counts(session, project=other_project)
+
+    assert unscoped["facts"] == scoped_mine["facts"] + scoped_other["facts"]
+    assert unscoped["articles"] >= scoped_mine["articles"]
+
+
+async def test_counts_route_accepts_project_and_matches_list_route_totals(
+    client, auth_headers, session,
+):
+    other_project = f"{PROJECT}-counts-route"
+    await _fact(session, subject="a", obj="b", review_state="open")
+    await _fact(session, subject="c", obj="d", project=other_project, review_state="open")
+    await _article(session, subject_key="s1", review_state="open")
+
+    counts_resp = await client.get(
+        "/api/v1/review-queue/counts", params={"project": PROJECT}, headers=auth_headers,
+    )
+    facts_resp = await client.get(
+        "/api/v1/review-queue/facts", params={"project": PROJECT}, headers=auth_headers,
+    )
+    articles_resp = await client.get(
+        "/api/v1/review-queue/articles", params={"project": PROJECT}, headers=auth_headers,
+    )
+    assert counts_resp.status_code == 200
+    assert counts_resp.json() == {
+        "facts": facts_resp.json()["total"],
+        "articles": articles_resp.json()["total"],
+    }
+    assert counts_resp.json() == {"facts": 1, "articles": 1}

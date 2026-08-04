@@ -397,18 +397,27 @@ async def list_open_articles(
     return items, int(total)
 
 
-async def counts(session: AsyncSession) -> dict[str, int]:
+async def counts(session: AsyncSession, *, project: str | None = None) -> dict[str, int]:
     """Cheap totals for the two queue arms — the ``pipeline_failures``
     ``/counts`` companion pattern (doc 08 §6 names that module as the model).
+
+    Reuses ``build_facts_query`` / ``build_articles_query`` for the count SQL
+    instead of hand-writing a second copy of the ``WHERE`` clause (T2.88):
+    the counts arm and the two list arms shared the ``review_state = 'open'``
+    predicate as *text* before, and a hand-duplicated predicate is exactly
+    the shape that drifts silently when only one copy gets edited. Sharing
+    the builder makes that drift a compile-time impossibility rather than a
+    thing a test merely happens to catch.
     """
-    facts_total = (
-        await session.execute(
-            text("SELECT COUNT(*) FROM knowledge_triples WHERE review_state = 'open'")
-        )
-    ).scalar_one()
+    _, facts_count_sql = build_facts_query(project)
+    _, articles_count_sql = build_articles_query(project)
+
+    params: dict[str, Any] = {}
+    if project is not None:
+        params["project"] = project
+
+    facts_total = (await session.execute(text(facts_count_sql), params)).scalar_one()
     articles_total = (
-        await session.execute(
-            text("SELECT COUNT(*) FROM knowledge_articles WHERE review_state = 'open'")
-        )
+        await session.execute(text(articles_count_sql), params)
     ).scalar_one()
     return {"facts": int(facts_total), "articles": int(articles_total)}

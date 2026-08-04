@@ -69,10 +69,11 @@ async def list_articles(
 
 @router.get("/counts", response_model=ReviewQueueCountsResponse)
 async def counts(
+    project: str | None = None,
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    return await review_queue_service.counts(session)
+    return await review_queue_service.counts(session, project=project)
 
 
 @router.post("/facts/{fact_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
