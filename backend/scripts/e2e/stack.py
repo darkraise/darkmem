@@ -208,16 +208,25 @@ def _main() -> None:
         "--keep-running", action="store_true",
         help="boot and block instead of tearing down immediately",
     )
+    parser.add_argument(
+        "--seed-facts", action="store_true",
+        help=(
+            "seed one real Layer-2 fact (T2.90) via e2e.seed_facts, so a "
+            "Playwright spec has something to find on the Facts tab"
+        ),
+    )
     args = parser.parse_args()
 
-    handle = boot(port=args.port, password=args.password)
+    handle = boot(port=args.port, password=args.password, seed_facts=args.seed_facts)
     print(f"stack up: {handle.base_url} (pid {handle.process.pid})")
+    if handle.seeded_fact is not None:
+        print(f"seeded fact: {handle.seeded_fact.fact_text!r}")
 
     if not args.keep_running:
         handle.teardown()
         return
 
-    _write_env_file(handle.base_url, args.password)
+    _write_env_file(handle.base_url, args.password, handle.seeded_fact)
     print(f"wrote {ENV_FILE} — source it before running Playwright")
     print("Ctrl-C to tear down")
 
