@@ -17,12 +17,17 @@ async def test_graph_entities_returns_200(client, auth_headers):
     assert response.status_code == 200
 
 
-# ── T2.68: a fingerprint that can be a sentinel must never silently read empty ──
+# ── T2.68/T2.83: an unconfirmed fingerprint must never silently read empty ──
 
 _MODEL_ID = "graph-unified-model"
 _REAL_FINGERPRINT = f"{_MODEL_ID}|4"
 _SENTINEL_FINGERPRINT = f"{_MODEL_ID}|0"
+# Wrong non-zero dims (T2.83): distinct from both the sentinel and the real
+# one. Boot-time registration accepts it (dims > 0) and creates its child
+# table, but no real embed will ever populate it.
+_WRONG_FINGERPRINT = f"{_MODEL_ID}|8"
 _DIMS = 4
+_WRONG_DIMS = 8
 _VECTOR = [1.0, 0.0, 0.0, 0.0]
 
 
@@ -32,6 +37,17 @@ class _SentinelLLM:
 
     def llm_fingerprint(self) -> str:
         return _SENTINEL_FINGERPRINT
+
+    async def chat_completion(self, *args, **kwargs):
+        return "stub cluster name"
+
+
+class _WrongDimsLLM:
+    """What both read paths receive under a wrong non-zero ``dimensions``
+    config (768 configured, 1024 real — T2.83)."""
+
+    def llm_fingerprint(self) -> str:
+        return _WRONG_FINGERPRINT
 
     async def chat_completion(self, *args, **kwargs):
         return "stub cluster name"
@@ -77,12 +93,34 @@ async def _add_memory_with_vector(session) -> uuid.UUID:
     return memory_id
 
 
-def _make_service(session) -> GraphService:
+async def _register_wrong_fingerprint_empty(session) -> None:
+    """What boot-time registration does under a wrong non-zero ``dimensions``:
+    create the ``embedders`` row and the child table, but populate nothing."""
+    await session.execute(
+        text(
+            "INSERT INTO embedders (fingerprint, model_id, dims, source) "
+            "VALUES (:fp, :mid, :dims, 'llm') ON CONFLICT (fingerprint) DO NOTHING"
+        ),
+        {"fp": _WRONG_FINGERPRINT, "mid": _MODEL_ID, "dims": _WRONG_DIMS},
+    )
+    child = child_table("memory_embeddings", _WRONG_FINGERPRINT)
+    await session.execute(text(
+        f"CREATE TABLE IF NOT EXISTS {child} ("
+        " memory_id UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,"
+        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
+        f" embedding vector({_WRONG_DIMS}) NOT NULL,"
+        " payload JSONB NOT NULL DEFAULT '{}'::jsonb,"
+        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
+        " PRIMARY KEY (memory_id, fingerprint))"
+    ))
+
+
+def _make_service(session, llm=None) -> GraphService:
     return GraphService(
         session,
         vector_repo=PostgresVectorRepository(session),
         graph_repo=PostgresGraphRepository(session),
-        llm=_SentinelLLM(),
+        llm=llm if llm is not None else _SentinelLLM(),
     )
 
 
@@ -104,6 +142,23 @@ async def test_unified_graph_finds_the_real_partition_behind_the_sentinel(sessio
     await _register_real_fingerprint(session)
     memory_id = await _add_memory_with_vector(session)
     service = _make_service(session)
+
+    result = await service.get_unified_graph()
+
+    assert result["fingerprint_unresolved"] is False
+    assert [m["id"] for m in result["memories"]] == [str(memory_id)]
+
+
+async def test_unified_graph_finds_the_real_partition_behind_a_wrong_nonzero_dims(session):
+    """T2.83: 768 configured, 1024 real. Boot already created the empty
+    ``model|8`` partition (a positive dims passes registration's only check),
+    and real embeds already populated ``model|4`` before the config drifted.
+    The vector arm must find the real data, not the empty phantom partition
+    that happens to carry the configured name."""
+    await _register_real_fingerprint(session)
+    memory_id = await _add_memory_with_vector(session)
+    await _register_wrong_fingerprint_empty(session)
+    service = _make_service(session, llm=_WrongDimsLLM())
 
     result = await service.get_unified_graph()
 

@@ -86,10 +86,12 @@ class GraphService:
                 similarity_edges = self._compute_similarity_edges(clustered, similarity_threshold)
             except EmbedderFingerprintUnresolved:
                 # Distinguishable from "no data": the embedding purpose's
-                # dimensions is unset and nothing has ever embedded under this
-                # model, so there is no partition to read at all (invariant 2,
-                # T2.68) — surfaced on the response rather than only logged,
-                # so an empty vector arm can never be mistaken for "no data".
+                # dimensions is unset, or set to a value no real embed has
+                # produced, and nothing has ever embedded under this model, so
+                # there is no partition to read at all (invariant 2,
+                # T2.68/T2.83) — surfaced on the response rather than only
+                # logged, so an empty vector arm can never be mistaken for
+                # "no data".
                 fingerprint_unresolved = True
                 logger.warning(
                     "Unified graph vector arm skipped: embedding fingerprint unresolved"
