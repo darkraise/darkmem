@@ -642,9 +642,53 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.39a — The topics read surface and the pin-suggestion door
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20, T2.19` · `Doc: 09 §3, 13 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Split from T2.39 on 2026-08-04, for the same reason T2.36a was split from
+T2.36 on 2026-08-03: the UI task names a backend it can call and there is no door.
+`app/services/topic_browsing.py` (`browse_topics`, `get_topic`, `topics_for_memory`,
+`get_injectable_report`) and `app/services/pin_suggestions.py` (`snapshot_topics`,
+`diff_topics`, `compute_pin_suggestions`, `journal_pin_suggestions`,
+`accept_pin_suggestion`, `dismiss_pin_suggestion`) both shipped with T2.20 and are
+well tested — and a repo-wide scan finds **zero** consumers of either module outside
+`backend/tests`. No REST route, no MCP tool, no job. Nine public callables and no
+caller.
+
+That makes two of T2.39's four Done-when clauses unsatisfiable as written:
+"accept/dismiss round-trips" has nothing to round-trip against, and "pin suggestions
+show what changed between runs" requires `diff_topics`' output to be reachable from a
+browser. A UI lane handed T2.39 unsplit would have satisfied both against
+`useDemoStore`, which is the failure T2.36's split existed to prevent.
+
+This task builds the **door**, not new mechanics: T2.20 owns the semantics and is not
+to be re-litigated. Note the identity rule T2.20 established — pin suggestions key on
+the stable dominant-entity label, never the churning community id — must survive onto
+the wire, because a route that keys accept/dismiss on the community id reintroduces the
+churn T2.20's Done-when exists to exclude.
+
+**Done when:**
+- [ ] A topics list and a topic detail door exist under `/api/v1/knowledge`, matching
+      `api-rest-conventions.md`, serving what `browse_topics` / `get_topic` return
+      including a **pending** report as pending rather than as absent
+- [ ] The injectable report is served through `get_injectable_report`, and a topic whose
+      report has not been generated is distinguishable on the wire from one whose report
+      is empty
+- [ ] Pin suggestions are readable with the diff `diff_topics` computes — what changed
+      between runs, not just the current set
+- [ ] Accept and dismiss are `POST` doors that persist through `accept_pin_suggestion` /
+      `dismiss_pin_suggestion`, keyed on the **dominant-entity label**; a test fails if
+      the route keys on the community id
+- [ ] Every door is project-scoped, and a cross-project read fails a test
+- [ ] The doors journal to `events` through `record_event` with an already-vocabulary
+      event type — widening `EVENT_TYPES` is taxonomy-first and is not this task's
+
+**Verify.** `cd backend && python -m pytest tests/test_topics_read_surface.py tests/test_pin_suggestions.py -q`
+
 #### T2.39 — Topics tab
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20, T2.39a` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Browsing, report injection, pin-suggestion diff.
 
@@ -1959,6 +2003,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-04 | T2.39, T2.39a | 2 | **T2.39 split; `T2.39a` minted to own the topics read surface and the pin-suggestion door, and T2.39 gains `Depends: T2.39a`.** T2.20 shipped `topic_browsing.py` and `pin_suggestions.py` — nine public callables, both modules well tested — and a repo-wide scan finds **zero** consumers of either outside `backend/tests`: no REST route, no MCP tool, no job. Two of T2.39's four Done-when clauses therefore had nothing to satisfy them. "accept/dismiss round-trips" has no door to round-trip against, and "pin suggestions show what changed between runs" needs `diff_topics`' output reachable from a browser. `topics-tab.tsx` is meanwhile a demo-data surface, so nothing fails loudly and a lane would have satisfied both clauses against `useDemoStore` | Caught by the controller at brief-writing time, reading the tree rather than the task text — the same way T2.36a was caught the day before, and the **sixth** instance of this epic's recurring shape: a constraint recorded in prose and absent from the graph. Split rather than widened for the reason the T2.36 split gives: widening in place pushes a Size-M task to L without the reviewed step-level plan runbook §3 requires. Both halves are Sonnet here — the door is plumbing over semantics T2.20 already fixed and tested, not a new honesty contract — which is the one way this differs from the T2.36/T2.36a split. The identity rule is what makes the door non-trivial: T2.20's Done-when pins pin suggestions to the stable dominant-entity label rather than the churning community id, and a route that keys accept/dismiss on the id would silently reintroduce exactly the churn that clause excludes, with a green suite either way |
 | 2026-08-03 | T2.78 | 1 | **T2.78's Verify command names `backend/tests/test_code_query.py`, which has never existed in this repository** — `git log --all` for that path returns nothing, and no file of that name exists under any tests directory at the branch point. Ran the actual coverage of `CodeQueryService.search_code` instead — `tests/test_code_search_order.py` plus `tests/test_mcp.py`, `tests/test_mcp_surface_parity.py`, `tests/test_door_parity.py`, `tests/test_pushdown_reason_code.py` (54 passed) — and `tests/test_hybrid_search.py` (10 passed, including the new deletion-proving test) as named | Task-local: a wrong file path in the Verify field, carried into the lane brief unchanged. Recorded rather than silently substituted so the next reader does not re-derive which file the command actually meant, and does not read a clean run of a nonexistent file as having happened |
 | 2026-08-03 | T2.76, T2.21 | 2 | **T2.76 minted: `gate.sh` sends the harness to the shared `darkmem_bench` in every round.** It exports `TEST_DATABASE_URL` and not `BENCH_DATABASE_URL`, so the benchlib arm ignores a lane's bench assignment entirely; T2.21 hit it as a `DeadlockDetectedError` on `DROP SCHEMA` while a sibling lane held the database, and green on a re-run with the variable pinned. **The repo's own merge gate is therefore the one command that violates the per-lane isolation runbook §8 mandates** | Recorded rather than patched inline because the fix has a precedent worth matching: T2.54 hit the sibling defect *this same day* — a harness test whose result depended on an ambient environment variable — and resolved it by deriving the database name from a hash of the checkout path so the environment stops deciding. Two components solving the same problem two different ways is how the two RRF constants already drifted. Note also the failure's shape: it is indistinguishable from a code regression, which is precisely what the runbook warns about, and it cost the controller a red gate earlier in this round that was attributed to a killed run — a diagnosis that may have been right for the wrong reason |
 | 2026-08-03 | T2.75, T2.71, T2.36a | 2 | **T2.75 minted: the badge guards are backend-only, and the frontend carries claim strings none of them can see.** Doc 13 §5.3 forbids a screen paraphrasing the claim; two demo-fixture files and a component comment do. T2.36a's certainty-word guard and T2.71's second-producer scan both walk `backend/app` exclusively. Two independent sightings the same day: T2.71's implementer flagged the fixtures and took no action, and T2.71's **reviewer reported a fixture at `knowledge-curated.ts:52` in a claim form the producer can never emit** — a demonstrated divergence rather than a stylistic worry | Logged because the interesting property is the **shape of the blind spot**, not the three files. Two separate guards were built this round to stop a second producer of the honesty sentence, both were mutation-proved, and both stop at the language boundary — so the surface doc 13 actually cares about, the one a human reads, is the one surface neither covers. The UI is still on demo data, so nothing user-visible is wrong today; that is the argument for fixing it now rather than after it is wired |
