@@ -24,3 +24,4 @@ cutover-verification-*.json
 cutover-aborted-*.json
 cutover-snapshot-*.jsonl
 backend/scripts/benchlib/entailment/cache/
+backend/scripts/e2e/.env-e2e
