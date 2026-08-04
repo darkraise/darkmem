@@ -442,7 +442,10 @@ async def test_the_doors_rank_alike_past_the_shared_fusion_depth(
     identically-truncated lists forever.
     """
     target = await _deep_corpus(session)
-    limit = FUSION_FETCH_DEPTH + 40
+    # Past the corpus, so the arms are read deeper than the corpus is long and
+    # the target's rank is the one the fusion actually produced rather than an
+    # artefact of where the request's own budget cut.
+    limit = FILLERS + 20
 
     semantic = [
         str(row["memory_id"])
@@ -464,7 +467,10 @@ async def test_the_doors_rank_alike_past_the_shared_fusion_depth(
     rest = _order(await _rest_body(client, auth_headers, limit=limit))
     tool = _order(await _mcp_body(limit=limit))
 
-    assert len(rest) > FUSION_FETCH_DEPTH
+    assert len(rest) == FILLERS + 1, (
+        "every seeded row must reach the answer, or the comparison is over a "
+        "list the request's own budget cut before the depth could matter"
+    )
     assert rest == tool
     # Read to this depth the target fuses a deep semantic contribution onto a
     # rank-one keyword one and lands mid-list; a shallower read leaves it
@@ -593,21 +599,22 @@ async def test_every_channel_down_is_unavailable_at_both_doors(
     tool = await _mcp_body()
 
     assert response.status_code == 503
-    detail = response.json()["detail"]
-    assert detail["status"] == "unavailable"
-    assert detail["reason"]
-    assert detail["rows"] == []
-    assert detail["channels"] == json.loads(
-        json.dumps(
-            {
-                name: status.model_dump()
-                for name, status in outage_channels(fact_asked=True).items()
-            }
-        )
-    )
+    body = response.json()
+    # The app's own error envelope, and the word in it is the word the tool
+    # uses: ``_HTTP_ERROR_CODES[503]`` is "unavailable" and so is the tool's
+    # ``status``. tests/test_envelope.py pins that agreement across the doors.
+    assert body["error"]["code"] == "unavailable"
+    unavailable = body["error"]["details"][0]
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["reason"] == body["error"]["message"]
+    assert unavailable["rows"] == []
+    assert unavailable["channels"] == {
+        name: status.model_dump()
+        for name, status in outage_channels(fact_asked=True).items()
+    }
     assert tool["status"] == "unavailable"
     assert tool["rows"] == []
-    assert tool["channels"] == detail["channels"]
+    assert tool["channels"] == unavailable["channels"]
     assert "envelope" not in tool
 
 
