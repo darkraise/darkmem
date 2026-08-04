@@ -175,14 +175,38 @@ _NEGATED = re.compile(
     r"will\s+not|won'?t)\b",
     re.IGNORECASE,
 )
-# A sentence terminator, as opposed to a dot inside a token. A bare `[.;!?]`
-# severed the negation lookback on "Do not (per policy v1.2) delete this note
-# after 2026-12-31." and on "Do not, e.g. during the cleanup, delete …" — both
-# in the deletion direction, so the residual is worth the three extra clauses:
-# a terminator is followed by whitespace or end of text, and is neither
-# digit-preceded (version numbers, decimals) nor preceded by a lone letter
-# (`e.g.`, `i.e.`).
-_SENTENCE_END = re.compile(r"(?<!\d)(?<!\b[a-z])[.;!?]+(?=\s|$)", re.IGNORECASE)
+# Abbreviations whose trailing dot is not a sentence end. A closed list is
+# unavoidable here: "a terminator preceded by a multi-letter word" describes
+# every *real* sentence end too, so no lookbehind can separate `cf. Fig. 3`
+# from `plan. Delete`. The capital-letter lookahead below catches the ordinary
+# mid-sentence case (an abbreviation is usually followed by lowercase); this
+# list is only for the residue where a capitalised word follows one.
+_ABBREVIATIONS = (
+    "cf", "etc", "vs", "approx", "inc", "ltd", "dr", "mr", "mrs", "ms",
+    "no", "fig", "al", "jr", "sr", "st", "vol", "ch", "pp", "est",
+    "min", "max", "ref", "dept",
+)
+_ABBREVIATION_GUARD = "".join(rf"(?<!\b(?i:{a}))" for a in _ABBREVIATIONS)
+
+# A sentence terminator, as opposed to a dot inside a token — and getting this
+# wrong severs the negation lookback, which is the *deletion* direction. Four
+# rounds of exhibits shaped it: "Do not (per policy v1.2) delete …", "Do not,
+# e.g. during the cleanup, delete …", "Do not wait... delete …", and "Do not —
+# repeat! — delete …" all armed under simpler rules. The last two are why the
+# lookahead exists rather than a bare `(?=\s|$)`: an ellipsis is a pause, and a
+# mid-sentence exclamation is followed by a continuation, not a capital.
+#
+# The residual cost is recall-side and accepted: a sentence genuinely ending in
+# a digit, a lone letter, an abbreviation, or before a lowercase continuation
+# does not terminate, so an earlier negation can suppress the next sentence's
+# genuine instruction. The memory simply lives on.
+_SENTENCE_END = re.compile(
+    r"(?<!\d)"                     # v1.2 — a decimal, not a sentence end
+    r"(?<!\b[a-zA-Z])"             # e.g. / i.e. — a lone initial
+    r"(?<!\.)" + _ABBREVIATION_GUARD + r"[.;!?]"
+    r"(?!\.)"                      # an ellipsis run is a pause, not a stop
+    r"(?=\s+[A-Z\"“«(\[]|\s*$)"    # a real sentence starts with a capital
+)
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 

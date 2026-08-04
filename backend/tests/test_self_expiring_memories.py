@@ -79,6 +79,13 @@ def test_the_stated_day_is_covered_in_full():
         # instruction: the lookback stops at the sentence terminator.
         ("Never mind the old plan. Delete this note after 2026-12-31.",
          datetime(2027, 1, 1, tzinfo=timezone.utc)),
+        # The other side of the sentence-terminator rule: a real sentence end
+        # after an abbreviation or an exclamation must still cut the lookback,
+        # or an earlier negation silently eats every later instruction.
+        ("We shipped it Inc. Delete this note after 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+        ("Old plan dropped! Delete this note after 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
     ],
 )
 def test_the_guards_do_not_swallow_a_genuine_instruction(content, expected):
@@ -190,6 +197,16 @@ def test_the_earliest_future_expiry_wins():
         # sentence ends.
         "Do not (per policy v1.2) delete this note after 2026-12-31.",
         "Do not, e.g. during the quarterly cleanup, delete this note after 2026-12-31.",
+        # ── Round-4 re-review: the round-4 tests covered `v1.2` and `e.g.` but
+        # not an ellipsis run or a multi-letter abbreviation, so those two
+        # shapes kept severing the negation. A lookbehind cannot separate them
+        # from a real sentence end, hence the capital-letter lookahead plus a
+        # closed abbreviation list.
+        "Do not wait... delete this note after 2026-12-31.",
+        "Do not ... delete this note after 2026-12-31.",
+        "Do not — repeat! — delete this note after 2026-12-31.",
+        "Do not, cf. Fig. 3 and etc. notes, delete this note after 2026-12-31.",
+        "Do not, vs. approx. 5 others, delete this note after 2026-12-31.",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
