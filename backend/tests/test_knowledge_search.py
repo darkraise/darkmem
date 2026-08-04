@@ -364,12 +364,23 @@ async def test_the_two_doors_share_one_answer_budget_cap(session, monkeypatch):
     assert seen == [KNOWLEDGE_SEARCH_MAX_LIMIT]
 
 
-async def test_the_route_refuses_a_limit_past_the_shared_cap(client, auth_headers):
+async def test_the_route_bounds_its_budget_at_the_shared_cap(
+    client, auth_headers, session
+):
     """The one stated wire asymmetry on the budget: REST validates where the
-    tool clamps. The bound is the same constant, so no query answerable on one
-    door is unanswerable on the other."""
-    response = await _rest(client, auth_headers, limit=KNOWLEDGE_SEARCH_MAX_LIMIT + 1)
-    assert response.status_code == 422
+    tool clamps. Both edges are asserted, because only the pair pins the same
+    bound — a route that refused past the cap and *also* refused at it would
+    leave a request the tool answers unanswerable here, which is a capability
+    asymmetry rather than a wire one.
+    """
+    await _corpus(session)
+
+    assert (
+        await _rest(client, auth_headers, limit=KNOWLEDGE_SEARCH_MAX_LIMIT + 1)
+    ).status_code == 422
+    assert (
+        await _rest(client, auth_headers, limit=KNOWLEDGE_SEARCH_MAX_LIMIT)
+    ).status_code == 200
 
 
 async def test_an_unauthenticated_request_is_refused(client, session):
@@ -467,11 +478,14 @@ async def test_the_doors_rank_alike_past_the_shared_fusion_depth(
     rest = _order(await _rest_body(client, auth_headers, limit=limit))
     tool = _order(await _mcp_body(limit=limit))
 
+    # The clause first, so a genuine divergence is reported as one; the
+    # fixture guard second, because two doors that truncated identically would
+    # agree here and still be comparing a list the budget cut.
+    assert rest == tool
     assert len(rest) == FILLERS + 1, (
         "every seeded row must reach the answer, or the comparison is over a "
         "list the request's own budget cut before the depth could matter"
     )
-    assert rest == tool
     # Read to this depth the target fuses a deep semantic contribution onto a
     # rank-one keyword one and lands mid-list; a shallower read leaves it
     # keyword-only and further down. Pinning the position is what makes a
