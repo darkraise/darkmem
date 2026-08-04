@@ -14,10 +14,11 @@ import {
 
 /** The Hygiene queue's four row shapes — demo and live are two producers of
  *  each, mirroring `use-review-queue.ts`. Duplicates keep their own shape
- *  (an edge between two memories, no content) rather than merging into the
- *  memory-row shape the other three arms share, because
- *  `HygieneDuplicateItem` genuinely carries different fields (two ids and a
- *  score, not one memory's content/status). */
+ *  (an edge between two memories) rather than merging into the memory-row
+ *  shape the other three arms share, because `HygieneDuplicateItem`
+ *  genuinely carries different fields (two ids, a score, and — since T2.87 —
+ *  each endpoint's own preview and created_at, not one memory's
+ *  content/status). */
 
 export interface HygieneDuplicateRowData {
   id: string
@@ -30,6 +31,51 @@ export interface HygieneDuplicateRowData {
   hygiene_state: string | null
   detected_at: string | null
   created_at: string
+  source_content_preview: string
+  source_created_at: string
+  target_content_preview: string
+  target_created_at: string
+}
+
+export interface DuplicateDirection {
+  olderId: string
+  olderPreview: string
+  olderCreatedAt: string
+  newerId: string
+  newerPreview: string
+  newerCreatedAt: string
+}
+
+/** Which endpoint of a duplicate pair is older — the direction a "Supersede
+ *  instead" action needs to show before it applies (T2.87). This is a
+ *  **display and default-payload** heuristic, not the final word:
+ *  `supersede()` is the actual arbiter and refuses `successor_not_newer` if
+ *  the guess is wrong. It approximates the server's own `(created_at, id)`
+ *  tie-break (`successor_is_newer` in `app/services/supersede.py`) with a
+ *  plain string comparison, since the UI has no access to Postgres's UUID
+ *  byte ordering — good enough for a default the backend still checks. */
+export function duplicateDirection(row: HygieneDuplicateRowData): DuplicateDirection {
+  const sourceIsOlder =
+    row.source_created_at < row.target_created_at ||
+    (row.source_created_at === row.target_created_at &&
+      row.source_memory_id < row.target_memory_id)
+  return sourceIsOlder
+    ? {
+        olderId: row.source_memory_id,
+        olderPreview: row.source_content_preview,
+        olderCreatedAt: row.source_created_at,
+        newerId: row.target_memory_id,
+        newerPreview: row.target_content_preview,
+        newerCreatedAt: row.target_created_at,
+      }
+    : {
+        olderId: row.target_memory_id,
+        olderPreview: row.target_content_preview,
+        olderCreatedAt: row.target_created_at,
+        newerId: row.source_memory_id,
+        newerPreview: row.source_content_preview,
+        newerCreatedAt: row.source_created_at,
+      }
 }
 
 export interface HygieneMemoryRowData {
@@ -80,6 +126,10 @@ function duplicateFromApi(item: HygieneDuplicateItem): HygieneDuplicateRowData {
     hygiene_state: item.hygiene_state,
     detected_at: item.detected_at,
     created_at: item.created_at,
+    source_content_preview: item.source_content_preview,
+    source_created_at: item.source_created_at,
+    target_content_preview: item.target_content_preview,
+    target_created_at: item.target_created_at,
   }
 }
 
@@ -111,6 +161,13 @@ function duplicateFromDemo(
     hygiene_state: "open",
     detected_at: null,
     created_at: "2026-08-01T00:00:00Z",
+    // The demo fixture carries no per-row timestamp, so the two synthetic
+    // ones below are the only thing that can order this pair — rows[0]
+    // always reads as the older side in demo mode.
+    source_content_preview: pair.rows[0].text,
+    source_created_at: "2026-08-01T00:00:00Z",
+    target_content_preview: pair.rows[1].text,
+    target_created_at: "2026-08-01T00:01:00Z",
   }
 }
 

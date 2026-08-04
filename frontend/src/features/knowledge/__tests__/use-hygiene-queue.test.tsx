@@ -8,10 +8,12 @@ vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
 import { apiFetch } from "@/lib/api"
 import {
+  duplicateDirection,
   useHygieneCountsRows,
   useHygieneDuplicateRows,
   useHygieneLowConfidenceRows,
   useHygieneSupersededRows,
+  type HygieneDuplicateRowData,
 } from "../use-hygiene-queue"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -24,7 +26,7 @@ const QUERY = { limit: 10, offset: 0 }
 describe("useHygieneDuplicateRows (DEMO off — real /hygiene-queue/duplicates)", () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it("carries only what the backend actually returns — no fabricated content preview", async () => {
+  it("carries only what the backend actually returns — no fabricated fields", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [
         {
@@ -38,6 +40,10 @@ describe("useHygieneDuplicateRows (DEMO off — real /hygiene-queue/duplicates)"
           hygiene_state: "open",
           detected_at: "2026-07-30T00:00:00Z",
           created_at: "2026-07-30T00:00:00Z",
+          source_content_preview: "uses postgres 14",
+          source_created_at: "2026-07-01T00:00:00Z",
+          target_content_preview: "uses postgres 14 as well",
+          target_created_at: "2026-07-30T00:00:00Z",
         },
       ],
       total: 4,
@@ -52,6 +58,13 @@ describe("useHygieneDuplicateRows (DEMO off — real /hygiene-queue/duplicates)"
     expect(row.source_memory_id).toBe("m1")
     expect(row.target_memory_id).toBe("m2")
     expect(row.score).toBe(0.91)
+    // T2.87: each side's own preview and created_at now cross legitimately
+    // — the guard here is that they are the backend's own values, not a
+    // client-invented `content_preview` merging the two.
+    expect(row.source_content_preview).toBe("uses postgres 14")
+    expect(row.source_created_at).toBe("2026-07-01T00:00:00Z")
+    expect(row.target_content_preview).toBe("uses postgres 14 as well")
+    expect(row.target_created_at).toBe("2026-07-30T00:00:00Z")
     expect(Object.keys(row)).not.toContain("content_preview")
   })
 
@@ -153,5 +166,58 @@ describe("useHygieneCountsRows", () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
     const { result } = renderHook(() => useHygieneCountsRows({}), { wrapper })
     await waitFor(() => expect(result.current.error).toBe(true))
+  })
+})
+
+describe("duplicateDirection", () => {
+  const baseRow: HygieneDuplicateRowData = {
+    id: "rel1",
+    source_memory_id: "m-source",
+    target_memory_id: "m-target",
+    rel_type: "near_duplicate",
+    project: "darkmem",
+    score: 0.91,
+    verdict: "likely_duplicate",
+    hygiene_state: "open",
+    detected_at: "2026-07-30T00:00:00Z",
+    created_at: "2026-07-30T00:00:00Z",
+    source_content_preview: "source text",
+    source_created_at: "2026-07-01T00:00:00Z",
+    target_content_preview: "target text",
+    target_created_at: "2026-07-30T00:00:00Z",
+  }
+
+  // This is the whole point of T2.87: a supersede direction picker built on
+  // ids and a score alone would be the UI inventing an adjudication. If
+  // either side's created_at were dropped from the row, this direction
+  // could no longer be told from source_memory_id/target_memory_id alone.
+  it("names the earlier created_at as older, regardless of source/target order", () => {
+    const sourceOlder = duplicateDirection(baseRow)
+    expect(sourceOlder.olderId).toBe("m-source")
+    expect(sourceOlder.newerId).toBe("m-target")
+
+    const targetOlder = duplicateDirection({
+      ...baseRow,
+      source_created_at: "2026-07-30T00:00:00Z",
+      target_created_at: "2026-07-01T00:00:00Z",
+    })
+    expect(targetOlder.olderId).toBe("m-target")
+    expect(targetOlder.newerId).toBe("m-source")
+  })
+
+  it("breaks a created_at tie by memory id, deterministically", () => {
+    const tied = duplicateDirection({
+      ...baseRow,
+      source_created_at: "2026-07-30T00:00:00Z",
+      target_created_at: "2026-07-30T00:00:00Z",
+    })
+    expect(tied.olderId).toBe("m-source")
+    expect(tied.newerId).toBe("m-target")
+  })
+
+  it("carries each side's own preview alongside its direction", () => {
+    const direction = duplicateDirection(baseRow)
+    expect(direction.olderPreview).toBe("source text")
+    expect(direction.newerPreview).toBe("target text")
   })
 })
