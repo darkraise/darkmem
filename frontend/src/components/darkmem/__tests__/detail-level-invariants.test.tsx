@@ -33,6 +33,7 @@ import { useDetailLevel } from "../use-detail-level"
 import { MemoryRow } from "@/features/memories/components/memory-row"
 import { RealMemoriesView } from "@/features/memories/components/real-memories-view"
 import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
+import { LiveDreamDigest } from "@/features/activity/components/dream-tab"
 
 // FactSource stays in @/demo/types: T1.68 (the type-relocation task T1.67's
 // falsification opened) found no real Knowledge-vault binding anywhere in
@@ -154,6 +155,108 @@ describe("detail level: fact-sources honesty count renders in both modes", () =>
     render(<FactSourcesGroups sources={SOURCES} />)
     expect(screen.queryByText("memory abc12345")).not.toBeInTheDocument()
     expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
+  })
+})
+
+const DREAM_CYCLE_ID = "20260803-01"
+const DREAM_OBJECT_ID = "33333333-3333-3333-3333-333333333333"
+
+function dreamCyclesFixture() {
+  return {
+    items: [
+      {
+        cycle_id: DREAM_CYCLE_ID,
+        started_at: "2026-08-03T02:00:00Z",
+        ended_at: "2026-08-03T02:05:00Z",
+        projects: ["darkmem"],
+        total: 1,
+        counts: { subsume: 1, associate: 0, refine: 0 },
+        undone_count: 0,
+        origin: null,
+      },
+    ],
+    total: 1,
+    limit: 20,
+    offset: 0,
+  }
+}
+
+function dreamDigestFixture() {
+  return {
+    cycle_id: DREAM_CYCLE_ID,
+    started_at: "2026-08-03T02:00:00Z",
+    ended_at: "2026-08-03T02:05:00Z",
+    counts: { subsume: 1, associate: 0, refine: 0 },
+    undone_count: 0,
+    objects: [
+      {
+        object_id: DREAM_OBJECT_ID,
+        project: "darkmem",
+        actions: [
+          {
+            event_id: 201,
+            created_at: "2026-08-03T02:01:00Z",
+            action: "subsume",
+            object_id: DREAM_OBJECT_ID,
+            project: "darkmem",
+            detector: "dedup",
+            origin: null,
+            actor: null,
+            before: { status: "active" },
+            after: { status: "superseded" },
+            detail: { verdict: "dup", score: 0.9 },
+            undone: false,
+            undone_at: null,
+            undone_by: null,
+            undo_batch_id: null,
+            undoable: true,
+            undo_blocked_reason: null,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+describe("detail level: dream digest honesty labels render in both modes", () => {
+  function queryWrapper({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+
+  beforeEach(() => {
+    useDetailLevel.setState({ level: "advanced" })
+    vi.mocked(apiFetch).mockImplementation((path: unknown) => {
+      const p = String(path)
+      if (p.startsWith("/dream-digest/cycles/")) {
+        return Promise.resolve(dreamDigestFixture())
+      }
+      return Promise.resolve(dreamCyclesFixture())
+    })
+  })
+
+  it.each(["simple", "advanced"] as const)(
+    "the undo control and the before/after diff both render in %s mode",
+    async (level) => {
+      useDetailLevel.setState({ level })
+      render(<LiveDreamDigest />, { wrapper: queryWrapper })
+      await screen.findByText(`object ${DREAM_OBJECT_ID.slice(0, 8)}`)
+
+      // Honesty: reachable undo and what-changed are never collapsed.
+      expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument()
+      expect(screen.getByText(/status:/)).toBeInTheDocument()
+      expect(screen.getByText(/active/)).toBeInTheDocument()
+      expect(screen.getByText(/superseded/)).toBeInTheDocument()
+    },
+  )
+
+  it("collapses only the technical event id / detail line in simple mode", async () => {
+    useDetailLevel.setState({ level: "simple" })
+    render(<LiveDreamDigest />, { wrapper: queryWrapper })
+    await screen.findByText(`object ${DREAM_OBJECT_ID.slice(0, 8)}`)
+
+    expect(screen.queryByText(/event #201/)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument()
   })
 })
 
