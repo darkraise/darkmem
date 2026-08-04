@@ -50,6 +50,11 @@ export interface DreamAction {
   undone_at: string | null
   undone_by: string | null
   undo_batch_id: string | null
+  // The undo's own two lists, reconstructed from the `undone` event's journal
+  // payload on every re-read — not just the one-shot undo response toast.
+  // Empty for an action that has not been undone.
+  restored: string[]
+  not_restored: string[]
   // Advisory only — computed with no locks. The door re-runs the same
   // predicate under its locks and answers 409 on disagreement.
   undoable: boolean

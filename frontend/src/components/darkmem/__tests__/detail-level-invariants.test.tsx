@@ -213,6 +213,8 @@ function dreamDigestFixture() {
             undone_at: null,
             undone_by: null,
             undo_batch_id: null,
+            restored: [],
+            not_restored: [],
             undoable: true,
             undo_blocked_reason: null,
           },

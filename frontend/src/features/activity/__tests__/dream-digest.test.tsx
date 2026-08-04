@@ -90,6 +90,11 @@ function digestResponse() {
             undone_at: "2026-08-03T05:00:00Z",
             undone_by: "alice",
             undo_batch_id: "batch-xyz",
+            // Deliberately non-identical lists — a fixture where undo restored
+            // everything cannot distinguish this render path from one that
+            // only ever showed `restored`.
+            restored: ["status", "superseded_by"],
+            not_restored: ["updated_at", "events"],
             undoable: false,
             undo_blocked_reason: "already_undone",
           },
@@ -109,6 +114,8 @@ function digestResponse() {
             undone_at: null,
             undone_by: null,
             undo_batch_id: null,
+            restored: [],
+            not_restored: [],
             undoable: true,
             undo_blocked_reason: null,
           },
@@ -134,6 +141,8 @@ function digestResponse() {
             undone_at: null,
             undone_by: null,
             undo_batch_id: null,
+            restored: [],
+            not_restored: [],
             undoable: true,
             undo_blocked_reason: null,
           },
@@ -209,10 +218,12 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     render(<LiveDreamDigest />, { wrapper })
 
     await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
-    // subsume's before/after
-    expect(screen.getByText(/status:/)).toBeInTheDocument()
-    expect(screen.getByText(/active/)).toBeInTheDocument()
-    expect(screen.getByText(/superseded/)).toBeInTheDocument()
+    // subsume's before/after. Scoped to the diff row itself: event 102's own
+    // `restored` list also contains "superseded_by" (T2.89), so an unscoped
+    // `/superseded/` query now matches two elements on the page.
+    const statusRow = screen.getByText(/status:/).closest("li")!
+    expect(within(statusRow).getByText(/active/)).toBeInTheDocument()
+    expect(within(statusRow).getByText(/superseded/)).toBeInTheDocument()
     // refine's before/after, in the other object's group
     expect(screen.getByText(/old summary/)).toBeInTheDocument()
     expect(screen.getByText(/new summary/)).toBeInTheDocument()
@@ -227,6 +238,19 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     // supersede badge asserted above) and carry the undone marker and actor.
     expect(screen.getByText(/undone — journaled/)).toBeInTheDocument()
     expect(screen.getByText(/alice/)).toBeInTheDocument()
+  })
+
+  it("T2.89: a re-read (not the one-shot toast) still says what was restored", async () => {
+    // The toast that fires at undo time is not mocked into this render at
+    // all — this test never calls the undo mutation. If this assertion can
+    // only pass by having driven a toast, the read side is not the carrier.
+    mockReads()
+    render(<LiveDreamDigest />, { wrapper })
+
+    await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
+    expect(
+      screen.getByText((_, node) => node?.textContent === "restored: status, superseded_by · not restored: updated_at, events"),
+    ).toBeInTheDocument()
   })
 
   it("undo is reachable per-action", async () => {

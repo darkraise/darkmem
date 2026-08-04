@@ -45,6 +45,12 @@ class DreamAction(BaseModel):
     undone_at: datetime | None = None
     undone_by: str | None = None
     undo_batch_id: str | None = None
+    # The undo's own two lists, reconstructed from the `undone` event's payload
+    # rather than re-stored here — see app/services/dream_digest.py. Empty for
+    # an action that has not been undone; `undone` is what disambiguates that
+    # from "undone but restored nothing", which the inverses never produce.
+    restored: list[str] = Field(default_factory=list)
+    not_restored: list[str] = Field(default_factory=list)
     # Advisory. The door re-runs the same predicate under its locks and answers
     # 409 when they disagree, so a client handles a 409 by re-fetching rather
     # than by trusting its last render.

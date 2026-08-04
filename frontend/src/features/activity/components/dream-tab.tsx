@@ -558,14 +558,26 @@ function LiveActionRow({
 
       <div className="flex items-center">
         {action.undone ? (
-          <span className="text-muted-foreground text-sm italic">
-            undone — journaled
-            {action.undone_by ? ` by ${action.undone_by}` : ""}
-            {action.undone_at ? ` at ${relativeTime(action.undone_at)}` : ""}
-            {detailLevel === "advanced" && action.undo_batch_id
-              ? ` (batch ${action.undo_batch_id.slice(0, 8)})`
-              : ""}
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground text-sm italic">
+              undone — journaled
+              {action.undone_by ? ` by ${action.undone_by}` : ""}
+              {action.undone_at ? ` at ${relativeTime(action.undone_at)}` : ""}
+              {detailLevel === "advanced" && action.undo_batch_id
+                ? ` (batch ${action.undo_batch_id.slice(0, 8)})`
+                : ""}
+            </span>
+            {/* Read from this row's own journal-backed fields, not the
+                one-shot undo toast — this is what makes the round trip
+                (undo, then leave and come back) still answer "what came
+                back". */}
+            <span className="text-muted-foreground font-mono text-[10px]">
+              restored: {action.restored.join(", ") || "—"}
+              {action.not_restored.length
+                ? ` · not restored: ${action.not_restored.join(", ")}`
+                : ""}
+            </span>
+          </div>
         ) : action.undoable ? (
           <Button
             size="sm"
