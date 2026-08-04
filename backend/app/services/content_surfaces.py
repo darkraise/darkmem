@@ -184,11 +184,11 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
     ContentSurface(
         key="knowledge_composed_search",
         kind=_R,
-        front_doors=("mcp:knowledge_search",),
+        front_doors=("POST /api/v1/knowledge/search", "mcp:knowledge_search"),
         crosses=("content", "fact_content"),
         scoping=Scoping.SCOPED,
         labels=("project", "status"),
-        decided_by="T2.72",
+        decided_by="T2.72 (MCP), T2.80 (REST)",
         reason="Doc 12 §3's composed four-layer read. `project` is a required "
                "keyword on `LayerCompositionService.search` and is pushed down "
                "by both channels it fans out to — `MemoryFilter(project=…)` on "
@@ -205,7 +205,9 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "memory row keeps the hybrid's `status` label and each fact its "
                "project, and a fact's supporting memories arrive nested inside "
                "it carrying their own labels rather than flattened into the "
-               "parent's.",
+               "parent's. T2.80 added the REST twin doc 12 §2 assigns; it "
+               "spends the same composition call with the same required "
+               "`project`, so the scope is one pushdown and not two.",
     ),
     ContentSurface(
         key="code_search",

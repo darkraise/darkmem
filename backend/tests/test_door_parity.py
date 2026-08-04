@@ -214,6 +214,39 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.composed_search",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/knowledge/search"),),
+        mcp=("knowledge_search",),
+        note=(
+            "Doc 12 section 3's composed four-layer read: one ranked list "
+            "drawn from L0 memories and L2 facts at once, every row labelled "
+            "and every fact badged, the memories that source a fact nested "
+            "under it, and an envelope naming which channels ran and how many "
+            "rows a context conflict excluded. T2.72 shipped the tool and "
+            "filed the surface MCP-single-door as an agent-shaped projection, "
+            "recording rather than resolving the fact that doc 12 section 2 "
+            "assigns the twin; T2.80 built it. The filing was honest and it "
+            "was wrong: memory.search and code.search are both two-door, so a "
+            "cross-layer ranked answer is a capability by this table's own "
+            "precedent, and this was the only ranked retrieval in the system "
+            "with one door. Both ends call LayerCompositionService.search and "
+            "both serialise through knowledge_search_response, the function "
+            "T2.72 placed outside the tool for exactly this; the degraded "
+            "payload has one producer too "
+            "(knowledge_search_unavailable). Ranking parity is asserted on "
+            "the order and not the shape "
+            "(tests/test_knowledge_search.py), because a row-shape test stays "
+            "green while two doors order one corpus differently. Two stated "
+            "wire asymmetries, neither of them a capability: the tool clamps "
+            "an out-of-range limit to the shared cap while the route 422s on "
+            "it, and unavailability is a 503 whose body is the shared model "
+            "against a tool payload that adds the MCP envelope's "
+            "schema_version. The route is auth-gated and the tool is not, the "
+            "same posture every two-door read on this table carries."
+        ),
+    ),
+    Surface(
         name="memory.stats",
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/analytics/stats"),),
@@ -721,32 +754,6 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     # ── MCP single door, each with its reason ───────────────────────
-    Surface(
-        name="knowledge.composed_search",
-        status=MCP_ONLY,
-        mcp=("knowledge_search",),
-        reason=(
-            "Doc 12 section 3's composed four-layer read: one ranked list "
-            "drawn from L0 memories and L2 facts at once, every row labelled "
-            "and every fact badged, the memories that source a fact nested "
-            "under it, and an envelope naming which channels ran and how many "
-            "rows a context conflict excluded. It is the agent-shaped "
-            "projection this audit names as its third sanctioned kind. The "
-            "rows are REST-reachable in their own key spaces -- L0 through "
-            "POST /api/v1/memories/search and L2 through GET "
-            "/api/v1/knowledge/facts -- and what is single-door is the "
-            "cross-layer ranked question, because the browser's consumer is "
-            "three tabs and the agent's is one prompt on a token budget. Doc "
-            "12 section 2's route table does assign a twin at POST "
-            "/knowledge/search, and no task in the corpus owns it; T2.72 "
-            "records that discrepancy here, exactly as the six code rows "
-            "below record theirs, rather than inventing a justification that "
-            "would outlive it. The serialiser both doors need already lives "
-            "outside the tool, in app/schemas/knowledge.py, so a twin spends "
-            "the same function instead of reshaping the same service's result "
-            "-- which is how code_search and code_blast_radius drifted."
-        ),
-    ),
     Surface(
         name="code.context",
         status=MCP_ONLY,

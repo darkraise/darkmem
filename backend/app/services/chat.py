@@ -256,7 +256,7 @@ class ChatService:
         )
 
         composed: ComposedResult | None = None
-        outage: RuntimeError | None = None
+        outage: CompositionUnavailable | None = None
         try:
             composed = await LayerCompositionService(self.llm, self.session).search(
                 question,
@@ -264,18 +264,21 @@ class ChatService:
                 limit=CHAT_RETRIEVAL_LIMIT,
                 statuses=CHAT_STATUSES,
             )
-        except RuntimeError as e:
+        except CompositionUnavailable as e:
             # An outage — every channel the composition asked was down — and a
             # turn still has to answer from the history it has. The envelope
             # below says the retrieval was degraded rather than letting an
             # empty context read as an empty corpus.
             #
-            # ``RuntimeError`` and not ``Exception``, matching the sibling MCP
-            # door verbatim (``api/mcp/server.py``'s ``knowledge_search``): a
-            # ``TypeError`` from a bug inside the composition is not an outage,
-            # and swallowing it here while the other door propagates it would
-            # answer every turn context-free under a "channel failed" banner
-            # that points an operator at the database instead of at the code.
+            # The typed class and not its ``RuntimeError`` base, matching both
+            # sibling doors verbatim (``api/mcp/server.py``'s
+            # ``knowledge_search`` and ``POST /api/v1/knowledge/search``). The
+            # composition raises the base for its own defects — the grouping
+            # fixpoint that stopped decreasing, a reranker returning a window
+            # of the wrong length — and a bug is not an outage: swallowing one
+            # here answers every turn context-free under a "channel failed"
+            # banner that points an operator at the database instead of at the
+            # code.
             logger.warning("Composed retrieval failed during chat retrieval: %s", e)
             outage = e
 

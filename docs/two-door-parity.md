@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**52 surfaces: 16 two-door, 36 single-door with a stated reason (29 REST-only, 7 MCP-only), 0 divergent.**
+**52 surfaces: 17 two-door, 35 single-door with a stated reason (29 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -44,7 +44,6 @@ the test rather than quietly joining the surface.
 ## The parity table
 
 <!-- BEGIN GENERATED PARITY TABLE -->
-
 | Surface | REST | MCP | Status | Reason / note |
 |---|---|---|---|---|
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
@@ -62,6 +61,7 @@ the test rather than quietly joining the surface.
 | `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Two doors, two implementations: both tools build their own SQLAlchemy query instead of spending CodeQueryService.list_symbols. Not yet observably divergent -- the tools emit a subset of the service's keys and no row differs -- but it is the same latent drift T1.42c found already realised on code_search and code_blast_radius. Delegating is not a no-behaviour-change edit (the service caps at limit=50 and the tools are uncapped), so it needs an owner, not a one-liner. |
 | `knowledge.overview` | `GET /api/v1/knowledge/overview` | `memory_overview` | two-door | Doc 12 section 3's tool table pairs the tool with this route, and both doors call memory_overview.get_overview -- the map selection, the single summarization reduce, the community-set cache and the declared drops are the service's, so neither door can answer a partial overview the other reports as complete. The REST door is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
 | `knowledge.fact_detail` | `GET /api/v1/knowledge/facts/{fact_id}` | `fact_get` | two-door | Doc 12 section 2's route table assigns fact_get a REST twin at exactly this path and section 3 puts the agent-facing single-object vault read on the tool, so T2.72 built the tool rather than leaving the route filed single-door on a posture argument. Both doors call facts_read.get_fact and both serialise through FactDetailResponse -- the tool does not reshape the dict, so a field the model does not declare is dropped on both doors and the badge's claim sentence crosses byte for byte (test_fact_detail_doors_serve_the_same_row). The REST door is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
+| `knowledge.composed_search` | `POST /api/v1/knowledge/search` | `knowledge_search` | two-door | Doc 12 section 3's composed four-layer read: one ranked list drawn from L0 memories and L2 facts at once, every row labelled and every fact badged, the memories that source a fact nested under it, and an envelope naming which channels ran and how many rows a context conflict excluded. T2.72 shipped the tool and filed the surface MCP-single-door as an agent-shaped projection, recording rather than resolving the fact that doc 12 section 2 assigns the twin; T2.80 built it. The filing was honest and it was wrong: memory.search and code.search are both two-door, so a cross-layer ranked answer is a capability by this table's own precedent, and this was the only ranked retrieval in the system with one door. Both ends call LayerCompositionService.search and both serialise through knowledge_search_response, the function T2.72 placed outside the tool for exactly this; the degraded payload has one producer too (knowledge_search_unavailable). Ranking parity is asserted on the order and not the shape (tests/test_knowledge_search.py), because a row-shape test stays green while two doors order one corpus differently. Two stated wire asymmetries, neither of them a capability: the tool clamps an out-of-range limit to the shared cap while the route 422s on it, and unavailability is a 503 whose body is the shared model against a tool payload that adds the MCP envelope's schema_version. The route is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
 | `memory.stats` | `GET /api/v1/analytics/stats` | `memory_stats` | two-door | T1.42f closed the audit's one recorded divergence: neither door called a service before, so the shared counts (plus the entities and relationships pair from PostgresGraphRepository.get_stats(), with its SQLAlchemyError rollback guard intact) were lifted into AnalyticsService.get_stats() and both doors now call it. |
 | `auth.session` | `POST /api/v1/auth/login`<br>`POST /api/v1/auth/logout`<br>`POST /api/v1/auth/refresh`<br>`POST /api/v1/auth/change-password`<br>`GET /api/v1/auth/me` | — | REST single-door | The MCP door is unauthenticated by design (invariant 20, doc 12 section 6), so a session surface on it is a contradiction in terms: there is no session to establish, and a change-password twin would let any LAN peer seize the admin account. |
 | `auth.audit` | `GET /api/v1/auth/audit` | — | REST single-door | A human security-review read of the doc 12 section 7 observability class: it enumerates login attempts and token events, which is precisely the material an unauthenticated caller must not be able to page through. |
@@ -92,14 +92,12 @@ the test rather than quietly joining the surface.
 | `code.repo_graph` | `GET /api/v1/code/graph/{repo_id}` | — | REST single-door | The whole-repo node-and-edge dump the UI canvas lays out client-side. The agent-facing projections of the very same rows are the six code_* graph tools below, which answer a question instead of shipping a graph; a tool twin would hand an agent a repo-sized payload to traverse itself. |
 | `code.wiki` | `GET /api/v1/code/wiki/{repo_id}` | — | REST single-door | Generated repo prose rendered by the UI. It is strictly read-only -- generation is an explicit POST /repos/{id}/reindex?generate_wiki=true, never a GET side effect -- and an agent reads the code graph and the symbols themselves rather than a summary written for a human. |
 | `health.liveness` | `GET /health` | — | REST single-door | An unauthenticated liveness probe for the container runtime. A tool twin is meaningless by construction: reaching the tool already proves the server is up. |
-| `knowledge.composed_search` | — | `knowledge_search` | MCP single-door | Doc 12 section 3's composed four-layer read: one ranked list drawn from L0 memories and L2 facts at once, every row labelled and every fact badged, the memories that source a fact nested under it, and an envelope naming which channels ran and how many rows a context conflict excluded. It is the agent-shaped projection this audit names as its third sanctioned kind. The rows are REST-reachable in their own key spaces -- L0 through POST /api/v1/memories/search and L2 through GET /api/v1/knowledge/facts -- and what is single-door is the cross-layer ranked question, because the browser's consumer is three tabs and the agent's is one prompt on a token budget. Doc 12 section 2's route table does assign a twin at POST /knowledge/search, and no task in the corpus owns it; T2.72 records that discrepancy here, exactly as the six code rows below record theirs, rather than inventing a justification that would outlive it. The serialiser both doors need already lives outside the tool, in app/schemas/knowledge.py, so a twin spends the same function instead of reshaping the same service's result -- which is how code_search and code_blast_radius drifted. |
 | `code.context` | — | `code_context` | MCP single-door | An agent-shaped projection -- callers, callees, heritage, community, processes for one symbol -- of rows the REST door serves whole through GET /code/graph/{repo_id}. No knowledge is REST-unreachable; what is single-door is the filtered query, because the UI's consumer is a canvas that wants the graph and the agent's consumer is a prompt that wants the answer. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.dependencies` | — | `code_dependencies` | MCP single-door | The imports edges for one repo or one file, filtered server-side out of the same code_edges rows GET /code/graph/{repo_id} ships whole to the canvas. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.communities` | — | `code_communities` | MCP single-door | The Leiden community nodes for one repo, filtered out of the same code_graph_nodes rows GET /code/graph/{repo_id} ships whole. The UI renders communities as clusters on the canvas; the agent wants them as a list. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.processes` | — | `code_processes` | MCP single-door | The traced execution flows for one repo with their ordered steps, filtered out of the same code_graph_nodes and code_edges rows GET /code/graph/{repo_id} ships whole. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.rename` | — | `code_rename` | MCP single-door | A cross-file reference sweep with a per-reference confidence, assembled from the definition rows and the call, heritage and import edges the REST door serves whole. It exists to drive an agent's edit; the UI has no rename view for a twin to feed. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.changes` | — | `code_changes` | MCP single-door | The only genuinely single-door capability in the code family: it shells out to git in the repo working directory and reports the uncommitted diff against the indexed symbols. Every REST read and the whole indexed graph are commit-based, so no route carries this state and the UI has no working-tree view. It serves the agent editing the tree right now. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. It has none, and unlike its five siblings the underlying state is not REST-reachable either. Escalated by T1.42d, not resolved. |
-
 <!-- END GENERATED PARITY TABLE -->
 
 ## Findings this audit raises
@@ -167,26 +165,47 @@ half is now `knowledge.fact_detail`, two-door, both ends serialising through
 one `FactDetailResponse`; the list half stays REST-only for doc 12's reason,
 which is that the agent's list-shaped vault read is `knowledge_search`.
 
-### 5. `knowledge_search` is a seventh MCP-ahead-of-REST row — recorded, not resolved
+### 5. `knowledge_search` was a seventh MCP-ahead-of-REST row — T2.80 closed it
 
-T2.72 shipped `knowledge_search`, doc 12 §3's composed four-layer read, and it
-lands MCP-single-door for the same agent-shaped-projection reason the six code
-tools carry: the rows are REST-reachable in their own key spaces (L0 through
-`POST /api/v1/memories/search`, L2 through `GET /api/v1/knowledge/facts`) and
-what is single-door is the cross-layer ranked question.
+T2.72 shipped `knowledge_search`, doc 12 §3's composed four-layer read, and
+filed it MCP-single-door for the same agent-shaped-projection reason the six
+code tools carry: the rows are REST-reachable in their own key spaces (L0
+through `POST /api/v1/memories/search`, L2 through `GET
+/api/v1/knowledge/facts`) and what is single-door is the cross-layer ranked
+question. It recorded, rather than resolved, that doc 12 §2 assigns a twin at
+`POST /knowledge/search` which no epic file owned.
 
-Unlike the code family, doc 12 does not claim the twin already exists — §2
-lists `POST /knowledge/search` among the routes the reshape adds. What no
-epic file carries is a task that builds it. The serialiser both doors need is
-therefore deliberately outside the tool, in `app/schemas/knowledge.py`, so the
-route spends the same function rather than reshaping
-`LayerCompositionService.search`'s result a second time. Recorded here so the
-next scheduling pass can mint the route rather than rediscover the gap.
+**That filing was honest and it was wrong, and T2.80 (2026-08-04) built the
+route.** The projection argument does not survive contact with this table's own
+precedent: `memory.search` and `code.search` are both two-door, so a ranked
+answer over a key space is a capability here and not a projection of one. Filed
+as it was, the composed read was the only ranked retrieval in the system with a
+single door.
 
-Note the asymmetry is one-way in the harmless direction, and the harmful
-direction is now guarded rather than merely absent:
-`test_fact_detail_doors_serve_the_same_row` compares the whole document from
-both doors, so a shape that diverges fails a test instead of a review.
+The route spends the serialiser T2.72 placed outside the tool for exactly this
+(`knowledge_search_response`), and the degraded payload got the same treatment
+(`knowledge_search_unavailable`), so neither the served shape nor the outage
+shape has a second producer. Two settlements the route forced rather than
+inherited:
+
+- **A composition defect is no longer served as an outage.** Both doors caught
+  `RuntimeError`, and the composition raises that base for its own bugs — the
+  grouping fixpoint that stopped decreasing, a reranker returning a window of
+  the wrong length. Every door now catches only `CompositionUnavailable`, so a
+  bug over a healthy vault surfaces as an error rather than as "the vault is
+  down". The third door, chat, was narrowed with them.
+- **Ranking parity is asserted on the order.** `envelope.reranked` is
+  permanently false because the reranker is a door-side constructor argument,
+  and the moment one door passed one the two would rank differently while every
+  row-shape parity test stayed green. `tests/test_knowledge_search.py` compares
+  the id sequences both doors produce over one corpus deep enough that fusion
+  depth is load-bearing, and an AST scan fails the build on any door that
+  constructs the composition with a reranker of its own.
+
+Note the harmful direction is guarded rather than merely absent, on both vault
+surfaces: `test_fact_detail_doors_serve_the_same_row` compares the whole
+document from both doors, and the composed read compares the whole document
+*and* its order.
 
 ## The two kinds of sanctioned single door, and a third this audit names
 
@@ -211,5 +230,9 @@ reasoning applied to a different noun:
    rather than to secrets, and it is why these are called out separately here.
 
 The mirrored kind — **agent-shaped projections** of rows the REST door serves
-whole — covers the six MCP-single-door code tools and, since T2.72,
-`knowledge_search`. It is the kind doc 12 §3 does not currently name.
+whole — covers the six MCP-single-door code tools. It is the kind doc 12 §3
+does not currently name. `knowledge_search` was filed under it by T2.72 and
+does not belong there: a projection re-presents rows another door already
+serves, and a ranked cross-layer answer is a row set neither other door
+produces. T2.80 moved it to two-door rather than widening this kind to cover
+it.
