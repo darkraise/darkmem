@@ -341,12 +341,23 @@ async def object_timeline(
     project: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    newest_first: bool = False,
 ) -> tuple[list[dict], int]:
-    """One object's full history, oldest-to-newest.
+    """One object's history, `limit`+`offset` bounded.
 
     `object_type = ... AND object_id = ...` are the two leading columns of
-    `ix_events_object`, and the ASC order matches the index's own
-    `created_at` order exactly, so the planner needs no extra sort.
+    `ix_events_object`; both orderings below sort by the index's own
+    `created_at` column (ascending or the same index scanned backward), so
+    the planner needs no extra sort either way.
+
+    Default is oldest-to-newest, the shape `GET /events/timeline` pages
+    forward through with `offset` — flipping that default would change what
+    every existing offset means for that door. `newest_first=True` orders
+    `created_at DESC, id DESC` instead, for a caller that wants the most
+    recent slice of a capped, unpaginated history (the fact detail ladder,
+    T2.86 fix round) without disturbing the ascending contract above — the
+    returned slice is in descending order and it is the caller's job to
+    reverse it if a chronological display is wanted.
 
     Accepted limitation (doc 04 §8.1): bigint-keyed code-graph objects carry
     their key in `payload`, not `object_id`, so their timelines are not
@@ -364,10 +375,11 @@ async def object_timeline(
         params["project"] = project
     where_sql = " AND ".join(where_parts)
 
+    order_dir = "DESC" if newest_first else "ASC"
     items_sql = (
         f"SELECT {_EVENT_COLUMNS} FROM events "
         f"WHERE {where_sql} "
-        "ORDER BY created_at ASC, id ASC "
+        f"ORDER BY created_at {order_dir}, id {order_dir} "
         "LIMIT :limit OFFSET :offset"
     )
     result = await session.execute(text(items_sql), params)

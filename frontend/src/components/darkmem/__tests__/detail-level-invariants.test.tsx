@@ -374,6 +374,7 @@ function factDetailFixture() {
     source_file: null,
     reference_time: null,
     ladder: [],
+    ladder_total: 0,
     dispute: null,
   }
 }

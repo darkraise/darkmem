@@ -132,10 +132,13 @@ class FactDetailResponse(FactListItem):
     learned_in: list[str] | None
     source_file: str | None
     reference_time: datetime | None
-    # Every ``object_type='fact'`` journal row for this id, oldest-to-newest,
-    # via the same ``ix_events_object``-backed reader ``GET /events/timeline``
-    # uses — never a second query shape over the same index (doc 04 §8.1).
+    # The newest ``LADDER_LIMIT`` ``object_type='fact'`` journal rows for this
+    # id, oldest-to-newest, via the same ``ix_events_object``-backed reader
+    # ``GET /events/timeline`` uses — never a second query shape over the same
+    # index (doc 04 §8.1). ``ladder_total`` is the full journalled count, so a
+    # ladder truncated by the cap is never presented as complete.
     ladder: list[EventLogEntry]
+    ladder_total: int
     dispute: FactDispute | None
 
 

@@ -180,11 +180,19 @@ async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
     evidence = await latest_verified_evidence(session, [fid])
     item["dispute"] = dispute_label(row, evidence.get(fid))
 
-    ladder_items, _ = await object_timeline(
+    # `newest_first=True`: a fact's ladder is read to understand how it got
+    # to its present state, so a truncated ladder must drop from the old end,
+    # not the new one — the newest transitions are exactly the ones that
+    # explain the badge the page displays. Reversed back to oldest-to-newest
+    # for chronological rendering; `total` rides the wire separately so a
+    # capped ladder is never presented as the complete history (invariant 14).
+    ladder_items, ladder_total = await object_timeline(
         session,
         object_type=FACT_ID_KIND,
         object_id=UUID(fid),
         limit=LADDER_LIMIT,
+        newest_first=True,
     )
-    item["ladder"] = ladder_items
+    item["ladder"] = list(reversed(ladder_items))
+    item["ladder_total"] = ladder_total
     return item

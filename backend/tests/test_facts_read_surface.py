@@ -468,6 +468,39 @@ async def test_the_detail_serves_its_ladder_oldest_to_newest(
     assert len(item["ladder"]) == 2
 
 
+async def test_the_ladder_past_the_cap_keeps_the_newest_events_not_the_oldest(
+    client, auth_headers, session
+):
+    """T2.86 fix round (F1): ``LADDER_LIMIT`` used to keep the *oldest* 50
+    events (``ORDER BY created_at ASC ... LIMIT 50``), dropping the newest
+    transitions — exactly the ones that explain the fact's current badge. A
+    ladder is read to understand how a fact got to its present state, so the
+    cap must drop from the old end. 55 events, each carrying its own ordinal
+    in the payload, is deliberately more than ``LADDER_LIMIT`` (50): a
+    fixture at or under the cap cannot distinguish "kept the newest 50" from
+    "kept the oldest 50" — both would return everything.
+    """
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    for seq in range(55):
+        await record_event(
+            session,
+            event_type="sources_changed",
+            object_type="fact",
+            object_id=uuid.UUID(fact_id),
+            project=PROJECT,
+            payload={"seq": seq},
+        )
+    await session.commit()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["ladder_total"] == 55
+    assert len(item["ladder"]) == 50
+    seqs = [e["payload"]["seq"] for e in item["ladder"]]
+    # The newest 50 (5..54), still oldest-to-newest for chronological display.
+    assert seqs == list(range(5, 55))
+
+
 async def test_a_fact_with_no_journal_history_serves_an_empty_ladder(
     client, auth_headers, session
 ):
@@ -477,6 +510,7 @@ async def test_a_fact_with_no_journal_history_serves_an_empty_ladder(
 
     item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
     assert item["ladder"] == []
+    assert item["ladder_total"] == 0
 
 
 async def test_an_undisputed_fact_serves_no_dispute_block(

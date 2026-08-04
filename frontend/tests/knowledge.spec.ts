@@ -17,6 +17,18 @@ import { test, expect, type Page } from "@playwright/test"
 // route costs every concurrent worker a transform stall. Measured, not
 // assumed — five navigations here pushed unrelated specs past their 5s
 // expect timeout and the whole project from 15s to 39s.
+//
+// T2.86 fix round (F2): before this round no spec here ever navigated to
+// `/knowledge/facts/$factId` — both tests above stop at the list. The third
+// test below closes that gap for the *route wiring*: the link, the router
+// param, `FactDetail`'s dispatch, the page chrome, the render path. What it
+// does NOT and cannot prove: this project has no backend, so it exercises
+// `DemoFactDetail` / `DemoFact`, never `LiveFactDetail` / `FactDetailResponse`
+// — a drift between that live wire shape and `LiveFactDetailData` (the exact
+// bug class this task exists to kill) stays provable only by
+// `fact-detail.test.tsx`'s vitest suite, which mocks `apiFetch` by hand and
+// never runs against a real, running backend. That gap is real and stays
+// open after this round; see the fix-round report for the full accounting.
 
 const LABEL: Record<"simple" | "advanced", string> = {
   simple: "Simple",
@@ -89,5 +101,34 @@ test.describe("knowledge/facts", () => {
     await expect(claim).toBeVisible()
     await expect(page.getByText("disputed").first()).toBeVisible()
     await expect(page.getByText("L2 · fact").first()).toBeVisible()
+  })
+
+  test("a fact row's link opens the detail route and can navigate back", async ({
+    page,
+  }) => {
+    await page.goto("/knowledge/facts")
+    await pickOption(page, "Status filter", "disputed")
+
+    const claimPattern = /^disputed: .* origins? assert/
+    const claim = page.getByText(claimPattern).first()
+    await expect(claim).toBeVisible()
+    const row = page
+      .locator("[data-index]")
+      .filter({ has: page.getByText(claimPattern) })
+      .first()
+
+    await row.getByRole("link", { name: "sources, ladder and windows →" }).click()
+    await expect(page).toHaveURL(/\/knowledge\/facts\/[^/]+$/)
+    // The page chrome, the same claim carried onto the detail page verbatim,
+    // and the dispute section — proof the click reached `FactDetail` and
+    // rendered the disputed branch, not a blank or error page.
+    await expect(page.getByRole("heading", { name: "Fact detail" })).toBeVisible()
+    await expect(claim).toBeVisible()
+    await expect(
+      page.getByText("Both sides — strictly equal weight, no winner"),
+    ).toBeVisible()
+
+    await page.getByRole("link", { name: "Back to Facts" }).click()
+    await expect(page).toHaveURL(/\/knowledge\/facts$/)
   })
 })

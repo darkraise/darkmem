@@ -301,6 +301,7 @@ export interface LiveFactDetailData {
   source_file: string | null
   reference_time: string | null
   ladder: FactDetailItem["ladder"]
+  ladder_total: number
   dispute: FactDetailItem["dispute"]
 }
 
@@ -330,19 +331,23 @@ function fromApiDetail(item: FactDetailItem): LiveFactDetailData {
     source_file: item.source_file,
     reference_time: item.reference_time,
     ladder: item.ladder,
+    ladder_total: item.ladder_total,
     dispute: item.dispute,
   }
 }
 
 /** Invariant 14, applied to a single-item read: a failed fetch, a genuine
- *  404, and "still loading" are three states, not two, and a caller must be
- *  able to render each one differently. `not_found` requires an `ApiError`
- *  with `status === 404` specifically — any other thrown shape (a network
- *  error, a 500, a thrown `Error` from a test double) is `failed`, never
- *  quietly folded into "missing". */
+ *  404, a malformed id, and "still loading" are four states, not two, and a
+ *  caller must be able to render each one differently. `not_found` requires
+ *  an `ApiError` with `status === 404` specifically; `invalid` requires
+ *  `status === 422` — the path param fails FastAPI's `UUID` coercion before
+ *  any lookup runs, so no retry could ever succeed and none is offered. Any
+ *  other thrown shape (a network error, a 500, a thrown `Error` from a test
+ *  double) is `failed`, never quietly folded into either. */
 export type FactDetailState =
   | { status: "loading" }
   | { status: "not_found" }
+  | { status: "invalid" }
   | { status: "failed"; retry: () => void }
   | { status: "ready"; fact: LiveFactDetailData }
 
@@ -354,6 +359,9 @@ export function useFactDetail(factId: string): FactDetailState {
   if (query.isError) {
     if (query.error instanceof ApiError && query.error.status === 404) {
       return { status: "not_found" }
+    }
+    if (query.error instanceof ApiError && query.error.status === 422) {
+      return { status: "invalid" }
     }
     return { status: "failed", retry: () => void query.refetch() }
   }
