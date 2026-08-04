@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -40,6 +40,7 @@ from app.api.mcp import server as mcp_server
 from app.main import app
 from app.models.memory import Memory
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.schemas.knowledge import knowledge_search_response
 from app.services import facts_channel, hybrid_search
 from app.services import layer_composition as lc
 from app.services.embedder_registry import child_table
@@ -327,6 +328,55 @@ async def test_the_two_shapes_carry_the_same_rows_merely_partitioned(client, aut
     }
     assert fused_ids, "the fixture must retrieve something or this is vacuous"
     assert fused_ids == sectioned_ids
+
+
+async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
+    session, monkeypatch
+):
+    """Doc 07 §5: "each internally ranked"; the ``KnowledgeSearchSections``
+    docstring: "Partitioning never reorders". Neither was enforced anywhere:
+    the set-equality test above cannot see a reversal (it compares sets, not
+    sequences), and every fixture in this module seeds at most one row per
+    populated bucket, so even an order-sensitive assertion over them would
+    hold vacuously. This fixture stubs the memory channel with three rows
+    whose composed order (fixed by ``channel_rank``, i.e. the order the
+    channel served them in) is neither ascending nor descending in id order
+    — 3, 1, 2 — so a bucket-local reorder is caught on its own terms rather
+    than by accidentally matching a sort-by-id artifact.
+    """
+    memory_ids = [str(UUID(int=n)) for n in (3, 1, 2)]
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[
+            {
+                "memory_id": mid,
+                "payload": {"content": f"memory {mid}"},
+                "project": PROJECT,
+                "status": "active",
+                "rrf_score": 0.5,
+            }
+            for mid in memory_ids
+        ])
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeShapeLLM(), session).search(
+        "q", project=PROJECT, limit=20,
+    )
+
+    fused = knowledge_search_response(result, fuse=True).model_dump()
+    composed_order = [row["id"] for row in fused["rows"]]
+    assert composed_order == memory_ids, (
+        "the fixture's composed order must be exactly what channel_rank set, "
+        "or this test proves nothing"
+    )
+
+    sectioned = knowledge_search_response(result, fuse=False).model_dump()
+    assert [row["id"] for row in sectioned["sections"]["memory"]] == composed_order
 
 
 async def test_both_doors_offer_fuse_with_the_same_default(session):
