@@ -160,6 +160,11 @@ EXPECTED_STATUS = {
     # 204, no memory-derived content on the response.
     ("POST", "/api/v1/knowledge/topics/pin-suggestions/accept"): 204,
     ("POST", "/api/v1/knowledge/topics/pin-suggestions/dismiss"): 204,
+    # The composed read: a computation over a complex body, which the
+    # conventions doc puts on POST .../search and answers 200. It mints
+    # nothing, so 201 would be a lie about a resource; the query is too rich
+    # for a GET query string, which is the whole reason the pattern exists.
+    ("POST", "/api/v1/knowledge/search"): 200,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,

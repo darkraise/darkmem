@@ -1780,14 +1780,19 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
     walk below descends into them: an enumeration that read only the top level
     would leave every grouped memory to the raw-body net, which reports a
     modelled row as an unmodelled crossing.
+
+    **Both doors are driven** (T2.80). The route and the tool spend one
+    composition call, so a scope breach on one would be a breach on the other —
+    but that is an argument about today's code, and the probe's job is to
+    observe rather than to reason. A door left undriven is a door the bar's
+    number does not cover.
     """
     surface = "knowledge_composed_search"
-    door = "mcp:knowledge_search"
     out: list[Sighting] = []
     ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
     ids_to_fact = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
 
-    def walk(rows: list[dict], case: str, req_p: str) -> set[str]:
+    def walk(rows: list[dict], case: str, req_p: str, door: str) -> set[str]:
         accounted: set[str] = set()
         for row in rows:
             labels = row.get("labels") or {}
@@ -1810,8 +1815,19 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
                         requested_project=req_p,
                         label_project=labels.get("project") == fact.project,
                     ))
-            accounted |= walk(row.get("supported_by") or [], f"{case}: nested", req_p)
+            accounted |= walk(
+                row.get("supported_by") or [], f"{case}: nested", req_p, door,
+            )
         return accounted
+
+    def unreachable(door: str, case: str) -> None:
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row="(no rows)",
+            forced_v1_reason=(
+                "the composed read reported every channel down; the "
+                "probe cannot observe a surface it never reached"
+            ),
+        ))
 
     for req_p in (OBSERVER, FOREIGN):
         for query, flavour in (
@@ -1819,21 +1835,32 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
             ("disputed fact", "fact-flavoured query"),
         ):
             case = f"{flavour}, composed read scoped to {req_p}"
+
+            door = "mcp:knowledge_search"
             body = await _call_mcp(
                 "knowledge_search", {"query": query, "project": req_p, "limit": 50},
             )
             payload = json.loads(body)
             if payload.get("status") == "unavailable":
-                out.append(Sighting(
-                    surface=surface, door=door, case=case, row="(no rows)",
-                    forced_v1_reason=(
-                        "the composed read reported every channel down; the "
-                        "probe cannot observe a surface it never reached"
-                    ),
-                ))
+                unreachable(door, case)
+            else:
+                accounted = walk(payload["rows"], case, req_p, door)
+                out.extend(_account_body(surface, door, case, body, accounted))
+
+            door = "POST /api/v1/knowledge/search"
+            response = await ctx.client.post(
+                "/api/v1/knowledge/search",
+                json={"query": query, "project": req_p, "limit": 50},
+                headers=ctx.headers,
+            )
+            # 503 is the route's outage, not a probe failure: the same
+            # unreachable-surface sighting the tool's typed status produces.
+            if response.status_code == 503:
+                unreachable(door, case)
                 continue
-            accounted = walk(payload["rows"], case, req_p)
-            out.extend(_account_body(surface, door, case, body, accounted))
+            response.raise_for_status()
+            accounted = walk(response.json()["rows"], case, req_p, door)
+            out.extend(_account_body(surface, door, case, response.text, accounted))
     return out
 
 

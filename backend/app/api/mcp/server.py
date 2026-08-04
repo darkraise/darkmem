@@ -130,12 +130,15 @@ def _degraded(reason: str, **extra) -> dict:
     }
 
 
-def _clamp_limit(limit: int, default: int) -> int:
+def _clamp_limit(limit: int, default: int, maximum: int = _MAX_LIMIT) -> int:
+    """The tool-side bound. ``maximum`` lets a surface whose REST twin declares
+    its own cap clamp to that one constant instead of to a second copy of it.
+    """
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         return default
-    return max(1, min(limit, _MAX_LIMIT))
+    return max(1, min(limit, maximum))
 
 
 @mcp.tool(
@@ -1111,18 +1114,41 @@ async def knowledge_search(
         project: The project to search (default "default"). Every channel scopes to it.
         limit: Maximum number of composed rows to return (default: 20). A fact and the memories nested under it count as one.
     """
-    from app.schemas.knowledge import knowledge_search_response
-    from app.services.layer_composition import LayerCompositionService
+    from app.schemas.knowledge import (
+        KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+        KNOWLEDGE_SEARCH_MAX_LIMIT,
+        knowledge_search_response,
+        knowledge_search_unavailable,
+    )
+    from app.services.layer_composition import (
+        CompositionUnavailable,
+        LayerCompositionService,
+    )
 
-    limit = _clamp_limit(limit, default=20)
+    limit = _clamp_limit(
+        limit,
+        default=KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+        maximum=KNOWLEDGE_SEARCH_MAX_LIMIT,
+    )
     async with _code_service_context() as session:
         llm = _pipeline.llm if _pipeline is not None else None
         service = LayerCompositionService(llm, session)
         try:
             result = await service.search(query, project=project, limit=limit)
-        except RuntimeError as exc:
+        except CompositionUnavailable as exc:
             # Every channel down is recoverable unavailability, not a caller
             # error: doc 12 §3 says say so in a typed envelope rather than
             # returning rows a client cannot tell from a genuine no-match.
-            return json.dumps(_degraded(str(exc), project=project, rows=[]))
+            #
+            # The typed class and not its ``RuntimeError`` base (T2.80). The
+            # composition raises the base for its own defects — the grouping
+            # fixpoint that stopped decreasing, a reranker that returned a
+            # window of the wrong length — and catching those here served a
+            # bug over a healthy vault as an outage, which is the
+            # failed-versus-empty conflation this envelope exists to prevent,
+            # pointed at the operator instead of at the code.
+            return json.dumps({
+                **_degraded(str(exc), project=project),
+                **knowledge_search_unavailable(exc).model_dump(mode="json"),
+            })
         return knowledge_search_response(result).model_dump_json()
