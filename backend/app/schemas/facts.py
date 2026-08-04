@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas.event_log import EventLogEntry
 from app.services.human_adjudication import NOTE_MAX_LENGTH, SHOWN_MAX_LENGTH
 
 
@@ -91,12 +92,51 @@ class FactListResponse(BaseModel):
     offset: int
 
 
+class FactDisputeTriple(BaseModel):
+    """One claim, in the shape both sides of a dispute are rendered in
+    (``layer_composition._triple``) — neither side privileged by structure."""
+
+    subject: str | None
+    rel_type: str | None
+    object: str | None
+    id: str | None
+
+
+class FactDispute(BaseModel):
+    """``layer_composition.dispute_label``'s output, on the wire verbatim.
+
+    Present only when the fact's ``verification_status`` is currently
+    ``disputed``; a fact with a past, now-resolved dispute carries none —
+    the reader has no field to reconstruct that history honestly and does
+    not pretend to. ``counterpart`` is ``None`` when the veto's finding was
+    never journalled against this fact (a recovery, a caller-overridden
+    verdict, or a dispute predating T2.64); ``counterpart_absent`` names
+    that case in-band rather than leaving it indistinguishable from "no
+    dispute". The two-sided claim **sentence** itself is ``badge.claim``,
+    not this block — this carries the structured triple a screen can lay
+    out, never a second English rendering of it.
+    """
+
+    review_state: str | None
+    claim: FactDisputeTriple
+    counterpart: FactDisputeTriple | None
+    counterpart_absent: str | None = None
+    rule: str | None = None
+    witness_origin: str | None = None
+    enumeration: str | None = None
+
+
 class FactDetailResponse(FactListItem):
     sources: list[FactSourceGroup]
     triple_key: str
     learned_in: list[str] | None
     source_file: str | None
     reference_time: datetime | None
+    # Every ``object_type='fact'`` journal row for this id, oldest-to-newest,
+    # via the same ``ix_events_object``-backed reader ``GET /events/timeline``
+    # uses — never a second query shape over the same index (doc 04 §8.1).
+    ladder: list[EventLogEntry]
+    dispute: FactDispute | None
 
 
 class FactRatifyRequest(BaseModel):

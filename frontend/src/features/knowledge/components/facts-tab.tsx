@@ -97,15 +97,13 @@ export function FactRow({
           keyboard or touch reader never sees one. */}
       {fact.claim && <p className="font-mono text-sm">{fact.claim}</p>}
       <AppliesWhenChips items={fact.applies_when} />
-      {fact.detail_available && (
-        <Link
-          to="/knowledge/facts/$factId"
-          params={{ factId: fact.id }}
-          className="hover:text-primary text-muted-foreground block font-mono text-sm transition-colors"
-        >
-          sources, ladder and windows →
-        </Link>
-      )}
+      <Link
+        to="/knowledge/facts/$factId"
+        params={{ factId: fact.id }}
+        className="hover:text-primary text-muted-foreground block font-mono text-sm transition-colors"
+      >
+        sources, ladder and windows →
+      </Link>
     </div>
   )
 }

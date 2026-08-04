@@ -1,6 +1,5 @@
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
-import type { BeliefWindow } from "@/demo/types"
 
 function DateField({ label, value }: { label: string; value: string | null }) {
   return (
@@ -11,13 +10,25 @@ function DateField({ label, value }: { label: string; value: string | null }) {
   )
 }
 
+/** Structural, not `@/demo/types`' `BeliefWindow`: the live door's
+ *  `valid_at` is nullable (a candidate fact predates verification) where the
+ *  demo fixture's is always a string, and the live door carries no `note`.
+ *  A demo `BeliefWindow` still satisfies this shape at every existing call
+ *  site — the widening only ever loosens, never narrows. */
+export interface BeliefWindowLike {
+  valid_at: string | null
+  invalid_at: string | null
+  expired_at: string | null
+  note?: string
+}
+
 // valid_at / invalid_at / expired_at as a timeline — "what did we believe
 // as of X." Closed windows are retained as history, never a live claim.
 export function BeliefWindowRow({
   window,
   className,
 }: {
-  window: BeliefWindow
+  window: BeliefWindowLike
   className?: string
 }) {
   const open = window.invalid_at == null && window.expired_at == null

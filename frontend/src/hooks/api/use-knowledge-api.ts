@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
 
@@ -145,5 +145,89 @@ export function useRatifyFact() {
       qc.invalidateQueries({ queryKey: ["knowledge"] })
       qc.invalidateQueries({ queryKey: ["reviewQueue"] })
     },
+  })
+}
+
+// ───────────────────────── the fact detail door (T2.86) ─────────────────────────
+
+export interface FactSourceRow {
+  id: string
+  source_kind: string
+  source_ref: string
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+/** `fact_sources` pre-grouped by ``origin_key`` server-side (T2.36a) — the
+ *  badge's ``origin_count`` audited. ``origin_key: null`` is the merged
+ *  unknown-identity bucket; ``unknown_origin`` says so in-band. */
+export interface FactSourceGroup {
+  origin_key: string | null
+  unknown_origin: boolean
+  source_kinds: string[]
+  first_seen: string
+  last_seen: string
+  sources: FactSourceRow[]
+}
+
+/** One ``events`` row journalled against this fact (``object_type='fact'``),
+ *  via the same ``ix_events_object``-backed reader ``GET /events/timeline``
+ *  uses. Oldest-to-newest — the ladder history the demo store used to fake. */
+export interface FactLadderEvent {
+  id: number
+  created_at: string
+  event_type: string
+  actor: string | null
+  payload: Record<string, unknown>
+}
+
+/** One claim, in the shape both sides of a dispute are rendered in
+ *  (backend ``layer_composition._triple``) — neither side privileged. */
+export interface FactDisputeTriple {
+  subject: string | null
+  rel_type: string | null
+  object: string | null
+  id: string | null
+}
+
+/** ``layer_composition.dispute_label``'s output, verbatim. Present only when
+ *  ``verification_status`` is currently ``disputed``. ``counterpart`` is
+ *  ``null`` when the veto's finding was never journalled against this fact —
+ *  ``counterpart_absent`` names that case rather than leaving it
+ *  indistinguishable from "no dispute". The two-sided **sentence** is
+ *  `badge.claim`, never re-derived from this block. */
+export interface FactDispute {
+  review_state: string | null
+  claim: FactDisputeTriple
+  counterpart: FactDisputeTriple | null
+  counterpart_absent: string | null
+  rule: string | null
+  witness_origin: string | null
+  enumeration: string | null
+}
+
+export interface FactDetailItem extends FactListItem {
+  sources: FactSourceGroup[]
+  triple_key: string
+  learned_in: string[] | null
+  source_file: string | null
+  reference_time: string | null
+  ladder: FactLadderEvent[]
+  dispute: FactDispute | null
+}
+
+/** `GET /knowledge/facts/{id}` — one fact's full detail (T2.36a shipped the
+ *  door, T2.86 is the first caller). `retry: false`: a 404 here is a stable,
+ *  legitimate outcome ("this fact does not exist"), not a transient fault
+ *  worth the global default's one retry. */
+export function useFactDetailQuery(
+  factId: string,
+  options?: { enabled?: boolean },
+) {
+  return useQuery<FactDetailItem>({
+    queryKey: ["knowledge", "facts", "detail", factId],
+    queryFn: () => apiFetch<FactDetailItem>(`/knowledge/facts/${factId}`),
+    enabled: options?.enabled ?? true,
+    retry: false,
   })
 }

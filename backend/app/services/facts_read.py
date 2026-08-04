@@ -44,10 +44,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginGroup
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.events import object_timeline
 from app.services.fact_badge import badges_for_facts, row_labels
+from app.services.layer_composition import dispute_label
 from app.services.rank_fusion import row_context_from_applies_when
+from app.services.verified_evidence import latest_verified_evidence
 
 FACT_ID_KIND = "fact"
+
+# The detail page's ladder history, bounded the same as `GET /events/timeline`
+# itself — a per-fact ladder is a handful of transitions, never a growing feed,
+# so this is a safety cap rather than a page size a reader is meant to exhaust.
+LADDER_LIMIT = 50
 
 
 def applies_when_labels(applies_when: Mapping[str, Any] | None) -> list[dict[str, str]]:
@@ -167,4 +175,16 @@ async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
     item["learned_in"] = row["learned_in"]
     item["source_file"] = row["source_file"]
     item["reference_time"] = row["reference_time"]
+
+    fid = str(row["id"])
+    evidence = await latest_verified_evidence(session, [fid])
+    item["dispute"] = dispute_label(row, evidence.get(fid))
+
+    ladder_items, _ = await object_timeline(
+        session,
+        object_type=FACT_ID_KIND,
+        object_id=UUID(fid),
+        limit=LADDER_LIMIT,
+    )
+    item["ladder"] = ladder_items
     return item
