@@ -8,11 +8,17 @@ from dataclasses import dataclass, field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, MemoryFilter
+from app.repositories.vector import MemoryFilter
 from app.services.access_stats import spawn_record_access
 from app.services.embedder_registry import child_table
 from app.services.llm import LLMOrchestrator
-from app.services.rank_fusion import RRF_K, RankedList, normalize_row_id, rrf_fuse
+from app.services.rank_fusion import (
+    RRF_K,
+    RankedList,
+    fusion_fetch_depth,
+    normalize_row_id,
+    rrf_fuse,
+)
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
 
 logger = logging.getLogger(__name__)
@@ -47,7 +53,16 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
     ) -> list[dict]:
-        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
+        """The fused rows, ``limit`` of them.
+
+        ``limit`` truncates the fused list and nothing else: both arms are read
+        to :func:`fusion_fetch_depth`, which is the same depth for every
+        caller. A caller asking for ten rows and a caller asking for sixty
+        therefore fuse the same candidate set and the first is a prefix of the
+        second — deriving the arm depth from the caller's own limit is what let
+        chat and the search surface rank one corpus two ways.
+        """
+        fetch_n = fusion_fetch_depth(limit)
         vector, fingerprint = await self.llm.embed(query)
         semantic_results, keyword_results, _, _ = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
@@ -68,7 +83,7 @@ class HybridSearchService:
         (doc 07 §8). Only the caller that wants a trace pays for this; the
         plain ``search`` path above never builds ``channel_scores``.
         """
-        fetch_n = limit * SEMANTIC_FETCH_MULTIPLIER
+        fetch_n = fusion_fetch_depth(limit)
         vector, fingerprint = await self.llm.embed(query)
         semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,

@@ -42,6 +42,7 @@ recorded here so an arm activation re-measures both doors instead of one.
 from __future__ import annotations
 
 import ast
+import math
 import pathlib
 import re
 import uuid
@@ -182,6 +183,36 @@ async def _corpus(session) -> dict[str, Memory]:
     return rows
 
 
+FILLERS = 35
+
+
+async def _deep_corpus(session) -> Memory:
+    """A corpus deeper than a chat turn's arm window used to reach.
+
+    ``FILLERS`` rows carry descending similarity to the query vector and not
+    one query term, so the keyword arm never sees them. The returned target
+    sits below every one of them semantically and matches the query lexically,
+    which makes its rank a function of **how deep the arms were read**: inside
+    the window it fuses a mid-list semantic contribution onto a rank-one
+    keyword contribution and comes first, outside it, it is keyword-only and
+    falls below every filler. The doors used to read to different depths, so
+    on this corpus the search surface answered with a row chat never served.
+    """
+    await _seed_partition(session)
+    for i in range(FILLERS):
+        angle = 0.02 * (i + 1)
+        await _add_memory(
+            session,
+            vector=[math.cos(angle), math.sin(angle), 0.0, 0.0],
+            content=f"the box runs a database proxy on the LAN, note {i}",
+        )
+    return await _add_memory(
+        session,
+        vector=[math.cos(1.2), math.sin(1.2), 0.0, 0.0],
+        content="pgbouncer connection pooling was chosen over pgcat",
+    )
+
+
 _SCOPED = {"project": PROJECT}
 
 
@@ -222,6 +253,46 @@ async def test_a_chat_turn_and_the_search_surface_rank_the_same_corpus_alike(ses
 
     assert chat, "the fixture must retrieve something or the parity is vacuous"
     assert chat == [row_id for row_id in surface if row_id in set(chat)]
+    assert chat == surface[:len(chat)]
+
+
+async def test_the_doors_rank_alike_on_a_corpus_deeper_than_a_turn_fetches(session):
+    """Parity at one fixed depth, on the corpus size that used to break it.
+
+    Same service and same weights is not enough: RRF is not
+    truncation-consistent across depths, and the doors read to different ones.
+    Chat asked its arms for ``limit x 3`` = 30 rows while the search surface
+    asked for ``(limit + offset + 50) x 3``, so on 36 rows the surface's **top
+    answer** was a row chat never served at all — at fully default flags, with
+    both doors on the same fusion. A shape comparison cannot see that; only an
+    ordering over a corpus deeper than the shallower window can.
+    """
+    target = await _deep_corpus(session)
+    scope = MemoryFilter(project=PROJECT, statuses=CHAT_STATUSES, include_archived=False)
+
+    semantic = [
+        str(row["memory_id"])
+        for row in await PostgresVectorRepository(session).search(
+            QUERY_VECTOR, fingerprint=FINGERPRINT, limit=FILLERS + 1, filters=scope,
+        )
+    ]
+    # The fixture has to straddle the window the shallow door used to read —
+    # 36 rows against the retired ``limit x 3`` = 30 — or it exercises nothing.
+    assert len(semantic) > 30
+    assert semantic[-1] == str(target.id), "the target must be the least similar row"
+
+    chat = await _chat_ids(session)
+    surface = await _search_surface_ids(session, limit=CHAT_RETRIEVAL_LIMIT * 2)
+
+    assert chat[0] == str(target.id), (
+        "the keyword-strong row is the search surface's top answer; a turn "
+        "that fuses a shallower window never sees it"
+    )
+    assert surface[0] == str(target.id)
+    # The doors truncate at different lengths on purpose: fusing at one depth
+    # is what makes the shorter list the longer one's prefix rather than a
+    # second ranking.
+    assert len(surface) > len(chat)
     assert chat == surface[:len(chat)]
 
 
