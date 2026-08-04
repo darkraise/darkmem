@@ -163,16 +163,26 @@ _QUOTE_CHARS = '"“”«»`'
 # negation and the verb, so the literal reported shape still armed. The regex
 # already ends in `[^.;!?]*$`, which *is* the same-sentence requirement, so the
 # character cap was the only thing losing the negation — the lookback now runs
-# to the previous sentence terminator and the tail does the scoping.
+# to the previous sentence terminator, which does the scoping on its own. The
+# pattern carries no `[^.;!?]*$` tail any more: that tail duplicated the
+# scoping and re-introduced the same defect one level down, stopping at the dot
+# inside "v1.2" or "e.g." and losing the negation in front of it.
 _NEGATED = re.compile(
     r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|did\s+not|didn'?t|never|"
     r"no\s+need\s+to|no\s+circumstances|under\s+no\b|"
     r"rather\s+than|instead\s+of|"
     r"must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|"
-    r"will\s+not|won'?t)\b[^.;!?]*$",
+    r"will\s+not|won'?t)\b",
     re.IGNORECASE,
 )
-_SENTENCE_END = re.compile(r"[.;!?]")
+# A sentence terminator, as opposed to a dot inside a token. A bare `[.;!?]`
+# severed the negation lookback on "Do not (per policy v1.2) delete this note
+# after 2026-12-31." and on "Do not, e.g. during the cleanup, delete …" — both
+# in the deletion direction, so the residual is worth the three extra clauses:
+# a terminator is followed by whitespace or end of text, and is neither
+# digit-preceded (version numbers, decimals) nor preceded by a lone letter
+# (`e.g.`, `i.e.`).
+_SENTENCE_END = re.compile(r"(?<!\d)(?<!\b[a-z])[.;!?]+(?=\s|$)", re.IGNORECASE)
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 
@@ -276,24 +286,34 @@ def _quoted_spans(content: str) -> list[tuple[int, int]]:
         # perfectly ordinary digit-preceded closing quote, and dropping it
         # un-quotes the whole region.
         opener: int | None = None
-        unclosed = False
+        skipped = False
         for index in positions:
             if opener is None:
                 if index and content[index - 1].isdigit():
+                    skipped = True
                     continue
                 opener = index
             else:
                 spans.append((opener, index + 1))
                 opener = None
-        unclosed = opener is not None
 
-        # A leftover opener means the pairing is ambiguous, so the alternate
-        # phasing is unioned in as well: a match suppressed under *either*
-        # reading is suppressed. Over-suppressing costs a missed TTL and the
-        # memory lives on; under-suppressing deletes it.
-        if unclosed:
-            for first, second in zip(positions[1::2], positions[2::2]):
-                spans.append((first, second + 1))
+        # **A skip is itself an ambiguity, and forgetting that was a bug.**
+        # Ambiguity used to be detected as "odd raw count"; narrowing it to
+        # "leftover opener" while *adding* a new ambiguity source nobody
+        # counted let a whole quoted tail go bare. In `The runbook says "the
+        # 42" rack: keep this note until 2026-09-30" but ignore it.` the real
+        # opener pairs with the interior inch mark, and the real closer — which
+        # is digit-preceded, because the quoted text ends in a date — is then
+        # skipped as an opener candidate, leaving the instruction unquoted.
+        #
+        # So either a leftover opener or any skip marks the pairing ambiguous,
+        # and both naive phasings are unioned in. A match suppressed under
+        # *any* reading is suppressed: over-suppressing costs a missed TTL and
+        # the memory lives on, under-suppressing deletes it.
+        if opener is not None or skipped:
+            for phase in (positions, positions[1:]):
+                for first, second in zip(phase[::2], phase[1::2]):
+                    spans.append((first, second + 1))
 
     # Smart-quote and guillemet pairs are directional, so they pair across
     # different characters and need no phase guessing.
