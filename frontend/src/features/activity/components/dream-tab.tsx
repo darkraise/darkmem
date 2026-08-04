@@ -56,6 +56,8 @@ import type {
 import { DEMO } from "@/lib/demo-flag"
 import { relativeTime } from "@/lib/format"
 import {
+  undoActionLabel as actionLabel,
+  undoReasonLabel as reasonLabel,
   useDreamDigest,
   type DreamAction,
   type DreamObjectGroup,
@@ -404,29 +406,9 @@ function DemoDreamDigest() {
 }
 
 // ─────────────────────────────── live surface ───────────────────────────────
-
-const ACTION_LABELS: Record<string, string> = {
-  subsume: "supersede",
-  associate: "associate edge",
-  refine: "refine",
-}
-
-const REASON_LABELS: Record<string, string> = {
-  already_undone: "already undone",
-  retention_elapsed: "past the undo retention window",
-  object_missing: "the object this action touched no longer exists",
-  unsupported_action: "this action kind has no inverse yet",
-  state_changed: "the object changed since this action ran",
-}
-
-function actionLabel(action: string): string {
-  return ACTION_LABELS[action] ?? action
-}
-
-function reasonLabel(reason: string | null): string {
-  if (!reason) return "unavailable"
-  return REASON_LABELS[reason] ?? reason
-}
+// `actionLabel` / `reasonLabel` are `undoActionLabel` / `undoReasonLabel`
+// from `use-dream-digest.ts`, aliased on import — hygiene-queue.tsx's undo
+// path (the same backend door) shares that single copy (F9).
 
 function formatValue(value: unknown): string {
   if (value === undefined) return "—"

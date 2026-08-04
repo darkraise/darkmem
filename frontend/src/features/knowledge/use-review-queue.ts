@@ -117,7 +117,11 @@ function rankNoteOf(c: ConsequenceExplanation): string {
     `frequency ${c.retrieval_frequency.component.toFixed(2)}`,
     `salience ${c.subject_salience.component.toFixed(2)}`,
   ]
-  if (c.staleness.stale) parts.push(`decayed (${c.staleness.label})`)
+  // Matches `ConsequenceBreakdown` in review-queue.tsx, which renders the
+  // same boolean as "stale" — one frontend word for one backend field,
+  // never two (F8). The backend's own `label` still rides verbatim either
+  // way.
+  if (c.staleness.stale) parts.push(`stale (${c.staleness.label})`)
   return parts.join(" · ")
 }
 

@@ -21,6 +21,34 @@ export interface BlockedReason {
   reason: string
 }
 
+// Shared with hygiene-queue.tsx (T2.37 fix round 1, F3/F9): a hygiene bulk
+// action's undo goes through this exact door, so a 409's blocked-reason
+// codes are this same vocabulary, not a hygiene-owned one. Kept here rather
+// than duplicated so the two surfaces cannot silently drift onto different
+// words for the same backend code — see dream_undo.py for the source list.
+const UNDO_ACTION_LABELS: Record<string, string> = {
+  subsume: "supersede",
+  associate: "associate edge",
+  refine: "refine",
+}
+
+const UNDO_REASON_LABELS: Record<string, string> = {
+  already_undone: "already undone",
+  retention_elapsed: "past the undo retention window",
+  object_missing: "the object this action touched no longer exists",
+  unsupported_action: "this action kind has no inverse yet",
+  state_changed: "the object changed since this action ran",
+}
+
+export function undoActionLabel(action: string): string {
+  return UNDO_ACTION_LABELS[action] ?? action
+}
+
+export function undoReasonLabel(reason: string | null): string {
+  if (!reason) return "unavailable"
+  return UNDO_REASON_LABELS[reason] ?? reason
+}
+
 /** The three outcomes a dream-digest undo can settle to, carried through
  *  unflattened (app/services/dream_undo.py; doc 08 §7's Events journal
  *  section, "Undo is all-or-nothing"). `refused` is the ONLY one that

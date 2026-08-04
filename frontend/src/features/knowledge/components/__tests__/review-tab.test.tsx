@@ -11,7 +11,13 @@ import type { ReactNode } from "react"
 // never only at the hook.
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
-vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>()
+  return { ...actual, apiFetch: vi.fn() }
+})
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   Link: ({
@@ -27,7 +33,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   }) => <a {...rest}>{children}</a>,
 }))
 
-import { apiFetch } from "@/lib/api"
+import { apiFetch, ApiError } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { useDetailLevel } from "@/components/darkmem"
 import { ReviewTab } from "../review-tab"
 
@@ -280,4 +287,250 @@ describe("ReviewTab: bulk hygiene actions confirm before applying, and are undoa
     )
     expect(await screen.findByText("undone")).toBeInTheDocument()
   })
+})
+
+// T2.37 fix round 1 — findings F1-F4, F6. Each test below asserts what the
+// adapter tests structurally cannot see: F1-F4 are all "the UI stays silent
+// when it should speak" defects, so the guard is the DOM the user would
+// actually be looking at, not a hook return value.
+
+function factItem(id: string) {
+  return { ...FACT_ITEM, id }
+}
+
+describe("ReviewTab: a stranded page shows a way back, never a false caught-up message (F1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("offers 'Back to the first page' instead of claiming the queue is empty", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 11, articles: 0 }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/review-queue/facts")) {
+        // Simulates the shape the finding names: the offset-10 page reads
+        // back empty (a page-2 ratify/reject already removed its rows)
+        // while the backend's own total still says 10 remain.
+        if (url.includes("offset=10")) {
+          return { items: [], total: 10, limit: 10, offset: 10 }
+        }
+        return {
+          items: Array.from({ length: 10 }, (_, i) => factItem(`f${i}`)),
+          total: 11,
+          limit: 10,
+          offset: 0,
+        }
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await screen.findAllByText(/why ranked here:/)
+
+    fireEvent.click(screen.getByLabelText("Next page"))
+
+    expect(await screen.findByText("This page emptied out")).toBeInTheDocument()
+    expect(
+      screen.queryByText("No disputed or under-sourced facts"),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/10 facts still remain/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText("Back to the first page"))
+    expect((await screen.findAllByText(/why ranked here:/)).length).toBeGreaterThan(0)
+  })
+})
+
+describe("ReviewTab: a confirmed action that fails to apply is reported, not silent (F2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows an error toast when the confirm-dedup POST fails", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/confirm-dedup") {
+        throw new ApiError("Internal Server Error", 500)
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Confirm dedup"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/action failed/i)
+    // No notice renders for a request that never came back with a result.
+    expect(screen.queryByText(/applied/)).not.toBeInTheDocument()
+  })
+})
+
+describe("ReviewTab: a refused undo (409) is shown, never a silently reset spinner (F3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows the refusal reason and leaves the undo button retryable", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/confirm-dedup") {
+        return {
+          cycle_id: "cyc-1",
+          results: [{ id: "rel1", applied: true, event_id: 42, reason: null }],
+        }
+      }
+      if (url.startsWith("/dream-digest/cycles/")) {
+        throw new ApiError("conflict", 409, [
+          { event_id: 42, action: "associate", reason: "state_changed" },
+        ])
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Confirm dedup"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    fireEvent.click(await screen.findByText("Undo this batch"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title, opts] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/refused/i)
+    expect(String((opts as { description?: string })?.description)).toMatch(
+      /changed since this action ran/i,
+    )
+    // Never silently marked undone — the button is still there to retry.
+    expect(screen.queryByText("undone")).not.toBeInTheDocument()
+    expect(await screen.findByText("Undo this batch")).toBeInTheDocument()
+  })
+})
+
+describe("ReviewTab: the counts header never fabricates a zero while loading (F4)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows a loading line until the counts door actually answers", async () => {
+    let resolveCounts: (value: { facts: number; articles: number }) => void = () => {}
+    const countsPromise = new Promise<{ facts: number; articles: number }>((resolve) => {
+      resolveCounts = resolve
+    })
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return countsPromise
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await screen.findByText(/why ranked here:/)
+
+    expect(screen.getByText(/counts loading…/)).toBeInTheDocument()
+    expect(screen.queryByText(/0 facts?/)).not.toBeInTheDocument()
+
+    resolveCounts({ facts: 1, articles: 0 })
+    await waitFor(() => expect(screen.getByText(/1 fact/)).toBeInTheDocument())
+  })
+})
+
+describe("ReviewTab: per-item refusal reasons reach the DOM (F6)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("names the refused item's reason, not just an applied/refused count", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/confirm-dedup") {
+        return {
+          cycle_id: "cyc-2",
+          results: [{ id: "rel1", applied: false, event_id: null, reason: "stale" }],
+        }
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Confirm dedup"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    expect(await screen.findByText(/0 applied, 1 refused/)).toBeInTheDocument()
+    expect(screen.getByText(/no longer active/)).toBeInTheDocument()
+  })
+})
+
+describe("HygieneQueue: every arm states its ordering honestly, in both detail modes (F5 / clause 2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it.each(["simple", "advanced"] as const)(
+    "shows an honest ordering line per arm and never claims consequence ranking, in %s mode",
+    async (level) => {
+      useDetailLevel.setState({ level })
+      mockApi()
+      render(withQuery(<ReviewTab />))
+      await switchToHygiene()
+
+      expect(screen.getByText(/newest detected first/)).toBeInTheDocument()
+      expect(screen.getByText(/lowest confidence first/)).toBeInTheDocument()
+      expect(screen.getByText(/soonest expires_at first/)).toBeInTheDocument()
+      expect(screen.getByText(/newest first, read-only/)).toBeInTheDocument()
+      // The one honest claim this epic allows on this surface is the
+      // absence of ranking, never its presence — doc 08 §6's
+      // "consequence-ranked, not FIFO" belongs to the Review queue's facts
+      // arm alone (T2.23's reported gap), and no hygiene arm may borrow it.
+      expect(
+        screen.queryByText("consequence-ranked, not FIFO"),
+      ).not.toBeInTheDocument()
+    },
+  )
 })
