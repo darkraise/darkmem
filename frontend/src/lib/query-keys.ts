@@ -52,6 +52,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /knowledge/facts takes an explicit `project` the Facts tab supplies from its own filter (doc 13 §5.1), not yet the global switcher",
   },
+  dreamDigest: {
+    kind: "manual",
+    reason:
+      "GET /dream-digest/cycles takes an explicit `project` filter (doc 13 §6.3); the single-cycle read is addressed by cycle_id and carries no project param at all",
+  },
   events: {
     kind: "manual",
     reason: "EventListParams.project is caller-supplied, not yet the global switcher",

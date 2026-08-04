@@ -27,11 +27,18 @@ function handleUnauthorized() {
 // can do it without parsing the message string.
 export class ApiError extends Error {
   status: number
+  // `error.details` from the app's ErrorEnvelope (app/schemas/envelope.py),
+  // populated only when the backend's `detail` was a list — e.g. the dream
+  // digest's 409 body, whose per-action blocked reasons live nowhere else on
+  // the wire (app/main.py flattens a list `detail` to `error.details`, never
+  // to the top-level `detail` string). Absent on every other error shape.
+  details?: unknown[]
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, details?: unknown[]) {
     super(message)
     this.name = "ApiError"
     this.status = status
+    this.details = details
   }
 }
 
@@ -57,9 +64,11 @@ export async function apiFetch<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: response.statusText }))
+    const body = error as { detail?: string; error?: { details?: unknown[] } }
     throw new ApiError(
-      (error as { detail?: string }).detail || `API error: ${response.status}`,
+      body.detail || `API error: ${response.status}`,
       response.status,
+      body.error?.details,
     )
   }
   if (response.status === 204) return undefined as T
