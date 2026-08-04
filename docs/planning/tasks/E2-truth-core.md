@@ -642,6 +642,48 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.89 — What an undo restored is unrecoverable after the toast
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.13` · `Doc: 08 §7, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.38's fix round, where it was **declined as
+out of lane and the decline was verified** by the scoped re-review: this is a
+backend schema gap, not a UI shortcut.
+
+`UndoBatchResponse.undone[]` carries per-action `restored` and `not_restored` —
+the only place the system ever states **which fields** an undo put back.
+`DreamAction`, the read side, carries `undone`, `undone_at`, `undone_by` and
+`undo_batch_id` but neither of those two lists
+(`app/schemas/dream_digest.py:29-52`). So the digest re-read after an undo can
+say *that* an action was undone and by whom, and cannot say *what changed back*.
+
+**The consequence is a one-shot disclosure.** The information exists exactly once,
+in an ephemeral toast, and a user who misses it cannot recover it — a second undo
+attempt correctly refuses with `already_undone` rather than re-reporting. For a
+journal whose whole premise is that the record outlives the moment, a
+lifecycle-relevant fact that survives only in a transient notification is the
+wrong shape.
+
+**Prefer reconstructing over re-storing.** The `undone` event already carries the
+batch id and the journal is append-only, so the restored/not-restored split
+should be derivable from `events` at read time rather than denormalised onto a
+new column. Check that before adding storage — the retention question over
+journal payloads is already an unresolved Tier-3 item and this task must not
+quietly enlarge it.
+
+**Done when:**
+- [ ] The digest read reports, per undone action, which fields were restored and
+      which were not — sourced from the journal rather than re-stored, unless
+      that is shown to be impossible and the reason is written down
+- [ ] A test drives undo → re-read and asserts the two lists survive the round
+      trip, failing if the read side reports only `undone: true`
+- [ ] `not_restored` keeps its name; `excluded` is owned by `ResponseEnvelope`
+      with a different meaning and `tests/test_envelope.py` fails the build on a
+      second declaration
+- [ ] The UI stops depending on the toast as the sole carrier
+
+**Verify.** `cd backend && python -m pytest tests/test_dream_digest.py tests/test_dream_undo.py -q`
+
 #### T2.87 — The duplicates response carries what a supersede direction needs
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.23` · `Doc: 08 §6` · `Tag: rebuild` · `Gate: G-C`
