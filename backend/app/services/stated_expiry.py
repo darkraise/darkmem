@@ -56,10 +56,24 @@ from datetime import datetime, timedelta, timezone
 # note recording the cert. A pronoun's referent is the previous clause, never
 # the memory, so no pronoun belongs here — only a noun phrase that names the
 # memory itself.
-_SELF_SUBJECTS = (
-    r"this\s+(?:memory|note|entry|record|reminder|item|fact)",
-    r"the\s+above",
-)
+_SELF_SUBJECTS = (r"this\s+(?:memory|note|reminder)",)
+
+# The nouns that were here and are gone, because each is *anaphoric* far more
+# often than self-referential in the content darkmem exists to store:
+#
+#   `record`  — "I created a TXT record for domain verification. This record
+#               expires on 2026-06-01."
+#   `entry`   — a cache entry, a calendar entry, a changelog entry
+#   `item`    — an inventory item, a backlog item
+#   `fact`    — a fact in the vault, not this note about it
+#   `the above` — a pasted key, cert chain or quote, whose validity is the
+#               *pasted thing's*, not the memory's: "API key for staging:
+#               sk-… The above is valid until 2026-03-31."
+#
+# Each turned a claim about the world into the memory's own deletion date.
+# `memory`, `note` and `reminder` survive because none of them has a competing
+# world meaning in this corpus — nobody writes "this note expires" about a
+# musical note.
 
 # "valid until X", "good through X", "applies until X".
 _VALIDITY_VERBS = r"(?:is\s+|remains\s+|stays\s+)?(?:valid|good|current|accurate|applicable)"
@@ -76,7 +90,10 @@ _MONTH_ALTERNATION = "|".join(sorted(_MONTHS, key=len, reverse=True))
 # "Q3", no "next spring", no "in six months": a quarter with no year has to
 # guess which year is meant, and a guess here deletes a memory.
 _DATE = (
-    r"(?P<iso>\d{4}-\d{2}-\d{2})"
+    # `(?!\d)` because `\b` does not fire between two digits: without it
+    # "2026-12-315" parses as 2026-12-31 and silently invents a TTL from a
+    # typo or a longer identifier.
+    r"(?P<iso>\d{4}-\d{2}-\d{2})(?!\d)"
     rf"|(?:the\s+)?end\s+of\s+(?P<eom_month>{_MONTH_ALTERNATION})\s+(?P<eom_year>\d{{4}})"
     rf"|(?:the\s+)?end\s+of\s+Q(?P<eoq>[1-4])\s+(?P<eoq_year>\d{{4}})"
     rf"|(?P<month>{_MONTH_ALTERNATION})\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>\d{{4}})"
@@ -85,34 +102,50 @@ _DATE = (
 
 _SELF_ALTERNATION = "|".join(_SELF_SUBJECTS)
 
+# The object an imperative must carry. **Mandatory, never optional** — the one
+# `?` that used to sit here let pattern 4 degenerate to verb + until + date, so
+# "Compliance says raw logs: keep until 2026-12-31, then purge" armed the TTL
+# of the note recording the policy. A retention imperative with no object is
+# not addressed to this memory; it is a sentence about something else.
+_SELF_OBJECT = rf"(?:this(?:\s+(?:memory|note|reminder))?|{_SELF_ALTERNATION})"
+
 # Every pattern anchors on a self-referential subject or an imperative to the
-# system. There is no pattern that matches a date alone.
+# system carrying a self-referential object. **There is no pattern that matches
+# a date alone, and none whose anchor is optional** — a test asserts the second
+# half by scanning the compiled patterns, because the failure it prevents is
+# one `?` wide and silently deletes memories.
 _PATTERNS: tuple[re.Pattern[str], ...] = (
     # "this note is valid until 2026-12-31" / "this memory is good through March 2027"
     re.compile(
         rf"\b(?:{_SELF_ALTERNATION})\s+{_VALIDITY_VERBS}\s+{_UNTIL}\s+(?:{_DATE})",
         re.IGNORECASE,
     ),
-    # "this entry expires on 2026-12-31"
+    # "this reminder expires on 2026-12-31"
     re.compile(
         rf"\b(?:{_SELF_ALTERNATION})\s+{_EXPIRY_VERBS}\s+(?:on|at|in)?\s*(?:{_DATE})",
         re.IGNORECASE,
     ),
     # "delete this after 2026-12-31" / "discard this memory after March 2027"
     re.compile(
-        rf"\b(?:delete|discard|drop|forget|remove|purge)\s+(?:this|the\s+above)"
-        rf"(?:\s+(?:memory|note|entry|record|reminder|item|fact))?\s+"
+        rf"\b(?:delete|discard|drop|forget|remove|purge)\s+{_SELF_OBJECT}\s+"
         rf"(?:after|on|at|by)\s+(?:{_DATE})",
         re.IGNORECASE,
     ),
-    # "remember this until 2026-12-31" / "keep until end of Q3 2026"
+    # "remember this until 2026-12-31" / "keep this note until end of Q3 2026"
     re.compile(
-        rf"\b(?:remember|keep|retain|hold)\s+(?:this|the\s+above)?"
-        rf"(?:\s+(?:memory|note|entry|record|reminder|item|fact))?\s*"
-        rf"{_UNTIL}\s+(?:{_DATE})",
+        rf"\b(?:remember|keep|retain|hold)\s+{_SELF_OBJECT}\s+{_UNTIL}\s+(?:{_DATE})",
         re.IGNORECASE,
     ),
 )
+
+# Quote characters that mark text the memory is *reporting* rather than
+# asserting. A retention instruction inside them belongs to whatever was
+# quoted — a code comment, a policy document, another agent's message — so
+# "config.py has a comment: \"remove this by 2026-06-30\"" is a note *about* a
+# TODO, and arming its TTL deletes the documentation of the TODO. Apostrophes
+# are deliberately absent: "doesn't" would open a spurious region and suppress
+# every real match after it.
+_QUOTE_CHARS = '"“”«»`'
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 
@@ -126,10 +159,17 @@ def _end_of_day(year: int, month: int, day: int) -> datetime | None:
     immediately.
     """
     try:
-        start = datetime(year, month, day, tzinfo=timezone.utc)
-    except ValueError:
+        # The addition is inside the try, not after it. `datetime(9999, 12, 31)`
+        # constructs fine and only the +1 day overflows, so an `OverflowError`
+        # escaping here reached savepoint A and took the vector upsert down with
+        # it — losing every enrichment for that memory, misattributing the cause
+        # as "Vector write failed", and failing identically on every retry
+        # because it is deterministic. "Valid until 9999-12-31" is the ordinary
+        # never-expires idiom, so the memory asking to be kept forever was the
+        # one being made permanently unsearchable.
+        return datetime(year, month, day, tzinfo=timezone.utc) + timedelta(days=1)
+    except (ValueError, OverflowError):
         return None
-    return start + timedelta(days=1)
 
 
 def _end_of_month(year: int, month: int) -> datetime | None:
@@ -172,6 +212,27 @@ def _instant_from(match: re.Match[str]) -> datetime | None:
     return None  # pragma: no cover - every alternation sets one group
 
 
+def _quoted_spans(content: str) -> list[tuple[int, int]]:
+    """Half-open ``[start, end)`` spans of quoted or fenced text.
+
+    An unclosed quote opens no span at all rather than swallowing the rest of
+    the memory: the error direction has to be *fewer* suppressions, because a
+    stray quote character would otherwise silence every real retention
+    instruction after it.
+    """
+    spans: list[tuple[int, int]] = []
+    opener: str | None = None
+    start = 0
+    for index, char in enumerate(content):
+        if opener is None:
+            if char in _QUOTE_CHARS:
+                opener, start = char, index
+        elif char == opener or (opener in "“«" and char in "”»"):
+            spans.append((start, index + 1))
+            opener = None
+    return spans
+
+
 def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime | None:
     """The memory's own stated expiry, or ``None``.
 
@@ -189,9 +250,14 @@ def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime 
     if reference_time.tzinfo is None:
         reference_time = reference_time.replace(tzinfo=timezone.utc)
 
+    quoted = _quoted_spans(content)
     found: list[datetime] = []
     for pattern in _PATTERNS:
         for match in pattern.finditer(content):
+            # A match inside quoted text is the memory reporting someone else's
+            # instruction, not issuing its own.
+            if any(start <= match.start() < end for start, end in quoted):
+                continue
             instant = _instant_from(match)
             # Strictly future: a derived expiry already spent would let capture
             # arm a sweep that deletes the memory it just wrote.

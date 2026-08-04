@@ -35,19 +35,21 @@ def derive(content: str, *, reference_time: datetime = NOW):
          datetime(2027, 1, 1, tzinfo=timezone.utc)),
         ("this memory is good through 2026-06-30",
          datetime(2026, 7, 1, tzinfo=timezone.utc)),
-        ("This entry expires on 2026-03-01.",
+        ("This reminder expires on 2026-03-01.",
          datetime(2026, 3, 2, tzinfo=timezone.utc)),
         ("Delete this after 2026-09-15.",
          datetime(2026, 9, 16, tzinfo=timezone.utc)),
         ("Remember this until 2026-11-30",
          datetime(2026, 12, 1, tzinfo=timezone.utc)),
+        ("Keep this note until end of Q3 2026.",
+         datetime(2026, 10, 1, tzinfo=timezone.utc)),
         ("This note remains accurate until the end of Q3 2026.",
          datetime(2026, 10, 1, tzinfo=timezone.utc)),
         ("This memory is valid until end of March 2027",
          datetime(2027, 4, 1, tzinfo=timezone.utc)),
         ("This note is valid until December 2026",
          datetime(2027, 1, 1, tzinfo=timezone.utc)),
-        ("This record is valid until March 5, 2026",
+        ("This memory is valid until March 5, 2026",
          datetime(2026, 3, 6, tzinfo=timezone.utc)),
     ],
 )
@@ -99,6 +101,29 @@ def test_the_earliest_future_expiry_wins():
         "The TLS cert expires soon. It is valid until 2026-12-31.",
         "We renewed the licence. It expires on 2026-09-01.",
         "The vendor contract is fine for now. It is good through March 2027.",
+        # ── Fable review, Critical 1: an imperative with no object at all.
+        # The pattern's self-anchor was optional, so these degenerated to
+        # verb + until + date and armed the TTL of the note recording a
+        # retention policy or a trade.
+        "Compliance says raw logs: keep until 2026-12-31, then purge.",
+        "Broker recommendation for AAPL: hold until March 2026.",
+        "Retention for the audit bundle: retain until end of Q3 2027.",
+        # ── Fable review, Critical 2: anaphoric nouns. Same class as the
+        # bare `it` above, but the anaphor is a definite noun phrase — and
+        # `record`, `entry` and `item` are dominated by their world meanings
+        # in exactly the infrastructure content this system stores.
+        "I created a TXT record for domain verification. This record expires on 2026-06-01.",
+        "Warmed the CDN. This entry expires on 2026-06-01.",
+        "Triaged the backlog. This item is valid until 2026-06-01.",
+        "Logged the claim in the vault. This fact is valid until 2026-06-01.",
+        # ── Fable review, Important 3: `the above` refers to pasted content,
+        # whose validity is the pasted thing's, not the memory's.
+        "API key for staging: sk-abc123. The above is valid until 2026-03-31.",
+        "Cert chain pasted below the fold. The above is good through March 2027.",
+        # ── Fable review, Important 4: a reported instruction, not an issued
+        # one. Arming these deletes the documentation of the TODO.
+        'config.py has a comment: "remove this by 2026-06-30" next to the legacy flag.',
+        'The runbook says "keep this note until 2026-09-30" but that is stale advice.',
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
@@ -160,12 +185,47 @@ def test_an_ambiguous_or_relative_expiry_is_refused(content):
     [
         "This note is valid until 2026-02-30.",  # impossible day
         "This note is valid until 2026-13-01.",  # impossible month
+        "This note is valid until 2026-12-315.",  # a longer token, not a date
     ],
 )
 def test_an_impossible_date_is_refused_rather_than_clamped(content):
     """Clamping 2026-02-30 to the 28th would invent a retention the memory
-    never stated."""
+    never stated. The third case is the missing digit boundary: `\\b` does not
+    fire between two digits, so without `(?!\\d)` a typo parses as a real date."""
     assert derive(content) is None
+
+
+def test_the_never_expires_idiom_is_refused_and_does_not_raise():
+    """Fable review, Important 5. `datetime(9999, 12, 31)` constructs fine and
+    only the end-exclusive +1 day overflows. The `OverflowError` escaped into
+    Phase 5 savepoint A, rolled back the vector upsert with it, lost every
+    enrichment for that memory, was misattributed as "Vector write failed", and
+    — being deterministic — failed identically on every retry. The memory
+    asking to be kept forever was the one made permanently unsearchable."""
+    assert derive("This note is valid until 9999-12-31.") is None
+
+
+def test_no_pattern_makes_its_self_anchor_optional():
+    """Fable review, Critical 1, as a structural guard rather than a case list.
+
+    The defect was one `?` wide: `(?:this|the above)?` let an imperative match
+    with no object, so "keep until 2026-12-31" armed the TTL of a note about a
+    retention policy. Case-by-case tests would not have caught the next such
+    edit, so this asserts the shape — no pattern may contain an optional
+    self-referential group."""
+    from app.services.stated_expiry import _PATTERNS
+
+    for pattern in _PATTERNS:
+        text = pattern.pattern
+        for optional in ("this)?", "this]?", "above)?", "above\\s*)?"):
+            assert optional not in text.replace(" ", ""), (
+                f"pattern makes its self-anchor optional: {text}"
+            )
+        # And the harder property: the pattern must not match a bare
+        # verb+until+date with no self-referential token anywhere.
+        assert not pattern.search("keep until 2026-12-31"), (
+            f"pattern matches an unanchored retention imperative: {text}"
+        )
 
 
 def test_empty_and_non_string_content_is_refused():
