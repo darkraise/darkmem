@@ -66,6 +66,25 @@ def test_the_stated_day_is_covered_in_full():
     )
 
 
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        # Two balanced smart-quoted regions used to generate a span across the
+        # *unquoted* middle, swallowing the instruction between them — a
+        # recall regression introduced by the odd-count union, since these
+        # inputs are balanced and unambiguous.
+        ("The doc says “foo” today. Keep this note until 2026-09-30. Then “bar” applies.",
+         datetime(2026, 10, 1, tzinfo=timezone.utc)),
+        # A negation in an *earlier* sentence must not suppress a real
+        # instruction: the lookback stops at the sentence terminator.
+        ("Never mind the old plan. Delete this note after 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+    ],
+)
+def test_the_guards_do_not_swallow_a_genuine_instruction(content, expected):
+    assert derive(content) == expected
+
+
 def test_the_earliest_future_expiry_wins():
     """Two stated retentions are two promises, and only the tighter one can be
     kept."""
@@ -142,6 +161,20 @@ def test_the_earliest_future_expiry_wins():
         "This note is valid until December 20269",
         "This memory is valid until end of March 20270",
         "This note remains accurate until the end of Q3 20271",
+        # ── Round-2 re-review: the negation guard's 40-char window lost the
+        # finding's own reported shape once a clause intervened, and three
+        # negation forms were missing from the token list entirely.
+        "Do not, whatever the compliance team says on Friday about the "
+        "retention ladder, delete this note after 2026-12-31.",
+        "Under no circumstances delete this note after 2026-12-31.",
+        "Under no circumstances should you delete this note after 2026-12-31.",
+        "We should archive rather than delete this note after 2026-12-31.",
+        "Archive instead of deleting this note by 2026-12-31.",
+        # ── Round-2 re-review: two stray inch marks preserve parity, so the
+        # odd-count union could not see the misphasing. An inch mark is
+        # digit-preceded and is no longer an opener.
+        'Rack has 19" rails. The runbook says "keep this note until 2026-09-30 '
+        '(the 42" one)" but ignore it.',
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
@@ -243,6 +276,7 @@ def test_no_pattern_makes_its_self_anchor_optional():
     """
     from app.services.stated_expiry import _PATTERNS
 
+    dates = ("2026-12-31", "March 2027", "end of Q3 2026", "March 5, 2027")
     unanchored = [
         f"{verb} {preposition} {date}"
         for verb in (
@@ -250,8 +284,18 @@ def test_no_pattern_makes_its_self_anchor_optional():
             "remember", "keep", "retain", "hold",
         )
         for preposition in ("after", "on", "at", "by", "until", "through", "till")
-        for date in ("2026-12-31", "March 2027", "end of Q3 2026", "March 5, 2027")
+        for date in dates
     ]
+    # The declarative patterns' subjects too, so making *those* optional is
+    # caught by this guard rather than only by the case list.
+    unanchored += [
+        f"{verb} {preposition} {date}"
+        for verb in ("is valid", "is good", "remains accurate", "is current")
+        for preposition in ("until", "through", "till")
+        for date in dates
+    ]
+    unanchored += [f"expires on {date}" for date in dates]
+    unanchored += [f"expires {date}" for date in dates]
     for pattern in _PATTERNS:
         for probe in unanchored:
             assert not pattern.search(probe), (
