@@ -1750,6 +1750,164 @@ dispatch and string-keyed lookup, not just a grep for the name.
 
 **Verify.** `cd backend && python -m pytest tests/test_hybrid_search.py tests/test_code_query.py -q`
 
+#### T2.79 — The harvest reproducibility test skips wherever its input is gitignored
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54` · `Doc: 17 §9, §11` · `Tag: rebuild` · `Gate: G-D`
+
+**What.** `test_harvest_l2_facts.py`'s reproducibility check skipped on a **gitignored** warm
+cache, so it ran in the main checkout and skipped in every lane worktree and every fresh
+clone — reporting success either way. The test that silently did not run is T2.54's harvest
+reproducibility anchor: the byte-identical manifest that was its reviewer's central
+evidence, for a gold set gating G-D and transitively G-C.
+
+**How it surfaced is the point.** Not an audit — **two agents disagreed about a count**. The
+controller published 459 from the main checkout; lane `ad` measured 458/1 and disputed
+rather than matching.
+
+**Done when:**
+- [ ] The input is no longer gitignored, scoped to the entries the harvest actually reads
+      rather than the whole shared cache
+- [ ] Absence is a **hard failure**, not a skip
+- [ ] A fresh clone with zero gitignored state runs it, proven rather than argued
+- [ ] No conditional skips remain anywhere in `scripts/benchlib/`
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`
+
+#### T2.80 — `POST /knowledge/search`, the REST twin doc 12 assigns and nobody owns
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.72` · `Doc: 12 §2, §3` · `Tag: target-new` · `Gate: standing`
+
+**What.** Doc 12 §2 assigns the route and §3 pairs it with MCP `knowledge_search`. T2.72
+built the agent half and filed the surface MCP-single-door because the alternatives were
+worse, logging a Tier-2 amendment. **That filing is honest but weaker than it reads**:
+`memory.search` and `code.search` are both two-door, so a cross-layer *ranked* answer is a
+capability by this repo's own precedent — leaving `knowledge_search` the only ranked
+retrieval in the system with no REST door.
+
+Build the route through the **same** `knowledge_search_response()` serialiser T2.72
+deliberately placed outside the tool for exactly this purpose, so the two doors spend one
+function rather than reshaping the composition result twice.
+
+**Two Important findings from T2.72's review must be settled here, not deferred again:**
+
+1. `api/mcp/server.py` catches a bare `RuntimeError`, and `derive_rerank_scores` raises the
+   same type — so a future reranker defect over a healthy vault is served as "unavailable".
+   That is the failed-versus-empty conflation T2.66 spent a whole task eliminating. Needs a
+   typed exception on the composition.
+2. `envelope.reranked` is permanently false because the reranker is a **door-side
+   constructor argument**. The moment this route passes one, the two doors **rank
+   differently** while every row-shape parity test stays green — those tests compare shape,
+   not order.
+
+**Done when:**
+- [ ] The route exists at doc 12 §2's path and both doors spend one serialiser
+- [ ] The composition raises a typed exception, and an empty vault is distinguishable from a
+      failed rerank at both doors
+- [ ] The two doors provably rank the **same**, by a test that compares order and not only
+      shape
+- [ ] `docs/two-door-parity.md` moves the surface to two-door
+
+**Verify.** `cd backend && python -m pytest tests/test_door_parity.py tests/test_knowledge_search.py -q`
+
+#### T2.81 — The empty-text raise has a live route and an unguarded caller
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.69` · `Doc: 07 §4, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** T2.69's review ruled the reranker's empty-text raise correct and its disclosure
+incomplete. The live half reproduced in three executed links: the wire returned 200 with
+`{"content":""}`, the pipeline wrote `payload->>'content' = ''`, and the real
+`RerankerService` raise escaped `MemoryService._search_memories_paginated_traced`
+uncaught.
+
+**The fix's own prose then turned out to be false and to hide a 500.** `MemoryUpdate`'s
+comment claimed `None` means "not being updated", but `model_dump(exclude_unset=True)`
+yields `{'content': None}` and a live `PUT` with `{"content": null}` raised uncaught — on
+the exact door the task hardened, under prose actively denying it. It was never only
+`content`: `importance`, `metadata`, `is_archived`, `project` and `status` are all NOT NULL
+columns reachable through the model and all failed identically.
+
+**Done when:**
+- [ ] The empty-text path is guarded at its live caller, proven by a wire-level test
+- [ ] Every NOT NULL column reachable through `MemoryUpdate` refuses `null` with a **422 at
+      validation**, not a service-side drop — `null` is a real instruction for the nullable
+      columns (`memory_type`, `expires_at`), so a blanket drop would either break legitimate
+      clearing or swallow an incoherent request
+- [ ] The prose that denied the failure is corrected in the same change
+
+**Verify.** `cd backend && python -m pytest tests/test_memory_update_nulls.py tests/test_reranker.py -q`
+
+#### T2.82 — `prune-cache` drops every live entity-embedding cache under the sentinel
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.68` · `Doc: 04 §6, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** `POST /reembed/prune-cache` under the `|0` fingerprint sentinel **drops every live
+`entity_embedding_cache__*` child table** — the route performs no existence probe.
+Pre-existing and **destructive** rather than merely inert, which makes it the most dangerous
+member of the sentinel family: the other two sites returned nothing, this one deletes.
+
+T2.68's shipped `llm.py` docstring now describes `ReembedService` as safe to call bare,
+which is false for this route, so that claim must be corrected in the same change.
+
+**Done when:**
+- [ ] A cache child may only be dropped when its fingerprint is **resolved and registered** —
+      treat the deletion path as the invariant-bearing part
+- [ ] The sentinel drops nothing, proven by a test that fails if the guard is removed
+- [ ] The false safety claim in `llm.py` goes with it
+
+**Verify.** `cd backend && python -m pytest tests/test_reembed.py -q`
+
+#### T2.83 — A wrong non-zero `dimensions` reproduces the silent-empty-forever symptom
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.68` · `Doc: 04 §6` · `Tag: rebuild` · `Gate: standing`
+
+**What.** T2.68 closed the `|0` sentinel, but a **wrong non-zero** `dimensions` — 768
+configured while the model emits 1024 — reproduces the original symptom at both read
+surfaces, and that fix does not cover it. The plan never owned this case: the task was
+written around the sentinel because that is the shape someone noticed. The real class is
+**"the configured fingerprint does not match the one an embed would produce"**.
+
+**The asymmetry is what makes it invisible.** Retrieval derives its fingerprint from
+`embed()`'s **return value**, so it is structurally immune and keeps working while these
+surfaces silently empty. Nothing in a normal session would suggest a misconfiguration.
+
+**Done when:**
+- [ ] Both read surfaces refuse, or report honestly, when the configured fingerprint cannot
+      be the one an embed would produce — never a silent empty
+- [ ] The guard is keyed on the class, not on the `|0` shape, so a third wrong-fingerprint
+      form does not need a fourth task
+- [ ] A test drives a configured/actual dimension mismatch and fails if the guard is removed
+
+**Verify.** `cd backend && python -m pytest tests/test_reembed.py tests/test_embedder_registry.py -q`
+
+#### T2.84 — The fact-keyed retrieval-heat counter
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.65` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
+
+**What.** T2.65 **settled the decision and could not execute it**: a real fact-keyed counter
+needs its own table (`fact_id REFERENCES knowledge_triples(id)`), and no lane held
+baseline-schema clearance that round, so it held the memory-bridged proxy as an *interim*
+position and recorded a ready-to-execute design in the amendment log rather than leaving it
+implicit.
+
+**The gap is live, not latent.** `FactsChannel` is unconditional traffic today through
+`LayerCompositionService.search`, behind the `knowledge_search` MCP tool T2.72 landed the
+same day — no flag gates it, and nothing analogous to `access_stats.spawn_record_access`
+sits on the path. Doc 08 §6's consequence ranking is degrading toward its salience arm right
+now.
+
+**Needs a schema window.** Schema changes serialise through one owner per epic (CLAUDE.md),
+so this cannot share a round with another baseline edit.
+
+**Done when:**
+- [ ] Retrieval heat is counted per **fact**, on its own table, not bridged through memories
+- [ ] T2.65's pinning test flips: fifty real searches no longer leave the frequency component
+      at zero
+- [ ] `FACT_KEYED_COUNTER_STATUS` / `RETRIEVAL_HEAT_STATUS` are **retired** — a marker that
+      outlives its condition is the stale-premise defect T2.65 was fixing
+- [ ] Counting stays off the hot path's critical section, as `access_stats` does
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_channel.py tests/test_access_stats.py -q`
+
 #### T2.85 — Self-expiring dated facts: rule the belief-window contradiction, then build it
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.01` · `Doc: 08 §2.3, §3.1, §9` · `Tag: activation` · `Gate: G-C`
@@ -1885,3 +2043,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-04 | T2.34 | 3 | **ESCALATED — doc 08 §9 and §3.1 disagree on which column a fact's stated expiry writes, and the literal §9 reading silently breaks retrieval and a uniqueness invariant. Not implemented; no code written.** §9 says a dated fact "gets its belief window **pre-closed at that date**", which reads as setting `invalid_at` to the future expiry at population. §3.1's state machine says `invalid_at` is set when **a newer belief arrives** (`open --> window_closed`), and routes a stated expiry down the *other* edge entirely (`open --> expired`, i.e. `expired_at`). They cannot both hold. The literal §9 reading is not merely ambiguous, it is destructive: `0001_baseline.py` makes **four** indexes partial on `expired_at IS NULL AND invalid_at IS NULL` — the unique `ux_knowledge_triples_open` plus doc 07 §2's three fact-channel retrieval indexes — so a future `invalid_at` written today (a) drops the fact out of the retrieval channel's scope **immediately**, years before its stated expiry, and (b) frees the unique slot, letting a second currently-open belief on the same `triple_key` exist beside it. Both failures are silent. Note `as_of` already implements the correct half-open window (`valid_at <= t < invalid_at`), so the *model* is right and it is the shipped "currently open" predicate that assumes `invalid_at` is only ever set in the past. **Three ways out, none of which a lane may pick unilaterally:** (1) make "currently open" time-aware — impossible as a partial index, since `now()` is not IMMUTABLE, so it means reworking the unique constraint and all three retrieval indexes and relaxing invariant 8's temporal analogue, i.e. a baseline schema change that serialises through one owner; (2) add a `stated_expiry` column and have the recompute arm write `expired_at` when it passes — a schema amendment §9 does not list (§9's only named amendment is `demotion_pending_since`); (3) no column at all — the recompute arm re-derives the stated expiry deterministically from the fact text each cycle and sets `expired_at` once past, which is consistent with both sections and with §9's "no LLM, no separate job", at the cost of re-parsing | Found while bootstrapping T2.34, before any code. Runbook §5 Tier 3: the corpus doc wins until a human decides, and this would relax an invariant either way. **The memory side is unaffected and remains buildable** — the owner has already settled it as a deterministic post-extraction parse with no prompt change, which keeps the F1 bench cache valid (the cache key is `sha256(content + system_prompt)`, so a schema edit there would red the gate until a live DeepSeek re-warm and force a re-recorded F1 baseline). Recommend splitting T2.34 on that seam once the fact side is ruled |
 | 2026-08-04 | T2.34, T2.85 | 2 | **T2.34 split on the escalation seam; the fact half is minted as T2.85 and the memory half proceeds.** The two were never one mechanism — doc 08 names them in separate sections and the task's own text said "two different mechanisms that must not be conflated" — and only the fact half is blocked by the Tier-3 row above, so holding both would have parked a buildable activation behind a doc ruling it does not depend on. T2.34 keeps the memory side, drops to `Size: S`, and loses its `T2.01` dependency (that was the fact half's); T2.85 keeps `T2.01`, carries the contradiction and the three candidate rulings in full, and is **Fable/xhigh** because its first deliverable is a ruling between two design-doc sections rather than code. The `Verify` files split with them (`test_self_expiring_memories.py` / `test_self_expiring_facts.py`) | Runbook §5 Tier 2: a new task the plan missed, so both the epic file and `progress.md` are edited and the split is called out in the completion report |
 | 2026-08-04 | T2.34 | 1 | **The stated-expiry detector is narrowed to self-referential retention instructions, because T1.37's sweep deletes.** Doc 08 §2.3's illustrative phrasing is "valid until end of Q3", which reads naturally as any date near an expiry word. But `expired_memory_cleanup` **deletes** the row — embeddings cascade, provenance is withdrawn — so a false positive is silent, irreversible data loss, and "the licence is valid until 2026-12-31" is a claim *about a licence*, not an instruction to forget the note on that date. A deterministic parser cannot tell those apart from phrasing alone, so it matches only a memory addressing **its own** lifetime, and additionally refuses any derived instant not strictly in the future — otherwise capture could arm a sweep that deletes the memory it just wrote | The narrowing costs recall on unusual phrasings, which is the correct direction: a missed expiry leaves a memory alive one cycle longer and is recoverable, while a false positive is not recoverable at all. Recorded so the next reader meets the reasoning rather than widening the patterns to match the doc's illustrative example |
+| 2026-08-04 | T2.79, T2.80, T2.81, T2.82, T2.83, T2.84 | 2 | **Six tasks had tracker rows but no epic entry anywhere — minted here.** Every one was minted straight into `progress.md` from a review finding, which is the fast path and also the one that leaves a task undefined: `gen_progress.py` derives ids and titles *from* the epic files, so a row with no entry behind it is a row the generator refuses to regenerate. Three of the six (T2.80, T2.83, T2.84) were `todo` and therefore **unexecutable** — an agent claiming one had the Note cell and nothing else: no `Depends`, no `Doc`, no Done-when, no `Verify`. The entries reconstruct scope from the review findings that minted them, so the two already-`done` rows (T2.79, T2.81) document what shipped and the four open ones can now be picked up | Found at the start of the 2026-08-04 session by running `gen_progress.py`, which had been failing on all six for days and could not be run at all. The lesson is the generator's, not the minter's: minting into the tracker is the natural move after a review, so the epic entry has to be part of that same edit or it never happens |
