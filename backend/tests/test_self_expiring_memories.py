@@ -91,6 +91,14 @@ def test_the_earliest_future_expiry_wins():
         "Deadline: 2026-12-31.",
         # An expiry word and a date in the same memory, but unconnected.
         "This note covers the outage. The incident started 2026-12-31.",
+        # A pronoun whose referent is the previous clause, not the memory.
+        # `it` shipped in `_SELF_SUBJECTS` briefly and made all three of these
+        # resolve to the memory's own TTL — the exact data-loss shape this
+        # suite exists to refuse, missed by every other case here because they
+        # all name their subject.
+        "The TLS cert expires soon. It is valid until 2026-12-31.",
+        "We renewed the licence. It expires on 2026-09-01.",
+        "The vendor contract is fine for now. It is good through March 2027.",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
