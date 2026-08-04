@@ -19,7 +19,7 @@ licence is valid until 2026-12-31" is a claim *about a licence*, not an
 instruction to forget the note on that date. A regex cannot tell those apart by
 date proximity, so it does not try: it matches only a memory addressing **its
 own** lifetime, through a closed set of self-referential subjects (``this
-note``, ``this memory``, ``this entry``, ...) or an imperative addressed to the
+note``, ``this memory``, ``this reminder``) or an imperative addressed to the
 system (``delete this after ...``, ``remember until ...``).
 
 The asymmetry is the whole design. A missed expiry leaves a memory alive one
@@ -90,14 +90,17 @@ _MONTH_ALTERNATION = "|".join(sorted(_MONTHS, key=len, reverse=True))
 # "Q3", no "next spring", no "in six months": a quarter with no year has to
 # guess which year is meant, and a guess here deletes a memory.
 _DATE = (
-    # `(?!\d)` because `\b` does not fire between two digits: without it
-    # "2026-12-315" parses as 2026-12-31 and silently invents a TTL from a
-    # typo or a longer identifier.
+    # `(?!\d)` on every date alternation, not just this one: `\b` does not
+    # fire between two digits, so without it "2026-12-315" parses as
+    # 2026-12-31 and "March 5, 20261" parses as 2026 — a TTL invented from a
+    # typo or a longer identifier. The first fix bounded only the ISO branch
+    # and left the four year groups open, which is the same defect surviving
+    # in four of five places.
     r"(?P<iso>\d{4}-\d{2}-\d{2})(?!\d)"
-    rf"|(?:the\s+)?end\s+of\s+(?P<eom_month>{_MONTH_ALTERNATION})\s+(?P<eom_year>\d{{4}})"
-    rf"|(?:the\s+)?end\s+of\s+Q(?P<eoq>[1-4])\s+(?P<eoq_year>\d{{4}})"
-    rf"|(?P<month>{_MONTH_ALTERNATION})\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>\d{{4}})"
-    rf"|(?P<bare_month>{_MONTH_ALTERNATION})\s+(?P<bare_year>\d{{4}})"
+    rf"|(?:the\s+)?end\s+of\s+(?P<eom_month>{_MONTH_ALTERNATION})\s+(?P<eom_year>\d{{4}})(?!\d)"
+    rf"|(?:the\s+)?end\s+of\s+Q(?P<eoq>[1-4])\s+(?P<eoq_year>\d{{4}})(?!\d)"
+    rf"|(?P<month>{_MONTH_ALTERNATION})\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?,?\s+(?P<year>\d{{4}})(?!\d)"
+    rf"|(?P<bare_month>{_MONTH_ALTERNATION})\s+(?P<bare_year>\d{{4}})(?!\d)"
 )
 
 _SELF_ALTERNATION = "|".join(_SELF_SUBJECTS)
@@ -146,6 +149,22 @@ _PATTERNS: tuple[re.Pattern[str], ...] = (
 # are deliberately absent: "doesn't" would open a spurious region and suppress
 # every real match after it.
 _QUOTE_CHARS = '"“”«»`'
+
+# A negation immediately before a retention instruction inverts it, and the
+# inverted reading is the dangerous one: "Do not delete this note after
+# 2026-12-31" is someone *protecting* a memory, and matching the substring
+# turns their protection into the deletion date. The person most likely to
+# write it is the person least able to afford the failure.
+#
+# Scoped to a short window before the match rather than the whole memory, so a
+# negation in an unrelated earlier sentence does not suppress a real
+# instruction. The window is generous enough to clear "Please never purge".
+_NEGATION_WINDOW = 40
+_NEGATED = re.compile(
+    r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|never|no\s+need\s+to|"
+    r"must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t)\b[^.;!?]*$",
+    re.IGNORECASE,
+)
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 
@@ -215,21 +234,38 @@ def _instant_from(match: re.Match[str]) -> datetime | None:
 def _quoted_spans(content: str) -> list[tuple[int, int]]:
     """Half-open ``[start, end)`` spans of quoted or fenced text.
 
-    An unclosed quote opens no span at all rather than swallowing the rest of
-    the memory: the error direction has to be *fewer* suppressions, because a
-    stray quote character would otherwise silence every real retention
-    instruction after it.
+    **An odd number of quotes is ambiguous, and the ambiguity is resolved
+    toward suppression.** Strict first-to-next pairing is phase-fragile: one
+    stray quote shifts every later pair, and an inch mark is ordinary in this
+    system's infrastructure notes. `Mounted the 19" switch. The runbook says
+    "keep this note until 2026-09-30" but ignore it.` paired the inch mark with
+    the opening quote, left the real one unclosed, and un-quoted a reported
+    instruction the quote guard exists to suppress — re-opening the data-loss
+    path. So when a quote character appears an odd number of times, both
+    phasings are computed and their spans unioned: a match suppressed under
+    *either* reading is suppressed.
+
+    That direction is deliberate. Over-suppressing costs a missed TTL and the
+    memory simply lives on; under-suppressing deletes it.
     """
     spans: list[tuple[int, int]] = []
-    opener: str | None = None
-    start = 0
-    for index, char in enumerate(content):
-        if opener is None:
-            if char in _QUOTE_CHARS:
-                opener, start = char, index
-        elif char == opener or (opener in "“«" and char in "”»"):
-            spans.append((start, index + 1))
-            opener = None
+    for quote in set(_QUOTE_CHARS):
+        positions = [i for i, char in enumerate(content) if char == quote]
+        if len(positions) < 2:
+            continue
+        phases = [positions] if len(positions) % 2 == 0 else [positions, positions[1:]]
+        for phase in phases:
+            for opener, closer in zip(phase[::2], phase[1::2]):
+                spans.append((opener, closer + 1))
+
+    # Smart-quote and guillemet pairs are directional, so they pair across
+    # different characters and need no phase guessing.
+    for open_char, close_char in (("“", "”"), ("«", "»")):
+        opens = [i for i, char in enumerate(content) if char == open_char]
+        closes = [i for i, char in enumerate(content) if char == close_char]
+        for opener, closer in zip(opens, closes):
+            if closer > opener:
+                spans.append((opener, closer + 1))
     return spans
 
 
@@ -257,6 +293,9 @@ def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime 
             # A match inside quoted text is the memory reporting someone else's
             # instruction, not issuing its own.
             if any(start <= match.start() < end for start, end in quoted):
+                continue
+            # A negated instruction means the opposite of what it matches.
+            if _NEGATED.search(content[max(0, match.start() - _NEGATION_WINDOW):match.start()]):
                 continue
             instant = _instant_from(match)
             # Strictly future: a derived expiry already spent would let capture

@@ -124,6 +124,24 @@ def test_the_earliest_future_expiry_wins():
         # one. Arming these deletes the documentation of the TODO.
         'config.py has a comment: "remove this by 2026-06-30" next to the legacy flag.',
         'The runbook says "keep this note until 2026-09-30" but that is stale advice.',
+        # ── Re-review: a stray inch mark used to shift every later quote pair,
+        # un-quoting a reported instruction the guard promises to suppress.
+        'Mounted the 19" switch. The runbook says "keep this note until 2026-09-30" but ignore it.',
+        # ── Re-review, Critical direction: a NEGATED instruction means the
+        # opposite of what it matches. The person writing these is trying to
+        # protect the memory, and matching the substring turns their protection
+        # into its deletion date.
+        "Do not delete this note after 2026-12-31.",
+        "Do not remove this memory after 2026-06-30; it is the only copy.",
+        "Don't purge this note by 2026-09-30 — we need it for the audit.",
+        "Please never delete this note after 2026-12-31.",
+        "This memory must not be deleted after 2026-12-31.",
+        # ── Re-review: the trailing-digit boundary was fixed on the ISO
+        # alternation only, leaving the four year groups open.
+        "This note is valid until March 5, 20261",
+        "This note is valid until December 20269",
+        "This memory is valid until end of March 20270",
+        "This note remains accurate until the end of Q3 20271",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
@@ -211,21 +229,35 @@ def test_no_pattern_makes_its_self_anchor_optional():
     The defect was one `?` wide: `(?:this|the above)?` let an imperative match
     with no object, so "keep until 2026-12-31" armed the TTL of a note about a
     retention policy. Case-by-case tests would not have caught the next such
-    edit, so this asserts the shape — no pattern may contain an optional
-    self-referential group."""
+    edit, so this asserts behaviour over the whole vocabulary instead.
+
+    The probe has to cover **every** verb and preposition, not one pattern's.
+    The first version probed only "keep until <date>" — so making *pattern 3*'s
+    object optional passed the entire suite green while "Ops policy: remove
+    after 2026-06-30." armed a TTL. A guard advertised as structural was
+    protecting one of the two imperative patterns. The probes below are
+    generated from the vocabularies themselves, so a verb cannot be added
+    without the probe reaching it, and the earlier brittle string-matching on
+    the pattern text is gone: some optional groups are legitimate (the "5th"
+    day suffix), so "contains a `?`" was never the property worth asserting.
+    """
     from app.services.stated_expiry import _PATTERNS
 
-    for pattern in _PATTERNS:
-        text = pattern.pattern
-        for optional in ("this)?", "this]?", "above)?", "above\\s*)?"):
-            assert optional not in text.replace(" ", ""), (
-                f"pattern makes its self-anchor optional: {text}"
-            )
-        # And the harder property: the pattern must not match a bare
-        # verb+until+date with no self-referential token anywhere.
-        assert not pattern.search("keep until 2026-12-31"), (
-            f"pattern matches an unanchored retention imperative: {text}"
+    unanchored = [
+        f"{verb} {preposition} {date}"
+        for verb in (
+            "delete", "discard", "drop", "forget", "remove", "purge",
+            "remember", "keep", "retain", "hold",
         )
+        for preposition in ("after", "on", "at", "by", "until", "through", "till")
+        for date in ("2026-12-31", "March 2027", "end of Q3 2026", "March 5, 2027")
+    ]
+    for pattern in _PATTERNS:
+        for probe in unanchored:
+            assert not pattern.search(probe), (
+                f"pattern matches an unanchored retention imperative "
+                f"{probe!r}: {pattern.pattern}"
+            )
 
 
 def test_empty_and_non_string_content_is_refused():
