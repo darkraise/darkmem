@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 from app.models.chat import Conversation, Message
 from app.schemas.facts import FactBadge
-from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
+from app.schemas.retrieval_trace import RetrievalEnvelope
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
 from app.repositories.relational import PostgresMemoryRepository
@@ -18,7 +18,9 @@ from app.repositories.graph import PostgresGraphRepository
 from app.services.layer_composition import (
     ComposedResult,
     ComposedRow,
+    CompositionUnavailable,
     LayerCompositionService,
+    outage_channels,
     rerank_document_text,
 )
 from app.utils.scope_labels import scope_labels
@@ -254,6 +256,7 @@ class ChatService:
         )
 
         composed: ComposedResult | None = None
+        outage: RuntimeError | None = None
         try:
             composed = await LayerCompositionService(self.llm, self.session).search(
                 question,
@@ -261,14 +264,24 @@ class ChatService:
                 limit=CHAT_RETRIEVAL_LIMIT,
                 statuses=CHAT_STATUSES,
             )
-        except Exception as e:
-            # The composition raises only when every channel it asked is down,
-            # and a turn still has to answer from the history it has. The
-            # envelope below says the retrieval was degraded rather than
-            # letting an empty context read as an empty corpus.
+        except RuntimeError as e:
+            # An outage — every channel the composition asked was down — and a
+            # turn still has to answer from the history it has. The envelope
+            # below says the retrieval was degraded rather than letting an
+            # empty context read as an empty corpus.
+            #
+            # ``RuntimeError`` and not ``Exception``, matching the sibling MCP
+            # door verbatim (``api/mcp/server.py``'s ``knowledge_search``): a
+            # ``TypeError`` from a bug inside the composition is not an outage,
+            # and swallowing it here while the other door propagates it would
+            # answer every turn context-free under a "channel failed" banner
+            # that points an operator at the database instead of at the code.
             logger.warning("Composed retrieval failed during chat retrieval: %s", e)
+            outage = e
 
-        memories, facts, envelope = await self._chat_context(question, composed)
+        memories, facts, envelope = await self._chat_context(
+            question, composed, outage=outage, fact_asked=project is not None,
+        )
 
         try:
             entities = await self._lookup_entities(
@@ -293,7 +306,12 @@ class ChatService:
         }
 
     async def _chat_context(
-        self, question: str, composed: ComposedResult | None,
+        self,
+        question: str,
+        composed: ComposedResult | None,
+        *,
+        outage: RuntimeError | None = None,
+        fact_asked: bool = False,
     ) -> tuple[list[dict], list[dict], dict]:
         """The composed rows as this surface's persisted, citable context.
 
@@ -311,7 +329,8 @@ class ChatService:
         producer built it.
         """
         if composed is None:
-            return [], [], self._degraded_envelope(question).model_dump(mode="json")
+            degraded = self._degraded_envelope(question, outage, fact_asked=fact_asked)
+            return [], [], degraded.model_dump(mode="json")
 
         scores = composed.channel_scores
         memory_rows: list[ComposedRow] = []
@@ -421,22 +440,33 @@ class ChatService:
             "rrf_score": float(fused) if fused is not None else None,
         }
 
-    def _degraded_envelope(self, question: str) -> RetrievalEnvelope:
+    @staticmethod
+    def _degraded_envelope(
+        question: str, outage: RuntimeError | None, *, fact_asked: bool,
+    ) -> RetrievalEnvelope:
         """What a turn says when every channel the composition asked was down.
 
-        Both memory arms are reported ``failed`` rather than ``ran=False``:
-        they were asked, and ``partial`` has to fire, or a turn answered out of
+        The channel states are **read off the outage**, never composed here.
+        The composition records each channel's outcome before it gives up and
+        hands that record over, so this envelope repeats it; the fallback is
+        the same record derived from whether a fact channel was asked at all,
+        for the case where a ``RuntimeError`` arrives from somewhere that
+        carried none.
+
+        Failed rather than ``ran=False`` for the arms that ran: they were
+        asked, and ``partial`` has to fire, or a turn answered out of
         conversation history alone would be indistinguishable from one whose
-        corpus genuinely held nothing.
+        corpus genuinely held nothing. The arms that were **not** asked — the
+        fact channel on a wide turn, the deferred article writer — stay present
+        at ``ran=False``, because an omitted key makes "asked and failed"
+        indistinguishable from "no such modality".
         """
-        return RetrievalEnvelope(
-            query=question,
-            channels={
-                "memory.semantic": ChannelStatus(ran=True, failed=True),
-                "memory.keyword": ChannelStatus(ran=True, failed=True),
-            },
-            excluded={},
+        channels = (
+            outage.channels
+            if isinstance(outage, CompositionUnavailable)
+            else outage_channels(fact_asked=fact_asked)
         )
+        return RetrievalEnvelope(query=question, channels=channels, excluded={})
 
     async def _lookup_entities(
         self,

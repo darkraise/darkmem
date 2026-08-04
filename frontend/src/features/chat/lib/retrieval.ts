@@ -117,6 +117,24 @@ export function exclusionItems(
     }))
 }
 
+/**
+ * Which fact each nested row supports, as the number the turn cites it by.
+ *
+ * The composed wire field spells the relation `"supports fact F"` with the
+ * `F` as a fixed literal — doc 12 pins that string, and a producer
+ * interpolating an id into it would emit a relation no other consumer speaks.
+ * The number belongs on this side instead: the panel numbers facts `F1`, `F2`
+ * the way the prompt cites them, and "supports fact F" with two facts on
+ * screen names neither.
+ */
+export function factNumbers(
+  facts: ChatContextFact[] | null | undefined,
+): Map<string, number> {
+  return new Map(
+    (facts ?? []).map((fact, position) => [fact.id, fact.index ?? position + 1]),
+  )
+}
+
 /** `undefined` when the row carries no breakdown — never a fabricated one. */
 export function rowTrace(
   row: { scores?: ChatRowScores; rank_fusion_factor?: number },

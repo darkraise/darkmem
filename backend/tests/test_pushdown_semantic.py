@@ -33,6 +33,7 @@ from app.schemas.memory import MemorySearchRequest
 from app.services.embedder_registry import child_table
 from app.services.hybrid_search import HybridSearchService
 from app.services.memory import MemoryService
+from app.services.rank_fusion import FUSION_FETCH_DEPTH
 
 FINGERPRINT = "pushdown-embedder|4"
 DIMS = 4
@@ -262,7 +263,17 @@ async def test_unscoped_vector_search_does_not_overfetch(session):
 
 
 @pytest.mark.asyncio
-async def test_hybrid_search_keeps_the_fetch_multiplier(session):
+async def test_hybrid_search_reads_both_arms_to_the_fixed_fusion_depth(session):
+    """The arm depth does not follow the caller's page size.
+
+    It used to be ``limit x SEMANTIC_FETCH_MULTIPLIER``, which made the fused
+    ordering a function of how many rows the caller happened to want: chat
+    asked for ten and fused thirty candidates, the search surface asked for
+    sixty and fused a hundred and eighty, and the two ranked one corpus
+    differently at fully default flags. RRF is not truncation-consistent
+    across depths, so the depth is a constant and the caller's limit only
+    truncates.
+    """
     await _seed_partition(session)
     for _ in range(8):
         await _add_memory(session)
@@ -273,7 +284,26 @@ async def test_hybrid_search_keeps_the_fetch_multiplier(session):
 
     assert len(rows) <= 4
     semantic_probe = recording.calls[0][1]
-    assert semantic_probe["limit"] == 12
+    keyword_probe = recording.calls[1][1]
+    assert semantic_probe["limit"] == FUSION_FETCH_DEPTH
+    assert keyword_probe["limit"] == FUSION_FETCH_DEPTH
+
+
+@pytest.mark.asyncio
+async def test_a_request_deeper_than_the_fusion_floor_widens_the_arms(session):
+    """The floor is a floor, not a cap: two arms holding the same rows could
+    not fill a request larger than it, so a deep pager still reads at least as
+    many rows as it asked for."""
+    await _seed_partition(session)
+    await _add_memory(session)
+
+    recording = _RecordingSession(session)
+    svc = HybridSearchService(_FakeLLM(QUERY_VECTOR, FINGERPRINT), recording)
+    await svc.search(
+        "pgbouncer pooling", limit=FUSION_FETCH_DEPTH + 40, filters=MemoryFilter(),
+    )
+
+    assert recording.calls[0][1]["limit"] == FUSION_FETCH_DEPTH + 40
 
 
 # ── asyncpg CAST on the bound parameters ─────────────────────────────

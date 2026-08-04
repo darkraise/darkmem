@@ -614,6 +614,35 @@ limit=params.limit, offset=params.offset,
                 continue
             kept.append((row, mem))
 
+        # The post-fusion multiplier decides the order here, exactly as it does
+        # on the untraced path (``pipeline.semantic_search``). Computing it for
+        # display alone — which this door did — left an activated rank arm
+        # visible in the trace and absent from the ranking, so the live search
+        # surface would have gone on serving the unweighted order while the
+        # arm's own measurement said it had moved. Every arm sits at weight
+        # zero today, every factor is exactly 1.0, and the sort is stable, so
+        # the shipped order is unchanged to the bit.
+        #
+        # A rerank is authoritative and is not sorted away: the factor still
+        # rescales, matching ``preserve_order=True`` on the untraced path.
+        breakdowns = {
+            row["memory_id"]: rank_fusion_breakdown({"confidence": mem.confidence}, flags)
+            for row, mem in kept
+        }
+        factors: dict[str, float] = {}
+        for memory_id, breakdown in breakdowns.items():
+            factor = 1.0
+            for arm_value in breakdown.values():
+                factor *= arm_value
+            factors[memory_id] = factor
+        if not reranked:
+            kept.sort(
+                key=lambda pair: (
+                    float(pair[0].get("rrf_score") or 0.0) * factors[pair[0]["memory_id"]]
+                ),
+                reverse=True,
+            )
+
         total = len(kept)
         page = kept[params.offset:params.offset + params.limit]
 
@@ -625,10 +654,8 @@ limit=params.limit, offset=params.offset,
 
         items: list[MemoryTraceRow] = []
         for row, mem in page:
-            breakdown = rank_fusion_breakdown({"confidence": mem.confidence}, flags)
-            factor = 1.0
-            for arm_value in breakdown.values():
-                factor *= arm_value
+            breakdown = breakdowns[row["memory_id"]]
+            factor = factors[row["memory_id"]]
             channel = channel_trace.channel_scores.get(row["memory_id"], {})
             scores = {
                 "semantic": channel.get("semantic"),

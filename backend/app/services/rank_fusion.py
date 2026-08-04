@@ -24,6 +24,19 @@ from app.services.confidence import CONFIDENCE_DEFAULT
 
 RRF_K = 60
 
+# How deep every ranked list is read before the fusion joins them, fixed here
+# rather than derived from whatever page the caller wanted. RRF is **not
+# truncation-consistent across depths**: a row inside one reader's arm window
+# and outside another's earns a contribution on one side only, so two doors
+# over one corpus produce two different orderings — invariant 17's divergence,
+# arriving with no error and no symptom. At a fixed depth a shallow reader's
+# list is the deep reader's list truncated, which is the property the doors
+# are compared on. The value is the depth the search surface already read at
+# its live page size (50 rows plus its 50-row exclusion over-fetch, times the
+# vector repository's fetch multiplier), so the surface's own ordering is
+# unchanged and every shallower reader converges onto it.
+FUSION_FETCH_DEPTH = 300
+
 IMPORTANCE_DEFAULT = 0.5
 
 LIST_WEIGHT_KEYS: frozenset[str] = frozenset({"semantic_weight"})
@@ -39,6 +52,17 @@ class RankedList:
     name: str
     rows: Sequence[Mapping] = field(default_factory=tuple)
     weight: float = 0.0
+
+
+def fusion_fetch_depth(limit: int) -> int:
+    """How many rows each ranked list is read to before it is fused.
+
+    Never fewer than the fused rows the caller asked for: two arms that
+    returned the same rows could not otherwise fill the request. Above that
+    floor the depth is constant, which is what makes one door's ranking a
+    truncation of another's rather than a different one.
+    """
+    return max(FUSION_FETCH_DEPTH, limit)
 
 
 def normalize_row_id(row: Mapping) -> str | None:

@@ -28,20 +28,25 @@ Plus the constant scan Done-when 3 asks for, which is a *declaration* check
 rather than a literal check; its exact reach and its blind spots are stated on
 the test itself.
 
-**What none of this can see.** The two doors agree exactly while the rank arms
-sit at their default zero, which is the shipped state and the state every gate
-measures. They are not proven to agree under an activated arm: the memory search
-surface multiplies the arm factor onto ``rrf_score`` and re-sorts, while the
-composition multiplies it onto a rank-derived magnitude and re-sorts within the
-channel, so the two can order the same rows differently at a non-zero weight.
-That is a property of converging on the composition rather than something this
-task introduced — it is equally true of ``knowledge_search`` today — and it is
-recorded here so an arm activation re-measures both doors instead of one.
+**Where the two doors still part, and who owns it.** They agree exactly while
+every rank arm sits at its default zero — the shipped state, and the state every
+gate measures. They do **not** agree under an activated arm, and that is
+asserted here rather than described: ``test_an_activated_rank_arm_still_moves_
+one_door_and_not_the_other`` drives both doors at a non-zero
+``confidence_rank_gamma`` and pins which one moves. The mechanism is not a
+weight but a missing signal — the memory hybrid's arms select no ``confidence``
+column, so the composition's factor is 1.0 at every gamma while the search
+surface reads the column off the ORM row. Inherited rather than introduced (it
+is equally true of ``knowledge_search``), but that test is what makes T2.30's
+and T2.31's both-doors obligation fail a build instead of living in prose: it
+goes red the moment the doors are converged, which is the moment this file's
+parity claim needs re-reading.
 """
 
 from __future__ import annotations
 
 import ast
+import math
 import pathlib
 import re
 import uuid
@@ -182,6 +187,36 @@ async def _corpus(session) -> dict[str, Memory]:
     return rows
 
 
+FILLERS = 35
+
+
+async def _deep_corpus(session) -> Memory:
+    """A corpus deeper than a chat turn's arm window used to reach.
+
+    ``FILLERS`` rows carry descending similarity to the query vector and not
+    one query term, so the keyword arm never sees them. The returned target
+    sits below every one of them semantically and matches the query lexically,
+    which makes its rank a function of **how deep the arms were read**: inside
+    the window it fuses a mid-list semantic contribution onto a rank-one
+    keyword contribution and comes first, outside it, it is keyword-only and
+    falls below every filler. The doors used to read to different depths, so
+    on this corpus the search surface answered with a row chat never served.
+    """
+    await _seed_partition(session)
+    for i in range(FILLERS):
+        angle = 0.02 * (i + 1)
+        await _add_memory(
+            session,
+            vector=[math.cos(angle), math.sin(angle), 0.0, 0.0],
+            content=f"the box runs a database proxy on the LAN, note {i}",
+        )
+    return await _add_memory(
+        session,
+        vector=[math.cos(1.2), math.sin(1.2), 0.0, 0.0],
+        content="pgbouncer connection pooling was chosen over pgcat",
+    )
+
+
 _SCOPED = {"project": PROJECT}
 
 
@@ -223,6 +258,95 @@ async def test_a_chat_turn_and_the_search_surface_rank_the_same_corpus_alike(ses
     assert chat, "the fixture must retrieve something or the parity is vacuous"
     assert chat == [row_id for row_id in surface if row_id in set(chat)]
     assert chat == surface[:len(chat)]
+
+
+async def test_the_doors_rank_alike_on_a_corpus_deeper_than_a_turn_fetches(session):
+    """Parity at one fixed depth, on the corpus size that used to break it.
+
+    Same service and same weights is not enough: RRF is not
+    truncation-consistent across depths, and the doors read to different ones.
+    Chat asked its arms for ``limit x 3`` = 30 rows while the search surface
+    asked for ``(limit + offset + 50) x 3``, so on 36 rows the surface's **top
+    answer** was a row chat never served at all — at fully default flags, with
+    both doors on the same fusion. A shape comparison cannot see that; only an
+    ordering over a corpus deeper than the shallower window can.
+    """
+    target = await _deep_corpus(session)
+    scope = MemoryFilter(project=PROJECT, statuses=CHAT_STATUSES, include_archived=False)
+
+    semantic = [
+        str(row["memory_id"])
+        for row in await PostgresVectorRepository(session).search(
+            QUERY_VECTOR, fingerprint=FINGERPRINT, limit=FILLERS + 1, filters=scope,
+        )
+    ]
+    # The fixture has to straddle the window the shallow door used to read —
+    # 36 rows against the retired ``limit x 3`` = 30 — or it exercises nothing.
+    assert len(semantic) > 30
+    assert semantic[-1] == str(target.id), "the target must be the least similar row"
+
+    chat = await _chat_ids(session)
+    surface = await _search_surface_ids(session, limit=CHAT_RETRIEVAL_LIMIT * 2)
+
+    assert chat[0] == str(target.id), (
+        "the keyword-strong row is the search surface's top answer; a turn "
+        "that fuses a shallower window never sees it"
+    )
+    assert surface[0] == str(target.id)
+    # The doors truncate at different lengths on purpose: fusing at one depth
+    # is what makes the shorter list the longer one's prefix rather than a
+    # second ranking.
+    assert len(surface) > len(chat)
+    assert chat == surface[:len(chat)]
+
+
+async def test_an_activated_rank_arm_still_moves_one_door_and_not_the_other(session):
+    """The one divergence the parity above does **not** cover, measured.
+
+    The doors agree while every rank arm sits at its default zero, which is the
+    shipped state and the state every gate measures. They do not agree under an
+    activated arm, and the reason is not a weight: the memory hybrid's arms
+    select ``memory_id``, ``score``, ``payload`` and the two scope labels, so
+    ``confidence`` never reaches the composition's ``_signals`` at all. Its
+    factor is 1.0 for every memory row at every gamma, while the search surface
+    reads the column off the ORM row and re-sorts on it.
+
+    So an arm activation moves the search surface and leaves chat and
+    ``knowledge_search`` exactly where they were — with no error, no log and
+    nothing in either trace that names the difference. **T2.30 and T2.31 must
+    re-measure both doors, not one**, and this test is where that obligation
+    lives: it fails the moment the two are converged, which is the moment the
+    parity claim above needs re-reading rather than re-asserting.
+    """
+    from app.models.config import Config
+
+    await _seed_partition(session)
+    # Two rows the keyword arm cannot see, adjacent in the semantic order, so
+    # their fused scores differ by one rank step — a small gamma is enough to
+    # reorder them wherever the signal is actually read.
+    first = await _add_memory(
+        session, vector=[1.0, 0.0, 0.0, 0.0], confidence=0.75,
+        content="the box runs a database proxy, note one",
+    )
+    second = await _add_memory(
+        session, vector=[0.999, 0.045, 0.0, 0.0], confidence=1.0,
+        content="the box runs a database proxy, note two",
+    )
+    session.add(Config(key="feature_flags", value={"confidence_rank_gamma": 1.0}))
+    await session.flush()
+
+    surface = await _search_surface_ids(session)
+    chat = await _chat_ids(session)
+
+    assert surface[:2] == [str(second.id), str(first.id)], (
+        "the search surface spends the arm: the more confident row moves up"
+    )
+    assert chat[:2] == [str(first.id), str(second.id)], (
+        "chat's composed channel never receives the confidence signal, so the "
+        "arm is inert there — if this now matches the surface, the doors have "
+        "been converged and the T2.30/T2.31 both-doors obligation is discharged"
+    )
+    assert chat != surface
 
 
 async def test_chat_ranks_by_the_fused_order_and_not_by_the_semantic_one(session):
@@ -479,6 +603,105 @@ async def test_a_one_sided_channel_outage_reaches_the_turn_as_partial(session):
     assert retrieval["memories"], "a one-sided outage degrades, it does not empty"
 
 
+async def _degraded_envelope(session, monkeypatch, *, context: dict | None) -> dict:
+    """A turn taken while the composition's every channel is down."""
+    async def _memory_down(self, *args, **kwargs):
+        raise RuntimeError("memory arm down")
+
+    async def _facts_down(self, *args, **kwargs):
+        raise RuntimeError("fact arm down")
+
+    from app.services import facts_channel
+
+    monkeypatch.setattr(HybridSearchService, "_semantic_search", _memory_down)
+    monkeypatch.setattr(HybridSearchService, "_keyword_search", _memory_down)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts_down)
+
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+    retrieval = await svc._retrieve(QUERY, context)
+    assert retrieval["memories"] == []
+    return retrieval["envelope"]
+
+
+async def test_a_degraded_turn_reports_the_channels_the_composition_recorded(
+    session, monkeypatch,
+):
+    """The degraded envelope repeats the outage's own record and invents none.
+
+    It is persisted into ``messages.context`` and re-served for the life of the
+    conversation, so a claim it makes about a channel outlives the incident by
+    a long way. The fact arms are named here because omitting them — which this
+    envelope used to do — makes "asked and failed" indistinguishable from "this
+    layer has no such modality" for exactly the layer that has one.
+    """
+    channels = (await _degraded_envelope(session, monkeypatch, context=_SCOPED))["channels"]
+
+    assert channels["memory.semantic"] == {"ran": True, "failed": True}
+    assert channels["memory.keyword"] == {"ran": True, "failed": True}
+    assert channels["fact.keyword"] == {"ran": True, "failed": True}
+    assert channels["fact.name"] == {"ran": True, "failed": True}
+    assert channels["fact.semantic"] == {"ran": False, "failed": False}
+    assert channels["article.semantic"] == {"ran": False, "failed": False}
+
+
+async def test_a_wide_degraded_turn_never_claims_a_channel_it_did_not_ask(
+    session, monkeypatch,
+):
+    """A wide turn asks no fact channel, so a memory outage must not report one
+    as having run and failed. Fabricating a failure for a request that was
+    never made is the same defect as hiding a real one, pointing the opposite
+    way."""
+    channels = (await _degraded_envelope(session, monkeypatch, context=None))["channels"]
+
+    assert channels["memory.semantic"] == {"ran": True, "failed": True}
+    assert channels["fact.keyword"] == {"ran": False, "failed": False}
+    assert channels["fact.name"] == {"ran": False, "failed": False}
+
+
+@pytest.mark.parametrize("fact_asked", [True, False])
+def test_the_outage_fallback_says_what_the_outage_itself_says(fact_asked):
+    """``outage_channels`` is the record a caller falls back to when the raise
+    carried none, so it has to be the same record — two spellings of one
+    outage is how two surfaces come to describe it two ways."""
+    from app.services.layer_composition import CompositionUnavailable, outage_channels
+
+    raised = CompositionUnavailable(
+        "both channels down", channels=outage_channels(fact_asked=fact_asked),
+    )
+
+    assert isinstance(raised, RuntimeError)
+    assert raised.channels == outage_channels(fact_asked=fact_asked)
+    assert set(raised.channels) == {
+        "memory.semantic", "memory.keyword",
+        "fact.keyword", "fact.name", "fact.semantic",
+        "article.semantic",
+    }
+
+
+async def test_a_bug_inside_the_composition_is_not_degraded_into_a_turn(
+    session, monkeypatch,
+):
+    """The narrowing that keeps the two doors' error behaviour equal.
+
+    MCP's ``knowledge_search`` catches only ``RuntimeError``, so a ``TypeError``
+    from a bug in the composition is a 500 there. Catching ``Exception`` here
+    made the same bug a warning log and a degraded turn on this door: every
+    answer context-free under a "channel failed" banner, with the chat tests
+    that only assert degradation still green, and an operator sent to look at
+    channels and the database rather than at the code.
+    """
+    from app.services.layer_composition import LayerCompositionService
+
+    async def _bug(self, *args, **kwargs):
+        raise TypeError("composition post-processing is broken")
+
+    monkeypatch.setattr(LayerCompositionService, "search", _bug)
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+
+    with pytest.raises(TypeError):
+        await svc._retrieve(QUERY, _SCOPED)
+
+
 async def test_the_persisted_turn_keeps_the_envelope_it_answered_under(session):
     """The stored snapshot is what the panel renders for every past turn, so an
     envelope that lives only on the live stream leaves history unexplainable."""
@@ -504,14 +727,19 @@ APP_ROOT = pathlib.Path(__file__).resolve().parents[1] / "app"
 CANONICAL = APP_ROOT / "services" / "rank_fusion.py"
 
 # Names that could carry an RRF constant, in either of the two spellings one
-# can arrive in: the constant convention (``RRF_K``, upper case, any value at
-# all), and a lower-case name bound to a bare number, which is what a constant
-# smuggled in as an ordinary variable looks like. A lower-case name bound to
-# anything else — ``cross_layer_rrf`` the function, ``rrf_score`` off a row —
-# is a computation over the one constant rather than a second copy of it, and
+# can arrive in: the constant convention (upper case, any value at all), and a
+# lower-case name bound to a bare number, which is what a constant smuggled in
+# as an ordinary variable looks like. A lower-case name bound to anything else
+# — ``cross_layer_rrf`` the function, ``rrf_score`` off a row — is a
+# computation over the one constant rather than a second copy of it, and
 # flagging those would make the scan noise a reader learns to skip.
-RRF_NAME = re.compile(r"(^|_)rrf(_|$)", re.IGNORECASE)
-RRF_CONSTANT_NAME = re.compile(r"(^|_)RRF(_|$)")
+#
+# The letters are matched **anywhere in the name** rather than as an
+# underscore-delimited token. A token match reads as the tighter rule and is
+# the weaker one: ``RRFK = 60`` carries the letters, carries the meaning, and
+# walks through a token boundary untouched.
+RRF_NAME = re.compile(r"rrf", re.IGNORECASE)
+RRF_CONSTANT_NAME = re.compile(r"RRF")
 
 
 def _python_sources() -> list[pathlib.Path]:
@@ -560,16 +788,22 @@ def test_no_second_rrf_constant_is_declared_outside_rank_fusion():
     """``code_query.py`` held one for long enough that CLAUDE.md recorded the
     drift and named no owner for it. This is the owner.
 
-    **What this catches:** any module under ``app/`` binding an upper-case
-    ``RRF``-named name at any value, or a lower-case ``rrf`` name bound to a
-    bare number — module level, class body or function body, plain, annotated,
-    augmented or walrus.
+    **What this catches:** any module under ``app/`` binding a name whose
+    upper-case letters contain ``RRF`` at any value, or a name containing
+    ``rrf`` in any case bound to a bare number — module level, class body or
+    function body, plain, annotated, augmented or walrus. ``RRF_K``, ``RRFK``
+    and ``my_rrf_constant`` are all one name to it.
 
-    **What it does not:** a constant named without the letters ``rrf``
-    (``K = 60``, ``FUSION_K``), a bare inlined ``1.0 / (60 + rank)`` that binds
-    nothing at all, a value smuggled through a mutable container
-    (``TUNING["rrf_k"] = 55``, a ``Subscript`` target rather than a ``Name``),
-    and anything outside ``backend/app``. The second leg below narrows the
+    **What it does not:** a constant whose name drops the letters altogether
+    (``K = 60``, ``FUSION_K``) — the earlier phrasing of this list said the
+    scan missed a constant named "without the letters rrf", which read as
+    ``RRFK`` being caught when the token boundary let it through; a bare
+    inlined ``1.0 / (60 + rank)`` that binds nothing at all; a value smuggled
+    through a mutable container (``TUNING["rrf_k"] = 55``, a ``Subscript``
+    target rather than a ``Name``) or onto an object (``self.rrf_k = 55``, an
+    ``Attribute`` target); a binding made dynamically (``setattr``,
+    ``globals()``); and anything outside ``backend/app``, which is why
+    ``scripts/benchlib`` is not scanned. The second leg below narrows the
     first blind spot from the other side; the arithmetic one is deliberately
     left to review, because a scan able to recognise it would flag every
     unrelated reciprocal in the tree.

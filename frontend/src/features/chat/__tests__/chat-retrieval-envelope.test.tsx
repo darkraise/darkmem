@@ -152,6 +152,37 @@ describe("ChatContextPanel renders the trace and the exclusion counts", () => {
     ).toBeInTheDocument()
   })
 
+  it("names which fact a nested row supports, by the number the turn cites", () => {
+    render(
+      <ChatContextPanel
+        rows={[
+          { id: "m1", content: "the first row", status: "active", grouped_under: "f2" },
+        ]}
+        facts={[
+          { id: "f1", index: 1, text: "the first fact", layer: "L2" },
+          { id: "f2", index: 2, text: "the second fact", layer: "L2" },
+        ]}
+        envelope={ENVELOPE}
+      />,
+    )
+    // With two facts on screen, "supports fact F" names neither of them.
+    expect(screen.getByText("supports fact F2")).toBeInTheDocument()
+    expect(screen.queryByText("supports fact F1")).not.toBeInTheDocument()
+  })
+
+  it("says only that a row supports a fact when the fact is not on screen", () => {
+    render(
+      <ChatContextPanel
+        rows={[
+          { id: "m1", content: "the first row", status: "active", grouped_under: "gone" },
+        ]}
+        facts={[{ id: "f1", index: 1, text: "the first fact", layer: "L2" }]}
+        envelope={ENVELOPE}
+      />,
+    )
+    expect(screen.getByText("supports a fact")).toBeInTheDocument()
+  })
+
   it("stays honest with no envelope at all — no channels, no counts, no caveat", () => {
     render(
       <ChatContextPanel rows={[{ id: "m1", content: "a row", status: "active" }]} />,
