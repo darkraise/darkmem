@@ -428,6 +428,27 @@ function reasonLabel(reason: string | null): string {
   return REASON_LABELS[reason] ?? reason
 }
 
+/** Up to 3 action identities, plus a "+N more" tail — the live surface's
+ *  answer to F6: a confirm dialog for a state-mutating batch should name
+ *  what it acts on, not just count it, the way the demo predecessor's
+ *  `AlertDialog` listed up to 3 titles. `DreamAction` has no title, so this
+ *  lists the action kind and the object it touches instead — both real
+ *  fields, nothing composed. */
+function ActionPreviewList({ actions }: { actions: DreamAction[] }) {
+  if (actions.length === 0) return null
+  return (
+    <ul className="text-muted-foreground list-disc pl-5 text-sm">
+      {actions.slice(0, 3).map((a) => (
+        <li key={a.event_id} className="font-mono">
+          #{a.event_id} {actionLabel(a.action)} · object{" "}
+          {a.object_id.slice(0, 8)}
+        </li>
+      ))}
+      {actions.length > 3 && <li>+{actions.length - 3} more</li>}
+    </ul>
+  )
+}
+
 function formatValue(value: unknown): string {
   if (value === undefined) return "—"
   if (value === null) return "null"
@@ -598,7 +619,7 @@ function LiveObjectGroupPanel({
   group: DreamObjectGroup
   detailLevel: "simple" | "advanced"
   onUndoAction: (eventId: number) => void
-  onUndoGroup: (group: DreamObjectGroup, eventIds: number[]) => void
+  onUndoGroup: (group: DreamObjectGroup, eligibleActions: DreamAction[]) => void
 }) {
   const eligible = group.actions.filter((a) => a.undoable && !a.undone)
   return (
@@ -620,12 +641,7 @@ function LiveObjectGroupPanel({
           variant="outline"
           className="ml-auto"
           disabled={eligible.length === 0}
-          onClick={() =>
-            onUndoGroup(
-              group,
-              eligible.map((a) => a.event_id),
-            )
-          }
+          onClick={() => onUndoGroup(group, eligible)}
         >
           <Undo2 className="mr-1.5 size-3.5" />
           Undo group ({eligible.length})
@@ -651,6 +667,10 @@ export function LiveDreamDigest() {
     cycles,
     cyclesLoading,
     cyclesError,
+    cyclesTotal,
+    cyclesHasMore,
+    cyclesFetchingMore,
+    fetchMoreCycles,
     selectedCycleId,
     selectCycle,
     digest,
@@ -658,12 +678,11 @@ export function LiveDreamDigest() {
     digestError,
     undoAction,
     undoNamed,
-    undoCycle,
   } = useDreamDigest()
 
   const [confirmGroup, setConfirmGroup] = useState<{
     group: DreamObjectGroup
-    eventIds: number[]
+    actions: DreamAction[]
   } | null>(null)
   const [confirmCycle, setConfirmCycle] = useState(false)
 
@@ -722,12 +741,37 @@ export function LiveDreamDigest() {
             ))}
           </SelectContent>
         </Select>
-        <SurfaceStateChip state={digest ? "populated" : "empty"} />
+        {digestError ? (
+          // SurfaceState has no error value (module-surface.tsx) — adding one
+          // is a cross-surface change (pipeline-tab, jobs-tab already
+          // conflate loading with empty the same way) outside this fix's
+          // scope, so this chip stays local to the dream tab rather than
+          // widening the shared type.
+          <span className="border-destructive/50 text-destructive inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide">
+            <CircleAlert aria-hidden className="h-3 w-3" />
+            error
+          </span>
+        ) : (
+          <SurfaceStateChip state={digest ? "populated" : "empty"} />
+        )}
         {activeCycle && (
           <span className="text-muted-foreground font-mono text-sm">
             {relativeTime(activeCycle.started_at)} –{" "}
             {relativeTime(activeCycle.ended_at)}
           </span>
+        )}
+        <span className="text-muted-foreground ml-auto font-mono text-sm">
+          {cycles.length} of {cyclesTotal} cycles loaded
+        </span>
+        {cyclesHasMore && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={cyclesFetchingMore}
+            onClick={fetchMoreCycles}
+          >
+            {cyclesFetchingMore ? "loading…" : "load more cycles"}
+          </Button>
         )}
       </div>
 
@@ -786,7 +830,7 @@ export function LiveDreamDigest() {
                 onUndoAction={async (eventId) =>
                   reportOutcome(`action #${eventId}`, await undoAction(eventId))
                 }
-                onUndoGroup={(g, eventIds) => setConfirmGroup({ group: g, eventIds })}
+                onUndoGroup={(g, actions) => setConfirmGroup({ group: g, actions })}
               />
             ))}
           </div>
@@ -802,19 +846,20 @@ export function LiveDreamDigest() {
             <AlertDialogTitle>Undo this object's actions?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmGroup &&
-                `Restores ${confirmGroup.eventIds.length} action${confirmGroup.eventIds.length === 1 ? "" : "s"} on object ${confirmGroup.group.object_id.slice(0, 8)}.`}
+                `Restores ${confirmGroup.actions.length} action${confirmGroup.actions.length === 1 ? "" : "s"} on object ${confirmGroup.group.object_id.slice(0, 8)}.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {confirmGroup && <ActionPreviewList actions={confirmGroup.actions} />}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
                 if (!confirmGroup) return
-                const { group, eventIds } = confirmGroup
+                const { group, actions } = confirmGroup
                 setConfirmGroup(null)
                 reportOutcome(
                   `object ${group.object_id.slice(0, 8)}`,
-                  await undoNamed(eventIds),
+                  await undoNamed(actions.map((a) => a.event_id)),
                 )
               }}
             >
@@ -830,11 +875,15 @@ export function LiveDreamDigest() {
           <AlertDialogHeader>
             <AlertDialogTitle>Undo the rest of this cycle?</AlertDialogTitle>
             <AlertDialogDescription>
-              Restores every action in cycle #{activeCycle?.cycle_id} that is
-              not already undone ({cycleEligible.length} action
-              {cycleEligible.length === 1 ? "" : "s"}).
+              Restores the {cycleEligible.length} action
+              {cycleEligible.length === 1 ? "" : "s"} in cycle #
+              {activeCycle?.cycle_id} that {cycleEligible.length === 1 ? "is" : "are"}{" "}
+              currently undoable. Actions already undone, or blocked (object
+              changed since, or past the undo window), are left untouched
+              rather than sent and refused.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <ActionPreviewList actions={cycleEligible} />
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
@@ -842,7 +891,7 @@ export function LiveDreamDigest() {
                 setConfirmCycle(false)
                 reportOutcome(
                   `cycle #${activeCycle?.cycle_id}`,
-                  await undoCycle(),
+                  await undoNamed(cycleEligible.map((a) => a.event_id)),
                 )
               }}
             >
