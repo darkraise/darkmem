@@ -522,7 +522,7 @@ leaf surface, not infrastructure another task consumes.*
 
 #### T2.34 — `expires_at` self-expiring dated memories
 
-`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
 **Split 2026-08-04.** This entry was the memory *and* fact halves of one task; doc 08 §9
 and §3.1 contradict each other on the fact half and it is escalated as **T2.85**. The two
@@ -1838,7 +1838,7 @@ columns reachable through the model and all failed identically.
 
 #### T2.82 — `prune-cache` drops every live entity-embedding cache under the sentinel
 
-`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.68` · `Doc: 04 §6, invariant 14` · `Tag: rebuild` · `Gate: standing`
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T2.68` · `Doc: 04 §6, invariant 14` · `Tag: rebuild` · `Gate: standing`
 
 **What.** `POST /reembed/prune-cache` under the `|0` fingerprint sentinel **drops every live
 `entity_embedding_cache__*` child table** — the route performs no existence probe.
@@ -1858,7 +1858,7 @@ which is false for this route, so that claim must be corrected in the same chang
 
 #### T2.83 — A wrong non-zero `dimensions` reproduces the silent-empty-forever symptom
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.68` · `Doc: 04 §6` · `Tag: rebuild` · `Gate: standing`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T2.68` · `Doc: 04 §6` · `Tag: rebuild` · `Gate: standing`
 
 **What.** T2.68 closed the `|0` sentinel, but a **wrong non-zero** `dimensions` — 768
 configured while the model emits 1024 — reproduces the original symptom at both read
