@@ -5,7 +5,8 @@ digest reads that stream and the undo service inverts it. All three need the
 same event type, the same three action names, the same pass key under
 ``properties.dream`` and the same metadata marker paths, and a literal
 duplicated across a producer and a consumer is exactly the drift this corpus
-keeps finding (``code_query.py``'s private ``RRF_K`` is the standing example).
+keeps finding (``code_query.py``'s private ``RRF_K`` was the standing example,
+and closing it took a build-failing scan rather than a reading).
 
 **This module exists because the consumer cannot import the producer.**
 Invariant 15's source scan derives its forbidden module set from

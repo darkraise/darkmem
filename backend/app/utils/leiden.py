@@ -6,11 +6,11 @@ this module differs between them: node identity, edge derivation, storage,
 rewrite shape and label source. What is provably common is exactly this: the
 import guard, the `igraph.Graph` build, and one bounded seeded partition.
 
-It lives here rather than being written twice because `CLAUDE.md` already
-records what happens otherwise — `code_query.py` declares its own `RRF_K = 60`
-rather than using `rank_fusion.py`'s, "the two constants can drift and no task
-owns closing that". Two independent `find_partition(..., seed=0, timeout=60)`
-call sites are that defect in advance.
+It lives here rather than being written twice because the corpus already
+records what happens otherwise — `code_query.py` declared its own `RRF_K = 60`
+rather than using `rank_fusion.py`'s, and the two constants sat free to drift
+until a build-failing scan closed it. Two independent
+`find_partition(..., seed=0, timeout=60)` call sites are that defect in advance.
 
 **The timeout bounds the await, not the work.** `asyncio.wait_for` around
 `loop.run_in_executor` does not cancel the running thread: `leidenalg` keeps

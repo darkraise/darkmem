@@ -98,52 +98,81 @@ class TestChatServiceCRUD:
 
 
 class TestChatServiceRetrieveSourcesId:
-    """T1.60 Step 5: the live SSE `sources` event's formatted_memories dicts
+    """T1.60 Step 5: the live SSE `sources` event's formatted rows
     (`_retrieve`) previously had no `id` key at all — only the persisted
     snapshot (`send_message`'s assistant_msg.context) did, breaking
-    citation links during a live stream specifically."""
+    citation links during a live stream specifically.
+
+    T2.58 moved the rows underneath these assertions from
+    `vector_repo.search` to the composition, so the id now arrives already
+    normalised to `str` by the composition's admission step. The pair of
+    assertions is unchanged in intent: a row that reaches the panel carries an
+    id, and a row that cannot be keyed is never quietly served without one.
+    """
 
     @pytest_asyncio.fixture
     async def chat_service(self, session):
         from unittest.mock import AsyncMock
         llm = AsyncMock()
         llm.embed = AsyncMock(return_value=([0.0], "fp"))
-        vector_repo = AsyncMock()
-        return ChatService(session, llm, vector_repo=vector_repo)
+        return ChatService(session, llm)
+
+    @staticmethod
+    def _stub_memory_channel(monkeypatch, rows):
+        from app.services import hybrid_search
+
+        async def _search_with_trace(self, query, **kwargs):
+            return hybrid_search.ChannelTrace(results=list(rows))
+
+        monkeypatch.setattr(
+            hybrid_search.HybridSearchService, "search_with_trace", _search_with_trace,
+        )
 
     @pytest.mark.asyncio
     async def test_retrieve_includes_the_memory_id_on_every_formatted_row(
-        self, chat_service
+        self, chat_service, session, monkeypatch
     ):
-        seeded_id = uuid.uuid4()
-        chat_service.vector_repo.search.return_value = [
+        from app.models.memory import Memory
+
+        memory = Memory(
+            id=uuid.uuid4(), content="x", source="api", importance=0.5,
+            metadata_={}, project="default", status="active", is_archived=False,
+        )
+        session.add(memory)
+        await session.flush()
+        self._stub_memory_channel(monkeypatch, [
             {
-                "memory_id": seeded_id,
+                "memory_id": memory.id,
                 "score": 0.9,
+                "rrf_score": 0.9,
                 "payload": {"content": "x", "source": "api", "tags": []},
                 "project": "default",
                 "status": "active",
             }
-        ]
+        ])
 
         result = await chat_service._retrieve("question")
 
-        assert result["memories"][0]["id"] == str(seeded_id)
+        assert result["memories"][0]["id"] == str(memory.id)
 
     @pytest.mark.asyncio
-    async def test_retrieve_fails_loud_when_memory_id_is_absent(self, chat_service):
-        # A row missing memory_id should be structurally impossible from
-        # PostgresVectorRepository.search() — direct indexing (not
-        # `.get(..., "")`) makes that assumption fail loud instead of
-        # degrading into a dead, unclickable citation.
-        chat_service.vector_repo.search.return_value = [
+    async def test_retrieve_reports_a_degraded_turn_when_a_row_cannot_be_keyed(
+        self, chat_service, monkeypatch
+    ):
+        # A row missing memory_id is structurally impossible from either
+        # hybrid arm. If one ever arrives, the composition refuses to key it
+        # and the turn says so through the envelope rather than serving a
+        # shorter context that reads exactly like a smaller corpus.
+        self._stub_memory_channel(monkeypatch, [
             {
                 "score": 0.9,
                 "payload": {"content": "x", "source": "api", "tags": []},
                 "project": "default",
                 "status": "active",
             }
-        ]
+        ])
 
-        with pytest.raises(KeyError):
-            await chat_service._retrieve("question")
+        result = await chat_service._retrieve("question")
+
+        assert result["memories"] == []
+        assert result["envelope"]["partial"] is True
