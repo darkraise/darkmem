@@ -44,6 +44,25 @@ def test_dockerfile_never_copies_backend_scripts_into_the_image():
     )
 
 
+def test_dockerignore_still_excludes_backend_scripts():
+    """Fix round 1, F2: the test above only holds while the Dockerfile's
+    runtime stage never broadens its own COPY. A future `COPY backend/ ./`
+    would pass the test above and still ship seed_facts.py unless
+    `.dockerignore`'s `backend/scripts` line keeps excluding it — and until
+    now nothing pinned that line, so a broadened COPY (green) followed by a
+    later `.dockerignore` cleanup (green) could ship it with both guards
+    still passing. Pin the line itself, not just its effect on today's
+    Dockerfile, so either half of that two-step drift goes red on its own.
+    """
+    dockerignore = (REPO_ROOT / ".dockerignore").read_text()
+    assert "backend/scripts" in dockerignore.splitlines(), (
+        ".dockerignore no longer excludes backend/scripts — that line is "
+        "the only thing that would still keep seed_facts.py out of the "
+        "image if the Dockerfile's runtime stage were ever broadened to "
+        "COPY all of backend/ (T2.90 clause 1's second line of defense)."
+    )
+
+
 _SEED_SCRIPT_RULES = ReachabilityRules(
     forbidden_modules=frozenset({"scripts.e2e"}),
     forbidden_attrs=frozenset({"seed_facts", "seed_fact_fixture"}),
