@@ -156,6 +156,12 @@ class DetectionOutcome:
     communities: int = 0
     skipped: int = 0
     outcomes: list[ProjectOutcome] = field(default_factory=list)
+    # How many projects the batch actually claimed, which is *not* derivable
+    # from the counters above: a project can increment both `projects_processed`
+    # and `skipped` when it succeeds with a `skipped_reason`. The scheduler
+    # needs the true count to know it reached the end of the rotation, and
+    # without it the cursor pins at the last project name forever.
+    visited: int = 0
 
 
 _NEXT_PROJECTS = text(
@@ -389,7 +395,7 @@ async def run_topic_detection(
     async with session_factory() as session:
         projects = await next_projects(session, after_project, batch_size)
 
-    outcome = DetectionOutcome(last_project=after_project)
+    outcome = DetectionOutcome(last_project=after_project, visited=len(projects))
     for project in projects:
         outcome.last_project = project
         try:

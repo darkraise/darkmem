@@ -314,22 +314,38 @@ def _make_topic_runner(registry: JobRegistry, key: str) -> JobRunner:
             for field in TOPIC_DETECTION_CONFIG_SCHEMA
             if field.key != "batch_size" and field.key in settings_
         }
+        batch_size = int(settings_.get("batch_size", DEFAULT_TOPIC_BATCH_SIZE))
         outcome = await run_topic_detection(
             registry.session_factory,
-            batch_size=int(settings_.get("batch_size", DEFAULT_TOPIC_BATCH_SIZE)),
+            batch_size=batch_size,
             after_project=after_project,
             **knobs,
         )
 
+        # **The rotation has to wrap, or the job goes inert after one pass.**
+        # `next_projects` selects strictly `project > :after_project`, so once
+        # the cursor reaches the lexicographically last project every later
+        # tick claims nothing — forever, while still logging and recording
+        # `last_status="ok"`. A project created after that point sorts before
+        # the cursor and is never detected at all. A short batch means the end
+        # of the rotation was reached, so the cursor resets and the next tick
+        # starts from the beginning. This mirrors `verification_recompute`'s
+        # slow arm, which resets on `len(rows) < batch_size` for the same
+        # reason — the precedent this runner's cursor was modelled on, and the
+        # half of it the first version missed.
+        wrapped = outcome.visited < batch_size
+        cursor = None if wrapped else outcome.last_project
+
         async with registry.session_factory() as session:
-            await _save_topic_cursor(session, outcome.last_project)
+            await _save_topic_cursor(session, cursor)
             await session.commit()
 
         logger.info(
             "Topic detection visited %d project(s) from cursor %r: %d "
-            "communities written, %d skipped; cursor now %r",
-            outcome.projects_processed, after_project, outcome.communities,
-            outcome.skipped, outcome.last_project,
+            "communities written, %d skipped; cursor now %r%s",
+            outcome.visited, after_project, outcome.communities,
+            outcome.skipped, cursor,
+            " (wrapped to start)" if wrapped else "",
         )
 
     return run
