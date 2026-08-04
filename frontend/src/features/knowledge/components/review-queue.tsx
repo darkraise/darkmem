@@ -313,7 +313,7 @@ export function ReviewQueue({ project }: { project?: string }) {
       ? "counts loading…"
       : `${counts.facts} fact${counts.facts === 1 ? "" : "s"} · ${counts.articles} article${
           counts.articles === 1 ? "" : "s"
-        } open${counts.unscoped ? " (unscoped — across all projects)" : ""}`
+        } open`
 
   return (
     <div className="space-y-3">

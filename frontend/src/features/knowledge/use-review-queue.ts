@@ -103,11 +103,6 @@ export interface ReviewCountsResult {
   articles: number
   loading: boolean
   error: boolean
-  /** True whenever a project filter is active — `GET /review-queue/counts`
-   *  carries no `project` parameter at all, so this total is never scoped to
-   *  it. A consumer with a project filter on must say the count is
-   *  unscoped, not silently present it as agreeing with the filtered list. */
-  unscoped: boolean
 }
 
 function rankNoteOf(c: ConsequenceExplanation): string {
@@ -262,15 +257,18 @@ export function useReviewArticleRows(query: ReviewPageQuery): ReviewArticlesResu
 
 export function useReviewCounts(query: { project?: string }): ReviewCountsResult {
   const demoItems = useDemoReviewItems()
-  const api = useReviewQueueCounts({ enabled: !DEMO })
+  const api = useReviewQueueCounts({ project: query.project }, { enabled: !DEMO })
 
   if (DEMO) {
+    // Mirrors the same project filter useReviewFactRows / useReviewArticleRows
+    // apply to the fixture, now that the live counts door is project-scoped
+    // too (T2.88): no arm here is exempt, so demo must not diverge from live.
+    const inProject = !query.project || query.project === DEMO_PROJECT
     return {
-      facts: demoItems.filter((i) => i.kind === "fact").length,
-      articles: demoItems.filter((i) => i.kind === "article").length,
+      facts: inProject ? demoItems.filter((i) => i.kind === "fact").length : 0,
+      articles: inProject ? demoItems.filter((i) => i.kind === "article").length : 0,
       loading: false,
       error: false,
-      unscoped: Boolean(query.project),
     }
   }
 
@@ -279,6 +277,5 @@ export function useReviewCounts(query: { project?: string }): ReviewCountsResult
     articles: api.data?.articles ?? 0,
     loading: api.isLoading,
     error: api.isError,
-    unscoped: Boolean(query.project),
   }
 }
