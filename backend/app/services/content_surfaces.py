@@ -544,6 +544,15 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # An adjudication verb, not a read: it withdraws belief and journals the
     # human's verdict, and returns 204, so no memory-derived row crosses it.
     "POST /api/v1/review-queue/facts/{fact_id}/reject",
+    # Reject's counterpart, and 204 for the same reason (T2.05). An earlier
+    # draft answered the ratified fact so the human could see the claim their
+    # own act produced; it was withdrawn because a verb that serves content
+    # inherits the whole scoping question, and the isolation probe drives every
+    # *declared door* of a content surface — driving a mutating door inside a
+    # read-isolation probe would change the state its later drivers observe and
+    # cost the probe its determinism. The caller re-reads the fact instead,
+    # which is one request and the shape reject already established.
+    "POST /api/v1/knowledge/facts/{fact_id}/ratify",
     # Aggregate totals across the four hygiene arms, never a row.
     "GET /api/v1/hygiene-queue/counts",
     # Bulk-action doors. The response names each item's id, whether it

@@ -520,6 +520,26 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.ratify",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/knowledge/facts/{{fact_id}}/ratify"),),
+        reason=(
+            "The confirmed-power write, and doc 12 section 3 names it as the "
+            "first of the reshape's two sanctioned single-door kinds in so "
+            "many words: 'the unauthenticated LAN MCP surface must never carry "
+            "confirmed power'. Unlike knowledge.facts_list, this row's reason "
+            "IS the trust posture and the posture argument holds here where it "
+            "did not there -- the two-door reads pair an unauthenticated tool "
+            "with an authenticated route because reading the vault is a "
+            "capability an agent should have, whereas confirmed is by "
+            "construction the one rung the machine cannot reach on its own "
+            "(doc 08 section 4.4). A twin would let any LAN peer forge the "
+            "human's imprimatur, which is the forged-ratification threat doc "
+            "18 section 2 tables. Recorded here so nobody completes the "
+            "symmetry later."
+        ),
+    ),
+    Surface(
         name="hygiene_queue.triage",
         status=REST_ONLY,
         rest=(

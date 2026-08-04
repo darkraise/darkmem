@@ -50,8 +50,24 @@ OPEN_BELIEF_PREDICATE = "expired_at IS NULL AND invalid_at IS NULL"
 
 # The database CHECK's four values. 'confirmed' is excluded from
 # _MACHINE_WRITABLE_VERIFICATION_STATUSES on purpose: only a human ratifies a
-# fact, via the path T2.05 owns, which does not exist yet.
+# fact, and `ratify` below is the one method that writes it.
 _MACHINE_WRITABLE_VERIFICATION_STATUSES = frozenset({"candidate", "corroborated", "disputed"})
+
+CONFIRMED = "confirmed"
+
+# The `fact_sources.source_kind` a ratification writes, spelled here because
+# `ratify`'s UPDATE predicate is what makes doc 08 §4.4 structural. Mirrors
+# app.repositories.fact_sources.SOURCE_KINDS' member of the same name;
+# tests/test_ratification.py pins the two together.
+HUMAN_SOURCE_KIND = "human"
+
+# The `verified` payload's outcome for a ratification. It is deliberately not
+# one of the ladder's machine outcomes: a human's imprimatur is not a promotion
+# decision, carries no origin count and no gate, and must never land in the
+# G-C promotion rate. `scripts/benchlib/promotion_metrics.KNOWN_OUTCOMES`
+# carries the same literal so the metrics runner can bucket the row rather
+# than raising on it.
+RATIFY_OUTCOME = "ratify"
 
 # The review queue's membership literal. ``ix_knowledge_triples_review`` is
 # partial on exactly this value and doc 08 §6 defines the queue as
@@ -152,6 +168,15 @@ def _row_to_dict(row: Any) -> dict:
     learned_in = out.get("learned_in")
     out["learned_in"] = list(learned_in) if learned_in is not None else None
     return out
+
+
+class HumanSourceRequired(RuntimeError):
+    """``ratify`` was called on a fact no ``human``-kind source row asserts.
+
+    Raised rather than returned because the caller's next act is to journal a
+    ratification: a falsy return would be read as "no such fact" and the
+    verdict would be written over a fact that never moved.
+    """
 
 
 class KnowledgeTripleRepository:
@@ -783,6 +808,109 @@ class KnowledgeTripleRepository:
                 project=prior_row["project"],
                 payload=payload,
             )
+
+    async def ratify(self, triple_id: UUID | str) -> dict | None:
+        """Write ``confirmed``. The only method in the tree that can (doc 08 §4.4).
+
+        ``set_verification_status`` refuses the value outright, so this is not
+        one writer among several — it is the whole surface, and the human
+        source row is its precondition rather than its caller's promise.
+
+        **The precondition rides the UPDATE's own WHERE clause.** A Python
+        ``if`` before the write would be a check a later refactor can reorder,
+        skip, or satisfy against a row a concurrent transaction is about to
+        delete; the ``EXISTS`` below is evaluated by Postgres against the same
+        snapshot that performs the write, under the row lock this method
+        already holds. That is what makes "no code path sets ``confirmed``
+        without a ``human`` source row" a property of the statement rather than
+        of caller discipline. A fact that exists but has no such row updates
+        zero rows and raises — the refusal is loud, because a silent no-op here
+        reads to the caller exactly like a ratification that worked.
+
+        **The ratification's who/when live where they belong.** The ``human``
+        row in ``fact_sources`` carries the ratifier and what they were shown
+        (doc 08 §4.4's "who / when / what-was-shown"), and the ``events`` row
+        carries ``actor`` and ``created_at`` as its own columns. Neither is
+        duplicated into this payload: a second copy of an identity is a second
+        thing to keep true.
+
+        **Ratifying resolves the queue item and cancels any pending demotion.**
+        Doc 08 §6 has the human's verbs clear ``review_state``, and §4.4 makes
+        a ratified fact immune to demotion — so leaving
+        ``demotion_pending_since`` set would keep the ``under-sourced`` caution
+        overlay (doc 13 §5.3) rendering over a fact a human has just vouched
+        for, which is the badge lying in the one direction this epic's
+        under-claiming rule does not cover. Both columns ride the same
+        statement as the status for the reason ``set_verification_status``
+        gives: a split makes the half-applied states reachable.
+
+        **Idempotent, and silent on the repeat.** Re-ratifying an already
+        ``confirmed`` fact rewrites the same value and journals nothing, on the
+        rule this module applies everywhere — ``events`` is append-only, so "a
+        row means a transition" has to hold by construction, and a second
+        ratification is not a second transition. The caller's own
+        ``human_verdict`` row still records that a human acted again.
+
+        Returns the fact row, or ``None`` when no such fact exists. Does not
+        commit.
+        """
+        prior = await self.session.execute(
+            text(
+                "SELECT verification_status, project FROM knowledge_triples "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": str(triple_id)},
+        )
+        prior_row = prior.mappings().first()
+        if prior_row is None:
+            logger.debug("ratify: no knowledge_triples row for id %s", triple_id)
+            return None
+
+        result = await self.session.execute(
+            text(f"""
+                UPDATE knowledge_triples
+                SET verification_status = CAST(:confirmed AS text),
+                    review_state = NULL,
+                    demotion_pending_since = NULL,
+                    demotion_pending_cycles = 0
+                WHERE id = CAST(:id AS uuid)
+                  AND EXISTS (
+                        SELECT 1 FROM fact_sources
+                        WHERE fact_id = CAST(:id AS uuid)
+                          AND source_kind = CAST(:human AS text)
+                  )
+                RETURNING {_COLUMNS}
+            """),
+            {
+                "id": str(triple_id),
+                "confirmed": CONFIRMED,
+                "human": HUMAN_SOURCE_KIND,
+            },
+        )
+        row = result.mappings().first()
+        if row is None:
+            raise HumanSourceRequired(
+                f"refusing to confirm fact {triple_id}: no {HUMAN_SOURCE_KIND!r}-kind "
+                f"fact_sources row asserts it, and doc 08 §4.4 makes the "
+                f"ratification itself that row — a confirmed fact whose human "
+                f"source is missing is one the source-emptying sweep can silently "
+                f"discard"
+            )
+
+        if prior_row["verification_status"] != CONFIRMED:
+            await record_event(
+                self.session,
+                event_type="verified",
+                object_type="fact",
+                object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
+                project=prior_row["project"],
+                payload={
+                    "before": {"verification_status": prior_row["verification_status"]},
+                    "after": {"verification_status": CONFIRMED},
+                    "outcome": RATIFY_OUTCOME,
+                },
+            )
+        return _row_to_dict(row)
 
     async def as_of(
         self,

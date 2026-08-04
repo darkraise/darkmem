@@ -4,10 +4,12 @@ Provides:
   - GET /api/v1/knowledge/facts        — a page of live facts, each badged
   - GET /api/v1/knowledge/facts/{id}   — one fact with its provenance groups
 
-Read-only, and deliberately so: belief is written by fact lifting, the
-verification axis by the ladder's applier, and the one human verdict door is
-the review queue's reject. A write here would put a second writer on an axis
-whose sole writer is what makes its journal countable.
+Read-only, and deliberately so: belief is written by fact lifting and the
+verification axis by the ladder's applier. A write here would put a second
+writer on an axis whose sole writer is what makes its journal countable. The
+human verdict doors live elsewhere for that reason — the review queue's reject,
+and T2.05's ratify in ``ratification.py``, which is the only path to
+``confirmed``.
 
 Nothing on this surface ranks or filters by verification status by default.
 ``verification_status`` is a filter the caller opts into; absent it, a

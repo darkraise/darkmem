@@ -28,13 +28,26 @@ this fact" a four-way OR, and need another vocabulary change the first time doc
 exists, where ``record_event``'s own vocabulary check only warns and inserts
 the row regardless.
 
-**Not a second writer of ``verified``.** The ladder's applier remains the sole
-journaller of verification transitions (T2.06/T2.62) — this module never calls
-it, and the Tier-C source scan in ``tests/test_verification_ladder.py`` is what
-holds that. Nothing here writes ``verification_status`` or ``review_state``;
-the payload merely *records* what the fact held when the human acted, which is
-what lets the audit read a verdict without joining back to
-``knowledge_triples``.
+**Not a second writer of the ladder.** This module never calls the ladder, and
+the Tier-C source scan in ``tests/test_verification_ladder.py`` is what holds
+that. The ``human_verdict`` payload merely *records* what the fact held when
+the human acted, which is what lets the audit read a verdict without joining
+back to ``knowledge_triples``.
+
+**Which verbs move the fact, and which do not** (widened by T2.05; before it,
+this module moved no verification column at all). ``reject_fact`` still moves
+nothing on the verification axis — it withdraws belief, which is the *belief*
+axis. ``ratify_fact`` does move it, to ``confirmed``, and that is the one
+transition the machine cannot make: doc 08 §4.4 puts the human's floor above
+the machine's ceiling, so a module of human verbs is exactly where its writer
+belongs. It reaches the column through
+``KnowledgeTripleRepository.ratify``, which journals its own ``verified`` row
+the way ``set_verification_status`` journals the ladder's — so the journaller
+is still the repository, and "one ``verified`` row means one transition" is
+unchanged. What *is* no longer true is that the ladder's applier is the only
+decision behind those rows; the promotion metrics tell the two apart on the
+payload's ``outcome`` (``ratify`` is not a machine outcome and never enters the
+G-C promotion rate).
 
 **Rejection's condition-side expression is belief withdrawal, and it has to
 be.** T2.62 ruled that a human's bare clear of ``review_state`` correctly
@@ -62,7 +75,11 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.fact_sources import FactSourceRepository
+from app.repositories.knowledge_triples import (
+    HUMAN_SOURCE_KIND,
+    KnowledgeTripleRepository,
+)
 from app.services.events import record_event
 
 logger = logging.getLogger(__name__)
@@ -86,6 +103,13 @@ HUMAN_VERDICTS: frozenset[str] = frozenset(
 # so the free-text half of a verdict is bounded here rather than at whichever
 # door happens to call in.
 NOTE_MAX_LENGTH = 500
+
+# Doc 08 §4.4's "what-was-shown": the claim sentence the ratifier had in front
+# of them. Bounded here for the same reason the note is — it lands in a
+# `fact_sources.detail` blob that outlives the surface that rendered it — and
+# larger than the note because a badge claim carries the origin kinds and the
+# as-of date inline.
+SHOWN_MAX_LENGTH = 1000
 
 
 class FactNotFound(LookupError):
@@ -184,3 +208,85 @@ async def reject_fact(
         "verification_status": row["verification_status"],
         "review_state": row["review_state"],
     }
+
+
+async def ratify_fact(
+    session: AsyncSession,
+    fact_id: UUID | str,
+    *,
+    actor: str,
+    shown: str | None = None,
+    note: str | None = None,
+) -> dict:
+    """A human ratifies a fact: write the human source, then confirm it.
+
+    Doc 08 §4.4's decision is that the ratification **is** a ``human``-kind
+    ``fact_sources`` row, not merely accompanied by one. Writing the row first
+    and confirming second is that decision expressed as an ordering: the
+    repository's ``ratify`` refuses to write ``confirmed`` unless the row is
+    already visible to its own statement, so the two cannot be performed in the
+    wrong order and cannot be separated by a caller who only wants one.
+
+    Recording it as a source is what makes a confirmed fact survive
+    re-extraction. When a later lift withdraws every *memory* source, the
+    human's row remains, so the source-emptying sweep never silently discards
+    a fact a person vouched for.
+
+    Does not commit — the caller's transaction owns the source row, the status
+    and the verdict together, so a fact can never be confirmed without the
+    provenance that entitles it to be, nor the reverse.
+
+    The actor is required. "The ratifier is recorded" is not satisfiable by an
+    anonymous ratification, and a ``human`` row with no identity would fold
+    into the unknown-origin bucket, making the one dominant origin in the
+    design indistinguishable from an unattributable one.
+    """
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError(
+            "ratification requires an actor: doc 08 §4.4 records who ratified, "
+            "and an unattributed human source counts as the merged "
+            "unknown-origin bucket rather than as the dominant origin it is"
+        )
+    ratifier = actor.strip()
+
+    row = (await session.execute(_LOAD_FOR_VERDICT, {"id": str(fact_id)})).mappings().first()
+    if row is None:
+        raise FactNotFound(str(fact_id))
+
+    # One ref per (fact, human), so a second ratification by the same person is
+    # the same row rather than a second origin: `add_source` is idempotent on
+    # this key and first assertion wins, which keeps the original ratifier and
+    # the original `created_at` — the "when" — from being rewritten by a later
+    # click. `origin_key` matches for the same reason it exists: two *different*
+    # humans are genuinely two origins, and with one principal today that
+    # collapses to the single dominant origin doc 08 §4.1 describes.
+    identity = f"{HUMAN_SOURCE_KIND}:{ratifier}"
+    detail: dict = {"ratified_by": ratifier}
+    if shown:
+        detail["shown"] = shown[:SHOWN_MAX_LENGTH]
+    if note:
+        detail["note"] = note[:NOTE_MAX_LENGTH]
+
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id,
+        source_kind=HUMAN_SOURCE_KIND,
+        source_ref=identity,
+        origin_key=identity,
+        detail=detail,
+    )
+
+    fact = await KnowledgeTripleRepository(session).ratify(fact_id)
+    if fact is None:  # pragma: no cover - the FOR UPDATE above already loaded it
+        raise FactNotFound(str(fact_id))
+
+    await record_human_verdict(
+        session,
+        fact_id=fact_id,
+        verdict=VERDICT_RATIFIED,
+        verification_status=row["verification_status"],
+        review_state=row["review_state"],
+        project=row["project"],
+        actor=ratifier,
+        note=note,
+    )
+    return fact
