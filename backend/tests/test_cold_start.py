@@ -39,11 +39,13 @@ from sqlalchemy import text
 from app.api.mcp import server as mcp_server
 from app.main import app
 from app.models.memory import Memory
+from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.schemas.knowledge import knowledge_search_response
 from app.services import facts_channel, hybrid_search
 from app.services import layer_composition as lc
 from app.services.embedder_registry import child_table
+from app.services.fact_provenance import memory_source_ref
 
 pytestmark = pytest.mark.asyncio
 
@@ -377,6 +379,73 @@ async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
 
     sectioned = knowledge_search_response(result, fuse=False).model_dump()
     assert [row["id"] for row in sectioned["sections"]["memory"]] == composed_order
+
+
+async def test_a_grouped_rows_nesting_survives_sectioning(session, monkeypatch):
+    """F7: the ``KnowledgeSearchSections`` docstring claims "a row nested
+    under a fact stays nested wherever its enclosing fact's section lands",
+    and nothing fed the shipped ``_sectioned`` a grouped row before this —
+    T2.55's own order test proved the same claim only against a local
+    simulation helper, never the real serialiser. The memory here is fully
+    consumed as evidence for the one fact, so it must not also be listed
+    standalone in the memory section (the same grouping ``compose()``
+    already gives the fused shape); sectioning must carry that consumption
+    through rather than re-surface it as a bucket assignment.
+    """
+    memory_id = str(uuid4())
+    repo = KnowledgeTripleRepository(session)
+    fact = await repo.insert_open(
+        triple_key=f"t256-nest-{uuid4()}",
+        subject_name="pgbouncer",
+        object_name="homelab",
+        rel_type="DEPLOYED_ON",
+        fact="pgbouncer connection pooling runs on the homelab",
+        reference_time=AT,
+        project=PROJECT,
+    )
+    fact_id = str(fact["id"])
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id, source_kind="memory",
+        source_ref=memory_source_ref(memory_id), origin_key="origin-nest",
+    )
+    await session.flush()
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[{
+            "memory_id": memory_id,
+            "payload": {"content": "pgbouncer connection pooling runs on the homelab"},
+            "project": PROJECT,
+            "status": "active",
+            "rrf_score": 0.5,
+        }])
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[{
+            "fact_id": fact_id,
+            "id": fact_id,
+            "fact": "pgbouncer connection pooling runs on the homelab",
+            "subject_name": "pgbouncer",
+            "rel_type": "DEPLOYED_ON",
+            "object_name": "homelab",
+            "project": PROJECT,
+            "verification_status": "candidate",
+            "review_state": None,
+            "rrf_score": 0.5,
+        }])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeShapeLLM(), session).search(
+        "q", project=PROJECT, limit=20,
+    )
+    sectioned = knowledge_search_response(result, fuse=False).model_dump()
+
+    assert sectioned["sections"]["memory"] == []
+    facts_bucket = sectioned["sections"]["facts"]
+    assert len(facts_bucket) == 1
+    assert facts_bucket[0]["id"] == fact_id
+    assert [nested["id"] for nested in facts_bucket[0]["supported_by"]] == [memory_id]
 
 
 async def test_both_doors_offer_fuse_with_the_same_default(session):
