@@ -153,6 +153,13 @@ EXPECTED_STATUS = {
     # oblige a Location header pointing at one.
     ("POST", "/api/v1/knowledge/facts/{fact_id}/ratify"): 204,
     ("GET", "/api/v1/knowledge/overview"): 200,
+    ("GET", "/api/v1/knowledge/topics"): 200,
+    ("GET", "/api/v1/knowledge/topics/{label}"): 200,
+    ("GET", "/api/v1/knowledge/topics/pin-suggestions"): 200,
+    # Accept/dismiss are adjudication verbs, the same shape as ratify/reject:
+    # 204, no memory-derived content on the response.
+    ("POST", "/api/v1/knowledge/topics/pin-suggestions/accept"): 204,
+    ("POST", "/api/v1/knowledge/topics/pin-suggestions/dismiss"): 204,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
