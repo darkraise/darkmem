@@ -313,6 +313,7 @@ class ChatService:
         if composed is None:
             return [], [], self._degraded_envelope(question).model_dump(mode="json")
 
+        scores = composed.channel_scores
         memory_rows: list[ComposedRow] = []
         fact_rows: list[ComposedRow] = []
         grouped_under: dict[str, str] = {}
@@ -358,6 +359,7 @@ class ChatService:
                 "tags": [tag.name for tag in memory.tags],
                 "created_at": memory.created_at.isoformat() if memory.created_at else "",
                 "score": row.weighted_score,
+                "scores": self._row_scores(row, scores),
                 "rank_fusion_factor": row.rank_fusion_factor,
                 "channel_rank": row.channel_rank,
                 "context_match": row.context.match.value,
@@ -382,6 +384,7 @@ class ChatService:
                 ),
                 "dispute": dict(row.dispute) if row.dispute is not None else None,
                 "score": row.weighted_score,
+                "scores": self._row_scores(row, scores),
                 "rank_fusion_factor": row.rank_fusion_factor,
                 "channel_rank": row.channel_rank,
                 "context_match": row.context.match.value,
@@ -397,6 +400,25 @@ class ChatService:
                 update={"excluded": {**envelope.excluded, "not_found": not_found}}
             )
         return memories, facts, envelope.model_dump(mode="json")
+
+    @staticmethod
+    def _row_scores(row: ComposedRow, channel_scores: dict[str, dict]) -> dict:
+        """Doc 07 §8's per-row breakdown: what each arm scored this row, and
+        the fused number its own channel ordered it by.
+
+        The arm scores are carried out of the channels rather than derived
+        here — they exist nowhere else — and ``rrf_score`` is read off the
+        producer's row for the same reason. It is named as the channel's
+        ordering signal and not as the composed one: the composed order is
+        rank-based across channels (doc 07 §3), so a renderer that presented
+        this number as what ordered the whole list would be describing a
+        comparison the composition deliberately does not make.
+        """
+        fused = row.row.get("rrf_score")
+        return {
+            **{arm: float(value) for arm, value in channel_scores.get(row.key, {}).items()},
+            "rrf_score": float(fused) if fused is not None else None,
+        }
 
     def _degraded_envelope(self, question: str) -> RetrievalEnvelope:
         """What a turn says when every channel the composition asked was down.

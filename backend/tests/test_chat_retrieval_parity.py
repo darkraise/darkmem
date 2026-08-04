@@ -345,6 +345,32 @@ async def test_a_turn_carries_the_envelope_and_its_exclusion_counts(session):
     assert envelope["excluded"]["by_result_limit"] == 0
 
 
+async def test_every_served_row_carries_the_arm_scores_that_ranked_it(session):
+    """The per-row half of doc 07 §8. The arms are the only place these numbers
+    exist, so a composed row alone can say *that* a row ranked and never *why*;
+    a panel handed only the row would have to invent the breakdown or omit it.
+
+    The keyword-only row is the case that matters: it has a keyword score and
+    is the one row the pre-convergence path could not have scored at all.
+    """
+    rows = await _corpus(session)
+
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+    retrieval = await svc._retrieve(QUERY, {"project": PROJECT})
+    by_id = {row["id"]: row for row in retrieval["memories"]}
+
+    keyword_only = by_id[str(rows["keyword_only"].id)]
+    assert keyword_only["scores"]["keyword"] > 0
+    assert keyword_only["scores"]["rrf_score"] > 0
+    # Orthogonal to the query vector, so the semantic arm still ranked it —
+    # what it must not do is claim a score the arm never produced.
+    assert set(keyword_only["scores"]) <= {"semantic", "keyword", "rrf_score"}
+
+    semantic_only = by_id[str(rows["semantic_only"].id)]
+    assert semantic_only["scores"]["semantic"] > 0
+    assert "keyword" not in semantic_only["scores"]
+
+
 async def test_a_wide_turn_says_the_fact_channel_was_not_asked(session):
     """The facts channel is born with its project pushed into both arms' SQL,
     so a wide request has no arm to ask. ``ran=False`` says that; ``failed``

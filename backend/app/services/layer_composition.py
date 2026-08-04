@@ -5,10 +5,10 @@ epistemic layer, each labelled with where it came from and how well it is
 believed. Merge the channel lists in their own key spaces, label and order
 them, optionally re-band by a rerank, apply the deterministic multipliers, and
 finally group each returned memory under the fact it sources. The sectioned and
-fused output shapes are T2.56's; Chat's convergence onto this entry point is
-T2.58's. MCP's ``knowledge_search`` is the live caller (T2.72); the article
-channel and the reranker arm are still deferred, and the envelope says so
-rather than reporting them as if they had run.
+fused output shapes are T2.56's. MCP's ``knowledge_search`` (T2.72) and chat
+(T2.58) are the live callers; the article channel and the reranker arm are
+still deferred, and the envelope says so rather than reporting them as if they
+had run.
 
 **Grouping is composition's last step, never a renderer's first.** Doc 07 §5
 fixes the order and §11 records it as a resolved question rather than a
@@ -1068,10 +1068,21 @@ def rerank_document_text(row: ComposedRow) -> str:
 
 @dataclass(frozen=True)
 class ComposedResult:
-    """The single entry point's return: an ordered list and its envelope."""
+    """The single entry point's return: an ordered list and its envelope.
+
+    ``channel_scores`` is doc 07 §8's per-row score breakdown — what each arm
+    of each channel scored a row before its channel fused them — keyed by
+    :func:`composition_key` rather than by the bare id the channels hand back,
+    for the reason every other map here is: a fact and a memory sharing a UUID
+    would otherwise trade breakdowns. It is carried rather than recomputed
+    because the arms are the only place these numbers exist; a renderer given
+    only the composed row can show *that* a row ranked and never *why*, and a
+    trace that cannot say why is the plausible story doc 07 §8 refuses.
+    """
 
     rows: list[ComposedRow]
     envelope: RetrievalEnvelope
+    channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _namespaced(prefix: str, statuses: Mapping[str, ChannelStatus]) -> dict:
@@ -1287,6 +1298,7 @@ class LayerCompositionService:
 
         channels: dict[str, ChannelStatus] = {}
         candidates: list[LayerCandidate] = []
+        channel_scores: dict[str, dict[str, float]] = {}
 
         memory_failed = False
         try:
@@ -1314,6 +1326,10 @@ class LayerCompositionService:
                 memory_candidate(row, channel_rank=rank)
                 for rank, row in enumerate(memory_trace.results, start=1)
             )
+            channel_scores.update({
+                composition_key("memory", _admit_id(row_id)): dict(scores)
+                for row_id, scores in memory_trace.channel_scores.items()
+            })
 
         fact_failed = False
         fact_asked = project is not None
@@ -1346,6 +1362,10 @@ class LayerCompositionService:
                     fact_candidate(row, channel_rank=rank)
                     for rank, row in enumerate(fact_trace.results, start=1)
                 )
+                channel_scores.update({
+                    composition_key("fact", _admit_id(row_id)): dict(scores)
+                    for row_id, scores in fact_trace.arm_scores.items()
+                })
 
         # A one-sided outage degrades to the surviving layer and says so; both
         # sides down would make an empty result indistinguishable from a
@@ -1432,4 +1452,6 @@ class LayerCompositionService:
                 "by_result_limit": result.excluded_by_result_limit,
             },
         )
-        return ComposedResult(rows=result.rows, envelope=envelope)
+        return ComposedResult(
+            rows=result.rows, envelope=envelope, channel_scores=channel_scores,
+        )
