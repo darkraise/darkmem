@@ -88,16 +88,25 @@ describe("useReviewFactRows / useReviewArticleRows (DEMO on — the curated fixt
 })
 
 describe("useReviewCounts (DEMO on)", () => {
-  it("counts the fixture directly, never as unscoped when no project filter is active", () => {
+  it("counts the whole fixture when no project filter is active", () => {
     const { result } = renderHook(() => useReviewCounts({}), { wrapper })
     expect(result.current.facts).toBeGreaterThan(0)
-    expect(result.current.unscoped).toBe(false)
   })
 
-  it("still flags unscoped when a project filter is active, mirroring the live door's shape", () => {
-    const { result } = renderHook(() => useReviewCounts({ project: "darkmem" }), {
-      wrapper,
-    })
-    expect(result.current.unscoped).toBe(true)
+  it("honours the project filter the same way the live door now does (T2.88) — the fixture's own project matches, any other counts zero", () => {
+    const { result: unfiltered } = renderHook(() => useReviewCounts({}), { wrapper })
+    const { result: matched } = renderHook(
+      () => useReviewCounts({ project: "darkmem" }),
+      { wrapper },
+    )
+    expect(matched.current.facts).toBe(unfiltered.current.facts)
+    expect(matched.current.articles).toBe(unfiltered.current.articles)
+
+    const { result: unmatched } = renderHook(
+      () => useReviewCounts({ project: "no-such-project" }),
+      { wrapper },
+    )
+    expect(unmatched.current.facts).toBe(0)
+    expect(unmatched.current.articles).toBe(0)
   })
 })

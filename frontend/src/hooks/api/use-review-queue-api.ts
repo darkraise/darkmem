@@ -124,11 +124,6 @@ export interface ReviewQueueArticleListResponse {
   offset: number
 }
 
-/** `GET /review-queue/counts` is unscoped — no `project` parameter exists on
- *  the backend route (`app/api/routes/review_queue.py`) — so this total is
- *  never a project-filtered number, whatever list-side filter a caller has
- *  active. Callers must say so rather than let the two numbers look like
- *  they agree. */
 export interface ReviewQueueCountsResponse {
   facts: number
   articles: number
@@ -180,10 +175,17 @@ export function useReviewQueueArticles(
   })
 }
 
-export function useReviewQueueCounts(options?: { enabled?: boolean }) {
+export function useReviewQueueCounts(
+  params: { project?: string } = {},
+  options?: { enabled?: boolean },
+) {
+  const query = reviewQueueQueryString(params)
   return useQuery<ReviewQueueCountsResponse>({
-    queryKey: ["reviewQueue", "counts"],
-    queryFn: () => apiFetch<ReviewQueueCountsResponse>("/review-queue/counts"),
+    queryKey: ["reviewQueue", "counts", query],
+    queryFn: () =>
+      apiFetch<ReviewQueueCountsResponse>(
+        `/review-queue/counts${query ? `?${query}` : ""}`,
+      ),
     enabled: options?.enabled ?? true,
   })
 }

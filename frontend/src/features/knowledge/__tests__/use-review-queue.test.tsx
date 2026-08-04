@@ -253,20 +253,22 @@ describe("useReviewArticleRows (DEMO off — real /review-queue/articles)", () =
 describe("useReviewCounts", () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it("flags itself unscoped when a project filter is active — the counts door takes no project param", async () => {
+  it("sends project as a server-side predicate on the counts door too (T2.88)", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ facts: 12, articles: 3 })
     const { result } = renderHook(() => useReviewCounts({ project: "darkmem" }), { wrapper })
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.facts).toBe(12)
-    expect(result.current.unscoped).toBe(true)
+    const url = vi.mocked(apiFetch).mock.calls[0]![0] as string
+    expect(url).toContain("project=darkmem")
   })
 
-  it("is not unscoped when no project filter is active", async () => {
+  it("omits the project param when no filter is active — absent still means all projects", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ facts: 12, articles: 3 })
-    const { result } = renderHook(() => useReviewCounts({}), { wrapper })
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    renderHook(() => useReviewCounts({}), { wrapper })
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
 
-    expect(result.current.unscoped).toBe(false)
+    const url = vi.mocked(apiFetch).mock.calls[0]![0] as string
+    expect(url).not.toContain("project=")
   })
 })
