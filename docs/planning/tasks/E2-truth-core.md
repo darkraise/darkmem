@@ -642,6 +642,50 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.86 — The fact detail route on live data
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.36's fix round, which fixed the dead link by
+removing it and said plainly that wiring the page is a task rather than a fix.
+`src/routes/_authenticated/knowledge_.facts_.$factId.tsx:64` calls `useDemoFact`
+**unconditionally**, so with `DEMO` off — the default since T1.58 — any real fact
+id renders "This fact does not exist in the demo store." T2.36a shipped
+`GET /knowledge/facts/{id}` and nothing calls it.
+
+The reason this is not a fix: the page renders a verification ladder, a dispute
+panel and multiple belief windows, and `FactDetailResponse` does not carry them.
+So this task is partly a **backend** question — decide, per field, whether the
+detail door grows to serve what the page shows, or the page stops showing what
+the door cannot support. Doc 13 §5.1 describes the surface; doc 12 §2 fixes the
+route. Neither is free to be quietly narrowed to whatever is cheapest.
+
+**The row's `detail_available` flag is the thing to retire.** T2.36's fix
+introduced it as a producer capability — false on the live path — so the row
+offers no navigation it cannot honour. That is correct as an interim, and it is
+also a surface hiding a capability the system is supposed to have. Removing the
+flag is part of done, not a follow-up.
+
+**Done when:**
+- [ ] The route reads live data and a real fact id renders that fact
+- [ ] Every field the page displays is one the door actually serves; anything it
+      cannot serve is removed from the page rather than rendered empty or faked
+- [ ] A disputed fact renders **both sides** here, with the backend's two-sided
+      claim string verbatim
+- [ ] `detail_available` is retired and the Facts tab links to the detail route
+      unconditionally
+- [ ] A failed read renders as a failed read, distinct from a missing fact
+      (invariant 14) — and a 404 for a fact that genuinely does not exist is a
+      third, distinguishable state
+- [ ] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
+      coverage rather than only in the task's own file
+
+**Verify.** `cd frontend && npm test -- fact-detail && npm run test:e2e -- knowledge`
+
+*(Note the second half is a real obligation: T2.36's fix round established that
+`npm run test:e2e -- knowledge` matched zero specs before it added them, so an
+e2e Verify clause on this surface is now runnable.)*
+
 #### T2.39a — The topics read surface and the pin-suggestion door
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20, T2.19` · `Doc: 09 §3, 13 §5` · `Tag: target-new` · `Gate: G-C`
@@ -2014,6 +2058,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-04 | T2.86, T2.36 | 2 | **T2.86 minted: the fact detail route is demo-only and nothing calls T2.36a's detail door.** `knowledge_.facts_.$factId.tsx:64` calls `useDemoFact` unconditionally, so with DEMO off any real fact id renders "This fact does not exist in the demo store". T2.36's row linked there for disputed facts, which is how the dead link shipped. The fix round closed the link by **not offering it** — a new `detail_available` producer capability, false on the live path — and said explicitly that wiring the page is a task, not a fix, because the page renders a verification ladder, a dispute panel and multiple belief windows that `FactDetailResponse` does not carry | Filed as its own task rather than widened into T2.36's fix round for a reason worth recording: it is **partly a backend question**. Whether the detail door grows to serve what doc 13 §5.1's page shows, or the page stops showing what the door cannot support, is a per-field decision neither doc settles, and a fix round under time pressure would have settled it by whichever was cheapest. Note `detail_available` is itself scheduled for retirement inside T2.86 — an interim honesty flag that outlives its condition becomes the stale-premise defect T2.65 was minted to fix, so it is part of done rather than a follow-up. The article detail route (`knowledge_.articles_.$articleId.tsx`) has the same shape but is **not** minted here: `article_synthesis` is still a `PlaceholderJobRunner`, so `knowledge_articles` has no production writer and there is nothing live to wire it to |
 | 2026-08-04 | T2.79–T2.84 | 2 | **Audited every Verify command on the six back-filled entries; three more name files that do not exist.** After T2.83's field was found wrong, the same check was run across all six. `T2.81` (already **done**) named `tests/test_memory_update_nulls.py` — its own commits put all 374 lines of added coverage in `tests/test_empty_content_update.py`, so the field is corrected here. `T2.82` (currently **wip** in lane ah) names `tests/test_reembed.py`, which does not exist and never has; that lane will hit the same error, and the correct target is one or more of `test_reembed_absent_partition.py` / `test_reembed_code_chunks.py` / `unit/test_reembed_helpers.py` — **left uncorrected deliberately, because the row is owned by another lane and the controller does not edit a claimed task.** `T2.80` names `tests/test_knowledge_search.py`, which is legitimate: that task creates it. T2.79 and T2.84 are clean | The failure mode is what makes this worth a Tier-2 row rather than three Tier-1 fixes. A Verify command naming a missing file does not fail — `pytest` exits with `ERROR: file or directory not found`, which a careless reading scans as 'nothing failed'. Runbook §4 requires the Verify command to be *actually run with its real output recorded*, and a command that cannot run makes that box uncheckable rather than checked. T2.81 passed a Fable review and a scoped re-review with this field wrong in the tree, so the defect survives adversarial reading — it is invisible to everyone who does not try to run the command. The root cause is structural: these six were minted straight into `progress.md` from review findings and back-filled into the epic file on 2026-08-04, so their Verify fields were **reconstructed rather than observed**. Any future back-fill should run every Verify field it writes |
 | 2026-08-04 | T2.83 | 1 | **Verify field corrected: it named two test files that do not exist.** The minted text said `tests/test_reembed.py tests/test_embedder_registry.py`; neither is in the repo, and `pytest` exits with `ERROR: file or directory not found` rather than passing vacuously. The real coverage is `tests/test_vectors_route.py tests/test_api/test_graph.py`, because the guard lives in `PostgresVectorRepository.resolve_read_fingerprint` and is observable only through the two read surfaces that call it | Found by the T2.83 implementer, which ran the command as written, reported the error verbatim and did not route around it silently. Worth logging rather than just fixing: T2.83 was one of the six entries minted straight into `progress.md` from a review finding and back-filled into the epic file on 2026-08-04, so its Verify field was reconstructed rather than derived from a real run — the other five back-filled entries carry the same risk and nobody has checked them. A Verify command naming a missing file is the worst shape available: it *errors* rather than fails, so a careless run reads as 'no tests failed' |
 | 2026-08-04 | T2.39, T2.39a | 2 | **T2.39 split; `T2.39a` minted to own the topics read surface and the pin-suggestion door, and T2.39 gains `Depends: T2.39a`.** T2.20 shipped `topic_browsing.py` and `pin_suggestions.py` — nine public callables, both modules well tested — and a repo-wide scan finds **zero** consumers of either outside `backend/tests`: no REST route, no MCP tool, no job. Two of T2.39's four Done-when clauses therefore had nothing to satisfy them. "accept/dismiss round-trips" has no door to round-trip against, and "pin suggestions show what changed between runs" needs `diff_topics`' output reachable from a browser. `topics-tab.tsx` is meanwhile a demo-data surface, so nothing fails loudly and a lane would have satisfied both clauses against `useDemoStore` | Caught by the controller at brief-writing time, reading the tree rather than the task text — the same way T2.36a was caught the day before, and the **sixth** instance of this epic's recurring shape: a constraint recorded in prose and absent from the graph. Split rather than widened for the reason the T2.36 split gives: widening in place pushes a Size-M task to L without the reviewed step-level plan runbook §3 requires. Both halves are Sonnet here — the door is plumbing over semantics T2.20 already fixed and tested, not a new honesty contract — which is the one way this differs from the T2.36/T2.36a split. The identity rule is what makes the door non-trivial: T2.20's Done-when pins pin suggestions to the stable dominant-entity label rather than the churning community id, and a route that keys accept/dismiss on the id would silently reintroduce exactly the churn that clause excludes, with a green suite either way |
