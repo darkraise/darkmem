@@ -123,12 +123,14 @@ class KnowledgeSearchRequest(BaseModel):
     ``fuse`` (T2.56) is doc 07 §5's channel-topology choice, not a ranking one:
     both shapes compose the identical order, only the presentation differs, so
     it never reaches ``LayerCompositionService.search`` and cannot move a row.
-    It defaults ``True`` — the flat, single-list shape this route already
-    served before T2.56 — so an existing caller that never names ``fuse`` sees
-    the identical document it always has; the sectioned shape (doc 07 §5's
-    stated default for a human-facing panel, doc 13 §5.4) is reached with
-    ``fuse=false``. Present on both doors or on neither (invariant 17): the
-    MCP twin's ``fuse`` argument carries the same default for the same reason.
+    It defaults ``False`` — the sectioned-by-layer shape doc 07 §5 states as
+    the default output ("the default output is sectioned-by-layer with a
+    fused fallback for token-budgeted consumers", §5's channel-topology
+    paragraph, doc 07 §8's envelope table, doc 13 §5.4) — so a caller that
+    never names ``fuse`` gets the document the corpus records as settled. The
+    flat shape is reached with ``fuse=true``. Present on both doors or on
+    neither (invariant 17): the MCP twin's ``fuse`` argument carries the same
+    default for the same reason.
     """
 
     query: str = Field(min_length=1)
@@ -138,7 +140,7 @@ class KnowledgeSearchRequest(BaseModel):
         ge=1,
         le=KNOWLEDGE_SEARCH_MAX_LIMIT,
     )
-    fuse: bool = True
+    fuse: bool = False
 
 
 class KnowledgeSearchUnavailable(BaseModel):

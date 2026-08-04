@@ -1838,7 +1838,8 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
 
             door = "mcp:knowledge_search"
             body = await _call_mcp(
-                "knowledge_search", {"query": query, "project": req_p, "limit": 50},
+                "knowledge_search",
+                {"query": query, "project": req_p, "limit": 50, "fuse": True},
             )
             payload = json.loads(body)
             if payload.get("status") == "unavailable":
@@ -1850,7 +1851,7 @@ async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
             door = "POST /api/v1/knowledge/search"
             response = await ctx.client.post(
                 "/api/v1/knowledge/search",
-                json={"query": query, "project": req_p, "limit": 50},
+                json={"query": query, "project": req_p, "limit": 50, "fuse": True},
                 headers=ctx.headers,
             )
             # 503 is the route's outage, not a probe failure: the same

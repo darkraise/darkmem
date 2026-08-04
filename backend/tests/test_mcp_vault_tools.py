@@ -222,7 +222,7 @@ async def test_knowledge_search_composes_both_layers(session, monkeypatch):
         facts=[_fact_row(fact_id)],
     )
 
-    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT))
+    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT, fuse=True))
 
     assert [row["id_kind"] for row in body["rows"]] == ["fact"]
     row = body["rows"][0]
@@ -256,7 +256,7 @@ async def test_the_badge_is_the_producers_and_is_not_rendered_by_the_tool(
     fact_id = await _seed_fact(session, origins=("origin-a", "origin-b"))
     _stub_channels(monkeypatch, facts=[_fact_row(fact_id)])
 
-    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT))
+    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT, fuse=True))
     served = body["rows"][0]["labels"]["badge"]
 
     row = {**_fact_row(fact_id), "id": fact_id}
@@ -308,7 +308,7 @@ async def test_the_envelope_reports_a_one_sided_outage(session, monkeypatch):
     _stub_channels(monkeypatch, facts=[_fact_row(await _seed_fact(session))])
     monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _boom())
 
-    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT))
+    body = json.loads(await mcp_server.knowledge_search(query="postgres", project=PROJECT, fuse=True))
 
     assert body["envelope"]["partial"] is True
     assert body["envelope"]["channels"]["memory.semantic"]["failed"] is True

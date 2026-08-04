@@ -250,10 +250,10 @@ async def _seed_fact(session, *, sourced_by: str | None = None) -> str:
 # ── the two doors ────────────────────────────────────────────────────
 
 
-async def _rest(client, auth_headers, *, limit: int = 20, project: str = PROJECT):
+async def _rest(client, auth_headers, *, limit: int = 20, project: str = PROJECT, fuse: bool = True):
     return await client.post(
         ROUTE,
-        json={"query": QUERY, "project": project, "limit": limit},
+        json={"query": QUERY, "project": project, "limit": limit, "fuse": fuse},
         headers=auth_headers,
     )
 
@@ -264,9 +264,9 @@ async def _rest_body(client, auth_headers, **kwargs) -> dict:
     return response.json()
 
 
-async def _mcp_body(*, limit: int = 20, project: str = PROJECT) -> dict:
+async def _mcp_body(*, limit: int = 20, project: str = PROJECT, fuse: bool = True) -> dict:
     return json.loads(
-        await mcp_server.knowledge_search(query=QUERY, project=project, limit=limit)
+        await mcp_server.knowledge_search(query=QUERY, project=project, limit=limit, fuse=fuse)
     )
 
 

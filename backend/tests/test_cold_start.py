@@ -276,17 +276,22 @@ async def _rest_body(client, auth_headers, **overrides) -> dict:
     return response.json()
 
 
-async def test_fuse_true_is_the_backward_compatible_default(client, auth_headers, session):
-    """Existing callers of this already-shipped route never named ``fuse``;
-    T2.56 must not move the ground under them, so the default stays the flat
-    shape the route served before this task."""
+async def test_fuse_defaults_to_the_sectioned_shape(client, auth_headers, session):
+    """Doc 07 §5: "the default output is sectioned-by-layer with a fused
+    fallback for token-budgeted consumers" — and again, "the default response
+    returns the results sectioned by layer". Doc 07 §8's envelope table and
+    doc 13 §5.4 both name the same default. A caller that never names
+    ``fuse`` must get that shape, so a future flip back to flat is caught
+    here rather than discovered silently at integration."""
     await _seed_shape_corpus(session)
 
     body = await _rest_body(client, auth_headers)
 
-    assert body["rows"], "the fixture must retrieve something"
-    assert body["sections"] is None
-    assert body["envelope"]["fused"] is True
+    assert body["rows"] is None
+    assert body["sections"]["memory"] or body["sections"]["facts"], (
+        "the fixture must retrieve something"
+    )
+    assert body["envelope"]["fused"] is False
 
 
 async def test_fuse_false_returns_the_sectioned_shape(client, auth_headers, session):
@@ -326,18 +331,19 @@ async def test_the_two_shapes_carry_the_same_rows_merely_partitioned(client, aut
 
 async def test_both_doors_offer_fuse_with_the_same_default(session):
     """Invariant 17: a shape offered on one door and not its twin is a
-    capability asymmetry wearing a parameter's clothes."""
+    capability asymmetry wearing a parameter's clothes — including the
+    default itself, not just the parameter's presence."""
     await _seed_shape_corpus(session)
 
     default = json.loads(await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT))
-    sectioned = json.loads(
-        await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT, fuse=False)
+    fused = json.loads(
+        await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT, fuse=True)
     )
 
-    assert default["rows"]
-    assert default["sections"] is None
-    assert sectioned["rows"] is None
-    assert sectioned["sections"]["memory"] or sectioned["sections"]["facts"]
+    assert default["rows"] is None
+    assert default["sections"]["memory"] or default["sections"]["facts"]
+    assert fused["rows"]
+    assert fused["sections"] is None
 
 
 # ── Done-when 3: the label states plainly it is unverified, on the wire ──
@@ -346,7 +352,7 @@ async def test_both_doors_offer_fuse_with_the_same_default(session):
 async def test_the_wire_label_states_plainly_the_row_is_unverified(client, auth_headers, session):
     await _seed_shape_corpus(session)
 
-    body = await _rest_body(client, auth_headers)
+    body = await _rest_body(client, auth_headers, fuse=True)
 
     memory_row = next(row for row in body["rows"] if row["id_kind"] == "memory")
     fact_row = next(row for row in body["rows"] if row["id_kind"] == "fact")
@@ -360,7 +366,11 @@ async def test_a_different_project_is_a_genuine_empty_not_a_cold_start(client, a
     the other project's candidates and not a fabricated placeholder."""
     await _seed_shape_corpus(session)
 
-    body = await _rest_body(client, auth_headers, project="t2-56-nothing-here")
+    sectioned = await _rest_body(client, auth_headers, project="t2-56-nothing-here")
+    assert sectioned["rows"] is None
+    assert sectioned["sections"] == {"memory": [], "facts": [], "articles": []}
 
-    assert body["rows"] == []
-    assert body["envelope"]["partial"] is False
+    fused = await _rest_body(client, auth_headers, project="t2-56-nothing-here", fuse=True)
+    assert fused["rows"] == []
+    assert fused["envelope"]["partial"] is False
+    assert sectioned["envelope"]["partial"] is False
