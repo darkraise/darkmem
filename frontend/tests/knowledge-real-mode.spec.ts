@@ -38,6 +38,20 @@ const PASSWORD = process.env.E2E_ADMIN_PASSWORD
 const SEEDED_SUBJECT = process.env.E2E_SEEDED_FACT_SUBJECT
 const SEEDED_TEXT = process.env.E2E_SEEDED_FACT_TEXT
 
+// Fix round 1 (F1): both assertions below used to match by case-insensitive
+// substring, which the raw FactTriple ("kestrel-e2e-subject" / "USES" /
+// "marigold-e2e-object", rendered by default since the detail level defaults
+// to advanced) also satisfies once its parts share a whitespace text node —
+// a plausible refactor of a component shared with review-queue.tsx and
+// live-dispute.tsx. SEEDED_TEXT's relation word is fact_lift's lowercased
+// "uses" (fact_sentence), while the triple's Badge renders the literal
+// "USES" — so a case-sensitive match keeps discriminating even if the
+// triple's parts are ever joined with plain whitespace. escapeRegExp guards
+// the hyphens in the seeded subject/object from being read as regex syntax.
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 async function signIn(page: Page) {
   await page.goto("/login")
   await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
@@ -84,7 +98,9 @@ test.describe("knowledge/facts — real mode", () => {
       .getByLabel("Filter facts by subject or object")
       .fill(SEEDED_SUBJECT!)
 
-    const row = page.locator("[data-index]").filter({ hasText: SEEDED_TEXT! })
+    const row = page
+      .locator("[data-index]")
+      .filter({ hasText: new RegExp(escapeRegExp(SEEDED_TEXT!)) })
     await expect(row).toHaveCount(1)
   })
 
@@ -99,7 +115,7 @@ test.describe("knowledge/facts — real mode", () => {
 
     const row = page
       .locator("[data-index]")
-      .filter({ hasText: SEEDED_TEXT! })
+      .filter({ hasText: new RegExp(escapeRegExp(SEEDED_TEXT!)) })
       .first()
     await row.getByRole("link", { name: "sources, ladder and windows →" }).click()
 
@@ -111,7 +127,7 @@ test.describe("knowledge/facts — real mode", () => {
     // Advanced. Rename `fact` on the backend schema without updating the
     // frontend adapter and this exact assertion goes red — driven by hand
     // while writing this spec, see the T2.90 report for the transcript.
-    await expect(page.getByText(SEEDED_TEXT!)).toBeVisible()
+    await expect(page.getByText(SEEDED_TEXT!, { exact: true })).toBeVisible()
 
     await page.getByRole("link", { name: "Back to Facts" }).click()
     await expect(page).toHaveURL(/\/knowledge\/facts$/)
