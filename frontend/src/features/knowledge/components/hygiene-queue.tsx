@@ -290,11 +290,6 @@ function DuplicateRow({
   onToggle: () => void
 }) {
   const level = useDetailLevel((s) => s.level)
-  // Which side is older is not decoration — it is the whole reason this
-  // arm now carries a per-endpoint preview and created_at (T2.87): a
-  // "Supersede instead" action has to show the direction it would apply
-  // before the caller confirms it, not just two ids and a score.
-  const direction = duplicateDirection(row)
   return (
     <div className="border-border space-y-1.5 rounded-md border border-dashed p-2.5">
       <div className="flex items-center gap-2.5">
@@ -322,25 +317,19 @@ function DuplicateRow({
         <LayerChip layer={0} />
         <Link
           to="/memories/$memoryId"
-          params={{ memoryId: direction.olderId }}
+          params={{ memoryId: row.source_memory_id }}
           className="hover:text-primary font-mono text-sm transition-colors"
         >
-          {shortId(direction.olderId)}
+          {shortId(row.source_memory_id)}
         </Link>
-        <Badge variant="outline" size="sm" className="rounded-sm font-mono">
-          older
-        </Badge>
-        <span className="text-muted-foreground text-sm">supersede →</span>
+        <span className="text-muted-foreground text-sm">↔</span>
         <Link
           to="/memories/$memoryId"
-          params={{ memoryId: direction.newerId }}
+          params={{ memoryId: row.target_memory_id }}
           className="hover:text-primary font-mono text-sm transition-colors"
         >
-          {shortId(direction.newerId)}
+          {shortId(row.target_memory_id)}
         </Link>
-        <Badge variant="outline" size="sm" className="rounded-sm font-mono">
-          newer
-        </Badge>
         <Badge variant="outline" size="sm" className="rounded-sm font-mono">
           {row.rel_type}
         </Badge>
@@ -350,18 +339,6 @@ function DuplicateRow({
           project {row.project}
           {row.detected_at && ` · detected_at ${row.detected_at}`} · created_at{" "}
           {row.created_at}
-        </p>
-      )}
-      {level === "advanced" && (
-        <p className="text-muted-foreground pl-6 text-sm">
-          {shortId(direction.olderId)} ({direction.olderCreatedAt}):{" "}
-          {direction.olderPreview || "(no content preview)"}
-        </p>
-      )}
-      {level === "advanced" && (
-        <p className="text-muted-foreground pl-6 text-sm">
-          {shortId(direction.newerId)} ({direction.newerCreatedAt}):{" "}
-          {direction.newerPreview || "(no content preview)"}
         </p>
       )}
     </div>

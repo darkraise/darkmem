@@ -96,6 +96,13 @@ const DUPLICATE_ITEM = {
   hygiene_state: "open",
   detected_at: "2026-07-30T00:00:00Z",
   created_at: "2026-07-30T00:00:00Z",
+  // m1 (source) is the older endpoint, m2 (target) the newer one — the
+  // fixed direction the T2.87 fix-round-1 F3 tests below assert both the
+  // confirm dialog and the POST body agree on.
+  source_content_preview: "uses postgres 14",
+  source_created_at: "2026-07-20T00:00:00Z",
+  target_content_preview: "uses postgres 14 as well",
+  target_created_at: "2026-07-30T00:00:00Z",
 }
 
 function emptyList() {
@@ -981,5 +988,76 @@ describe("ReviewTab: a non-409 undo failure reports state unknown, not refused (
     // Never silently marked undone — the button is still there to retry.
     expect(screen.queryByText("undone")).not.toBeInTheDocument()
     expect(await screen.findByText("Undo this batch")).toBeInTheDocument()
+  })
+})
+
+// T2.87 fix round 1 — F3. The payload mapping in `applyPending`'s
+// "supersede-dup" branch (`memory_id: item.olderId, superseded_by:
+// item.newerId`) is the one place the client's `duplicateDirection` guess
+// becomes a write, and nothing rendered the "Supersede instead" flow or
+// asserted its request body before this round: flipping the mapping passed
+// typecheck and every test that existed. This test fails if that mapping
+// is flipped.
+
+describe("HygieneQueue: 'Supersede instead' states a direction and applies that same direction (T2.87 fix round 1, F3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows older→newer in the confirm dialog, then POSTs memory_id/superseded_by in that order", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/supersede") {
+        return {
+          cycle_id: "cyc-2",
+          results: [{ id: "rel1", applied: true, event_id: 43, reason: null }],
+        }
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Supersede instead"))
+
+    // The dialog states the direction — m1 is the older endpoint
+    // (source_created_at 2026-07-20, before m2's 2026-07-30) — before
+    // anything is applied.
+    expect(await screen.findByText(/Supersede 1 duplicate pair\?/)).toBeInTheDocument()
+    expect(screen.getByText(/m1 → superseded by → m2/)).toBeInTheDocument()
+    expect(
+      vi.mocked(apiFetch).mock.calls.some(
+        (call) => (call[0] as string) === "/hygiene-queue/bulk/supersede",
+      ),
+    ).toBe(false)
+
+    fireEvent.click(screen.getByText("Apply"))
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(apiFetch).mock.calls.some(
+          (call) => (call[0] as string) === "/hygiene-queue/bulk/supersede",
+        ),
+      ).toBe(true),
+    )
+    const [, init] = vi
+      .mocked(apiFetch)
+      .mock.calls.find((call) => (call[0] as string) === "/hygiene-queue/bulk/supersede")!
+    const body = JSON.parse((init as RequestInit).body as string)
+    expect(body).toEqual({ items: [{ memory_id: "m1", superseded_by: "m2" }] })
   })
 })
