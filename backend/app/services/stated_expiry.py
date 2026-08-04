@@ -175,38 +175,28 @@ _NEGATED = re.compile(
     r"will\s+not|won'?t)\b",
     re.IGNORECASE,
 )
-# Abbreviations whose trailing dot is not a sentence end. A closed list is
-# unavoidable here: "a terminator preceded by a multi-letter word" describes
-# every *real* sentence end too, so no lookbehind can separate `cf. Fig. 3`
-# from `plan. Delete`. The capital-letter lookahead below catches the ordinary
-# mid-sentence case (an abbreviation is usually followed by lowercase); this
-# list is only for the residue where a capitalised word follows one.
-_ABBREVIATIONS = (
-    "cf", "etc", "vs", "approx", "inc", "ltd", "dr", "mr", "mrs", "ms",
-    "no", "fig", "al", "jr", "sr", "st", "vol", "ch", "pp", "est",
-    "min", "max", "ref", "dept",
-)
-_ABBREVIATION_GUARD = "".join(rf"(?<!\b(?i:{a}))" for a in _ABBREVIATIONS)
-
-# A sentence terminator, as opposed to a dot inside a token — and getting this
-# wrong severs the negation lookback, which is the *deletion* direction. Four
-# rounds of exhibits shaped it: "Do not (per policy v1.2) delete …", "Do not,
-# e.g. during the cleanup, delete …", "Do not wait... delete …", and "Do not —
-# repeat! — delete …" all armed under simpler rules. The last two are why the
-# lookahead exists rather than a bare `(?=\s|$)`: an ellipsis is a pause, and a
-# mid-sentence exclamation is followed by a continuation, not a capital.
+# **Scope: the whole preceding text, not the sentence.** Five review rounds
+# established that sentence-splitting cannot be made reliable enough to carry a
+# delete decision. Each round fixed its exhibits and the mechanism armed one
+# shape over: `v1.2`, then `e.g.`, then an ellipsis, then a mid-sentence bang,
+# then any dotted proper noun off a closed list — `Do not, per Acme Corp.
+# Policy, delete this note after 2026-12-31.` The reason no sixth heuristic
+# ends it was named in review: "a terminator preceded by a multi-letter word"
+# describes every *real* sentence end too, so nothing separates `Corp. Policy`
+# from `plan. Delete`, and a closed abbreviation list can never enumerate
+# proper nouns.
 #
-# The residual cost is recall-side and accepted: a sentence genuinely ending in
-# a digit, a lone letter, an abbreviation, or before a lowercase continuation
-# does not terminate, so an earlier negation can suppress the next sentence's
-# genuine instruction. The memory simply lives on.
-_SENTENCE_END = re.compile(
-    r"(?<!\d)"                     # v1.2 — a decimal, not a sentence end
-    r"(?<!\b[a-zA-Z])"             # e.g. / i.e. — a lone initial
-    r"(?<!\.)" + _ABBREVIATION_GUARD + r"[.;!?]"
-    r"(?!\.)"                      # an ellipsis run is a pause, not a stop
-    r"(?=\s+[A-Z\"“«(\[]|\s*$)"    # a real sentence starts with a capital
-)
+# So the ambiguity is resolved the way this module already resolves it for
+# quotes: **toward suppression.** A negation anywhere earlier in the memory
+# suppresses every match after it. That is this module's own stated doctrine —
+# over-suppressing costs a missed TTL and the memory lives on, under-suppressing
+# deletes it — finally applied to the one place still trying to be clever.
+#
+# The cost is real and stated: a memory carrying a negation *and* a later,
+# unrelated genuine instruction now derives nothing. "Never mind the old plan.
+# Delete this note after 2026-12-31." is exactly that case and used to be pinned
+# as a recall test. The memory keeps living and any caller can still set the TTL
+# by hand — the trade this module exists to make.
 
 _QUARTER_END_MONTH = {1: 3, 2: 6, 3: 9, 4: 12}
 
@@ -375,12 +365,10 @@ def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime 
             # instruction, not issuing its own.
             if any(start <= match.start() < end for start, end in quoted):
                 continue
-            # A negated instruction means the opposite of what it matches.
-            # The lookback starts at the previous sentence terminator, so a
-            # negation anywhere in the same sentence counts however far it
-            # sits from the verb, and one in an earlier sentence never does.
-            terminators = [m.end() for m in _SENTENCE_END.finditer(content, 0, match.start())]
-            if _NEGATED.search(content[terminators[-1] if terminators else 0:match.start()]):
+            # A negated instruction means the opposite of what it matches, and
+            # **any** negation before it suppresses. See `_NEGATED` for why the
+            # scope is the whole preceding text rather than the sentence.
+            if _NEGATED.search(content[:match.start()]):
                 continue
             instant = _instant_from(match)
             # Strictly future: a derived expiry already spent would let capture

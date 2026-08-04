@@ -75,14 +75,10 @@ def test_the_stated_day_is_covered_in_full():
         # inputs are balanced and unambiguous.
         ("The doc says “foo” today. Keep this note until 2026-09-30. Then “bar” applies.",
          datetime(2026, 10, 1, tzinfo=timezone.utc)),
-        # A negation in an *earlier* sentence must not suppress a real
-        # instruction: the lookback stops at the sentence terminator.
-        ("Never mind the old plan. Delete this note after 2026-12-31.",
-         datetime(2027, 1, 1, tzinfo=timezone.utc)),
-        # The other side of the sentence-terminator rule: a real sentence end
-        # after an abbreviation or an exclamation must still cut the lookback,
-        # or an earlier negation silently eats every later instruction.
-        ("We shipped it Inc. Delete this note after 2026-12-31.",
+        # A memory with no negation in it derives normally however many
+        # sentences precede the instruction — the ruling below scopes only
+        # *negation*, and nothing else changed about multi-sentence content.
+        ("The cert rotates next quarter. Delete this note after 2026-12-31.",
          datetime(2027, 1, 1, tzinfo=timezone.utc)),
         ("Old plan dropped! Delete this note after 2026-12-31.",
          datetime(2027, 1, 1, tzinfo=timezone.utc)),
@@ -207,6 +203,22 @@ def test_the_earliest_future_expiry_wins():
         "Do not — repeat! — delete this note after 2026-12-31.",
         "Do not, cf. Fig. 3 and etc. notes, delete this note after 2026-12-31.",
         "Do not, vs. approx. 5 others, delete this note after 2026-12-31.",
+        # ── Round-5 re-review: the shapes that ended the heuristic. A dotted
+        # proper noun off any closed list, a semicolon before the always-capital
+        # "I", and a mid-sentence "?" each severed the lookback. Suppression is
+        # now scoped to the whole preceding text, so the class is closed by a
+        # ruling rather than by a sixth pattern.
+        "Do not, per Acme Corp. Policy, delete this note after 2026-12-31.",
+        "Do not, per Gen. Smith's order, delete this note after 2026-12-31.",
+        "Do not; I repeat; delete this note after 2026-12-31.",
+        "Do not — OK? I mean it — delete this note after 2026-12-31.",
+        # The endpos hole: a lowercase continuation after a single dot. The
+        # capital-letter lookahead was inert here because `$` matched at the
+        # truncation point of the lookback scan.
+        "Do not wait. delete this note after 2026-12-31.",
+        "Do not run the cleanup. delete this note after 2026-12-31.",
+        # And the ruling's own headline case, now a refusal rather than a pin.
+        "Never mind the old plan. Delete this note after 2026-12-31.",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
