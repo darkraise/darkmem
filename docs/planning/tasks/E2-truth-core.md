@@ -642,6 +642,78 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.87 — The duplicates response carries what a supersede direction needs
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.23` · `Doc: 08 §6` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.37's Fable review, which ruled the lane's
+refusal to build "Supersede instead" **correct restraint rather than an
+unshipped obligation**: `HygieneDuplicateItem` carries two memory ids and a
+similarity score, and nothing else. A frontend cannot honestly decide which of a
+pair is the older, superseded one from that, and a direction picker built on it
+would be the UI inventing an adjudication.
+
+Doc 08 §6 names four bulk verbs and only three are reachable, so the gap is real
+— it is just a **backend** gap, which is why it is its own task.
+
+**The enabling change is small and was measured, not guessed.**
+`build_duplicates_query` (`app/services/hygiene_queue.py:186`) already joins both
+memory rows — its `WHERE` reads `src.status = 'active'` and
+`tgt.status = 'active'` — so both sides are in scope and the SELECT simply does
+not project what a decision needs.
+
+**Undoability was never the obstacle**: supersede maps to `ACTION_SUBSUME`
+through `deprecate()`, the same invertible action prune already uses, and the
+review verified that mapping in `hygiene_queue.py` / `supersede.py` /
+`dream_digest.py`.
+
+**Done when:**
+- [ ] `HygieneDuplicateItem` carries, for **both** endpoints, at minimum
+      `created_at` and a content preview, so a direction is derivable from the
+      response alone without a second fetch
+- [ ] The preview respects the same project-isolation preview rules the
+      isolation probe enforces — a duplicates row must not become a hole through
+      which content crosses a project boundary
+- [ ] `POST /hygiene-queue/bulk/supersede` is reachable from the Hygiene queue
+      with the direction shown before it is applied, confirmed like the other
+      bulk actions and undoable through the same cycle door
+- [ ] A test fails if the response omits either side's timestamp — the whole
+      point is that one side is older
+
+**Verify.** `cd backend && python -m pytest tests/test_hygiene_queue.py -q`
+
+#### T2.88 — `GET /review-queue/counts` cannot be project-scoped
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.22` · `Doc: 08 §6, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.37's Fable review. `GET /review-queue/counts`
+(`app/api/routes/review_queue.py:70`) takes **no `project` parameter at all**,
+while `GET /facts` and `GET /articles` beside it both do. So a filtered queue
+renders a count from a different population than the list below it.
+
+T2.37 handled this the only honest way available to it — an inline
+`(unscoped — across all projects)` qualifier next to the number — and the review
+ruled that **passes invariant 14 narrowly** (the qualifier sits on the number it
+qualifies) **but is skimmable, and the note is a workaround for a backend
+asymmetry rather than a fix**.
+
+Do not delete the qualifier as part of this task without checking what replaces
+it: if the count becomes scopeable, the honest surface is a scoped number with
+no qualifier; if some arm genuinely cannot be scoped, the qualifier must survive
+and say which arm.
+
+**Done when:**
+- [ ] `GET /review-queue/counts` accepts the same `project` parameter its
+      sibling reads accept, and applies it
+- [ ] The absent parameter still means all projects, so no existing caller changes
+      behaviour
+- [ ] A test fails if the counts endpoint and the list endpoints disagree about
+      the population for the same `project` argument — that disagreement is the
+      whole defect
+- [ ] The Review queue drops the unscoped qualifier where it no longer applies
+
+**Verify.** `cd backend && python -m pytest tests/test_review_queue.py -q`
+
 #### T2.86 — The fact detail route on live data
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
@@ -2058,6 +2130,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-04 | T2.87, T2.88, T2.37 | 2 | **Two backend tasks minted from T2.37's Fable review, both of which the UI lane correctly refused to paper over.** (1) `T2.87` — `HygieneDuplicateItem` carries two memory ids and a score and nothing else, so "Supersede instead" is unbuildable without the frontend inventing an adjudication; the review ruled the refusal **correct restraint, not an unshipped obligation**, and doc 08 §6's fourth bulk verb is therefore backend-blocked. `build_duplicates_query` already joins both memory rows (`src.status`/`tgt.status` in its WHERE), so the enabling change is projection, not a new join — measured, not assumed. (2) `T2.88` — `GET /review-queue/counts` takes no `project` parameter while `/facts` and `/articles` beside it do, so a filtered queue shows a count from a different population than its own list | Both are the same shape as T2.36a and T2.39a: a UI task reaching for a backend capability the corpus assumes and the code does not have. What is different, and worth recording, is that this time **the lane stopped instead of faking it** — it reported the duplicates gap as unbuilt and rendered the counts number with an inline unscoped qualifier rather than showing a figure that disagrees with the list beneath it. The review's ruling on that qualifier is the useful nuance: it passes invariant 14 **narrowly**, because the qualifier sits on the number it qualifies, but it is skimmable and it is a workaround. That is the right standard — an honest workaround is shippable and still generates a task, rather than closing the question |
 | 2026-08-04 | T2.86, T2.36 | 2 | **T2.86 minted: the fact detail route is demo-only and nothing calls T2.36a's detail door.** `knowledge_.facts_.$factId.tsx:64` calls `useDemoFact` unconditionally, so with DEMO off any real fact id renders "This fact does not exist in the demo store". T2.36's row linked there for disputed facts, which is how the dead link shipped. The fix round closed the link by **not offering it** — a new `detail_available` producer capability, false on the live path — and said explicitly that wiring the page is a task, not a fix, because the page renders a verification ladder, a dispute panel and multiple belief windows that `FactDetailResponse` does not carry | Filed as its own task rather than widened into T2.36's fix round for a reason worth recording: it is **partly a backend question**. Whether the detail door grows to serve what doc 13 §5.1's page shows, or the page stops showing what the door cannot support, is a per-field decision neither doc settles, and a fix round under time pressure would have settled it by whichever was cheapest. Note `detail_available` is itself scheduled for retirement inside T2.86 — an interim honesty flag that outlives its condition becomes the stale-premise defect T2.65 was minted to fix, so it is part of done rather than a follow-up. The article detail route (`knowledge_.articles_.$articleId.tsx`) has the same shape but is **not** minted here: `article_synthesis` is still a `PlaceholderJobRunner`, so `knowledge_articles` has no production writer and there is nothing live to wire it to |
 | 2026-08-04 | T2.79–T2.84 | 2 | **Audited every Verify command on the six back-filled entries; three more name files that do not exist.** After T2.83's field was found wrong, the same check was run across all six. `T2.81` (already **done**) named `tests/test_memory_update_nulls.py` — its own commits put all 374 lines of added coverage in `tests/test_empty_content_update.py`, so the field is corrected here. `T2.82` (currently **wip** in lane ah) names `tests/test_reembed.py`, which does not exist and never has; that lane will hit the same error, and the correct target is one or more of `test_reembed_absent_partition.py` / `test_reembed_code_chunks.py` / `unit/test_reembed_helpers.py` — **left uncorrected deliberately, because the row is owned by another lane and the controller does not edit a claimed task.** `T2.80` names `tests/test_knowledge_search.py`, which is legitimate: that task creates it. T2.79 and T2.84 are clean | The failure mode is what makes this worth a Tier-2 row rather than three Tier-1 fixes. A Verify command naming a missing file does not fail — `pytest` exits with `ERROR: file or directory not found`, which a careless reading scans as 'nothing failed'. Runbook §4 requires the Verify command to be *actually run with its real output recorded*, and a command that cannot run makes that box uncheckable rather than checked. T2.81 passed a Fable review and a scoped re-review with this field wrong in the tree, so the defect survives adversarial reading — it is invisible to everyone who does not try to run the command. The root cause is structural: these six were minted straight into `progress.md` from review findings and back-filled into the epic file on 2026-08-04, so their Verify fields were **reconstructed rather than observed**. Any future back-fill should run every Verify field it writes |
 | 2026-08-04 | T2.83 | 1 | **Verify field corrected: it named two test files that do not exist.** The minted text said `tests/test_reembed.py tests/test_embedder_registry.py`; neither is in the repo, and `pytest` exits with `ERROR: file or directory not found` rather than passing vacuously. The real coverage is `tests/test_vectors_route.py tests/test_api/test_graph.py`, because the guard lives in `PostgresVectorRepository.resolve_read_fingerprint` and is observable only through the two read surfaces that call it | Found by the T2.83 implementer, which ran the command as written, reported the error verbatim and did not route around it silently. Worth logging rather than just fixing: T2.83 was one of the six entries minted straight into `progress.md` from a review finding and back-filled into the epic file on 2026-08-04, so its Verify field was reconstructed rather than derived from a real run — the other five back-filled entries carry the same risk and nobody has checked them. A Verify command naming a missing file is the worst shape available: it *errors* rather than fails, so a careless run reads as 'no tests failed' |
