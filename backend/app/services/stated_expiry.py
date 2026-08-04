@@ -49,10 +49,16 @@ from datetime import datetime, timedelta, timezone
 # The subjects a memory can use to mean *itself*. Closed on purpose: widening
 # it is the one edit that can turn a claim about the world into this memory's
 # own death date, so a new member belongs in review with a test beside it.
+#
+# A bare pronoun is exactly that edit and was caught here once: `it` shipped in
+# this tuple briefly, and "The TLS cert expires soon. It is valid until
+# 2026-12-31." then resolved to the *memory's* TTL and would have deleted the
+# note recording the cert. A pronoun's referent is the previous clause, never
+# the memory, so no pronoun belongs here — only a noun phrase that names the
+# memory itself.
 _SELF_SUBJECTS = (
     r"this\s+(?:memory|note|entry|record|reminder|item|fact)",
     r"the\s+above",
-    r"it",
 )
 
 # "valid until X", "good through X", "applies until X".
