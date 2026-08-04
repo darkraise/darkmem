@@ -108,7 +108,7 @@ async def test_rest_paginated_shape_with_and_without_trace(client, session, auth
     assert set(traced.json()) == {"items", "total", "limit", "offset", "envelope"}
     assert set(traced.json()["envelope"]) == {
         "schema_version", "partial", "excluded", "page", "context",
-        "query", "channels", "reranked", "weights",
+        "query", "channels", "reranked", "weights", "fused",
     }
 
 

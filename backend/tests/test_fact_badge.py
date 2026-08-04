@@ -27,6 +27,7 @@ from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.fact_badge import (
     CLAIM_VOCABULARY,
+    VERIFIED_TIER_STATUSES,
     Badge,
     CertaintyWordError,
     assert_no_certainty_words,
@@ -283,6 +284,7 @@ def test_a_memory_row_carries_a_lifecycle_and_no_badge():
         "verification_status": None,
         "lifecycle": "active",
         "badge": None,
+        "unverified": True,
     }
 
 
@@ -303,6 +305,35 @@ def test_a_fact_row_carries_a_badge_and_no_lifecycle():
     assert labels["lifecycle"] is None
     assert labels["verification_status"] == "corroborated"
     assert labels["badge"]["origin_count"] == 2
+    assert labels["unverified"] is False
+
+
+@pytest.mark.parametrize(
+    "verification_status,expected",
+    [
+        ("candidate", True),
+        ("disputed", True),
+        ("corroborated", False),
+        ("confirmed", False),
+    ],
+)
+def test_unverified_follows_the_ladder_tier(verification_status, expected):
+    """T2.56's cold-start label: plain, mechanical, and read off the tier the
+    ladder already wrote rather than a second adjudication of it."""
+    labels = row_labels(
+        id_kind="fact", verification_status=verification_status, badge=_badge()
+    )
+    assert labels["unverified"] is expected
+
+
+def test_verified_tier_statuses_is_exactly_the_top_two_rungs():
+    assert VERIFIED_TIER_STATUSES == {"corroborated", "confirmed"}
+
+
+def test_the_word_unverified_survives_the_certainty_word_guard():
+    """``\\bverified\\b`` needs a boundary before the match; ``un`` leaves
+    none, so the cold-start label is not the word the guard exists to catch."""
+    assert_no_certainty_words("this row is unverified")
 
 
 def test_a_lifecycle_on_a_vault_row_is_refused():
