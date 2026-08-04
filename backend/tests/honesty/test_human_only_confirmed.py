@@ -306,39 +306,66 @@ def _scopes(tree: ast.Module):
     'confirmed'"`` — the naive single-line literal, no disguise at all — was
     attributed nowhere and passed. Class-level SQL template constants are one
     step from the module-level ones this tree already keeps.
+
+    A nested ``def`` or ``class`` is removed from its parent's body, **but its
+    signature is not**. Decorators, argument defaults and annotations are
+    written inside the nested definition and *evaluated in the enclosing
+    scope*, so dropping the whole node left them in no scope at all — a
+    zero-disguise literal as a default argument or in a decorator call passed
+    the scan. That was a regression introduced while fixing double-attribution:
+    the earlier walk yielded whole ``FunctionDef`` nodes and caught them by
+    accident. ``_shell`` puts them back where they execute.
     """
-    def body_only(node: ast.AST, body: list) -> ast.Module:
-        return ast.Module(
-            body=[n for n in body if not isinstance(n, _NESTING)], type_ignores=[]
+    def shell(node: ast.AST) -> list:
+        """The parts of a nested definition that run in the enclosing scope."""
+        parts: list = list(node.decorator_list)
+        if isinstance(node, ast.ClassDef):
+            parts += list(node.bases) + [kw.value for kw in node.keywords]
+            return parts
+        args = node.args
+        parts += [d for d in args.defaults if d is not None]
+        parts += [d for d in args.kw_defaults if d is not None]
+        if node.returns is not None:
+            parts.append(node.returns)
+        every = (
+            list(args.posonlyargs) + list(args.args) + list(args.kwonlyargs)
+            + [a for a in (args.vararg, args.kwarg) if a is not None]
         )
+        parts += [a.annotation for a in every if a.annotation is not None]
+        return parts
+
+    def body_only(body: list) -> list:
+        own = [n for n in body if not isinstance(n, _NESTING)]
+        for nested in (n for n in body if isinstance(n, _NESTING)):
+            own.extend(shell(nested))
+        return own
 
     def walk(node: ast.AST, prefix: str):
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                # A function's own body minus nested defs; the nested ones are
-                # yielded separately by the recursion below.
-                yield body_only(child, child.body), f"{prefix}{child.name}"
+                yield body_only(child.body), f"{prefix}{child.name}"
                 yield from walk(child, f"{prefix}{child.name}.")
             elif isinstance(child, ast.ClassDef):
-                yield body_only(child, child.body), f"{prefix}{child.name}.<class>"
+                yield body_only(child.body), f"{prefix}{child.name}.<class>"
                 yield from walk(child, f"{prefix}{child.name}.")
 
     yield from walk(tree, "")
-    yield body_only(tree, tree.body), "<module>"
+    yield body_only(tree.body), "<module>"
 
 
-def _writes_column(scope: ast.AST) -> bool:
+def _writes_column(scope: list) -> bool:
+    nodes = [n for root in scope for n in ast.walk(root)]
     # A bare string *statement* is a docstring or a stray literal, never a
     # statement anything executes. Both `facts_read` and `review_queue`
     # describe the column in their module docstrings, and reading prose as SQL
     # is how a guard earns a reputation for crying wolf.
     prose = {
         id(node.value)
-        for node in ast.walk(scope)
+        for node in nodes
         if isinstance(node, ast.Expr)
         and isinstance(node.value, (ast.Constant, ast.JoinedStr))
     }
-    for node in ast.walk(scope):
+    for node in nodes:
         # Raw SQL, in any string form.
         if isinstance(node, (ast.Constant, ast.JoinedStr)) and id(node) not in prose:
             text = _static_text(node)
@@ -377,10 +404,19 @@ def _writes_column(scope: ast.AST) -> bool:
         ):
             if any(kw.arg == _COLUMN for kw in node.keywords):
                 return True
-            for arg in node.args:
-                if isinstance(arg, ast.Dict) and any(
+            # A literal dict, passed positionally or splatted with `**`. The
+            # splat is purely syntactic so it costs three lines; a dict built
+            # by a name, a comprehension or `dict(...)` needs data flow and is
+            # named in the honest-limits paragraph instead.
+            dicts = [a for a in node.args if isinstance(a, ast.Dict)]
+            dicts += [
+                kw.value for kw in node.keywords
+                if kw.arg is None and isinstance(kw.value, ast.Dict)
+            ]
+            for literal in dicts:
+                if any(
                     isinstance(key, ast.Constant) and key.value == _COLUMN
-                    for key in arg.keys
+                    for key in literal.keys
                 ):
                     return True
     return False
@@ -474,6 +510,56 @@ _EVASIONS: dict[str, str] = {
         "def promote(session, table):\n"
         "    return update(table).values({'verification_status': 'confirmed'})\n"
     ),
+    # ── Found by the round-2 re-review: a regression introduced while fixing
+    # double-attribution. A nested def's decorators, argument defaults and
+    # annotations are written inside the definition but *evaluated in the
+    # enclosing scope*, so dropping the whole node left them unscanned. Each of
+    # these is a zero-disguise literal in a syntactic slot the walk had lost.
+    "default_argument": (
+        "def promote(sql=\"UPDATE knowledge_triples SET verification_status = 'confirmed'\"):\n"
+        "    return sql\n"
+    ),
+    "decorator_call": (
+        "import functools\n"
+        "@functools.lru_cache(\"UPDATE knowledge_triples SET verification_status = 'confirmed'\")\n"
+        "def promote():\n"
+        "    return None\n"
+    ),
+    "return_annotation": (
+        "def promote() -> \"UPDATE knowledge_triples SET verification_status = 'confirmed'\":\n"
+        "    return None\n"
+    ),
+    "lambda_default": (
+        "def promote(f=lambda row: setattr(row, 'verification_status', 'confirmed')):\n"
+        "    return f\n"
+    ),
+    "values_splatted_literal": (
+        "from sqlalchemy import update\n"
+        "def promote(table):\n"
+        "    return update(table).values(**{'verification_status': 'confirmed'})\n"
+    ),
+}
+
+# Where each shape must be attributed. The previous suite asserted only that
+# *something* was flagged, so misattributing every class body to `<module>`
+# passed all sixteen tests — and scope-coverage bugs are this guard's recurring
+# failure mode (both the class-body hole and the dropped-signature regression
+# were exactly that).
+_EVASION_SCOPES: dict[str, str] = {
+    "multiline_sql": "::promote",
+    "via_constant": "::promote",
+    "renamed_bound_param": "::promote",
+    "setattr": "::promote",
+    "module_level": "::<module>",
+    "fstring": "::promote",
+    "class_body": "::Promoter.<class>",
+    "sqlalchemy_values_kwarg": "::promote",
+    "sqlalchemy_values_dict": "::promote",
+    "default_argument": "::<module>",
+    "decorator_call": "::<module>",
+    "return_annotation": "::<module>",
+    "lambda_default": "::<module>",
+    "values_splatted_literal": "::promote",
 }
 
 
@@ -485,7 +571,15 @@ def test_the_scan_catches_every_shape_that_defeated_it(tmp_path, shape):
     to evade the old scan."""
     offender = tmp_path / f"{shape}.py"
     offender.write_text(_EVASIONS[shape], encoding="utf-8")
-    assert _confirmed_writers(tmp_path), f"{shape} evaded the scan"
+    found = _confirmed_writers(tmp_path)
+    assert found, f"{shape} evaded the scan"
+    expected = _EVASION_SCOPES[shape]
+    assert any(name.endswith(expected) for name in found), (
+        f"{shape} was caught, but attributed to {found} rather than a scope "
+        f"ending {expected!r}. Catching a writer in the wrong scope is how a "
+        f"coverage hole hides: the count stays right while a whole syntactic "
+        f"region goes unscanned."
+    )
 
 
 def test_the_scan_ignores_reads_of_the_literal(tmp_path):
