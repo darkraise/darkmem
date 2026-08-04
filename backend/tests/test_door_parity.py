@@ -540,6 +540,33 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.topics",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/knowledge/topics"),
+            ("GET", f"{V1}/knowledge/topics/{{label}}"),
+            ("GET", f"{V1}/knowledge/topics/pin-suggestions"),
+            ("POST", f"{V1}/knowledge/topics/pin-suggestions/accept"),
+            ("POST", f"{V1}/knowledge/topics/pin-suggestions/dismiss"),
+        ),
+        reason=(
+            "T2.39a's door onto T2.20's topic_browsing.py / pin_suggestions.py, "
+            "both shipped with zero callers anywhere in app/ until this task. "
+            "Doc 12 section 3's tool table names exactly one MCP-exposed topic "
+            "capability -- memory_overview, the project-wide map-reduce "
+            "(already two-door, knowledge.overview above) -- and assigns no "
+            "tool to per-topic browsing or to the pin-suggestion diff/accept/"
+            "dismiss flow doc 09 section 3.4 describes. Accept/dismiss are "
+            "also a human curation decision about what feeds article "
+            "synthesis, the same review-a-suggestion shape "
+            "hygiene_queue.triage and review_queue.reject keep off the "
+            "unauthenticated MCP surface rather than a query an agent has a "
+            "reason to aim at. If a later doc revision names an agent-facing "
+            "tool here the way T2.72 added fact_get for knowledge.facts_list, "
+            "this row moves to two-door then, not before."
+        ),
+    ),
+    Surface(
         name="hygiene_queue.triage",
         status=REST_ONLY,
         rest=(

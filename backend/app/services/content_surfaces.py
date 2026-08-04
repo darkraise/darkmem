@@ -478,6 +478,40 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "event journal, in a second store — escalated with it.",
     ),
 
+    ContentSurface(
+        key="knowledge_topics_browsing",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/topics", "GET /api/v1/knowledge/topics/{label}"),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.39a",
+        reason="browse_topics/get_topic (T2.20) read straight off memory_communities, "
+               "scoped by a required `project` bind parameter with no wide mode -- the "
+               "same shape memory_overview (T2.21) already carries for the same "
+               "underlying rows. A community's report_string is prose the "
+               "summarization purpose wrote about that community's member memories, "
+               "so memory-derived content crosses even though no memories row does. "
+               "get_topic resolves by (project, label), so a cross-project read for a "
+               "label seeded in another project answers 404, never that project's "
+               "topic.",
+    ),
+    ContentSurface(
+        key="knowledge_pin_suggestions",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/topics/pin-suggestions",),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.39a",
+        reason="diff_topics/compute_pin_suggestions (T2.20) read the same "
+               "project-scoped memory_communities rows as topic browsing, plus "
+               "knowledge_triples/knowledge_articles gates keyed on the same project. "
+               "Accept and dismiss (POST .../accept, .../dismiss) return no "
+               "memory-derived content -- 204, listed in "
+               "ROUTES_WITHOUT_MEMORY_CONTENT, the same shape T2.05's ratify/reject "
+               "doors use.",
+    ),
     # -- memory identity without content -----------------------------------
     ContentSurface(
         key="entity_browser",
@@ -569,6 +603,12 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # cost the probe its determinism. The caller re-reads the fact instead,
     # which is one request and the shape reject already established.
     "POST /api/v1/knowledge/facts/{fact_id}/ratify",
+    # Accept/dismiss a pin suggestion: 204, same adjudication-verb shape as
+    # ratify/reject. The body carries a subject_key and an optional label
+    # the caller already had; the response echoes neither, so no
+    # memory-derived row crosses either door.
+    "POST /api/v1/knowledge/topics/pin-suggestions/accept",
+    "POST /api/v1/knowledge/topics/pin-suggestions/dismiss",
     # Aggregate totals across the four hygiene arms, never a row.
     "GET /api/v1/hygiene-queue/counts",
     # Bulk-action doors. The response names each item's id, whether it
