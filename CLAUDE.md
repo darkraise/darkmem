@@ -341,12 +341,28 @@ what this file said until 2026-07-28: a vector arm over
 `code_chunk_embeddings__<slug>` and an `ILIKE` arm over `CodeSymbol.name`
 / `source_code`, combined under RRF. What it has no FTS column for is a
 `ts_rank` arm — the partitions carry none — so the keyword side is
-`ILIKE`, not Postgres full-text. `code_query.py` declares its **own**
-`RRF_K = 60` rather than using `app/services/rank_fusion.py`; the two
-constants can drift and **no task owns closing that**. MCP's
+`ILIKE`, not Postgres full-text. `code_query.py` **imports** `RRF_K` from
+`app/services/rank_fusion.py` since T2.58 (2026-08-04) — it used to
+declare its own copy, and this file used to say no task owned closing
+that. Two AST scans now fail the build on a second RRF constant
+*declared* anywhere outside `rank_fusion.py`; they check the binding, not
+the literal 60, so renaming the value does not evade them. MCP's
 `code_search` and `code_blast_radius` route through this service
 (T1.42c); before that they held parallel implementations and had already
 diverged.
+
+**Chat retrieval is the same path, not a third one.** `ChatService` used
+to call `vector_repo.search` directly — semantic-only, no keyword arm, no
+RRF, no trace — so a chat answer and the search surface could rank one
+corpus differently. Since T2.58 it goes through
+`LayerCompositionService.search`, whose memory channel is
+`HybridSearchService.search_with_trace`, and `ChatService` holds no vector
+repository at all. **Ranking parity between the two doors is asserted on
+order, not on shape** (`tests/test_chat_retrieval_parity.py`): a
+shape-comparison test passes while orders diverge, which is why the
+assertion is written the way it is. Note parity is only proven while every
+rank arm sits at weight 0 — the doors weight `confidence_rank_gamma` on
+different bases, so activating an arm obliges re-measuring both.
 
 ## Feature flags
 
