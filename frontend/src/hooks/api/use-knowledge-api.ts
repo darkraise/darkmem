@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useInfiniteQuery } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
 
@@ -87,28 +87,44 @@ function factsQueryString(params: FactListParams): string {
   return qs.toString()
 }
 
-/** `GET /knowledge/facts` — doc 13 §5.1's Facts tab substrate.
+export const FACTS_PAGE_SIZE = 25
+
+/** `GET /knowledge/facts` — doc 13 §5.1's Facts tab substrate, page by page.
  *
  *  **Server-paginated and server-filtered.** `total` is the count behind the
  *  filter, not `items.length`, and a caller that counts the page is reporting
  *  the page size as the corpus — the shape invariant 14 exists to prevent.
  *
+ *  Paging is an infinite query over `offset`, not a growing `limit` folded
+ *  into the key: a growing limit re-keys the query on every page, so the
+ *  already-loaded rows drop to `undefined` and the list unmounts under the
+ *  reader. Pages accumulate here instead, and each one is fetched once.
+ *
  *  Nothing here filters by verification status by default: absent the
  *  parameter, a candidate, a disputed and a corroborated fact are listed
  *  alike and labelled apart (doc 08 §6's never-a-gate rule). */
-export function useFacts(
-  params: FactListParams = {},
+export function useFactPages(
+  params: Omit<FactListParams, "limit" | "offset"> = {},
   options?: { enabled?: boolean },
 ) {
-  const query = factsQueryString(params)
-  return useQuery<FactListResponse>({
-    queryKey: ["knowledge", "facts", query],
-    queryFn: () =>
-      // No `/api/v1` here: `apiFetch` prepends the base itself, and a path
-      // that spells it resolves to `/api/v1/api/v1/...` — every request 404s.
+  const base: FactListParams = { ...params, limit: FACTS_PAGE_SIZE }
+  return useInfiniteQuery<FactListResponse>({
+    queryKey: ["knowledge", "facts", factsQueryString(base)],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
       apiFetch<FactListResponse>(
-        `/knowledge/facts${query ? `?${query}` : ""}`,
+        `/knowledge/facts?${factsQueryString({
+          ...base,
+          offset: pageParam as number,
+        })}`,
       ),
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, page) => n + page.items.length, 0)
+      // An empty page terminates regardless of what `total` says: a total
+      // that outruns the rows would otherwise refetch the same offset forever.
+      if (last.items.length === 0 || loaded >= last.total) return undefined
+      return loaded
+    },
     enabled: options?.enabled ?? true,
   })
 }

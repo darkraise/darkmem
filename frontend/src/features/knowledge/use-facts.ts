@@ -1,9 +1,23 @@
+import { useCallback, useMemo } from "react"
+
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoFacts } from "@/demo/hooks"
-import { distinctFactProjects, distinctFactRelations } from "@/demo/knowledge"
+import {
+  distinctFactProjects,
+  distinctFactRelations,
+  distinctOriginCount,
+  filterFacts,
+} from "@/demo/knowledge"
 import type { AppliesWhen, DemoFact } from "@/demo/types"
-import { useFacts as useFactsApi, type FactListItem } from "@/hooks/api"
+import { useFactPages, type FactListItem } from "@/hooks/api"
 import type { VerificationStatus } from "@/components/darkmem"
+
+/** The one sentinel pair the filters use, defined once and read by both the
+ *  select options and the adapter. Two hand-written mappings on the same
+ *  control is how "All projects" once travelled to the server as a project
+ *  literally named `all` and came back empty. */
+export const ALL_PROJECTS = "all"
+export const ANY = "any"
 
 /** The one row shape the Facts tab renders, whichever source fed it.
  *
@@ -26,9 +40,11 @@ export interface FactRowData {
   verification_status: VerificationStatus
   /** Verbatim from the backend's badge. Empty when there is none. */
   claim: string
-  /** The right-hand meta line. Derived from the badge's own parts, never a
-   *  second claim sentence. */
-  meta: string
+  /** The badge's parts, for a surface to lay out — never to re-word. A
+   *  count and a kind list are values; the sentence built from them is the
+   *  claim above, and it has exactly one producer. */
+  origin_count: number | null
+  origin_kinds: string[]
   review_state: "open" | null
   as_of: string
   /** T2.46's `under-sourced` overlay. Served, never withheld: a corroborated
@@ -36,8 +52,12 @@ export interface FactRowData {
   under_sourced: boolean
   /** The belief axis, independent of the verification axis above. */
   window_closed: boolean
+  invalid_at: string | null
   expired: boolean
-  disputed: boolean
+  /** Whether this row's producer has a fact-detail page behind it. The detail
+   *  route reads the demo store, so a live row has nowhere to link and must
+   *  not offer a path that dead-ends. */
+  detail_available: boolean
   created_at: string
   /** The context restriction, as the backend labelled it. An empty array is
    *  an explicit "no restriction", which `AppliesWhenChips` renders as such —
@@ -62,6 +82,8 @@ function statusOf(value: string | null): VerificationStatus {
 }
 
 function fromDemo(fact: DemoFact): FactRowData {
+  // Demo windows are newest-first, so the head is the fact's current belief.
+  const current = fact.windows[0]
   return {
     id: fact.id,
     project: fact.project,
@@ -71,13 +93,15 @@ function fromDemo(fact: DemoFact): FactRowData {
     fact_text: fact.fact_text,
     verification_status: fact.verification_status,
     claim: fact.claim,
-    meta: fact.meta,
+    origin_count: fact.sources.length ? distinctOriginCount(fact.sources) : null,
+    origin_kinds: [...new Set(fact.sources.map((s) => s.kind))],
     review_state: fact.review_state,
     as_of: fact.as_of,
     under_sourced: Boolean(fact.under_sourced_note),
-    window_closed: false,
-    expired: false,
-    disputed: fact.verification_status === "disputed",
+    window_closed: current?.invalid_at != null,
+    invalid_at: current?.invalid_at ?? null,
+    expired: current?.expired_at != null,
+    detail_available: true,
     created_at: fact.as_of,
     applies_when: fact.applies_when,
   }
@@ -85,9 +109,6 @@ function fromDemo(fact: DemoFact): FactRowData {
 
 function fromApi(item: FactListItem): FactRowData {
   const badge = item.badge
-  const kinds = badge?.origin_kinds.length
-    ? ` of kinds [${badge.origin_kinds.join(", ")}]`
-    : ""
   return {
     id: item.id,
     project: item.project,
@@ -97,17 +118,15 @@ function fromApi(item: FactListItem): FactRowData {
     fact_text: item.fact,
     verification_status: statusOf(item.verification_status),
     claim: badge?.claim ?? "",
-    meta: badge
-      ? `asserted by ${badge.origin_count} distinct ${
-          badge.origin_count === 1 ? "origin" : "origins"
-        }${kinds}`
-      : "",
+    origin_count: badge?.origin_count ?? null,
+    origin_kinds: badge?.origin_kinds ?? [],
     review_state: item.review_state === "open" ? "open" : null,
     as_of: badge?.as_of ?? item.created_at,
     under_sourced: item.demotion_pending_since !== null,
     window_closed: item.belief_window.invalid_at !== null,
+    invalid_at: item.belief_window.invalid_at,
     expired: item.belief_window.expired_at !== null,
-    disputed: item.verification_status === "disputed",
+    detail_available: false,
     created_at: item.created_at,
     // The backend labels the axis and the value; it does not say who declared
     // it, so the tag is left empty rather than guessed. Claiming "human" for
@@ -121,62 +140,126 @@ function fromApi(item: FactListItem): FactRowData {
   }
 }
 
+/** The free-text needle matches subject **or** object, on both producers.
+ *  One matcher, so a filter cannot mean one thing with the fixture and
+ *  another against the vault. */
+function matchesSubject(row: FactRowData, needle: string): boolean {
+  if (!needle) return true
+  return (
+    row.subject_name.toLowerCase().includes(needle) ||
+    row.object_name.toLowerCase().includes(needle)
+  )
+}
+
 export interface FactsQuery {
-  project?: string
-  rel_type?: string
-  verification_status?: string
-  limit: number
-  offset: number
+  /** `ALL_PROJECTS` means every project — the route's own `project: None`. */
+  project: string
+  relation: string
+  status: string
+  /** Free text, matched over the loaded rows only. The route matches
+   *  `subject_name` exactly, so a substring sent as a server predicate would
+   *  return nothing for every partial word typed. */
+  subject: string
 }
 
 export interface FactsResult {
+  /** The loaded rows the free-text needle matched. */
   rows: FactRowData[]
-  /** The count **behind the filter**, not the page length. A surface that
-   *  reports `rows.length` as the total tells the user the page is the
-   *  corpus. */
+  /** How many rows have actually been fetched, before the needle. The
+   *  denominator any sentence about the free-text filter must use — it is
+   *  the only corpus that filter has seen. */
+  loaded: number
+  /** The count **behind the server-side filters**, not the page length. A
+   *  surface that reports `rows.length` as the total tells the user the page
+   *  is the corpus. */
   total: number
   loading: boolean
   error: boolean
-  /** Filter options. Server-side these come from the rows on the current
-   *  page, so they widen as the user pages — stated because a select that
-   *  silently lists only page-one's projects looks like the whole set. */
+  hasMore: boolean
+  fetchingMore: boolean
+  fetchMore: () => void
   projects: string[]
   relations: string[]
+  /** False when the option lists were derived from loaded rows with more
+   *  still unfetched — the select is then a sample, and saying so is the
+   *  difference between a filter and a claim about the vault. */
+  optionsComplete: boolean
 }
 
 export function useFactRows(query: FactsQuery): FactsResult {
   const demoFacts = useDemoFacts()
-  const api = useFactsApi(
+  const api = useFactPages(
     {
-      project: query.project,
-      rel_type: query.rel_type,
-      verification_status: query.verification_status,
-      limit: query.limit,
-      offset: query.offset,
+      project: query.project === ALL_PROJECTS ? undefined : query.project,
+      rel_type: query.relation === ANY ? undefined : query.relation,
+      verification_status: query.status === ANY ? undefined : query.status,
     },
     { enabled: !DEMO },
   )
 
-  if (DEMO) {
-    const rows = demoFacts.map(fromDemo)
-    return {
-      rows,
-      total: rows.length,
-      loading: false,
-      error: false,
-      projects: distinctFactProjects(demoFacts),
-      relations: distinctFactRelations(demoFacts),
-    }
-  }
+  const demoScoped = useMemo(
+    () =>
+      DEMO
+        ? filterFacts(demoFacts, {
+            subject: "",
+            relation: query.relation,
+            status: query.status,
+            project: query.project,
+          }).map(fromDemo)
+        : [],
+    [demoFacts, query.relation, query.status, query.project],
+  )
 
-  const items = api.data?.items ?? []
-  const rows = items.map(fromApi)
+  const apiScoped = useMemo(
+    () => (api.data?.pages ?? []).flatMap((page) => page.items).map(fromApi),
+    [api.data],
+  )
+
+  const scoped = DEMO ? demoScoped : apiScoped
+  const needle = query.subject.trim().toLowerCase()
+  const rows = useMemo(
+    () => scoped.filter((row) => matchesSubject(row, needle)),
+    [scoped, needle],
+  )
+
+  const pages = api.data?.pages ?? []
+  const total = DEMO ? scoped.length : (pages[pages.length - 1]?.total ?? 0)
+  const hasMore = DEMO ? false : (api.hasNextPage ?? false)
+
+  const fetchNextPage = api.fetchNextPage
+  const fetchMore = useCallback(() => {
+    if (DEMO || !api.hasNextPage || api.isFetchingNextPage) return
+    void fetchNextPage()
+  }, [fetchNextPage, api.hasNextPage, api.isFetchingNextPage])
+
+  const projects = useMemo(() => {
+    if (DEMO) return distinctFactProjects(demoFacts)
+    const seen = new Set(scoped.map((row) => row.project))
+    // The active scope is always offered, even when this page holds no row
+    // from it: a select that drops its own current value cannot be widened
+    // back out of the scope it is stuck in.
+    if (query.project !== ALL_PROJECTS) seen.add(query.project)
+    return [...seen].sort()
+  }, [demoFacts, scoped, query.project])
+
+  const relations = useMemo(() => {
+    if (DEMO) return distinctFactRelations(demoFacts)
+    const seen = new Set(scoped.map((row) => row.rel_type))
+    if (query.relation !== ANY) seen.add(query.relation)
+    return [...seen].sort()
+  }, [demoFacts, scoped, query.relation])
+
   return {
     rows,
-    total: api.data?.total ?? 0,
-    loading: api.isLoading,
-    error: api.isError,
-    projects: [...new Set(items.map((i) => i.project))].sort(),
-    relations: [...new Set(items.map((i) => i.rel_type))].sort(),
+    loaded: scoped.length,
+    total,
+    loading: DEMO ? false : api.isLoading,
+    error: DEMO ? false : api.isError,
+    hasMore,
+    fetchingMore: DEMO ? false : api.isFetchingNextPage,
+    fetchMore,
+    projects,
+    relations,
+    optionsComplete: !hasMore,
   }
 }
