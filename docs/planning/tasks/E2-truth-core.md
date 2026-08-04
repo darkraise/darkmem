@@ -520,28 +520,47 @@ leaf surface, not infrastructure another task consumes.*
 
 **Verify.** `cd backend && python scripts/benchlib/run_contradiction_missrate.py`
 
-#### T2.34 — `expires_at` self-expiring dated facts
+#### T2.34 — `expires_at` self-expiring dated memories
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
-**What.** Two different mechanisms that must not be conflated (doc 08 §2.3 vs §9).
+**Split 2026-08-04.** This entry was the memory *and* fact halves of one task; doc 08 §9
+and §3.1 contradict each other on the fact half and it is escalated as **T2.85**. The two
+were never one mechanism — §2.3 and §9 name them separately — and only the fact half is
+blocked, so they are split rather than both held.
 
-**Memory side:** extraction populates `memories.expires_at` from a memory's own stated
-expiry date (the write path is doc 05's; the sweep that spends it is T1.37's, reused
-unchanged including demote-before-delete).
+**What.** Extraction populates `memories.expires_at` from a memory's own stated expiry
+date, so a dated memory self-expires without a caller setting a TTL. The write path is
+doc 05's (pipeline Phase 5, savepoint A, with the rest of the memory-row enrichment); the
+sweep that spends it is T1.37's, **reused unchanged** including demote-before-delete.
 
-**Fact side:** a fact carrying a stated future expiry gets its belief window
-**pre-closed** at that date by a lightweight arm of `verification_recompute` —
-**invalidate-not-delete**, so the row survives as history. The facts table needs no
-delete job at all (doc 08 §5); applying T1.37's delete sweep to `knowledge_triples`
-would destroy the history the whole bi-temporal model exists to keep.
+**The derivation is deterministic, and the reason is the F1 bench.** Adding an expiry
+field to the extraction schema changes the system prompt, and the bench cache is keyed on
+`sha256(content + system_prompt)` — so it would invalidate every cached entry, red the
+gate until a live re-warm, and force a re-recorded F1 baseline. A post-extraction parse in
+the same idiom as the existing regex date-anchoring rescue adds no entities and no
+relations, so entity/relation F1 is untouched and the cache stays valid. *(Owner's ruling,
+2026-08-04.)*
+
+**Conservatism is a correctness requirement, not a style preference.** T1.37's sweep
+**deletes** the row — embeddings cascade, provenance is withdrawn — so a false-positive
+expiry is silent, irreversible data loss. "The licence is valid until 2026-12-31" is a
+claim about a licence, not an instruction to forget the note on that date, and a parser
+that cannot tell those apart destroys knowledge on a timer. The detector therefore matches
+only **self-referential retention instructions** — the memory addressing its own lifetime —
+and never a date merely adjacent to an expiry word.
 
 **Done when:**
-- [ ] A dated memory expires without a caller setting TTL, through T1.37's sweep
-- [ ] A dated fact's window pre-closes; the row is never deleted, proven by test
-- [ ] No code path deletes from `knowledge_triples`
+- [ ] A dated memory expires without a caller setting a TTL, through T1.37's sweep
+- [ ] A caller-set `expires_at` is never overwritten by the derivation
+- [ ] A derived expiry that is not strictly in the future is refused, so capture can never
+      arm a sweep that deletes the memory it just wrote
+- [ ] A date about some *other* subject does not become the memory's own TTL, proven by
+      test against the phrasings that tempt it
+- [ ] The extraction bench is unaffected: `run_bench.py --algo-only` stays green with no
+      re-warm
 
-**Verify.** `cd backend && python -m pytest tests/test_self_expiring_facts.py -q`
+**Verify.** `cd backend && python -m pytest tests/test_self_expiring_memories.py -q`
 
 #### T2.35 — `applies_when` magnitude tuning
 
@@ -1731,6 +1750,53 @@ dispatch and string-keyed lookup, not just a grep for the name.
 
 **Verify.** `cd backend && python -m pytest tests/test_hybrid_search.py tests/test_code_query.py -q`
 
+#### T2.85 — Self-expiring dated facts: rule the belief-window contradiction, then build it
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.01` · `Doc: 08 §2.3, §3.1, §9` · `Tag: activation` · `Gate: G-C`
+
+**Blocked on a Tier-3 ruling — do not start.** Split out of T2.34 on 2026-08-04. Fable
+tier and `xhigh` because the deliverable is a ruling between two design-doc sections
+before it is any code, and the wrong ruling is silent.
+
+**What the contradiction is.** Doc 08 §9 says a fact carrying a stated future expiry gets
+its belief window **"pre-closed at that date"**, which reads as writing the future date
+into `invalid_at` at population. Doc 08 §3.1's state machine says `invalid_at` is set when
+**a newer belief arrives** (`open --> window_closed`) and routes a stated expiry down the
+other edge entirely (`open --> expired`, i.e. `expired_at`). Both cannot hold.
+
+**Why the literal §9 reading is destructive rather than merely ambiguous.**
+`0001_baseline.py` makes **four** indexes partial on `expired_at IS NULL AND invalid_at IS
+NULL` — the unique `ux_knowledge_triples_open` plus doc 07 §2's three fact-channel
+retrieval indexes. A future `invalid_at` written at population therefore (a) drops the
+fact out of the retrieval channel's scope **immediately**, years before its stated expiry,
+and (b) frees the unique slot, so a second currently-open belief on the same `triple_key`
+can be written beside it. Both are silent. Note `as_of` already implements the correct
+half-open window (`valid_at <= t < invalid_at`), so the *model* is right and it is the
+shipped "currently open" predicate that assumes `invalid_at` is only ever set in the past.
+
+**The three candidate rulings**, none of which a lane may pick unilaterally:
+
+1. Make "currently open" time-aware. Impossible as a partial index — `now()` is not
+   IMMUTABLE — so it means reworking the unique constraint and all three retrieval indexes
+   and relaxing invariant 8's temporal analogue: a baseline schema change, serialising
+   through one owner per epic.
+2. Add a `stated_expiry` column; the recompute arm writes `expired_at` when it passes. A
+   schema amendment §9 does not list (its only named amendment is `demotion_pending_since`).
+3. No column: the recompute arm re-derives the stated expiry deterministically from the
+   fact text each cycle and sets `expired_at` once past. Consistent with both sections and
+   with §9's "no LLM, no separate job", at the cost of re-parsing.
+
+**Done when:**
+- [ ] The ruling is recorded against doc 08 (both sections made to agree), not just in code
+- [ ] A dated fact stops being served **at** its stated expiry and not before, proven by a
+      test that fails under the literal §9 reading
+- [ ] The row is never deleted — invalidate-not-delete, retained as history
+- [ ] No code path deletes from `knowledge_triples`, held by a source scan rather than by
+      review (doc 08 §5: the facts table needs no delete job at all, and applying T1.37's
+      sweep to it would destroy the history the bi-temporal model exists to keep)
+
+**Verify.** `cd backend && python -m pytest tests/test_self_expiring_facts.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
@@ -1817,3 +1883,5 @@ dispatch and string-keyed lookup, not just a grep for the name.
 | 2026-08-03 | T2.46 | 1 | **"Every fact read path carries the marker" was an overclaim, and two serving surfaces did not carry it.** `verification_ladder`'s module docstring (and commit `4027910`'s body) asserted a universal that `_COLUMNS` cannot deliver, because a surface that hand-enumerates its own projection has to name the marker itself. `facts_read._base_item` — doc 13 §5.1's Facts tab, exactly where §5.3's caution overlay renders — and `facts_channel`'s row payload both omitted it. Fixed by carrying the field on both (plus `FactListItem`, which gates what survives serialisation) and by replacing the universal with the finite list of surfaces that carry it, stated as a list a new surface has to be added to | Found by the Fable task review (F1, Important). Nothing was ever *withheld* — no path filters on the marker — so the honesty clause held, but the live surface could only reach `under-sourced` by elimination (`corroborated` + `review_state='open'`), which is the derivation T2.62 rejected for the queue and which stops being sound as soon as a second opener exists. Proved renderable through `GET /api/v1/knowledge/facts` (list and detail) and mutation-drilled on both halves. Two docstring claims were corrected in the same pass: the applier's "served on every read path", and the cancellation test's narration of a self-healing mutant it does not actually catch |
 | 2026-08-03 | T2.72 | 2 | **No task owns `POST /api/v1/knowledge/search`, doc 12 §2's REST twin for `knowledge_search`.** T2.72 shipped the tool and it lands MCP-single-door in `docs/two-door-parity.md` for the agent-shaped-projection reason the six code tools carry — the rows are REST-reachable in their own key spaces, the cross-layer ranked question is not. That reading is honest but it is the *seventh* MCP-ahead-of-REST row, and unlike the code family doc 12 does not claim this twin already exists: §2 lists the route among the ones the reshape adds, and a scan of every epic file returns no owner for it. T2.56 owns the sectioned and fused output *shapes*, not the route. The serialiser both doors need is deliberately outside the tool, in `app/schemas/knowledge.py`, so a route spends the same function rather than reshaping `LayerCompositionService.search`'s result a second time | Recorded rather than built: adding a REST route is outside the lane's file list, and inventing a permanent single-door justification would contradict doc 12 §3's own tool table, which assigns the twin. Filing it as a schedule is what `test_every_single_door_surface_states_a_real_reason` rejects, so the row states the shape-versus-capability distinction and records the discrepancy the way the code rows record theirs. The next scheduling pass should mint the route as its own task |
 | 2026-08-04 | T2.34 | 3 | **ESCALATED — doc 08 §9 and §3.1 disagree on which column a fact's stated expiry writes, and the literal §9 reading silently breaks retrieval and a uniqueness invariant. Not implemented; no code written.** §9 says a dated fact "gets its belief window **pre-closed at that date**", which reads as setting `invalid_at` to the future expiry at population. §3.1's state machine says `invalid_at` is set when **a newer belief arrives** (`open --> window_closed`), and routes a stated expiry down the *other* edge entirely (`open --> expired`, i.e. `expired_at`). They cannot both hold. The literal §9 reading is not merely ambiguous, it is destructive: `0001_baseline.py` makes **four** indexes partial on `expired_at IS NULL AND invalid_at IS NULL` — the unique `ux_knowledge_triples_open` plus doc 07 §2's three fact-channel retrieval indexes — so a future `invalid_at` written today (a) drops the fact out of the retrieval channel's scope **immediately**, years before its stated expiry, and (b) frees the unique slot, letting a second currently-open belief on the same `triple_key` exist beside it. Both failures are silent. Note `as_of` already implements the correct half-open window (`valid_at <= t < invalid_at`), so the *model* is right and it is the shipped "currently open" predicate that assumes `invalid_at` is only ever set in the past. **Three ways out, none of which a lane may pick unilaterally:** (1) make "currently open" time-aware — impossible as a partial index, since `now()` is not IMMUTABLE, so it means reworking the unique constraint and all three retrieval indexes and relaxing invariant 8's temporal analogue, i.e. a baseline schema change that serialises through one owner; (2) add a `stated_expiry` column and have the recompute arm write `expired_at` when it passes — a schema amendment §9 does not list (§9's only named amendment is `demotion_pending_since`); (3) no column at all — the recompute arm re-derives the stated expiry deterministically from the fact text each cycle and sets `expired_at` once past, which is consistent with both sections and with §9's "no LLM, no separate job", at the cost of re-parsing | Found while bootstrapping T2.34, before any code. Runbook §5 Tier 3: the corpus doc wins until a human decides, and this would relax an invariant either way. **The memory side is unaffected and remains buildable** — the owner has already settled it as a deterministic post-extraction parse with no prompt change, which keeps the F1 bench cache valid (the cache key is `sha256(content + system_prompt)`, so a schema edit there would red the gate until a live DeepSeek re-warm and force a re-recorded F1 baseline). Recommend splitting T2.34 on that seam once the fact side is ruled |
+| 2026-08-04 | T2.34, T2.85 | 2 | **T2.34 split on the escalation seam; the fact half is minted as T2.85 and the memory half proceeds.** The two were never one mechanism — doc 08 names them in separate sections and the task's own text said "two different mechanisms that must not be conflated" — and only the fact half is blocked by the Tier-3 row above, so holding both would have parked a buildable activation behind a doc ruling it does not depend on. T2.34 keeps the memory side, drops to `Size: S`, and loses its `T2.01` dependency (that was the fact half's); T2.85 keeps `T2.01`, carries the contradiction and the three candidate rulings in full, and is **Fable/xhigh** because its first deliverable is a ruling between two design-doc sections rather than code. The `Verify` files split with them (`test_self_expiring_memories.py` / `test_self_expiring_facts.py`) | Runbook §5 Tier 2: a new task the plan missed, so both the epic file and `progress.md` are edited and the split is called out in the completion report |
+| 2026-08-04 | T2.34 | 1 | **The stated-expiry detector is narrowed to self-referential retention instructions, because T1.37's sweep deletes.** Doc 08 §2.3's illustrative phrasing is "valid until end of Q3", which reads naturally as any date near an expiry word. But `expired_memory_cleanup` **deletes** the row — embeddings cascade, provenance is withdrawn — so a false positive is silent, irreversible data loss, and "the licence is valid until 2026-12-31" is a claim *about a licence*, not an instruction to forget the note on that date. A deterministic parser cannot tell those apart from phrasing alone, so it matches only a memory addressing **its own** lifetime, and additionally refuses any derived instant not strictly in the future — otherwise capture could arm a sweep that deletes the memory it just wrote | The narrowing costs recall on unusual phrasings, which is the correct direction: a missed expiry leaves a memory alive one cycle longer and is recoverable, while a false positive is not recoverable at all. Recorded so the next reader meets the reasoning rather than widening the patterns to match the doc's illustrative example |
