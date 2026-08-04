@@ -316,8 +316,39 @@ async def test_the_ratify_payload_passes_the_gc_metrics_validator(session):
     await human_adjudication.ratify_fact(session, fact_id, actor="admin")
     await session.flush()
 
-    for payload in await _verified_events(session, fact_id):
+    events = await _verified_events(session, fact_id)
+    # Without this the loop below is vacuous: if journaling ever stopped, the
+    # test would pass by validating nothing.
+    assert events
+    for payload in events:
         validate_verified_event_payload(payload, event_id="ratify")
+
+
+@pytest.mark.asyncio
+async def test_a_ratification_is_invisible_to_the_promotion_rate(session):
+    """The exclusion is arithmetic G-C depends on, so it is pinned rather than
+    left to the eligibility SQL's shape.
+
+    Counting a human's imprimatur in the machine's promotion rate would report
+    the reviewer's diligence as the ladder's accuracy. Three independent things
+    keep it out — the outcome filter, the absent `origin_count`/`required_n`,
+    and the `before='candidate'` anchor — and this asserts the first two on the
+    payload the shipped writer actually produces."""
+    from scripts.benchlib.promotion_metrics import RATIFY_OUTCOME
+
+    fact_id = await _fact(session)
+    await _memory_origin(session, fact_id, "session-1")
+    await human_adjudication.ratify_fact(session, fact_id, actor="admin")
+    await session.flush()
+
+    payload = (await _verified_events(session, fact_id))[0]
+    assert payload["outcome"] == RATIFY_OUTCOME
+    # The eligibility filter is `outcome IN ('promote', 'dispute')` plus a
+    # supersession-blocked hold; a ratify is none of those.
+    assert payload["outcome"] not in ("promote", "dispute", "hold")
+    # And it carries no bar to have met, so the `origin_count >= required_n`
+    # predicate is NULL for it even before the outcome test.
+    assert "origin_count" not in payload and "required_n" not in payload
 
 
 # ────────────────────────────── the door ──────────────────────────────
