@@ -642,6 +642,50 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.90 — The knowledge e2e cannot seed its own subject
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.86` · `Doc: 17, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.86's re-review, which ruled the demo-only e2e
+the **honest maximum for a fix round** and said the remedy is a task, not another
+round of that loop.
+
+The Facts surface is GET-only: `app/api/routes/facts.py` has no write door, and
+the backend tests seed by direct session insert. So a Playwright spec cannot
+create the fact it needs to look at, and every real-mode assertion about the
+knowledge surfaces is unreachable. The consequence is precise and worth stating
+in full: **wire-shape parity between `FactDetailResponse` and the frontend's
+`LiveFactDetailData` is provable only by a vitest suite that mocks `apiFetch`
+with hand-built fixtures.** Both sides can agree with each other while disagreeing
+with the wire, and nothing in the repo would notice.
+
+That is the same class as F11 on T2.36 — the doubled `/api/v1` prefix that made
+the Facts tab 404 on every request while eight good tests stayed green, found
+only because a sibling lane happened to read the file. The lesson there was that
+mocked-boundary tests cannot see the boundary. This task builds the thing that
+can.
+
+**Not a licence to add a write door.** A public `POST /knowledge/facts` would let
+a caller assert a fact directly, which the whole verification ladder exists to
+prevent — facts are *derived*, never posted. The seeding path must be test-only
+and must not become a second producer.
+
+**Done when:**
+- [ ] An e2e-visible seeding path exists that a Playwright spec can drive, and it
+      is unreachable from a normal deployment — a test-only route guarded by
+      environment, a fixture command, or a seeded disposable stack; whichever is
+      chosen, a test fails if it is reachable in production configuration
+- [ ] `frontend/tests/knowledge.spec.ts` visits the Facts tab and the fact detail
+      route against a **real backend**, not the demo fixture
+- [ ] A wire-shape drift is caught: renaming a field on `FactDetailResponse`
+      without changing the frontend fails the e2e, and a test proves that by
+      driving the rename
+- [ ] The seeding path cannot mint a fact that bypasses the ladder — whatever it
+      inserts is what `fact_lift` would have produced, or the test says plainly
+      that it is a fixture and not a derivation
+
+**Verify.** `cd frontend && npm run test:e2e -- knowledge`
+
 #### T2.89 — What an undo restored is unrecoverable after the toast
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.13` · `Doc: 08 §7, invariant 14` · `Tag: rebuild` · `Gate: G-C`
