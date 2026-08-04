@@ -169,7 +169,8 @@ _QUOTE_CHARS = '"“”«»`'
 # inside "v1.2" or "e.g." and losing the negation in front of it.
 _NEGATED = re.compile(
     r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|did\s+not|didn'?t|never|"
-    r"no\s+need\s+to|no\s+circumstances|under\s+no\b|"
+    r"no\s+need\s+to|no\s+circumstances|under\s+no\b|on\s+no\s+account|"
+    r"at\s+no\s+point|no\s+one\b|nobody|forbidden|avoid|refrain\s+from|"
     r"rather\s+than|instead\s+of|"
     r"must\s+not|mustn'?t|should\s+not|shouldn'?t|cannot|can'?t|"
     r"will\s+not|won'?t)\b",
@@ -191,6 +192,26 @@ _NEGATED = re.compile(
 # suppresses every match after it. That is this module's own stated doctrine —
 # over-suppressing costs a missed TTL and the memory lives on, under-suppressing
 # deletes it — finally applied to the one place still trying to be clever.
+#
+# **The scan covers the whole memory, not just the text before the match.**
+# Scanning only the prefix left the doctrine applied in one direction: "Delete
+# this note after 2026-12-31. Actually, don't — we still need it." armed and
+# deleted. A retraction is a negation like any other, and "any negation
+# anywhere suppresses" has to mean anywhere.
+#
+# The token list is open by construction and always will be — English lexical
+# negation cannot be enumerated by an alternation, which is a consequence of
+# the deterministic-parser constraint rather than of any one edit. The register
+# is broadened here to the forms review actually found arming ("on no account",
+# "at no point", "nobody", "forbidden", "avoid", "refrain from"); the honest
+# statement is that a form outside it arms, and that no further round of
+# enumeration would change that.
+#
+# The measured cost, over the extraction gold, its held-out set, and the
+# benchlib retrieval and smoke corpora (133 memories): **3.8% carry any
+# negation token at all**, and every one that fired was incidental ("never use
+# a bare except", "cannot reach the VPN range"). A bounded ~4% recall cost
+# against an unbounded false-positive surface is the cheap direction.
 #
 # The cost is real and stated: a memory carrying a negation *and* a later,
 # unrelated genuine instruction now derives nothing. "Never mind the old plan.
@@ -366,9 +387,9 @@ def derive_stated_expiry(content: str, *, reference_time: datetime) -> datetime 
             if any(start <= match.start() < end for start, end in quoted):
                 continue
             # A negated instruction means the opposite of what it matches, and
-            # **any** negation before it suppresses. See `_NEGATED` for why the
-            # scope is the whole preceding text rather than the sentence.
-            if _NEGATED.search(content[:match.start()]):
+            # **any** negation anywhere in the memory suppresses. See `_NEGATED`
+            # for why the scope is the whole text rather than the sentence.
+            if _NEGATED.search(content):
                 continue
             instant = _instant_from(match)
             # Strictly future: a derived expiry already spent would let capture

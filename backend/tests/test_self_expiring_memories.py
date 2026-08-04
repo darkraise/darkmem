@@ -219,6 +219,18 @@ def test_the_earliest_future_expiry_wins():
         "Do not run the cleanup. delete this note after 2026-12-31.",
         # And the ruling's own headline case, now a refusal rather than a pin.
         "Never mind the old plan. Delete this note after 2026-12-31.",
+        # ── Round-6 re-review, the terminating edit. The register gaps it
+        # found arming, and — the one that mattered — a retraction *after* the
+        # instruction. Scanning only the prefix applied the doctrine in one
+        # direction; "any negation anywhere" has to mean anywhere.
+        "On no account delete this note after 2026-12-31.",
+        "At no point should anyone delete this note after 2026-12-31.",
+        "Nobody should delete this note after 2026-12-31.",
+        "It is forbidden to delete this note after 2026-12-31.",
+        "Avoid the temptation to delete this note after 2026-12-31.",
+        "Refrain from any step that would delete this note after 2026-12-31.",
+        "Delete this note after 2026-12-31. Actually, don't — we still need it.",
+        "Keep this note until 2026-09-30. On reflection, never mind.",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
