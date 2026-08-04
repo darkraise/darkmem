@@ -963,29 +963,36 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_the_rotation_wraps_instead_of_pinning_at_the_last_project():
-    """The Critical the monkeypatched cursor tests structurally could not see.
+async def test_the_rotation_wraps_and_the_real_composition_succeeds():
+    """The Critical the monkeypatched cursor tests structurally could not see,
+    and the composition assertion the first fix omitted.
 
     `next_projects` selects strictly `project > :after_project`, so once the
     cursor reaches the lexicographically last project every later tick claims
-    nothing — forever, while still logging and recording `last_status="ok"`.
-    A project created after that point sorts *before* the cursor and is never
-    detected at all. The fake in the tests above always returns a fresh project
-    name, so the empty-batch echo — the one case that matters at the end of a
-    rotation — was unrepresentable in it.
+    nothing — forever, while still recording `last_status="ok"`. The fake in
+    the tests above always returns a fresh project name, so the empty-batch
+    echo, the one case that matters at the end of a rotation, was
+    unrepresentable in it.
 
-    This drives the real runner over the real detector against the real
-    database, past the end of the rotation, and asserts the cursor resets.
+    **Asserting the journal row is what makes this a composition test.** The
+    runner forwards four schema knobs to `detect_for_project` by name; a
+    renamed parameter or a renamed field raises `TypeError` inside
+    `run_topic_detection`'s blanket `except Exception`, which turns *every*
+    project into a skip, advances the cursor past all of them, and finishes
+    the tick with `last_status="ok"` and no error. Only the per-project journal
+    row tells the difference, so the cursor alone cannot pin it.
+
+    The project name sorts first so a batch of one always claims it, whatever
+    other projects earlier tests left behind, and the cursor is cleared up
+    front for the same reason.
     """
     from sqlalchemy import text as _text
 
     from app.services import dream_jobs
 
     registry, engine = _fresh_registry()
-    project = "t253-wrap"
+    project = "0000-t253-wrap"
     try:
-        # One project, and a batch size of one, so a single tick reaches the
-        # end of the rotation.
         async with registry.session_factory() as session:
             await session.execute(
                 _text(
@@ -995,15 +1002,40 @@ async def test_the_rotation_wraps_instead_of_pinning_at_the_last_project():
                 ),
                 {"project": project},
             )
+            from app.services.dream_jobs import _save_topic_cursor
+            await _save_topic_cursor(session, None)
             await session.commit()
         await registry.set_config(TOPIC_DETECTION_JOB_KEY, {"batch_size": 1})
 
         job = registry.get(TOPIC_DETECTION_JOB_KEY)
 
-        # Tick until the rotation wraps. A *full* batch means more projects may
-        # remain, so the wrap lands on the first short one — the same shape
-        # `verification_recompute`'s slow arm uses. The bound is what makes this
-        # a real assertion: before the fix the cursor pinned and this loop would
+        # Tick 1 claims exactly our project. A *full* batch means more may
+        # remain, so the cursor advances rather than wrapping — which is also
+        # what pins the detector's `visited` against under-reporting: a low
+        # count here would wrap every tick and starve everything past the
+        # first batch, the mirror of the defect this test exists for.
+        await job.runner()
+        async with registry.session_factory() as session:
+            assert await dream_jobs._load_topic_cursor(session) == project
+
+            reasons = (await session.execute(
+                _text(
+                    "SELECT payload->>'skipped_reason' FROM events "
+                    "WHERE project = CAST(:p AS text) AND object_type = 'topic' "
+                    "ORDER BY created_at"
+                ),
+                {"p": project},
+            )).scalars().all()
+        assert reasons, "the tick journalled nothing for the seeded project"
+        assert reasons[-1] is None, (
+            f"the project was skipped ({reasons[-1]!r}) rather than detected. "
+            f"A renamed knob or parameter raises TypeError inside "
+            f"run_topic_detection's blanket except, which skips every project "
+            f"and still reports last_status='ok' — the cursor cannot see it."
+        )
+
+        # Then tick until the rotation wraps. The bound is what makes this a
+        # real assertion: before the fix the cursor pinned and this loop would
         # exhaust without ever seeing None.
         cursors = []
         for _ in range(12):
@@ -1018,10 +1050,6 @@ async def test_the_rotation_wraps_instead_of_pinning_at_the_last_project():
             f"A cursor that only ever advances pins at the last project and "
             f"every later tick claims nothing, forever."
         )
-
-        # And a tick from the wrapped cursor claims work again rather than
-        # stalling: the project is re-visited.
-        await job.runner()
     finally:
         async with registry.session_factory() as session:
             await session.execute(
