@@ -256,8 +256,20 @@ def _confirmed_writers(root: Path) -> list[str]:
     * an attribute assignment ``obj.verification_status = ...`` — the ORM path;
     * ``setattr(obj, "verification_status", ...)`` — the dynamic path.
 
-    Scope is the enclosing function's qualname, or ``<module>`` for top-level
-    code, which the old ``_functions`` walk skipped entirely.
+    Scope is the enclosing function's qualname, ``Class.<class>`` for a class
+    body, or ``<module>`` for top-level code — the last two both being holes
+    found after this rewrite began.
+
+    **What this still cannot see, stated rather than implied.** Ignoring the
+    value closes value-disguise, but the guard can still be dodged by
+    disguising the *column reference*: a name built at runtime
+    (``f"{col} = :v"``, the house dynamic-builder shape), ``.format()`` or
+    ``%``-interpolation of the column name, ``+``-concatenation split across
+    the column name itself (which also defeats the file fast-path),
+    ``object.__setattr__``, or ``row.__dict__[...]``. No static scan closes
+    that class. The behavioural arm above is what covers it: whatever route a
+    writer takes, it still has to get past a database that only two statements
+    in this tree address, and past ``set_verification_status``'s refusal.
     """
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
@@ -279,31 +291,40 @@ def _confirmed_writers(root: Path) -> list[str]:
     return sorted(set(offenders))
 
 
+_NESTING = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+
 def _scopes(tree: ast.Module):
-    """Every function (nested and method) plus the module's own top level.
+    """Every function, every class body, and the module's own top level.
 
-    The module scope is yielded with its function bodies removed, so a writer
-    at import time is attributed to ``<module>`` rather than being invisible.
+    Each scope is yielded with its *nested* scopes removed, so a statement is
+    attributed to exactly one place and none is scanned twice.
+
+    Class bodies are a scope in their own right, and their omission was a real
+    hole: the first version of this walk collected only functions out of a
+    ``ClassDef``, so ``class Q: SQL = "UPDATE ... SET verification_status =
+    'confirmed'"`` — the naive single-line literal, no disguise at all — was
+    attributed nowhere and passed. Class-level SQL template constants are one
+    step from the module-level ones this tree already keeps.
     """
-    functions: list[tuple[ast.AST, str]] = []
+    def body_only(node: ast.AST, body: list) -> ast.Module:
+        return ast.Module(
+            body=[n for n in body if not isinstance(n, _NESTING)], type_ignores=[]
+        )
 
-    def walk(node: ast.AST, prefix: str) -> None:
+    def walk(node: ast.AST, prefix: str):
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                functions.append((child, f"{prefix}{child.name}"))
-                walk(child, f"{prefix}{child.name}.")
+                # A function's own body minus nested defs; the nested ones are
+                # yielded separately by the recursion below.
+                yield body_only(child, child.body), f"{prefix}{child.name}"
+                yield from walk(child, f"{prefix}{child.name}.")
             elif isinstance(child, ast.ClassDef):
-                walk(child, f"{prefix}{child.name}.")
+                yield body_only(child, child.body), f"{prefix}{child.name}.<class>"
+                yield from walk(child, f"{prefix}{child.name}.")
 
-    walk(tree, "")
-    yield from functions
-
-    module_only = ast.Module(
-        body=[n for n in tree.body
-              if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))],
-        type_ignores=[],
-    )
-    yield module_only, "<module>"
+    yield from walk(tree, "")
+    yield body_only(tree, tree.body), "<module>"
 
 
 def _writes_column(scope: ast.AST) -> bool:
@@ -339,6 +360,29 @@ def _writes_column(scope: ast.AST) -> bool:
             and node.args[1].value == _COLUMN
         ):
             return True
+        # SQLAlchemy expression language: `update(...).values(column=...)` or
+        # `.values({"column": ...})`. This is live idiom in the tree
+        # (`relational.py`, `config.py`), so it was the most idiomatic future
+        # writer the first version of this scan could not see — the same
+        # criticism that produced this rewrite, recurring at smaller radius.
+        #
+        # Matched only inside a `.values(...)` call, never on a bare keyword:
+        # roughly ten DTO constructions pass `verification_status=` as a
+        # constructor kwarg (`layer_composition`, `facts_read`, `fact_badge`),
+        # and flagging those would make the guard useless within a week.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "values"
+        ):
+            if any(kw.arg == _COLUMN for kw in node.keywords):
+                return True
+            for arg in node.args:
+                if isinstance(arg, ast.Dict) and any(
+                    isinstance(key, ast.Constant) and key.value == _COLUMN
+                    for key in arg.keys
+                ):
+                    return True
     return False
 
 
@@ -412,6 +456,23 @@ _EVASIONS: dict[str, str] = {
         "STATUS = 'confirmed'\n"
         "def promote(session):\n"
         "    return f\"UPDATE knowledge_triples SET verification_status = '{STATUS}'\"\n"
+    ),
+    # ── Found by the scoped re-review of this very fix. Both are the same
+    # criticism recurring at smaller radius: the guard's own self-tests again
+    # contained only shapes the guard already caught.
+    "class_body": (
+        "class Promoter:\n"
+        "    SQL = \"UPDATE knowledge_triples SET verification_status = 'confirmed'\"\n"
+    ),
+    "sqlalchemy_values_kwarg": (
+        "from sqlalchemy import update\n"
+        "def promote(session, table):\n"
+        "    return update(table).values(verification_status='confirmed')\n"
+    ),
+    "sqlalchemy_values_dict": (
+        "from sqlalchemy import update\n"
+        "def promote(session, table):\n"
+        "    return update(table).values({'verification_status': 'confirmed'})\n"
     ),
 }
 
