@@ -125,6 +125,27 @@ describe("useReviewFactRows (DEMO off — real /review-queue/facts)", () => {
     expect(row.consequence).toEqual(CONSEQUENCE)
   })
 
+  it("uses the same word for staleness as the component's own breakdown — 'stale', never 'decayed' (F8)", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      items: [
+        factItem({
+          consequence: {
+            ...CONSEQUENCE,
+            staleness: { ...CONSEQUENCE.staleness, stale: true, label: "past threshold" },
+          },
+        }),
+      ],
+      total: 1,
+      limit: 10,
+      offset: 0,
+    })
+    const { result } = renderHook(() => useReviewFactRows(QUERY), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.rows[0]!.rank_note).toContain("stale (past threshold)")
+    expect(result.current.rows[0]!.rank_note).not.toContain("decayed")
+  })
+
   it("names the absence of a ranking signal honestly rather than inventing a score", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [factItem({ consequence: null })],
