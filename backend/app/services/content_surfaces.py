@@ -374,17 +374,22 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         key="hygiene_queue_duplicates",
         kind=_S,
         front_doors=("GET /api/v1/hygiene-queue/duplicates",),
-        crosses=("memory_ids",),
+        crosses=("memory_ids", "content_preview"),
         scoping=Scoping.OPERATOR_WIDE,
         labels=("project",),
-        decided_by="T2.23",
+        decided_by="T2.23, T2.87",
         reason="The hygiene queue's job (doc 08 §6) is every open "
                "candidate-duplicate pair the deployment holds; hiding "
                "another project's would misreport the housekeeping backlog "
-               "the same way review_queue_facts' scoping argument does. No "
-               "memory content crosses here — only the two endpoint ids, "
-               "score and verdict — but the ids are memory-derived so the "
-               "surface is classified rather than left implicit.",
+               "the same way review_queue_facts' scoping argument does. "
+               "T2.23 shipped only the two endpoint ids, score and verdict — "
+               "no content crossed. T2.87 added each endpoint's own "
+               "content_preview and created_at, truncated at the same 200 "
+               "chars hygiene_queue_memories declares: a supersede direction "
+               "cannot be told from ids and a score alone, and building a "
+               "direction picker without them would be the UI inventing an "
+               "adjudication. The endpoint ids stay id-only exposure; the "
+               "previews are the new content crossing.",
     ),
     ContentSurface(
         key="hygiene_queue_memories",

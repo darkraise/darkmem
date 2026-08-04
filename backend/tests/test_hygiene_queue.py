@@ -213,6 +213,35 @@ class TestDuplicatesArm:
         assert total == 0
         assert items == []
 
+    async def test_carries_each_endpoints_preview_and_created_at_for_a_supersede_direction(
+        self, session
+    ):
+        """T2.87: a supersede direction cannot be told from two ids and a
+        score alone — the whole point is that one side of the pair is
+        older, and this proves the response says which. The two
+        ``created_at`` values are seeded apart on purpose: if either one
+        collapsed (dropped from the schema, or both echoing the relation's
+        own ``created_at`` instead of the endpoint's), the ordering
+        assertion below is what catches it, not just a presence check.
+        """
+        older_at = datetime.now(timezone.utc) - timedelta(days=5)
+        newer_at = datetime.now(timezone.utc)
+        older = await seed_memory(session, content="uses postgres 14", created_at=older_at)
+        newer = await seed_memory(
+            session, content="uses postgres 14 as well", created_at=newer_at
+        )
+        await seed_duplicate_edge(session, source=newer, target=older)
+
+        items, total = await hygiene_queue.list_duplicates(session, project=PROJECT)
+
+        assert total == 1
+        item = items[0]
+        assert item["source_content_preview"] == "uses postgres 14 as well"
+        assert item["target_content_preview"] == "uses postgres 14"
+        assert item["source_created_at"] is not None
+        assert item["target_created_at"] is not None
+        assert item["target_created_at"] < item["source_created_at"]
+
     async def test_within_cycle_race_excludes_a_pair_with_a_retired_endpoint(
         self, session
     ):

@@ -19,6 +19,13 @@ class HygieneDuplicateItem(BaseModel):
     hygiene_state: str | None
     detected_at: str | None
     created_at: datetime
+    # A supersede direction needs to know which endpoint is older — the pair
+    # alone (two ids and a score) cannot say (T2.87). Truncated to the same
+    # 200 chars `hygiene_queue_memories` declares, never the whole content.
+    source_content_preview: str
+    source_created_at: datetime
+    target_content_preview: str
+    target_created_at: datetime
 
 
 class HygieneDuplicateListResponse(BaseModel):
