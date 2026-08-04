@@ -25,6 +25,7 @@ from sqlalchemy import text
 
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.events import record_event
 
 pytestmark = pytest.mark.asyncio
 
@@ -419,3 +420,129 @@ async def test_project_scope_filters_the_list(client, auth_headers, session):
 
     unscoped = (await client.get(FACTS, headers=auth_headers)).json()
     assert {str(mine), str(theirs)} <= {item["id"] for item in unscoped["items"]}
+
+
+# ───────────────── the ladder history and the dispute block (T2.86) ─────────────────
+
+
+async def test_the_detail_serves_its_ladder_oldest_to_newest(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await record_event(
+        session,
+        event_type="sources_changed",
+        object_type="fact",
+        object_id=uuid.UUID(fact_id),
+        project=PROJECT,
+        payload={"outcome": "corroborated"},
+    )
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=uuid.UUID(fact_id),
+        project=PROJECT,
+        payload={"outcome": "corroborate"},
+    )
+    await session.commit()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert [e["event_type"] for e in item["ladder"]] == [
+        "sources_changed",
+        "verified",
+    ]
+    # A different fact's own history must never leak onto this one.
+    other = await _fact(session, obj="unrelated")
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=uuid.UUID(other),
+        project=PROJECT,
+        payload={},
+    )
+    await session.commit()
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert len(item["ladder"]) == 2
+
+
+async def test_a_fact_with_no_journal_history_serves_an_empty_ladder(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session)
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["ladder"] == []
+
+
+async def test_an_undisputed_fact_serves_no_dispute_block(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    assert item["dispute"] is None
+
+
+async def test_a_disputed_fact_serves_both_sides_structurally(
+    client, auth_headers, session
+):
+    fact_id = await _fact(
+        session, status="disputed", review_state="open", obj="docker"
+    )
+    await _source(session, fact_id, origin="session-a")
+    counterpart_id = str(uuid.uuid4())
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=uuid.UUID(fact_id),
+        project=PROJECT,
+        payload={
+            "contradiction": {
+                "counterpart_id": counterpart_id,
+                "counterpart_subject": "postgres",
+                "counterpart_rel_type": "DEPLOYED_ON",
+                "counterpart_object": "fly.io",
+                "rule": "functional_object_conflict",
+                "witness_origin": "origin-7",
+                "enumeration": "first_finding",
+            }
+        },
+    )
+    await session.commit()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    dispute = item["dispute"]
+    assert dispute is not None
+    assert dispute["review_state"] == "open"
+    assert dispute["claim"]["subject"] == "postgres"
+    assert dispute["claim"]["object"] == "docker"
+    assert dispute["counterpart"]["object"] == "fly.io"
+    assert dispute["counterpart"]["id"] == counterpart_id
+    assert dispute["rule"] == "functional_object_conflict"
+    assert dispute["witness_origin"] == "origin-7"
+    assert dispute["enumeration"] == "first_finding"
+    # The sentence itself is doc 12 §4's two-sided claim, verbatim on the badge.
+    assert item["badge"]["claim"].startswith("disputed:")
+    assert "postgres DEPLOYED_ON fly.io" in item["badge"]["claim"]
+
+
+async def test_a_disputed_fact_with_no_recorded_counterpart_says_so(
+    client, auth_headers, session
+):
+    fact_id = await _fact(session, status="disputed", review_state="open")
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    dispute = item["dispute"]
+    assert dispute is not None
+    assert dispute["counterpart"] is None
+    assert dispute["counterpart_absent"] == "no_finding_recorded"
