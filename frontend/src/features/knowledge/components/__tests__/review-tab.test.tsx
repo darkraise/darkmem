@@ -600,8 +600,19 @@ describe("HygieneQueue: a stranded page shows a way back on every arm, not just 
     expect(screen.getAllByText("Back to the first page")).toHaveLength(4)
     // Never the caught-up phrasing for a queue the backend still says is
     // non-empty (invariant 14) — the defect this whole finding guards.
+    // Widened to all four arms (D3): each arm's own `emptyLine` prop must
+    // stay suppressed independently, not just the duplicates arm's.
     expect(
       screen.queryByText("Candidate duplicates — none flagged by the last dream cycle"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Low-confidence memories — none below the review threshold"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Expiring soon — no rows with expires_at inside the lookahead window"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Superseded lineage — nothing flagged for cleanup"),
     ).not.toBeInTheDocument()
   })
 })
@@ -797,5 +808,178 @@ describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     const [title] = vi.mocked(toast.error).mock.calls[0]!
     expect(String(title)).toMatch(/Reject failed/i)
+  })
+})
+
+// T2.37 fix round 3 — N1. Every test above that exercises an onError branch
+// rejects with `new ApiError(...)`, which only ever proves the "nothing was
+// applied" wording. The unknown-outcome branch alongside it — reached when
+// the mutation rejects with anything that is not an `ApiError` (a dropped
+// connection, `fetch` itself throwing) — had no test anywhere, so a mutant
+// collapsing it into the known wording at all four sites left the full
+// suite green. These four pin the "state unknown" wording independently at
+// each site: the shared bulk helper, ratify, reject, and runUndo's non-409
+// branch.
+
+describe("HygieneQueue: a non-HTTP bulk failure reports state unknown, not applied (N1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows the state-unknown toast when the confirm-dedup POST rejects without an HTTP response", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/confirm-dedup") {
+        // The shape a dropped connection actually produces: `fetch` itself
+        // rejects with a TypeError, never reaching apiFetch's ApiError path.
+        throw new TypeError("Failed to fetch")
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Confirm dedup"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title, opts] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/state unknown/i)
+    expect(String(title)).not.toMatch(/nothing was applied/i)
+    expect(String((opts as { description?: string })?.description)).toMatch(
+      /Failed to fetch/,
+    )
+  })
+})
+
+describe("ReviewTab: a non-HTTP ratify failure reports state unknown, not applied (N1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows the state-unknown toast when the ratify POST rejects without an HTTP response", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/knowledge/facts/") && init?.method === "POST") {
+        throw new TypeError("Failed to fetch")
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+
+    await screen.findByText(/why ranked here:/)
+    fireEvent.click(screen.getByText("Ratify → confirmed"))
+    fireEvent.click(await screen.findByText("Ratify as confirmed"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Ratify failed — state unknown/i)
+    expect(String(title)).not.toMatch(/was not changed/i)
+  })
+})
+
+describe("ReviewTab: a non-HTTP reject failure reports state unknown, not applied (N1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows the state-unknown toast when the reject POST rejects without an HTTP response", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
+      // Same ordering footgun as the reject-ApiError test above: the reject
+      // POST url also starts with "/review-queue/facts", so it must be
+      // checked before the facts-list GET branch.
+      if (url.startsWith("/review-queue/facts/") && init?.method === "POST") {
+        throw new Error("network error")
+      }
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [FACT_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+
+    await screen.findByText(/why ranked here:/)
+    fireEvent.click(screen.getByText("Reject"))
+    await waitFor(() => expect(screen.getAllByText("Reject")).toHaveLength(2))
+    const rejectButtons = screen.getAllByText("Reject")
+    fireEvent.click(rejectButtons[rejectButtons.length - 1]!)
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Reject failed — state unknown/i)
+    expect(String(title)).not.toMatch(/was not changed/i)
+  })
+})
+
+describe("ReviewTab: a non-409 undo failure reports state unknown, not refused (N1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it("shows the state-unknown toast when the undo POST rejects without an HTTP response", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 0, articles: 0 }
+      if (url.startsWith("/review-queue/facts")) return emptyList()
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      if (url.startsWith("/hygiene-queue/counts")) {
+        return { duplicates: 1, low_confidence: 0, expiring_soon: 0, superseded: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/duplicates")) {
+        return { items: [DUPLICATE_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/hygiene-queue/low-confidence")) return emptyList()
+      if (url.startsWith("/hygiene-queue/expiring-soon")) return emptyList()
+      if (url.startsWith("/hygiene-queue/superseded")) return emptyList()
+      if (url === "/hygiene-queue/bulk/confirm-dedup") {
+        return {
+          cycle_id: "cyc-1",
+          results: [{ id: "rel1", applied: true, event_id: 42, reason: null }],
+        }
+      }
+      if (url.startsWith("/dream-digest/cycles/")) {
+        throw new TypeError("Failed to fetch")
+      }
+      throw new Error(`unexpected: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+    await switchToHygiene()
+
+    const checkbox = await screen.findByLabelText("Select duplicate pair rel1")
+    fireEvent.click(checkbox)
+    fireEvent.click(screen.getByText("Confirm dedup"))
+    fireEvent.click(await screen.findByText("Apply"))
+
+    fireEvent.click(await screen.findByText("Undo this batch"))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const [title] = vi.mocked(toast.error).mock.calls[0]!
+    expect(String(title)).toMatch(/Undo failed — state unknown/i)
+    expect(String(title)).not.toMatch(/refused/i)
+    // Never silently marked undone — the button is still there to retry.
+    expect(screen.queryByText("undone")).not.toBeInTheDocument()
+    expect(await screen.findByText("Undo this batch")).toBeInTheDocument()
   })
 })
