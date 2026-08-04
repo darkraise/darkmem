@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react"
 
+import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoFacts } from "@/demo/hooks"
 import {
@@ -9,7 +10,13 @@ import {
   filterFacts,
 } from "@/demo/knowledge"
 import type { AppliesWhen, DemoFact } from "@/demo/types"
-import { useFactPages, type FactListItem } from "@/hooks/api"
+import {
+  useFactDetailQuery,
+  useFactPages,
+  type AppliesWhenLabel,
+  type FactDetailItem,
+  type FactListItem,
+} from "@/hooks/api"
 import type { VerificationStatus } from "@/components/darkmem"
 
 /** The one sentinel pair the filters use, defined once and read by both the
@@ -54,10 +61,6 @@ export interface FactRowData {
   window_closed: boolean
   invalid_at: string | null
   expired: boolean
-  /** Whether this row's producer has a fact-detail page behind it. The detail
-   *  route reads the demo store, so a live row has nowhere to link and must
-   *  not offer a path that dead-ends. */
-  detail_available: boolean
   created_at: string
   /** The context restriction, as the backend labelled it. An empty array is
    *  an explicit "no restriction", which `AppliesWhenChips` renders as such —
@@ -72,13 +75,22 @@ const KNOWN_STATUSES = new Set([
   "disputed",
 ])
 
-function statusOf(value: string | null): VerificationStatus {
+export function statusOf(value: string | null): VerificationStatus {
   // An unrecognised value is rendered as `candidate` — the weakest rung —
   // rather than passed through. Under-claiming is the epic's rule, and a
   // status the UI cannot name must not be shown as a stronger one.
   return (
     KNOWN_STATUSES.has(value ?? "") ? value : "candidate"
   ) as VerificationStatus
+}
+
+/** The backend labels the axis and the value; it does not say who declared
+ *  it, so the tag is left empty rather than guessed. Claiming "human" for
+ *  an LLM-extracted restriction is the badge lying in the direction this
+ *  epic's under-claiming rule forbids. One producer, so the list row and the
+ *  detail page cannot drift into two different tag conventions. */
+export function appliesWhenFromLabels(labels: AppliesWhenLabel[]): AppliesWhen[] {
+  return labels.map((label) => ({ key: label.axis, value: label.value, tag: "" }))
 }
 
 function fromDemo(fact: DemoFact): FactRowData {
@@ -101,7 +113,6 @@ function fromDemo(fact: DemoFact): FactRowData {
     window_closed: current?.invalid_at != null,
     invalid_at: current?.invalid_at ?? null,
     expired: current?.expired_at != null,
-    detail_available: true,
     created_at: fact.as_of,
     applies_when: fact.applies_when,
   }
@@ -126,17 +137,8 @@ function fromApi(item: FactListItem): FactRowData {
     window_closed: item.belief_window.invalid_at !== null,
     invalid_at: item.belief_window.invalid_at,
     expired: item.belief_window.expired_at !== null,
-    detail_available: false,
     created_at: item.created_at,
-    // The backend labels the axis and the value; it does not say who declared
-    // it, so the tag is left empty rather than guessed. Claiming "human" for
-    // an LLM-extracted restriction is the badge lying in the direction this
-    // epic's under-claiming rule forbids.
-    applies_when: item.applies_when_labels.map((label) => ({
-      key: label.axis,
-      value: label.value,
-      tag: "",
-    })),
+    applies_when: appliesWhenFromLabels(item.applies_when_labels),
   }
 }
 
@@ -262,4 +264,99 @@ export function useFactRows(query: FactsQuery): FactsResult {
     relations,
     optionsComplete: !hasMore,
   }
+}
+
+// ───────────────────────── the fact detail page (T2.86) ─────────────────────────
+
+/** The live door's shape, adapted only enough to give the route stable field
+ *  names — unlike `FactRowData` this is **not** shared with the demo store.
+ *  The demo fixture renders a richer surface (per-side dispute provenance,
+ *  a belief-window history, a ratifier's name) than `FactDetailResponse`
+ *  serves; forcing one shape over both would mean either inventing fields
+ *  the door does not have or stripping the demo page down to match, and
+ *  T2.86 is scoped to the live path only. So the live page reads this shape
+ *  and the demo page keeps reading `DemoFact` — two producers of two
+ *  honestly different shapes, not one shape quietly narrowed. */
+export interface LiveFactDetailData {
+  id: string
+  project: string
+  subject_name: string
+  rel_type: string
+  object_name: string
+  fact_text: string
+  verification_status: VerificationStatus
+  claim: string
+  origin_count: number | null
+  origin_kinds: string[]
+  review_state: "open" | null
+  as_of: string
+  under_sourced: boolean
+  demotion_pending_since: string | null
+  belief_window: { valid_at: string | null; invalid_at: string | null; expired_at: string | null }
+  applies_when: AppliesWhen[]
+  created_at: string
+  sources: FactDetailItem["sources"]
+  triple_key: string
+  learned_in: string[] | null
+  source_file: string | null
+  reference_time: string | null
+  ladder: FactDetailItem["ladder"]
+  dispute: FactDetailItem["dispute"]
+}
+
+function fromApiDetail(item: FactDetailItem): LiveFactDetailData {
+  const badge = item.badge
+  return {
+    id: item.id,
+    project: item.project,
+    subject_name: item.subject_name,
+    rel_type: item.rel_type,
+    object_name: item.object_name,
+    fact_text: item.fact,
+    verification_status: statusOf(item.verification_status),
+    claim: badge?.claim ?? "",
+    origin_count: badge?.origin_count ?? null,
+    origin_kinds: badge?.origin_kinds ?? [],
+    review_state: item.review_state === "open" ? "open" : null,
+    as_of: badge?.as_of ?? item.created_at,
+    under_sourced: item.demotion_pending_since !== null,
+    demotion_pending_since: item.demotion_pending_since,
+    belief_window: item.belief_window,
+    applies_when: appliesWhenFromLabels(item.applies_when_labels),
+    created_at: item.created_at,
+    sources: item.sources,
+    triple_key: item.triple_key,
+    learned_in: item.learned_in,
+    source_file: item.source_file,
+    reference_time: item.reference_time,
+    ladder: item.ladder,
+    dispute: item.dispute,
+  }
+}
+
+/** Invariant 14, applied to a single-item read: a failed fetch, a genuine
+ *  404, and "still loading" are three states, not two, and a caller must be
+ *  able to render each one differently. `not_found` requires an `ApiError`
+ *  with `status === 404` specifically — any other thrown shape (a network
+ *  error, a 500, a thrown `Error` from a test double) is `failed`, never
+ *  quietly folded into "missing". */
+export type FactDetailState =
+  | { status: "loading" }
+  | { status: "not_found" }
+  | { status: "failed"; retry: () => void }
+  | { status: "ready"; fact: LiveFactDetailData }
+
+export function useFactDetail(factId: string): FactDetailState {
+  const query = useFactDetailQuery(factId, { enabled: !DEMO })
+
+  if (DEMO) return { status: "loading" }
+  if (query.isLoading) return { status: "loading" }
+  if (query.isError) {
+    if (query.error instanceof ApiError && query.error.status === 404) {
+      return { status: "not_found" }
+    }
+    return { status: "failed", retry: () => void query.refetch() }
+  }
+  if (!query.data) return { status: "loading" }
+  return { status: "ready", fact: fromApiDetail(query.data) }
 }

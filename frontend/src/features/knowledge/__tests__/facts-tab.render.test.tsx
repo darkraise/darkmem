@@ -151,7 +151,7 @@ describe("FactsTab — a disputed row renders both sides, on the row", () => {
     expect(claim.tagName).toBe("P")
   })
 
-  it("offers no detail link on live data, because that route reads the demo store", async () => {
+  it("links to the detail route unconditionally now the door is wired (T2.86)", async () => {
     vi.mocked(apiFetch).mockResolvedValue(
       page(
         [
@@ -169,15 +169,12 @@ describe("FactsTab — a disputed row renders both sides, on the row", () => {
     render(<FactsTab />, { wrapper })
 
     await screen.findByText(DISPUTED_CLAIM)
-    // A link that dead-ends on "this fact does not exist in the demo store"
-    // is worse than no link: it tells the reader the second side is one
-    // click away when it is not. Asserted by the link's own text — the
-    // router's Link is mocked to a bare anchor here, and an anchor with no
-    // href carries no `link` role, so a role query would pass either way.
+    // T2.36's `detail_available` gate is retired: `GET /knowledge/facts/{id}`
+    // is a real door now (T2.86), so every row links, live data included.
     expect(
-      screen.queryByText(/sources, ladder and windows/),
-    ).not.toBeInTheDocument()
-    expect(document.querySelectorAll("a")).toHaveLength(0)
+      screen.getByText(/sources, ladder and windows/),
+    ).toBeInTheDocument()
+    expect(document.querySelectorAll("a")).toHaveLength(1)
   })
 })
 

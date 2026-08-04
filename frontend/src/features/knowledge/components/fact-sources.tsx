@@ -1,11 +1,40 @@
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
 import { useDetailLevel } from "@/components/darkmem"
-import type { FactSource } from "@/demo/types"
+import type { FactSource, OriginKind } from "@/demo/types"
 import {
   distinctOriginCount,
   groupSourcesByOrigin,
 } from "@/demo/knowledge"
+import type { FactSourceGroup } from "@/hooks/api"
+
+const UNKNOWN_ORIGIN_KEY = "unknown"
+
+function detailText(detail: Record<string, unknown> | null): string {
+  if (!detail || Object.keys(detail).length === 0) return "—"
+  return JSON.stringify(detail)
+}
+
+/** The live door's already-grouped `fact_sources` rows (T2.36a's
+ *  `sources_by_origin`), flattened back into `FactSourcesGroups`' input
+ *  shape so this one component — with its existing Simple/Advanced
+ *  behaviour — serves both producers. Re-grouping the flattened rows by
+ *  `origin_key` reproduces exactly the partition the backend already
+ *  computed, since both group on the same key; this is not a second
+ *  grouping *decision*, only the same one taken twice. `detail` has no
+ *  demo-shaped free-text field on the wire — the backend's is a structured
+ *  `dict`, rendered here rather than dropped. */
+export function sourceGroupsToFlatSources(groups: FactSourceGroup[]): FactSource[] {
+  return groups.flatMap((group) =>
+    group.sources.map((source) => ({
+      origin_key: group.origin_key ?? UNKNOWN_ORIGIN_KEY,
+      kind: source.source_kind as OriginKind,
+      ref: source.source_ref,
+      detail: detailText(source.detail),
+      at: source.created_at,
+    })),
+  )
+}
 
 export function SourceRow({ source }: { source: FactSource }) {
   return (

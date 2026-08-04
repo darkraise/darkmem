@@ -36,6 +36,7 @@ import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
 import { LiveDreamDigest } from "@/features/activity/components/dream-tab"
 import { ReviewQueue } from "@/features/knowledge/components/review-queue"
 import { FactRow } from "@/features/knowledge/components/facts-tab"
+import { FactDetail } from "@/features/knowledge/components/fact-detail"
 import type { FactRowData } from "@/features/knowledge/use-facts"
 
 // FactSource stays in @/demo/types: T1.68 (the type-relocation task T1.67's
@@ -283,7 +284,6 @@ const FACT_ROW: FactRowData = {
   window_closed: true,
   invalid_at: "2025-01-01T00:00:00Z",
   expired: false,
-  detail_available: false,
   created_at: "2026-07-01T00:00:00Z",
   applies_when: [],
 }
@@ -329,6 +329,90 @@ describe("detail level: the Facts tab's honesty labels render in both modes", ()
     render(<FactRow fact={FACT_ROW} focused={false} />)
     expect(screen.getByText("USES")).toBeInTheDocument()
     expect(screen.getByText("2025-01-01T00:00:00Z")).toBeInTheDocument()
+  })
+})
+
+// T2.86 — the fact detail route on live data. The Facts *tab*'s own
+// Simple/Advanced coverage lived here already (above); the detail *page* is
+// new surface, so it gets its own block here rather than only in
+// `routes/_authenticated/__tests__/fact-detail.test.tsx` — the review-queue
+// block's own comment records why an own-file-only clause reads as vacuous.
+const DETAIL_CLAIM =
+  "asserted by 2 distinct origins of kinds [memory], no known contradiction, as of 2026-07-27"
+
+function factDetailFixture() {
+  return {
+    id: "f1",
+    id_kind: "fact",
+    subject_name: "darkmem",
+    object_name: "postgres",
+    rel_type: "USES",
+    fact: "darkmem uses postgres",
+    project: "darkmem",
+    verification_status: "corroborated",
+    lifecycle: null,
+    badge: {
+      verification_status: "corroborated",
+      origin_count: 2,
+      origin_kinds: ["memory"],
+      as_of: "2026-07-27T18:55:00Z",
+      contradiction: false,
+      human_ratified: false,
+      stale: false,
+      claim: DETAIL_CLAIM,
+    },
+    confidence: 0.8,
+    review_state: null,
+    demotion_pending_since: null,
+    belief_window: { valid_at: "2026-01-01T00:00:00Z", invalid_at: null, expired_at: null },
+    applies_when: null,
+    applies_when_labels: [],
+    created_at: "2026-07-01T00:00:00Z",
+    sources: [],
+    triple_key: "darkmem:USES:postgres",
+    learned_in: null,
+    source_file: null,
+    reference_time: null,
+    ladder: [],
+    dispute: null,
+  }
+}
+
+describe("detail level: the fact detail page's honesty labels render in both modes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "advanced" })
+    vi.mocked(apiFetch).mockResolvedValue(factDetailFixture())
+  })
+
+  function detailWrapper({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+
+  it.each(["simple", "advanced"] as const)(
+    "the rung badge and the verbatim claim render in %s mode",
+    async (level) => {
+      useDetailLevel.setState({ level })
+      render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
+      await screen.findByText(DETAIL_CLAIM)
+      expect(screen.getByText("corroborated")).toBeInTheDocument()
+    },
+  )
+
+  it("collapses the raw triple in simple mode, never the claim", async () => {
+    useDetailLevel.setState({ level: "simple" })
+    render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
+    await screen.findByText(DETAIL_CLAIM)
+    expect(screen.queryByText("USES")).not.toBeInTheDocument()
+    expect(screen.getByText(DETAIL_CLAIM)).toBeInTheDocument()
+  })
+
+  it("shows the raw triple in advanced mode", async () => {
+    useDetailLevel.setState({ level: "advanced" })
+    render(<FactDetail factId="f1" />, { wrapper: detailWrapper })
+    await screen.findByText(DETAIL_CLAIM)
+    expect(screen.getByText("USES")).toBeInTheDocument()
   })
 })
 
