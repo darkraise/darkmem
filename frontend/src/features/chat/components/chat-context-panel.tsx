@@ -11,6 +11,7 @@ import {
   CHAT_EXCLUSION_CAVEAT,
   channelStates,
   exclusionItems,
+  factNumbers,
   layerNumber,
   rowTrace,
   type ChatContextFact,
@@ -55,6 +56,7 @@ export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProp
   const degraded = populated && envelope?.partial === true
   const channels = channelStates(envelope)
   const exclusions = exclusionItems(envelope)
+  const factNumber = factNumbers(facts)
 
   return (
     <div className="border-border bg-card space-y-2.5 rounded-md border p-3">
@@ -176,7 +178,9 @@ export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProp
                   <LifecycleBadge status={row.status} />
                   {row.grouped_under && (
                     <span className="text-muted-foreground font-mono text-sm">
-                      supports fact F
+                      {factNumber.has(row.grouped_under)
+                        ? `supports fact F${factNumber.get(row.grouped_under)}`
+                        : "supports a fact"}
                     </span>
                   )}
                 </div>
