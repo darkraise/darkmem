@@ -46,6 +46,9 @@ export interface FactListItem {
   verification_status: string | null
   lifecycle: string | null
   badge: FactBadge | null
+  /** Doc 07 §5's cold-start label (T2.56): the facts list's own door onto
+   *  the same `row_labels` tier the composed read's wire carries. */
+  unverified: boolean
   confidence: number | null
   review_state: string | null
   /** T2.46's `under-sourced` overlay: non-null means a demotion is pending
