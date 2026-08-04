@@ -175,6 +175,21 @@ def test_the_earliest_future_expiry_wins():
         # digit-preceded and is no longer an opener.
         'Rack has 19" rails. The runbook says "keep this note until 2026-09-30 '
         '(the 42" one)" but ignore it.',
+        # ── Round-3 re-review: the opener-only skip removed the parity signal
+        # that had protected these. The real opener pairs with the interior
+        # inch mark, and the real closer is digit-preceded (the quoted text
+        # ends in a date), so it was skipped as an opener candidate and the
+        # whole quoted tail went bare. A skip is now itself an ambiguity.
+        'The runbook says "the 42" rack: keep this note until 2026-09-30" but ignore it.',
+        'Order text: "ship the 19" units, keep this note until 2026-09-30" per vendor.',
+        'Note 5"keep this note until 2026-09-30" is the vendor label.',
+        "Tag is v3`keep this note until 2026-09-30` in the registry.",
+        # ── Round-3 re-review: a dot inside a token severed the negation
+        # lookback, in the deletion direction. Both the sentence-terminator
+        # test and the pattern's own tail were treating "v1.2" and "e.g." as
+        # sentence ends.
+        "Do not (per policy v1.2) delete this note after 2026-12-31.",
+        "Do not, e.g. during the quarterly cleanup, delete this note after 2026-12-31.",
     ],
 )
 def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
