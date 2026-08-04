@@ -57,6 +57,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /dream-digest/cycles takes an explicit `project` filter (doc 13 §6.3); the single-cycle read is addressed by cycle_id and carries no project param at all",
   },
+  reviewQueue: {
+    kind: "manual",
+    reason:
+      "GET /review-queue/{facts,articles} take an explicit `project` the Review queue supplies from its own filter (doc 13 §6.2); GET /review-queue/counts itself has no project parameter at all and is rendered as unscoped",
+  },
+  hygieneQueue: {
+    kind: "manual",
+    reason:
+      "GET /hygiene-queue/* take an explicit `project` the Hygiene queue supplies from its own filter (doc 13 §6.2), not yet the global switcher",
+  },
   events: {
     kind: "manual",
     reason: "EventListParams.project is caller-supplied, not yet the global switcher",

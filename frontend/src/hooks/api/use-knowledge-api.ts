@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiFetch } from "@/lib/api"
 
@@ -108,5 +108,24 @@ export function useFacts(
         `/api/v1/knowledge/facts${query ? `?${query}` : ""}`,
       ),
     enabled: options?.enabled ?? true,
+  })
+}
+
+/** `POST /knowledge/facts/{id}/ratify` — the single door to `confirmed`
+ *  (doc 08 §4.4, T2.05). Authenticated by the session only; never exposed
+ *  over MCP (`app/api/routes/ratification.py`). 204 — the durable record is
+ *  the human source row and the recomputed badge, not an echo of either. */
+export function useRatifyFact() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { factId: string; shown?: string; note?: string }>({
+    mutationFn: ({ factId, shown, note }) =>
+      apiFetch<void>(`/knowledge/facts/${factId}/ratify`, {
+        method: "POST",
+        body: shown || note ? JSON.stringify({ shown, note }) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["knowledge"] })
+      qc.invalidateQueries({ queryKey: ["reviewQueue"] })
+    },
   })
 }
