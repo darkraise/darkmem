@@ -25,6 +25,7 @@ import {
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
+import { toast } from "darkraise-ui/components/sonner"
 import { LayerChip, VerificationBadge, useDetailLevel } from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
@@ -60,7 +61,13 @@ function PageControls({
       <span className="text-muted-foreground font-mono text-sm">
         {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of {total}
       </span>
-      <Button size="sm" variant="outline" disabled={offset === 0} onClick={onPrev}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={offset === 0}
+        onClick={onPrev}
+        aria-label="Previous page"
+      >
         <ChevronLeft className="size-3.5" />
       </Button>
       <Button
@@ -68,6 +75,7 @@ function PageControls({
         variant="outline"
         disabled={offset + limit >= total}
         onClick={onNext}
+        aria-label="Next page"
       >
         <ChevronRight className="size-3.5" />
       </Button>
@@ -261,22 +269,51 @@ export function ReviewQueue({ project }: { project?: string }) {
   const demoRatify = useDemoStore((s) => s.ratifyReviewItem)
   const demoClear = useDemoStore((s) => s.clearReviewItem)
 
+  // Neither door had an `onError` before this fix: a 500 or a stale-id 404
+  // closed the confirm dialog and left the queue looking unchanged, a failed
+  // action indistinguishable from a slow one (F2).
   const runRatify = (fact: ReviewFactRowData) => {
-    if (DEMO) demoRatify(fact.id, "q.tran")
-    else ratifyMutation.mutate({ factId: fact.id })
+    if (DEMO) {
+      demoRatify(fact.id, "q.tran")
+    } else {
+      ratifyMutation.mutate(
+        { factId: fact.id },
+        {
+          onError: (error) =>
+            toast.error("Ratify failed — the fact was not changed", {
+              description:
+                error instanceof Error ? error.message : "the request did not complete",
+            }),
+        },
+      )
+    }
     setRatifyTarget(null)
   }
   const runReject = (fact: ReviewFactRowData) => {
-    if (DEMO) demoClear(fact.id)
-    else rejectMutation.mutate({ factId: fact.id })
+    if (DEMO) {
+      demoClear(fact.id)
+    } else {
+      rejectMutation.mutate(
+        { factId: fact.id },
+        {
+          onError: (error) =>
+            toast.error("Reject failed — the fact was not changed", {
+              description:
+                error instanceof Error ? error.message : "the request did not complete",
+            }),
+        },
+      )
+    }
     setRejectTarget(null)
   }
 
   const countsLine = counts.error
     ? "counts unavailable"
-    : `${counts.facts} fact${counts.facts === 1 ? "" : "s"} · ${counts.articles} article${
-        counts.articles === 1 ? "" : "s"
-      } open${counts.unscoped ? " (unscoped — across all projects)" : ""}`
+    : counts.loading
+      ? "counts loading…"
+      : `${counts.facts} fact${counts.facts === 1 ? "" : "s"} · ${counts.articles} article${
+          counts.articles === 1 ? "" : "s"
+        } open${counts.unscoped ? " (unscoped — across all projects)" : ""}`
 
   return (
     <div className="space-y-3">
@@ -290,7 +327,7 @@ export function ReviewQueue({ project }: { project?: string }) {
 
       <ListSurface
         title="Disputed / under-sourced facts"
-        populated={facts.rows.length > 0}
+        populated={facts.total > 0}
         meta="consequence-ranked, not FIFO"
       >
         {facts.error ? (
@@ -305,11 +342,27 @@ export function ReviewQueue({ project }: { project?: string }) {
             title="Loading the review queue"
             description="Reading open facts."
           />
-        ) : facts.rows.length === 0 ? (
+        ) : facts.total === 0 ? (
           <EmptyState
             icon={<ClipboardCheck aria-hidden className="h-6 w-6" />}
             title="No disputed or under-sourced facts"
             description="The fact half of the review queue is caught up."
+          />
+        ) : facts.rows.length === 0 ? (
+          // Rows shrank underneath a stale offset (a page-2 ratify/reject) —
+          // never rendered as "caught up": the count above still says facts
+          // remain, and this line must agree with it (F1, invariant 14).
+          <EmptyState
+            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            title="This page emptied out"
+            description={`${facts.total} fact${facts.total === 1 ? "" : "s"} still remain${
+              facts.total === 1 ? "s" : ""
+            } — go back to see them.`}
+            action={
+              <Button size="sm" variant="outline" onClick={() => setFactsOffset(0)}>
+                Back to the first page
+              </Button>
+            }
           />
         ) : (
           <>
@@ -334,7 +387,7 @@ export function ReviewQueue({ project }: { project?: string }) {
 
       <ListSurface
         title="Ungrounded articles"
-        populated={articles.rows.length > 0}
+        populated={articles.total > 0}
         meta="arrival order — no consequence ranking for articles yet (doc 08 §6)"
       >
         {articles.error ? (
@@ -349,11 +402,24 @@ export function ReviewQueue({ project }: { project?: string }) {
             title="Loading the article queue"
             description="Reading open articles."
           />
-        ) : articles.rows.length === 0 ? (
+        ) : articles.total === 0 ? (
           <EmptyState
             icon={<ClipboardCheck aria-hidden className="h-6 w-6" />}
             title="No ungrounded articles"
             description="The article half of the review queue is caught up. article_synthesis is still a placeholder job, so this arm has no live producer yet."
+          />
+        ) : articles.rows.length === 0 ? (
+          <EmptyState
+            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            title="This page emptied out"
+            description={`${articles.total} article${
+              articles.total === 1 ? "" : "s"
+            } still remain${articles.total === 1 ? "s" : ""} — go back to see them.`}
+            action={
+              <Button size="sm" variant="outline" onClick={() => setArticlesOffset(0)}>
+                Back to the first page
+              </Button>
+            }
           />
         ) : (
           <>

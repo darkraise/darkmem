@@ -1,8 +1,5 @@
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-// The bulk actions' undo door is the dream-digest cycle undo, so the response
-// is that door's type. Declared once, there.
-import type { UndoBatchResponse } from "./use-dream-digest-api"
 
 export interface HygieneDuplicateItem {
   id: string
@@ -205,18 +202,9 @@ export function useBulkPrune() {
   })
 }
 
-/** `POST /dream-digest/cycles/{cycle_id}/undo`, body-less form — undoes every
- *  not-yet-undone action in the named cycle (`app/api/routes/dream_digest.py`).
- *  A hygiene bulk action's own `cycle_id` is exactly such a cycle (doc 08 §7's
- *  intended unification), so this is the batch's real undo door — not a new
- *  one invented for this surface. */
-export function useUndoCycle() {
-  const qc = useQueryClient()
-  return useMutation<UndoBatchResponse, Error, string>({
-    mutationFn: (cycleId) =>
-      apiFetch<UndoBatchResponse>(`/dream-digest/cycles/${cycleId}/undo`, {
-        method: "POST",
-      }),
-    onSuccess: () => invalidateHygiene(qc),
-  })
-}
+// The batch's real undo door is `POST /dream-digest/cycles/{cycle_id}/undo`
+// (doc 08 §7's intended unification, body-less form) — the exact same door
+// the dream-digest surface uses, so it is `useUndoDreamCycle` from
+// `use-dream-digest-api.ts`, not a hygiene-owned duplicate. A separate hook
+// here previously invalidated only `hygieneQueue`, leaving a dream-digest
+// viewer's cache stale after a hygiene-triggered undo (F9).

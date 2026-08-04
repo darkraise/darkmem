@@ -25,15 +25,18 @@ import {
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
+import { toast } from "darkraise-ui/components/sonner"
 import { LayerChip, useDetailLevel } from "@/components/darkmem"
+import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import {
   useBulkConfirmDedup,
   useBulkPrune,
-  useUndoCycle,
+  useUndoDreamCycle,
   type HygieneBulkActionResponse,
 } from "@/hooks/api"
+import { undoReasonLabel } from "@/features/activity/use-dream-digest"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import {
   useHygieneCountsRows,
@@ -46,6 +49,34 @@ import {
 } from "../use-hygiene-queue"
 
 const PAGE = 10
+
+// The per-item refusal reasons the two shipped bulk doors can return: prune
+// goes through `deprecate()` (`not_found` / `already_superseded` / `terminal`
+// — `app/services/supersede.py`), confirm-dedup has its own three
+// (`hygiene_queue.py`'s confirm-dedup branch). `cross_project` /
+// `self_reference` / `successor_not_newer` are `supersede()`'s own refusals,
+// unreachable today because the "Supersede instead" verb was not built (R3)
+// — kept here so a future wiring of that door is not silently unlabelled.
+// This is a **different vocabulary from `undoReasonLabel`**: that one glosses
+// `dream_undo`'s 409 blocked-reason codes on the *undo* door, not this one —
+// conflating the two would mislabel a hygiene "stale" (one endpoint memory
+// left `active` status) as the undo door's unrelated `state_changed`.
+const REFUSAL_REASON_LABELS: Record<string, string> = {
+  not_found: "the row no longer exists",
+  already_superseded: "already superseded",
+  terminal: "in a terminal state",
+  cross_project: "belongs to a different project",
+  self_reference: "would supersede itself",
+  successor_not_newer: "the successor is not newer",
+  not_a_duplicate_candidate: "no longer an open duplicate candidate",
+  stale: "one side of the pair is no longer active",
+  unchanged: "already confirmed",
+}
+
+function refusalReasonLabel(reason: string | null): string {
+  if (!reason) return "unavailable"
+  return REFUSAL_REASON_LABELS[reason] ?? reason
+}
 
 function useSelection() {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -88,7 +119,13 @@ function PageControls({
       <span className="text-muted-foreground font-mono text-sm">
         {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of {total}
       </span>
-      <Button size="sm" variant="outline" disabled={offset === 0} onClick={onPrev}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={offset === 0}
+        onClick={onPrev}
+        aria-label="Previous page"
+      >
         <ChevronLeft className="size-3.5" />
       </Button>
       <Button
@@ -96,6 +133,7 @@ function PageControls({
         variant="outline"
         disabled={offset + limit >= total}
         onClick={onNext}
+        aria-label="Next page"
       >
         <ChevronRight className="size-3.5" />
       </Button>
@@ -119,27 +157,38 @@ function ActionNotice({
   undone: boolean
 }) {
   const applied = result.results.filter((r) => r.applied).length
-  const refused = result.results.length - applied
+  const refused = result.results.filter((r) => !r.applied)
   return (
-    <div className="border-success/40 bg-success/5 flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 text-sm">
-      <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
-      <span>
-        {applied} applied{refused > 0 ? `, ${refused} refused` : ""} — cycle{" "}
-        <span className="font-mono">{result.cycle_id}</span>
-      </span>
-      {undone ? (
-        <span className="text-muted-foreground ml-auto font-mono">undone</span>
-      ) : (
-        <Button
-          size="sm"
-          variant="outline"
-          className="ml-auto"
-          disabled={undoing || applied === 0}
-          onClick={onUndo}
-        >
-          <RotateCcw className="mr-1.5 size-3.5" />
-          {undoing ? "Undoing…" : "Undo this batch"}
-        </Button>
+    <div className="border-success/40 bg-success/5 flex flex-col gap-1.5 rounded-md border border-dashed p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
+        <span>
+          {applied} applied{refused.length > 0 ? `, ${refused.length} refused` : ""} —
+          cycle <span className="font-mono">{result.cycle_id}</span>
+        </span>
+        {undone ? (
+          <span className="text-muted-foreground ml-auto font-mono">undone</span>
+        ) : (
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            disabled={undoing || applied === 0}
+            onClick={onUndo}
+          >
+            <RotateCcw className="mr-1.5 size-3.5" />
+            {undoing ? "Undoing…" : "Undo this batch"}
+          </Button>
+        )}
+      </div>
+      {refused.length > 0 && (
+        <ul className="text-muted-foreground space-y-0.5 pl-5 font-mono text-sm">
+          {refused.map((r) => (
+            <li key={r.id}>
+              {shortId(r.id)}: {refusalReasonLabel(r.reason)}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
@@ -153,6 +202,9 @@ function CategoryShell({
   isEmpty,
   isError,
   isLoading,
+  isStranded,
+  strandedTotal,
+  onBackToStart,
   emptyLine,
   errorLine,
   children,
@@ -164,6 +216,14 @@ function CategoryShell({
   isEmpty: boolean
   isError: boolean
   isLoading: boolean
+  /** Rows came back empty but the backend's own `total` says otherwise — an
+   *  offset stranded past the end of a queue that shrank underneath it
+   *  (a mutation on the previous page, or a page-2 ratify). Never rendered as
+   *  "caught up": that line would be a count the backend does not stand
+   *  behind (invariant 14). */
+  isStranded: boolean
+  strandedTotal: number
+  onBackToStart: () => void
   emptyLine: string
   errorLine: string
   children: ReactNode
@@ -192,6 +252,17 @@ function CategoryShell({
             <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
             {emptyLine}
           </p>
+        ) : isStranded ? (
+          <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+            <SearchX aria-hidden className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              This page emptied out — {strandedTotal} row
+              {strandedTotal === 1 ? "" : "s"} still {strandedTotal === 1 ? "remains" : "remain"}.
+            </span>
+            <Button size="sm" variant="outline" onClick={onBackToStart}>
+              Back to the first page
+            </Button>
+          </div>
         ) : (
           children
         )}
@@ -354,7 +425,7 @@ export function HygieneQueue({ project }: { project?: string }) {
 
   const confirmDedup = useBulkConfirmDedup()
   const bulkPrune = useBulkPrune()
-  const undoCycle = useUndoCycle()
+  const undoCycle = useUndoDreamCycle()
   const demoResolve = useDemoStore((s) => s.resolveHygiene)
 
   const [pending, setPending] = useState<PendingAction>(null)
@@ -365,6 +436,20 @@ export function HygieneQueue({ project }: { project?: string }) {
     {},
   )
   const [undoingArm, setUndoingArm] = useState<string | null>(null)
+
+  // A confirmed action's own request can still fail — a 500, a dropped
+  // connection, or the unbounded cross-page selection hitting the backend's
+  // `MAX_BULK_ITEMS = 100` and 422ing wholesale. Before this fix none of the
+  // three bulk mutations had an `onError`, so the dialog just closed and the
+  // queue looked unchanged: a failed action was indistinguishable from a slow
+  // one (F2). This never fires for a per-item refusal inside a 200 — those
+  // ride `results[].reason` and are surfaced by `ActionNotice` instead.
+  const onBulkActionError = (arm: string) => (error: unknown) => {
+    toast.error(`${arm} — action failed, nothing was applied`, {
+      description:
+        error instanceof Error ? error.message : "the request did not complete",
+    })
+  }
 
   const applyPending = () => {
     if (!pending) return
@@ -386,6 +471,7 @@ export function HygieneQueue({ project }: { project?: string }) {
           setUndone((prev) => ({ ...prev, duplicates: false }))
           dupSel.clear()
         },
+        onError: onBulkActionError("Confirm dedup"),
       })
     } else if (pending.kind === "prune-low") {
       bulkPrune.mutate(pending.ids, {
@@ -394,6 +480,7 @@ export function HygieneQueue({ project }: { project?: string }) {
           setUndone((prev) => ({ ...prev, lowConfidence: false }))
           lowSel.clear()
         },
+        onError: onBulkActionError("Prune (low-confidence)"),
       })
     } else {
       bulkPrune.mutate(pending.ids, {
@@ -402,29 +489,61 @@ export function HygieneQueue({ project }: { project?: string }) {
           setUndone((prev) => ({ ...prev, expiring: false }))
           expSel.clear()
         },
+        onError: onBulkActionError("Prune (expiring soon)"),
       })
     }
     setPending(null)
   }
 
+  // The 409 `state_changed` CAS refusal is the *designed* outcome of this
+  // exact write (hygiene_queue.py's own docstring calls the interlock "the
+  // amendment log's own prediction") and `ApiError.details` carries the
+  // per-action blocked reasons (T2.38's passthrough) — so it is reported by
+  // name, distinct from an unclassified failure, mirroring
+  // `use-dream-digest.ts`'s `settle()` (F3).
   const runUndo = (arm: "duplicates" | "lowConfidence" | "expiring") => {
     const notice = notices[arm]
     if (!notice) return
     setUndoingArm(arm)
-    undoCycle.mutate(notice.cycle_id, {
-      onSuccess: () => {
-        setUndone((prev) => ({ ...prev, [arm]: true }))
-        setUndoingArm(null)
+    undoCycle.mutate(
+      { cycleId: notice.cycle_id },
+      {
+        onSuccess: () => {
+          setUndone((prev) => ({ ...prev, [arm]: true }))
+          setUndoingArm(null)
+        },
+        onError: (error) => {
+          setUndoingArm(null)
+          if (error instanceof ApiError && error.status === 409) {
+            const reasons = (error.details ?? []) as Array<{
+              event_id: number
+              reason: string
+            }>
+            toast.error("Undo refused — nothing happened", {
+              description:
+                reasons
+                  .map((r) => `#${r.event_id}: ${undoReasonLabel(r.reason)}`)
+                  .join("; ") || "the object changed since this batch ran",
+            })
+            return
+          }
+          toast.error("Undo failed — state unknown", {
+            description: `${
+              error instanceof Error ? error.message : "the request did not complete"
+            }. Re-check the batch before retrying.`,
+          })
+        },
       },
-      onError: () => setUndoingArm(null),
-    })
+    )
   }
 
   const countsLine = counts.error
     ? "counts unavailable"
-    : `${counts.duplicates} duplicate pair${counts.duplicates === 1 ? "" : "s"} · ${
-        counts.low_confidence
-      } low-confidence · ${counts.expiring_soon} expiring soon · ${counts.superseded} superseded`
+    : counts.loading
+      ? "counts loading…"
+      : `${counts.duplicates} duplicate pair${counts.duplicates === 1 ? "" : "s"} · ${
+          counts.low_confidence
+        } low-confidence · ${counts.expiring_soon} expiring soon · ${counts.superseded} superseded`
 
   return (
     <div className="space-y-3">
@@ -437,10 +556,18 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Copy aria-hidden />}
         title="Candidate duplicates"
-        meta="from dreaming"
-        isEmpty={duplicates.rows.length === 0}
+        meta="newest detected first — no consequence ranking here yet (doc 08 §6)"
+        isEmpty={duplicates.total === 0}
         isError={duplicates.error}
         isLoading={duplicates.loading && duplicates.rows.length === 0}
+        isStranded={
+          !duplicates.loading &&
+          !duplicates.error &&
+          duplicates.rows.length === 0 &&
+          duplicates.total > 0
+        }
+        strandedTotal={duplicates.total}
+        onBackToStart={() => setDupOffset(0)}
         emptyLine="Candidate duplicates — none flagged by the last dream cycle"
         errorLine="Could not load candidate duplicates — this is a failed read, not zero pairs"
         toolbar={
@@ -485,10 +612,18 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Low-confidence memories"
-        meta=""
-        isEmpty={lowConfidence.rows.length === 0}
+        meta="lowest confidence first, ties by newest — no consequence ranking here yet (doc 08 §6)"
+        isEmpty={lowConfidence.total === 0}
         isError={lowConfidence.error}
         isLoading={lowConfidence.loading && lowConfidence.rows.length === 0}
+        isStranded={
+          !lowConfidence.loading &&
+          !lowConfidence.error &&
+          lowConfidence.rows.length === 0 &&
+          lowConfidence.total > 0
+        }
+        strandedTotal={lowConfidence.total}
+        onBackToStart={() => setLowOffset(0)}
         emptyLine="Low-confidence memories — none below the review threshold"
         errorLine="Could not load low-confidence memories — this is a failed read, not zero rows"
         toolbar={
@@ -541,10 +676,18 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Expiring soon"
-        meta="expires_at approaching"
-        isEmpty={expiring.rows.length === 0}
+        meta="soonest expires_at first — no consequence ranking here yet (doc 08 §6)"
+        isEmpty={expiring.total === 0}
         isError={expiring.error}
         isLoading={expiring.loading && expiring.rows.length === 0}
+        isStranded={
+          !expiring.loading &&
+          !expiring.error &&
+          expiring.rows.length === 0 &&
+          expiring.total > 0
+        }
+        strandedTotal={expiring.total}
+        onBackToStart={() => setExpOffset(0)}
         emptyLine="Expiring soon — no rows with expires_at inside the lookahead window"
         errorLine="Could not load expiring memories — this is a failed read, not zero rows"
         toolbar={
@@ -602,10 +745,18 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<GitBranch aria-hidden />}
         title="Superseded lineage"
-        meta="read-only — see below"
-        isEmpty={superseded.rows.length === 0}
+        meta="newest first, read-only — no consequence ranking here yet (doc 08 §6)"
+        isEmpty={superseded.total === 0}
         isError={superseded.error}
         isLoading={superseded.loading && superseded.rows.length === 0}
+        isStranded={
+          !superseded.loading &&
+          !superseded.error &&
+          superseded.rows.length === 0 &&
+          superseded.total > 0
+        }
+        strandedTotal={superseded.total}
+        onBackToStart={() => setSupOffset(0)}
         emptyLine="Superseded lineage — nothing flagged for cleanup"
         errorLine="Could not load superseded lineage — this is a failed read, not zero chains"
       >

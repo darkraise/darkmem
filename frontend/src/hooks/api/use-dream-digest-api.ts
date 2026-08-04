@@ -161,6 +161,19 @@ export function useDreamCycleDigest(
   })
 }
 
+// A dream-digest cycle's `origin` may be `"hygiene_queue"` (doc 08 §7's
+// unification — a hygiene bulk action mints its own cycle through this same
+// door), so an undo reached from either surface must invalidate both caches.
+// Before this fix the hygiene lane's own `useUndoCycle` invalidated only
+// `hygieneQueue` and this hook invalidated only `dreamDigest`: undoing from
+// one surface left the other's cache stale until an unrelated refetch. This
+// is now the *only* mutation hook for either undo door — the hygiene lane
+// consumes it directly rather than keeping a near-duplicate.
+function invalidateUndoCaches(qc: ReturnType<typeof useQueryClient>) {
+  void qc.invalidateQueries({ queryKey: ["dreamDigest"] })
+  void qc.invalidateQueries({ queryKey: ["hygieneQueue"] })
+}
+
 /** `POST /dream-digest/actions/{event_id}/undo` — the batch of one. There is
  *  no per-action code path behind it; see app/services/dream_undo.py. */
 export function useUndoDreamAction() {
@@ -174,15 +187,14 @@ export function useUndoDreamAction() {
     // patch a local copy, on every settle (success, 409, or anything else) —
     // the caller (use-dream-digest.ts) invalidates unconditionally too, this
     // covers a caller that only awaits the mutateAsync promise.
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["dreamDigest"] })
-    },
+    onSettled: () => invalidateUndoCaches(qc),
   })
 }
 
 /** `POST /dream-digest/cycles/{cycle_id}/undo` — a named subset (goes
  *  through whole; the primitive decides) or, body-less, whatever is left of
- *  the cycle. */
+ *  the cycle. The hygiene queue's three undoable bulk actions (confirm-dedup,
+ *  prune) also go through this door, body-less, for their own `cycle_id`. */
 export function useUndoDreamCycle() {
   const qc = useQueryClient()
   return useMutation<
@@ -195,8 +207,6 @@ export function useUndoDreamCycle() {
         `/dream-digest/cycles/${encodeURIComponent(cycleId)}/undo`,
         { method: "POST", body: body ? JSON.stringify(body) : undefined },
       ),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["dreamDigest"] })
-    },
+    onSettled: () => invalidateUndoCaches(qc),
   })
 }
