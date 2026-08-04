@@ -12,6 +12,13 @@ export interface HygieneDuplicateItem {
   hygiene_state: string | null
   detected_at: string | null
   created_at: string
+  // Which endpoint is older cannot be told from an id and a score alone
+  // (T2.87) — a supersede direction needs each side's own preview and
+  // created_at, truncated the same way hygiene_queue_memories' is.
+  source_content_preview: string
+  source_created_at: string
+  target_content_preview: string
+  target_created_at: string
 }
 
 export interface HygieneDuplicateListResponse {
@@ -179,6 +186,31 @@ export function useBulkConfirmDedup() {
       apiFetch<HygieneBulkActionResponse>("/hygiene-queue/bulk/confirm-dedup", {
         method: "POST",
         body: JSON.stringify({ relation_ids: relationIds }),
+      }),
+    onSuccess: () => invalidateHygiene(qc),
+  })
+}
+
+export interface HygieneSupersedeItem {
+  memory_id: string
+  superseded_by: string
+}
+
+/** `POST /hygiene-queue/bulk/supersede` — the direction-aware duplicate
+ *  resolution T2.87 wires up: each item names the older memory
+ *  (`memory_id`) and the newer one that replaces it (`superseded_by`).
+ *  Reuses `ACTION_SUBSUME` through `supersede()`, so it is undoable the
+ *  same way `prune` is. Refuses (per-item) `cross_project`,
+ *  `self_reference` or `successor_not_newer` if the caller's chosen
+ *  direction does not actually hold — the backend is the final arbiter,
+ *  not the row ordering this surface displays. */
+export function useBulkSupersede() {
+  const qc = useQueryClient()
+  return useMutation<HygieneBulkActionResponse, Error, HygieneSupersedeItem[]>({
+    mutationFn: (items) =>
+      apiFetch<HygieneBulkActionResponse>("/hygiene-queue/bulk/supersede", {
+        method: "POST",
+        body: JSON.stringify({ items }),
       }),
     onSuccess: () => invalidateHygiene(qc),
   })

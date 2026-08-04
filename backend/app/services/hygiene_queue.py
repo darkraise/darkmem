@@ -196,6 +196,13 @@ def build_duplicates_query(project: str | None) -> tuple[str, str]:
     partial index on this exact expression would match by construction).
     Both endpoints must be `active` — see the module docstring on the
     within-cycle race this closes generally.
+
+    The query already joins both endpoint rows for the ``active`` guard
+    above, so pulling each side's ``content``/``created_at`` alongside is not
+    an extra join (T2.87) — it is what a caller needs to tell which endpoint
+    is the older one before choosing a supersede direction. Content is
+    selected whole and truncated in Python (``_duplicate_item``), the same
+    split ``_memory_item`` uses for the other three arms.
     """
     where = [
         "(mr.properties -> 'dream' -> 'near_duplicate' ->> 'hygiene_state') = 'open'",
@@ -209,7 +216,9 @@ def build_duplicates_query(project: str | None) -> tuple[str, str]:
         "SELECT CAST(mr.id AS text) AS id, "
         "       CAST(mr.source_memory_id AS text) AS source_memory_id, "
         "       CAST(mr.target_memory_id AS text) AS target_memory_id, "
-        "       mr.rel_type, mr.project, mr.properties, mr.created_at "
+        "       mr.rel_type, mr.project, mr.properties, mr.created_at, "
+        "       src.content AS source_content, src.created_at AS source_created_at, "
+        "       tgt.content AS target_content, tgt.created_at AS target_created_at "
         "FROM memory_relations mr "
         "JOIN memories src ON src.id = mr.source_memory_id "
         "JOIN memories tgt ON tgt.id = mr.target_memory_id "
@@ -301,6 +310,10 @@ def _duplicate_item(row: dict) -> dict:
         "hygiene_state": (block or {}).get("hygiene_state"),
         "detected_at": (block or {}).get("detected_at"),
         "created_at": row["created_at"],
+        "source_content_preview": (row["source_content"] or "")[:200],
+        "source_created_at": row["source_created_at"],
+        "target_content_preview": (row["target_content"] or "")[:200],
+        "target_created_at": row["target_created_at"],
     }
 
 

@@ -33,30 +33,35 @@ import { useDemoStore } from "@/demo/store"
 import {
   useBulkConfirmDedup,
   useBulkPrune,
+  useBulkSupersede,
   useUndoDreamCycle,
   type HygieneBulkActionResponse,
+  type HygieneSupersedeItem,
 } from "@/hooks/api"
 import { undoReasonLabel } from "@/features/activity/use-dream-digest"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import {
+  duplicateDirection,
   useHygieneCountsRows,
   useHygieneDuplicateRows,
   useHygieneExpiringRows,
   useHygieneLowConfidenceRows,
   useHygieneSupersededRows,
+  type DuplicateDirection,
   type HygieneDuplicateRowData,
   type HygieneMemoryRowData,
 } from "../use-hygiene-queue"
 
 const PAGE = 10
 
-// The per-item refusal reasons the two shipped bulk doors can return: prune
-// goes through `deprecate()` (`not_found` / `already_superseded` / `terminal`
-// — `app/services/supersede.py`), confirm-dedup has its own three
-// (`hygiene_queue.py`'s confirm-dedup branch). `cross_project` /
-// `self_reference` / `successor_not_newer` are `supersede()`'s own refusals,
-// unreachable today because the "Supersede instead" verb was not built (R3)
-// — kept here so a future wiring of that door is not silently unlabelled.
+// The per-item refusal reasons the three shipped bulk doors can return:
+// prune and supersede both go through `supersede()`/`deprecate()`
+// (`not_found` / `already_superseded` / `terminal` / `cross_project` /
+// `self_reference` / `successor_not_newer` — `app/services/supersede.py`),
+// confirm-dedup has its own three (`hygiene_queue.py`'s confirm-dedup
+// branch). `cross_project` / `self_reference` / `successor_not_newer` are
+// specifically the ones `duplicateDirection`'s client-side guess can trip if
+// it picked the wrong side — the backend refuses rather than trusting it.
 // This is a **different vocabulary from `undoReasonLabel`**: that one glosses
 // `dream_undo`'s 409 blocked-reason codes on the *undo* door, not this one —
 // conflating the two would mislabel a hygiene "stale" (one endpoint memory
@@ -285,6 +290,11 @@ function DuplicateRow({
   onToggle: () => void
 }) {
   const level = useDetailLevel((s) => s.level)
+  // Which side is older is not decoration — it is the whole reason this
+  // arm now carries a per-endpoint preview and created_at (T2.87): a
+  // "Supersede instead" action has to show the direction it would apply
+  // before the caller confirms it, not just two ids and a score.
+  const direction = duplicateDirection(row)
   return (
     <div className="border-border space-y-1.5 rounded-md border border-dashed p-2.5">
       <div className="flex items-center gap-2.5">
@@ -312,19 +322,25 @@ function DuplicateRow({
         <LayerChip layer={0} />
         <Link
           to="/memories/$memoryId"
-          params={{ memoryId: row.source_memory_id }}
+          params={{ memoryId: direction.olderId }}
           className="hover:text-primary font-mono text-sm transition-colors"
         >
-          {shortId(row.source_memory_id)}
+          {shortId(direction.olderId)}
         </Link>
-        <span className="text-muted-foreground text-sm">↔</span>
+        <Badge variant="outline" size="sm" className="rounded-sm font-mono">
+          older
+        </Badge>
+        <span className="text-muted-foreground text-sm">supersede →</span>
         <Link
           to="/memories/$memoryId"
-          params={{ memoryId: row.target_memory_id }}
+          params={{ memoryId: direction.newerId }}
           className="hover:text-primary font-mono text-sm transition-colors"
         >
-          {shortId(row.target_memory_id)}
+          {shortId(direction.newerId)}
         </Link>
+        <Badge variant="outline" size="sm" className="rounded-sm font-mono">
+          newer
+        </Badge>
         <Badge variant="outline" size="sm" className="rounded-sm font-mono">
           {row.rel_type}
         </Badge>
@@ -334,6 +350,18 @@ function DuplicateRow({
           project {row.project}
           {row.detected_at && ` · detected_at ${row.detected_at}`} · created_at{" "}
           {row.created_at}
+        </p>
+      )}
+      {level === "advanced" && (
+        <p className="text-muted-foreground pl-6 text-sm">
+          {shortId(direction.olderId)} ({direction.olderCreatedAt}):{" "}
+          {direction.olderPreview || "(no content preview)"}
+        </p>
+      )}
+      {level === "advanced" && (
+        <p className="text-muted-foreground pl-6 text-sm">
+          {shortId(direction.newerId)} ({direction.newerCreatedAt}):{" "}
+          {direction.newerPreview || "(no content preview)"}
         </p>
       )}
     </div>
@@ -390,8 +418,13 @@ function MemoryRow({
   )
 }
 
+interface SupersedeCandidate extends DuplicateDirection {
+  relationId: string
+}
+
 type PendingAction =
   | { kind: "confirm-dedup"; ids: string[] }
+  | { kind: "supersede-dup"; items: SupersedeCandidate[] }
   | { kind: "prune-low"; ids: string[] }
   | { kind: "prune-expiring"; ids: string[] }
   | null
@@ -424,6 +457,7 @@ export function HygieneQueue({ project }: { project?: string }) {
   const superseded = useHygieneSupersededRows({ project, limit: PAGE, offset: supOffset })
 
   const confirmDedup = useBulkConfirmDedup()
+  const bulkSupersede = useBulkSupersede()
   const bulkPrune = useBulkPrune()
   const undoCycle = useUndoDreamCycle()
   const demoResolve = useDemoStore((s) => s.resolveHygiene)
@@ -469,12 +503,16 @@ export function HygieneQueue({ project }: { project?: string }) {
     if (!pending) return
     if (DEMO) {
       const category =
-        pending.kind === "confirm-dedup"
+        pending.kind === "confirm-dedup" || pending.kind === "supersede-dup"
           ? "duplicates"
           : pending.kind === "prune-low"
             ? "lowConfidence"
             : "expiring"
-      demoResolve(category, pending.ids)
+      const ids =
+        pending.kind === "supersede-dup"
+          ? pending.items.map((item) => item.relationId)
+          : pending.ids
+      demoResolve(category, ids)
       setPending(null)
       return
     }
@@ -486,6 +524,19 @@ export function HygieneQueue({ project }: { project?: string }) {
           dupSel.clear()
         },
         onError: onBulkActionError("Confirm dedup"),
+      })
+    } else if (pending.kind === "supersede-dup") {
+      const items: HygieneSupersedeItem[] = pending.items.map((item) => ({
+        memory_id: item.olderId,
+        superseded_by: item.newerId,
+      }))
+      bulkSupersede.mutate(items, {
+        onSuccess: (result) => {
+          setNotices((prev) => ({ ...prev, duplicates: result }))
+          setUndone((prev) => ({ ...prev, duplicates: false }))
+          dupSel.clear()
+        },
+        onError: onBulkActionError("Supersede"),
       })
     } else if (pending.kind === "prune-low") {
       bulkPrune.mutate(pending.ids, {
@@ -587,6 +638,22 @@ export function HygieneQueue({ project }: { project?: string }) {
         toolbar={
           <>
             <SelectionCount n={dupSel.selected.size} unit="pair" />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={dupSel.selected.size === 0}
+              onClick={() =>
+                setPending({
+                  kind: "supersede-dup",
+                  items: duplicates.rows
+                    .filter((row) => dupSel.selected.has(row.id))
+                    .map((row) => ({ relationId: row.id, ...duplicateDirection(row) })),
+                })
+              }
+            >
+              <GitBranch className="mr-1.5 size-3.5" />
+              Supersede instead
+            </Button>
             <Button
               size="sm"
               disabled={dupSel.selected.size === 0}
@@ -803,14 +870,30 @@ export function HygieneQueue({ project }: { project?: string }) {
             <AlertDialogTitle>
               {pending?.kind === "confirm-dedup"
                 ? `Confirm ${pending.ids.length} duplicate pair${pending.ids.length === 1 ? "" : "s"}?`
-                : `Prune ${pending?.ids.length ?? 0} row${pending?.ids.length === 1 ? "" : "s"}?`}
+                : pending?.kind === "supersede-dup"
+                  ? `Supersede ${pending.items.length} duplicate pair${pending.items.length === 1 ? "" : "s"}?`
+                  : `Prune ${pending?.ids.length ?? 0} row${pending?.ids.length === 1 ? "" : "s"}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pending?.kind === "confirm-dedup"
                 ? "Marks the near_duplicate pass-block as confirmed. This is undoable afterward through the batch's dream-digest cycle."
-                : "Retires each memory with no successor (deprecate() — never a hard delete). This is undoable afterward through the batch's dream-digest cycle."}
+                : pending?.kind === "supersede-dup"
+                  ? "Retires the older memory in each pair, pointing superseded_by at the newer one (supersede()). This is undoable afterward through the batch's dream-digest cycle."
+                  : "Retires each memory with no successor (deprecate() — never a hard delete). This is undoable afterward through the batch's dream-digest cycle."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pending?.kind === "supersede-dup" && (
+            <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
+              {pending.items.slice(0, 3).map((item) => (
+                <li key={item.relationId} className="font-mono">
+                  {shortId(item.olderId)} → superseded by → {shortId(item.newerId)}
+                </li>
+              ))}
+              {pending.items.length > 3 && (
+                <li>+{pending.items.length - 3} more in this batch</li>
+              )}
+            </ul>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={applyPending}>Apply</AlertDialogAction>

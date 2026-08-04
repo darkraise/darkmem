@@ -1920,15 +1920,22 @@ async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
-async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
-    """The candidate-duplicate arm, whose declared crossing is ids alone.
+_DUPLICATE_ENDPOINT_KEYS = tuple(
+    dict.fromkeys(key for src, tgt, _ in DUPLICATE_PAIRS for key in (src, tgt))
+)
 
-    ``content_surfaces`` says only the two endpoint ids, the score and the
-    verdict cross here — no memory content — and that distinction is the whole
-    shape of this driver. The endpoint ids are the declared payload and are
-    ``I1`` by the rules module (existence across scope, without content:
-    exactly what ``entity_browser``'s ``memory_ids`` arrays are), so no pair is
-    counted for being served. What *can* fail is the other three:
+
+async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
+    """The candidate-duplicate arm — endpoint ids plus, since T2.87, each
+    endpoint's own content preview and created_at.
+
+    ``content_surfaces`` now declares two crossings here: the endpoint ids
+    (still id-only, ``I1``) and ``content_preview`` (real content, judged on
+    the same axes as ``hygiene_queue_memories``). A supersede direction needs
+    to know which endpoint is older, and ids-plus-score alone cannot say that
+    — the previews are what closes the gap, so this driver has to prove they
+    behave like every other declared preview rather than assume the id-only
+    reasoning still covers them.
 
     * a pair outside a project the caller named. ``classify`` short-circuits
       on ``kind='id'`` before it reaches the scope axis, so a scope breach on
@@ -1943,14 +1950,21 @@ async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
       were seeded in. The label is the only thing an operator reads off a
       deployment-wide queue, so a label that lies is a defect even when the
       rows themselves are in scope.
-    * any memory sentinel at all in the body. Here the raw-body net is the
-      sharpest assertion rather than a backstop, because the declaration
-      permits no content crossing whatsoever.
+    * each endpoint's preview, checked against the row's own ``project``
+      label the same way ``hygiene_queue_memories`` checks a memory row —
+      a foreign-project pair must still name its project, or it is a V2.
+    * a preview that ran past its declared 200-char boundary
+      (``_preview_boundary``, reused unchanged) — sentinel-inside-boundary
+      content cannot tell a truncated preview from a leaked whole content, so
+      this is the only check that can.
+    * any memory sentinel at all in the body outside the two previews the
+      driver just accounted for (``_account_body``) — the raw-body net, now
+      scoped to what legitimately crosses instead of an empty set.
 
     Every endpoint of every observed pair is enumerated, in or out of scope —
     unlike ``entity_browser``, which filters to keep a large ``memory_ids``
-    array readable. Here there are two pairs and the ids *are* the whole
-    declared payload, so enumerating them all is what makes "this case reached
+    array readable. Here there are two pairs and the ids are still the whole
+    id-only payload, so enumerating them all is what makes "this case reached
     the arm" a fact in the report rather than an inference from silence.
 
     The fourth forced V1 — a pair outside ``DUPLICATE_PAIRS`` — is a
@@ -1968,12 +1982,17 @@ async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
     out: list[Sighting] = []
     ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
     seeded_projects = {(src, tgt): project for src, tgt, project in DUPLICATE_PAIRS}
+    long_endpoint_fixtures = [
+        FIXTURES_BY_KEY[key] for key in _DUPLICATE_ENDPOINT_KEYS
+        if FIXTURES_BY_KEY[key].long
+    ]
 
     async def one_case(params: str, case: str, req_p: str | None):
         response = await ctx.client.get(
             f"/api/v1/hygiene-queue/duplicates{params}", headers=ctx.headers,
         )
         response.raise_for_status()
+        accounted: set[str] = set()
         for row in response.json()["items"]:
             endpoints = [
                 ids_to_fx.get(str(row.get("source_memory_id"))),
@@ -2016,7 +2035,20 @@ async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
                     out.append(_mem(
                         surface, door, f"{case}: pair {pair}", fx, kind="id",
                     ))
-        out.extend(_account_body(surface, door, case, response.text, set()))
+                    # The preview crossing: judged like a memory row in
+                    # hygiene_queue_memories, labelled off the row's one
+                    # `project` field (both endpoints of every seeded pair
+                    # share a project — see DUPLICATE_PAIRS).
+                    accounted.add(fx.key)
+                    out.append(_mem(
+                        surface, door, f"{case}: pair {pair}", fx, kind="preview",
+                        req_p=req_p, lp=row.get("project") == fx.project,
+                    ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text, long_endpoint_fixtures,
+            HYGIENE_PREVIEW_CHARS,
+        ))
 
     await one_case("", "every open candidate pair (ratified operator-wide)", None)
     await one_case(
