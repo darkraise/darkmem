@@ -69,6 +69,13 @@ class DreamActionView:
     undone_at: datetime | None = None
     undone_by: str | None = None
     undo_batch_id: str | None = None
+    # Reconstructed from the `undone` event's own payload (`dream_undo._journal_undo`
+    # writes both lists there), never re-stored on this row — the journal already
+    # carries the one place this information exists. Empty for an action that has
+    # not been undone; the invert functions never produce an empty `restored` for
+    # one that has.
+    restored: tuple[str, ...] = ()
+    not_restored: tuple[str, ...] = ()
     undoable: bool = False
     undo_blocked_reason: str | None = None
 
@@ -328,6 +335,8 @@ async def read_cycle_actions(
                 "at": row["created_at"],
                 "by": row["actor"],
                 "batch": payload.get("undo_batch_id"),
+                "restored": payload.get("restored") or [],
+                "not_restored": payload.get("not_restored") or [],
             },
         )
 
@@ -358,6 +367,8 @@ async def read_cycle_actions(
                 undone_at=undo["at"] if undo else None,
                 undone_by=undo["by"] if undo else None,
                 undo_batch_id=undo["batch"] if undo else None,
+                restored=tuple(undo["restored"]) if undo else (),
+                not_restored=tuple(undo["not_restored"]) if undo else (),
             )
         )
     return views
