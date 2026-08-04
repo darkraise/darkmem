@@ -17,6 +17,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
 from app.main import app
+from app.services.memory_community_detection import (
+    DetectionOutcome,
+    TOPIC_DETECTION_CONFIG_SCHEMA,
+)
 from app.services.dream_jobs import (
     ARTICLE_SYNTHESIS_JOB_KEY,
     CONTRADICTION_SCAN_JOB_KEY,
@@ -858,3 +862,90 @@ def test_placeholder_marker_is_not_a_shipped_runner_type():
 
     assert not isinstance(real_runner, PlaceholderJobRunner)
     assert isinstance(PlaceholderJobRunner("x", "T9.99"), PlaceholderJobRunner)
+
+
+# ─────────────────── T2.53 — topic_detection, productively ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_topic_detection_registers_with_its_real_schema_and_bounds():
+    """Doc 08 §5's row for this job: its own cron, floor and ceiling, and the
+    detector's real knobs rather than the placeholder's generic `batch_size`.
+
+    The schema swap is the half that could regress silently. An operator
+    editing `hub_cap` through `PUT /jobs/{key}/config` was rejected as an
+    unknown key while the placeholder schema stood, so a job that looked
+    configurable was not.
+    """
+    registry, engine = _fresh_registry()
+    try:
+        job = registry.get(TOPIC_DETECTION_JOB_KEY)
+        assert job.default_cron == "0 4 * * *"
+        assert job.min_interval_seconds == 300
+        assert job.max_run_seconds == 900
+        keys = {field.key for field in job.config_schema}
+        assert keys == {field.key for field in TOPIC_DETECTION_CONFIG_SCHEMA}
+        assert "hub_cap" in keys
+        # The placeholder's key, default and ceiling survive the swap, so no
+        # value already persisted under the generic schema is orphaned.
+        batch = next(f for f in job.config_schema if f.key == "batch_size")
+        assert (batch.default, batch.max) == (5, 100)
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_topic_detection_persists_its_rotation_cursor(monkeypatch):
+    """The cursor lives in its own `config` row, not in the job's `config`
+    dict: `set_config` validates that dict against the schema and is the
+    operator-facing surface, so a cursor there would be either rejected or
+    editable. This drives two ticks and asserts the second resumes where the
+    first stopped."""
+    from app.services import dream_jobs
+
+    registry, engine = _fresh_registry()
+    seen: list[str | None] = []
+
+    async def fake_run(session_factory, *, batch_size, after_project, **knobs):
+        seen.append(after_project)
+        return DetectionOutcome(last_project=f"project-{len(seen)}")
+
+    try:
+        monkeypatch.setattr(dream_jobs, "run_topic_detection", fake_run)
+        job = registry.get(TOPIC_DETECTION_JOB_KEY)
+        await job.runner()
+        await job.runner()
+        assert seen == [None, "project-1"], seen
+
+        async with registry.session_factory() as session:
+            cursor = await dream_jobs._load_topic_cursor(session)
+        assert cursor == "project-2"
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch):
+    """`run_topic_detection` advances `last_project` *before* attempting each
+    project and swallows a per-project failure into `skipped`, so the cursor
+    names the last project visited rather than the last that succeeded.
+    Persisting it regardless is what keeps the rotation moving: a
+    deterministically failing project would otherwise pin the cursor and
+    starve every project behind it."""
+    from app.services import dream_jobs
+
+    registry, engine = _fresh_registry()
+
+    async def fake_run(session_factory, *, batch_size, after_project, **knobs):
+        return DetectionOutcome(last_project="wedged", skipped=1)
+
+    try:
+        monkeypatch.setattr(dream_jobs, "run_topic_detection", fake_run)
+        await registry.get(TOPIC_DETECTION_JOB_KEY).runner()
+        async with registry.session_factory() as session:
+            assert await dream_jobs._load_topic_cursor(session) == "wedged"
+    finally:
+        await registry.stop_all()
+        await engine.dispose()

@@ -1384,6 +1384,20 @@ DETECTOR_BASENAME = "memory_community_detection"
 DETECTOR_MODULE = f"app.services.{DETECTOR_BASENAME}"
 DETECTOR_PATH = "app/services/memory_community_detection.py"
 
+# The Tier-C umbrella, and the only file besides the detector itself permitted
+# to name it (T2.53). The guard's point is that nothing on a *capture or
+# retrieval* path may reach detection to accelerate a gate; the dream-job
+# family is the sanctioned scheduled caller, exactly as
+# `verification_recompute.py` is for the ladder in
+# `tests/test_verification_ladder.py`'s `_ALLOWED_LADDER_FILES`.
+#
+# Registering it here does not weaken the guard: `dream_jobs.py` is itself
+# covered by `tests/test_dream_jobs.py`'s family scan, which forbids every
+# other module under `app/` from reaching *it*. The two guards compose into
+# "detection is reachable only from the scheduler".
+DETECTOR_UMBRELLA_PATH = "app/services/dream_jobs.py"
+_DETECTOR_EXEMPT = frozenset({DETECTOR_PATH, DETECTOR_UMBRELLA_PATH})
+
 # T2.67 lifted this scan's walk into the shared `_reachability_scan` module
 # so it and `tests/test_dream_jobs.py`'s family scan share one implementation
 # instead of two independently-drifting AST walks. `_docstring_constants` is
@@ -1420,7 +1434,7 @@ def _detector_offenders(paths, backend_root) -> list[str]:
     both the old line-based scan and the first AST rebuild.
     """
     return find_forbidden_reach(
-        paths, backend_root, _DETECTOR_RULES, skip_files=frozenset({DETECTOR_PATH})
+        paths, backend_root, _DETECTOR_RULES, skip_files=_DETECTOR_EXEMPT
     )
 
 
@@ -1428,6 +1442,29 @@ def test_no_app_code_reaches_the_detector():
     """T13. Detection is Tier C: nothing on a capture or retrieval path may
     reach it to 'accelerate' a gate."""
     assert not _detector_offenders(app_sources(BACKEND), BACKEND)
+
+
+def test_the_detector_exemption_holds_exactly_the_module_and_its_umbrella():
+    """The allowlist is two entries and must stay two.
+
+    A guard whose exemption list can grow quietly is a guard that stops
+    meaning anything — this is the same pin `test_verification_ladder.py`
+    keeps on `_ALLOWED_LADDER_FILES`. `dream_jobs.py` joined when T2.53 wired
+    the productive runner; a third entry is a new path to Tier-C work and
+    belongs in review, not in a passing test run.
+    """
+    assert _DETECTOR_EXEMPT == {DETECTOR_PATH, DETECTOR_UMBRELLA_PATH}
+
+
+def test_the_detector_scan_still_catches_a_non_exempt_reacher(tmp_path):
+    """The exemption is per-file, not a hole in the rules: an ordinary module
+    naming the detector is still an offender."""
+    offender = _write(
+        tmp_path,
+        "from app.services.memory_community_detection import run_topic_detection\n",
+    )
+
+    assert _detector_offenders([offender], tmp_path)
 
 
 def _write(tmp_path, body: str):
