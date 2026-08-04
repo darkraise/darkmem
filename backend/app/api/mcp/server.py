@@ -1107,14 +1107,14 @@ async def knowledge_search(
     query: str,
     project: str = "default",
     limit: int = 20,
-    fuse: bool = True,
+    fuse: bool = False,
 ) -> str:
     """
     Args:
         query: Natural language query. Both layers are searched with it.
         project: The project to search (default "default"). Every channel scopes to it.
         limit: Maximum number of composed rows to return (default: 20). A fact and the memories nested under it count as one.
-        fuse: Output shape (default true). True returns one ranked "rows" list; false returns "sections" split by layer (memory / facts / articles), each internally ranked. Both carry every row's layer and verification labels; only the presentation differs.
+        fuse: Output shape (default false). False returns "sections" split by layer (memory / facts / articles), each internally ranked — doc 07 §5's stated default. True returns one ranked "rows" list instead. Both carry every row's layer and verification labels; only the presentation differs.
     """
     from app.schemas.knowledge import (
         KNOWLEDGE_SEARCH_DEFAULT_LIMIT,

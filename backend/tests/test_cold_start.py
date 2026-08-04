@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -39,10 +39,13 @@ from sqlalchemy import text
 from app.api.mcp import server as mcp_server
 from app.main import app
 from app.models.memory import Memory
+from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.schemas.knowledge import knowledge_search_response
 from app.services import facts_channel, hybrid_search
 from app.services import layer_composition as lc
 from app.services.embedder_registry import child_table
+from app.services.fact_provenance import memory_source_ref
 
 pytestmark = pytest.mark.asyncio
 
@@ -276,17 +279,22 @@ async def _rest_body(client, auth_headers, **overrides) -> dict:
     return response.json()
 
 
-async def test_fuse_true_is_the_backward_compatible_default(client, auth_headers, session):
-    """Existing callers of this already-shipped route never named ``fuse``;
-    T2.56 must not move the ground under them, so the default stays the flat
-    shape the route served before this task."""
+async def test_fuse_defaults_to_the_sectioned_shape(client, auth_headers, session):
+    """Doc 07 §5: "the default output is sectioned-by-layer with a fused
+    fallback for token-budgeted consumers" — and again, "the default response
+    returns the results sectioned by layer". Doc 07 §8's envelope table and
+    doc 13 §5.4 both name the same default. A caller that never names
+    ``fuse`` must get that shape, so a future flip back to flat is caught
+    here rather than discovered silently at integration."""
     await _seed_shape_corpus(session)
 
     body = await _rest_body(client, auth_headers)
 
-    assert body["rows"], "the fixture must retrieve something"
-    assert body["sections"] is None
-    assert body["envelope"]["fused"] is True
+    assert body["rows"] is None
+    assert body["sections"]["memory"] or body["sections"]["facts"], (
+        "the fixture must retrieve something"
+    )
+    assert body["envelope"]["fused"] is False
 
 
 async def test_fuse_false_returns_the_sectioned_shape(client, auth_headers, session):
@@ -324,20 +332,137 @@ async def test_the_two_shapes_carry_the_same_rows_merely_partitioned(client, aut
     assert fused_ids == sectioned_ids
 
 
+async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
+    session, monkeypatch
+):
+    """Doc 07 §5: "each internally ranked"; the ``KnowledgeSearchSections``
+    docstring: "Partitioning never reorders". Neither was enforced anywhere:
+    the set-equality test above cannot see a reversal (it compares sets, not
+    sequences), and every fixture in this module seeds at most one row per
+    populated bucket, so even an order-sensitive assertion over them would
+    hold vacuously. This fixture stubs the memory channel with three rows
+    whose composed order (fixed by ``channel_rank``, i.e. the order the
+    channel served them in) is neither ascending nor descending in id order
+    — 3, 1, 2 — so a bucket-local reorder is caught on its own terms rather
+    than by accidentally matching a sort-by-id artifact.
+    """
+    memory_ids = [str(UUID(int=n)) for n in (3, 1, 2)]
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[
+            {
+                "memory_id": mid,
+                "payload": {"content": f"memory {mid}"},
+                "project": PROJECT,
+                "status": "active",
+                "rrf_score": 0.5,
+            }
+            for mid in memory_ids
+        ])
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeShapeLLM(), session).search(
+        "q", project=PROJECT, limit=20,
+    )
+
+    fused = knowledge_search_response(result, fuse=True).model_dump()
+    composed_order = [row["id"] for row in fused["rows"]]
+    assert composed_order == memory_ids, (
+        "the fixture's composed order must be exactly what channel_rank set, "
+        "or this test proves nothing"
+    )
+
+    sectioned = knowledge_search_response(result, fuse=False).model_dump()
+    assert [row["id"] for row in sectioned["sections"]["memory"]] == composed_order
+
+
+async def test_a_grouped_rows_nesting_survives_sectioning(session, monkeypatch):
+    """F7: the ``KnowledgeSearchSections`` docstring claims "a row nested
+    under a fact stays nested wherever its enclosing fact's section lands",
+    and nothing fed the shipped ``_sectioned`` a grouped row before this —
+    T2.55's own order test proved the same claim only against a local
+    simulation helper, never the real serialiser. The memory here is fully
+    consumed as evidence for the one fact, so it must not also be listed
+    standalone in the memory section (the same grouping ``compose()``
+    already gives the fused shape); sectioning must carry that consumption
+    through rather than re-surface it as a bucket assignment.
+    """
+    memory_id = str(uuid4())
+    repo = KnowledgeTripleRepository(session)
+    fact = await repo.insert_open(
+        triple_key=f"t256-nest-{uuid4()}",
+        subject_name="pgbouncer",
+        object_name="homelab",
+        rel_type="DEPLOYED_ON",
+        fact="pgbouncer connection pooling runs on the homelab",
+        reference_time=AT,
+        project=PROJECT,
+    )
+    fact_id = str(fact["id"])
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id, source_kind="memory",
+        source_ref=memory_source_ref(memory_id), origin_key="origin-nest",
+    )
+    await session.flush()
+
+    async def _memory(self, *args, **kwargs):
+        return hybrid_search.ChannelTrace(results=[{
+            "memory_id": memory_id,
+            "payload": {"content": "pgbouncer connection pooling runs on the homelab"},
+            "project": PROJECT,
+            "status": "active",
+            "rrf_score": 0.5,
+        }])
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[{
+            "fact_id": fact_id,
+            "id": fact_id,
+            "fact": "pgbouncer connection pooling runs on the homelab",
+            "subject_name": "pgbouncer",
+            "rel_type": "DEPLOYED_ON",
+            "object_name": "homelab",
+            "project": PROJECT,
+            "verification_status": "candidate",
+            "review_state": None,
+            "rrf_score": 0.5,
+        }])
+
+    monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    result = await lc.LayerCompositionService(_FakeShapeLLM(), session).search(
+        "q", project=PROJECT, limit=20,
+    )
+    sectioned = knowledge_search_response(result, fuse=False).model_dump()
+
+    assert sectioned["sections"]["memory"] == []
+    facts_bucket = sectioned["sections"]["facts"]
+    assert len(facts_bucket) == 1
+    assert facts_bucket[0]["id"] == fact_id
+    assert [nested["id"] for nested in facts_bucket[0]["supported_by"]] == [memory_id]
+
+
 async def test_both_doors_offer_fuse_with_the_same_default(session):
     """Invariant 17: a shape offered on one door and not its twin is a
-    capability asymmetry wearing a parameter's clothes."""
+    capability asymmetry wearing a parameter's clothes — including the
+    default itself, not just the parameter's presence."""
     await _seed_shape_corpus(session)
 
     default = json.loads(await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT))
-    sectioned = json.loads(
-        await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT, fuse=False)
+    fused = json.loads(
+        await mcp_server.knowledge_search(query=SHAPE_QUERY, project=SHAPE_PROJECT, fuse=True)
     )
 
-    assert default["rows"]
-    assert default["sections"] is None
-    assert sectioned["rows"] is None
-    assert sectioned["sections"]["memory"] or sectioned["sections"]["facts"]
+    assert default["rows"] is None
+    assert default["sections"]["memory"] or default["sections"]["facts"]
+    assert fused["rows"]
+    assert fused["sections"] is None
 
 
 # ── Done-when 3: the label states plainly it is unverified, on the wire ──
@@ -346,7 +471,7 @@ async def test_both_doors_offer_fuse_with_the_same_default(session):
 async def test_the_wire_label_states_plainly_the_row_is_unverified(client, auth_headers, session):
     await _seed_shape_corpus(session)
 
-    body = await _rest_body(client, auth_headers)
+    body = await _rest_body(client, auth_headers, fuse=True)
 
     memory_row = next(row for row in body["rows"] if row["id_kind"] == "memory")
     fact_row = next(row for row in body["rows"] if row["id_kind"] == "fact")
@@ -360,7 +485,11 @@ async def test_a_different_project_is_a_genuine_empty_not_a_cold_start(client, a
     the other project's candidates and not a fabricated placeholder."""
     await _seed_shape_corpus(session)
 
-    body = await _rest_body(client, auth_headers, project="t2-56-nothing-here")
+    sectioned = await _rest_body(client, auth_headers, project="t2-56-nothing-here")
+    assert sectioned["rows"] is None
+    assert sectioned["sections"] == {"memory": [], "facts": [], "articles": []}
 
-    assert body["rows"] == []
-    assert body["envelope"]["partial"] is False
+    fused = await _rest_body(client, auth_headers, project="t2-56-nothing-here", fuse=True)
+    assert fused["rows"] == []
+    assert fused["envelope"]["partial"] is False
+    assert sectioned["envelope"]["partial"] is False

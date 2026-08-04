@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.facts import FactBadge
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
@@ -123,12 +123,14 @@ class KnowledgeSearchRequest(BaseModel):
     ``fuse`` (T2.56) is doc 07 §5's channel-topology choice, not a ranking one:
     both shapes compose the identical order, only the presentation differs, so
     it never reaches ``LayerCompositionService.search`` and cannot move a row.
-    It defaults ``True`` — the flat, single-list shape this route already
-    served before T2.56 — so an existing caller that never names ``fuse`` sees
-    the identical document it always has; the sectioned shape (doc 07 §5's
-    stated default for a human-facing panel, doc 13 §5.4) is reached with
-    ``fuse=false``. Present on both doors or on neither (invariant 17): the
-    MCP twin's ``fuse`` argument carries the same default for the same reason.
+    It defaults ``False`` — the sectioned-by-layer shape doc 07 §5 states as
+    the default output ("the default output is sectioned-by-layer with a
+    fused fallback for token-budgeted consumers", §5's channel-topology
+    paragraph, doc 07 §8's envelope table, doc 13 §5.4) — so a caller that
+    never names ``fuse`` gets the document the corpus records as settled. The
+    flat shape is reached with ``fuse=true``. Present on both doors or on
+    neither (invariant 17): the MCP twin's ``fuse`` argument carries the same
+    default for the same reason.
     """
 
     query: str = Field(min_length=1)
@@ -138,7 +140,7 @@ class KnowledgeSearchRequest(BaseModel):
         ge=1,
         le=KNOWLEDGE_SEARCH_MAX_LIMIT,
     )
-    fuse: bool = True
+    fuse: bool = False
 
 
 class KnowledgeSearchUnavailable(BaseModel):
@@ -209,7 +211,11 @@ class KnowledgeSearchResponse(BaseModel):
     neither — a caller that reads the wrong one for the requested shape finds
     ``None`` rather than a plausible-looking empty list. ``envelope.fused``
     names which shape was served, so a reader need not infer it from which
-    key came back non-null.
+    key came back non-null. The XOR is enforced below rather than left to
+    :func:`knowledge_search_response`'s one constructor alone: the OpenAPI
+    document still shows two independently nullable fields, so an SDK
+    generator reading it — doc 15's, eventually — has no way to derive the
+    exclusivity from the schema itself without this.
 
     The envelope is not decoration otherwise: it carries which channels ran,
     which failed, and doc 07 §8's unconditional ``by_context_conflict`` tally,
@@ -219,6 +225,15 @@ class KnowledgeSearchResponse(BaseModel):
     rows: list[ComposedRowResponse] | None = None
     sections: KnowledgeSearchSections | None = None
     envelope: RetrievalEnvelope
+
+    @model_validator(mode="after")
+    def _exactly_one_shape(self) -> "KnowledgeSearchResponse":
+        if (self.rows is None) == (self.sections is None):
+            raise ValueError(
+                "exactly one of rows/sections must be set (the fuse choice "
+                "the caller made), never both and never neither"
+            )
+        return self
 
 
 def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:

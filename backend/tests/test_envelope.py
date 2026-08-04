@@ -110,6 +110,11 @@ async def test_rest_paginated_shape_with_and_without_trace(client, session, auth
         "schema_version", "partial", "excluded", "page", "context",
         "query", "channels", "reranked", "weights", "fused",
     }
+    # F4: memory search offers no fuse/sectioned choice at all, so `fused`
+    # must read as "no shape choice was on offer" (None) rather than the
+    # `False` that would misdescribe an unrelated door as having served
+    # the sectioned shape it never offered.
+    assert traced.json()["envelope"]["fused"] is None
 
 
 async def test_mcp_capture_ack_shape(mcp_http_client):

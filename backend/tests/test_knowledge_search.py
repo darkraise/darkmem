@@ -46,6 +46,7 @@ obliges re-measuring this file rather than trusting it.
 from __future__ import annotations
 
 import ast
+import inspect
 import json
 import math
 import pathlib
@@ -67,6 +68,7 @@ from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
 from app.schemas import knowledge as knowledge_schemas
 from app.schemas.knowledge import KNOWLEDGE_SEARCH_MAX_LIMIT
+from app.schemas.retrieval_trace import RetrievalEnvelope
 from app.services.embedder_registry import child_table
 from app.services.layer_composition import (
     CompositionUnavailable,
@@ -250,10 +252,10 @@ async def _seed_fact(session, *, sourced_by: str | None = None) -> str:
 # ── the two doors ────────────────────────────────────────────────────
 
 
-async def _rest(client, auth_headers, *, limit: int = 20, project: str = PROJECT):
+async def _rest(client, auth_headers, *, limit: int = 20, project: str = PROJECT, fuse: bool = True):
     return await client.post(
         ROUTE,
-        json={"query": QUERY, "project": project, "limit": limit},
+        json={"query": QUERY, "project": project, "limit": limit, "fuse": fuse},
         headers=auth_headers,
     )
 
@@ -264,9 +266,9 @@ async def _rest_body(client, auth_headers, **kwargs) -> dict:
     return response.json()
 
 
-async def _mcp_body(*, limit: int = 20, project: str = PROJECT) -> dict:
+async def _mcp_body(*, limit: int = 20, project: str = PROJECT, fuse: bool = True) -> dict:
     return json.loads(
-        await mcp_server.knowledge_search(query=QUERY, project=project, limit=limit)
+        await mcp_server.knowledge_search(query=QUERY, project=project, limit=limit, fuse=fuse)
     )
 
 
@@ -491,6 +493,45 @@ async def test_the_doors_rank_alike_past_the_shared_fusion_depth(
     # keyword-only and further down. Pinning the position is what makes a
     # depth divergence a failure rather than a coincidence.
     assert 0 < rest.index(f"memory:{target}") < len(rest) - 1
+
+
+def test_rows_and_sections_are_mutually_exclusive_at_the_schema_level():
+    """The tri-state ``knowledge_search_response`` produces (rows XOR
+    sections) was structurally enforced by that one constructor alone, but
+    the OpenAPI document shows two independently nullable fields — so an SDK
+    generator has no way to derive the exclusivity from the schema itself.
+    A ``model_validator`` makes both-set and neither-set unconstructible
+    regardless of which code path builds the response."""
+    from pydantic import ValidationError
+
+    envelope = RetrievalEnvelope(query="q")
+
+    knowledge_schemas.KnowledgeSearchResponse(rows=[], sections=None, envelope=envelope)
+    knowledge_schemas.KnowledgeSearchResponse(
+        rows=None, sections=knowledge_schemas.KnowledgeSearchSections(), envelope=envelope
+    )
+
+    with pytest.raises(ValidationError):
+        knowledge_schemas.KnowledgeSearchResponse(
+            rows=[], sections=knowledge_schemas.KnowledgeSearchSections(), envelope=envelope
+        )
+    with pytest.raises(ValidationError):
+        knowledge_schemas.KnowledgeSearchResponse(rows=None, sections=None, envelope=envelope)
+
+
+def test_fuse_is_not_a_parameter_of_the_composition_search():
+    """T2.56's ``fuse`` chooses presentation, not ranking, and the module
+    docstrings say it "never reaches ``LayerCompositionService.search``" —
+    but nothing enforced that. The set-visible parity tests above would catch
+    a caller that let ``fuse`` change *which* rows are composed; they cannot
+    catch one that let it change only their *order*, because both shapes'
+    row sets are asserted equal by set, not by sequence. A signature
+    assertion closes the gap structurally rather than behaviourally: if
+    ``fuse`` cannot be a keyword ``search`` accepts, no call site can thread
+    it into the composition at all, regardless of what that call site does
+    with it. Copies ``test_neither_door_constructs_the_composition_with_a_reranker``'s
+    structural-guard idiom for the same class of purity property."""
+    assert "fuse" not in inspect.signature(LayerCompositionService.search).parameters
 
 
 async def test_neither_door_constructs_the_composition_with_a_reranker(session):

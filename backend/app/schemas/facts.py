@@ -76,6 +76,10 @@ class FactListItem(BaseModel):
     verification_status: str | None
     lifecycle: str | None
     badge: FactBadge | None
+    # Doc 07 §5's cold-start label (T2.56), from the same ``row_labels`` the
+    # composed read's wire carries it through — this is the facts list's own
+    # door onto the tier, not a second adjudication of it.
+    unverified: bool
     confidence: float | None
     review_state: str | None
     demotion_pending_since: datetime | None = None

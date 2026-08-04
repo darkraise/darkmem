@@ -189,6 +189,25 @@ async def test_every_rung_is_listed_and_labelled_none_filtered_by_default(
     assert all(item["badge"] is not None for item in body["items"])
 
 
+async def test_the_list_carries_the_unverified_label(client, auth_headers, session):
+    """T2.56's cold-start label, at this door too (F9): ``row_labels``
+    produces it for every fact row, but ``FactListItem`` had no field for
+    it, so FastAPI's ``response_model`` silently dropped it here even
+    though ``knowledge_search``'s composed read already carried it."""
+    candidate = await _fact(session, obj="host-candidate", status="candidate")
+    await _source(session, candidate, origin="session-candidate")
+    confirmed = await _fact(session, obj="host-confirmed", status="confirmed")
+    await _source(session, confirmed, origin="session-confirmed")
+    await session.flush()
+
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    by_id = {item["id"]: item for item in body["items"]}
+    assert by_id[str(candidate)]["unverified"] is True
+    assert by_id[str(confirmed)]["unverified"] is False
+
+
 async def test_a_queued_fact_is_listed_like_any_other(client, auth_headers, session):
     queued = await _fact(session, obj="queued", status="disputed", review_state="open")
     await _source(session, queued, origin="session-a")
