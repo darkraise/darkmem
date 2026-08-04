@@ -37,7 +37,10 @@ PLAYWRIGHT_PORT = 8000
 
 def main() -> int:
     password = secrets.token_urlsafe(16)
-    handle = stack.boot(port=PLAYWRIGHT_PORT, password=password)
+    # T2.90: seeds one real Layer-2 fact (via the real fact_lift, over
+    # hand-seeded Layer-1 rows — see e2e/seed_facts.py) so
+    # knowledge-real-mode.spec.ts has something to find on the Facts tab.
+    handle = stack.boot(port=PLAYWRIGHT_PORT, password=password, seed_facts=True)
     try:
         env = {
             **os.environ,
@@ -46,6 +49,9 @@ def main() -> int:
             "E2E_ADMIN_PASSWORD": password,
             "VITE_DEMO": "0",
         }
+        if handle.seeded_fact is not None:
+            env["E2E_SEEDED_FACT_SUBJECT"] = handle.seeded_fact.subject_name
+            env["E2E_SEEDED_FACT_TEXT"] = handle.seeded_fact.fact_text
         result = subprocess.run(
             ["npm", "run", "test:e2e"], cwd=str(FRONTEND_DIR), env=env,
         )
