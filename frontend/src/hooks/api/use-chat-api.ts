@@ -1,6 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-import type { MemoryStatus } from "./use-memory-api"
+import type {
+  ChatContextFact,
+  ChatContextRow,
+  ChatRetrievalEnvelope,
+} from "@/features/chat/lib/retrieval"
 
 export interface ChatConversation {
   id: string
@@ -16,18 +20,13 @@ export interface ChatMessage {
   role: "user" | "assistant"
   content: string
   context: {
-    memories?: {
-      id: string
-      score: number
-      content?: string
-      source?: string
-      tags?: string[]
-      created_at?: string
-      // scope_labels already puts both on the persisted wire (T1.60 §5) —
-      // a type-completeness fix, not a wire change.
-      project?: string
-      status?: MemoryStatus
-    }[]
+    // The persisted snapshot carries the same rows the live `sources` event
+    // did, trimmed, plus the envelope the turn answered under: a panel
+    // rendering history must be able to say the same things about it as the
+    // panel that watched it stream.
+    memories?: ChatContextRow[]
+    facts?: ChatContextFact[]
+    envelope?: ChatRetrievalEnvelope | null
     entities?: { id: string; name: string; entity_type?: string }[]
   } | null
   created_at: string
