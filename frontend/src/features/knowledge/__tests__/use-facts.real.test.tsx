@@ -154,7 +154,7 @@ describe("useFactRows (DEMO off — real /knowledge/facts)", () => {
     expect(result.current.rows[0]!.verification_status).toBe("candidate")
   })
 
-  it("sends the filters as server predicates", async () => {
+  it("sends the filters as server predicates, on the path apiFetch expects", async () => {
     vi.mocked(apiFetch).mockResolvedValue({
       items: [],
       total: 0,
@@ -173,10 +173,15 @@ describe("useFactRows (DEMO off — real /knowledge/facts)", () => {
     )
     await waitFor(() => expect(apiFetch).toHaveBeenCalled())
 
+    // The whole path, not three substrings of it. `apiFetch` prepends
+    // `/api/v1` itself, so a caller that spells the prefix produces
+    // `/api/v1/api/v1/...` and 404s on every request — invisible to any
+    // assertion that only looks for the query parameters it expects.
     const url = vi.mocked(apiFetch).mock.calls[0]![0] as string
-    expect(url).toContain("project=darkmem")
-    expect(url).toContain("rel_type=USES")
-    expect(url).toContain("verification_status=disputed")
+    expect(url).toBe(
+      "/knowledge/facts?project=darkmem&rel_type=USES" +
+        "&verification_status=disputed&limit=25&offset=0",
+    )
   })
 
   it("reports a failed read as an error, never as an empty vault", async () => {

@@ -104,8 +104,10 @@ export function useFacts(
   return useQuery<FactListResponse>({
     queryKey: ["knowledge", "facts", query],
     queryFn: () =>
+      // No `/api/v1` here: `apiFetch` prepends the base itself, and a path
+      // that spells it resolves to `/api/v1/api/v1/...` — every request 404s.
       apiFetch<FactListResponse>(
-        `/api/v1/knowledge/facts${query ? `?${query}` : ""}`,
+        `/knowledge/facts${query ? `?${query}` : ""}`,
       ),
     enabled: options?.enabled ?? true,
   })
