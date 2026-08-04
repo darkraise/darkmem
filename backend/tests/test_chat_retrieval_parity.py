@@ -343,6 +343,7 @@ async def test_a_turn_carries_the_envelope_and_its_exclusion_counts(session):
     # ran", which is the case a reader most needs to tell apart.
     assert envelope["excluded"]["by_context_conflict"] == 0
     assert envelope["excluded"]["by_result_limit"] == 0
+    assert envelope["excluded"]["not_found"] == 0
 
 
 async def test_every_served_row_carries_the_arm_scores_that_ranked_it(session):

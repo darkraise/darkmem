@@ -394,11 +394,12 @@ class ChatService:
                 "project": row.labels.get("project"),
             })
 
-        envelope = composed.envelope
-        if not_found:
-            envelope = envelope.model_copy(
-                update={"excluded": {**envelope.excluded, "not_found": not_found}}
-            )
+        # Reported at zero like the composition's own two tallies: a count that
+        # appears only once it is non-zero cannot be told from a check that
+        # never ran, which is the reading a reader most needs to rule out.
+        envelope = composed.envelope.model_copy(
+            update={"excluded": {**composed.envelope.excluded, "not_found": not_found}}
+        )
         return memories, facts, envelope.model_dump(mode="json")
 
     @staticmethod
