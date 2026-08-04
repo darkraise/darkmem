@@ -388,6 +388,75 @@ async def test_a_wide_turn_says_the_fact_channel_was_not_asked(session):
     assert retrieval["envelope"]["partial"] is False
 
 
+async def test_a_row_that_vanishes_between_ranking_and_reading_is_counted(session):
+    """The composition ordered it, so its absence from the answer is this
+    request's own exclusion to declare. Uncounted, a row deleted mid-request
+    would leave a context one row shorter than the ranking that built it, with
+    nothing anywhere saying so."""
+    await _corpus(session)
+    ghost = str(uuid.uuid4())
+
+    async def _with_ghost(self, query, **kwargs):
+        from app.services import hybrid_search
+
+        real = await original(self, query, **kwargs)
+        return hybrid_search.ChannelTrace(
+            results=[*real.results, {
+                "memory_id": ghost, "score": 0.1, "rrf_score": 0.001,
+                "payload": {"content": "gone"}, "project": PROJECT, "status": "active",
+            }],
+            channel_scores=real.channel_scores,
+        )
+
+    original = HybridSearchService.search_with_trace
+    HybridSearchService.search_with_trace = _with_ghost
+    try:
+        svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+        retrieval = await svc._retrieve(QUERY, {"project": PROJECT})
+    finally:
+        HybridSearchService.search_with_trace = original
+
+    assert ghost not in {row["id"] for row in retrieval["memories"]}
+    assert retrieval["envelope"]["excluded"]["not_found"] == 1
+
+
+async def test_a_fact_reaches_the_prompt_with_its_claim_verbatim(session, monkeypatch):
+    """A layer that is retrieved and then dropped from the prompt is worse than
+    one never asked for: the panel would show it as context this turn used
+    while the model never saw it. The claim rides through as the producer built
+    it — a paraphrase inside a prompt is a second, softer claim."""
+    await _corpus(session)
+    fact_id = str(uuid.uuid4())
+
+    from app.services import facts_channel
+
+    async def _facts(self, *args, **kwargs):
+        return facts_channel.FactChannelTrace(results=[{
+            "fact_id": fact_id, "id": fact_id,
+            "fact": "pgbouncer is the pooler in use",
+            "subject_name": "pgbouncer", "rel_type": "DEPLOYED_ON",
+            "object_name": "homelab", "project": PROJECT,
+            "verification_status": "corroborated", "review_state": None,
+            "rrf_score": 0.1,
+        }])
+
+    monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
+
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+    retrieval = await svc._retrieve(QUERY, {"project": PROJECT})
+    served = retrieval["facts"]
+    assert [row["id"] for row in served] == [fact_id]
+    claim = served[0]["badge"]["claim"]
+    assert claim
+
+    conversation = await svc.create_conversation()
+    messages = await svc._build_prompt(conversation.id, QUERY, retrieval)
+    system = messages[0]["content"]
+    assert "<verified_facts>" in system
+    assert "pgbouncer is the pooler in use" in system
+    assert claim in system
+
+
 async def test_a_one_sided_channel_outage_reaches_the_turn_as_partial(session):
     """Invariant 14 through chat's own door: a degraded turn must be readable
     as degraded, or a short context reads as a small corpus."""

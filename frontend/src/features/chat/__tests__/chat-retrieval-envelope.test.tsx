@@ -67,9 +67,10 @@ describe("the envelope a converged turn carries", () => {
   it("turns the non-zero exclusion counts into copy that names the reason", () => {
     const items = exclusionItems(ENVELOPE)
     expect(items).toHaveLength(1)
-    expect(items[0].count).toBe(2)
-    expect(items[0].tag).toBe("by_context_conflict")
-    expect(String(items[0].reason)).toContain("context declared for this turn")
+    const item = items[0]!
+    expect(item.count).toBe(2)
+    expect(item.tag).toBe("by_context_conflict")
+    expect(String(item.reason)).toContain("context declared for this turn")
   })
 
   it("builds no trace for a row that carries no breakdown", () => {
