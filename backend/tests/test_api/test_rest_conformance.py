@@ -147,6 +147,11 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
     ("GET", "/api/v1/knowledge/facts"): 200,
     ("GET", "/api/v1/knowledge/facts/{fact_id}"): 200,
+    # A human adjudication verb, the same shape as review-queue's reject: 204,
+    # so the verb serves no memory-derived content and never becomes a content
+    # surface. 201 would claim a resource was minted at a new location and
+    # oblige a Location header pointing at one.
+    ("POST", "/api/v1/knowledge/facts/{fact_id}/ratify"): 204,
     ("GET", "/api/v1/knowledge/overview"): 200,
     ("GET", "/api/v1/review-queue/articles"): 200,
     ("GET", "/api/v1/review-queue/counts"): 200,

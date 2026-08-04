@@ -105,13 +105,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # ─────────────────────── the closed vocabularies this runner knows ───────────────────────
 
-# app.services.verification_ladder.Outcome, restated here rather than
-# imported: this module must keep working (and keep *validating*) even if
-# the app package is unavailable to a bare read-only probe process, and a
-# closed vocabulary a metrics runner checks against should be spelled where
-# the check lives, not silently inherited from a type alias that could widen
-# without this file noticing.
-KNOWN_OUTCOMES = frozenset({"promote", "demote", "hold", "dispute", "recover"})
+# The one outcome that is NOT an `Outcome` of the ladder: T2.05's
+# human ratification journals it from
+# `KnowledgeTripleRepository.ratify`, which is a different writer with a
+# different decision behind it. It is listed so the row can be *bucketed*
+# rather than raising, and it is deliberately inert in every metric below:
+#
+#   - The promotion-rate denominator filters `outcome IN ('promote', 'dispute')`
+#     (plus T2.60's blocked hold), so a ratify never enters it. That is the
+#     correct arithmetic, not an oversight -- G-C measures the machine ladder's
+#     promotion rate, and counting a human's imprimatur in it would report the
+#     reviewer's diligence as the machine's accuracy.
+#   - The false-promotion audit anchors on `after.verification_status =
+#     'corroborated'`; a ratify's after-state is `confirmed`, so it anchors
+#     nothing.
+#   - A ratify payload carries no `origin_count`/`required_n` (there is no bar
+#     to meet), so the `>=` predicate is NULL for it and filters it out even
+#     before the outcome test.
+RATIFY_OUTCOME = "ratify"
+
+# The five ladder outcomes are app.services.verification_ladder.Outcome,
+# restated here rather than imported: this module must keep working (and keep
+# *validating*) even if the app package is unavailable to a bare read-only
+# probe process, and a closed vocabulary a metrics runner checks against should
+# be spelled where the check lives, not silently inherited from a type alias
+# that could widen without this file noticing.
+KNOWN_OUTCOMES = frozenset(
+    {"promote", "demote", "hold", "dispute", "recover", RATIFY_OUTCOME}
+)
 
 # app.repositories.fact_sources.OriginProfile.gate_fired_for's three values.
 KNOWN_GATE_FIRED = frozenset({"diversity", "time_gap", "none"})

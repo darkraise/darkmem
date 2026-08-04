@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.services.human_adjudication import NOTE_MAX_LENGTH, SHOWN_MAX_LENGTH
 
 
 class FactBadge(BaseModel):
@@ -95,3 +97,21 @@ class FactDetailResponse(FactListItem):
     learned_in: list[str] | None
     source_file: str | None
     reference_time: datetime | None
+
+
+class FactRatifyRequest(BaseModel):
+    """Doc 08 §4.4's "what-was-shown", plus the reviewer's optional note.
+
+    ``shown`` is the claim sentence the ratifier had in front of them when they
+    vouched. It is recorded rather than derived because the point of keeping it
+    is to know what the human actually saw — a server-side recomputation would
+    reconstruct today's claim, not the one they read, and the two differ the
+    moment provenance changes.
+
+    Who ratified and when are not fields here: the actor comes from the
+    authenticated session and the timestamp from the row's own ``created_at``,
+    so neither is a value a caller can assert about itself.
+    """
+
+    shown: str | None = Field(default=None, max_length=SHOWN_MAX_LENGTH)
+    note: str | None = Field(default=None, max_length=NOTE_MAX_LENGTH)
