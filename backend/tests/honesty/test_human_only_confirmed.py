@@ -12,15 +12,24 @@ Two arms, because the property has two halves that fail independently:
   overwhelming pile of agreement and never crosses. Asserting this through the
   real applier is what makes it a claim about the shipped promotion path rather
   than about a constant.
-- **Structural.** Exactly one method in the tree writes the literal, and it
-  cannot execute without a ``human``-kind ``fact_sources`` row. A source scan
-  holds the "exactly one" half, because a second writer added later would pass
-  every behavioural test in this file — it would simply be a path this file
-  never drove.
+- **Structural.** Exactly two scopes in the tree write ``verification_status``
+  at all, and the pair is the guarantee: one refuses ``confirmed`` outright,
+  the other cannot execute without a ``human``-kind ``fact_sources`` row. A
+  source scan holds the "exactly two" half, because a third writer added later
+  would pass every behavioural test in this file — it would simply be a path
+  this file never drove.
+
+  *The scan asks which scopes write the column at all, rather than which
+  mention the literal.* The narrower question was the first version and a Fable
+  review defeated it with six of seven realistic writer shapes — most sharply,
+  assignment through the exported ``CONFIRMED`` constant, which the literal
+  fast-path skipped entirely. Ignoring the value cannot be dodged by disguising
+  the value.
 """
 from __future__ import annotations
 
 import ast
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -44,10 +53,15 @@ CORROBORATIONS = 25
 _BACKEND = Path(__file__).resolve().parents[2]
 _APP = _BACKEND / "app"
 
-# The one method permitted to write the literal, as ``file::qualname``. A new
-# entry here is a new way to reach `confirmed` and must be argued in review,
-# not added to make this test pass.
-_PERMITTED_WRITER = "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.ratify"
+# The scopes permitted to write the verification axis at all. Two, and the
+# pair is the guarantee: `set_verification_status` refuses `confirmed` outright
+# (its own ValueError, tested), and `ratify` cannot execute without a
+# `human`-kind source row (its UPDATE's own WHERE clause). A third writer
+# inherits neither and must argue itself onto this list in review.
+_PERMITTED_WRITERS = {
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.ratify",
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.set_verification_status",
+}
 
 
 async def _fact(session, *, subject: str, obj: str) -> str:
@@ -182,95 +196,235 @@ async def test_a_human_source_written_by_hand_is_not_a_machine_path(session):
 # ─────────────────────────── the structural arm ───────────────────────────
 
 
-def _confirmed_writers(root: Path) -> list[str]:
-    """Every function under ``root`` whose body writes the literal 'confirmed'
-    into ``verification_status``.
+_COLUMN = "verification_status"
 
-    Matched on the SQL/text level rather than by import graph, because the
-    write is a raw statement: a new module could reach the column without
-    importing anything this scan could follow. The predicate is deliberately
-    broad — an assignment of the literal anywhere near the column name — so a
-    second writer trips it and has to argue itself onto the allowlist.
+# The column bound by a single `=`, with the value deliberately unexamined.
+# Whitespace is normalised first so a statement split across lines reads as one.
+_SQL_BINDING = re.compile(rf"{_COLUMN}\s*=\s*(?!=)", re.IGNORECASE)
+
+
+def _sql_assigns_column(text: str) -> bool:
+    """Whether a SQL fragment *writes* the column, as opposed to filtering on it.
+
+    SQL spells equality with a single `=`, so `WHERE verification_status =
+    'confirmed'` and `SET verification_status = 'confirmed'` are one character
+    apart and mean opposite things. The clause the binding sits in decides.
+
+    The fragment is often not a whole statement: the shipped writer builds its
+    SET list separately (`"verification_status = CAST(:status AS text)"`) and
+    interpolates it into the `UPDATE ... SET {…}` later, so a rule that
+    *required* a visible `SET` would miss the one real writer in the tree. A
+    bare binding with no clause keyword at all therefore counts as a write —
+    error direction chosen so an unrecognised shape lands on the allowlist for
+    a human to look at, rather than passing silently.
+    """
+    normalised = " ".join(text.split())
+    for match in _SQL_BINDING.finditer(normalised):
+        prefix = f" {normalised[:match.start()].lower()} "
+        if prefix.rfind(" where ") > prefix.rfind(" set "):
+            continue  # a filter, not an assignment
+        return True
+    return False
+
+
+def _confirmed_writers(root: Path) -> list[str]:
+    """Every scope under ``root`` that writes ``verification_status`` **at all**.
+
+    *(Rewritten after the Fable review, which defeated the previous version
+    with six of seven realistic second-writer shapes.)*
+
+    The old scan looked for the literal ``'confirmed'`` on the same line as the
+    column, and was evaded by: a multi-line SQL statement (the literal lands on
+    the line after the ``=``), assignment through the exported ``CONFIRMED``
+    constant, a bound parameter named anything other than ``:confirmed``,
+    ``setattr``, module-level code, and an f-string. The first of those is the
+    worst, because ``knowledge_triples`` *exports* ``CONFIRMED`` — so the most
+    idiomatic future writer was precisely the invisible one, and the self-test
+    that proved the guard "could fail" planted the single shape inside its own
+    blind spot.
+
+    So the predicate no longer reasons about the *value*. It answers a
+    stronger, simpler question — **which scopes write this column at all** —
+    which cannot be dodged by disguising the value, and which is the property
+    actually worth holding: two functions may write the axis, one of them
+    refuses ``confirmed`` outright and the other demands a human source row.
+
+    Three write shapes are recognised, all AST-based:
+
+    * a string constant (including f-strings and implicit concatenation) whose
+      normalised text assigns the column — the raw-SQL path;
+    * an attribute assignment ``obj.verification_status = ...`` — the ORM path;
+    * ``setattr(obj, "verification_status", ...)`` — the dynamic path.
+
+    Scope is the enclosing function's qualname, or ``<module>`` for top-level
+    code, which the old ``_functions`` walk skipped entirely.
     """
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
         source = path.read_text(encoding="utf-8")
-        if CONFIRMED not in source:
+        # No fast-path on the literal: the whole point is that a writer need
+        # never mention it. Only the column name can be relied on.
+        if _COLUMN not in source:
             continue
         try:
             rel = path.relative_to(_BACKEND).as_posix()
         except ValueError:
-            # The two self-tests below drive this scan over a tmp_path tree,
-            # which is not under the backend root.
+            # The self-tests below drive this scan over a tmp_path tree, which
+            # is not under the backend root.
             rel = path.name
         tree = ast.parse(source, filename=str(path))
-        for node, qualname in _functions(tree):
-            body = ast.get_source_segment(source, node) or ""
-            if "verification_status" not in body:
-                continue
-            if not _assigns_confirmed(body):
-                continue
-            offenders.append(f"{rel}::{qualname}")
-    return offenders
+        for scope, qualname in _scopes(tree):
+            if _writes_column(scope):
+                offenders.append(f"{rel}::{qualname}")
+    return sorted(set(offenders))
 
 
-def _functions(tree: ast.AST, prefix: str = ""):
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield node, f"{prefix}{node.name}"
-        elif isinstance(node, ast.ClassDef):
-            yield from _functions(node, prefix=f"{prefix}{node.name}.")
+def _scopes(tree: ast.Module):
+    """Every function (nested and method) plus the module's own top level.
 
-
-def _assigns_confirmed(body: str) -> bool:
-    """A write, not a comparison or a docstring mention.
-
-    ``verification_status = 'confirmed'`` and ``verification_status =
-    CAST(:confirmed ...)`` are writes; ``!= 'confirmed'``, ``== 'confirmed'``
-    and ``'confirmed'`` inside a tuple of readable states are not.
+    The module scope is yielded with its function bodies removed, so a writer
+    at import time is attributed to ``<module>`` rather than being invisible.
     """
-    for line in body.splitlines():
-        stripped = line.strip()
-        if "verification_status" not in stripped:
-            continue
-        head, _, tail = stripped.partition("verification_status")
-        if not tail.lstrip().startswith("="):
-            continue
-        if tail.lstrip().startswith("=="):
-            continue
-        if head.rstrip().endswith(("!", "<", ">")):
-            continue
-        assigned = tail.lstrip()[1:]
-        if CONFIRMED in assigned or ":confirmed" in assigned:
+    functions: list[tuple[ast.AST, str]] = []
+
+    def walk(node: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                functions.append((child, f"{prefix}{child.name}"))
+                walk(child, f"{prefix}{child.name}.")
+            elif isinstance(child, ast.ClassDef):
+                walk(child, f"{prefix}{child.name}.")
+
+    walk(tree, "")
+    yield from functions
+
+    module_only = ast.Module(
+        body=[n for n in tree.body
+              if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))],
+        type_ignores=[],
+    )
+    yield module_only, "<module>"
+
+
+def _writes_column(scope: ast.AST) -> bool:
+    # A bare string *statement* is a docstring or a stray literal, never a
+    # statement anything executes. Both `facts_read` and `review_queue`
+    # describe the column in their module docstrings, and reading prose as SQL
+    # is how a guard earns a reputation for crying wolf.
+    prose = {
+        id(node.value)
+        for node in ast.walk(scope)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, (ast.Constant, ast.JoinedStr))
+    }
+    for node in ast.walk(scope):
+        # Raw SQL, in any string form.
+        if isinstance(node, (ast.Constant, ast.JoinedStr)) and id(node) not in prose:
+            text = _static_text(node)
+            if text and _sql_assigns_column(text):
+                return True
+        # ORM attribute assignment.
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Attribute) and target.attr == _COLUMN:
+                    return True
+        # Dynamic assignment.
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "setattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == _COLUMN
+        ):
             return True
     return False
 
 
-def test_exactly_one_function_in_the_tree_writes_confirmed():
+def _static_text(node: ast.AST) -> str:
+    """The statically-known text of a string node, f-strings included.
+
+    An f-string's interpolations are replaced by a placeholder rather than
+    dropped, so ``f"SET verification_status = {value}"`` still reads as an
+    assignment.
+    """
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else ""
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+            else:
+                parts.append("?")
+        return "".join(parts)
+    return ""
+
+
+def test_exactly_the_permitted_writers_touch_the_verification_axis():
     writers = _confirmed_writers(_APP)
-    assert writers == [_PERMITTED_WRITER], (
-        f"expected {_PERMITTED_WRITER} to be the only writer of "
-        f"{CONFIRMED!r}, found {writers}. A second path to the human's floor "
-        f"is the forged-ratification failure this spec exists to refuse: it "
-        f"would pass every behavioural test above simply by never being "
-        f"driven. If the new writer is legitimate, it must carry the same "
-        f"human-source precondition and be argued onto the allowlist."
+    assert writers == sorted(_PERMITTED_WRITERS), (
+        f"expected exactly {sorted(_PERMITTED_WRITERS)} to write "
+        f"{_COLUMN!r}, found {writers}. A second path to the human's floor is "
+        f"the forged-ratification failure this spec exists to refuse: it would "
+        f"pass every behavioural test above simply by never being driven. Of "
+        f"the two permitted writers, set_verification_status refuses "
+        f"{CONFIRMED!r} outright and ratify demands a human source row — a "
+        f"third writer inherits neither guarantee and must argue itself onto "
+        f"the allowlist."
     )
 
 
-def test_the_scan_would_catch_a_second_writer(tmp_path):
-    """A guard that cannot fail is not a guard. This drives the scan over a
-    file shaped like the regression it exists to catch."""
-    offender = tmp_path / "eager_confirm.py"
-    offender.write_text(
-        "async def promote(session, fact_id):\n"
+# Each of these defeated the previous line-oriented scan. They are the
+# regression suite for the guard itself, not for the feature.
+_EVASIONS: dict[str, str] = {
+    "multiline_sql": (
+        "async def promote(session):\n"
         "    await session.execute(\n"
-        "        \"UPDATE knowledge_triples SET verification_status = 'confirmed'\"\n"
-        "    )\n",
-        encoding="utf-8",
-    )
-    found = _confirmed_writers(tmp_path)
-    assert any(name.endswith("::promote") for name in found), found
+        "        \"UPDATE knowledge_triples SET verification_status =\\n\"\n"
+        "        \"        'confirmed'\"\n"
+        "    )\n"
+    ),
+    "via_constant": (
+        "from app.repositories.knowledge_triples import CONFIRMED\n"
+        "async def promote(session, row):\n"
+        "    row.verification_status = CONFIRMED\n"
+    ),
+    "renamed_bound_param": (
+        "async def promote(session, value):\n"
+        "    await session.execute(\n"
+        "        \"UPDATE knowledge_triples SET verification_status = CAST(:v AS text)\",\n"
+        "        {\"v\": value},\n"
+        "    )\n"
+    ),
+    "setattr": (
+        "def promote(row, value):\n"
+        "    setattr(row, 'verification_status', value)\n"
+    ),
+    "module_level": (
+        "import sqlalchemy\n"
+        "STMT = sqlalchemy.text(\n"
+        "    \"UPDATE knowledge_triples SET verification_status = 'confirmed'\"\n"
+        ")\n"
+    ),
+    "fstring": (
+        "STATUS = 'confirmed'\n"
+        "def promote(session):\n"
+        "    return f\"UPDATE knowledge_triples SET verification_status = '{STATUS}'\"\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_EVASIONS))
+def test_the_scan_catches_every_shape_that_defeated_it(tmp_path, shape):
+    """A guard that cannot fail is not a guard — and the previous version's
+    self-test planted the one shape inside its own blind spot, so it read as
+    proof while five realistic writers walked past. Each of these was verified
+    to evade the old scan."""
+    offender = tmp_path / f"{shape}.py"
+    offender.write_text(_EVASIONS[shape], encoding="utf-8")
+    assert _confirmed_writers(tmp_path), f"{shape} evaded the scan"
 
 
 def test_the_scan_ignores_reads_of_the_literal(tmp_path):
@@ -283,7 +437,12 @@ def test_the_scan_ignores_reads_of_the_literal(tmp_path):
         "    if row.verification_status == 'confirmed':\n"
         "        return 'hold'\n"
         "    if row.verification_status != 'confirmed':\n"
-        "        return 'move'\n",
+        "        return 'move'\n"
+        "    return None\n"
+        "\n"
+        "READABLE = ('candidate', 'corroborated', 'confirmed')\n"
+        "SELECT = 'SELECT verification_status FROM knowledge_triples'\n"
+        "WHERE = \"SELECT 1 FROM knowledge_triples WHERE verification_status = 'confirmed'\"\n",
         encoding="utf-8",
     )
     assert _confirmed_writers(tmp_path) == []
