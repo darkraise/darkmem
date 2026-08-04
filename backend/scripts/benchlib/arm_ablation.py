@@ -44,8 +44,9 @@ of silently producing a plausible, wrong delta.
 
 **Nothing hardcoded from the corpus (ruling 2).** The valid ``--arm`` set is
 read from ``RANK_ARMS`` at call time (``resolve_arm``), never a second
-hand-written list -- CLAUDE.md calls out exactly this drift for
-``code_query.py``'s duplicate ``RRF_K``.
+hand-written list -- the drift ``code_query.py``'s duplicate ``RRF_K`` was
+until T2.58 collapsed it onto ``rank_fusion.py``'s, now guarded by the AST
+scan in ``backend/tests/test_chat_retrieval_parity.py``.
 
 Each leg runs on its OWN ``TwinningOrchestrator`` instance (sharing the disk
 cache directory with ingest and with the other leg, but never its in-memory
@@ -118,8 +119,8 @@ def resolve_arm(flag: str) -> RankArm:
 
     Reads ``RANK_ARMS`` at call time rather than a module-level hand list,
     so a fifth arm lands here automatically the moment it is added to
-    ``rank_fusion.py`` -- the exact drift CLAUDE.md calls out for
-    ``code_query.py``'s duplicate ``RRF_K``.
+    ``rank_fusion.py`` -- the exact drift ``code_query.py``'s duplicate
+    ``RRF_K`` was, until T2.58 collapsed it onto the canonical one.
 
     Accepts only the FLAG spelling (``w_importance``), not the short
     ``name`` (``importance``): the flag is what a config row and the task's
