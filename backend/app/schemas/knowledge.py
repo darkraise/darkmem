@@ -64,6 +64,12 @@ class ComposedRowLabels(BaseModel):
     ``fact_badge.row_labels`` is what makes the wrong combination
     unconstructible upstream; declaring both halves here would only re-decide
     it in a second place.
+
+    ``unverified`` (T2.56) is doc 07 §5's cold-start label — plain and
+    boolean rather than a second English sentence, because the honest-claim
+    prose is ``badge.claim``'s alone. It is produced by the same function
+    that produces every other key here, ``fact_badge.row_labels``, so a
+    caller cannot receive one without the other.
     """
 
     project: str | None = None
@@ -72,6 +78,7 @@ class ComposedRowLabels(BaseModel):
     review_state: str | None = None
     lifecycle: str | None = None
     badge: FactBadge | None = None
+    unverified: bool = True
 
 
 class ComposedRowContext(BaseModel):
@@ -112,6 +119,16 @@ class KnowledgeSearchRequest(BaseModel):
     door that accepted a scope the other cannot express would be a capability
     asymmetry wearing a parameter's clothes: the same query would be answerable
     on one door and not the other, which is the thing invariant 17 forbids.
+
+    ``fuse`` (T2.56) is doc 07 §5's channel-topology choice, not a ranking one:
+    both shapes compose the identical order, only the presentation differs, so
+    it never reaches ``LayerCompositionService.search`` and cannot move a row.
+    It defaults ``True`` — the flat, single-list shape this route already
+    served before T2.56 — so an existing caller that never names ``fuse`` sees
+    the identical document it always has; the sectioned shape (doc 07 §5's
+    stated default for a human-facing panel, doc 13 §5.4) is reached with
+    ``fuse=false``. Present on both doors or on neither (invariant 17): the
+    MCP twin's ``fuse`` argument carries the same default for the same reason.
     """
 
     query: str = Field(min_length=1)
@@ -121,6 +138,7 @@ class KnowledgeSearchRequest(BaseModel):
         ge=1,
         le=KNOWLEDGE_SEARCH_MAX_LIMIT,
     )
+    fuse: bool = True
 
 
 class KnowledgeSearchUnavailable(BaseModel):
@@ -143,15 +161,63 @@ class KnowledgeSearchUnavailable(BaseModel):
     rows: list[ComposedRowResponse] = Field(default_factory=list)
 
 
-class KnowledgeSearchResponse(BaseModel):
-    """The composed four-layer read, rows plus the envelope that qualifies them.
+class KnowledgeSearchSections(BaseModel):
+    """Doc 07 §5's sectioned shape — the served rows partitioned by layer.
 
-    The envelope is not decoration: it carries which channels ran, which
-    failed, and doc 07 §8's unconditional ``by_context_conflict`` tally, so a
-    degraded answer can never be read as a complete one (invariant 14).
+    Keyed by the words doc 13 §5.4's panel renders as section headers
+    (Memory / Facts / Articles). Partitioning never reorders: each bucket
+    keeps the composition's own top-level order, the identical sequence
+    ``rows`` would carry in the fused shape, merely split by ``id_kind``
+    instead of interleaved. A row nested under a fact (``supported_by``)
+    stays nested wherever its enclosing fact's section lands — grouping and
+    sectioning are orthogonal passes, and this one never touches the other.
     """
 
-    rows: list[ComposedRowResponse]
+    memory: list[ComposedRowResponse] = Field(default_factory=list)
+    facts: list[ComposedRowResponse] = Field(default_factory=list)
+    articles: list[ComposedRowResponse] = Field(default_factory=list)
+
+
+# doc 07 §5's fixed vocabulary, id_kind to the section it fills. Closed and
+# dispatched rather than a fall-through: an id_kind this table does not know
+# would otherwise vanish from the sectioned shape silently while the fused
+# shape kept carrying it, which is exactly the shape-dependent row loss
+# doc 07 §5 says the two presentations must never allow.
+_SECTION_BY_ID_KIND: dict[str, str] = {"memory": "memory", "fact": "facts", "article": "articles"}
+
+
+def _sectioned(rows: list[ComposedRowResponse]) -> KnowledgeSearchSections:
+    buckets: dict[str, list[ComposedRowResponse]] = {"memory": [], "facts": [], "articles": []}
+    for row in rows:
+        try:
+            key = _SECTION_BY_ID_KIND[row.id_kind]
+        except KeyError:
+            raise ValueError(
+                f"no section is known for id_kind {row.id_kind!r}; doc 07 §5's "
+                f"sectioned shape is closed to {sorted(_SECTION_BY_ID_KIND)}"
+            ) from None
+        buckets[key].append(row)
+    return KnowledgeSearchSections(**buckets)
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """The composed four-layer read, in whichever of doc 07 §5's two shapes
+    the caller selected, plus the envelope that qualifies it.
+
+    ``rows`` and ``sections`` are the tri-state pair the shape choice makes:
+    exactly one is populated and the other is ``None``, never both and never
+    neither — a caller that reads the wrong one for the requested shape finds
+    ``None`` rather than a plausible-looking empty list. ``envelope.fused``
+    names which shape was served, so a reader need not infer it from which
+    key came back non-null.
+
+    The envelope is not decoration otherwise: it carries which channels ran,
+    which failed, and doc 07 §8's unconditional ``by_context_conflict`` tally,
+    so a degraded answer can never be read as a complete one (invariant 14).
+    """
+
+    rows: list[ComposedRowResponse] | None = None
+    sections: KnowledgeSearchSections | None = None
     envelope: RetrievalEnvelope
 
 
@@ -178,11 +244,24 @@ def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
     )
 
 
-def knowledge_search_response(result: "ComposedResult") -> KnowledgeSearchResponse:
-    return KnowledgeSearchResponse(
-        rows=[composed_row_response(row) for row in result.rows],
-        envelope=result.envelope,
-    )
+def knowledge_search_response(
+    result: "ComposedResult", *, fuse: bool = True
+) -> KnowledgeSearchResponse:
+    """The composed result, shaped per doc 07 §5 (T2.56).
+
+    Both shapes are built from the identical row list and the identical
+    envelope — ``fuse`` selects presentation, never ranking, so it is stamped
+    onto the envelope's own ``fused`` field rather than threaded back into
+    the composition. ``model_copy`` rather than a second ``RetrievalEnvelope``
+    construction: the envelope already carries every other field the service
+    computed, and rebuilding it here is how a second copy of that assembly
+    drifts from the first.
+    """
+    rows = [composed_row_response(row) for row in result.rows]
+    envelope = result.envelope.model_copy(update={"fused": fuse})
+    if fuse:
+        return KnowledgeSearchResponse(rows=rows, sections=None, envelope=envelope)
+    return KnowledgeSearchResponse(rows=None, sections=_sectioned(rows), envelope=envelope)
 
 
 def knowledge_search_unavailable(

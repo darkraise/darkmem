@@ -5,21 +5,24 @@ the only ranked retrieval in the system reachable from one door: ``memory.search
 and ``code.search`` are both two-door, so a composed answer is a capability by
 this repo's own precedent rather than an agent-shaped projection.
 
-**This route owns no shaping and no ranking.** It resolves the two axes the
-twin resolves, calls ``LayerCompositionService.search`` and hands the result to
+**This route owns no shaping and no ranking.** It resolves the three axes the
+twin resolves — including ``fuse``, doc 07 §5's channel-topology choice
+(T2.56) — calls ``LayerCompositionService.search`` and hands the result to
 ``knowledge_search_response`` — the serialiser T2.72 placed outside the tool for
 exactly this. ``code_search`` and ``code_blast_radius`` shared a service and
 still answered differently because each door reshaped the result itself, and a
-door that reshapes is a door that can rank.
+door that reshapes is a door that can rank. ``fuse`` never reaches the
+composition call: both of doc 07 §5's shapes present the identical order, so
+the choice belongs to the serialiser alone.
 
 **The three outcomes are three status codes, and the middle one is the point.**
-200 with an empty ``rows`` is a vault that holds nothing for this query; 503 is
-every channel down, carrying the composition's own channel record; and a defect
-inside the composition — the grouping fixpoint, a reranker returning the wrong
-window — is neither, so it propagates as a 500. Collapsing the third into the
-second is the failed-versus-empty conflation T2.66 removed from the memory
-surface, and it is what serving ``RuntimeError`` as unavailability would
-reintroduce.
+200 with an empty result — ``rows: []`` fused, every section empty sectioned —
+is a vault that holds nothing for this query; 503 is every channel down,
+carrying the composition's own channel record; and a defect inside the
+composition — the grouping fixpoint, a reranker returning the wrong window —
+is neither, so it propagates as a 500. Collapsing the third into the second is
+the failed-versus-empty conflation T2.66 removed from the memory surface, and
+it is what serving ``RuntimeError`` as unavailability would reintroduce.
 
 **Authenticated, while the twin is not** (invariant 20's trust posture, not a
 gap). Every two-door read on this table already pairs an unauthenticated tool
@@ -95,4 +98,4 @@ async def search_knowledge(
                 detail=unavailable.reason,
             ).model_dump(),
         )
-    return knowledge_search_response(result)
+    return knowledge_search_response(result, fuse=body.fuse)

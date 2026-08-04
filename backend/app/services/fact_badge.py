@@ -97,6 +97,16 @@ CONFIRMED = "confirmed"
 
 HUMAN_SOURCE_KIND = "human"
 
+# The mechanical predicate behind doc 07 §5's cold-start label (T2.56). A row
+# is "unverified" exactly when it has not reached one of the two rungs a human
+# or multiple distinct origins actually backed; every candidate and disputed
+# fact is unverified, and so is every L0 row by construction — a memory
+# carries no verification status at all, never having been put on the ladder.
+# This reads the tier the ladder already wrote rather than adjudicating one:
+# it is a plain restatement of ``TIER_BY_VERIFICATION_STATUS``'s top two
+# rungs, not a second opinion about where a row sits on it.
+VERIFIED_TIER_STATUSES = frozenset({"corroborated", CONFIRMED})
+
 # doc 12 §4: the badge is present on L2/L3 rows and null on L0. The id_kind
 # vocabulary is doc 12's own (`memory | fact | article`).
 BADGE_BEARING_ID_KINDS = frozenset({"fact", "article"})
@@ -444,6 +454,16 @@ def row_labels(
     adjudicated. Refusing the badge here rather than dropping it silently is
     the point: a caller that built one for a memory has a bug upstream, and a
     silent drop would hide it.
+
+    ``unverified`` (T2.56) is doc 07 §5's cold-start label, spelled plainly
+    rather than left for a consumer to infer from the tier. It is ``True`` on
+    every L0 row unconditionally and on an L2/L3 row whenever
+    :data:`VERIFIED_TIER_STATUSES` does not name its rung — so a fresh
+    ``candidate`` and a live ``disputed`` fact both read as unverified, and
+    only ``corroborated``/``confirmed`` read otherwise. The word itself is
+    safe under :func:`assert_no_certainty_words`: the guard matches
+    ``\\bverified\\b`` on a word boundary, and there is none between the
+    ``un`` prefix and ``verified``.
     """
     if id_kind in LIFECYCLE_ID_KINDS:
         if badge is not None:
@@ -456,7 +476,12 @@ def row_labels(
                 f"an L0 {id_kind} row carries no verification_status; "
                 f"{verification_status!r} is the vocabulary of a vault row"
             )
-        return {"verification_status": None, "lifecycle": lifecycle, "badge": None}
+        return {
+            "verification_status": None,
+            "lifecycle": lifecycle,
+            "badge": None,
+            "unverified": True,
+        }
     if id_kind not in BADGE_BEARING_ID_KINDS:
         raise ValueError(
             f"unknown id_kind {id_kind!r}; doc 12 fixes "
@@ -471,6 +496,7 @@ def row_labels(
         "verification_status": verification_status,
         "lifecycle": None,
         "badge": badge.as_dict() if badge is not None else None,
+        "unverified": verification_status not in VERIFIED_TIER_STATUSES,
     }
 
 
@@ -480,6 +506,7 @@ __all__ = [
     "CLAIM_VOCABULARY",
     "CertaintyWordError",
     "LIFECYCLE_ID_KINDS",
+    "VERIFIED_TIER_STATUSES",
     "assert_no_certainty_words",
     "badge_for_fact",
     "badges_for_facts",

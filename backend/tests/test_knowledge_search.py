@@ -329,13 +329,13 @@ async def test_each_door_spends_the_shared_serialiser_exactly_once(
     original = knowledge_schemas.knowledge_search_response
     calls: list[str] = []
 
-    def _rest_spy(result):
+    def _rest_spy(result, **kwargs):
         calls.append("rest")
-        return original(result)
+        return original(result, **kwargs)
 
-    def _mcp_spy(result):
+    def _mcp_spy(result, **kwargs):
         calls.append("mcp")
-        return original(result)
+        return original(result, **kwargs)
 
     monkeypatch.setattr(knowledge_route, "knowledge_search_response", _rest_spy)
     monkeypatch.setattr(knowledge_schemas, "knowledge_search_response", _mcp_spy)
