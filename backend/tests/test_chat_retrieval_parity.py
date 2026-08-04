@@ -685,8 +685,8 @@ CANONICAL = APP_ROOT / "services" / "rank_fusion.py"
 # underscore-delimited token. A token match reads as the tighter rule and is
 # the weaker one: ``RRFK = 60`` carries the letters, carries the meaning, and
 # walks through a token boundary untouched.
-RRF_NAME = re.compile(r"(^|_)rrf(_|$)", re.IGNORECASE)
-RRF_CONSTANT_NAME = re.compile(r"(^|_)RRF(_|$)")
+RRF_NAME = re.compile(r"rrf", re.IGNORECASE)
+RRF_CONSTANT_NAME = re.compile(r"RRF")
 
 
 def _python_sources() -> list[pathlib.Path]:
