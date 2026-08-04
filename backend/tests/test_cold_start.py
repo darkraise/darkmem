@@ -345,8 +345,15 @@ async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
     channel served them in) is neither ascending nor descending in id order
     — 3, 1, 2 — so a bucket-local reorder is caught on its own terms rather
     than by accidentally matching a sort-by-id artifact.
+
+    The facts channel is stubbed the same way (R1, T2.56 fix round 2): two
+    rows whose composed order runs opposite id order. Before this, the
+    fixture populated only the memory bucket, so a facts-specific reorder —
+    the section doc 13's panel renders first — passed every test in this
+    file silently.
     """
     memory_ids = [str(UUID(int=n)) for n in (3, 1, 2)]
+    fact_ids = [str(UUID(int=n)) for n in (20, 10)]
 
     async def _memory(self, *args, **kwargs):
         return hybrid_search.ChannelTrace(results=[
@@ -361,7 +368,21 @@ async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
         ])
 
     async def _facts(self, *args, **kwargs):
-        return facts_channel.FactChannelTrace(results=[])
+        return facts_channel.FactChannelTrace(results=[
+            {
+                "fact_id": fid,
+                "id": fid,
+                "fact": f"fact {fid}",
+                "subject_name": "pgbouncer",
+                "rel_type": "DEPLOYED_ON",
+                "object_name": "homelab",
+                "project": PROJECT,
+                "verification_status": "candidate",
+                "review_state": None,
+                "rrf_score": 0.5,
+            }
+            for fid in fact_ids
+        ])
 
     monkeypatch.setattr(hybrid_search.HybridSearchService, "search_with_trace", _memory)
     monkeypatch.setattr(facts_channel.FactsChannel, "search_with_trace", _facts)
@@ -371,14 +392,20 @@ async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
     )
 
     fused = knowledge_search_response(result, fuse=True).model_dump()
-    composed_order = [row["id"] for row in fused["rows"]]
-    assert composed_order == memory_ids, (
+    composed_memory_order = [row["id"] for row in fused["rows"] if row["id_kind"] == "memory"]
+    composed_fact_order = [row["id"] for row in fused["rows"] if row["id_kind"] == "fact"]
+    assert composed_memory_order == memory_ids, (
         "the fixture's composed order must be exactly what channel_rank set, "
         "or this test proves nothing"
     )
+    assert composed_fact_order == fact_ids, (
+        "the fixture's composed fact order must be exactly what channel_rank "
+        "set, or the facts half of this test proves nothing"
+    )
 
     sectioned = knowledge_search_response(result, fuse=False).model_dump()
-    assert [row["id"] for row in sectioned["sections"]["memory"]] == composed_order
+    assert [row["id"] for row in sectioned["sections"]["memory"]] == composed_memory_order
+    assert [row["id"] for row in sectioned["sections"]["facts"]] == composed_fact_order
 
 
 async def test_a_grouped_rows_nesting_survives_sectioning(session, monkeypatch):
