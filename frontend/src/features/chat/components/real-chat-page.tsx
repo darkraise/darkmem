@@ -51,13 +51,22 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
   }, [activeId])
 
   // The live-streaming turn while one is in flight, else the selected
-  // historical turn's persisted snapshot, else no context yet (§6.4).
-  const contextRows: ChatContextRow[] | null =
-    stream.isStreaming && stream.sources
-      ? stream.sources.memories
-      : contextTurn
-        ? (contextTurn.context?.memories ?? [])
-        : null
+  // historical turn's persisted snapshot, else no context yet (§6.4). The
+  // envelope travels with the rows it qualifies: reading one turn's rows
+  // beside another turn's channel states would describe a retrieval that
+  // never happened.
+  const live = stream.isStreaming && stream.sources ? stream.sources : null
+  const contextRows: ChatContextRow[] | null = live
+    ? live.memories
+    : contextTurn
+      ? (contextTurn.context?.memories ?? [])
+      : null
+  const contextFacts = live
+    ? live.facts
+    : (contextTurn?.context?.facts ?? [])
+  const contextEnvelope = live
+    ? live.envelope
+    : (contextTurn?.context?.envelope ?? null)
 
   const handleSend = async (content: string) => {
     const resultId = await stream.sendMessage(activeId, content)
@@ -105,7 +114,11 @@ export function RealChatPage({ initialId }: { initialId?: string }) {
           />
         </div>
 
-        <ChatContextPanel rows={contextRows} />
+        <ChatContextPanel
+          rows={contextRows}
+          facts={contextFacts}
+          envelope={contextEnvelope}
+        />
       </div>
     </div>
   )

@@ -1,26 +1,22 @@
 import { useState, useRef, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { MemoryStatus } from "@/hooks/api"
+import type {
+  ChatContextFact,
+  ChatContextRow,
+  ChatRetrievalEnvelope,
+} from "../lib/retrieval"
 
-interface ChatSources {
-  memories: {
-    index: number
-    content: string
-    source: string
-    tags: string[]
-    score: number
-    // Only present once backend chat.py's _retrieve emits it (T1.60, Step
-    // 5) — the SSE wire didn't carry id before that fix.
-    id?: string
-    project?: string
-    status?: MemoryStatus
-  }[]
+export interface ChatSources {
+  memories: ChatContextRow[]
+  facts: ChatContextFact[]
   entities: {
     id?: string
     name?: string
     entity_type?: string
     [key: string]: unknown
   }[]
+  /** Doc 07 §8's envelope, emitted since chat converged onto the composition. */
+  envelope: ChatRetrievalEnvelope | null
 }
 
 interface ChatStreamState {
@@ -125,7 +121,9 @@ export function useChatStream() {
                     ...s,
                     sources: {
                       memories: event.memories,
+                      facts: event.facts ?? [],
                       entities: event.entities,
+                      envelope: event.envelope ?? null,
                     },
                   }))
                   break

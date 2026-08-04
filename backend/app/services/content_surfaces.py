@@ -117,7 +117,13 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         labels=("project", "status"),
         decided_by="T1.29c",
         reason="Everything retrieved here lands in the chat model's context "
-               "verbatim, so an unscoped row becomes a user-visible answer.",
+               "verbatim, so an unscoped row becomes a user-visible answer. "
+               "Since T2.58 it retrieves through `LayerCompositionService."
+               "search`, which pushes the same project and status scope down "
+               "into every channel it asks; the project axis stays wide by "
+               "ratified default and each row still names its own project and "
+               "status, and a wide request does not ask the facts channel, "
+               "which has no wide arm.",
     ),
     ContentSurface(
         key="graph_memory_context",
@@ -188,7 +194,12 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "by both channels it fans out to — `MemoryFilter(project=…)` on "
                "the memory hybrid and the facts channel's own bind parameter — "
                "so there is no wide mode to request and no arm that could "
-               "answer one. It is a retrieval channel rather than an "
+               "answer one. T2.58 widened the *service* parameter to accept a "
+               "`None` project for the chat door's ratified wide default, and "
+               "that changed nothing here: this door binds a required string "
+               "with its own default, and a `None` project does not ask the "
+               "facts channel at all rather than asking it wide. It is a "
+               "retrieval channel rather than an "
                "operational surface for the ordinary reason: the caller names "
                "a query, not rows, so which rows come back is the answer. Each "
                "memory row keeps the hybrid's `status` label and each fact its "

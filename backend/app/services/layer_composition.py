@@ -5,10 +5,10 @@ epistemic layer, each labelled with where it came from and how well it is
 believed. Merge the channel lists in their own key spaces, label and order
 them, optionally re-band by a rerank, apply the deterministic multipliers, and
 finally group each returned memory under the fact it sources. The sectioned and
-fused output shapes are T2.56's; Chat's convergence onto this entry point is
-T2.58's. MCP's ``knowledge_search`` is the live caller (T2.72); the article
-channel and the reranker arm are still deferred, and the envelope says so
-rather than reporting them as if they had run.
+fused output shapes are T2.56's. MCP's ``knowledge_search`` (T2.72) and chat
+(T2.58) are the live callers; the article channel and the reranker arm are
+still deferred, and the envelope says so rather than reporting them as if they
+had run.
 
 **Grouping is composition's last step, never a renderer's first.** Doc 07 §5
 fixes the order and §11 records it as a resolved question rather than a
@@ -264,9 +264,9 @@ def cross_layer_rrf(channel_rank: int) -> float:
 
     Derived from ``channel_rank`` alone and carried into the trace so the
     currency is visible; it is never an independent signal. ``RRF_K`` is
-    imported rather than redeclared — ``code_query.py``'s private ``RRF_K``
-    is the standing example of what a second declaration costs, and CLAUDE.md
-    records that no task owns closing that drift.
+    imported rather than redeclared — ``code_query.py`` carried a second
+    declaration of it for long enough to become the standing example of what
+    one costs, and a source scan now fails the build on a third.
     """
     return 1.0 / (RRF_K + channel_rank)
 
@@ -1068,10 +1068,21 @@ def rerank_document_text(row: ComposedRow) -> str:
 
 @dataclass(frozen=True)
 class ComposedResult:
-    """The single entry point's return: an ordered list and its envelope."""
+    """The single entry point's return: an ordered list and its envelope.
+
+    ``channel_scores`` is doc 07 §8's per-row score breakdown — what each arm
+    of each channel scored a row before its channel fused them — keyed by
+    :func:`composition_key` rather than by the bare id the channels hand back,
+    for the reason every other map here is: a fact and a memory sharing a UUID
+    would otherwise trade breakdowns. It is carried rather than recomputed
+    because the arms are the only place these numbers exist; a renderer given
+    only the composed row can show *that* a row ranked and never *why*, and a
+    trace that cannot say why is the plausible story doc 07 §8 refuses.
+    """
 
     rows: list[ComposedRow]
     envelope: RetrievalEnvelope
+    channel_scores: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _namespaced(prefix: str, statuses: Mapping[str, ChannelStatus]) -> dict:
@@ -1095,12 +1106,13 @@ class LayerCompositionService:
     for the same reason: it makes every ordering, tier and keyspace property a
     fast test that can be mutated cheaply.
 
-    :meth:`search` is the single entry point T2.58 converges Chat onto. It is
-    not Chat-aware. MCP's ``knowledge_search`` spends it today (T2.72); T2.56
-    and T2.58 are the remaining consumers. **No caller constructs this with a
-    ``reranker``**, so :meth:`derive_rerank_scores` returns before it looks at
-    a row — which is why the empty-text raise in it is a guard against a
-    future caller rather than a live path.
+    :meth:`search` is the single entry point, and it is not Chat-aware: MCP's
+    ``knowledge_search`` (T2.72) and ``ChatService`` (T2.58) both spend it, and
+    the two scope parameters the second one needed are axes any caller has
+    rather than a chat mode. T2.56 is the remaining consumer. **No caller
+    constructs this with a ``reranker``**, so :meth:`derive_rerank_scores`
+    returns before it looks at a row — which is why the empty-text raise in it
+    is a guard against a future caller rather than a live path.
 
     **It deliberately takes no ``with_trace``**, which is a correction to the
     seam rather than an omission. On ``memory.py`` that flag chooses between
@@ -1255,21 +1267,44 @@ class LayerCompositionService:
         self,
         query: str,
         *,
-        project: str,
+        project: str | None,
         limit: int = 20,
+        statuses: tuple[str, ...] | None = None,
         declared_context: DeclaredContext | None = None,
         weights: Mapping[str, object] | None = None,
     ) -> ComposedResult:
+        """The composed read, scoped by the two axes a memory row carries.
+
+        ``project`` is ``str | None`` because a caller may legitimately be
+        wide: chat and ``memory_reason`` default to every project by ratified
+        decision, and their rows are honest because every one of them names the
+        project it came from. It is **not** a wide mode on the vault: the facts
+        channel is born with its project pushed down into both arms' SQL and
+        has no arm that could answer a wide question, so a wide request does
+        not ask it and the envelope reports its arms ``ran=False`` — the same
+        idiom the deferred article channel uses. Serving L0 wide alongside an
+        L2 half silently scoped to one project would be the worse answer.
+
+        ``statuses`` is the memory layer's lifecycle scope and applies to that
+        layer alone: a fact carries a verification status and a review state,
+        which are a different vocabulary, and this parameter must never be
+        read as touching them. ``None`` keeps the vault reader's behaviour —
+        every lifecycle state, each labelled — while a caller whose rows land
+        verbatim in a model's context passes the states it is willing to
+        answer from.
+        """
         if weights is None:
             weights = await get_feature_flags_dict(self.session)
 
         channels: dict[str, ChannelStatus] = {}
         candidates: list[LayerCandidate] = []
+        channel_scores: dict[str, dict[str, float]] = {}
 
         memory_failed = False
         try:
             memory_trace = await HybridSearchService(self.llm, self.session).search_with_trace(
-                query, limit=limit, filters=MemoryFilter(project=project),
+                query, limit=limit,
+                filters=MemoryFilter(project=project, statuses=statuses),
             )
         except Exception:
             logger.error("Layer composition: the memory channel failed outright")
@@ -1291,34 +1326,58 @@ class LayerCompositionService:
                 memory_candidate(row, channel_rank=rank)
                 for rank, row in enumerate(memory_trace.results, start=1)
             )
+            channel_scores.update({
+                composition_key("memory", _admit_id(row_id)): dict(scores)
+                for row_id, scores in memory_trace.channel_scores.items()
+            })
 
         fact_failed = False
-        try:
-            fact_trace = await FactsChannel(self.session).search_with_trace(
-                query, project=project, limit=limit,
-            )
-        except Exception:
-            logger.error("Layer composition: the facts channel failed outright")
-            fact_failed = True
+        fact_asked = project is not None
+        if not fact_asked:
             channels.update(
                 _namespaced("fact", {
-                    KEYWORD_ARM: ChannelStatus(ran=True, failed=True),
-                    NAME_ARM: ChannelStatus(ran=True, failed=True),
+                    KEYWORD_ARM: ChannelStatus(ran=False),
+                    NAME_ARM: ChannelStatus(ran=False),
                     SEMANTIC_ARM: ChannelStatus(ran=False),
                 })
             )
         else:
-            channels.update(_namespaced("fact", fact_trace.channel_status()))
-            candidates.extend(
-                fact_candidate(row, channel_rank=rank)
-                for rank, row in enumerate(fact_trace.results, start=1)
-            )
+            try:
+                fact_trace = await FactsChannel(self.session).search_with_trace(
+                    query, project=project, limit=limit,
+                )
+            except Exception:
+                logger.error("Layer composition: the facts channel failed outright")
+                fact_failed = True
+                channels.update(
+                    _namespaced("fact", {
+                        KEYWORD_ARM: ChannelStatus(ran=True, failed=True),
+                        NAME_ARM: ChannelStatus(ran=True, failed=True),
+                        SEMANTIC_ARM: ChannelStatus(ran=False),
+                    })
+                )
+            else:
+                channels.update(_namespaced("fact", fact_trace.channel_status()))
+                candidates.extend(
+                    fact_candidate(row, channel_rank=rank)
+                    for rank, row in enumerate(fact_trace.results, start=1)
+                )
+                channel_scores.update({
+                    composition_key("fact", _admit_id(row_id)): dict(scores)
+                    for row_id, scores in fact_trace.arm_scores.items()
+                })
 
         # A one-sided outage degrades to the surviving layer and says so; both
         # sides down would make an empty result indistinguishable from a
         # genuine no-match, which is the one case invariant 14 forbids serving.
-        if memory_failed and fact_failed:
-            raise RuntimeError("Layer composition failed on both the memory and fact channels")
+        # A wide request has only one side, so the memory channel's failure is
+        # already both of them — reading ``fact_failed`` alone would serve that
+        # outage as an empty vault.
+        if memory_failed and (fact_failed or not fact_asked):
+            raise RuntimeError(
+                "Layer composition failed on the memory channel and "
+                + ("the fact channel" if fact_failed else "no fact channel was asked")
+            )
 
         # Present and ran=False, never omitted: an absent key makes "this layer
         # has no such modality" indistinguishable from "the composition never
@@ -1393,4 +1452,6 @@ class LayerCompositionService:
                 "by_result_limit": result.excluded_by_result_limit,
             },
         )
-        return ComposedResult(rows=result.rows, envelope=envelope)
+        return ComposedResult(
+            rows=result.rows, envelope=envelope, channel_scores=channel_scores,
+        )

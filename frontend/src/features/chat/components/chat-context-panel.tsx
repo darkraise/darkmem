@@ -1,16 +1,24 @@
-import { CircleDashed } from "lucide-react"
+import { CircleDashed, TriangleAlert } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
-import { LayerChip } from "@/components/darkmem"
+import {
+  ExclusionStrip,
+  LayerChip,
+  VerificationBadge,
+  WhyRetrievedTrace,
+} from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
-import type { MemoryStatus } from "@/hooks/api"
+import {
+  CHAT_EXCLUSION_CAVEAT,
+  channelStates,
+  exclusionItems,
+  layerNumber,
+  rowTrace,
+  type ChatContextFact,
+  type ChatContextRow,
+  type ChatRetrievalEnvelope,
+} from "../lib/retrieval"
 
-export interface ChatContextRow {
-  id?: string
-  content?: string
-  source?: string
-  status?: MemoryStatus
-  project?: string
-}
+export type { ChatContextRow } from "../lib/retrieval"
 
 interface ChatContextPanelProps {
   /**
@@ -19,20 +27,34 @@ interface ChatContextPanelProps {
    * retrieved — the honest "populated" state even when nothing came back.
    */
   rows: ChatContextRow[] | null
+  /** L2 rows the composition served this turn, with their badges. */
+  facts?: ChatContextFact[]
+  /** Doc 07 §8's request envelope, once a turn has produced one. */
+  envelope?: ChatRetrievalEnvelope | null
+}
+
+const STATE_STYLE: Record<string, string> = {
+  ok: "text-success",
+  failed: "text-warning",
+  "not asked": "text-muted-foreground",
 }
 
 /**
- * The real counterpart of DemoContextPanel (T1.60, Step 8) — same
- * populated/empty header contract and per-row card shape, built over real
- * retrieval data instead of the demo fixture. No VerificationBadge, no
- * WhyRetrievedTrace: chat's retrieval carries no RetrievalEnvelope or
- * numeric verification ladder today (§1's exclusion) — the absence is
- * stated below, not silently omitted. `degraded` has no source today
- * (chat's retrieval swallows channel failures into empty lists with a
- * server-side log, not a surfaced flag) so this panel never fabricates one.
+ * The real counterpart of DemoContextPanel, over the rows a converged chat
+ * turn now actually receives (T2.58).
+ *
+ * Everything here is read off the payload: the channel states, the exclusion
+ * counts and the per-row breakdown all come from the retrieval envelope the
+ * composition built, and the trace is rendered through the same adapter the
+ * Memories surface uses. The panel recomputes no score and writes no second
+ * explanation of one ranking — before the convergence there was nothing to
+ * read, and the absence was stated here rather than filled in.
  */
-export function ChatContextPanel({ rows }: ChatContextPanelProps) {
+export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProps) {
   const populated = rows !== null
+  const degraded = populated && envelope?.partial === true
+  const channels = channelStates(envelope)
+  const exclusions = exclusionItems(envelope)
 
   return (
     <div className="border-border bg-card space-y-2.5 rounded-md border p-3">
@@ -43,10 +65,14 @@ export function ChatContextPanel({ rows }: ChatContextPanelProps) {
         <span
           className={cn(
             "ml-auto font-mono text-sm",
-            populated ? "text-success" : "text-muted-foreground",
+            !populated
+              ? "text-muted-foreground"
+              : degraded
+                ? "text-warning"
+                : "text-success",
           )}
         >
-          {populated ? "populated" : "empty"}
+          {!populated ? "empty" : degraded ? "degraded" : "populated"}
         </span>
       </div>
 
@@ -64,31 +90,121 @@ export function ChatContextPanel({ rows }: ChatContextPanelProps) {
         </div>
       ) : (
         <>
-          <p className="text-muted-foreground text-sm">
-            L0 memories — no verification ladder applies yet.
-          </p>
-          {rows.length === 0 && (
+          {degraded && (
+            <div className="border-warning/55 bg-warning/12 flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm">
+              <TriangleAlert
+                aria-hidden
+                className="text-warning h-3.5 w-3.5 shrink-0"
+              />
+              <b className="font-semibold">
+                A retrieval channel failed — this answer was built on what
+                survived, not on the whole corpus.
+              </b>
+            </div>
+          )}
+
+          {channels.length > 0 && (
+            <div className="border-border bg-muted/12 space-y-1 rounded-md border p-2">
+              <p className="text-muted-foreground text-sm">
+                Channels this turn asked
+                {envelope?.reranked ? ", reranked" : ""}
+              </p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {channels.map((channel) => (
+                  <span key={channel.name} className="font-mono text-sm">
+                    {channel.name}{" "}
+                    <span className={STATE_STYLE[channel.state]}>
+                      {channel.state}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(facts ?? []).map((fact) => (
+            <div
+              key={fact.id}
+              className="border-border bg-background space-y-1.5 rounded-md border p-2.5"
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
+                <LayerChip layer={layerNumber(fact.layer ?? "L2")} />
+                {fact.verification_status && (
+                  <VerificationBadge
+                    status={fact.verification_status}
+                    detail={fact.badge?.claim}
+                  />
+                )}
+              </div>
+              <p className="text-sm">{fact.text}</p>
+              {fact.badge && (
+                <p className="text-muted-foreground font-mono text-sm">
+                  badge —{" "}
+                  <b className="text-foreground font-semibold">
+                    {fact.badge.claim}
+                  </b>
+                </p>
+              )}
+              {(() => {
+                const trace = rowTrace(fact)
+                return trace ? (
+                  <WhyRetrievedTrace
+                    channels={trace.channels}
+                    rrfScore={trace.rrfScore}
+                    summary={trace.summary}
+                  />
+                ) : null
+              })()}
+            </div>
+          ))}
+
+          {rows.length === 0 && (facts ?? []).length === 0 && (
             <p className="text-muted-foreground text-sm">
               No memories were retrieved for this turn.
             </p>
           )}
-          {rows.map((row, i) => (
-            <div
-              key={row.id ?? i}
-              className="border-border bg-background space-y-1.5 rounded-md border p-2.5"
-            >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <LayerChip layer={0} />
-                <LifecycleBadge status={row.status} />
+
+          {rows.map((row, i) => {
+            const trace = rowTrace(row)
+            return (
+              <div
+                key={row.id ?? i}
+                className="border-border bg-background space-y-1.5 rounded-md border p-2.5"
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <LayerChip layer={layerNumber(row.layer)} />
+                  <LifecycleBadge status={row.status} />
+                  {row.grouped_under && (
+                    <span className="text-muted-foreground font-mono text-sm">
+                      supports fact F
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm">{row.content}</p>
+                {row.source && (
+                  <p className="text-muted-foreground font-mono text-sm">
+                    {row.source}
+                  </p>
+                )}
+                {trace && (
+                  <WhyRetrievedTrace
+                    channels={trace.channels}
+                    rrfScore={trace.rrfScore}
+                    summary={trace.summary}
+                  />
+                )}
               </div>
-              <p className="text-sm">{row.content}</p>
-              {row.source && (
-                <p className="text-muted-foreground font-mono text-sm">
-                  {row.source}
-                </p>
-              )}
-            </div>
-          ))}
+            )
+          })}
+
+          {envelope && (
+            <>
+              <ExclusionStrip items={exclusions} />
+              <p className="text-muted-foreground text-sm">
+                {CHAT_EXCLUSION_CAVEAT}
+              </p>
+            </>
+          )}
         </>
       )}
     </div>
