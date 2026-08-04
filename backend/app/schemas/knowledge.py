@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.facts import FactBadge
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
@@ -211,7 +211,11 @@ class KnowledgeSearchResponse(BaseModel):
     neither — a caller that reads the wrong one for the requested shape finds
     ``None`` rather than a plausible-looking empty list. ``envelope.fused``
     names which shape was served, so a reader need not infer it from which
-    key came back non-null.
+    key came back non-null. The XOR is enforced below rather than left to
+    :func:`knowledge_search_response`'s one constructor alone: the OpenAPI
+    document still shows two independently nullable fields, so an SDK
+    generator reading it — doc 15's, eventually — has no way to derive the
+    exclusivity from the schema itself without this.
 
     The envelope is not decoration otherwise: it carries which channels ran,
     which failed, and doc 07 §8's unconditional ``by_context_conflict`` tally,
@@ -221,6 +225,15 @@ class KnowledgeSearchResponse(BaseModel):
     rows: list[ComposedRowResponse] | None = None
     sections: KnowledgeSearchSections | None = None
     envelope: RetrievalEnvelope
+
+    @model_validator(mode="after")
+    def _exactly_one_shape(self) -> "KnowledgeSearchResponse":
+        if (self.rows is None) == (self.sections is None):
+            raise ValueError(
+                "exactly one of rows/sections must be set (the fuse choice "
+                "the caller made), never both and never neither"
+            )
+        return self
 
 
 def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
