@@ -10,11 +10,14 @@ class TopicItem(BaseModel):
 
     `report_status` and `report` never collapse into one signal: a topic
     whose report has not been generated carries `report_status="pending"`
-    (or `skipped`/`failed`) and `report=None`; a topic whose generated
-    report is genuinely empty text would still carry `report_status="ready"`
-    with `report=""` — `None` means "nothing to inject", not "inject
-    nothing". `report` is the unit `get_injectable_report` hands to a
-    caller, not a second, looser rendering of `report_status`.
+    (or `skipped`/`failed`) and `report=None`; a topic whose report is
+    generated carries `report_status="ready"` and the real text. `report`
+    is the unit `get_injectable_report` hands to a caller, not a second,
+    looser rendering of `report_status`. (`report_status()` treats an
+    empty/falsy `report_string` as "no report yet" by design —
+    `generate_reports`' only producer writes a real LLM completion, so
+    there is no "generated but deliberately empty" state to distinguish
+    from "not generated".)
     """
 
     project: str

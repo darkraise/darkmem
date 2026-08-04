@@ -603,6 +603,12 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # cost the probe its determinism. The caller re-reads the fact instead,
     # which is one request and the shape reject already established.
     "POST /api/v1/knowledge/facts/{fact_id}/ratify",
+    # Accept/dismiss a pin suggestion: 204, same adjudication-verb shape as
+    # ratify/reject. The body carries a subject_key and an optional label
+    # the caller already had; the response echoes neither, so no
+    # memory-derived row crosses either door.
+    "POST /api/v1/knowledge/topics/pin-suggestions/accept",
+    "POST /api/v1/knowledge/topics/pin-suggestions/dismiss",
     # Aggregate totals across the four hygiene arms, never a row.
     "GET /api/v1/hygiene-queue/counts",
     # Bulk-action doors. The response names each item's id, whether it
