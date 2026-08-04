@@ -12,20 +12,29 @@ import {
 } from "darkraise-ui/components/select"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
-import { LayerChip, VerificationBadge } from "@/components/darkmem"
+import { LayerChip, useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
-import { useFactRows, type FactRowData } from "../use-facts"
+import {
+  ALL_PROJECTS,
+  ANY,
+  useFactRows,
+  type FactRowData,
+} from "../use-facts"
 import { ListSurface } from "./list-surface"
-import { AppliesWhenChips, FactTriple } from "./fact-parts"
+import {
+  AppliesWhenChips,
+  BeliefStateBadge,
+  FactTriple,
+  InReviewBadge,
+  UnderSourcedBadge,
+} from "./fact-parts"
 
 const STATUS_OPTIONS = ["candidate", "corroborated", "confirmed", "disputed"]
 const SORTS = { newest: "newest first", rung: "verification rung" } as const
 type SortKey = keyof typeof SORTS
-
-const FACTS_PAGE = 25
 
 // Weakest first, so "verification rung" sorts strongest-first when reversed.
 // `disputed` sits below every machine rung: a contradicted fact is served
@@ -34,9 +43,15 @@ const RUNG_ORDER = ["disputed", "candidate", "corroborated", "confirmed"]
 const ROW_GAP = 10
 const ROW_ESTIMATE = 118
 
-function FactRow({ fact, focused }: { fact: FactRowData; focused: boolean }) {
+export function FactRow({
+  fact,
+  focused,
+}: {
+  fact: FactRowData
+  focused: boolean
+}) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
   const candidate = fact.verification_status === "candidate"
-  const disputed = fact.verification_status === "disputed"
   return (
     <div
       className={cn(
@@ -51,42 +66,45 @@ function FactRow({ fact, focused }: { fact: FactRowData; focused: boolean }) {
           status={fact.verification_status}
           detail={fact.claim}
         />
-        <span className="text-muted-foreground ml-auto font-mono text-sm">
-          {disputed ? (
-            <Link
-              to="/knowledge/facts/$factId"
-              params={{ factId: fact.id }}
-              className="hover:text-primary transition-colors"
-            >
-              view both sides →
-            </Link>
-          ) : (
-            fact.meta
-          )}
-        </span>
+        {fact.under_sourced && <UnderSourcedBadge />}
+        <BeliefStateBadge
+          windowClosed={fact.window_closed}
+          expired={fact.expired}
+          invalidAt={advanced ? fact.invalid_at : null}
+        />
+        {fact.review_state === "open" && <InReviewBadge />}
+        {fact.origin_count !== null && (
+          <span className="text-muted-foreground ml-auto font-mono text-sm">
+            {fact.origin_count} {fact.origin_count === 1 ? "origin" : "origins"}
+            {fact.origin_kinds.length > 0 && ` · ${fact.origin_kinds.join(", ")}`}
+          </span>
+        )}
       </div>
-      <Link
-        to="/knowledge/facts/$factId"
-        params={{ factId: fact.id }}
-        className="hover:text-primary block space-y-1 transition-colors"
-      >
+      {/* The raw triple is the taxonomy form of the same statement the
+          sentence below already carries — technical detail, and the one
+          thing simple mode collapses here. */}
+      {advanced && (
         <FactTriple
           subject={fact.subject_name}
           rel={fact.rel_type}
           object={fact.object_name}
         />
-        <p className="text-muted-foreground text-sm">
-          {fact.fact_text}
-        </p>
-      </Link>
-      {fact.verification_status === "corroborated" && (
-        <p className="font-mono text-sm">{fact.claim}</p>
       )}
+      <p className="text-muted-foreground text-sm">{fact.fact_text}</p>
+      {/* The badge string, visible rather than hover-only, in every mode. A
+          disputed claim is the two-sided form, so this line is where both
+          sides are on the row — a tooltip is not a rendering, and a
+          keyboard or touch reader never sees one. */}
+      {fact.claim && <p className="font-mono text-sm">{fact.claim}</p>}
       <AppliesWhenChips items={fact.applies_when} />
-      {fact.under_sourced && (
-        <p className="text-muted-foreground text-sm">
-          under-sourced — a demotion is pending and this fact is still served
-        </p>
+      {fact.detail_available && (
+        <Link
+          to="/knowledge/facts/$factId"
+          params={{ factId: fact.id }}
+          className="hover:text-primary text-muted-foreground block font-mono text-sm transition-colors"
+        >
+          sources, ladder and windows →
+        </Link>
       )}
     </div>
   )
@@ -94,43 +112,36 @@ function FactRow({ fact, focused }: { fact: FactRowData; focused: boolean }) {
 
 export function FactsTab() {
   const [subject, setSubject] = useState("")
-  const [relation, setRelation] = useState("any")
-  const [status, setStatus] = useState("any")
-  const [project, setProject] = useState("darkmem")
+  const [relation, setRelation] = useState(ANY)
+  const [status, setStatus] = useState(ANY)
+  const [project, setProject] = useState(ALL_PROJECTS)
   const [sort, setSort] = useState<SortKey>("newest")
-  const [limit, setLimit] = useState(FACTS_PAGE)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [focusedId, setFocusedId] = useState<string | null>(null)
   const [scrubFraction, setScrubFraction] = useState(0)
   const focusTimer = useRef<number | undefined>(undefined)
-  const loadingRef = useRef(false)
 
   // Project, relation and status are **server-side** predicates: the route
   // filters and pages, so the list is never the page pretending to be the
-  // corpus. `subject` is the exception and is scoped to the fetched page on
+  // corpus. `subject` is the exception and is scoped to the loaded rows on
   // purpose — the route matches `subject_name` exactly, and a substring search
   // sent as an exact filter would silently return nothing for every partial
-  // word the user typed.
+  // word the user typed. Everything this surface says about that filter is
+  // therefore said in terms of `loaded`, never `total`.
   const {
-    rows: fetched,
+    rows: matched,
+    loaded,
     total,
     loading,
     error,
+    hasMore,
+    fetchingMore,
+    fetchMore,
     projects,
     relations,
-  } = useFactRows({
-    project: project === "any" ? undefined : project,
-    rel_type: relation === "any" ? undefined : relation,
-    verification_status: status === "any" ? undefined : status,
-    limit,
-    offset: 0,
-  })
+    optionsComplete,
+  } = useFactRows({ project, relation, status, subject })
 
-  const scoped = useMemo(() => {
-    const needle = subject.trim().toLowerCase()
-    const matched = needle
-      ? fetched.filter((f) => f.subject_name.toLowerCase().includes(needle))
-      : fetched
+  const rows = useMemo(() => {
     if (sort === "rung") {
       return [...matched].sort(
         (a, b) =>
@@ -142,17 +153,19 @@ export function FactsTab() {
     return [...matched].sort(
       (a, b) => b.as_of.localeCompare(a.as_of) || a.id.localeCompare(b.id),
     )
-  }, [fetched, subject, sort])
+  }, [matched, sort])
 
-  const rows = scoped
-  const hasMore = total > fetched.length
+  const subjectActive = subject.trim() !== ""
+  const serverFiltersActive =
+    relation !== ANY || status !== ANY || project !== ALL_PROJECTS
   const chronological = sort === "newest"
 
   const scale = useMemo(
-    () => (chronological ? buildTimelineScale(scoped, (f) => f.as_of) : null),
-    [scoped, chronological],
+    () => (chronological ? buildTimelineScale(rows, (f) => f.as_of) : null),
+    [rows, chronological],
   )
 
+  const footerIndex = rows.length
   const { listRef, virtualizer, scrollMargin } = useMainVirtualizer({
     count: rows.length + 1,
     estimateSize: () => ROW_ESTIMATE,
@@ -168,32 +181,18 @@ export function FactsTab() {
     virtualItems[0]?.index ??
     0
 
-  // Any filter change re-slices the corpus; keep paging from restarting
-  // mid-list rather than leaving a stale, oversized window.
-  useEffect(() => {
-    setLimit(FACTS_PAGE)
-  }, [subject, relation, status, project, sort])
-
   useEffect(() => () => window.clearTimeout(focusTimer.current), [])
 
-  // The in-flight guard is a ref, not `loadingMore` — as an effect dep it
-  // would re-run the effect the moment the flag is set and the cleanup
-  // would cancel the very timer that sets it.
+  // Reaching the footer loads the next page. Never while the free-text
+  // needle is applied: that filter runs over loaded rows, so an unmatched
+  // page keeps the footer on screen and the surface would drain the whole
+  // corpus in the background to answer a question it can answer honestly
+  // with what it has.
   useEffect(() => {
-    if (!hasMore || loadingRef.current) return
-    if (lastRenderedIndex < rows.length - 1) return
-    loadingRef.current = true
-    setLoadingMore(true)
-    const timer = window.setTimeout(() => {
-      loadingRef.current = false
-      setLimit((n) => n + FACTS_PAGE)
-      setLoadingMore(false)
-    }, 250)
-    return () => {
-      window.clearTimeout(timer)
-      loadingRef.current = false
-    }
-  }, [hasMore, lastRenderedIndex, rows.length])
+    if (!hasMore || fetchingMore || subjectActive) return
+    if (lastRenderedIndex < footerIndex) return
+    fetchMore()
+  }, [hasMore, fetchingMore, subjectActive, lastRenderedIndex, footerIndex, fetchMore])
 
   useEffect(() => {
     if (!scale) return
@@ -201,15 +200,13 @@ export function FactsTab() {
     if (row) setScrubFraction(dateToFraction(scale, Date.parse(row.as_of)))
   }, [scale, rows, topIndex])
 
-  // Seeking past the loaded tail grows the window first — the scrubber's
-  // axis spans the whole filtered corpus, not just the loaded pages.
+  // The axis spans the loaded rows — the only rows whose dates this surface
+  // knows — so a seek lands inside them and never past a tail it cannot see.
   const seekToDate = (dayKey: string) => {
-    if (!scale || scoped.length === 0) return
-    let idx = scoped.findIndex(
-      (f) => localDayKey(new Date(f.as_of)) <= dayKey,
-    )
-    if (idx === -1) idx = scoped.length - 1
-    const target = scoped[idx]
+    if (!scale || rows.length === 0) return
+    let idx = rows.findIndex((f) => localDayKey(new Date(f.as_of)) <= dayKey)
+    if (idx === -1) idx = rows.length - 1
+    const target = rows[idx]
     if (!target) return
     setScrubFraction(
       dateToFraction(
@@ -217,9 +214,6 @@ export function FactsTab() {
         Math.min(scale.newestMs, Math.max(scale.oldestMs, dayKeyToMs(dayKey))),
       ),
     )
-    if (idx >= limit) {
-      setLimit(Math.ceil((idx + 1) / FACTS_PAGE) * FACTS_PAGE + FACTS_PAGE)
-    }
     setFocusedId(target.id)
     window.clearTimeout(focusTimer.current)
     focusTimer.current = window.setTimeout(() => setFocusedId(null), 1800)
@@ -228,13 +222,20 @@ export function FactsTab() {
     )
   }
 
-  const projectLabel = project === "all" ? "all projects" : project
-  // The server's count behind the project/relation/status filters — never
-  // `rows.length`, which is the page. Reporting the page as the total is how
-  // a paged surface quietly tells the user the corpus is smaller than it is.
-  const totalInProject = total
-  const filtered =
-    subject.trim() !== "" || relation !== "any" || status !== "any"
+  const projectLabel = project === ALL_PROJECTS ? "all projects" : project
+  // Every number here is either the server's own count behind the server-side
+  // filters (`total`) or a count of rows actually fetched (`loaded`). The
+  // free-text needle is reported against `loaded`, because that is the only
+  // set it was run over.
+  const headerMeta = error
+    ? "count unavailable"
+    : loading
+      ? "reading…"
+      : subjectActive
+        ? `${rows.length} of ${loaded} loaded · ${total} behind the filters`
+        : hasMore
+          ? `${loaded} of ${total} loaded`
+          : `all ${total} shown`
 
   return (
     <div className="space-y-4">
@@ -244,18 +245,18 @@ export function FactsTab() {
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}
-          placeholder="subject — e.g. darkmem, hybrid_search…"
+          placeholder="subject or object — e.g. darkmem, postgres…"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           groupClassName="min-w-56 flex-1"
-          aria-label="Filter facts by subject"
+          aria-label="Filter facts by subject or object"
         />
         <Select value={relation} onValueChange={setRelation}>
           <SelectTrigger className="w-44 rounded-full" aria-label="Relation filter">
             <SelectValue>relation: {relation}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">any</SelectItem>
+            <SelectItem value={ANY}>any</SelectItem>
             {relations.map((rel) => (
               <SelectItem key={rel} value={rel}>
                 {rel}
@@ -268,7 +269,7 @@ export function FactsTab() {
             <SelectValue>status: {status}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="any">any</SelectItem>
+            <SelectItem value={ANY}>any</SelectItem>
             {STATUS_OPTIONS.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
@@ -281,7 +282,7 @@ export function FactsTab() {
             <SelectValue>project: {projectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All projects</SelectItem>
+            <SelectItem value={ALL_PROJECTS}>All projects</SelectItem>
             {projects.map((p) => (
               <SelectItem key={p} value={p}>
                 {p}
@@ -304,6 +305,14 @@ export function FactsTab() {
             ))}
           </SelectContent>
         </Select>
+        {/* The option lists come from the rows fetched so far. Said out loud
+            rather than left to look like the vault's full set. */}
+        {!optionsComplete && (
+          <p className="text-muted-foreground w-full font-mono text-sm">
+            relation and project options are read from the {loaded} facts
+            loaded so far, not from the whole vault
+          </p>
+        )}
       </div>
 
       <div
@@ -315,12 +324,17 @@ export function FactsTab() {
         {/* The scrubber only rides a chronological list — over the rung
             sort its position would not track the scroll. */}
         {scale && (
-          <div className="sticky top-2 hidden h-[calc(100vh-13rem)] self-start lg:block">
-            <TimelineScrubber
-              scale={scale}
-              position={scrubFraction}
-              onSeek={seekToDate}
-            />
+          <div className="sticky top-2 hidden self-start lg:block">
+            <p className="text-muted-foreground mb-1 text-center font-mono text-[10px] leading-tight">
+              axis: {rows.length} loaded
+            </p>
+            <div className="h-[calc(100vh-15rem)]">
+              <TimelineScrubber
+                scale={scale}
+                position={scrubFraction}
+                onSeek={seekToDate}
+              />
+            </div>
           </div>
         )}
 
@@ -329,7 +343,7 @@ export function FactsTab() {
           bodyClassName={rows.length > 0 ? "block" : undefined}
           title={`Facts — project: ${projectLabel}`}
           populated={rows.length > 0}
-          meta={`${rows.length} of ${totalInProject} shown`}
+          meta={headerMeta}
         >
           {rows.length > 0 ? (
             <div
@@ -351,7 +365,7 @@ export function FactsTab() {
                   >
                     {fact ? (
                       <FactRow fact={fact} focused={focusedId === fact.id} />
-                    ) : loadingMore ? (
+                    ) : fetchingMore ? (
                       <div
                         role="status"
                         className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
@@ -359,11 +373,22 @@ export function FactsTab() {
                         <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
                         loading more…
                       </div>
+                    ) : hasMore ? (
+                      <div className="flex flex-col items-center gap-1.5 py-1">
+                        <p className="text-muted-foreground text-center font-mono text-sm">
+                          {loaded} of {total} loaded
+                        </p>
+                        {subjectActive && (
+                          <Button variant="outline" size="sm" onClick={fetchMore}>
+                            Load more
+                          </Button>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-muted-foreground py-1 text-center font-mono text-sm">
-                        {hasMore
-                          ? `${rows.length} of ${scoped.length} loaded`
-                          : `all ${scoped.length} shown`}
+                        {subjectActive
+                          ? `${rows.length} of all ${loaded} loaded match`
+                          : `all ${total} shown`}
                       </p>
                     )}
                   </div>
@@ -385,31 +410,59 @@ export function FactsTab() {
               title="Could not load facts"
               description="The vault did not answer. This is a failed read, not an empty vault — nothing here says how many facts exist."
             />
-          ) : filtered ? (
+          ) : total === 0 ? (
+            serverFiltersActive ? (
+              // Backed by the server's own count behind these predicates, so
+              // this one may speak about the scope rather than the page.
+              <EmptyState
+                icon={<SearchX aria-hidden className="h-6 w-6" />}
+                title="No facts match these filters"
+                description="Nothing was hidden — the vault holds no fact matching this relation, status and project. Widen a filter to see the rest."
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setRelation(ANY)
+                      setStatus(ANY)
+                      setProject(ALL_PROJECTS)
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              // Cold-start is not a generic empty state: the vault stays empty
+              // of corroborated facts until independent origins accumulate.
+              <EmptyState
+                icon={<Archive aria-hidden className="h-6 w-6" />}
+                title="No corroborated facts yet"
+                description="no corroborated facts yet; candidates are served labelled in search — corroboration takes several independent origins across memory, code, and human review. Nothing here means not yet, not broken."
+              />
+            )
+          ) : (
+            // The needle ran over the loaded rows only, so this sentence
+            // counts loaded rows and never claims the vault holds no match.
             <EmptyState
               icon={<SearchX aria-hidden className="h-6 w-6" />}
-              title="No facts match these filters"
-              description="Nothing was hidden — no fact in this scope matches the subject, relation, and status constraints. Widen a filter to see the rest."
-              action={
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSubject("")
-                    setRelation("any")
-                    setStatus("any")
-                  }}
-                >
-                  Clear filters
-                </Button>
+              title={`No loaded fact matches “${subject.trim()}”`}
+              description={
+                hasMore
+                  ? `Searched the ${loaded} facts loaded so far. ${total} match the relation, status and project filters, so ${total - loaded} have not been read yet — this is not an answer about the whole vault.`
+                  : `Searched all ${loaded} facts behind the relation, status and project filters. Nothing was hidden.`
               }
-            />
-          ) : (
-            // Cold-start is not a generic empty state: the vault stays empty
-            // of corroborated facts until distinct origins accumulate.
-            <EmptyState
-              icon={<Archive aria-hidden className="h-6 w-6" />}
-              title="No corroborated facts yet"
-              description="no corroborated facts yet; candidates are served labelled in search — corroboration takes multiple distinct origins across memory, code, and human review. Nothing here means not yet, not broken."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  {hasMore && (
+                    <Button variant="outline" onClick={fetchMore}>
+                      Load more
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={() => setSubject("")}>
+                    Clear subject
+                  </Button>
+                </div>
+              }
             />
           )}
         </ListSurface>

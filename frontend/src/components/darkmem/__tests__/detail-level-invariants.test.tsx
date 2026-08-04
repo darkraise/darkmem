@@ -35,6 +35,8 @@ import { RealMemoriesView } from "@/features/memories/components/real-memories-v
 import { FactSourcesGroups } from "@/features/knowledge/components/fact-sources"
 import { LiveDreamDigest } from "@/features/activity/components/dream-tab"
 import { ReviewQueue } from "@/features/knowledge/components/review-queue"
+import { FactRow } from "@/features/knowledge/components/facts-tab"
+import type { FactRowData } from "@/features/knowledge/use-facts"
 
 // FactSource stays in @/demo/types: T1.68 (the type-relocation task T1.67's
 // falsification opened) found no real Knowledge-vault binding anywhere in
@@ -258,6 +260,75 @@ describe("detail level: dream digest honesty labels render in both modes", () =>
 
     expect(screen.queryByText(/event #201/)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument()
+  })
+})
+
+const FACT_CLAIM =
+  "asserted by 3 distinct origins of kinds [memory, code], no known contradiction, as of 2026-07-27"
+
+const FACT_ROW: FactRowData = {
+  id: "f1",
+  project: "darkmem",
+  subject_name: "darkmem",
+  rel_type: "USES",
+  object_name: "postgres",
+  fact_text: "darkmem uses postgres",
+  verification_status: "corroborated",
+  claim: FACT_CLAIM,
+  origin_count: 3,
+  origin_kinds: ["memory", "code"],
+  review_state: "open",
+  as_of: "2026-07-27T18:55:00Z",
+  under_sourced: true,
+  window_closed: true,
+  invalid_at: "2025-01-01T00:00:00Z",
+  expired: false,
+  detail_available: false,
+  created_at: "2026-07-01T00:00:00Z",
+  applies_when: [],
+}
+
+describe("detail level: the Facts tab's honesty labels render in both modes", () => {
+  beforeEach(() => {
+    useDetailLevel.setState({ level: "advanced" })
+  })
+
+  it.each(["simple", "advanced"] as const)(
+    "rung badge, verbatim claim, under-sourced, belief window and review state all render in %s mode",
+    (level) => {
+      useDetailLevel.setState({ level })
+      render(<FactRow fact={FACT_ROW} focused={false} />)
+      expect(screen.getByText("L2 · fact")).toBeInTheDocument()
+      expect(screen.getByText("corroborated")).toBeInTheDocument()
+      // Doc 12 §4: the claim is shown verbatim or not at all. Simple mode is
+      // not an exception — and for a disputed fact this line is both sides.
+      expect(screen.getByText(FACT_CLAIM)).toBeInTheDocument()
+      expect(screen.getByText("under-sourced")).toBeInTheDocument()
+      expect(screen.getByText("window closed")).toBeInTheDocument()
+      expect(screen.getByText("in review")).toBeInTheDocument()
+      expect(screen.getByText(/3 origins/)).toBeInTheDocument()
+      expect(screen.getByText("no context restriction")).toBeInTheDocument()
+    },
+  )
+
+  it("collapses only the raw triple and the window's timestamp in simple mode", () => {
+    useDetailLevel.setState({ level: "simple" })
+    render(<FactRow fact={FACT_ROW} focused={false} />)
+    // Collapsed: the taxonomy form of the same statement the sentence below
+    // it already carries, and the closed window's raw timestamp.
+    expect(screen.queryByText("USES")).not.toBeInTheDocument()
+    expect(screen.queryByText("2025-01-01T00:00:00Z")).not.toBeInTheDocument()
+    // Never collapsed: the row's own honesty labels and its claim.
+    expect(screen.getByText("window closed")).toBeInTheDocument()
+    expect(screen.getByText(FACT_CLAIM)).toBeInTheDocument()
+    expect(screen.getByText("darkmem uses postgres")).toBeInTheDocument()
+  })
+
+  it("shows the raw triple and the window's timestamp in advanced mode", () => {
+    useDetailLevel.setState({ level: "advanced" })
+    render(<FactRow fact={FACT_ROW} focused={false} />)
+    expect(screen.getByText("USES")).toBeInTheDocument()
+    expect(screen.getByText("2025-01-01T00:00:00Z")).toBeInTheDocument()
   })
 })
 

@@ -1,4 +1,4 @@
-import { ArrowRight, BatteryLow, RefreshCcw } from "lucide-react"
+import { ArrowRight, BatteryLow, CalendarOff, History, RefreshCcw } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
 import { VerificationBadge, type VerificationStatus } from "@/components/darkmem"
@@ -96,6 +96,56 @@ export function UnderSourcedBadge({ className }: { className?: string }) {
     >
       <BatteryLow aria-hidden className="h-3 w-3" />
       under-sourced
+    </Badge>
+  )
+}
+
+// The belief axis, rendered beside the rung and never folded into it: the
+// two are independent (doc 08 §3), so a closed window is retained history
+// and not a weaker verification state. Absent both markers the row says
+// nothing about belief, which is what a current fact means.
+export function BeliefStateBadge({
+  windowClosed,
+  expired,
+  invalidAt,
+  className,
+}: {
+  windowClosed: boolean
+  expired: boolean
+  /** Shown only where the surface asks for the technical detail. */
+  invalidAt?: string | null
+  className?: string
+}) {
+  if (!windowClosed && !expired) return null
+  const Icon = expired ? CalendarOff : History
+  return (
+    <Badge
+      variant="outline"
+      size="sm"
+      className={cn("border-dashed gap-1", className)}
+    >
+      <Icon aria-hidden className="h-3 w-3" />
+      {expired ? "belief withdrawn" : "window closed"}
+      {invalidAt && (
+        <span className="text-muted-foreground font-mono text-[10px]">
+          {invalidAt}
+        </span>
+      )}
+    </Badge>
+  )
+}
+
+// review_state='open' means a human verdict is queued. The fact is listed
+// either way — the queue is never a gate on a read (doc 08 §6) — so the
+// label discloses the queue rather than withholding the row.
+export function InReviewBadge({ className }: { className?: string }) {
+  return (
+    <Badge
+      variant="outline"
+      size="sm"
+      className={cn("text-muted-foreground border-dashed", className)}
+    >
+      in review
     </Badge>
   )
 }
