@@ -3,6 +3,7 @@ import logging
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
+from app.services.stated_expiry import derive_stated_expiry
 from app.services.fact_provenance import (
     reconcile_memory_sources,
     withdraw_memory_sources,
@@ -622,6 +624,23 @@ class ProcessingPipeline:
                                 except (TypeError, ValueError):
                                     pass
                             mem_record.confidence = estimate_confidence(content, resolved_memory_type)
+
+                            # Doc 08 §2.3's activation (T2.34): a memory that
+                            # states its own retention self-expires without the
+                            # caller setting a TTL. Only ever fills a NULL — an
+                            # explicit `expires_at` is the caller's instruction
+                            # and a derivation that overrode it would be the
+                            # same defect as a wrong parse, in the other
+                            # direction. `created_at` is the anchor, so a
+                            # reprocess derives the same instant it did at
+                            # capture rather than sliding with wall time.
+                            if mem_record.expires_at is None:
+                                stated = derive_stated_expiry(
+                                    content,
+                                    reference_time=mem_created_at or datetime.now(timezone.utc),
+                                )
+                                if stated is not None:
+                                    mem_record.expires_at = stated
                 except Exception as e:
                     status["vector"] = "error"
                     status["graph"] = "skipped"
