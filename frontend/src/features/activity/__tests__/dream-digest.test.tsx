@@ -68,32 +68,15 @@ function digestResponse() {
         object_id: OBJECT_A,
         project: "darkmem",
         actions: [
-          // Deliberately interleaved kinds within one object: associate
-          // (event 101) journalled before subsume (event 102). Journal order
-          // is application order; a regroup-by-kind would put them in the
-          // opposite section and describe a cycle that did not occur.
-          {
-            event_id: 101,
-            created_at: "2026-08-03T02:01:00Z",
-            action: "associate",
-            object_id: OBJECT_A,
-            project: "darkmem",
-            detector: "dedup",
-            origin: null,
-            actor: null,
-            before: {},
-            after: { rel_type: "DUPLICATE_OF" },
-            detail: { verdict: "dup", score: 0.9 },
-            undone: false,
-            undone_at: null,
-            undone_by: null,
-            undo_batch_id: null,
-            undoable: true,
-            undo_blocked_reason: null,
-          },
+          // Deliberately interleaved kinds, and deliberately in an order
+          // that disagrees with alphabetical-by-kind ("associate" <
+          // "subsume"): subsume (event 102) journalled first, associate
+          // (event 101) second. Journal order is application order; a
+          // regroup-by-kind would flip these and describe a cycle that did
+          // not occur.
           {
             event_id: 102,
-            created_at: "2026-08-03T02:02:00Z",
+            created_at: "2026-08-03T02:01:00Z",
             action: "subsume",
             object_id: OBJECT_A,
             project: "darkmem",
@@ -109,6 +92,25 @@ function digestResponse() {
             undo_batch_id: "batch-xyz",
             undoable: false,
             undo_blocked_reason: "already_undone",
+          },
+          {
+            event_id: 101,
+            created_at: "2026-08-03T02:02:00Z",
+            action: "associate",
+            object_id: OBJECT_A,
+            project: "darkmem",
+            detector: "dedup",
+            origin: null,
+            actor: null,
+            before: {},
+            after: { rel_type: "DUPLICATE_OF" },
+            detail: { verdict: "dup", score: 0.9 },
+            undone: false,
+            undone_at: null,
+            undone_by: null,
+            undo_batch_id: null,
+            undoable: true,
+            undo_blocked_reason: null,
           },
         ],
       },
@@ -196,9 +198,10 @@ describe("LiveDreamDigest (DEMO off — real /dream-digest)", () => {
     const objectHeading = await screen.findByText(`object ${OBJECT_A.slice(0, 8)}`)
     const groupPanel = objectHeading.closest("div.border-border")!.parentElement!
     const badges = within(groupPanel).getAllByText(/^(associate edge|supersede)$/)
-    // Journal order (created_at 02:01 then 02:02): associate, then subsume —
-    // exactly the interleaving the fixture set up, not a by-kind sort.
-    expect(badges.map((b) => b.textContent)).toEqual(["associate edge", "supersede"])
+    // Journal order (created_at 02:01 then 02:02): subsume, then associate —
+    // exactly the interleaving the fixture set up, not a by-kind sort (which
+    // would put "associate edge" first, alphabetically).
+    expect(badges.map((b) => b.textContent)).toEqual(["supersede", "associate edge"])
   })
 
   it("every action shows what changed", async () => {
