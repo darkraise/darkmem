@@ -52,6 +52,16 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /knowledge/facts takes an explicit `project` the Facts tab supplies from its own filter (doc 13 §5.1), not yet the global switcher",
   },
+  reviewQueue: {
+    kind: "manual",
+    reason:
+      "GET /review-queue/{facts,articles} take an explicit `project` the Review queue supplies from its own filter (doc 13 §6.2); GET /review-queue/counts itself has no project parameter at all and is rendered as unscoped",
+  },
+  hygieneQueue: {
+    kind: "manual",
+    reason:
+      "GET /hygiene-queue/* take an explicit `project` the Hygiene queue supplies from its own filter (doc 13 §6.2), not yet the global switcher",
+  },
   events: {
     kind: "manual",
     reason: "EventListParams.project is caller-supplied, not yet the global switcher",
