@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.schemas.facts import FactListItem
 from app.schemas.hygiene_queue import HygieneDuplicateItem, HygieneMemoryItem
 from app.schemas.review_queue import ReviewQueueFactItem
 from app.services.contradiction_veto import ContradictionFinding
@@ -58,6 +59,17 @@ def test_hygiene_memory_item_matches_ts():
     assert _ts_interface_fields(
         "use-hygiene-queue-api.ts", "HygieneMemoryItem"
     ) == set(HygieneMemoryItem.model_fields)
+
+
+def test_fact_list_item_matches_ts():
+    """N2 (T2.56 fix round 2): F9 widened ``FactListItem`` with ``unverified``
+    on the backend but the TS mirror in ``use-knowledge-api.ts`` had no
+    contract test to catch the drift — this closes that gap the way the
+    other three surfaces above already are.
+    """
+    assert _ts_interface_fields(
+        "use-knowledge-api.ts", "FactListItem"
+    ) == set(FactListItem.model_fields)
 
 
 def test_contradiction_evidence_matches_ts():
