@@ -52,15 +52,22 @@ because that is where the data comes from. A reader must not take the block's
 absence for "no counterpart exists" — it is also absent on a recovery, on a
 caller-overridden verdict, and on any dispute predating that commit.
 
-**This channel records no retrieval heat (T2.65, 2026-08-04).** Every serve
-here is invisible to doc 08 §6's consequence ranking, which reads only
-``memory_access_stats`` (partially offset when the composed door's own
-memory arm co-surfaces the fact's source memory — see ``review_ranking``'s
-"Failure mode" paragraph). See :data:`RETRIEVAL_HEAT_STATUS` and
-``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision and its
-reasoning — the short version is that a fact-keyed counter needs its own
-table, and no lane holds baseline-schema clearance this round.
-:data:`RETRIEVAL_HEAT_OWNER` names T2.84, the task that will build it.
+**This channel records its own retrieval heat (T2.84, 2026-08-05).** T2.65
+measured that every serve here was invisible to doc 08 §6's consequence
+ranking, because the only counter was ``memory_access_stats`` and this
+channel serves ``knowledge_triples`` rows directly, calling nothing
+analogous to ``access_stats.spawn_record_access``. ``fact_access_stats``
+(``app.services.fact_access_stats``) is the fix: the fact-keyed analogue of
+``memory_access_stats``, fed from this channel's own serving path the same
+way the memory hybrid feeds its counter. Both :meth:`FactsChannel.search`
+and :meth:`FactsChannel.search_with_trace` call
+``fact_access_stats.spawn_record_access`` on the fused, served rows —
+duplicated per method rather than hoisted into the shared ``_run_arms``,
+matching ``hybrid_search.HybridSearchService``'s own idiom, because what
+gets counted is what a caller actually receives, and only the two public
+methods produce that. See ``fact_access_stats``'s module docstring for why
+the write stays off this channel's hot path and how a counting failure
+degrades (never this channel's own request).
 """
 
 from __future__ import annotations
@@ -73,6 +80,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.knowledge_triples import OPEN_BELIEF_PREDICATE
 from app.schemas.retrieval_trace import ChannelStatus
+from app.services.fact_access_stats import spawn_record_access
 from app.services.rank_fusion import RankedList, rrf_fuse
 
 logger = logging.getLogger(__name__)
@@ -84,8 +92,6 @@ __all__ = [
     "KEYWORD_ARM",
     "LAYER",
     "NAME_ARM",
-    "RETRIEVAL_HEAT_OWNER",
-    "RETRIEVAL_HEAT_STATUS",
     "SEMANTIC_ARM",
     "SEMANTIC_ARM_OWNER",
 ]
@@ -106,27 +112,6 @@ SEMANTIC_ARM_OWNER = "T2.33"
 # The task that will make a dispute's counterpart readable. Carried on the
 # label for the same reason.
 DISPUTE_COUNTERPART_OWNER = "T2.64"
-
-# T2.65 (2026-08-04): this channel feeds no retrieval-heat counter at all. A
-# served fact never touches ``memory_access_stats`` (the frequency arm doc
-# 08 §6's review ranking reads) the way the memory hybrid does through
-# ``access_stats.spawn_record_access`` — there is no analogous call anywhere
-# in ``search`` / ``search_with_trace``. This is measured, not assumed: this
-# channel is the one ``layer_composition.LayerCompositionService.search``
-# calls, which is itself wired live behind the ``knowledge_search`` MCP tool
-# with no feature flag gating it, so every ``knowledge_search`` call already
-# serves facts through exactly this uncounted path (partially offset when a
-# query co-surfaces the fact's source memory through the composed door's own
-# memory arm — see ``review_ranking``'s "Failure mode" paragraph for the
-# bound). See ``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision
-# this forced and the reasoning behind it. Nothing reads this value back —
-# it is a record, not a machine-checkable marker.
-RETRIEVAL_HEAT_STATUS = "not recorded; see review_ranking.FACT_KEYED_COUNTER_STATUS (T2.65)"
-
-# The task that will mint the fact-keyed counter this channel's serves
-# currently feed nowhere. Named the same way ``SEMANTIC_ARM_OWNER`` and
-# ``DISPUTE_COUNTERPART_OWNER`` above name theirs.
-RETRIEVAL_HEAT_OWNER = "T2.84"
 
 # The two arms split the channel's weight evenly, and the even split is a
 # deliberate non-claim: no measurement says fact text outranks an endpoint name
@@ -213,7 +198,9 @@ class FactsChannel:
         keyword_weight: float = KEYWORD_ARM_WEIGHT,
     ) -> list[dict]:
         keyword_rows, name_rows, _, _ = await self._run_arms(query, project, limit)
-        return self._fuse(keyword_rows, name_rows, keyword_weight, limit)
+        fused = self._fuse(keyword_rows, name_rows, keyword_weight, limit)
+        self._record_access(fused)
+        return fused
 
     async def search_with_trace(
         self,
@@ -232,12 +219,22 @@ class FactsChannel:
             for row in rows:
                 arm_scores.setdefault(row["fact_id"], {})[arm] = float(row["score"])
 
+        fused = self._fuse(keyword_rows, name_rows, keyword_weight, limit)
+        self._record_access(fused)
         return FactChannelTrace(
-            results=self._fuse(keyword_rows, name_rows, keyword_weight, limit),
+            results=fused,
             arm_scores=arm_scores,
             keyword_failed=keyword_failed,
             name_failed=name_failed,
         )
+
+    @staticmethod
+    def _record_access(rows: list[dict]) -> None:
+        """Off the hot path: buffers synchronously, flushes on a background
+        task and its own session. See ``fact_access_stats`` for why, and for
+        the failure mode.
+        """
+        spawn_record_access(row.get("fact_id") for row in rows)
 
     async def _run_arms(
         self, query: str, project: str, limit: int,

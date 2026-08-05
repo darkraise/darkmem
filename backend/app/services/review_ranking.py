@@ -39,70 +39,60 @@ fault of its own and scores zero — and blind to non-memory provenance: a fact
 sourced only by ``human`` or ``code`` rows scores zero on this axis forever,
 because those refs name no ``memories`` row.
 
-**T2.42 added a fourth bias, and this one grows rather than sitting still.**
-The proxy above was correct only while a fact was read exclusively through the
-memories that source it — the premise this docstring used to state as if it
-still held. It stopped holding the moment T2.42 shipped
-``facts_channel.FactsChannel``: that channel serves ``knowledge_triples`` rows
-directly off its own keyword and name FTS arms and calls nothing analogous to
-``access_stats.spawn_record_access`` — a served fact touches
-``memory_access_stats`` not at all. This is measured, not assumed: that
-channel is the one ``layer_composition.LayerCompositionService.search`` calls,
-and that composition is wired live behind the ``knowledge_search`` MCP tool
-with no feature flag gating it, so every ``knowledge_search`` call already
-serves facts through exactly this uncounted path today.
+**T2.42 added a fourth bias, and T2.84 closed it with a real counter rather
+than a wider proxy.** The memory-bridged proxy above was correct only while
+a fact was read exclusively through the memories that source it. It stopped
+holding the moment T2.42 shipped ``facts_channel.FactsChannel``: that
+channel serves ``knowledge_triples`` rows directly off its own keyword and
+name FTS arms, and — until T2.84 — called nothing analogous to
+``access_stats.spawn_record_access``, so a served fact touched
+``memory_access_stats`` not at all. That gap was measured, not assumed:
+this channel is the one ``layer_composition.LayerCompositionService.search``
+calls, wired live behind the ``knowledge_search`` MCP tool with no feature
+flag gating it, so every ``knowledge_search`` call served facts through
+exactly this uncounted path.
 
-**The bound is narrower than a clean zero, though.** ``knowledge_search``'s
-own memory arm records heat too: ``HybridSearchService.search_with_trace``
-calls ``_record_access`` on every memory row it co-surfaces
-(``hybrid_search.py:86``), and that arm runs inside the same composed call
-this channel's facts ride alongside. So a memory-sourced fact accrues proxy
-heat whenever a query co-surfaces its source memory in that arm — live, but
-partial, and dependent on co-surfacing rather than on any dedicated count —
-with **no** ``memory_search`` call required. The hard zero, forever, with no
-error and no way to tell it apart from a fact nobody has asked for, lands
-only where co-surfacing is structurally impossible: every fact sourced
-solely by ``human`` or ``code`` rows (named above), which point at no
-``memories`` row for that arm to ever pick up.
+**T2.65 (2026-08-04) recorded the fix and T2.84 (2026-08-05) built it:**
+``fact_access_stats`` — the fact-keyed analogue of this substrate, its own
+table (``fact_id REFERENCES knowledge_triples(id)``), fed from
+``FactsChannel.search`` and ``FactsChannel.search_with_trace`` the way
+``access_stats.py`` feeds ``memory_access_stats`` off the memory hybrid's
+serving path. ``proxy_frequency`` (the memory-bridged proxy above) and
+``direct_frequency`` (this table, joined straight off ``open_facts.id``) are
+combined by ``GREATEST``/``MAX`` in the ``frequency`` CTE below — the same
+non-additive combination the multi-source case already uses, and for the
+same reason: a fact served both through a hot source memory and directly
+through the facts channel has one heat, not two summed. The memory-bridged
+proxy is **kept, not replaced** — a fact still accrues heat when its source
+memory is retrieved through the ordinary memory hybrid, which
+``FactsChannel`` never touches, so dropping it would trade one blind spot
+for another.
 
-T2.65 (2026-08-04) is the decision this failure mode forced: build a
-fact-keyed analogue of this substrate (its own table, fed off the facts
-channel's serving path the way ``access_stats.py`` feeds this one off the
-memory hybrid's), or accept the gap as this proxy's bound. **The proxy is
-accepted, but as an interim position, not a permanent one.** A fact-keyed
-counter needs a new table — unlike a memory, a fact has no existing side
-table to grow into, and ``knowledge_triples`` carries no general-purpose
-column a counter could ride without one — and no lane holds baseline-schema
-clearance this round (schema changes serialise through one owner per epic).
-:data:`FACT_KEYED_COUNTER_STATUS` records that decision as a value a reviewer
-sees in a diff rather than only in prose; nothing reads it back, so it is not
-a check, only a record. :data:`FACT_KEYED_COUNTER_OWNER` names the task that
-replaces it, the same idiom ``facts_channel.SEMANTIC_ARM_OWNER`` and
-``DISPUTE_COUNTERPART_OWNER`` already use for a deferred piece with a real
-owner rather than an open-ended TODO.
-``test_facts_channel_traffic_never_feeds_retrieval_frequency``
-(``tests/test_queue_ranking.py``) pins the gap on **both** of
+``test_a_facts_channel_search_feeds_the_direct_counter``
+(``tests/test_queue_ranking.py``) pins the fix on **both** of
 ``FactsChannel``'s public methods, ``search`` and ``search_with_trace`` —
-fifty real searches through each against a sourced fact, asserting both that
-``memory_access_stats`` stays untouched and that this arm's ranking output
-stays at zero. A recording path landed on only one of the two methods turns
-that parametrization red; a single-method version of this test would not
-have (this was demonstrated, not assumed, in this task's own review round).
-It does not cover the composed door (``LayerCompositionService.search``)
-itself, which is out of this module's reach, nor a future fix that records
-heat under some conditions and not others rather than none at all — either
-still needs its own red test naming it.
+fifty real searches through each against a sourced fact, asserting that
+``fact_access_stats`` accrues the full fifty and that this arm's ranking
+output is non-zero, while ``memory_access_stats`` — which ``FactsChannel``
+still never touches — stays untouched. It is the flip of the gap-pinning
+test T2.65 wrote (T2.84's Done-when requires exactly that flip): a recording
+path landed on only one of the two methods turns the *other*
+parametrization red, which is why both stayed parametrized rather than
+collapsing to one call. It does not cover the composed door
+(``LayerCompositionService.search``) itself, which is out of this module's
+reach — that path is covered indirectly, because it is the one production
+caller of ``search_with_trace``.
 
-Only two of the four biases point the same way, and it is not all four: the
-cold-start gap and the non-memory blind spot two paragraphs up both score a
-fact exactly zero when it should not, and both understate. This gap
-understates too, but not uniformly — it is a clean zero only for the
-non-co-surfacing case above, and merely partial (still an undercount, never
-an overcount) for the rest. The *first* bias in this list — a fact
-inheriting the heat of whichever popular, unrelated source memory it
-happens to share — is the one exception: it **overstates**. Salience is a
-separate arm rather than a tiebreak precisely because this arm's error does
-not point in one safe direction only.
+What remains after T2.84 is narrower than what T2.65 measured: the
+cold-start bias (a fact never yet served by any channel scores zero,
+correctly) and the non-memory-provenance gap (a fact sourced *only* by
+``human`` or ``code`` rows still scores zero on the memory-bridged proxy,
+though it now accrues real heat the moment anything retrieves it through
+``FactsChannel``). The *first* bias in the opening list — a fact inheriting
+the heat of whichever popular, unrelated source memory it happens to share —
+is unaffected by this task and still **overstates**. Salience is a separate
+arm rather than a tiebreak precisely because this arm's error does not point
+in one safe direction only.
 
 **Subject salience — distinct graph neighbours of the subject entity.** Of the
 three candidates (live facts sharing the ``subject_name``, memories whose
@@ -176,8 +166,11 @@ partial predicate — so nothing here is per-fact-in-the-table. At 100k facts
 with a human-sized backlog of, say, 500 open rows, a page costs: one partial
 index scan yielding 500 rows; one index-driven pass over ``fact_sources``
 (``ix_fact_sources_fact``) for those 500; one hash/index join into
-``memory_access_stats`` on its primary key; two index probes per open subject
-into ``entity_relations`` (its UNIQUE's source prefix and
+``memory_access_stats`` on its primary key; one further primary-key join into
+``fact_access_stats`` per open fact (T2.84) — the direct counter is keyed
+``fact_id``, so this probe is a straight PK lookup off ``open_facts.id`` with
+no intermediate bridge table; two index probes per open subject into
+``entity_relations`` (its UNIQUE's source prefix and
 ``ix_entity_relations_target``); and one ``ix_events_object`` probe per open
 **dispute** only — the events lateral never runs for a non-disputed open row.
 The sort is over the open set, not the table. What does not scale is a backlog
@@ -264,18 +257,6 @@ DEFAULT_ACCESS_HALF_LIFE_DAYS = 30
 # entry behind it.
 W_RETRIEVAL_FREQUENCY = 1.0
 W_SUBJECT_SALIENCE = 0.5
-
-# T2.65 (2026-08-04): recorded as a value, not only in the module docstring
-# above, so a future change to this decision is a diff a reviewer sees rather
-# than prose nobody re-reads. See the "Failure mode" paragraph above for the
-# argument and docs/planning/tasks/E2-truth-core.md (T2.65) for the record.
-# Nothing reads this back — it is a record, not a machine-checkable marker.
-FACT_KEYED_COUNTER_STATUS = "deferred pending baseline-schema clearance"
-
-# The task that will mint the fact-keyed counter this proxy defers to,
-# carrying T2.65's recorded design. Named the way
-# ``facts_channel.SEMANTIC_ARM_OWNER`` names its own deferred piece's owner.
-FACT_KEYED_COUNTER_OWNER = "T2.84"
 
 _PARAM_BOUNDS: dict[str, tuple[int, int]] = {
     "dispute_stale_days": (1, 3650),
@@ -413,7 +394,7 @@ memory_sources AS MATERIALIZED (
     WHERE fs.source_kind = '{memory_kind}'
       AND fs.source_ref ~ '{canonical_ref}'
 ),
-frequency AS (
+proxy_frequency AS (
     SELECT ms.fact_id,
            COUNT(*) AS source_memories,
            MAX(mas.access_count) AS peak_access_count,
@@ -431,6 +412,40 @@ frequency AS (
     FROM memory_sources ms
     JOIN memory_access_stats mas ON mas.memory_id = CAST(ms.source_ref AS uuid)
     GROUP BY ms.fact_id
+),
+direct_frequency AS (
+    SELECT fas.fact_id,
+           fas.access_count AS peak_access_count,
+           fas.last_accessed AS last_accessed,
+           fas.access_count * power(
+               0.5,
+               GREATEST(
+                   0.0,
+                   CAST(EXTRACT(EPOCH FROM (now() - fas.last_accessed))
+                        AS double precision)
+               ) / {half_life_seconds}
+           ) AS decayed_access
+    FROM fact_access_stats fas
+    JOIN open_facts o ON o.id = fas.fact_id
+),
+frequency AS (
+    -- The direct, fact-keyed counter (T2.84) and the memory-bridged proxy
+    -- (T2.24, kept — see the module docstring's "Failure mode" paragraph)
+    -- are two independent, non-overlapping heat signals for the same fact,
+    -- so they combine the same way multiple memory sources already do:
+    -- MAX, never SUM, for the identical reason — a fact read directly
+    -- through the facts channel AND through a hot source memory must not
+    -- be double-counted as though it had two visits. ``source_memories``
+    -- is untouched: it counts sources with access history, which is a
+    -- provenance-proxy concept the direct counter has no analogue of.
+    SELECT
+        COALESCE(pf.fact_id, df.fact_id) AS fact_id,
+        COALESCE(pf.source_memories, 0) AS source_memories,
+        GREATEST(pf.peak_access_count, df.peak_access_count) AS peak_access_count,
+        GREATEST(pf.last_accessed, df.last_accessed) AS last_accessed,
+        GREATEST(pf.decayed_access, df.decayed_access) AS decayed_access
+    FROM proxy_frequency pf
+    FULL OUTER JOIN direct_frequency df ON df.fact_id = pf.fact_id
 ),
 salience AS (
     SELECT o.id AS fact_id, COUNT(DISTINCT n.neighbour_id) AS neighbour_count
