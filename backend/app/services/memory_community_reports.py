@@ -38,22 +38,66 @@ failed" from "will never be generated":
   `properties["report_error"]`. Retried next cycle rather than stuck
   forever: `detect_for_project`'s delete-and-rewrite replaces `properties`
   wholesale (T2.18's), so a failed community's next run is a fresh attempt,
-  not a resurrected failure.
+  not a resurrected failure — bounded by the attempt cap below.
 - **pending** — everything else: eligible, not yet attempted.
+
+**An empty completion is a failure, not a report** (T2.92). The vendor can
+return HTTP 200 with `content == ""`, and `chat_completion` passes that
+through — it raises on a malformed envelope and on truncation, but an empty
+success is a valid envelope. Stored raw it lands as `report_string = ""`,
+which `report_status` reads as *falsy*, i.e. indistinguishable from "never
+generated". The topic then reads `pending` forever and every subsequent pass
+pays for the same call again. `generate_report` therefore refuses an empty
+or whitespace-only completion (`EmptyReportError`) so the write path never
+puts a string on disk that a reader cannot tell apart from absence — a read
+door cannot make that distinction after the fact, which is why the guard
+cannot live there.
+
+**Where that guard lives, and why not `chat_completion`** (T2.92, decided
+rather than defaulted). It lives here, on the report path, not globally on
+the orchestrator. A global raise would be the stronger fix and would also
+change the error contract of six live purposes at once: `memory.py`'s chat
+answer would turn a blank answer into a 500, and the JSON-parsing purposes
+(extraction, classification, verification, reranker) already fail loudly on
+`""` when they parse it. What is specific to *this* producer is that it
+**persists** its completion into a status-bearing column, so an empty
+success becomes a durable wrong state rather than one bad response. That is
+the failure this guard is sized to. Making the refusal global is a real
+option, with a wider blast radius than this task carries; it needs its own
+task and its own decision about the chat door.
+
+**The retry policy is bounded** (T2.92). A failure — an orchestrator raise
+or an empty completion, counted the same — increments
+`properties["report_attempts"]`. The count rides the id churn through the
+same snapshot/restore seam the reports do, and once it reaches
+`max_attempts` (default `DEFAULT_MAX_REPORT_ATTEMPTS`) the carried failure
+brings `report_error` back with it, so the community reads `failed` and
+`generate_reports` never calls the model for it again. Below the cap
+nothing is carried but the count, so the community reads `pending` and a
+transient vendor error still gets its retry on the next run. The chosen
+policy is therefore **bounded retry, not permanent-on-first-failure and not
+retry-forever**: one transient failure costs one extra call, a permanently
+failing topic costs `max_attempts` and then stops. Without the carry the cap
+would be unreachable, because the rewrite resets `properties` wholesale.
 
 **Surviving the id churn.** `detect_for_project` deletes and rewrites a
 project's communities every run (doc 06 §7: "ids churn on every run"), so a
 `report_string` written against the old row id is gone the moment the next
 run commits. `get_by_label` is what T2.18 left for carrying a report
-forward: call `snapshot_reports` *before* the rewrite to capture
-`label -> report_string` for every currently-ready community, run
-detection, then `restore_reports` *after* the rewrite to re-attach a
-carried report to whichever new row now holds that label, via `get_by_label`
-— the documented seam (T2.18's plan §7.1), not a bulk re-derivation. A
-community whose label did not survive the rewrite starts `pending` (or
-`skipped`) again, same as a brand-new topic. Only *ready* reports carry
-forward: a `failed` mark never does, so a transient vendor error is retried
-on the very next run instead of sticking forever.
+forward: call `snapshot_reports` *before* the rewrite to capture a
+`label -> CarriedReport` for every community worth carrying, run detection,
+then `restore_reports` *after* the rewrite to re-attach it to whichever new
+row now holds that label, via `get_by_label` — the documented seam (T2.18's
+plan §7.1), not a bulk re-derivation. A community whose label did not
+survive the rewrite starts `pending` (or `skipped`) again, same as a
+brand-new topic.
+
+Two things carry, and they carry differently. A *ready* report carries its
+text, unconditionally. A *failed* community carries only its attempt count
+(T2.92) — not its `report_error`, until the count reaches the cap — so it
+reads `pending` again on the next run and a transient vendor error still
+gets retried, while the count that eventually stops the retries is no longer
+erased by the rewrite.
 
 **Never on a read path (invariant 15).** Nothing here is imported from
 `app/api/*`, `app/services/pipeline.py`, `app/services/memory.py`, or any
@@ -109,6 +153,15 @@ DEFAULT_MIN_REPORT_SIZE = 3
 DEFAULT_MAX_MEMORIES_IN_PROMPT = 8
 DEFAULT_CONTENT_CHARS = 240
 
+# How many times one community may be sent to the model before its failures
+# are treated as permanent. Above 1 so a single transient vendor error still
+# gets its retry; finite so a topic that fails every time stops costing a
+# call per run.
+DEFAULT_MAX_REPORT_ATTEMPTS = 3
+
+REPORT_ATTEMPTS_KEY = "report_attempts"
+REPORT_ERROR_KEY = "report_error"
+
 REPORT_PURPOSE = "summarization"
 EVENT_TYPE = "consolidated"
 OBJECT_TYPE = "topic"
@@ -128,6 +181,23 @@ _MEMORY_CONTENT = text(
 )
 
 
+class EmptyReportError(RuntimeError):
+    """The report purpose returned a successful but textless completion.
+
+    Raised rather than returned so the empty string never reaches
+    `set_report`: on disk it is indistinguishable from "no report yet".
+    """
+
+
+def report_attempts(row: CommunityRow) -> int:
+    """How many times this community has been sent to the model, counting
+    the attempts carried across earlier detection rewrites."""
+    try:
+        return int(row.properties.get(REPORT_ATTEMPTS_KEY) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def report_status(
     row: CommunityRow, *, min_report_size: int = DEFAULT_MIN_REPORT_SIZE
 ) -> str:
@@ -137,7 +207,7 @@ def report_status(
     distinction will drift out of sync across consumers."""
     if row.report_string:
         return REPORT_STATUS_READY
-    if row.properties.get("report_error"):
+    if row.properties.get(REPORT_ERROR_KEY):
         return REPORT_STATUS_FAILED
     size = row.properties.get("size")
     if size is None:
@@ -147,35 +217,87 @@ def report_status(
     return REPORT_STATUS_PENDING
 
 
-async def snapshot_reports(session: AsyncSession, project: str) -> dict[str, str]:
-    """Capture every currently-ready report's `label -> report_string`,
-    called before `detect_for_project` deletes the rows carrying them."""
+@dataclass(frozen=True)
+class CarriedReport:
+    """What one label is worth carrying across a detection rewrite: either
+    the report text itself, or the attempt count that bounds its retries."""
+
+    report_string: str | None = None
+    attempts: int = 0
+    error: str | None = None
+
+
+async def snapshot_reports(
+    session: AsyncSession, project: str
+) -> dict[str, CarriedReport]:
+    """Capture what each label needs to survive the rewrite, called before
+    `detect_for_project` deletes the rows holding it. A ready report carries
+    its text; an unfinished one carries its attempt count so the cap is
+    reachable across runs. Everything else is not worth carrying."""
     rows = await list_with_members(session, project)
-    return {row.label: row.report_string for row in rows if row.report_string and row.label}
+    snapshot: dict[str, CarriedReport] = {}
+    for row in rows:
+        if not row.label:
+            continue
+        if row.report_string:
+            snapshot[row.label] = CarriedReport(report_string=row.report_string)
+            continue
+        attempts = report_attempts(row)
+        if attempts:
+            snapshot[row.label] = CarriedReport(
+                attempts=attempts, error=row.properties.get(REPORT_ERROR_KEY)
+            )
+    return snapshot
 
 
 @dataclass
 class RestoreOutcome:
     carried_forward: int = 0
+    attempts_carried: int = 0
 
 
 async def restore_reports(
-    session: AsyncSession, project: str, snapshot: dict[str, str]
+    session: AsyncSession,
+    project: str,
+    snapshot: dict[str, CarriedReport],
+    *,
+    max_attempts: int = DEFAULT_MAX_REPORT_ATTEMPTS,
 ) -> RestoreOutcome:
     """Re-attach a carried-forward report to whichever new row now holds a
     snapshotted label, via `get_by_label` — T2.18's documented seam for
     surviving the nightly id churn. A label that no longer exists (the topic
     merged, split, or dissolved) or whose new row already has a report
     (should not happen immediately after a rewrite, but is checked rather
-    than assumed) is simply skipped."""
-    carried = 0
-    for label, report_string in snapshot.items():
+    than assumed) is simply skipped.
+
+    A carried *failure* restores its attempt count, and restores the error
+    with it only once the count has reached the cap: below the cap the
+    community must read `pending` so the retry still happens, at the cap it
+    must read `failed` so it never costs another call.
+    """
+    outcome = RestoreOutcome()
+    for label, carried in snapshot.items():
         row = await get_by_label(session, project, label)
         if row is None or row.report_string is not None:
             continue
-        await set_report(session, row.id, report_string=report_string)
-        carried += 1
-    return RestoreOutcome(carried_forward=carried)
+        if carried.report_string:
+            await set_report(session, row.id, report_string=carried.report_string)
+            outcome.carried_forward += 1
+            continue
+        if not carried.attempts:
+            continue
+        patch = {REPORT_ATTEMPTS_KEY: carried.attempts}
+        if carried.attempts >= max_attempts:
+            patch[REPORT_ERROR_KEY] = carried.error or _exhausted_message(
+                carried.attempts
+            )
+        await set_report(session, row.id, properties_patch=patch)
+        outcome.attempts_carried += 1
+    return outcome
+
+
+def _exhausted_message(attempts: int) -> str:
+    return f"report generation gave up after {attempts} attempts"
 
 
 async def _sample_content(
@@ -215,11 +337,20 @@ async def generate_report(
     content_chars: int = DEFAULT_CONTENT_CHARS,
 ) -> str:
     """One `summarization`-purpose call producing a community's report text.
-    Raises on any orchestrator failure; the caller decides how to record it —
-    this function never swallows an error into a placeholder string."""
+
+    Raises on any orchestrator failure, and on a successful-but-empty
+    completion; the caller decides how to record it. Every return value is
+    therefore real report text — this function never hands back a string a
+    reader could mistake for either an error or an ungenerated report.
+    """
     contents = await _sample_content(session, row.memory_ids, max_memories)
     messages = _build_messages(row, contents, content_chars)
-    return await llm.chat_completion(REPORT_PURPOSE, messages=messages)
+    report_text = await llm.chat_completion(REPORT_PURPOSE, messages=messages)
+    if not (report_text or "").strip():
+        raise EmptyReportError(
+            f"{REPORT_PURPOSE} returned an empty completion for topic {row.label!r}"
+        )
+    return report_text
 
 
 @dataclass
@@ -227,6 +358,7 @@ class GenerateOutcome:
     attempted: int = 0
     generated: int = 0
     failed: int = 0
+    exhausted: int = 0
     labels_failed: list[str] = field(default_factory=list)
 
 
@@ -237,6 +369,7 @@ async def generate_reports(
     *,
     min_report_size: int = DEFAULT_MIN_REPORT_SIZE,
     max_memories: int = DEFAULT_MAX_MEMORIES_IN_PROMPT,
+    max_attempts: int = DEFAULT_MAX_REPORT_ATTEMPTS,
 ) -> GenerateOutcome:
     """Fill in `report_string` for every `pending` community in `project`.
 
@@ -254,6 +387,13 @@ async def generate_reports(
     for row in rows:
         if report_status(row, min_report_size=min_report_size) != REPORT_STATUS_PENDING:
             continue
+        attempts = report_attempts(row)
+        if attempts >= max_attempts:
+            # Only reachable if the carried error went missing; the cap is
+            # enforced here as well so no path can bill an unbounded retry.
+            await _mark_exhausted(session_factory, project, row, attempts)
+            outcome.exhausted += 1
+            continue
         outcome.attempted += 1
         async with session_factory() as session:
             try:
@@ -267,7 +407,10 @@ async def generate_reports(
                 )
                 await set_report(
                     session, row.id,
-                    properties_patch={"report_error": str(exc)[:500]},
+                    properties_patch={
+                        REPORT_ERROR_KEY: str(exc)[:500],
+                        REPORT_ATTEMPTS_KEY: attempts + 1,
+                    },
                 )
                 await record_event(
                     session, event_type=EVENT_TYPE, object_type=OBJECT_TYPE,
@@ -279,7 +422,11 @@ async def generate_reports(
                 outcome.labels_failed.append(row.label)
                 continue
 
-            await set_report(session, row.id, report_string=report_text)
+            await set_report(
+                session, row.id,
+                report_string=report_text,
+                properties_patch={REPORT_ATTEMPTS_KEY: attempts + 1},
+            )
             await record_event(
                 session, event_type=EVENT_TYPE, object_type=OBJECT_TYPE,
                 object_id=None, project=project,
@@ -289,3 +436,21 @@ async def generate_reports(
             outcome.generated += 1
 
     return outcome
+
+
+async def _mark_exhausted(
+    session_factory, project: str, row: CommunityRow, attempts: int
+) -> None:
+    """Stamp a community whose attempts ran out so it reads `failed` rather
+    than `pending` — the state that stops the next pass calling the model."""
+    async with session_factory() as session:
+        await set_report(
+            session, row.id,
+            properties_patch={REPORT_ERROR_KEY: _exhausted_message(attempts)},
+        )
+        await record_event(
+            session, event_type=EVENT_TYPE, object_type=OBJECT_TYPE,
+            object_id=None, project=project,
+            payload={"label": row.label, "status": REPORT_STATUS_FAILED},
+        )
+        await session.commit()

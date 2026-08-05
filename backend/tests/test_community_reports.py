@@ -330,7 +330,7 @@ async def test_a_ready_report_carries_forward_across_a_rewrite_by_label(committi
 
     async with factory() as session:
         snapshot = await reports.snapshot_reports(session, PROJECT)
-    assert snapshot == {"alpha": "the original report"}
+    assert snapshot == {"alpha": reports.CarriedReport(report_string="the original report")}
 
     # Simulate the nightly rewrite: the label survives, the id does not.
     async with factory() as session:
@@ -389,6 +389,153 @@ async def test_a_dropped_label_does_not_carry_a_report_onto_the_wrong_topic(comm
         row = await repo.get_by_label(session, PROJECT, "beta")
     assert row.report_string is None
     assert reports.report_status(row) == reports.REPORT_STATUS_SKIPPED
+
+
+# ---------------------------------------------------------------------------
+# T2.92 — an empty completion is a failure, and the retry loop is bounded
+# ---------------------------------------------------------------------------
+
+
+async def _seed_one_community(factory, project, label="alpha", properties=None):
+    async with factory() as session:
+        ids = tuple([await seed_memory(session, project) for _ in range(3)])
+        await session.commit()
+    await _rewrite(factory, project, ids, label=label, properties=properties)
+    return ids
+
+
+async def _rewrite(factory, project, ids, *, label="alpha", properties=None):
+    """One detection run's delete-and-rewrite, driven exactly as
+    `detect_for_project` would leave it."""
+    async with factory() as session:
+        await repo.replace_project_communities(
+            session, project,
+            [repo.CommunityDraft(
+                label=label, memory_ids=ids, properties=properties or {"size": 3},
+            )],
+        )
+        await session.commit()
+
+
+async def _churn(factory, project, ids, *, label="alpha"):
+    """The full seam T2.53's runner is handed: snapshot, rewrite, restore."""
+    async with factory() as session:
+        snapshot = await reports.snapshot_reports(session, project)
+    await _rewrite(factory, project, ids, label=label)
+    async with factory() as session:
+        await reports.restore_reports(session, project, snapshot)
+        await session.commit()
+
+
+async def _only_row(factory, project):
+    async with factory() as session:
+        return (await repo.list_with_members(session, project))[0]
+
+
+async def test_generate_report_refuses_an_empty_completion(session):
+    """The guard is on the write path: an empty completion never becomes a
+    return value, so `set_report` can never be handed one."""
+    a = await seed_memory(session)
+    row = _row(properties={"size": 3}, memory_ids=(a,))
+    with pytest.raises(reports.EmptyReportError):
+        await reports.generate_report(session, StubLLM(responses=["   \n\t "]), row)
+
+
+@pytest.mark.parametrize("empty", ["", "   \n\t "])
+async def test_an_empty_completion_lands_as_failed_never_as_pending(committing, empty):
+    """The defect this task exists for: stored raw, `""` reads as *falsy*,
+    which `report_status` cannot tell apart from "never generated" — so the
+    topic reads `pending` forever and every later pass pays for the call
+    again. It must read `failed`, with the reason on the row."""
+    factory = committing
+    project = f"{PROJECT}-empty-{len(empty)}"
+    await _seed_one_community(factory, project)
+
+    llm = StubLLM(responses=[empty])
+    outcome = await reports.generate_reports(factory, llm, project)
+
+    assert outcome.attempted == 1
+    assert outcome.generated == 0
+    assert outcome.failed == 1
+
+    row = await _only_row(factory, project)
+    assert row.report_string is None
+    assert reports.report_status(row) != reports.REPORT_STATUS_PENDING
+    assert reports.report_status(row) == reports.REPORT_STATUS_FAILED
+    assert "empty completion" in row.properties["report_error"]
+    assert reports.report_attempts(row) == 1
+
+
+async def test_one_failure_still_retries_after_the_rewrite(committing):
+    """The cap must not turn the first transient vendor error into a
+    permanent state — below the cap the carried count restores without the
+    error, so the community reads `pending` and gets its retry."""
+    factory = committing
+    project = f"{PROJECT}-retry"
+    ids = await _seed_one_community(factory, project)
+
+    await reports.generate_reports(factory, StubLLM(fail_on={"alpha"}), project)
+    await _churn(factory, project, ids)
+
+    carried = await _only_row(factory, project)
+    assert reports.report_attempts(carried) == 1
+    assert reports.report_status(carried) == reports.REPORT_STATUS_PENDING
+
+    llm = StubLLM()
+    outcome = await reports.generate_reports(factory, llm, project)
+    assert outcome.generated == 1
+    assert len(llm.calls) == 1
+
+    row = await _only_row(factory, project)
+    assert reports.report_status(row) == reports.REPORT_STATUS_READY
+
+
+async def test_the_retry_loop_is_bounded_across_detection_rewrites(committing):
+    """The re-billing loop, closed. Without the carried count the rewrite
+    resets `properties` wholesale every run, so the cap is unreachable and a
+    permanently-empty topic costs one model call per cycle forever."""
+    factory = committing
+    project = f"{PROJECT}-bounded"
+    ids = await _seed_one_community(factory, project)
+
+    calls_per_cycle = []
+    for _ in range(reports.DEFAULT_MAX_REPORT_ATTEMPTS):
+        llm = StubLLM(responses=[""])
+        await reports.generate_reports(factory, llm, project)
+        calls_per_cycle.append(len(llm.calls))
+        await _churn(factory, project, ids)
+
+    assert calls_per_cycle == [1] * reports.DEFAULT_MAX_REPORT_ATTEMPTS
+
+    exhausted = await _only_row(factory, project)
+    assert reports.report_status(exhausted) == reports.REPORT_STATUS_FAILED
+
+    llm = StubLLM(responses=[""])
+    outcome = await reports.generate_reports(factory, llm, project)
+    assert llm.calls == []
+    assert outcome.attempted == 0
+
+
+async def test_an_exhausted_community_is_never_called_again(committing):
+    """The cap is enforced in the generator too, not only by the error the
+    restore carries — a count at the cap stops the call even if the row
+    reached that state some other way."""
+    factory = committing
+    project = f"{PROJECT}-exhausted"
+    await _seed_one_community(
+        factory, project,
+        properties={"size": 3, "report_attempts": reports.DEFAULT_MAX_REPORT_ATTEMPTS},
+    )
+
+    llm = StubLLM()
+    outcome = await reports.generate_reports(factory, llm, project)
+
+    assert llm.calls == []
+    assert outcome.attempted == 0
+    assert outcome.exhausted == 1
+
+    row = await _only_row(factory, project)
+    assert reports.report_status(row) == reports.REPORT_STATUS_FAILED
 
 
 # ---------------------------------------------------------------------------
