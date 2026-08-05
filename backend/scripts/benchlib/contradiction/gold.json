@@ -1,0 +1,1924 @@
+{
+  "version": 1,
+  "variant": "fact-pair",
+  "_notes": "Contradiction-pair gold (doc 17 §5.2, T2.57). Labels carry doc 08 §4.2's veto-grade semantics. Labelling rules, slice decision procedures and the composition rationale: LABELLING.md beside this file. Append-only; retire in place; declared counts track live pairs. Loader: benchlib/contradiction_gold.py.",
+  "declared_slice_counts": {
+    "compatible-same-endpoint": 6,
+    "echo": 7,
+    "lexically-disjoint": 12,
+    "non-overlap": 7,
+    "same-endpoint": 10,
+    "similar-unrelated": 8
+  },
+  "declared_label_counts": {
+    "contradiction": 22,
+    "not-contradiction": 28
+  },
+  "declared_side_provenance_counts": {
+    "hand-authored-synthetic-fact": 79,
+    "l2-fact": 21,
+    "real-dispute": 0
+  },
+  "pairs": [
+    {
+      "id": "cg-0001",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Inverse-replacement rule: one REPLACES edge asserted in both directions between the same two names over overlapping open windows; directed succession cannot run both ways at once. Independent origins on each side, so the veto has a fresh witness. Side a is the harvest-minted row.",
+      "a": {
+        "subject_name": "redis",
+        "rel_type": "REPLACES",
+        "object_name": "memcached",
+        "fact": "redis replaces memcached",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-02-cache-review"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
+          "subject_name": "redis",
+          "rel_type": "REPLACES",
+          "object_name": "memcached",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "memcached",
+        "rel_type": "REPLACES",
+        "object_name": "redis",
+        "fact": "memcached replaces redis",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:cache-migration-note",
+          "sess-2026-03-04-followup"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0002",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Inverse-replacement rule across the family: REPLACES one way and IMPROVES_ON the other are both REPLACES-family edges, and the family is one bucket (app.services.relations.REPLACES_FAMILY), so the pair asserts a two-way succession over one overlapping window. Side a is the harvest-minted row.",
+      "a": {
+        "subject_name": "github actions",
+        "rel_type": "REPLACES",
+        "object_name": "jenkins",
+        "fact": "github actions replaces jenkins",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-08-ci-cutover"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+          "subject_name": "github actions",
+          "rel_type": "REPLACES",
+          "object_name": "jenkins",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "jenkins",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "github actions",
+        "fact": "jenkins improves on github actions",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:ci-retro-2026"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0003",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Exclusive-reversal rule, HAS_PART: proper parthood is antisymmetric -- a part cannot contain its whole -- so both directions over one overlapping window cannot stand together. Side a is the harvest-minted row (itself a real-world confusion: kibana is conventionally part of elk, which is why the reversed assertion is a plausible second row).",
+      "a": {
+        "subject_name": "kibana",
+        "rel_type": "HAS_PART",
+        "object_name": "elk",
+        "fact": "kibana has part elk",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-20-logging"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
+          "subject_name": "kibana",
+          "rel_type": "HAS_PART",
+          "object_name": "elk",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "elk",
+        "rel_type": "HAS_PART",
+        "object_name": "kibana",
+        "fact": "elk has part kibana",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:elk-stack-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0004",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Exclusive-reversal rule, EXTENDS: extension is a strict order, so mutual extension over the overlapping [2024-06, 2025-01) stretch is incoherent. Bounded-versus-open windows exercise the overlap predicate's mixed case.",
+      "a": {
+        "subject_name": "billing api",
+        "rel_type": "EXTENDS",
+        "object_name": "core platform api",
+        "fact": "billing api extends core platform api",
+        "project": "default",
+        "valid_at": "2024-01-01T00:00:00+00:00",
+        "invalid_at": "2025-01-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2026-04-01-apis"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "core platform api",
+        "rel_type": "EXTENDS",
+        "object_name": "billing api",
+        "fact": "core platform api extends billing api",
+        "project": "default",
+        "valid_at": "2024-06-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0107"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0005",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Exclusive-reversal rule, IMPLEMENTS: spec and implementation are incompatible roles for one ordered pair, so the two directions over overlapping open windows cannot both be true.",
+      "a": {
+        "subject_name": "pam module",
+        "rel_type": "IMPLEMENTS",
+        "object_name": "login policy spec",
+        "fact": "pam module implements login policy spec",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-15-auth"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "login policy spec",
+        "rel_type": "IMPLEMENTS",
+        "object_name": "pam module",
+        "fact": "login policy spec implements pam module",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:auth-hardening-plan"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0006",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Exclusive-reversal rule, DEPLOYED_ON: host and guest cannot swap for the same pair -- a platform is not deployed on its own workload. Side a is the harvest-minted row; side b is the garbled-extraction shape the corpus demonstrably produces (cf. the real 'prod-db-01 deployed on postgres' row), which is exactly why the swap must be adjudicated rather than assumed benign.",
+      "a": {
+        "subject_name": "directory replica",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "acs-01",
+        "fact": "directory replica deployed on acs-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-02-dirsync"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
+          "subject_name": "directory replica",
+          "rel_type": "DEPLOYED_ON",
+          "object_name": "acs-01",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "acs-01",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "directory replica",
+        "fact": "acs-01 deployed on directory replica",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0088"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0007",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement sharing one endpoint name: in this pair's world 'metrics scraper' is the same referent as prometheus (the rationale's declared co-reference), so side b asserts munin replacing prometheus while side a asserts the reverse -- a two-way succession over one overlapping window. The shared name 'munin' keeps the pair reachable by the same-endpoint arm.",
+      "a": {
+        "subject_name": "prometheus",
+        "rel_type": "REPLACES",
+        "object_name": "munin",
+        "fact": "prometheus replaces munin",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-30-monitoring"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "munin",
+        "rel_type": "REPLACES",
+        "object_name": "metrics scraper",
+        "fact": "munin replaces metrics scraper",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:monitoring-history"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0008",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement sharing one endpoint name: 'unit-file scheduler' co-refers with systemd timer in this pair's world, so the sides assert the replacement in both directions; side a's open window overlaps side b's [2025-03, open).",
+      "a": {
+        "subject_name": "systemd timer",
+        "rel_type": "REPLACES",
+        "object_name": "backup cron job",
+        "fact": "systemd timer replaces backup cron job",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-14-sched"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "backup cron job",
+        "rel_type": "REPLACES",
+        "object_name": "unit-file scheduler",
+        "fact": "backup cron job replaces unit-file scheduler",
+        "project": "default",
+        "valid_at": "2025-03-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:sched-migration"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0009",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Inverse-replacement rule within IMPROVES_ON: an improvement ordering over one comparison cannot be mutual, and both directions sit in the REPLACES family. Side a is the harvest-minted row.",
+      "a": {
+        "subject_name": "caddy",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "nginx",
+        "fact": "caddy improves on nginx",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-21-proxy"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
+          "subject_name": "caddy",
+          "rel_type": "IMPROVES_ON",
+          "object_name": "nginx",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "nginx",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "caddy",
+        "fact": "nginx improves on caddy",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:proxy-benchmarks"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0010",
+      "label": "contradiction",
+      "slice_tags": [
+        "same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Inverse-replacement rule across the family: REPLACES one way, IMPROVES_ON the other, same two names, overlapping open windows. Side a is the harvest-minted row.",
+      "a": {
+        "subject_name": "astro",
+        "rel_type": "REPLACES",
+        "object_name": "mkdocs",
+        "fact": "astro replaces mkdocs",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-12-docs"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
+          "subject_name": "astro",
+          "rel_type": "REPLACES",
+          "object_name": "mkdocs",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "mkdocs",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "astro",
+        "fact": "mkdocs improves on astro",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0153"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0011",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement with zero shared name tokens: in this pair's world 'legacy relational tier' co-refers with mysql 8 and 'elephant database' with postgres 16, so side b asserts the reverse succession of side a over the same overlapping window. Neither the same-endpoint arm nor a lexical shortlist has a hook here; only semantic matching does -- the designed blind spot doc 17 §5.2 names.",
+      "a": {
+        "subject_name": "postgres 16",
+        "rel_type": "REPLACES",
+        "object_name": "mysql 8",
+        "fact": "postgres 16 replaces mysql 8",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-01-db-migration"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "legacy relational tier",
+        "rel_type": "REPLACES",
+        "object_name": "elephant database",
+        "fact": "legacy relational tier replaces elephant database",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:db-history"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0012",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'butler ci' co-refers with jenkins and 'hosted workflow runner' with github actions, so side b asserts jenkins replacing github actions against side a's harvest-minted reverse. Overlapping open windows, independent origins.",
+      "a": {
+        "subject_name": "github actions",
+        "rel_type": "REPLACES",
+        "object_name": "jenkins",
+        "fact": "github actions replaces jenkins",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-08-ci-cutover"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+          "subject_name": "github actions",
+          "rel_type": "REPLACES",
+          "object_name": "jenkins",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "butler ci",
+        "rel_type": "REPLACES",
+        "object_name": "hosted workflow runner",
+        "fact": "butler ci replaces hosted workflow runner",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:ci-decision-log"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0013",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed family inverse, token-disjoint: 'ssl tunnel daemon' co-refers with openvpn and 'kernel mesh network' with wireguard, so side b's IMPROVES_ON runs against side a's REPLACES within the family, over the overlapping [2024-02, 2025-02) stretch.",
+      "a": {
+        "subject_name": "wireguard",
+        "rel_type": "REPLACES",
+        "object_name": "openvpn",
+        "fact": "wireguard replaces openvpn",
+        "project": "default",
+        "valid_at": "2023-05-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-05-vpn"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "ssl tunnel daemon",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "kernel mesh network",
+        "fact": "ssl tunnel daemon improves on kernel mesh network",
+        "project": "default",
+        "valid_at": "2024-02-01T00:00:00+00:00",
+        "invalid_at": "2025-02-01T00:00:00+00:00",
+        "origin_keys": [
+          "doc:vpn-comparison"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0014",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'upstream error tracker' co-refers with sentry and 'community fork' with glitchtip, so side b asserts sentry replacing glitchtip against side a's harvest-minted reverse.",
+      "a": {
+        "subject_name": "glitchtip",
+        "rel_type": "REPLACES",
+        "object_name": "sentry",
+        "fact": "glitchtip replaces sentry",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-25-errors"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+          "subject_name": "glitchtip",
+          "rel_type": "REPLACES",
+          "object_name": "sentry",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "upstream error tracker",
+        "rel_type": "REPLACES",
+        "object_name": "community fork",
+        "fact": "upstream error tracker replaces community fork",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:error-tracking-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0015",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'built-in engine orchestrator' co-refers with docker swarm and 'k8s' with kubernetes. The k8s/kubernetes alias shares no token and no trigram of length three, which is precisely what defeats a lexical shortlist.",
+      "a": {
+        "subject_name": "kubernetes",
+        "rel_type": "REPLACES",
+        "object_name": "docker swarm",
+        "fact": "kubernetes replaces docker swarm",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-22-orchestration"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "built-in engine orchestrator",
+        "rel_type": "REPLACES",
+        "object_name": "k8s",
+        "fact": "built-in engine orchestrator replaces k8s",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0161"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0016",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed parthood cycle, token-disjoint: 'collection agent' co-refers with the log shipper and 'full telemetry bundle' with the observability suite, so the two sides assert each container inside the other -- proper parthood is antisymmetric (exclusive-reversal rule, HAS_PART).",
+      "a": {
+        "subject_name": "observability suite",
+        "rel_type": "HAS_PART",
+        "object_name": "log shipper",
+        "fact": "observability suite has part log shipper",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-09-obs"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "collection agent",
+        "rel_type": "HAS_PART",
+        "object_name": "full telemetry bundle",
+        "fact": "collection agent has part full telemetry bundle",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:obs-inventory"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0017",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed mutual extension, token-disjoint: 'vendor widget baseline' co-refers with the stock ui kit and 'in-house skin' with the custom dashboard layer, so extension is asserted in both directions -- a strict order cannot cycle (exclusive-reversal rule, EXTENDS).",
+      "a": {
+        "subject_name": "custom dashboard layer",
+        "rel_type": "EXTENDS",
+        "object_name": "stock ui kit",
+        "fact": "custom dashboard layer extends stock ui kit",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-11-frontend"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "vendor widget baseline",
+        "rel_type": "EXTENDS",
+        "object_name": "in-house skin",
+        "fact": "vendor widget baseline extends in-house skin",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:frontend-audit"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0018",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed host/guest swap, token-disjoint: 'build box' co-refers with vm-forge and 'self-hosted git service' with gitea, so side b puts the host on the guest -- the DEPLOYED_ON roles cannot swap for one pair (exclusive-reversal rule).",
+      "a": {
+        "subject_name": "gitea",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "vm-forge",
+        "fact": "gitea deployed on vm-forge",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-28-git"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "build box",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "self-hosted git service",
+        "fact": "build box deployed on self-hosted git service",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0119"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0019",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'lightweight dns forwarder' co-refers with dnsmasq and 'ad-blocking resolver' with pihole, so side b asserts the reverse succession of side a.",
+      "a": {
+        "subject_name": "pihole",
+        "rel_type": "REPLACES",
+        "object_name": "dnsmasq",
+        "fact": "pihole replaces dnsmasq",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-17-dns"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "lightweight dns forwarder",
+        "rel_type": "REPLACES",
+        "object_name": "ad-blocking resolver",
+        "fact": "lightweight dns forwarder replaces ad-blocking resolver",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:dns-setup-log"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0020",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'fourth extended filesystem' co-refers with ext4 and 'zettabyte pool' with zfs -- the aliases are the spelled-out names of the abbreviations, sharing no token with them, which is the abbreviation half of the blind spot.",
+      "a": {
+        "subject_name": "zfs",
+        "rel_type": "REPLACES",
+        "object_name": "ext4",
+        "fact": "zfs replaces ext4",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-19-storage"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "fourth extended filesystem",
+        "rel_type": "REPLACES",
+        "object_name": "zettabyte pool",
+        "fact": "fourth extended filesystem replaces zettabyte pool",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:storage-plan"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0021",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse within IMPROVES_ON, token-disjoint: 'master-agent config engine' co-refers with puppet and 'agentless playbook runner' with ansible, so the improvement ordering is asserted in both directions over one overlapping window.",
+      "a": {
+        "subject_name": "ansible",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "puppet",
+        "fact": "ansible improves on puppet",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-06-config-mgmt"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "master-agent config engine",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "agentless playbook runner",
+        "fact": "master-agent config engine improves on agentless playbook runner",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:cm-eval"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0022",
+      "label": "contradiction",
+      "slice_tags": [
+        "lexically-disjoint"
+      ],
+      "label_source": "author",
+      "rationale": "Alias-completed inverse replacement, token-disjoint: 'distributed memory cache' co-refers with memcached and 'in-memory data structure store' (redis's own tagline) with redis, so side b asserts memcached replacing redis against side a's harvest-minted reverse.",
+      "a": {
+        "subject_name": "redis",
+        "rel_type": "REPLACES",
+        "object_name": "memcached",
+        "fact": "redis replaces memcached",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-02-cache-review"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "76bdd776-8827-5d92-b736-1a2050a180fa",
+          "subject_name": "redis",
+          "rel_type": "REPLACES",
+          "object_name": "memcached",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "distributed memory cache",
+        "rel_type": "REPLACES",
+        "object_name": "in-memory data structure store",
+        "fact": "distributed memory cache replaces in-memory data structure store",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:cache-eval-2026"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0023",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule: the two directions would be an inverse replacement, but side b's window opens exactly where side a's closes -- the half-open [valid_at, invalid_at) convention makes adjacent windows disjoint, so this is a switch and a switch back, the succession the belief axis already models (doc 08 §3.1), not a contradiction.",
+      "a": {
+        "subject_name": "haproxy",
+        "rel_type": "REPLACES",
+        "object_name": "traefik",
+        "fact": "haproxy replaces traefik",
+        "project": "default",
+        "valid_at": "2024-01-01T00:00:00+00:00",
+        "invalid_at": "2025-02-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-12-01-lb"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "traefik",
+        "rel_type": "REPLACES",
+        "object_name": "haproxy",
+        "fact": "traefik replaces haproxy",
+        "project": "default",
+        "valid_at": "2025-02-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:lb-runbook"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0024",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule: inverse-replacement shape, but the bounded windows are separated by a five-month gap -- the service scaled up to mariadb and later moved back. Disjoint windows are legitimate succession, never a veto.",
+      "a": {
+        "subject_name": "mariadb",
+        "rel_type": "REPLACES",
+        "object_name": "sqlite",
+        "fact": "mariadb replaces sqlite",
+        "project": "default",
+        "valid_at": "2022-03-01T00:00:00+00:00",
+        "invalid_at": "2023-01-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-10-10-db"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "sqlite",
+        "rel_type": "REPLACES",
+        "object_name": "mariadb",
+        "fact": "sqlite replaces mariadb",
+        "project": "default",
+        "valid_at": "2023-06-01T00:00:00+00:00",
+        "invalid_at": "2024-01-01T00:00:00+00:00",
+        "origin_keys": [
+          "doc:db-downsizing-note"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0025",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule with an unbounded-past side: side a's window reads as (unbounded, 2023-09) and side b's opens 2024-04, so the windows are disjoint despite both replacement directions being asserted. Succession, not contradiction.",
+      "a": {
+        "subject_name": "influxdb",
+        "rel_type": "REPLACES",
+        "object_name": "graphite",
+        "fact": "influxdb replaces graphite",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": "2023-09-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-11-11-metrics"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "graphite",
+        "rel_type": "REPLACES",
+        "object_name": "influxdb",
+        "fact": "graphite replaces influxdb",
+        "project": "default",
+        "valid_at": "2024-04-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:metrics-history"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0026",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule on the IMPROVES_ON family member: each side's claim is scoped to its own window (the 2023 buildbot rework genuinely leapfrogged the 2021-era gitlab ci setup), and the windows do not meet, so no single window carries both orderings.",
+      "a": {
+        "subject_name": "gitlab ci",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "buildbot",
+        "fact": "gitlab ci improves on buildbot",
+        "project": "default",
+        "valid_at": "2021-01-01T00:00:00+00:00",
+        "invalid_at": "2022-01-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-09-09-ci"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "buildbot",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "gitlab ci",
+        "fact": "buildbot improves on gitlab ci",
+        "project": "default",
+        "valid_at": "2023-01-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:ci-postmortem"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0027",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule: adjacent bounded windows (side b opens at side a's exclusive close), both directions asserted, each true of its own stretch. The half-open convention decides adjacency as disjoint.",
+      "a": {
+        "subject_name": "borg",
+        "rel_type": "REPLACES",
+        "object_name": "duplicity",
+        "fact": "borg replaces duplicity",
+        "project": "default",
+        "valid_at": "2020-05-01T00:00:00+00:00",
+        "invalid_at": "2022-08-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-08-01-backup"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "duplicity",
+        "rel_type": "REPLACES",
+        "object_name": "borg",
+        "fact": "duplicity replaces borg",
+        "project": "default",
+        "valid_at": "2022-08-01T00:00:00+00:00",
+        "invalid_at": "2023-03-01T00:00:00+00:00",
+        "origin_keys": [
+          "doc:backup-audit"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0028",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule on a host move: the shared subject and the contested-looking host slot make this the classic naive-generator bait, but the windows are adjacent-disjoint -- the server moved hosts -- so no window holds both placements and the single-valuedness question never even arises.",
+      "a": {
+        "subject_name": "media server",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "nuc-01",
+        "fact": "media server deployed on nuc-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": "2024-11-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-07-07-media"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "media server",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "nas-02",
+        "fact": "media server deployed on nas-02",
+        "project": "default",
+        "valid_at": "2024-11-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:media-move-note"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0029",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "non-overlap"
+      ],
+      "label_source": "author",
+      "rationale": "Window-succession rule: inverse-replacement shape with a five-month gap between the closed window and the open one. Succession the belief axis models; no overlap, no veto.",
+      "a": {
+        "subject_name": "unbound",
+        "rel_type": "REPLACES",
+        "object_name": "stubby",
+        "fact": "unbound replaces stubby",
+        "project": "default",
+        "valid_at": "2023-02-01T00:00:00+00:00",
+        "invalid_at": "2024-02-01T00:00:00+00:00",
+        "origin_keys": [
+          "sess-2025-06-15-dns"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "stubby",
+        "rel_type": "REPLACES",
+        "object_name": "unbound",
+        "fact": "stubby replaces unbound",
+        "project": "default",
+        "valid_at": "2024-07-01T00:00:00+00:00",
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:dns-changelog"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0030",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule: the content is a textbook inverse replacement over overlapping windows, but both rows carry the same single origin -- one capture session arguing with itself. No direction brings a witness the other side lacks, so per doc 08 §4.2 the contradicting source is not a distinct origin and the veto must not fire.",
+      "a": {
+        "subject_name": "nomad",
+        "rel_type": "REPLACES",
+        "object_name": "k3s",
+        "fact": "nomad replaces k3s",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-11-orchestrator-debate"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "k3s",
+        "rel_type": "REPLACES",
+        "object_name": "nomad",
+        "fact": "k3s replaces nomad",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-11-orchestrator-debate"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0031",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule: a parthood cycle (would-be exclusive reversal) asserted twice by one document. One origin restating itself is not testimony; the dispute, if any, is that document's own incoherence, not a fact-level contradiction with an independent witness.",
+      "a": {
+        "subject_name": "loki",
+        "rel_type": "HAS_PART",
+        "object_name": "promtail",
+        "fact": "loki has part promtail",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:logging-runbook-v3"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "promtail",
+        "rel_type": "HAS_PART",
+        "object_name": "loki",
+        "fact": "promtail has part loki",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:logging-runbook-v3"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0032",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule on a cross-family inverse: REPLACES one way, IMPROVES_ON the other, both minted from the same session. The family bucket makes the content a would-be contradiction; the shared origin makes it an echo, and the echo guard is what stands between this shape and a manufactured dispute.",
+      "a": {
+        "subject_name": "fluentd",
+        "rel_type": "REPLACES",
+        "object_name": "logstash",
+        "fact": "fluentd replaces logstash",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-19-log-rework"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "logstash",
+        "rel_type": "IMPROVES_ON",
+        "object_name": "fluentd",
+        "fact": "logstash improves on fluentd",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-19-log-rework"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0033",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule on a host/guest swap: one garbled agent run emitted the deployment in both directions. Without an independent origin the swap is extraction noise to reconcile, not a veto-grade dispute.",
+      "a": {
+        "subject_name": "backup controller",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "nas-01",
+        "fact": "backup controller deployed on nas-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0042"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "nas-01",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "backup controller",
+        "fact": "nas-01 deployed on backup controller",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0042"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0034",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule: inverse replacement, overlapping open windows, one shared session origin on both sides -- the session recorded the migration and its rollback rumour in one sitting. No fresh witness, no veto.",
+      "a": {
+        "subject_name": "openbao",
+        "rel_type": "REPLACES",
+        "object_name": "vault",
+        "fact": "openbao replaces vault",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-08-secrets-migration"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "vault",
+        "rel_type": "REPLACES",
+        "object_name": "openbao",
+        "fact": "vault replaces openbao",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-08-secrets-migration"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0035",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule with a multi-origin set: both sides carry the same two origins, so although each row has two witnesses, neither direction has a witness the other lacks -- the asymmetric fresh-witness test (the shipped veto's echo semantics) fails in both directions.",
+      "a": {
+        "subject_name": "photoprism",
+        "rel_type": "REPLACES",
+        "object_name": "piwigo",
+        "fact": "photoprism replaces piwigo",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-17-gallery",
+          "doc:photo-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "piwigo",
+        "rel_type": "REPLACES",
+        "object_name": "photoprism",
+        "fact": "piwigo replaces photoprism",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-17-gallery",
+          "doc:photo-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0036",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "echo"
+      ],
+      "label_source": "author",
+      "rationale": "Echo rule on a mutual extension: a strict-order cycle that would contradict under the exclusive-reversal rule, asserted twice by one session. Same origin set on both sides, so it is one source restating itself.",
+      "a": {
+        "subject_name": "coredns",
+        "rel_type": "EXTENDS",
+        "object_name": "kube-dns",
+        "fact": "coredns extends kube-dns",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-25-dns-upgrade"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "kube-dns",
+        "rel_type": "EXTENDS",
+        "object_name": "coredns",
+        "fact": "kube-dns extends coredns",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-25-dns-upgrade"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0037",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: the shared 'orders' token and the db-01/db-01-metrics near-names make the pair trigram-similar, but the sides describe different artifacts (a database's host; a dashboard's data source) and neither excludes the other. A shortlist may surface it; an adjudicator must not call it a contradiction.",
+      "a": {
+        "subject_name": "orders database",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "db-01",
+        "fact": "orders database deployed on db-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-03-dbs"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "orders dashboard",
+        "rel_type": "USES",
+        "object_name": "db-01-metrics",
+        "fact": "orders dashboard uses db-01-metrics",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:dashboard-inventory"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0038",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: 'backup' is the only link. A tool choice and a document's authorship share a token and nothing else; nothing is asserted twice, so nothing can oppose.",
+      "a": {
+        "subject_name": "backup script",
+        "rel_type": "USES",
+        "object_name": "rsync",
+        "fact": "backup script uses rsync",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-05-backups"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "backup retention policy",
+        "rel_type": "AUTHORED_BY",
+        "object_name": "ops team",
+        "fact": "backup retention policy authored by ops team",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:policy-index"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0039",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: two 'staging'/'postgres' token overlaps invite a lexical match, but a cluster running a server version and a test suite depending on a client library are claims about different slots of different subjects. Compatible, merely similar.",
+      "a": {
+        "subject_name": "staging cluster",
+        "rel_type": "USES",
+        "object_name": "postgres 15",
+        "fact": "staging cluster uses postgres 15",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-01-staging"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "staging smoke suite",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "postgres client",
+        "fact": "staging smoke suite depends on postgres client",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:test-deps"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0040",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: both subjects carry the 'nginx' token yet name different systems (an ingress controller; a static mirror of the nginx website). High surface similarity, zero shared claim.",
+      "a": {
+        "subject_name": "nginx ingress",
+        "rel_type": "USES",
+        "object_name": "cert-manager",
+        "fact": "nginx ingress uses cert-manager",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-22-ingress"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "nginx mirror site",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "cdn-edge",
+        "fact": "nginx mirror site deployed on cdn-edge",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:mirror-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0041",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: side a is the harvest-minted row; side b shares the 'cleanup' and 'scratch' tokens but asserts a different subject using a different artifact. Nothing in b negates a's causal claim.",
+      "a": {
+        "subject_name": "cleanup cron job",
+        "rel_type": "CAUSES",
+        "object_name": "scratch partition",
+        "fact": "cleanup cron job causes scratch partition",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-28-cleanup"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "12894a6a-ea4c-5811-91e6-5f21705c7917",
+          "subject_name": "cleanup cron job",
+          "rel_type": "CAUSES",
+          "object_name": "scratch partition",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "cleanup playbook",
+        "rel_type": "USES",
+        "object_name": "scratch volume",
+        "fact": "cleanup playbook uses scratch volume",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:ops-playbooks"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0042",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: side a is the harvest-minted row; 'tf-state' recurs as a token of side b's object, but a mirror consumed by a different tool is a different artifact. Similar strings, disjoint claims.",
+      "a": {
+        "subject_name": "terraform",
+        "rel_type": "USES",
+        "object_name": "tf-state",
+        "fact": "terraform uses tf-state",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-08-iac"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+          "subject_name": "terraform",
+          "rel_type": "USES",
+          "object_name": "tf-state",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "terragrunt wrapper",
+        "rel_type": "USES",
+        "object_name": "tf-state mirror",
+        "fact": "terragrunt wrapper uses tf-state mirror",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:iac-notes"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0043",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: side a is the harvest-minted row; the 'nightly' token and the junit/junit-report near-match are lexical bait, but a test framework in use and a rotation job's side effect do not contest any common slot.",
+      "a": {
+        "subject_name": "nightly integration suite",
+        "rel_type": "USES",
+        "object_name": "junit",
+        "fact": "nightly integration suite uses junit",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-15-ci-tests"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
+          "subject_name": "nightly integration suite",
+          "rel_type": "USES",
+          "object_name": "junit",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "nightly log rotation",
+        "rel_type": "CAUSES",
+        "object_name": "junit-report archive",
+        "fact": "nightly log rotation causes junit-report archive",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0071"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0044",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "similar-unrelated"
+      ],
+      "label_source": "author",
+      "rationale": "No-opposition rule: side a is the harvest-minted row; '.env' and 'files' recur across the sides, but an association claim and a backup-consumption claim about a different artifact cannot oppose. RELATED_TO asserts almost nothing, so almost nothing can contradict it -- the floor case for an over-eager adjudicator.",
+      "a": {
+        "subject_name": "vault",
+        "rel_type": "RELATED_TO",
+        "object_name": ".env files",
+        "fact": "vault related to .env files",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-13-secrets"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "37a75f1f-b666-5ca3-9ae6-4cd8c8b8a2e5",
+          "subject_name": "vault",
+          "rel_type": "RELATED_TO",
+          "object_name": ".env files",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "secrets rotation job",
+        "rel_type": "USES",
+        "object_name": ".env files backup",
+        "fact": "secrets rotation job uses .env files backup",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:rotation-runbook"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0045",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot rule: both sides are harvest-minted rows -- the recorded run itself put redis on two hosts, and the entailment gold's skip log already adjudicated that a bare product's host slot is not single-valued (batch 3, slot 139). Two placements of a product are two truths, not a conflict; a naive same-endpoint + different-object heuristic manufactures a dispute here.",
+      "a": {
+        "subject_name": "redis",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "cache-01",
+        "fact": "redis deployed on cache-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-04-cache-hosts"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
+          "subject_name": "redis",
+          "rel_type": "DEPLOYED_ON",
+          "object_name": "cache-01",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "redis",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "queue-01",
+        "fact": "redis deployed on queue-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-05-queue-hosts"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "dea1fc2d-868a-5755-baa3-dea5ae8c184d",
+          "subject_name": "redis",
+          "rel_type": "DEPLOYED_ON",
+          "object_name": "queue-01",
+          "project": "default"
+        }
+      }
+    },
+    {
+      "id": "cg-0046",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot rule: both sides are harvest-minted rows. A generic USES object admits many values (the veto module's own SINGLE_VALUED_RELATIONS reasoning, and the entailment skip log's repeated ground), so a second used thing is an additional truth.",
+      "a": {
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "nginx",
+        "fact": "grafana uses nginx",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-12-grafana"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
+          "subject_name": "grafana",
+          "rel_type": "USES",
+          "object_name": "nginx",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "grafana",
+        "rel_type": "USES",
+        "object_name": "infra",
+        "fact": "grafana uses infra",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:grafana-notes"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+          "subject_name": "grafana",
+          "rel_type": "USES",
+          "object_name": "infra",
+          "project": "default"
+        }
+      }
+    },
+    {
+      "id": "cg-0047",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot rule: both sides are harvest-minted rows (from one memory in the recorded run, though the gold fixes independent origins to keep the compatibility question, not the echo question, as this slice's single point). A backup tool uses many sources.",
+      "a": {
+        "subject_name": "restic",
+        "rel_type": "USES",
+        "object_name": "nas",
+        "fact": "restic uses nas",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-01-20-backup-a"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
+          "subject_name": "restic",
+          "rel_type": "USES",
+          "object_name": "nas",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "restic",
+        "rel_type": "USES",
+        "object_name": "wiki volume",
+        "fact": "restic uses wiki volume",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:backup-map"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+          "subject_name": "restic",
+          "rel_type": "USES",
+          "object_name": "wiki volume",
+          "project": "default"
+        }
+      }
+    },
+    {
+      "id": "cg-0048",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot / no-opposition: both sides are harvest-minted rows. The shared 'postgres' name and the crossed subject/object positions imitate a host/guest swap, but the counterpart endpoints differ (stg-db-01 vs prod-db-01), so no single ordered pair carries both directions and the exclusive-reversal rule does not bite. The hardest naive-generator bait in the set: it is one edit away from pair cg-0006's genuine swap.",
+      "a": {
+        "subject_name": "postgres",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "stg-db-01",
+        "fact": "postgres deployed on stg-db-01",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-19-staging-db"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "8b0af751-67c2-572d-adfc-db51d823ed3f",
+          "subject_name": "postgres",
+          "rel_type": "DEPLOYED_ON",
+          "object_name": "stg-db-01",
+          "project": "default"
+        }
+      },
+      "b": {
+        "subject_name": "prod-db-01",
+        "rel_type": "DEPLOYED_ON",
+        "object_name": "postgres",
+        "fact": "prod-db-01 deployed on postgres",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "agent-run-0064"
+        ],
+        "provenance": "l2-fact",
+        "fact_key": {
+          "triple_key": "8f37265e-35d6-5fa1-8fd7-7e0c764d818c",
+          "subject_name": "prod-db-01",
+          "rel_type": "DEPLOYED_ON",
+          "object_name": "postgres",
+          "project": "default"
+        }
+      }
+    },
+    {
+      "id": "cg-0049",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot rule: authorship of one document is shared by co-authors, so two AUTHORED_BY objects coexist. (The exclusive entry for AUTHORED_BY in the reversal table governs *role reversal* -- a work authoring its author -- not object multiplicity.)",
+      "a": {
+        "subject_name": "incident postmortem",
+        "rel_type": "AUTHORED_BY",
+        "object_name": "alice",
+        "fact": "incident postmortem authored by alice",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-03-06-incident"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "incident postmortem",
+        "rel_type": "AUTHORED_BY",
+        "object_name": "bob",
+        "fact": "incident postmortem authored by bob",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:postmortem-index"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    },
+    {
+      "id": "cg-0050",
+      "label": "not-contradiction",
+      "slice_tags": [
+        "compatible-same-endpoint"
+      ],
+      "label_source": "author",
+      "rationale": "Multi-valued-slot rule: a dependency object admits many values (the entailment skip log's DEPENDS_ON ground, batch 3 slot 133), so two dependencies of one stack are two truths over one overlapping window.",
+      "a": {
+        "subject_name": "media stack",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "ffmpeg",
+        "fact": "media stack depends on ffmpeg",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "sess-2026-02-26-media-deps"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      },
+      "b": {
+        "subject_name": "media stack",
+        "rel_type": "DEPENDS_ON",
+        "object_name": "intel quicksync",
+        "fact": "media stack depends on intel quicksync",
+        "project": "default",
+        "valid_at": null,
+        "invalid_at": null,
+        "origin_keys": [
+          "doc:media-deps"
+        ],
+        "provenance": "hand-authored-synthetic-fact"
+      }
+    }
+  ]
+}
