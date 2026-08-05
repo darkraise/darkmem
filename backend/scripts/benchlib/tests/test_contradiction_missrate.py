@@ -21,6 +21,7 @@ from benchlib.contradiction_missrate import (
     MissRateReport,
     SliceResult,
     _get_or_insert,
+    combined_candidates,
     run_missrate,
     same_endpoint_candidates,
 )
@@ -113,6 +114,42 @@ class TestCombinedGeneratorNotTrigramAlone:
         report = await _run(project="test-trigram-disabled", top_k=0)
         result = report.slice_result("lexically-disjoint")
         assert result.miss_count == result.total
+
+    @pytest.mark.asyncio
+    async def test_combined_candidates_includes_the_same_endpoint_arm(self):
+        """Direct, corpus-independent proof that `combined_candidates` is a
+        UNION and not the trigram arm alone: with `top_k=0` the trigram arm
+        returns nothing, so a same-endpoint pair's counterpart can only
+        appear in the combined result through the same-endpoint arm. A
+        version of `combined_candidates` that dropped that arm (tried
+        during review) still passed every OTHER test in this file, because
+        at this gold's ~98-row corpus size the trigram arm happens to
+        recover the same-endpoint slice by luck too -- which is exactly why
+        this test asserts the union directly instead of trusting that
+        corpus-dependent luck."""
+        gold = load_contradiction_gold()
+        pair = next(
+            p for p in gold["pairs"]
+            if not p.get("retired") and p["slice_tags"] == ["same-endpoint"]
+        )
+        project = "test-combined-includes-same-endpoint"
+        async with bench_db.session_factory() as session:
+            cache: dict = {}
+            ids = {
+                side_key: await _get_or_insert(
+                    session, project=project, side=pair[side_key],
+                    reference_time=datetime.now(timezone.utc), cache=cache,
+                )
+                for side_key in ("a", "b")
+            }
+            candidates = await combined_candidates(
+                session, project=project, fact_id=ids["a"],
+                subject_name=pair["a"]["subject_name"],
+                object_name=pair["a"]["object_name"],
+                fact_text=pair["a"]["fact"], top_k=0,
+            )
+            await session.rollback()
+        assert str(ids["b"]) in candidates
 
     @pytest.mark.asyncio
     async def test_combined_generator_recovers_hits_the_trigram_arm_alone_supplies(self):
