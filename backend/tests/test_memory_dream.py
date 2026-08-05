@@ -693,6 +693,13 @@ def run_cycle(request):
     expects = request.node.get_closest_marker("expect_refusals") is not None
 
     async def _run(factory, llm, **knobs):
+        # T2.16's derivation pass shares the `memory_relations` table and the
+        # `consolidated` stream with the near-duplicate arm and is on by
+        # default, so it would add edges and journal rows to every exact-count
+        # assertion in this file. These tests are about *this* arm; the two
+        # arms coexisting on one row is asserted where it belongs, in
+        # `tests/test_memory_relation_derivation.py`.
+        knobs.setdefault("derivation_enabled", 0)
         outcome = await dream.run_memory_dream(factory, lambda: llm, **knobs)
         if not expects:
             _REFUSAL_LEDGER.append((request.node.nodeid, outcome))
@@ -1001,19 +1008,28 @@ class TestSubsumeArm:
         assert outcome.skipped_reason is None
         assert (await memory_row(committing, older))["status"] == "superseded"
 
-    async def test_an_unresolvable_fingerprint_stops_the_whole_run(
+    async def test_an_unresolvable_fingerprint_stops_the_vector_arms(
         self, committing, project, run_cycle
     ):
         """F3's drill in test form: `llm_fingerprint()` would have returned the
         `model|0` sentinel here and every seed would have landed in
-        `pairs_skipped_no_vector` under a green run."""
+        `pairs_skipped_no_vector` under a green run.
+
+        The gate became arm-scoped with T2.16: the seed slice is read so the
+        derivation pass's vector-free overlap arm can reach it, and the pair
+        and refine arms — both of which act on a verdict computed against a
+        partition that could not be measured — still take no action at all.
+        """
         older, _, _, _ = await build_pair(committing, project)
         stub = StubLLM(fingerprint="stub|0", pair_verdict=verdict("subsumes"))
 
         outcome = await run_cycle(committing, stub, refine_batch=0)
 
         assert outcome.skipped_reason == "fingerprint_unresolved"
-        assert outcome.seeds_visited == 0
+        assert outcome.pairs_considered == 0
+        assert outcome.judged == 0
+        assert outcome.subsumed == 0
+        assert outcome.refined == 0
         assert outcome.pairs_skipped_no_vector == 0
         assert (await memory_row(committing, older))["status"] == "active"
         assert await consolidated_events(committing, project) == []

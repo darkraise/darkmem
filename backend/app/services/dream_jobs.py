@@ -379,13 +379,26 @@ def _make_dream_runner(
             refine_batch=int(settings_.get("refine_batch", 25)),
             write_batch=int(settings_.get("write_batch", 25)),
             llm_concurrency=int(settings_.get("llm_concurrency", 4)),
+            derivation_enabled=int(settings_.get("derivation_enabled", 1)),
+            overlap_threshold_pct=int(settings_.get("overlap_threshold_pct", 50)),
+            proximity_threshold_pct=int(
+                settings_.get("proximity_threshold_pct", 85)
+            ),
+            derivation_batch=int(settings_.get("derivation_batch", 200)),
+            derivation_hot_entity_cap=int(
+                settings_.get("derivation_hot_entity_cap", 50)
+            ),
         )
         logger.info(
             "Memory dreaming visited %d seed(s): %d subsumed, %d associated "
-            "(%d unchanged), %d refined, %d stale-skipped, %d failed%s",
+            "(%d unchanged), %d refined, %d stale-skipped, %d failed; "
+            "%d edge(s) derived from %d candidate(s) (%d truncated), "
+            "%d stripped%s",
             outcome.seeds_visited, outcome.subsumed, outcome.associated,
             outcome.associate_unchanged, outcome.refined,
             outcome.stale_skipped, outcome.failed,
+            outcome.derived, outcome.derivation_candidates,
+            outcome.candidates_truncated, outcome.derivation_stripped,
             f", skipped: {outcome.skipped_reason}" if outcome.skipped_reason else "",
         )
 

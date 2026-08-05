@@ -5,13 +5,17 @@ The umbrella's source scan derives its forbidden module set from
 `dream_jobs.py`'s own imports, so wiring this module up is what puts it under
 the guard.
 
-**Three actions, and none of them removes or rewrites a memory.**
+**Four actions, and none of them removes or rewrites a memory.**
 
 - *Subsume* flips an older memory to `superseded` through the T2.45 primitive.
 - *Associate* writes one `memory_relations` edge carrying a near-duplicate
   marker for the hygiene queue.
 - *Refine* rewrites derived enrichment — `summary` and tags — and provably
   never `content`.
+- *Derive* (T2.16, doc 08 §5.5) writes associative edges from three
+  deterministic signals — entity overlap, embedding proximity, opposed targets
+  under an exclusive relation family — under its own `pass_key`, sharing the
+  row with the near-duplicate arm rather than overwriting it.
 
 Doc 08 §7 makes every action undoable from its journalled before/after payload,
 so `content` is the line the refine arm may not cross: an action whose inverse
@@ -68,6 +72,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import Config
 from app.repositories.relational import PostgresMemoryRepository
 from app.repositories.memory_relations import (
+    DREAM_PROPERTIES_KEY,
+    clear_pass_block,
+    delete_edge,
     get_edge,
     pass_block_of,
     upsert_edge,
@@ -77,6 +84,7 @@ from app.services.dream_journal import (
     ACTION_ASSOCIATE,
     ACTION_REFINE,
     ACTION_SUBSUME,
+    DERIVATION_PASS,
     DETECTOR,
     EVENT_TYPE,
     HYGIENE_STATE_OPEN,
@@ -92,6 +100,7 @@ from app.services.events import record_event
 from app.services.extraction_clean import _content_seed, _loads_extraction
 from app.services.job_registry import FieldDescriptor
 from app.services.supersede import successor_is_newer, supersede
+from app.taxonomy import EXCLUSIVE_RELATION_FAMILIES
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
@@ -104,6 +113,11 @@ DEFAULT_JUDGE_FANOUT = 25
 DEFAULT_REFINE_BATCH = 25
 DEFAULT_WRITE_BATCH = 25
 DEFAULT_LLM_CONCURRENCY = 4
+DEFAULT_DERIVATION_ENABLED = 1
+DEFAULT_OVERLAP_THRESHOLD_PCT = 50
+DEFAULT_PROXIMITY_THRESHOLD_PCT = 85
+DEFAULT_DERIVATION_BATCH = 200
+DEFAULT_HOT_ENTITY_CAP = 50
 
 # Internal bookkeeping, never an operator knob: `JobRegistry.set_config`
 # validates against the job's schema and would reject it.
@@ -175,6 +189,13 @@ class DreamOutcome:
     refused_cross_project: int = 0
     refused_self_reference: int = 0
     refused_not_found: int = 0
+    derivation_candidates: int = 0
+    candidates_truncated: int = 0
+    derived: int = 0
+    derivation_unchanged: int = 0
+    derivation_stripped: int = 0
+    derivation_rows_deleted: int = 0
+    derivation_failed: int = 0
     # Why the *whole run* did nothing: a missing provider or an unresolvable
     # fingerprint, both of which stop it before Phase W.
     skipped_reason: str | None = None
@@ -182,6 +203,11 @@ class DreamOutcome:
     # so an outcome cannot claim the run was skipped while reporting the refines
     # it went on to make: the refine arm needs no vector and runs regardless.
     pair_arm_skipped_reason: str | None = None
+    # Why the derivation pass's *proximity arm alone* found nothing. Separate
+    # again, and for the same reason: the overlap arm needs no vector, so an
+    # unresolvable fingerprint must not be reported as the derivation pass
+    # having done nothing.
+    derivation_skipped_reason: str | None = None
     cursor_created_at: datetime | None = None
     cursor_id: str | None = None
     wrapped: bool = False
@@ -1168,6 +1194,656 @@ async def apply_refine(
 
 
 
+# ── T2.16: associative-edge derivation (doc 08 §5.5) ─────────────────────
+#
+# A second derivation pass on the one `memory_relations` row the UNIQUE forces
+# co-owners onto. It shares nothing with the near-duplicate arm above except
+# the repository and the ordering predicate: its own `pass_key`, its own block
+# shape, its own strip. Three deterministic signals, no model call — so a
+# replay over an unchanged corpus and an unchanged config produces the same
+# edge set, which is the whole of Done-when 3.
+
+SIGNAL_CONTRADICTION = "contradiction"
+SIGNAL_ENTITY_OVERLAP = "entity_overlap"
+SIGNAL_EMBEDDING_PROXIMITY = "embedding_proximity"
+
+# D3, and the order is the decision: one pair may fire two signals, and a pair
+# that both overlaps and contradicts is a contradiction. The weaker edge is not
+# also written — two rows for one pair under two names would make a curator
+# guess which to believe.
+SIGNAL_PRECEDENCE: tuple[str, ...] = (
+    SIGNAL_CONTRADICTION,
+    SIGNAL_ENTITY_OVERLAP,
+    SIGNAL_EMBEDDING_PROXIMITY,
+)
+
+# D2's mapping, total over the signals above. `DEPENDS_ON` and `FOLLOWS` are
+# stored-but-underived in v1 (O1, ruled 2026-08-05): neither deterministic
+# signal carries what those types assert, and `FOLLOWS` from `created_at`
+# ordering would assert narrative succession from the order someone typed.
+SIGNAL_REL_TYPES: dict[str, str] = {
+    SIGNAL_CONTRADICTION: "CONTRADICTS",
+    SIGNAL_ENTITY_OVERLAP: "RELATES_TO",
+    SIGNAL_EMBEDDING_PROXIMITY: "RELATES_TO",
+}
+
+# A deterministic signal has no similarity to report, so the block carries a
+# fixed score rather than a fabricated one.
+_CONTRADICTION_SCORE = 1.0
+
+SKIPPED_PROXIMITY_FINGERPRINT = "proximity_fingerprint_unresolved"
+
+
+def pair_key(left: str, right: str) -> tuple[str, str]:
+    """The direction-free identity of a pair, and the run's stable sort key.
+
+    Ordering the candidate list by this before the batch cap is what makes
+    replay hold *per run* rather than merely per edge: without it a different
+    subset survives the cap on each pass and "reproducible" is true of every
+    individual edge and false of the set.
+    """
+    return (left, right) if left <= right else (right, left)
+
+
+# Bounded by `&&` against the seed slice so the GIN index on
+# `entities.memory_ids` carries the scan, and by the hot-entity cap because the
+# generator's real cost is the sum of C(k,2) over asserting counts — an entity
+# asserted by 500 memories is 125k pairs on its own, and no `LIMIT` bounds a
+# quadratic intermediate the planner computes before the sort. Such stop-word
+# entities carry near-zero relational signal anyway (the IDF argument).
+#
+# `entities.memory_ids` is **not** project-scoped, so the join back to
+# `memories` is enforcement: without it the pass pays for cross-project pairs
+# and then fails on the composite FK at write time.
+_OVERLAP_CANDIDATES = text("""
+    WITH hot AS (
+        SELECT e.id, e.memory_ids
+        FROM entities e
+        WHERE e.memory_ids && CAST(:seeds AS uuid[])
+          AND cardinality(e.memory_ids) <= CAST(:hot_cap AS int)
+    ),
+    live AS (
+        SELECT DISTINCT h.id AS entity_id, m.id AS memory_id, m.project
+        FROM hot h
+        CROSS JOIN LATERAL unnest(h.memory_ids) AS asserted(memory_id)
+        JOIN memories m ON m.id = asserted.memory_id
+        WHERE m.status = 'active'
+          AND m.is_archived = false
+          AND (m.expires_at IS NULL OR m.expires_at > now())
+    ),
+    shared AS (
+        SELECT l1.memory_id AS ma, l2.memory_id AS mb,
+               count(*) AS shared_entities
+        FROM live l1
+        JOIN live l2
+          ON l2.entity_id = l1.entity_id
+         AND l2.project = l1.project
+         AND l1.memory_id < l2.memory_id
+        WHERE l1.memory_id = ANY(CAST(:seeds AS uuid[]))
+           OR l2.memory_id = ANY(CAST(:seeds AS uuid[]))
+        GROUP BY 1, 2
+    ),
+    members AS (
+        SELECT ma AS memory_id FROM shared
+        UNION
+        SELECT mb AS memory_id FROM shared
+    ),
+    degree AS (
+        SELECT asserted.memory_id, count(DISTINCT e.id) AS n
+        FROM entities e
+        CROSS JOIN LATERAL unnest(e.memory_ids) AS asserted(memory_id)
+        WHERE cardinality(e.memory_ids) <= CAST(:hot_cap AS int)
+          AND e.memory_ids && ARRAY(SELECT memory_id FROM members)
+          AND asserted.memory_id IN (SELECT memory_id FROM members)
+        GROUP BY 1
+    )
+    SELECT CAST(s.ma AS text) AS ma,
+           CAST(s.mb AS text) AS mb,
+           s.shared_entities::float
+             / (da.n + db.n - s.shared_entities)::float AS score
+    FROM shared s
+    JOIN degree da ON da.memory_id = s.ma
+    JOIN degree db ON db.memory_id = s.mb
+    WHERE s.shared_entities::float
+            / (da.n + db.n - s.shared_entities)::float
+          >= CAST(:threshold AS float)
+    ORDER BY 1, 2
+    LIMIT CAST(:limit AS int)
+""")
+
+
+# D4's same-endpoint scan. Opposition is *not* "two targets under one family"
+# in general — a service legitimately depends on two libraries — so it fires
+# only over `EXCLUSIVE_RELATION_FAMILIES`, and the succession guard is the
+# memory-level analogue of disjoint validity windows: both memories active,
+# neither superseding the other. A superseded memory is the succession case the
+# lifecycle already models, and firing here would re-litigate a resolved
+# pointer.
+_CONTRADICTION_CANDIDATES = text("""
+    WITH live AS (
+        SELECT r.source_entity_id,
+               r.target_entity_id,
+               r.rel_type,
+               m.id AS memory_id,
+               m.project,
+               m.superseded_by
+        FROM entity_relations r
+        CROSS JOIN LATERAL unnest(r.memory_ids) AS asserted(memory_id)
+        JOIN memories m ON m.id = asserted.memory_id
+        WHERE r.rel_type = ANY(CAST(:families AS text[]))
+          AND cardinality(r.memory_ids) <= CAST(:hot_cap AS int)
+          AND m.status = 'active'
+          AND m.is_archived = false
+          AND (m.expires_at IS NULL OR m.expires_at > now())
+    )
+    SELECT DISTINCT CAST(l1.memory_id AS text) AS ma,
+                    CAST(l2.memory_id AS text) AS mb
+    FROM live l1
+    JOIN live l2
+      ON l2.source_entity_id = l1.source_entity_id
+     AND l2.rel_type = l1.rel_type
+     AND l2.target_entity_id <> l1.target_entity_id
+     AND l2.project = l1.project
+     AND l1.memory_id < l2.memory_id
+    WHERE (l1.memory_id = ANY(CAST(:seeds AS uuid[]))
+           OR l2.memory_id = ANY(CAST(:seeds AS uuid[])))
+      AND l1.superseded_by IS DISTINCT FROM l2.memory_id
+      AND l2.superseded_by IS DISTINCT FROM l1.memory_id
+    ORDER BY 1, 2
+    LIMIT CAST(:limit AS int)
+""")
+
+
+async def overlap_candidates(
+    session: AsyncSession,
+    *,
+    seeds: list[str],
+    threshold: float,
+    hot_entity_cap: int,
+    limit: int,
+) -> dict[tuple[str, str], float]:
+    if not seeds or limit <= 0:
+        return {}
+    result = await session.execute(
+        _OVERLAP_CANDIDATES,
+        {
+            "seeds": list(seeds),
+            "hot_cap": hot_entity_cap,
+            "threshold": threshold,
+            "limit": limit,
+        },
+    )
+    return {
+        pair_key(row["ma"], row["mb"]): float(row["score"])
+        for row in result.mappings()
+    }
+
+
+async def proximity_candidates(
+    session: AsyncSession,
+    *,
+    seeds: list[MemoryRow],
+    fingerprint: str,
+    threshold: float,
+    neighbours: int,
+    limit: int,
+) -> dict[tuple[str, str], float]:
+    """Same-fingerprint ANN over the resolved partition, and nothing else.
+
+    A seed with no row in this partition is skipped rather than probed
+    somewhere else: a cross-fingerprint cosine has no defined meaning
+    (invariant 3), which is Done-when 2.
+    """
+    if not seeds or limit <= 0 or neighbours <= 0:
+        return {}
+    vectors = await seed_vectors(
+        session, fingerprint=fingerprint, memory_ids=[s.memory_id for s in seeds]
+    )
+    repository = PostgresVectorRepository(session)
+    scored: dict[tuple[str, str], float] = {}
+    for seed in seeds:
+        vector = vectors.get(seed.memory_id)
+        if vector is None:
+            continue
+        rows = await repository.search(
+            vector,
+            fingerprint,
+            limit=neighbours + 1,
+            filters=MemoryFilter(project=seed.project, statuses=("active",)),
+        )
+        for row in rows:
+            other = str(row["memory_id"])
+            if other == seed.memory_id:
+                continue
+            score = float(row["score"])
+            if score < threshold:
+                continue
+            key = pair_key(seed.memory_id, other)
+            if key not in scored or score > scored[key]:
+                scored[key] = score
+    return dict(sorted(scored.items())[:limit])
+
+
+async def contradiction_candidates(
+    session: AsyncSession,
+    *,
+    seeds: list[str],
+    families: frozenset[str],
+    hot_entity_cap: int,
+    limit: int,
+) -> dict[tuple[str, str], float]:
+    """Opposed targets under an exclusive family, and never anything wider.
+
+    Returns nothing at all when the family list is empty, which is what it
+    ships as: a derived ``CONTRADICTS`` suppresses the weaker edge under D3 and
+    feeds the fact-level dispute surface, so a loose family both manufactures
+    false disputes and erases true ``RELATES_TO`` edges. Anything wider than a
+    ratified list needs the LLM scan (T2.11), and this pass must not
+    approximate it.
+    """
+    if not seeds or not families or limit <= 0:
+        return {}
+    result = await session.execute(
+        _CONTRADICTION_CANDIDATES,
+        {
+            "seeds": list(seeds),
+            "families": sorted(families),
+            "hot_cap": hot_entity_cap,
+            "limit": limit,
+        },
+    )
+    return {
+        pair_key(row["ma"], row["mb"]): _CONTRADICTION_SCORE
+        for row in result.mappings()
+    }
+
+
+@dataclass(frozen=True)
+class DerivedEdge:
+    """One typed edge, already directed and already precedence-resolved."""
+
+    source: MemoryRow
+    target: MemoryRow
+    signal: str
+    scores: dict[str, float]
+
+    @property
+    def rel_type(self) -> str:
+        return SIGNAL_REL_TYPES[self.signal]
+
+    @property
+    def triple(self) -> tuple[str, str, str]:
+        return (self.source.memory_id, self.target.memory_id, self.rel_type)
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return pair_key(self.source.memory_id, self.target.memory_id)
+
+
+def merge_candidates(
+    by_signal: dict[str, dict[tuple[str, str], float]],
+) -> list[tuple[tuple[str, str], str, dict[str, float]]]:
+    """Apply D3 and return one typed candidate per pair, in stable key order.
+
+    Sorted here rather than at the call site because the sort *is* the
+    reproducibility mechanism, not a presentation choice.
+    """
+    merged: dict[tuple[str, str], dict[str, float]] = {}
+    for signal in SIGNAL_PRECEDENCE:
+        for key, score in (by_signal.get(signal) or {}).items():
+            merged.setdefault(key, {})[signal] = score
+    decided = []
+    for key in sorted(merged):
+        scores = merged[key]
+        primary = next(s for s in SIGNAL_PRECEDENCE if s in scores)
+        decided.append((key, primary, scores))
+    return decided
+
+
+def derived_block(*, signal: str, scores: dict[str, float], derived_at: str) -> dict:
+    return {
+        "kind": "derived_association",
+        "signal": signal,
+        "score": scores[signal],
+        "signals": {name: scores[name] for name in sorted(scores)},
+        "derived_at": derived_at,
+    }
+
+
+def _bucketed_signals(signals) -> dict[str, int]:
+    if not isinstance(signals, dict):
+        return {}
+    return {
+        str(name): _score_bucket(float(value or 0.0))
+        for name, value in signals.items()
+    }
+
+
+def _derived_is_unchanged(existing: dict | None, block: dict) -> bool:
+    """Mirrors the near-duplicate arm's skip, and for the same reason: without
+    it a stable pair accretes one `consolidated` row per cycle, forever, into
+    an append-only table, for an edge that never moved. `derived_at` is
+    excluded because it moves on every run by construction."""
+    if not existing:
+        return False
+    return (
+        existing.get("kind") == block["kind"]
+        and existing.get("signal") == block["signal"]
+        and _bucketed_signals(existing.get("signals"))
+        == _bucketed_signals(block["signals"])
+    )
+
+
+# The strip's read, and its window is the whole of D9.
+#
+# **A pair the run rejected produces no candidate**, so a strip scoped to the
+# pairs that *did* produce an edge would never retire anything and the graph
+# would grow forever. The window is therefore the seed slice — every pass edge
+# with a seed endpoint — bounded above by the last pair key the run actually
+# decided **whenever any arm truncated**. Every arm reads in the same
+# `pair_key` order, so a pair at or below that bound was examined by all of
+# them; a pair above it was examined by none, and stripping it would retire an
+# edge whose signal still holds. That is edge churn as a pure cap artefact, and
+# on a growing corpus it repeats every night.
+#
+# Keyed on the triple rather than the pair, because a pair transitioning
+# `RELATES_TO -> CONTRADICTS` under D3 leaves the old triple's block behind
+# otherwise and the pair then shows up twice, defeating D3's purpose.
+_PASS_TRIPLES_IN_WINDOW = text("""
+    SELECT CAST(source_memory_id AS text) AS source,
+           CAST(target_memory_id AS text) AS target,
+           rel_type
+    FROM memory_relations
+    WHERE (properties #> CAST(:block_path AS text[])) IS NOT NULL
+      AND (source_memory_id = ANY(CAST(:seeds AS uuid[]))
+           OR target_memory_id = ANY(CAST(:seeds AS uuid[])))
+      AND (
+            CAST(:bound_left AS text) IS NULL
+            OR (
+                LEAST(
+                    CAST(source_memory_id AS text),
+                    CAST(target_memory_id AS text)
+                ),
+                GREATEST(
+                    CAST(source_memory_id AS text),
+                    CAST(target_memory_id AS text)
+                )
+               ) <= (CAST(:bound_left AS text), CAST(:bound_right AS text))
+          )
+    ORDER BY 1, 2, 3
+""")
+
+
+@dataclass
+class DerivationOutcome:
+    candidates: int = 0
+    candidates_truncated: int = 0
+    derived: int = 0
+    unchanged: int = 0
+    stripped: int = 0
+    rows_deleted: int = 0
+    failed: int = 0
+    # Why the *proximity arm alone* found nothing, kept apart from the run's
+    # own `skipped_reason` so an outcome cannot claim the run was skipped while
+    # reporting the overlap edges it went on to write.
+    proximity_skipped_reason: str | None = None
+
+
+async def write_derived_edge(
+    session: AsyncSession,
+    edge: DerivedEdge,
+    *,
+    cycle_id: str,
+    outcome: DerivationOutcome,
+) -> bool:
+    """Write this pass's block onto the pair's edge, or skip an unchanged one.
+
+    Never a whole-object `properties` assignment: the row is co-owned, and the
+    near-duplicate arm's block or a human's triage sits beside this one.
+    """
+    existing = await get_edge(
+        session,
+        source_memory_id=edge.source.memory_id,
+        target_memory_id=edge.target.memory_id,
+        rel_type=edge.rel_type,
+    )
+    existing_block = pass_block_of(existing, DERIVATION_PASS)
+    block = derived_block(
+        signal=edge.signal,
+        scores=edge.scores,
+        derived_at=datetime.now(timezone.utc).isoformat(),
+    )
+    if _derived_is_unchanged(existing_block, block):
+        outcome.unchanged += 1
+        return False
+
+    write = await upsert_edge(
+        session,
+        source_memory_id=edge.source.memory_id,
+        target_memory_id=edge.target.memory_id,
+        rel_type=edge.rel_type,
+        project=edge.source.project,
+        pass_key=DERIVATION_PASS,
+        block=block,
+    )
+    await _journal(
+        session,
+        memory_id=edge.source.memory_id,
+        project=edge.source.project,
+        payload={
+            "action": ACTION_ASSOCIATE,
+            # The undo door reads this to decide which block to restore or
+            # clear. Absent, it defaults to the near-duplicate pass — which is
+            # right for rows written before this pass existed and catastrophic
+            # for one of ours, so it is never omitted here.
+            "pass_key": DERIVATION_PASS,
+            "before": {"edge": existing_block},
+            "after": {
+                "edge": {
+                    "source": edge.source.memory_id,
+                    "target": edge.target.memory_id,
+                    "rel_type": edge.rel_type,
+                    "properties": {DERIVATION_PASS: block},
+                }
+            },
+            "created": write.created,
+            "pair": {
+                "older": edge.target.memory_id,
+                "newer": edge.source.memory_id,
+            },
+            "detector": DETECTOR,
+            "signal": edge.signal,
+            "score": block["score"],
+            "cycle_id": cycle_id,
+        },
+    )
+    outcome.derived += 1
+    return True
+
+
+async def strip_stale_edges(
+    session: AsyncSession,
+    *,
+    seeds: list[str],
+    bound: tuple[str, str] | None,
+    kept: set[tuple[str, str, str]],
+    outcome: DerivationOutcome,
+) -> None:
+    """Retire this pass's blocks on triples it re-evaluated and no longer asserts.
+
+    **`clear_pass_block`, then `delete_edge` only on `exclusive is True`.** A
+    `delete_edge`-based strip would take T2.12's near-duplicate block and
+    T2.23's hygiene triage with it on any row those passes share with this one,
+    and the UNIQUE on `(source, target, rel_type)` guarantees they *do* share
+    it whenever both assert the same triple.
+
+    The clear and the delete are two statements, so a window exists in
+    principle between the `exclusive` flag and the delete. It is closed by
+    invariant 13 — one worker, and the family's per-job `asyncio.Lock`
+    serialises the dreaming passes — not by SQL. A multi-replica deployment
+    (a flagged Phase-4 decision) reopens it.
+    """
+    if not seeds:
+        return
+    result = await session.execute(
+        _PASS_TRIPLES_IN_WINDOW,
+        {
+            "block_path": [DREAM_PROPERTIES_KEY, DERIVATION_PASS],
+            "seeds": list(seeds),
+            "bound_left": bound[0] if bound else None,
+            "bound_right": bound[1] if bound else None,
+        },
+    )
+    for row in result.mappings():
+        triple = (row["source"], row["target"], row["rel_type"])
+        if triple in kept:
+            continue
+        exclusive = await clear_pass_block(
+            session,
+            source_memory_id=row["source"],
+            target_memory_id=row["target"],
+            rel_type=row["rel_type"],
+            pass_key=DERIVATION_PASS,
+        )
+        outcome.stripped += 1
+        if exclusive:
+            await delete_edge(
+                session,
+                source_memory_id=row["source"],
+                target_memory_id=row["target"],
+                rel_type=row["rel_type"],
+            )
+            outcome.rows_deleted += 1
+
+
+async def run_derivation_pass(
+    session: AsyncSession,
+    *,
+    seeds: list[MemoryRow],
+    fingerprint: str | None,
+    cycle_id: str,
+    overlap_threshold: float,
+    proximity_threshold: float,
+    derivation_batch: int,
+    hot_entity_cap: int,
+    neighbours: int,
+) -> DerivationOutcome:
+    """One derivation cycle over the seed slice: generate, merge, write, strip.
+
+    No model call anywhere in it. The pass writes `memory_relations` rows and
+    nothing else — it never touches `verification_status`, never opens a
+    `review_state`, never calls the ladder. A derived `CONTRADICTS` is a signal
+    *into* fact-level dispute (doc 08 §4.2), never a verdict, and T2.11's scan
+    is blocked on an unqualified judge, so this pass must not become a back
+    door that supplies fact-level dispute while that gate is unmet.
+    """
+    outcome = DerivationOutcome()
+    if not seeds or derivation_batch <= 0:
+        return outcome
+
+    await _set_local_lock_timeout(session)
+    seed_ids = [seed.memory_id for seed in seeds]
+
+    # One row more than the cap, so an arm holding exactly the cap is
+    # distinguishable from an arm that had nothing more to give. Without the
+    # spare row a run that dropped candidates reports zero truncation and the
+    # coverage gap is permanent and green — the same shape as reading the
+    # fingerprint sentinel.
+    arm_limit = derivation_batch + 1
+    overlap = await overlap_candidates(
+        session,
+        seeds=seed_ids,
+        threshold=overlap_threshold,
+        hot_entity_cap=hot_entity_cap,
+        limit=arm_limit,
+    )
+    contradiction = await contradiction_candidates(
+        session,
+        seeds=seed_ids,
+        families=EXCLUSIVE_RELATION_FAMILIES,
+        hot_entity_cap=hot_entity_cap,
+        limit=arm_limit,
+    )
+    proximity: dict[tuple[str, str], float] = {}
+    if fingerprint is None:
+        # Never a fallback to another partition and never a sentinel: a
+        # cross-fingerprint cosine has no defined meaning. Reported, not
+        # swallowed, and the overlap arm proceeds regardless.
+        outcome.proximity_skipped_reason = SKIPPED_PROXIMITY_FINGERPRINT
+    else:
+        proximity = await proximity_candidates(
+            session,
+            seeds=seeds,
+            fingerprint=fingerprint,
+            threshold=proximity_threshold,
+            neighbours=neighbours,
+            limit=arm_limit,
+        )
+
+    decided = merge_candidates({
+        SIGNAL_ENTITY_OVERLAP: overlap,
+        SIGNAL_CONTRADICTION: contradiction,
+        SIGNAL_EMBEDDING_PROXIMITY: proximity,
+    })
+    outcome.candidates = len(decided)
+    # The cap normally exceeds the candidate count; the counter is how an
+    # operator learns it did not. Pairs past it are never derived at all, and
+    # the stable ordering that makes replay pass is exactly what would make
+    # that coverage gap permanent and green.
+    #
+    # **A lower bound, not a census.** The arms stop one row past the cap, so a
+    # non-zero reading means the valve engaged and the magnitude is what this
+    # run saw rather than how many pairs exist. Buying the exact figure costs a
+    # second unbounded scan of the thing the cap exists to bound.
+    outcome.candidates_truncated = max(0, len(decided) - derivation_batch)
+    decided = decided[:derivation_batch]
+    bound = decided[-1][0] if decided and outcome.candidates_truncated else None
+
+    identifiers = sorted({member for key, _, _ in decided for member in key})
+    known = await read_memories(session, identifiers)
+
+    edges_to_write: list[DerivedEdge] = []
+    for key, signal, scores in decided:
+        left, right = known.get(key[0]), known.get(key[1])
+        if left is None or right is None:
+            continue
+        # `apply_associate`'s convention, and the reason `order_pair` is
+        # delegated rather than re-spelled: source is the newer half, so a pair
+        # cannot appear as two rows depending on which memory the scan reached
+        # first.
+        older, newer = order_pair(left, right)
+        edges_to_write.append(
+            DerivedEdge(source=newer, target=older, signal=signal, scores=scores)
+        )
+
+    kept = {edge.triple for edge in edges_to_write}
+    for edge in edges_to_write:
+        try:
+            async with session.begin_nested():
+                await write_derived_edge(
+                    session, edge, cycle_id=cycle_id, outcome=outcome
+                )
+        except Exception:
+            logger.warning(
+                "memory dream: a derived edge failed and was rolled back",
+                exc_info=True,
+            )
+            outcome.failed += 1
+
+    try:
+        async with session.begin_nested():
+            await strip_stale_edges(
+                session, seeds=seed_ids, bound=bound, kept=kept, outcome=outcome
+            )
+    except Exception:
+        logger.warning(
+            "memory dream: the derivation strip failed and was rolled back",
+            exc_info=True,
+        )
+        outcome.failed += 1
+    return outcome
+
+
 # ── the run ──────────────────────────────────────────────────────────────
 
 
@@ -1281,13 +1957,25 @@ async def run_memory_dream(
     refine_batch: int = DEFAULT_REFINE_BATCH,
     write_batch: int = DEFAULT_WRITE_BATCH,
     llm_concurrency: int = DEFAULT_LLM_CONCURRENCY,
+    derivation_enabled: int = DEFAULT_DERIVATION_ENABLED,
+    overlap_threshold_pct: int = DEFAULT_OVERLAP_THRESHOLD_PCT,
+    proximity_threshold_pct: int = DEFAULT_PROXIMITY_THRESHOLD_PCT,
+    derivation_batch: int = DEFAULT_DERIVATION_BATCH,
+    derivation_hot_entity_cap: int = DEFAULT_HOT_ENTITY_CAP,
 ) -> DreamOutcome:
-    """One dreaming cycle: read, judge, apply.
+    """One dreaming cycle: read, judge, apply, derive.
 
     Writes nothing and deletes nothing when it computed nothing — a missing
-    provider and an unresolvable fingerprint both stop the run before Phase W,
-    the same discipline topic detection applies to a missing clustering
-    library, and for the same reason.
+    provider stops the whole run, the same discipline topic detection applies
+    to a missing clustering library, and for the same reason.
+
+    **The fingerprint gate is arm-scoped, not run-scoped.** An unresolvable
+    fingerprint still stops the near-duplicate and refine arms outright: both
+    reach Phase W off a model verdict computed against a partition that could
+    not be measured. It does *not* stop the derivation pass's overlap arm,
+    which needs no vector at all — silently skipping a deterministic arm
+    because an unrelated probe failed is how a feature runs green and inert
+    forever, which is exactly what the canary exists to prevent.
     """
     outcome = DreamOutcome(cycle_id=str(new_id()))
 
@@ -1300,7 +1988,6 @@ async def run_memory_dream(
     fingerprint = await resolve_fingerprint(llm)
     if fingerprint is None:
         outcome.skipped_reason = SKIPPED_FINGERPRINT_UNRESOLVED
-        return outcome
 
     # Phase R. Read-only, and committed before the LLM fan-out so a pooled
     # connection does not sit `idle in transaction` for minutes.
@@ -1310,18 +1997,21 @@ async def run_memory_dream(
             session, state=state, batch_size=batch_size
         )
         outcome.seeds_visited = len(seeds)
-        pairs = await generate_pairs(
-            session,
-            seeds=seeds,
-            fingerprint=fingerprint,
-            pair_candidates=pair_candidates,
-            near_duplicate_threshold_pct=near_duplicate_threshold_pct,
-            judge_fanout=judge_fanout,
-            outcome=outcome,
-        )
-        refine_targets = [
-            seed for seed in seeds if needs_refine(seed)
-        ][:max(0, refine_batch)]
+        pairs: list[PairCandidate] = []
+        refine_targets: list[MemoryRow] = []
+        if fingerprint is not None:
+            pairs = await generate_pairs(
+                session,
+                seeds=seeds,
+                fingerprint=fingerprint,
+                pair_candidates=pair_candidates,
+                near_duplicate_threshold_pct=near_duplicate_threshold_pct,
+                judge_fanout=judge_fanout,
+                outcome=outcome,
+            )
+            refine_targets = [
+                seed for seed in seeds if needs_refine(seed)
+            ][:max(0, refine_batch)]
         await session.commit()
 
     if seeds and outcome.pairs_skipped_no_vector == len(seeds):
@@ -1372,13 +2062,42 @@ async def run_memory_dream(
                 outcome.cursor_id = advanced.memory_id
             await session.commit()
 
+    # Phase D — deterministic, no model call, its own session and commit so a
+    # derivation failure cannot roll back the actions Phase W already took.
+    if derivation_enabled and seeds:
+        async with session_factory() as session:
+            derivation = await run_derivation_pass(
+                session,
+                seeds=seeds,
+                fingerprint=fingerprint,
+                cycle_id=outcome.cycle_id,
+                overlap_threshold=overlap_threshold_pct / 100,
+                proximity_threshold=proximity_threshold_pct / 100,
+                derivation_batch=derivation_batch,
+                hot_entity_cap=derivation_hot_entity_cap,
+                neighbours=pair_candidates,
+            )
+            await session.commit()
+        outcome.derivation_candidates = derivation.candidates
+        outcome.candidates_truncated = derivation.candidates_truncated
+        outcome.derived = derivation.derived
+        outcome.derivation_unchanged = derivation.unchanged
+        outcome.derivation_stripped = derivation.stripped
+        outcome.derivation_rows_deleted = derivation.rows_deleted
+        outcome.derivation_failed = derivation.failed
+        outcome.derivation_skipped_reason = derivation.proximity_skipped_reason
+
     logger.info(
         "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
         "%d subsumed, %d associated (%d unchanged), %d refined, "
-        "%d stale-skipped, %d failed%s",
+        "%d stale-skipped, %d failed; derivation saw %d candidate(s) "
+        "(%d truncated): %d derived, %d unchanged, %d stripped%s",
         outcome.cycle_id, outcome.seeds_visited, outcome.judged,
         outcome.subsumed, outcome.associated, outcome.associate_unchanged,
         outcome.refined, outcome.stale_skipped, outcome.failed,
+        outcome.derivation_candidates, outcome.candidates_truncated,
+        outcome.derived, outcome.derivation_unchanged,
+        outcome.derivation_stripped,
         f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason
         else (
             f" (pair arm: {outcome.pair_arm_skipped_reason})"
@@ -1430,5 +2149,45 @@ MEMORY_DREAM_CONFIG_SCHEMA: list[FieldDescriptor] = [
         key="llm_concurrency", label="Judge Concurrency",
         default=DEFAULT_LLM_CONCURRENCY, min=1, max=32,
         help="Concurrent model calls during the compute phase.",
+    ),
+    FieldDescriptor(
+        key="derivation_enabled", label="Derive Associative Edges",
+        default=DEFAULT_DERIVATION_ENABLED, min=0, max=1,
+        help="0 disables the associative-derivation pass without disabling the job.",
+    ),
+    FieldDescriptor(
+        key="overlap_threshold_pct", label="Entity Overlap Threshold (%)",
+        default=DEFAULT_OVERLAP_THRESHOLD_PCT, min=1, max=100,
+        help=(
+            "Jaccard floor over shared entities for an overlap edge, as an "
+            "integer percent — FieldDescriptor defaults are typed int."
+        ),
+    ),
+    FieldDescriptor(
+        key="proximity_threshold_pct", label="Proximity Threshold (%)",
+        default=DEFAULT_PROXIMITY_THRESHOLD_PCT, min=50, max=100,
+        help=(
+            "Cosine floor for a proximity edge, as an integer percent. Below "
+            "the near-duplicate threshold on purpose: this arm asserts "
+            "relatedness, not duplication."
+        ),
+    ),
+    FieldDescriptor(
+        key="derivation_batch", label="Derived Pairs Per Run",
+        default=DEFAULT_DERIVATION_BATCH, min=0, max=5000,
+        help=(
+            "Candidate pairs derived per run. A safety valve rather than a "
+            "working limit: pairs past it are reported as truncated, never "
+            "silently dropped."
+        ),
+    ),
+    FieldDescriptor(
+        key="derivation_hot_entity_cap", label="Hot-Entity Cardinality Cap",
+        default=DEFAULT_HOT_ENTITY_CAP, min=2, max=5000,
+        help=(
+            "Entities asserted by more memories than this are skipped by the "
+            "overlap generator. Cost is the sum of C(k,2) over asserting "
+            "counts, which no LIMIT can bound."
+        ),
     ),
 ]
