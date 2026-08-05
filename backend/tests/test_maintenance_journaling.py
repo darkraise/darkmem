@@ -174,16 +174,30 @@ async def test_prune_cache_journals_via_the_request_session(client, auth_headers
     NOW() is pinned to that transaction's start rather than the statement
     time -- a `created_at >= since` filter captured mid-test would exclude
     every row this test itself just wrote). The single-test transaction
-    boundary is what keeps this scoped to this test's own write."""
+    boundary is what keeps this scoped to this test's own write.
+
+    The fingerprint is registered first because the prune refuses one that is
+    not (T2.82) -- that refusal has its own journalling test in
+    `test_reembed_prune_cache_guard.py`; this one is about the success path."""
+    from app.services.embedder_registry import EmbedderInfo, embedder_registry
+
+    fingerprint = "journaling-test-fp|4"
+    await embedder_registry.register(
+        session,
+        EmbedderInfo(
+            fingerprint=fingerprint, model_id="journaling-test-fp", dims=4, source="llm",
+        ),
+    )
     previous_pipeline = getattr(app.state, "pipeline", None)
     app.state.pipeline = SimpleNamespace(
-        llm=SimpleNamespace(llm_fingerprint=lambda: "journaling-test-fp|4")
+        llm=SimpleNamespace(llm_fingerprint=lambda: fingerprint)
     )
     try:
         response = await client.post("/api/v1/reembed/prune-cache", headers=auth_headers)
         assert response.status_code == 200, response.text
     finally:
         app.state.pipeline = previous_pipeline
+        embedder_registry.forget(fingerprint)
 
     rows = (await session.execute(
         text(

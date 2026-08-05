@@ -25,7 +25,11 @@ from app.api.auth import require_auth
 from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.database import async_session_factory, get_session
-from app.services.reembed import ReembedService, reembed_locks
+from app.services.reembed import (
+    CachePruneFingerprintUnresolved,
+    ReembedService,
+    reembed_locks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -314,7 +318,29 @@ async def prune_cache(
 
     fingerprint = _resolve_fingerprint(request)
     svc = ReembedService(session)
-    deleted = await svc.prune_obsolete_cache_entries(fingerprint)
+    try:
+        deleted = await svc.prune_obsolete_cache_entries(fingerprint)
+    except CachePruneFingerprintUnresolved as exc:
+        # A destructive maintenance op that refuses without a trace is
+        # invisible to the timeline, so the refusal journals the same
+        # operation the successful run does, with deleted=0 to say plainly
+        # that nothing was dropped.
+        await record_event(
+            session,
+            event_type="maintenance_run",
+            object_type="system",
+            payload={
+                "operation": "prune_caches",
+                "outcome": "error",
+                "detail": {
+                    "deleted": 0,
+                    "fingerprint": fingerprint,
+                    "error": str(exc),
+                },
+            },
+        )
+        await session.commit()
+        raise HTTPException(409, str(exc)) from exc
     # prune_obsolete_cache_entries already committed its own DROP TABLEs, so
     # this journal write rides its own transaction on the same session,
     # committed explicitly here rather than left to the request teardown.
