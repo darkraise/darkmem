@@ -516,8 +516,18 @@ it is not a ranking signal (doc 17 §2).
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.52, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: standing`
 
 **What.** First writer to the template landed inert in T0.13 — and it ships **only** if
-T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
+the measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
 counting only; never merges rows, never rewrites `triple_key`.
+
+**The gating measurement is `T2.52`'s, not `T2.11`'s** *(corrected 2026-08-05: this text
+said "T2.11's measured miss rate", but T2.11 is `contradiction_scan` and owns no
+measurement — T2.52 is the miss-rate runner, and it is already this task's `Depends`. The
+wrong reference mattered: T2.11 is **blocked** on an unqualified judge, so a reader would
+have concluded T2.33 was blocked behind it when its gate had in fact already cleared.)*
+
+**The gate has cleared.** T2.52 measured **41.7% (5/12)** on the `lexically-disjoint`
+slice against a **20%** bar stated beforehand — `docs/eval/2026-08-05-t2.52-contradiction-missrate.md`.
+So the "not needed, measured" branch below is **closed**, and this task ships the writer.
 
 **Done when:** miss rate measured and compared to the bar before any code ships; if the
 bar is not exceeded, the task closes as "not needed, measured" and the template stays
