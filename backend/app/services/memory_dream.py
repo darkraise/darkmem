@@ -104,6 +104,11 @@ DEFAULT_JUDGE_FANOUT = 25
 DEFAULT_REFINE_BATCH = 25
 DEFAULT_WRITE_BATCH = 25
 DEFAULT_LLM_CONCURRENCY = 4
+DEFAULT_DERIVATION_ENABLED = 1
+DEFAULT_OVERLAP_THRESHOLD_PCT = 50
+DEFAULT_PROXIMITY_THRESHOLD_PCT = 85
+DEFAULT_DERIVATION_BATCH = 200
+DEFAULT_HOT_ENTITY_CAP = 50
 
 # Internal bookkeeping, never an operator knob: `JobRegistry.set_config`
 # validates against the job's schema and would reject it.
@@ -1430,5 +1435,45 @@ MEMORY_DREAM_CONFIG_SCHEMA: list[FieldDescriptor] = [
         key="llm_concurrency", label="Judge Concurrency",
         default=DEFAULT_LLM_CONCURRENCY, min=1, max=32,
         help="Concurrent model calls during the compute phase.",
+    ),
+    FieldDescriptor(
+        key="derivation_enabled", label="Derive Associative Edges",
+        default=DEFAULT_DERIVATION_ENABLED, min=0, max=1,
+        help="0 disables the associative-derivation pass without disabling the job.",
+    ),
+    FieldDescriptor(
+        key="overlap_threshold_pct", label="Entity Overlap Threshold (%)",
+        default=DEFAULT_OVERLAP_THRESHOLD_PCT, min=1, max=100,
+        help=(
+            "Jaccard floor over shared entities for an overlap edge, as an "
+            "integer percent — FieldDescriptor defaults are typed int."
+        ),
+    ),
+    FieldDescriptor(
+        key="proximity_threshold_pct", label="Proximity Threshold (%)",
+        default=DEFAULT_PROXIMITY_THRESHOLD_PCT, min=50, max=100,
+        help=(
+            "Cosine floor for a proximity edge, as an integer percent. Below "
+            "the near-duplicate threshold on purpose: this arm asserts "
+            "relatedness, not duplication."
+        ),
+    ),
+    FieldDescriptor(
+        key="derivation_batch", label="Derived Pairs Per Run",
+        default=DEFAULT_DERIVATION_BATCH, min=0, max=5000,
+        help=(
+            "Candidate pairs derived per run. A safety valve rather than a "
+            "working limit: pairs past it are reported as truncated, never "
+            "silently dropped."
+        ),
+    ),
+    FieldDescriptor(
+        key="derivation_hot_entity_cap", label="Hot-Entity Cardinality Cap",
+        default=DEFAULT_HOT_ENTITY_CAP, min=2, max=5000,
+        help=(
+            "Entities asserted by more memories than this are skipped by the "
+            "overlap generator. Cost is the sum of C(k,2) over asserting "
+            "counts, which no LIMIT can bound."
+        ),
     ),
 ]

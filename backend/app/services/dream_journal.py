@@ -48,6 +48,24 @@ ACTIONS: frozenset[str] = frozenset({ACTION_SUBSUME, ACTION_ASSOCIATE, ACTION_RE
 # forces them to share.
 NEAR_DUPLICATE_PASS = "near_duplicate"
 
+# T2.16's key, and the reason the pass-keyed layout exists at all. Two passes
+# may legitimately propose the same ``(source, target, rel_type)`` triple for
+# different reasons; sharing one key would make each pass's strip erase the
+# other's state on the single row the UNIQUE forces them onto.
+DERIVATION_PASS = "associative_derivation"
+
+
+def associate_pass_key(payload: dict | None) -> str:
+    """Which pass's block an ``associate`` action wrote.
+
+    Defaults to the near-duplicate pass because rows journalled before T2.16
+    carry no ``pass_key`` and were all written by that arm. Read by the undo
+    door's inverse *and* by its compare-and-swap: a hardcoded key there would
+    restore or clear the wrong pass's block while reporting success.
+    """
+    key = (payload or {}).get("pass_key")
+    return key if isinstance(key, str) and key else NEAR_DUPLICATE_PASS
+
 HYGIENE_STATE_OPEN = "open"
 
 REFINE_MARKER_PATH = ("dream", "refine")
