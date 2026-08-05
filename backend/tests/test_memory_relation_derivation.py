@@ -205,6 +205,10 @@ class TestConfigSurface:
             "proximity_threshold_pct",
             "derivation_batch",
             "derivation_hot_entity_cap",
+            # The proximity fan-out decides which proximity edges can exist at
+            # all, so it is its own row rather than a silent second reading of
+            # the judge's `pair_candidates`.
+            "derivation_neighbours",
         ):
             assert key in schema, f"{key} is not an operator-editable config row"
             assert schema[key].min is not None
@@ -523,6 +527,131 @@ class TestStrip:
         assert [row["rel_type"] for row in rows] == ["CONTRADICTS"]
 
 
+async def build_proximity_pair(factory, project, *, vector=(1.0, 0.0, 0.0, 0.0)):
+    """Two memories that share no entity at all and sit on top of each other in
+    the partition — a pair only the proximity arm can produce."""
+    async with factory() as session:
+        await seed_partition(session, FP)
+        first = await seed_memory(
+            session, project=project, content="prox-alpha",
+            created_at=NOW + timedelta(hours=5),
+        )
+        second = await seed_memory(
+            session, project=project, content="prox-beta",
+            created_at=NOW + timedelta(hours=6),
+        )
+        await put_vector(session, first, list(vector))
+        await put_vector(session, second, list(vector))
+        await session.commit()
+    return first, second
+
+
+class TestASkippedArmStripsNothing:
+    """I1. A dead canary skips the proximity arm, and `kept` can then only hold
+    pairs the arms that *ran* produced — so an unguarded strip retires every
+    proximity edge in the window although no cosine was re-measured. On a
+    deployment whose embedding purpose carries no `dimensions` the canary never
+    recovers, so the whole proximity graph goes one seed slice at a time, with
+    no journal row and with the original write's undo CAS-refused afterwards."""
+
+    async def test_a_dead_canary_spares_proximity_and_still_strips_overlap(
+        self, committing, project
+    ):
+        overlap_first, overlap_second, _ = await build_overlap_pair(
+            committing, project
+        )
+        prox_first, prox_second = await build_proximity_pair(committing, project)
+        seeds = await read_seeds(
+            committing,
+            [overlap_first, overlap_second, prox_first, prox_second],
+        )
+
+        await derive(committing, seeds, fingerprint=FP)
+        signals = {
+            edges.pass_block_of(row, journal.DERIVATION_PASS)["signal"]
+            for row in await pass_edges(committing, project)
+        }
+        assert signals == {
+            dream.SIGNAL_ENTITY_OVERLAP, dream.SIGNAL_EMBEDDING_PROXIMITY
+        }
+
+        # The overlap signal genuinely vanishes; the cosine does not move.
+        async with committing() as session:
+            await session.execute(
+                text("DELETE FROM entities WHERE name LIKE :like"),
+                {"like": f"t216-shared-%-{project}"},
+            )
+            await session.commit()
+
+        outcome = await derive(committing, seeds, fingerprint=None)
+
+        assert outcome.proximity_skipped_reason == (
+            dream.SKIPPED_PROXIMITY_FINGERPRINT
+        )
+        # The half the run *did* re-evaluate is still retired: sparing is
+        # scoped to the unmeasured signal, not a blanket strip holiday.
+        assert outcome.stripped == 1
+        assert outcome.rows_deleted == 1
+        assert outcome.spared_unmeasured == 1
+        surviving = await pass_edges(committing, project)
+        assert len(surviving) == 1
+        block = edges.pass_block_of(surviving[0], journal.DERIVATION_PASS)
+        assert block["signal"] == dream.SIGNAL_EMBEDDING_PROXIMITY
+        assert dream.pair_key(
+            surviving[0]["source"], surviving[0]["target"]
+        ) == dream.pair_key(str(prox_first), str(prox_second))
+
+    async def test_a_live_canary_still_retires_a_vanished_cosine(
+        self, committing, project
+    ):
+        """Non-vacuity for the test above: the proximity edge is not immortal.
+        With the arm running and the cosine gone, the same edge is retired —
+        so the sparing is about the arm having been skipped, not about
+        proximity edges being exempt from D9."""
+        first, second = await build_proximity_pair(committing, project)
+        seeds = await read_seeds(committing, [first, second])
+        await derive(committing, seeds, fingerprint=FP)
+        assert len(await pass_edges(committing, project)) == 1
+
+        async with committing() as session:
+            await put_vector(session, second, [0.0, 1.0, 0.0, 0.0])
+            await session.commit()
+
+        outcome = await derive(committing, seeds, fingerprint=FP)
+
+        assert outcome.spared_unmeasured == 0
+        assert outcome.stripped == 1
+        assert outcome.rows_deleted == 1
+        assert await pass_edges(committing, project) == []
+
+    async def test_the_undo_of_a_spared_edge_still_inverts(
+        self, committing, project
+    ):
+        """Why the silence mattered: the strip journals nothing, so a
+        proximity edge retired under a dead canary left its `associate` row in
+        the digest with an undo that CAS-refuses — an action a curator can
+        neither see the effect of nor take back."""
+        from app.services import dream_undo
+
+        first, second = await build_proximity_pair(committing, project)
+        seeds = await read_seeds(committing, [first, second])
+        await derive(committing, seeds, fingerprint=FP)
+        written = await derivation_events(committing, project)
+        assert len(written) == 1
+
+        outcome = await derive(committing, seeds, fingerprint=None)
+        assert outcome.spared_unmeasured == 1
+
+        async with committing() as session:
+            batch = await dream_undo.undo(
+                session, event_ids=[int(written[0]["id"])], actor="tester"
+            )
+            await session.commit()
+
+        assert len(batch.undone) == 1
+        assert await pass_edges(committing, project) == []
+
+
 async def seed_opposition(factory, project, first, second, rel_type="DEPENDS_ON"):
     """One source entity, two different targets, asserted by two memories."""
     async with factory() as session:
@@ -832,6 +961,98 @@ class TestTruncation:
         assert outcome.stripped == 10
         assert await pass_edges(committing, project) == []
 
+    async def test_the_bound_spares_edges_past_the_decided_prefix(
+        self, committing, project
+    ):
+        """I2. The test above exercises the *unbounded* branch — zero
+        candidates, no bound, strip everything — so removing the window's
+        bound clause outright left the whole file green. This one drives the
+        engaged bound: ten pre-existing edges, a cap of three, an unchanged
+        corpus. The three inside the bound are re-decided and kept; the seven
+        past it were reachable by no arm this run, and retiring them would be
+        edge churn as a pure cap artefact, repeating every night on a growing
+        corpus."""
+        async with committing() as session:
+            ids = [
+                await seed_memory(
+                    session, project=project, content=f"m{index}",
+                    created_at=NOW + timedelta(hours=index),
+                )
+                for index in range(5)
+            ]
+            await seed_entity(
+                session, name=f"t216-shared-all-{project}", memory_ids=ids
+            )
+            await session.commit()
+        seeds = await read_seeds(committing, ids)
+
+        await derive(committing, seeds, derivation_batch=1000)
+        before = {
+            dream.pair_key(row["source"], row["target"])
+            for row in await pass_edges(committing, project)
+        }
+        assert len(before) == 10
+
+        outcome = await derive(committing, seeds, derivation_batch=3)
+
+        # Non-vacuity: the valve engaged, so a bound exists, and the run really
+        # decided a three-pair prefix rather than finding nothing to do.
+        assert outcome.candidates_truncated >= 1
+        assert outcome.unchanged == 3
+        assert outcome.derived == 0
+        # The seven past the bound are inside the seed window and absent from
+        # `kept`, so only the bound clause keeps them.
+        assert outcome.stripped == 0
+        assert outcome.rows_deleted == 0
+        assert outcome.spared_unmeasured == 0
+        after = {
+            dream.pair_key(row["source"], row["target"])
+            for row in await pass_edges(committing, project)
+        }
+        assert after == before
+        decided = sorted(before)
+        assert len(decided[3:]) == 7
+        assert set(decided[3:]) <= after
+
+
+# ── step 8: the digest can say why an edge exists ────────────────────────
+
+
+class TestDigestRendersTheSignal:
+    async def test_the_rendered_detail_names_the_signal(
+        self, committing, project
+    ):
+        """This pass makes no model call, so it has no verdict to show: the
+        signal is the only thing in its payload that answers "why is this edge
+        here". Journalling it and never rendering it leaves a curator looking
+        at a derived edge beside a null verdict."""
+        from app.services import dream_digest
+
+        first, second, _ = await build_overlap_pair(committing, project)
+        seeds = await read_seeds(committing, [first, second])
+        await derive(committing, seeds)
+
+        events = await derivation_events(committing, project)
+        assert len(events) == 1
+        detail = dream_digest.action_detail(events[0]["payload"])
+
+        assert detail["signal"] == dream.SIGNAL_ENTITY_OVERLAP
+        assert detail["verdict"] is None
+
+    def test_the_near_duplicate_detail_keeps_its_shape(self):
+        """The key is present only when the writing pass recorded one, so
+        T2.12's rendered detail is unchanged."""
+        from app.services import dream_digest
+
+        detail = dream_digest.action_detail({
+            "action": journal.ACTION_ASSOCIATE,
+            "verdict": "duplicate",
+            "score": 0.97,
+            "created": True,
+        })
+
+        assert "signal" not in detail
+
 
 # ── D11: the undo door inverts the block this pass wrote ─────────────────
 
@@ -1061,6 +1282,35 @@ class TestWiredIntoTheCycle:
         assert len(written) >= 1
         block = edges.pass_block_of(written[0], journal.DERIVATION_PASS)
         assert block["signal"] == dream.SIGNAL_ENTITY_OVERLAP
+
+    async def test_the_proximity_fanout_is_not_the_judges_knob(
+        self, committing, project, monkeypatch
+    ):
+        """The proximity arm's top-N per seed bounds which proximity edges can
+        exist, and an edge crowded out of a seed's fan-out is retired by the
+        next strip. Driving that from `pair_candidates` makes tuning the judge
+        silently move the derived graph, so the two are separate rows."""
+        await build_overlap_pair(committing, project)
+        async with committing() as session:
+            await seed_partition(session, FP)
+            await session.commit()
+
+        seen: list[int] = []
+        original = dream.proximity_candidates
+
+        async def spy(session, **kwargs):
+            seen.append(kwargs["neighbours"])
+            return await original(session, **kwargs)
+
+        monkeypatch.setattr(dream, "proximity_candidates", spy)
+
+        await dream.run_memory_dream(
+            committing, lambda: StubLLM(),
+            refine_batch=0, judge_fanout=0,
+            pair_candidates=17, derivation_neighbours=3,
+        )
+
+        assert seen == [3]
 
     async def test_the_flag_off_derives_nothing(self, committing, project):
         await build_overlap_pair(committing, project)
