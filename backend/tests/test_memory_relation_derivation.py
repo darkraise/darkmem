@@ -1033,6 +1033,35 @@ class TestWiredIntoTheCycle:
         assert outcome.derivation_skipped_reason is None
         assert len(await pass_edges(committing, project)) >= 1
 
+    async def test_the_cycle_reaches_the_overlap_arm_past_a_dead_canary(
+        self, committing, project
+    ):
+        """F3 at cycle level, and the only place the arm-scoped gate is
+        provable. `run` used to return at `fingerprint_unresolved` before any
+        phase ran, so the pass never got a body to skip an arm inside — a
+        derivation test that drives the pass directly cannot see that, and the
+        feature would run green and inert on every deployment whose embedding
+        `dimensions` are unset."""
+        await build_overlap_pair(committing, project)
+        async with committing() as session:
+            await seed_partition(session, FP)
+            await session.commit()
+
+        outcome = await dream.run_memory_dream(
+            committing, lambda: StubLLM(fingerprint="t216-stub|0"),
+            refine_batch=0, judge_fanout=0,
+        )
+
+        assert outcome.skipped_reason == dream.SKIPPED_FINGERPRINT_UNRESOLVED
+        assert outcome.derivation_skipped_reason == (
+            dream.SKIPPED_PROXIMITY_FINGERPRINT
+        )
+        assert outcome.derived >= 1
+        written = await pass_edges(committing, project)
+        assert len(written) >= 1
+        block = edges.pass_block_of(written[0], journal.DERIVATION_PASS)
+        assert block["signal"] == dream.SIGNAL_ENTITY_OVERLAP
+
     async def test_the_flag_off_derives_nothing(self, committing, project):
         await build_overlap_pair(committing, project)
         async with committing() as session:
