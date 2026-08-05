@@ -22,7 +22,7 @@ from app.services.fact_provenance import (
     reconcile_memory_sources,
     withdraw_memory_sources,
 )
-from app.services.rank_fusion import any_arm_active, rank_fusion_factor
+from app.services.rank_fusion import IMPORTANCE_DEFAULT, any_arm_active, rank_fusion_factor
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
 from app.services import prompt
@@ -1306,10 +1306,11 @@ class ProcessingPipeline:
     ) -> list[dict]:
         """Apply the deterministic post-fusion multiplier to retrieval scores.
 
-        ``final = base * rank_fusion_factor(signals, flags)``. Confidence is
-        the only arm spent today; the importance/heat/recency arms sit at
-        weight zero and contribute exactly 1.0, so the composed factor is
-        bit-identical to the confidence-only one until an arm is turned on.
+        ``final = base * rank_fusion_factor(signals, flags)``. Confidence and
+        importance are the signals fed today, both read off the memory row in
+        the same query; the heat/recency arms have no signal source wired yet
+        (T2.31) and contribute exactly 1.0, as does any arm at weight zero,
+        so the composed factor stays bit-identical to the spent arms' one.
 
         When ``preserve_order`` is set (the reranker has already imposed a
         ranking), scores are still rescaled but the input order is kept — the
@@ -1335,17 +1336,24 @@ class ProcessingPipeline:
 
         from sqlalchemy import text as sa_text
         row_result = await session.execute(
-            sa_text("SELECT id, confidence FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            sa_text(
+                "SELECT id, confidence, importance FROM memories "
+                "WHERE id = ANY(CAST(:ids AS uuid[]))"
+            ),
             {"ids": memory_ids},
         )
-        conf_map: dict[str, float] = {str(row[0]): float(row[1]) for row in row_result}
+        signal_map: dict[str, tuple[float, float]] = {
+            str(row[0]): (float(row[1]), float(row[2])) for row in row_result
+        }
 
         score_key = "rrf_score" if results and "rrf_score" in results[0] else "score"
         for r in results:
             mid = str(r.get("memory_id") or r.get("id") or "")
-            conf = conf_map.get(mid, CONFIDENCE_DEFAULT)
+            conf, imp = signal_map.get(mid, (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
             base = float(r.get(score_key, 0.0) or 0.0)
-            r[score_key] = base * rank_fusion_factor({"confidence": conf}, flags)
+            r[score_key] = base * rank_fusion_factor(
+                {"confidence": conf, "importance": imp}, flags,
+            )
 
         if preserve_order:
             return results
