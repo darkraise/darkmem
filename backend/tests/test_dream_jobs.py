@@ -885,12 +885,16 @@ async def test_topic_detection_registers_with_its_real_schema_and_bounds():
         assert job.max_run_seconds == 900
         # Named explicitly, not compared to the schema object the job
         # registers — that comparison holds for any schema content and asserts
-        # nothing. These are T2.18's five knobs; a lost one is a knob the
-        # operator's `PUT /jobs/{key}/config` starts rejecting as unknown.
+        # nothing. These are T2.18's five knobs plus T2.93's two; a lost one is
+        # a knob the operator's `PUT /jobs/{key}/config` starts rejecting as
+        # unknown.
         keys = {field.key for field in job.config_schema}
         assert keys == {
             "batch_size", "hub_cap", "min_community_size",
             "leiden_timeout_seconds", "max_projection_edges",
+            # T2.93: the report pass this job now runs is bounded by config,
+            # not by a module constant the operator cannot see.
+            "report_batch", "min_report_size",
         }
         # The placeholder's key, default and ceiling survive the swap, so no
         # value already persisted under the generic schema is orphaned.
@@ -913,7 +917,9 @@ async def test_topic_detection_persists_its_rotation_cursor(monkeypatch):
     registry, engine = _fresh_registry()
     seen: list[str | None] = []
 
-    async def fake_run(session_factory, *, batch_size, after_project, **knobs):
+    async def fake_run(
+        session_factory, llm_provider=None, *, batch_size, after_project, **knobs
+    ):
         seen.append(after_project)
         # A full batch: more projects may remain, so the cursor advances.
         return DetectionOutcome(
@@ -947,7 +953,9 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
 
     registry, engine = _fresh_registry()
 
-    async def fake_run(session_factory, *, batch_size, after_project, **knobs):
+    async def fake_run(
+        session_factory, llm_provider=None, *, batch_size, after_project, **knobs
+    ):
         return DetectionOutcome(
             last_project="wedged", skipped=1, visited=batch_size
         )

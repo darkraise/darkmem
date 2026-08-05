@@ -100,6 +100,13 @@ async def committing(setup_database):
             await cleanup.execute(
                 text("DELETE FROM memories WHERE project LIKE 't219-%'")
             )
+            # Entities are global, not project-scoped, so they outlive the two
+            # deletes above. T2.93's runner tests seed them to make a real
+            # detection run cluster anything at all; leaving them behind
+            # changes what unrelated suites see in an entity listing.
+            await cleanup.execute(
+                text("DELETE FROM entities WHERE name LIKE 't219-%'")
+            )
             await cleanup.commit()
         await engine.dispose()
 
@@ -648,16 +655,52 @@ _REPORTS_RULES = ReachabilityRules(
 
 
 
-def _safe_projection_import_node_ids(rel: str, tree: ast.Module) -> set[int]:
-    """The one legitimate route into this module: a from-import naming only
-    pure, side-effect-free projection symbols.
+# T2.93: the second legitimate route, and it is a *different shape* of
+# exemption — file-scoped, not symbol-pure. Report generation needs a live
+# caller or no topic report is ever written (the defect T2.93 exists to fix),
+# and any caller is a file under `app/`, so a scan that admits none makes the
+# wiring unimplementable. What keeps invariant 15 intact is that the one
+# admitted caller is itself a dream-family job body: `test_communities.py`'s
+# own scan proves no capture or retrieval path reaches
+# `memory_community_detection`, so "reachable only from the detector" plus
+# "the detector is unreachable from capture/retrieval" composes into the
+# property this scan used to assert in one step.
+#
+# Deliberately narrow, because an allowlist is the shortest path to a second
+# producer (T2.77's finding): one exact file, one exact symbol set, and
+# from-imports only — a whole-module import inside that same file is still an
+# offence, and the identical import in any other file is still an offence.
+# Both are proven below.
+DETECTION_PATH = "app/services/memory_community_detection.py"
 
-    All-or-nothing per statement — a single unsafe name alongside safe ones
-    exempts nothing, so `from ... import report_status, generate_reports`
-    is still an offence. Whole-module imports and attribute-style reaches
-    are never exempted here, because the exemption is granted to a specific
-    `ImportFrom` node, not to the module name appearing in a file.
+TIER_C_REPORT_SYMBOLS = frozenset(
+    {
+        "DEFAULT_MIN_REPORT_SIZE",
+        "generate_reports",
+        "restore_reports",
+        "snapshot_reports",
+    }
+)
+
+
+def _safe_projection_import_node_ids(rel: str, tree: ast.Module) -> set[int]:
+    """The two legitimate routes into this module.
+
+    1. Anywhere: a from-import naming only pure, side-effect-free projection
+       symbols (`SAFE_REPORT_PROJECTION_SYMBOLS`).
+    2. In the detection job body alone: a from-import naming only the Tier-C
+       report symbols it must call to run the pass at all.
+
+    All-or-nothing per statement in both cases — a single name outside the
+    permitted set exempts nothing, so `from ... import report_status,
+    generate_reports` is still an offence. Whole-module imports and
+    attribute-style reaches are never exempted, because the exemption is
+    granted to a specific `ImportFrom` node, not to the module name appearing
+    in a file.
     """
+    permitted = SAFE_REPORT_PROJECTION_SYMBOLS
+    if rel == DETECTION_PATH:
+        permitted = permitted | TIER_C_REPORT_SYMBOLS
     exempt: set[int] = set()
     for node in ast.walk(tree):
         if (
@@ -665,7 +708,7 @@ def _safe_projection_import_node_ids(rel: str, tree: ast.Module) -> set[int]:
             and node.module == REPORTS_MODULE
             and node.level == 0
             and node.names
-            and all(a.name in SAFE_REPORT_PROJECTION_SYMBOLS for a in node.names)
+            and all(a.name in permitted for a in node.names)
         ):
             exempt.add(id(node))
     return exempt
@@ -694,6 +737,50 @@ def test_no_app_code_reaches_report_generation():
     may reach it. This is the structural proof for 'never blocks a read' —
     a call counter cannot show a negative, an AST reachability scan can."""
     assert not _report_module_offenders(app_sources(BACKEND), BACKEND)
+
+
+def test_the_tier_c_exemption_is_scoped_to_the_detection_body_alone(tmp_path):
+    """The other half of T2.93's two-step proof. The detector may call report
+    generation; the identical import anywhere else is still an offence, so
+    the exemption cannot become a general licence."""
+    body = (
+        "from app.services.memory_community_reports import (\n"
+        "    generate_reports,\n"
+        "    restore_reports,\n"
+        "    snapshot_reports,\n"
+        ")\n"
+    )
+    offender = _write(tmp_path, body)
+    assert _report_module_offenders([offender], tmp_path)
+
+
+def test_the_tier_c_exemption_does_not_cover_a_whole_module_import(tmp_path):
+    """Symbol-scoped as well as file-scoped: even in the detection body, only
+    the named from-import is exempt. A whole-module import re-opens every
+    symbol at once, which is what the exemption exists to avoid."""
+    detection = tmp_path / DETECTION_PATH
+    detection.parent.mkdir(parents=True, exist_ok=True)
+    detection.write_text("from app.services import memory_community_reports\n")
+    assert _report_module_offenders([detection], tmp_path)
+
+
+def test_the_tier_c_exemption_does_not_cover_an_unlisted_symbol(tmp_path):
+    """All-or-nothing per statement, in the exempt file too."""
+    detection = tmp_path / DETECTION_PATH
+    detection.parent.mkdir(parents=True, exist_ok=True)
+    detection.write_text(
+        "from app.services.memory_community_reports import "
+        "generate_reports, set_report\n"
+    )
+    assert _report_module_offenders([detection], tmp_path)
+
+
+def test_the_real_detection_body_is_accepted_by_the_exemption():
+    """And the exemption actually covers the shipped import — a scan that
+    passes only because the caller does not exist yet proves nothing."""
+    detection = BACKEND / DETECTION_PATH
+    assert detection.exists()
+    assert not _report_module_offenders([detection], BACKEND)
 
 
 def _write(tmp_path, body: str):
@@ -822,3 +909,145 @@ def test_the_scan_still_catches_the_whole_module_import(tmp_path):
         "import app.services.memory_community_reports\n",
     )
     assert _report_module_offenders([offender], tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# T2.93 — the report pass has a live caller, and it is bounded
+# ---------------------------------------------------------------------------
+
+_T293_INSERT_ENTITY = text(
+    "INSERT INTO entities (name, entity_type, properties, memory_ids) "
+    "VALUES (:name, 'tool', '{}'::jsonb, CAST(:memory_ids AS uuid[]))"
+)
+
+
+async def _t293_cluster(factory, project, name, size=3):
+    async with factory() as session:
+        ids = [await seed_memory(session, project) for _ in range(size)]
+        await session.execute(
+            _T293_INSERT_ENTITY,
+            {"name": name, "memory_ids": [str(m) for m in ids]},
+        )
+        await session.commit()
+
+
+async def _t293_rows(factory, project):
+    async with factory() as session:
+        return await repo.list_with_members(session, project)
+
+
+async def test_the_runner_detects_and_then_reports(committing):
+    """The wiring T2.93 exists for: before it, `generate_reports` had no
+    caller anywhere outside the tests, so no topic report was ever produced
+    in production however many times the job ran."""
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-run-reports"
+    await _t293_cluster(factory, project, "t219-run-alpha")
+
+    llm = StubLLM()
+    outcome = await detection.run_topic_detection(factory, lambda: llm)
+
+    assert outcome.reports_generated == 1
+    assert len(llm.calls) == 1
+    rows = await _t293_rows(factory, project)
+    assert rows[0].report_string
+    assert reports.report_status(rows[0]) == reports.REPORT_STATUS_READY
+
+
+async def test_a_generated_report_survives_the_next_detection_rewrite(committing):
+    """The carry-forward seam, exercised by a live path for the first time.
+    The rewrite deletes the row the report was written against, so without
+    Phase P/X the report is gone one run later and the next run pays for it
+    again."""
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-run-carry"
+    await _t293_cluster(factory, project, "t219-carry-alpha")
+
+    first = StubLLM()
+    await detection.run_topic_detection(factory, lambda: first)
+    before = await _t293_rows(factory, project)
+    carried_text = before[0].report_string
+    assert carried_text
+
+    second = StubLLM()
+    await detection.run_topic_detection(factory, lambda: second)
+
+    after = await _t293_rows(factory, project)
+    assert after[0].id != before[0].id, "the rewrite did not churn the id"
+    assert after[0].report_string == carried_text
+    assert second.calls == [], "a carried report must not be regenerated"
+
+
+async def test_the_report_pass_is_bounded_by_report_batch(committing):
+    """`report_batch` bounds the run, not the project: an operator budgets a
+    tick's cost, and a rotation must not multiply it by its batch size."""
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    for suffix in ("a", "b", "c"):
+        await _t293_cluster(
+            factory, f"t219-bound-{suffix}", f"t219-bound-{suffix}-entity"
+        )
+
+    llm = StubLLM()
+    outcome = await detection.run_topic_detection(factory, lambda: llm, report_batch=2)
+
+    assert outcome.projects_processed >= 3
+    assert len(llm.calls) == 2
+    assert outcome.reports_generated == 2
+
+
+async def test_report_batch_zero_detects_without_spending_a_call(committing):
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-run-nobatch"
+    await _t293_cluster(factory, project, "t219-nobatch-alpha")
+
+    llm = StubLLM()
+    outcome = await detection.run_topic_detection(factory, lambda: llm, report_batch=0)
+
+    assert llm.calls == []
+    assert outcome.communities >= 1
+    rows = await _t293_rows(factory, project)
+    assert reports.report_status(rows[0]) == reports.REPORT_STATUS_PENDING
+
+
+async def test_a_report_failure_never_unwinds_the_committed_detection(committing):
+    """The reason the pass runs after the detection commit: a vendor outage
+    must cost a report, never a clustering result."""
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-run-failure"
+    await _t293_cluster(factory, project, "t219-failure-alpha")
+
+    class ExplodingLLM:
+        async def chat_completion(self, purpose, messages, **kwargs):
+            raise RuntimeError("vendor down")
+
+    outcome = await detection.run_topic_detection(factory, lambda: ExplodingLLM())
+
+    assert outcome.communities >= 1
+    rows = await _t293_rows(factory, project)
+    assert rows, "detection was rolled back by a report failure"
+    assert reports.report_status(rows[0]) == reports.REPORT_STATUS_FAILED
+
+
+async def test_postgres_only_mode_detects_and_leaves_reports_pending(committing):
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-run-nollm"
+    await _t293_cluster(factory, project, "t219-nollm-alpha")
+
+    outcome = await detection.run_topic_detection(factory, None)
+
+    assert outcome.communities >= 1
+    assert outcome.reports_generated == 0
+    rows = await _t293_rows(factory, project)
+    assert reports.report_status(rows[0]) == reports.REPORT_STATUS_PENDING
