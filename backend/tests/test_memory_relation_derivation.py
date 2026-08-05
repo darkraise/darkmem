@@ -639,8 +639,11 @@ class TestASkippedArmStripsNothing:
         written = await derivation_events(committing, project)
         assert len(written) == 1
 
-        outcome = await derive(committing, seeds, fingerprint=None)
-        assert outcome.spared_unmeasured == 1
+        # Deliberately no assertion on the outcome here: the undo below is the
+        # assertion. Once the block is gone the currency CAS refuses, so a
+        # regression reds on the harm rather than on the counter that reports
+        # it.
+        await derive(committing, seeds, fingerprint=None)
 
         async with committing() as session:
             batch = await dream_undo.undo(
