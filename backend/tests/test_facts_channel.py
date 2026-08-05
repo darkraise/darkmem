@@ -16,6 +16,7 @@ Four properties this module exists to pin, each with a mutation that breaks it:
 from __future__ import annotations
 
 import ast
+import asyncio
 import contextlib
 import inspect
 import logging
@@ -26,6 +27,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.services.facts_channel as facts_channel
 from app.repositories.knowledge_triples import (
@@ -33,6 +35,7 @@ from app.repositories.knowledge_triples import (
     OPEN_BELIEF_PREDICATE,
     KnowledgeTripleRepository,
 )
+from app.services import fact_access_stats
 from app.services.facts_channel import (
     ARM_FETCH_MULTIPLIER,
     DISPUTE_COUNTERPART_OWNER,
@@ -45,6 +48,8 @@ from app.services.facts_channel import (
 )
 from app.services.rank_fusion import normalize_row_id
 from app.services.triple_key import compute_triple_key
+from app.utils import background
+from tests.conftest import test_engine
 
 PROJECT = "t242-facts"
 OTHER_PROJECT = "t242-elsewhere"
@@ -845,3 +850,170 @@ async def test_widening_the_belief_predicate_loses_every_partial_index(session):
     )
 
     assert "ix_knowledge_triples_project_open" not in plan, plan
+
+
+# ── T2.84: the fact-keyed retrieval-heat counter ────────────────────────
+#
+# T2.65 measured that this channel called nothing analogous to
+# ``access_stats.spawn_record_access``, so a served fact never touched any
+# heat counter. T2.84 wires ``fact_access_stats.spawn_record_access`` into
+# both public methods, off the hot path, matching ``HybridSearchService``'s
+# own idiom (``test_access_stats.py``'s "off-the-hot-path proof" section,
+# which these tests mirror).
+
+
+class _FakeAsyncCtx:
+    """A no-op ``async with ... as session`` stand-in, so the real
+    ``spawn_record_access`` -> ``async with factory() as session`` shape
+    runs without touching the app's real database."""
+
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+async def _drain_fact_heat_tasks() -> None:
+    pending = [
+        t for t in background._background_tasks if t.get_name() == "fact-access-stats-bump"
+    ]
+    while pending:
+        await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=5)
+        pending = [
+            t for t in background._background_tasks if t.get_name() == "fact-access-stats-bump"
+        ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+async def test_a_served_fact_schedules_its_heat_write_without_awaiting_it(
+    session, monkeypatch, method_name,
+):
+    """The off-hot-path proof, on both public methods. Duplicated per method
+    rather than hoisted into ``_run_arms`` — matching the module docstring's
+    stated reason, and the exact shape a fix landed on only one method would
+    leave uncaught, per T2.65's own review finding on this channel."""
+    fact_id = (await _open_fact(session, subject="heat-scheduling"))["id"]
+    await session.commit()
+
+    calls: list[list[str]] = []
+
+    async def fake_flush_counts(_session, counts):
+        calls.append(sorted(counts.keys()))
+
+    monkeypatch.setattr(fact_access_stats, "_flush_counts", fake_flush_counts)
+    monkeypatch.setattr(fact_access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+    monkeypatch.setattr(fact_access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
+
+    channel = FactsChannel(session)
+    method = getattr(channel, method_name)
+    result = await method("heat-scheduling", project=PROJECT, limit=5)
+    served = result.results if method_name == "search_with_trace" else result
+    assert any(row["fact_id"] == fact_id for row in served)
+
+    # Scheduled, not awaited: asyncio never runs a task created via
+    # create_task before the creating coroutine yields, and the method
+    # returns with no further await after scheduling it.
+    pending = [
+        t for t in background._background_tasks if t.get_name() == "fact-access-stats-bump"
+    ]
+    assert len(pending) == 1, "expected exactly one scheduled fact-access-stats task"
+    assert calls == [], "the write must not have run before the method returned"
+
+    await pending[0]
+    assert calls == [[fact_id]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+async def test_a_heat_write_failure_never_reaches_the_caller(session, monkeypatch, method_name):
+    """The clause every counter in this corpus repeats: a counting failure
+    degrades to "this search's heat is lost", never to "this search failed".
+    Proven by making the write raise and asserting the channel's own results
+    are untouched — this is the failure mode a caller of ``FactsChannel``
+    (and, through it, ``knowledge_search``) actually experiences if
+    ``fact_access_stats`` is ever unreachable."""
+    fact_id = (await _open_fact(session, subject="heat-failure"))["id"]
+    await session.commit()
+
+    async def boom(_session, _counts):
+        raise RuntimeError("simulated fact-heat write failure")
+
+    monkeypatch.setattr(fact_access_stats, "_flush_counts", boom)
+    monkeypatch.setattr(fact_access_stats, "async_session_factory", lambda: _FakeAsyncCtx())
+    monkeypatch.setattr(fact_access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
+
+    channel = FactsChannel(session)
+    method = getattr(channel, method_name)
+    result = await method("heat-failure", project=PROJECT, limit=5)
+    served = result.results if method_name == "search_with_trace" else result
+    assert any(row["fact_id"] == fact_id for row in served), (
+        "the channel's own results must be intact even though the counter write will raise"
+    )
+
+    # Let the failing write run to completion; spawn_record_access's own
+    # try/except must swallow it -- a raised task shows up only as a logged
+    # "Background task failed" error, never as an exception surfacing here.
+    await _drain_fact_heat_tasks()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
+async def test_fifty_real_searches_actually_write_the_direct_counter(
+    monkeypatch, method_name,
+):
+    """The end-to-end proof behind T2.84's Done-when, on both methods: real
+    SQL, not a fake flush, and the real (default) ``async_session_factory``
+    -- not the transactional ``session`` fixture, whose writes live inside a
+    SAVEPOINT one connection deep and are invisible to the background
+    flush's genuinely separate connection (the same constraint
+    ``test_access_stats.py`` documents for its own SQL-correctness tests).
+    ``conftest.py`` pins ``DATABASE_URL`` to ``TEST_DATABASE_URL`` before any
+    app module is imported, so the default factory already targets this
+    suite's database -- no monkeypatch needed for it, only for speed."""
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        repo = KnowledgeTripleRepository(setup)
+        fact = await repo.insert_open(
+            triple_key=compute_triple_key(PROJECT, "zarquon-heat", "USES", "postgres"),
+            subject_name="zarquon-heat",
+            object_name="postgres",
+            rel_type="USES",
+            fact=f"zarquon-heat USES postgres {RARE_TERM}",
+            reference_time=NOW,
+            project=PROJECT,
+        )
+        await setup.commit()
+    fact_id = fact["id"]
+
+    monkeypatch.setattr(fact_access_stats, "_FLUSH_DELAY_SECONDS", 0.01)
+    try:
+        async with factory() as channel_session:
+            channel = FactsChannel(channel_session)
+            method = getattr(channel, method_name)
+            for _ in range(50):
+                result = await method("zarquon-heat", project=PROJECT, limit=5)
+                served = result.results if method_name == "search_with_trace" else result
+                assert any(row["fact_id"] == fact_id for row in served)
+
+        await _drain_fact_heat_tasks()
+
+        async with factory() as check:
+            row = (
+                await check.execute(
+                    text(
+                        "SELECT access_count FROM fact_access_stats "
+                        "WHERE fact_id = CAST(:id AS uuid)"
+                    ),
+                    {"id": fact_id},
+                )
+            ).mappings().one()
+            assert row["access_count"] == 50
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM knowledge_triples WHERE id = CAST(:id AS uuid)"),
+                {"id": fact_id},
+            )
+            await cleanup.commit()

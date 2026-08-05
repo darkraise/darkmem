@@ -24,14 +24,17 @@ Three properties every test here is built to be able to fail on:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.memory import Memory
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services import fact_access_stats
 from app.services import review_queue as review_queue_service
 from app.services import review_ranking
 from app.services.facts_channel import FactsChannel
@@ -44,6 +47,9 @@ from app.services.review_ranking import (
     W_SUBJECT_SALIENCE,
     get_ranking_config,
 )
+from app.services.triple_key import compute_triple_key
+from app.utils import background
+from tests.conftest import test_engine
 
 pytestmark = pytest.mark.asyncio
 
@@ -366,77 +372,114 @@ async def test_adding_a_cold_source_never_lowers_a_facts_rank(session):
     assert await _order(session) == [subject, rival]
 
 
-# ──────── T2.65: the facts channel's live traffic feeds no heat ────────
+# ──────── T2.84: the facts channel's live traffic now feeds real heat ────────
+#
+# T2.65 pinned the gap this section used to cover: fifty real
+# ``FactsChannel`` searches left the ranking's frequency component at zero,
+# because the channel called nothing analogous to
+# ``access_stats.spawn_record_access``. T2.84 closed it with
+# ``fact_access_stats`` (its own table, fed off this channel's serving
+# path), and this is the flip the task's Done-when requires: the same
+# fixture, the same fifty real searches, now proven to move the score.
 
 
 @pytest.mark.parametrize("method_name", ["search", "search_with_trace"])
-async def test_facts_channel_traffic_never_feeds_retrieval_frequency(session, method_name):
-    """Pins the exact gap T2.65 documents in ``review_ranking``'s "Failure
-    mode" paragraph: ``FactsChannel`` is a *real* serving path (the one
-    ``knowledge_search`` calls through ``layer_composition``), and serving a
-    fact through it leaves ``memory_access_stats`` — and therefore this
-    ranking's frequency arm — completely untouched, no matter how much
-    traffic it carries.
+async def test_a_facts_channel_search_feeds_the_direct_counter(session, method_name):
+    """The flip of T2.65's gap-pinning test (same name it would have had,
+    renamed because the assertions invert): fifty real ``FactsChannel``
+    searches now leave a **non-zero** frequency component, fed by
+    ``fact_access_stats`` rather than bridged through a source memory.
+    ``memory_access_stats`` still stays untouched — this channel never
+    reads or writes it — which is what proves the new heat came from the
+    direct counter, not from some other path.
 
-    Parametrized over **both** public methods. ``search_with_trace`` is the
-    one production caller (``layer_composition.py:1160``) actually uses;
-    ``search`` has no production caller at all. A recording path added to
-    only one of them must turn this test red regardless of which one — a
-    single-method version would stay green forever against a fix landed on
-    the other, which is exactly what happened during this task's own review
-    (recording added to ``search_with_trace`` alone left a ``search``-only
-    pin, and the whole channel suite, green).
+    Parametrized over **both** public methods for the identical reason
+    T2.65's version was: the recording call is duplicated per method rather
+    than hoisted into the shared ``_run_arms`` (see ``facts_channel.py``'s
+    module docstring), so a fix landed on only one of them would leave the
+    other parametrization at zero. ``search_with_trace`` is the one
+    production caller (``layer_composition.py``) actually uses; ``search``
+    has no production caller at all.
 
-    This does **not** cover the composed path (``LayerCompositionService.
-    search``/``knowledge_search`` itself) — that module is out of this lane's
-    reach this round, and it never adds recording of its own, so the channel
-    tested here is the whole of the gap regardless of which door calls it.
-    Nor does it cover any future partial fix that records heat under some
-    conditions and not others; it only pins today's all-or-nothing shape (no
-    recording at all).
-
-    Watched to fail on purpose, against **each** parametrization independently:
-    with a throwaway call to ``access_stats.record_access`` added inside
-    ``FactsChannel.search`` only, the ``search`` case failed on the
-    ``memory_access_stats`` assertion while ``search_with_trace`` stayed
-    green; with the same call added inside ``search_with_trace`` only, the
-    ``search_with_trace`` case failed while ``search`` stayed green. Both
-    mutations were then reverted. Neither single-method version of this test
-    would have caught the other mutation.
+    Real SQL throughout, not a fake flush: the fact and its committing
+    session use ``test_engine`` directly (not the transactional ``session``
+    fixture, whose SAVEPOINT writes are invisible to the background flush's
+    genuinely separate connection — the same constraint
+    ``test_access_stats.py`` documents), and ``conftest.py`` already pins
+    ``DATABASE_URL`` to this suite's database, so the flush's default
+    ``async_session_factory`` needs no monkeypatch to land on the same
+    database the final ranking read (via the ``session`` fixture) reads
+    from under Postgres's per-statement READ COMMITTED visibility.
     """
-    memory_id = await _memory(session, content="zarquon-beacon field notes")
-    fact_id = await _fact(
-        session, subject="zarquon-beacon", obj="signal", created_days_ago=5.0
-    )
-    await _source(session, fact_id, memory_id)
-    await session.commit()
-
-    channel = FactsChannel(session)
-    method = getattr(channel, method_name)
-    for _ in range(50):
-        result = await method("zarquon-beacon", project=PROJECT, limit=5)
-        served = result.results if method_name == "search_with_trace" else result
-        # Sanity, checked on every one of the 50 calls (not just the last):
-        # the channel really did serve the fact each time, so the zero heat
-        # asserted below is "this path records nothing", not "nothing was
-        # ever searched".
-        assert any(row["fact_id"] == fact_id for row in served)
-
-    stats_row = (
-        await session.execute(
-            text(
-                "SELECT access_count FROM memory_access_stats "
-                "WHERE memory_id = CAST(:mid AS uuid)"
-            ),
-            {"mid": str(memory_id)},
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as setup:
+        repo = KnowledgeTripleRepository(setup)
+        fact = await repo.insert_open(
+            triple_key=compute_triple_key(PROJECT, "zarquon-beacon", "USES", "signal"),
+            subject_name="zarquon-beacon",
+            object_name="signal",
+            rel_type="USES",
+            fact="zarquon-beacon USES signal",
+            reference_time=T0,
+            project=PROJECT,
+            review_state="open",
         )
-    ).scalar_one_or_none()
-    assert stats_row is None
+        await setup.commit()
+    fact_id = fact["id"]
 
-    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
-    row = next(item for item in items if item["id"] == fact_id)
-    assert row["consequence"]["retrieval_frequency"]["decayed_access"] == 0.0
-    assert row["consequence"]["retrieval_frequency"]["peak_access_count"] == 0
+    try:
+        async with factory() as channel_session:
+            channel = FactsChannel(channel_session)
+            method = getattr(channel, method_name)
+            for _ in range(50):
+                result = await method("zarquon-beacon", project=PROJECT, limit=5)
+                served = result.results if method_name == "search_with_trace" else result
+                # Sanity, checked on every one of the 50 calls: the channel
+                # really did serve the fact each time, so the non-zero heat
+                # asserted below is "fifty real serves", not an artefact.
+                assert any(row["fact_id"] == fact_id for row in served)
+
+        pending = [
+            t for t in background._background_tasks
+            if t.get_name() == "fact-access-stats-bump"
+        ]
+        while pending:
+            await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=5)
+            pending = [
+                t for t in background._background_tasks
+                if t.get_name() == "fact-access-stats-bump"
+            ]
+
+        direct_row = (
+            await session.execute(
+                text(
+                    "SELECT access_count FROM fact_access_stats "
+                    "WHERE fact_id = CAST(:id AS uuid)"
+                ),
+                {"id": fact_id},
+            )
+        ).mappings().one()
+        assert direct_row["access_count"] == 50
+
+        stats_row = (
+            await session.execute(
+                text("SELECT COUNT(*) FROM memory_access_stats")
+            )
+        ).scalar_one()
+        assert stats_row == 0, "this channel has no source memory to bridge through"
+
+        items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+        row = next(item for item in items if item["id"] == fact_id)
+        assert row["consequence"]["retrieval_frequency"]["peak_access_count"] == 50
+        assert row["consequence"]["retrieval_frequency"]["decayed_access"] > 0.0
+        assert row["consequence"]["retrieval_frequency"]["component"] > 0.0
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM knowledge_triples WHERE id = CAST(:id AS uuid)"),
+                {"id": fact_id},
+            )
+            await cleanup.commit()
 
 
 # ────────────────────────── subject salience ──────────────────────────
