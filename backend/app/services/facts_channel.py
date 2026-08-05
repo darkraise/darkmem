@@ -51,6 +51,16 @@ Composing it onto a served row is T2.43's, reading the journal the way
 because that is where the data comes from. A reader must not take the block's
 absence for "no counterpart exists" — it is also absent on a recovery, on a
 caller-overridden verdict, and on any dispute predating that commit.
+
+**This channel records no retrieval heat (T2.65, 2026-08-04).** Every serve
+here is invisible to doc 08 §6's consequence ranking, which reads only
+``memory_access_stats`` (partially offset when the composed door's own
+memory arm co-surfaces the fact's source memory — see ``review_ranking``'s
+"Failure mode" paragraph). See :data:`RETRIEVAL_HEAT_STATUS` and
+``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision and its
+reasoning — the short version is that a fact-keyed counter needs its own
+table, and no lane holds baseline-schema clearance this round.
+:data:`RETRIEVAL_HEAT_OWNER` names T2.84, the task that will build it.
 """
 
 from __future__ import annotations
@@ -74,6 +84,8 @@ __all__ = [
     "KEYWORD_ARM",
     "LAYER",
     "NAME_ARM",
+    "RETRIEVAL_HEAT_OWNER",
+    "RETRIEVAL_HEAT_STATUS",
     "SEMANTIC_ARM",
     "SEMANTIC_ARM_OWNER",
 ]
@@ -94,6 +106,27 @@ SEMANTIC_ARM_OWNER = "T2.33"
 # The task that will make a dispute's counterpart readable. Carried on the
 # label for the same reason.
 DISPUTE_COUNTERPART_OWNER = "T2.64"
+
+# T2.65 (2026-08-04): this channel feeds no retrieval-heat counter at all. A
+# served fact never touches ``memory_access_stats`` (the frequency arm doc
+# 08 §6's review ranking reads) the way the memory hybrid does through
+# ``access_stats.spawn_record_access`` — there is no analogous call anywhere
+# in ``search`` / ``search_with_trace``. This is measured, not assumed: this
+# channel is the one ``layer_composition.LayerCompositionService.search``
+# calls, which is itself wired live behind the ``knowledge_search`` MCP tool
+# with no feature flag gating it, so every ``knowledge_search`` call already
+# serves facts through exactly this uncounted path (partially offset when a
+# query co-surfaces the fact's source memory through the composed door's own
+# memory arm — see ``review_ranking``'s "Failure mode" paragraph for the
+# bound). See ``review_ranking.FACT_KEYED_COUNTER_STATUS`` for the decision
+# this forced and the reasoning behind it. Nothing reads this value back —
+# it is a record, not a machine-checkable marker.
+RETRIEVAL_HEAT_STATUS = "not recorded; see review_ranking.FACT_KEYED_COUNTER_STATUS (T2.65)"
+
+# The task that will mint the fact-keyed counter this channel's serves
+# currently feed nowhere. Named the same way ``SEMANTIC_ARM_OWNER`` and
+# ``DISPUTE_COUNTERPART_OWNER`` above name theirs.
+RETRIEVAL_HEAT_OWNER = "T2.84"
 
 # The two arms split the channel's weight evenly, and the even split is a
 # deliberate non-claim: no measurement says fact text outranks an endpoint name
