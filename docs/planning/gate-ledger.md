@@ -607,7 +607,7 @@ These never "clear" once — they apply per activation, every time.
 
 | Date | Arm | Slice deltas | p95 latency | Token cost | Decision | Artifact |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — |
+| 2026-08-05 | `w_importance` (T2.30, probe weight 1.0, on−off) | Aggregate ΔMRR **−0.3980**, Δhit@10 **−0.0784** over 102 live pairs. Per-slice ΔMRR: exact 0.0000, fact −0.4628, knowledge-update −0.1664, multi-hop −0.7745, paraphrase −0.3536, temporal −0.2844, typo −0.6653. Byte-identical across two consecutive warm-cache runs | end_to_end p95: off 0.00346 s, on 0.00389 s (all query embeds cache-served; no live latency samples, per the twin's own caveat discipline) | Zero LLM calls attributed on either leg — the retrieval read path is embed-cache + SQL; the arm adds one column to an existing one-row query | **Stays at weight 0.** The bar is a positive delta; this one is negative on six of seven slices. The signal source is extraction's own per-memory `importance` estimate (0.3–0.7 across the 94-entry corpus), and at weight 1.0 its factor span [0.8, 1.2] dominates RRF's rank gaps (rank 1 vs rank 10 within one list is 1/61 vs 1/70, ratio ≈ 1.15 < 1.5), reshuffling against the gold. A smaller magnitude only shrinks this perturbation toward zero — probing weights until one turns positive would be bar-shopping, so no further legs were run. Note the multi-hop hit@10 **+0.1429** is the designed-0 baseline (T0.06a desaturation) being accidentally broken by the reshuffle, not a win — its ΔMRR is −0.7745 | `docs/eval/2026-08-05-retrieval-eval-arm-w_importance.md` — corpus 94, gold v4, k=10, fingerprint `qwen3-embedding:0.6b|1024` pinned across both legs, ingest fully cached (`deepseek-v4-flash` cache, 0 live calls) |
 
 ---
 
