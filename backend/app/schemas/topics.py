@@ -14,10 +14,10 @@ class TopicItem(BaseModel):
     generated carries `report_status="ready"` and the real text. `report`
     is the unit `get_injectable_report` hands to a caller, not a second,
     looser rendering of `report_status`. (`report_status()` treats an
-    empty/falsy `report_string` as "no report yet" by design —
-    `generate_reports`' only producer writes a real LLM completion, so
-    there is no "generated but deliberately empty" state to distinguish
-    from "not generated".)
+    empty/falsy `report_string` as "no report yet". That is safe because
+    the producer refuses to write an empty completion at all — T2.92's
+    `EmptyReportError`, not an assumption about what vendors return, which
+    is what this note claimed before that guard existed.)
     """
 
     project: str
