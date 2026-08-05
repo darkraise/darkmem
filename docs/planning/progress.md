@@ -1,5 +1,19 @@
 # Progress tracker
 
+> ## ⚠ THIS COPY IS STALE BY DESIGN — DO NOT READ STATUS FROM IT
+>
+> **`progress.md` is canonical on `master` only** (runbook §6). Every branch carries
+> a frozen copy that stops updating the moment the branch is cut, so the Status,
+> Owner, Commit and Note columns below are whatever they were at that point — often
+> `todo` for tasks that have since shipped.
+>
+> To read live status: `git show master:docs/planning/progress.md`.
+> To update it: edit in the `.worktrees/master-claim` worktree and commit to `master`.
+>
+> Added 2026-08-05 after **three** separate agents in one session reported rows here
+> as stale bugs. The file was doing exactly what it was designed to do and had no way
+> to say so.
+
 **Regenerated from the epic files** by
 `scripts/gen_progress.py` — task ids, titles, model tiers, and effort are derived, never
 hand-copied, so the two cannot drift. Only the state columns (Owner, Status, Commit,
