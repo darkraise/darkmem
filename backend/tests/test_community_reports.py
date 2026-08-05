@@ -1051,3 +1051,30 @@ async def test_postgres_only_mode_detects_and_leaves_reports_pending(committing)
     assert outcome.reports_generated == 0
     rows = await _t293_rows(factory, project)
     assert reports.report_status(rows[0]) == reports.REPORT_STATUS_PENDING
+
+
+async def test_the_bound_holds_within_one_project_too(committing):
+    """The outer loop's per-project decrement is not the whole bound: one
+    project can hold more pending communities than the budget left, and
+    `generate_reports` has to stop mid-project rather than draining it.
+    Without the inner limit this passes anyway on one-community projects,
+    which is why the fixture below seeds three in a single project."""
+    from app.services import memory_community_detection as detection
+
+    factory = committing
+    project = "t219-inner-bound"
+    for suffix in ("a", "b", "c"):
+        await _t293_cluster(factory, project, f"t219-inner-{suffix}")
+
+    llm = StubLLM()
+    outcome = await detection.run_topic_detection(factory, lambda: llm, report_batch=2)
+
+    rows = await _t293_rows(factory, project)
+    assert len(rows) == 3, "the fixture did not produce three communities"
+    assert len(llm.calls) == 2
+    assert outcome.reports_generated == 2
+    pending = [
+        r for r in rows
+        if reports.report_status(r) == reports.REPORT_STATUS_PENDING
+    ]
+    assert len(pending) == 1, "the unreached community must stay pending"
