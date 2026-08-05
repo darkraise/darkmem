@@ -27,16 +27,15 @@ run (`memory_communities` is delete-and-rewrite per project, doc 06 §7).
 `PinDecisionRequest` therefore carries `subject_key`, never a community id,
 and no route here takes one.
 
-**No cross-run snapshot at this door.** `diff_topics` needs a pre-rewrite
-snapshot to report anything beyond `new`; only the detection job holds one
-mid-run (`snapshot_topics`'s own docstring). A browsing read has no such
-snapshot to hand it, so `list_pin_suggestions` calls `diff_topics({},
-current)` — exactly the seam `pin_suggestions.py`'s docstring names as the
-caller shape a UI-driven read gets: every topic reads `new`, gating still
-runs in full (pinned / dismissed / fact-floor / live-article checks), but
-`grown` never surfaces from this door alone. Wiring a persisted cross-run
-snapshot into the door is new mechanics this task's brief puts out of
-scope; see the report's "known gaps" section.
+**The cross-run prior is durable, and this door reads it** (T2.91). It used
+to call `diff_topics({}, current)` because the only snapshot in existence
+lived inside the detection job's body mid-run and was discarded — so every
+topic read `new` permanently and `grown` / `stable` / `decayed` were
+unreachable from here. `detect_for_project` now persists that census
+(`capture_topic_prior`, its Phase P) and this door loads it
+(`load_topic_prior`), so the diff describes what actually changed between
+the last two runs. A project that has never been detected still reads all
+`new`, which is the honest answer rather than a permanent floor.
 
 **Read-only, no `journal_pin_suggestions` call.** That call is documented
 as something "a scheduler should call ... exactly once after a detection
@@ -100,7 +99,8 @@ async def list_pin_suggestions(
     session: AsyncSession = Depends(get_session),
 ):
     current = await communities_repo.list_with_members(session, project)
-    entries = pins.diff_topics({}, current)
+    prior = await pins.load_topic_prior(session, project)
+    entries = pins.diff_topics(prior, current)
     suggestions = await pins.compute_pin_suggestions(session, project, entries)
     pinned, dismissed = await get_subject_lists(session, project)
     return PinSuggestionsResponse(

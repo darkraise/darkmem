@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from app.repositories import memory_communities as repo
 from app.repositories import pinned_subjects
+from app.services import memory_community_detection as detection
 from app.services import pin_suggestions as pins
 from app.utils.ids import new_id
 
@@ -506,3 +507,105 @@ async def test_accept_via_the_route_survives_a_community_id_change_across_runs(
         "churn, which is exactly what keying on the community id instead "
         "of the dominant-entity soft key would produce"
     )
+
+
+# ---------------------------------------------------------------------------
+# T2.91 — the door diffs against a durable prior, so a status other than
+# `new` can actually reach the wire
+# ---------------------------------------------------------------------------
+
+_T291_INSERT_ENTITY = text(
+    "INSERT INTO entities (name, entity_type, properties, memory_ids) "
+    "VALUES (:name, 'tool', '{}'::jsonb, CAST(:memory_ids AS uuid[]))"
+)
+
+_T291_EXTEND_ENTITY = text(
+    "UPDATE entities SET memory_ids = memory_ids || CAST(:memory_ids AS uuid[]) "
+    "WHERE name = :name"
+)
+
+
+async def _t291_cluster(session, project, name, size=3):
+    ids = [await seed_memory(session, project) for _ in range(size)]
+    await session.flush()
+    await session.execute(
+        _T291_INSERT_ENTITY,
+        {"name": name, "memory_ids": [str(m) for m in ids]},
+    )
+    await session.flush()
+
+
+async def _t291_detect(session, project):
+    await detection.detect_for_project(session, project)
+    await session.flush()
+
+
+async def _t291_diff(client, auth_headers, project):
+    response = await client.get(
+        f"/api/v1/knowledge/topics/pin-suggestions?project={project}",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    return {entry["dominant_name"]: entry for entry in response.json()["diff"]}
+
+
+async def test_the_door_serves_stable_after_two_real_detection_runs(
+    session, client, auth_headers
+):
+    """Before T2.91 this was unreachable: the door diffed against `{}`, so
+    every entry read `new` no matter how many runs had happened."""
+    project = "t291-door-stable"
+    await _t291_cluster(session, project, "t291-door-stable-alpha")
+
+    await _t291_detect(session, project)
+    await _t291_detect(session, project)
+
+    entry = (await _t291_diff(client, auth_headers, project))[
+        "t291-door-stable-alpha"
+    ]
+    assert entry["status"] == "stable"
+    assert entry["prior_member_count"] == 3
+
+
+async def test_the_door_serves_grown_when_the_topic_actually_grew(
+    session, client, auth_headers
+):
+    project = "t291-door-grown"
+    await _t291_cluster(session, project, "t291-door-grown-alpha")
+    await _t291_detect(session, project)
+
+    extra = [await seed_memory(session, project) for _ in range(2)]
+    await session.flush()
+    await session.execute(
+        _T291_EXTEND_ENTITY,
+        {"name": "t291-door-grown-alpha", "memory_ids": [str(m) for m in extra]},
+    )
+    await session.flush()
+    await _t291_detect(session, project)
+
+    entry = (await _t291_diff(client, auth_headers, project))[
+        "t291-door-grown-alpha"
+    ]
+    assert entry["status"] == "grown"
+    assert entry["prior_member_count"] == 3
+    assert entry["member_count"] == 5
+
+
+async def test_the_door_serves_decayed_for_a_topic_with_no_successor(
+    session, client, auth_headers
+):
+    project = "t291-door-decayed"
+    await _t291_cluster(session, project, "t291-door-decayed-alpha")
+    await _t291_cluster(session, project, "t291-door-decayed-beta")
+    await _t291_detect(session, project)
+
+    await session.execute(
+        text("DELETE FROM entities WHERE name = 't291-door-decayed-beta'")
+    )
+    await session.flush()
+    await _t291_detect(session, project)
+
+    entries = await _t291_diff(client, auth_headers, project)
+    assert entries["t291-door-decayed-beta"]["status"] == "decayed"
+    assert entries["t291-door-decayed-beta"]["member_count"] == 0
+    assert entries["t291-door-decayed-beta"]["prior_member_count"] == 3

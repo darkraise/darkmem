@@ -10,14 +10,31 @@ about.
 
 **Reusing T2.19's churn-survival mechanism, not minting a second one.**
 `memory_communities` is delete-and-rewritten per project on every detection
-run (doc 06 §7), so "diff run N against run N+1" cannot mean "read two
-persisted snapshots" — there is only ever one live copy. `snapshot_reports`
-solved exactly this for report text by reading the *current* (soon to be
-overwritten) rows immediately before the rewrite. `snapshot_topics` below is
-the same pattern applied to community shape: read `label -> (member_count,
-dominant subject)` before `detect_for_project` deletes the row, then diff
-that snapshot against `list_with_members`'s result after the rewrite. No new
-durable "prior run" table is needed or added.
+run (doc 06 §7), so "diff run N against run N+1" cannot mean "read two live
+copies" — there is only ever one. `snapshot_reports` solved exactly this for
+report text by reading the *current* (soon to be overwritten) rows
+immediately before the rewrite. `snapshot_topics` below is the same pattern
+applied to community shape: read `label -> (member_count, dominant subject)`
+before `detect_for_project` deletes the row.
+
+**And that snapshot is now written down** (T2.91). Holding it only in the
+job's own stack frame was the gap: the snapshot existed for the length of
+one run and was discarded, so the only caller that could ever hand a
+non-empty `prior` to `diff_topics` was the job body itself, mid-run. Every
+read door passed `{}` and therefore reported **every** topic `new`,
+permanently — `grown`, `stable` and `decayed` were unreachable on the wire,
+not merely rare. `capture_topic_prior` persists the census through
+`app.repositories.topic_priors` (one `projects.properties` key, no schema
+change, same shape as the pinned/dismissed lists), and `load_topic_prior`
+reads it back for any caller. `detect_for_project` captures it as its own
+Phase P, immediately before the Phase W rewrite and inside the same
+transaction — not in the job runner above it, so no caller can rewrite a
+project's communities without recording what they were.
+
+Note what this does *not* change: the prior is still keyed on label, and a
+label is still not a persistent identity. Persisting the census makes the
+diff observable across runs; it does not make split/merge tractable at the
+label level, which is what the subject gate below is for.
 
 **The substantive design question: what happens when a label splits, merges,
 or disappears between runs.** A community's `label` is a deterministic join
@@ -113,6 +130,7 @@ from app.repositories.pinned_subjects import (
     append_subject,
     get_subject_lists,
 )
+from app.repositories.topic_priors import get_topic_prior, set_topic_prior
 from app.services.events import record_event
 
 # Doc 09 §3.4 says growth is measured "past a `config` growth threshold" —
@@ -215,6 +233,59 @@ async def snapshot_topics(
             dominant_entity_type=dominant[1] if dominant else None,
         )
     return out
+
+
+def _prior_payload(snapshot: TopicSnapshot) -> dict:
+    return {
+        "member_count": snapshot.member_count,
+        "dominant_name": snapshot.dominant_name,
+        "dominant_entity_type": snapshot.dominant_entity_type,
+    }
+
+
+async def capture_topic_prior(session: AsyncSession, project: str) -> int:
+    """Persist the current census as `project`'s prior, and return how many
+    labels it holds.
+
+    Called by `detect_for_project` as its Phase P, immediately **before** the
+    Phase W delete-and-rewrite and in the same transaction: capture and
+    rewrite advance together or not at all, so the stored prior always
+    describes the state the live rows were in before this run — never the
+    same run, and never one two runs back.
+
+    A run that skips or dies before Phase P leaves both the prior and the
+    rows untouched. That reads as "nothing changed" on the next diff, which
+    is exactly what happened.
+    """
+    snapshot = await snapshot_topics(session, project)
+    await set_topic_prior(
+        session, project, {label: _prior_payload(s) for label, s in snapshot.items()}
+    )
+    return len(snapshot)
+
+
+async def load_topic_prior(
+    session: AsyncSession, project: str
+) -> dict[str, TopicSnapshot]:
+    """The stored prior in the shape `diff_topics` takes.
+
+    A project with no stored prior — never detected, or detected once and
+    never since — reads as `{}`, which classifies every current label `new`.
+    That is the honest answer for "there is nothing to compare against", and
+    it is the same shape the door used to be stuck with permanently.
+    """
+    stored = await get_topic_prior(session, project)
+    prior: dict[str, TopicSnapshot] = {}
+    for label, payload in stored.items():
+        if not isinstance(payload, dict):
+            continue
+        prior[label] = TopicSnapshot(
+            label=label,
+            member_count=int(payload.get("member_count") or 0),
+            dominant_name=payload.get("dominant_name"),
+            dominant_entity_type=payload.get("dominant_entity_type"),
+        )
+    return prior
 
 
 @dataclass(frozen=True)
