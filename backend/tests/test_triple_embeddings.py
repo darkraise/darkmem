@@ -6,15 +6,20 @@ T2.33 ships the writer doc 08 §5.3 deferred, on the strength of T2.52's measure
 it lands under fail silently, so both are asserted here rather than reviewed:
 
 1. It groups facts **for counting only** — never merges rows, never rewrites
-   `triple_key`. Proved twice: a byte-comparison of every `knowledge_triples`
-   row across a grouping run that really does group, and a source scan that
-   fails the build if any verb but SELECT reaches that table from the module.
+   `triple_key`. Proved on both of the module's paths and in two independent
+   ways: a byte comparison of every `knowledge_triples` row across a real
+   `embed_facts` run *and* across a real `group_facts` run, plus three source
+   scans over the module (write verbs, `triple_key`, and the import surface).
+   The byte comparisons are the guarantee — a source scan sees only SQL text
+   that appears in this module — and the scans are what make an accidental
+   write loud at the moment it is written rather than at the next run.
 2. `names_distinct` is **carried into the grouping** — and completely, so a
    distinct pair cannot be merged through an intermediate that matches both.
 """
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -186,6 +191,34 @@ async def test_writer_keeps_window_closed_history(session):
     result = await te.embed_facts(session, llm, fact_ids=[closed])
 
     assert result is not None and result.written == 1
+
+
+@pytest.mark.asyncio
+async def test_embedding_writes_nothing_to_the_fact_rows(session):
+    """The counting-only invariant on the *writer's* path, behaviourally.
+
+    The source scans below read only the SQL that appears in the module, so
+    they are evadable in principle by text this file never sees. This is not:
+    both branches of the writer run for real — the first call registers a
+    fingerprint and creates the partition, the second re-embeds into a known
+    one — and every fact row survives byte-for-byte across both.
+    """
+    a = await insert_fact(session, subject="darkmem", obj="postgres")
+    b = await insert_fact(session, subject="darkmem", obj="postgresql")
+    llm = FakeEmbedder({
+        "darkmem uses postgres": near(0.01),
+        "darkmem uses postgresql": near(0.02),
+    })
+    before = await fact_snapshot(session)
+
+    first = await te.embed_facts(session, llm, fact_ids=[a, b])
+    assert first is not None and first.written == 2, "the guard below must not be vacuous"
+    assert await fact_snapshot(session) == before, "the writer changed a fact row"
+
+    second = await te.embed_facts(session, llm, fact_ids=[a, b])
+    assert second is not None and second.written == 2
+    assert await fact_snapshot(session) == before, "the re-embed changed a fact row"
+    assert len(before) == 2, "no row was merged away"
 
 
 @pytest.mark.asyncio
@@ -399,27 +432,99 @@ async def test_a_fact_with_no_vector_stays_ungrouped(session):
 # ── the module's own shape ───────────────────────────────────────────────
 
 
+_UNRESOLVED = "<unresolved>"
+_PARTITION = "<partition>"
+
+_WRITE_VERB = re.compile(r"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\S+)")
+
+
+def _module_tree() -> ast.Module:
+    return ast.parse(MODULE_PATH.read_text())
+
+
+def _name_bindings(tree: ast.Module) -> dict[str, list[ast.AST]]:
+    bindings: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets = [t for t in node.targets if isinstance(t, ast.Name)]
+        elif (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                and node.value is not None):
+            targets = [node.target]
+        else:
+            continue
+        for target in targets:
+            bindings.setdefault(target.id, []).append(node.value)
+    return bindings
+
+
+def _resolve(node: ast.AST, bindings: dict[str, list[ast.AST]], seen=frozenset()) -> str:
+    """The text a string-valued expression will actually hold, where knowable.
+
+    Written for one job: an interpolated table name must not hide a write verb's
+    target from the scan below. `f"UPDATE {_KT} SET ..."` is the module's *own*
+    f-string idiom, and against a scan over raw `ast.Constant` values the verb
+    and the table never co-reside in one literal — so the scan reads the
+    reassembled template instead, resolving each interpolation through the
+    module's own bindings.
+
+    A `child_table(...)` call resolves to `_PARTITION` rather than to
+    `_UNRESOLVED`, which is sound only because
+    `test_the_module_names_only_its_own_partition` pins every such call's parent
+    to `PARENT_TABLE`. Anything else the resolver cannot follow becomes
+    `_UNRESOLVED`, and a write verb aimed at that is an offender too: the scan
+    refuses to certify a statement whose target it cannot name.
+    """
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else _UNRESOLVED
+    if isinstance(node, ast.JoinedStr):
+        return "".join(_resolve(part, bindings, seen) for part in node.values)
+    if isinstance(node, ast.FormattedValue):
+        return _resolve(node.value, bindings, seen)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _resolve(node.left, bindings, seen) + _resolve(node.right, bindings, seen)
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == "child_table"):
+        return _PARTITION
+    if isinstance(node, ast.Name) and node.id not in seen:
+        resolved = {
+            _resolve(value, bindings, seen | {node.id})
+            for value in bindings.get(node.id, [])
+        }
+        if len(resolved) == 1:
+            return resolved.pop()
+    return _UNRESOLVED
+
+
 def _code_strings() -> list[str]:
-    """Every string constant in the module except its docstrings.
+    """Every string-valued expression in the module except its docstrings.
 
     Docstrings are excluded deliberately: the prose below discusses the very
     things these scans forbid in code, and a scan that could not tell the two
     apart would either flag its own explanation or be loosened until it flagged
     nothing.
+
+    F-strings are returned reassembled, as one string each rather than as their
+    fragments — see `_resolve`. Their fragments are dropped so a fragment cannot
+    be scanned as if it were a whole statement.
     """
-    tree = ast.parse(MODULE_PATH.read_text())
-    docstrings = set()
+    tree = _module_tree()
+    bindings = _name_bindings(tree)
+    skip: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             body = getattr(node, "body", [])
             if (body and isinstance(body[0], ast.Expr)
                     and isinstance(body[0].value, ast.Constant)
                     and isinstance(body[0].value.value, str)):
-                docstrings.add(id(body[0].value))
+                skip.add(id(body[0].value))
+        elif isinstance(node, ast.JoinedStr):
+            skip.update(id(inner) for inner in ast.walk(node) if inner is not node)
     return [
-        node.value for node in ast.walk(tree)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str)
-        and id(node) not in docstrings
+        _resolve(node, bindings)
+        for node in ast.walk(tree)
+        if id(node) not in skip
+        and (isinstance(node, ast.JoinedStr)
+             or (isinstance(node, ast.Constant) and isinstance(node.value, str)))
     ]
 
 
@@ -430,14 +535,20 @@ def test_the_module_issues_no_write_against_knowledge_triples():
     SELECTed and JOINed, never INSERTed, UPDATEd or DELETEd. A writer that
     merged rows would be data loss with no error, so it fails the build here
     rather than being caught in review.
+
+    Two things this checks beyond the obvious literal: the target is read from
+    the *resolved* string, so hiding the table name behind an interpolation does
+    not evade it; and a verb whose target resolves to nothing at all fails as
+    well, because a statement the scan cannot certify is not a statement it may
+    pass.
     """
     offenders = []
     for literal in _code_strings():
         upper = " ".join(literal.upper().split())
-        for verb in ("INSERT INTO KNOWLEDGE_TRIPLES", "UPDATE KNOWLEDGE_TRIPLES",
-                     "DELETE FROM KNOWLEDGE_TRIPLES"):
-            if verb in upper:
-                offenders.append(verb)
+        for match in _WRITE_VERB.finditer(upper):
+            target = match.group(2).strip("(),;\"'")
+            if target in ("KNOWLEDGE_TRIPLES", _UNRESOLVED.upper()):
+                offenders.append(" ".join(match.group(0).split()))
     assert not offenders, (
         "the triple_embeddings writer must group facts for counting only, "
         f"never merge rows: {offenders}"
@@ -449,16 +560,60 @@ def test_the_module_never_names_triple_key_in_code():
 
     A fact's identity is its `triple_key`; rewriting one would silently move a
     fact onto another's identity. Prose may discuss it — this checks the code:
-    no identifier, no attribute, and no SQL string in the module names it.
+    no identifier, no attribute, no parameter, no **keyword argument** and no
+    SQL string in the module names it. The keyword-argument cell is the one a
+    scan over `ast.Name`/`ast.Attribute` alone misses: `stmt.values(triple_key=
+    None)` parks the name in `ast.keyword.arg`, which is neither.
     """
-    tree = ast.parse(MODULE_PATH.read_text())
+    tree = _module_tree()
     named = [
         node for node in ast.walk(tree)
         if (isinstance(node, ast.Name) and node.id == "triple_key")
         or (isinstance(node, ast.Attribute) and node.attr == "triple_key")
+        or (isinstance(node, (ast.keyword, ast.arg)) and node.arg == "triple_key")
     ]
     assert not named
     assert not [literal for literal in _code_strings() if "triple_key" in literal]
+
+
+IMPORT_SURFACE = {
+    "__future__.annotations",
+    "logging",
+    "collections.abc.Sequence",
+    "dataclasses.dataclass",
+    "sqlalchemy.text",
+    "sqlalchemy.ext.asyncio.AsyncSession",
+    "app.repositories.knowledge_triples.LIVE_PREDICATE",
+    "app.repositories.knowledge_triples.OPEN_BELIEF_PREDICATE",
+    "app.repositories.vector.PostgresVectorRepository",
+    "app.services.embedder_registry.child_table",
+    "app.services.embedder_registry.EmbedderInfo",
+    "app.services.embedder_registry.embedder_registry",
+    "app.services.embedder_registry.parse_fingerprint",
+    "app.services.relations.names_distinct",
+}
+
+
+def test_the_modules_import_surface_is_pinned():
+    """The third way a write could reach `knowledge_triples` from here.
+
+    Neither scan above sees a write performed by somebody else's code: importing
+    another module's repository and calling its writer carries no forbidden verb
+    and no forbidden name. So the import surface is pinned exactly — every
+    addition is a deliberate edit here, made while looking at the invariant.
+
+    This is a pin, not a blocklist: a new import is not wrong, it is unreviewed.
+    If you are adding one, add it below and satisfy yourself it cannot write a
+    fact row.
+    """
+    imported = set()
+    for node in ast.walk(_module_tree()):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            module = "." * node.level + (node.module or "")
+            imported.update(f"{module}.{alias.name}" for alias in node.names)
+    assert imported == IMPORT_SURFACE
 
 
 def test_the_module_names_only_its_own_partition():

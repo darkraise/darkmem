@@ -16,9 +16,20 @@ collapsed them would destroy a distinct belief with no error and no symptom —
 the rows would simply stop existing, and every later "what did we believe as of
 date X" answer would be wrong. So this module writes exactly ONE table, the
 per-fingerprint ``triple_embeddings__<slug>`` partition; it issues no statement
-against ``knowledge_triples`` other than ``SELECT``, and
-``tests/test_triple_embeddings.py`` fails the build on any other verb reaching
-that table from here.
+against ``knowledge_triples`` other than ``SELECT``.
+
+``tests/test_triple_embeddings.py`` holds that on five legs, and the split
+between them is the point. Two are **behavioural**: every fact row is compared
+byte-for-byte across a real ``embed_facts`` run and across a real
+``group_facts`` run, and both runs assert they did the work first so neither
+can pass vacuously. Three are **structural**: a source scan that resolves
+f-string interpolation before matching a write verb (and rejects a verb whose
+target it cannot resolve at all), a scan that forbids ``triple_key`` as
+identifier, attribute, keyword argument or string, and a pin on the module's
+import surface so a write cannot be delegated to another module's writer. The
+structural three see only SQL that appears in this file — a statement text
+built by a caller and handed in is invisible to them, and the byte comparisons
+are what covers that.
 
 **``names_distinct`` is carried into the grouping, and completely.** It is the
 same guard Phase-4 entity dedup carries (doc 06 §5): names differing by a
@@ -159,6 +170,19 @@ async def embed_facts(
     Re-embedding an already-embedded fact refreshes its vector and leaves
     ``created_at`` at the first write, so the row records when this fact entered
     the partition rather than when it was last touched.
+
+    **This may commit the caller's transaction.** First contact with a
+    fingerprint the registry does not already know goes through
+    ``embedder_registry.register``, which issues the child-table DDL and then
+    commits — on *this* session, so whatever else the caller had open commits
+    with it. That is deliberate rather than incidental: the partition's inline
+    ``REFERENCES knowledge_triples`` needs a lock on the referenced table that
+    conflicts with the row locks a caller already holds on its own uncommitted
+    fact inserts, so the fresh-session idiom ``pipeline._register_fingerprint``
+    uses would block against the very transaction waiting on it. A caller that
+    needs the surrounding work to stay rollback-able must therefore embed after
+    it commits, not before. No test observes this: conftest wraps each test in
+    an outer transaction, where the commit lands as a savepoint release.
     """
     ids = [str(fact_id) for fact_id in fact_ids]
     if not ids:
