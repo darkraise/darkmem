@@ -227,6 +227,12 @@ def action_detail(payload: dict) -> dict:
     }
     if action == journal.ACTION_ASSOCIATE:
         detail["created"] = bool(payload.get("created"))
+        # The derivation pass has no verdict to show — it makes no model call —
+        # so `signal` is the only thing in its payload that says *why* the edge
+        # exists. Present only when the writing pass recorded one, so the
+        # near-duplicate arm's detail keeps the shape it has always had.
+        if payload.get("signal") is not None:
+            detail["signal"] = payload["signal"]
     return detail
 
 

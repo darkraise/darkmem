@@ -388,17 +388,21 @@ def _make_dream_runner(
             derivation_hot_entity_cap=int(
                 settings_.get("derivation_hot_entity_cap", 50)
             ),
+            derivation_neighbours=int(
+                settings_.get("derivation_neighbours", 5)
+            ),
         )
         logger.info(
             "Memory dreaming visited %d seed(s): %d subsumed, %d associated "
             "(%d unchanged), %d refined, %d stale-skipped, %d failed; "
             "%d edge(s) derived from %d candidate(s) (%d truncated), "
-            "%d stripped%s",
+            "%d stripped, %d spared as unmeasured%s",
             outcome.seeds_visited, outcome.subsumed, outcome.associated,
             outcome.associate_unchanged, outcome.refined,
             outcome.stale_skipped, outcome.failed,
             outcome.derived, outcome.derivation_candidates,
             outcome.candidates_truncated, outcome.derivation_stripped,
+            outcome.derivation_spared_unmeasured,
             f", skipped: {outcome.skipped_reason}" if outcome.skipped_reason else "",
         )
 

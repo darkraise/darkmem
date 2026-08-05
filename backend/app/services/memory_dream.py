@@ -118,6 +118,7 @@ DEFAULT_OVERLAP_THRESHOLD_PCT = 50
 DEFAULT_PROXIMITY_THRESHOLD_PCT = 85
 DEFAULT_DERIVATION_BATCH = 200
 DEFAULT_HOT_ENTITY_CAP = 50
+DEFAULT_DERIVATION_NEIGHBOURS = 5
 
 # Internal bookkeeping, never an operator knob: `JobRegistry.set_config`
 # validates against the job's schema and would reject it.
@@ -195,6 +196,7 @@ class DreamOutcome:
     derivation_unchanged: int = 0
     derivation_stripped: int = 0
     derivation_rows_deleted: int = 0
+    derivation_spared_unmeasured: int = 0
     derivation_failed: int = 0
     # Why the *whole run* did nothing: a missing provider or an unresolvable
     # fingerprint, both of which stop it before Phase W.
@@ -1519,6 +1521,23 @@ def _bucketed_signals(signals) -> dict[str, int]:
     }
 
 
+def _block_signal_names(block) -> frozenset[str]:
+    """Which signals a stored block rests on.
+
+    Falls back to the primary `signal` when the `signals` map is missing rather
+    than reading an unrecognised shape as "rests on nothing": the column is
+    schemaless JSONB and the consequence of guessing low is an unjournalled
+    delete of an edge nobody re-measured.
+    """
+    if not isinstance(block, dict):
+        return frozenset()
+    signals = block.get("signals")
+    if isinstance(signals, dict) and signals:
+        return frozenset(str(name) for name in signals)
+    primary = block.get("signal")
+    return frozenset({str(primary)}) if primary else frozenset()
+
+
 def _derived_is_unchanged(existing: dict | None, block: dict) -> bool:
     """Mirrors the near-duplicate arm's skip, and for the same reason: without
     it a stable pair accretes one `consolidated` row per cycle, forever, into
@@ -1541,10 +1560,18 @@ def _derived_is_unchanged(existing: dict | None, block: dict) -> bool:
 # would grow forever. The window is therefore the seed slice — every pass edge
 # with a seed endpoint — bounded above by the last pair key the run actually
 # decided **whenever any arm truncated**. Every arm reads in the same
-# `pair_key` order, so a pair at or below that bound was examined by all of
-# them; a pair above it was examined by none, and stripping it would retire an
-# edge whose signal still holds. That is edge churn as a pure cap artefact, and
-# on a growing corpus it repeats every night.
+# `pair_key` order, so a pair at or below that bound was reachable by every arm
+# that ran; a pair above it was reachable by none, and stripping it would
+# retire an edge whose signal still holds. That is edge churn as a pure cap
+# artefact, and on a growing corpus it repeats every night.
+#
+# **The bound is a cap guard and nothing else.** It bounds what the arms that
+# ran could reach and says nothing about an arm that did not run at all, so the
+# stored block travels back with the row and `strip_stale_edges` spares any
+# triple resting on a signal this run could not measure. The proximity arm's
+# reachability is additionally top-N per seed rather than a pure key prefix, so
+# "reachable by every arm that ran" is exact for the two SQL arms and means
+# "inside this seed's neighbour fan-out" for that one.
 #
 # Keyed on the triple rather than the pair, because a pair transitioning
 # `RELATES_TO -> CONTRADICTS` under D3 leaves the old triple's block behind
@@ -1552,7 +1579,8 @@ def _derived_is_unchanged(existing: dict | None, block: dict) -> bool:
 _PASS_TRIPLES_IN_WINDOW = text("""
     SELECT CAST(source_memory_id AS text) AS source,
            CAST(target_memory_id AS text) AS target,
-           rel_type
+           rel_type,
+           (properties #> CAST(:block_path AS text[])) AS block
     FROM memory_relations
     WHERE (properties #> CAST(:block_path AS text[])) IS NOT NULL
       AND (source_memory_id = ANY(CAST(:seeds AS uuid[]))
@@ -1582,6 +1610,11 @@ class DerivationOutcome:
     unchanged: int = 0
     stripped: int = 0
     rows_deleted: int = 0
+    # In-window triples the strip left alone because their stored block rests
+    # on a signal no arm measured this run. Counted rather than silent: the
+    # operator's question after a canary flap is "did last night's run retire
+    # anything it could not see", and a zero here is the answer.
+    spared_unmeasured: int = 0
     failed: int = 0
     # Why the *proximity arm alone* found nothing, kept apart from the run's
     # own `skipped_reason` so an outcome cannot claim the run was skipped while
@@ -1667,9 +1700,20 @@ async def strip_stale_edges(
     seeds: list[str],
     bound: tuple[str, str] | None,
     kept: set[tuple[str, str, str]],
+    unmeasured_signals: frozenset[str],
     outcome: DerivationOutcome,
 ) -> None:
     """Retire this pass's blocks on triples it re-evaluated and no longer asserts.
+
+    **A skipped arm is not a vanished signal.** `kept` can only hold pairs the
+    arms that ran produced, so an arm that did not run at all — the proximity
+    arm under an unresolvable fingerprint — makes every edge it once wrote look
+    retired. On a deployment where the embedding purpose carries no
+    `dimensions` the canary never recovers, so the whole proximity graph would
+    be swept away one seed slice at a time, silently: the strip journals
+    nothing, and the original write's undo is CAS-refused once its block is
+    gone. `unmeasured_signals` is what keeps D9's actual principle — retire
+    only what this run re-evaluated — true of the arms as well as the pairs.
 
     **`clear_pass_block`, then `delete_edge` only on `exclusive is True`.** A
     `delete_edge`-based strip would take T2.12's near-duplicate block and
@@ -1697,6 +1741,9 @@ async def strip_stale_edges(
     for row in result.mappings():
         triple = (row["source"], row["target"], row["rel_type"])
         if triple in kept:
+            continue
+        if unmeasured_signals & _block_signal_names(row["block"]):
+            outcome.spared_unmeasured += 1
             continue
         exclusive = await clear_pass_block(
             session,
@@ -1765,11 +1812,13 @@ async def run_derivation_pass(
         limit=arm_limit,
     )
     proximity: dict[tuple[str, str], float] = {}
+    unmeasured_signals: frozenset[str] = frozenset()
     if fingerprint is None:
         # Never a fallback to another partition and never a sentinel: a
         # cross-fingerprint cosine has no defined meaning. Reported, not
         # swallowed, and the overlap arm proceeds regardless.
         outcome.proximity_skipped_reason = SKIPPED_PROXIMITY_FINGERPRINT
+        unmeasured_signals = frozenset({SIGNAL_EMBEDDING_PROXIMITY})
     else:
         proximity = await proximity_candidates(
             session,
@@ -1833,7 +1882,12 @@ async def run_derivation_pass(
     try:
         async with session.begin_nested():
             await strip_stale_edges(
-                session, seeds=seed_ids, bound=bound, kept=kept, outcome=outcome
+                session,
+                seeds=seed_ids,
+                bound=bound,
+                kept=kept,
+                unmeasured_signals=unmeasured_signals,
+                outcome=outcome,
             )
     except Exception:
         logger.warning(
@@ -1962,6 +2016,7 @@ async def run_memory_dream(
     proximity_threshold_pct: int = DEFAULT_PROXIMITY_THRESHOLD_PCT,
     derivation_batch: int = DEFAULT_DERIVATION_BATCH,
     derivation_hot_entity_cap: int = DEFAULT_HOT_ENTITY_CAP,
+    derivation_neighbours: int = DEFAULT_DERIVATION_NEIGHBOURS,
 ) -> DreamOutcome:
     """One dreaming cycle: read, judge, apply, derive.
 
@@ -2075,7 +2130,7 @@ async def run_memory_dream(
                 proximity_threshold=proximity_threshold_pct / 100,
                 derivation_batch=derivation_batch,
                 hot_entity_cap=derivation_hot_entity_cap,
-                neighbours=pair_candidates,
+                neighbours=derivation_neighbours,
             )
             await session.commit()
         outcome.derivation_candidates = derivation.candidates
@@ -2084,6 +2139,7 @@ async def run_memory_dream(
         outcome.derivation_unchanged = derivation.unchanged
         outcome.derivation_stripped = derivation.stripped
         outcome.derivation_rows_deleted = derivation.rows_deleted
+        outcome.derivation_spared_unmeasured = derivation.spared_unmeasured
         outcome.derivation_failed = derivation.failed
         outcome.derivation_skipped_reason = derivation.proximity_skipped_reason
 
@@ -2091,13 +2147,14 @@ async def run_memory_dream(
         "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
         "%d subsumed, %d associated (%d unchanged), %d refined, "
         "%d stale-skipped, %d failed; derivation saw %d candidate(s) "
-        "(%d truncated): %d derived, %d unchanged, %d stripped%s",
+        "(%d truncated): %d derived, %d unchanged, %d stripped, "
+        "%d spared as unmeasured%s",
         outcome.cycle_id, outcome.seeds_visited, outcome.judged,
         outcome.subsumed, outcome.associated, outcome.associate_unchanged,
         outcome.refined, outcome.stale_skipped, outcome.failed,
         outcome.derivation_candidates, outcome.candidates_truncated,
         outcome.derived, outcome.derivation_unchanged,
-        outcome.derivation_stripped,
+        outcome.derivation_stripped, outcome.derivation_spared_unmeasured,
         f" (skipped: {outcome.skipped_reason})" if outcome.skipped_reason
         else (
             f" (pair arm: {outcome.pair_arm_skipped_reason})"
@@ -2179,6 +2236,16 @@ MEMORY_DREAM_CONFIG_SCHEMA: list[FieldDescriptor] = [
             "Candidate pairs derived per run. A safety valve rather than a "
             "working limit: pairs past it are reported as truncated, never "
             "silently dropped."
+        ),
+    ),
+    FieldDescriptor(
+        key="derivation_neighbours", label="Proximity Neighbours Per Seed",
+        default=DEFAULT_DERIVATION_NEIGHBOURS, min=1, max=50,
+        help=(
+            "ANN neighbours probed per seed by the proximity arm. Its own "
+            "knob rather than the judge's `pair_candidates`: this one decides "
+            "which proximity edges can exist at all, so a pair crowded out of "
+            "a seed's fan-out loses its edge on the next strip."
         ),
     ),
     FieldDescriptor(
