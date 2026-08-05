@@ -341,7 +341,7 @@ def normalize_memory_relation_type(raw_type: str | None) -> str:
 # `rel_type` does not determine single-valuedness:
 #
 # - `DEPLOYED_ON` absorbs `RUNS_ON` and `LOCATED_IN` through
-#   `LEGACY_RELATION_TYPE_MAP`, and the rescue layer routes six connector
+#   `LEGACY_RELATION_TYPE_MAP`, and the rescue layer routes seven connector
 #   phrases into it including a bare "on" at 0.6 confidence. "postgres
 #   DEPLOYED_ON linux" and "postgres DEPLOYED_ON docker" are both true.
 # - `HAPPENED_ON` absorbs `VISITED` and `LIVES_IN`. One person visiting two
