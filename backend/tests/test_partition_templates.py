@@ -3,7 +3,9 @@
 Inventory §6: doc 19 §2 rejects expressing child tables as static migrations
 because their shape is parameterised by fingerprint. The four target-new
 families land here as templates; T0.13 labels them inert and T0.14's
-boot-time reconciliation creates them per registered fingerprint.
+boot-time reconciliation creates them per registered fingerprint. Three are
+still inert — ``triple_embeddings`` gained its writer in T2.33 — but the
+template contract below is the same either way.
 """
 from __future__ import annotations
 

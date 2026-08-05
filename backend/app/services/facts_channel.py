@@ -23,12 +23,19 @@ superseded belief as current, so the default channel scopes to
 ``OPEN_BELIEF_PREDICATE`` — the same predicate ``ux_knowledge_triples_open``
 and the three retrieval indexes are partial on.
 
-**Keyword-only, and it says so.** Doc 04 §5.3 ships the ``triple_embeddings``
-template but defers its writer, so this channel has no semantic modality yet.
+**Keyword-only, and it says so.** This channel has no semantic modality. The
+reason changed on 2026-08-05 and the distinction matters to a reader deciding
+whether to add one: doc 04 §5.3's ``triple_embeddings`` writer was deferred
+until then, so no vector existed to search; T2.33 landed it
+(``app.services.triple_embeddings``) on T2.52's measured shortlist miss rate,
+and the partition can now hold fact vectors. What is still absent is a *caller*
+populating it and an arm here reading it — neither is T2.33's, which is terminal
+by design. So this stays keyword-only, but it is now a wiring gap rather than a
+missing substrate.
 The trace therefore reports the semantic arm as present-and-not-run
 (:meth:`FactChannelTrace.channel_status`) rather than omitting it: an absent
 channel key is exactly the silent gap doc 07 §2 forbids, while ``ran=False``
-is the report. It is never reported as *failed* — a deferred writer is not an
+is the report. It is never reported as *failed* — an arm nobody wired is not an
 outage, and conflating them would make the envelope's ``partial`` flag lie.
 
 **"Both sides" is not constructible from a query on this channel, and this
