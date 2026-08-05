@@ -14,10 +14,13 @@ Fact-floor and article-subject gating read `knowledge_triples` /
 """
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import text
 
 from app.repositories import memory_communities as repo
 from app.repositories import pinned_subjects
+from app.services import memory_community_detection as detection
 from app.services import pin_suggestions as pins
 from app.utils.ids import new_id
 
@@ -511,3 +514,156 @@ async def test_journal_pin_suggestions_writes_one_row_per_suggestion(session):
     ).all()
     assert len(rows) == 1
     assert rows[0][0]["subject_key"] == pins.subject_soft_key("postgres", "tool")
+
+
+# ---------------------------------------------------------------------------
+# T2.91 — the durable prior, proven across two real detection runs
+#
+# Every test above simulates the rewrite with `replace_project_communities`,
+# which is the right shape for testing the diff in isolation. These four
+# cannot: the property under test is that the prior is *captured by the
+# detector itself* and survives to the next run, so they drive
+# `detect_for_project` for real and let it label, cluster and rewrite. A
+# single-run fixture cannot see `grown`, `stable` or `decayed` at all, which
+# is why the gap was invisible until review.
+# ---------------------------------------------------------------------------
+
+_INSERT_ENTITY = text(
+    "INSERT INTO entities (name, entity_type, properties, memory_ids) "
+    "VALUES (:name, 'tool', CAST(:properties AS jsonb), CAST(:memory_ids AS uuid[])) "
+    "RETURNING id"
+)
+
+_EXTEND_ENTITY = text(
+    "UPDATE entities SET memory_ids = memory_ids || CAST(:memory_ids AS uuid[]) "
+    "WHERE name = :name"
+)
+
+
+async def _seed_cluster(session, project, name, size=3):
+    ids = [await seed_memory(session, project) for _ in range(size)]
+    await session.flush()
+    await session.execute(
+        _INSERT_ENTITY,
+        {
+            "name": name,
+            "properties": json.dumps({}),
+            "memory_ids": [str(m) for m in ids],
+        },
+    )
+    await session.flush()
+    return ids
+
+
+async def _detect(session, project):
+    await detection.detect_for_project(session, project)
+    await session.flush()
+
+
+async def _diff_after_run(session, project):
+    """What the door computes: the stored prior against the live rows."""
+    prior = await pins.load_topic_prior(session, project)
+    current = await repo.list_with_members(session, project)
+    return {
+        entry.dominant_name: entry
+        for entry in pins.diff_topics(prior, current)
+    }
+
+
+async def test_the_first_ever_run_has_no_prior_and_reads_new(session):
+    project = "t291-new"
+    await _seed_cluster(session, project, "t291-new-alpha")
+
+    await _detect(session, project)
+
+    entries = await _diff_after_run(session, project)
+    entry = entries["t291-new-alpha"]
+    assert entry.status == pins.STATUS_NEW
+    assert entry.prior_member_count is None
+
+
+async def test_stable_is_reachable_across_two_real_detection_runs(session):
+    project = "t291-stable"
+    await _seed_cluster(session, project, "t291-stable-alpha")
+
+    await _detect(session, project)
+    await _detect(session, project)
+
+    entries = await _diff_after_run(session, project)
+    entry = entries["t291-stable-alpha"]
+    assert entry.status == pins.STATUS_STABLE
+    assert entry.prior_member_count == entry.member_count == 3
+
+
+async def test_grown_is_reachable_across_two_real_detection_runs(session):
+    project = "t291-grown"
+    await _seed_cluster(session, project, "t291-grown-alpha")
+
+    await _detect(session, project)
+
+    # The corpus grows between runs, past `DEFAULT_GROWTH_THRESHOLD`.
+    extra = [await seed_memory(session, project) for _ in range(2)]
+    await session.flush()
+    await session.execute(
+        _EXTEND_ENTITY,
+        {"name": "t291-grown-alpha", "memory_ids": [str(m) for m in extra]},
+    )
+    await session.flush()
+
+    await _detect(session, project)
+
+    entries = await _diff_after_run(session, project)
+    entry = entries["t291-grown-alpha"]
+    assert entry.status == pins.STATUS_GROWN
+    assert entry.prior_member_count == 3
+    assert entry.member_count == 5
+
+
+async def test_decayed_is_reachable_across_two_real_detection_runs(session):
+    project = "t291-decayed"
+    await _seed_cluster(session, project, "t291-decayed-alpha")
+    await _seed_cluster(session, project, "t291-decayed-beta")
+
+    await _detect(session, project)
+
+    # Beta's entity is what held its memories together; without it they are
+    # isolated nodes and the community has no successor in the next run.
+    await session.execute(
+        text("DELETE FROM entities WHERE name = 't291-decayed-beta'")
+    )
+    await session.flush()
+
+    await _detect(session, project)
+
+    entries = await _diff_after_run(session, project)
+    assert entries["t291-decayed-beta"].status == pins.STATUS_DECAYED
+    assert entries["t291-decayed-beta"].member_count == 0
+    assert entries["t291-decayed-beta"].prior_member_count == 3
+    assert entries["t291-decayed-alpha"].status == pins.STATUS_STABLE
+
+
+async def test_the_prior_describes_the_previous_run_not_the_current_one(session):
+    """The ordering property Phase P exists for: capture happens *before* the
+    rewrite, so the stored prior can never be a copy of the rows it is meant
+    to be compared against."""
+    project = "t291-ordering"
+    await _seed_cluster(session, project, "t291-ordering-alpha")
+
+    await _detect(session, project)
+    extra = [await seed_memory(session, project) for _ in range(2)]
+    await session.flush()
+    await session.execute(
+        _EXTEND_ENTITY,
+        {"name": "t291-ordering-alpha", "memory_ids": [str(m) for m in extra]},
+    )
+    await session.flush()
+    await _detect(session, project)
+
+    prior = await pins.load_topic_prior(session, project)
+    current = await repo.list_with_members(session, project)
+    live_counts = {row.label: len(row.memory_ids) for row in current}
+    stored_counts = {label: s.member_count for label, s in prior.items()}
+
+    assert stored_counts != live_counts
+    assert set(stored_counts.values()) == {3}
+    assert set(live_counts.values()) == {5}

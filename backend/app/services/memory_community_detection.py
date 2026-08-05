@@ -69,6 +69,7 @@ from app.repositories.memory_communities import (
 from app.services.events import record_event
 from app.services.job_registry import FieldDescriptor
 from app.services.memory_community_labels import label_communities
+from app.services.pin_suggestions import capture_topic_prior
 from app.services.memory_projection import (
     DEFAULT_EXCLUDED_ENTITY_TYPES,
     DEFAULT_HUB_CAP,
@@ -365,6 +366,14 @@ async def detect_for_project(
         )
         for index, group in enumerate(groups)
     ]
+
+    # Phase P — capture the census the rewrite is about to destroy (T2.91).
+    # Immediately before Phase W, not at the top of the run: everything from
+    # here to the caller's commit is one transaction, so the prior and the
+    # rows it describes as "previous" can never disagree. A run that skips or
+    # dies before this point leaves both untouched, which is the honest
+    # state — nothing was replaced, so nothing changed.
+    await capture_topic_prior(session, project)
 
     # Phase W.
     await replace_project_communities(session, project, drafts)

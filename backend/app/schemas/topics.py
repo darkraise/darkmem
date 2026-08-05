@@ -40,11 +40,12 @@ class TopicDetailResponse(TopicItem):
 class TopicDiffItem(BaseModel):
     """One `pin_suggestions.TopicDiffEntry` — the diff `diff_topics` computes,
     not merely the current set. `status` is `new` / `grown` / `stable` /
-    `decayed`; a browsing read has no pre-rewrite snapshot to diff against
-    (only the detection job holds one mid-run), so every entry a live read
-    returns is `new` — the seam `pin_suggestions.py`'s own docstring names
-    for a UI-driven caller. `grown`/`stable`/`decayed` are real when this
-    door is fed a snapshot in the future; nothing here invents one.
+    `decayed`, and since T2.91 all four are reachable on a live read: the
+    detector persists its pre-rewrite census and the door diffs against it.
+    A project detected fewer than twice has no prior and reads all `new`,
+    which is a statement about that project rather than a property of this
+    door. `prior_member_count` is null exactly when the label had no
+    predecessor.
     """
 
     project: str
