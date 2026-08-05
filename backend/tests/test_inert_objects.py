@@ -28,11 +28,13 @@ INERT_COLUMNS = {
     ("entities", "repo_ids"): "T2.27",
     ("entity_relations", "repo_ids"): "T2.27",
 }
+# triple_embeddings is no longer here: T2.33, its declared first writer (schema
+# inventory §7), landed on T2.52's measured 41.7% shortlist miss rate, so the
+# conditional branch that would have kept the template inert forever is closed.
 INERT_TEMPLATES = {
     "block_embeddings": "TH1.05",
     "relation_embeddings": "T2.49",
     "article_embeddings": "T3.23",
-    "triple_embeddings": "T2.33",
 }
 
 
@@ -141,7 +143,7 @@ def test_no_app_code_writes_the_inert_partitions():
     """The templates are registered but nothing may embed into them.
 
     ``child_table(parent, fingerprint)`` is the only sanctioned namer, so a
-    writer shows up as that call with one of the four inert parents.
+    writer shows up as that call with one of the still-inert parents.
     """
     offenders: list[str] = []
     for path in _app_sources():

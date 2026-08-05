@@ -563,7 +563,7 @@ fingerprints could collide. The `Aux indexes` column below lists what each paren
 | `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **TH1.05** (§7) |
 | `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T2.49** (§7) |
 | `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T3.23** (§7) |
-| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new, inert` — **template only** | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33**, conditional (§7) |
+| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new` — **written since 2026-08-05**; was `inert, template only` | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33** — landed, condition met (§7) |
 
 **Three rules in that table are load-bearing and silent when broken.**
 
@@ -625,8 +625,8 @@ finding, not a row; none was.
 | `blocks` (table + its two indexes) | `target-new, inert` | **H1 horizon** | **TH1.02** | As above — one task writes both tables. | 04 §8.5; 19 §3 |
 | `block_embeddings` template | `target-new, inert` | **H1 horizon** | **TH1.05** — `block_embeddings__<slug>` writer | "First writer to the block partition template landed inert in T0.13." | 04 §5.3; 19 §3 |
 | `relation_embeddings` template | `target-new, inert` | **Phase 2** | **T2.49** — `relation_embeddings` refresh job + writer | "First writer to one of the two inert partition templates that had no named owner … **The template loses its inert label and the schema inventory records this task as its first writer**." | 04 §5.3 |
-| `article_embeddings` template | `target-new, inert` | **Phase 3** | **T3.23** — Articles retrieval channel + `article_embeddings` writer | "The template loses its inert label; **the schema inventory names this as its writer** (it is the last of the four **mainline** templates — `block_embeddings` waits for the EH1 horizon, and `triple_embeddings` may never ship at all)." | 04 §5.3 |
-| `triple_embeddings` template | `target-new, inert` — **template only** | **Phase 2, conditional** | **T2.33** — `triple_embeddings` writer, miss-rate gated | "First writer to the template landed inert in T0.13 — and it ships **only** if T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar … if the bar is not exceeded, the task closes as 'not needed, measured' and **the template stays inert**." | 04 §5.3, §13; 19 §3 |
+| `article_embeddings` template | `target-new, inert` | **Phase 3** | **T3.23** — Articles retrieval channel + `article_embeddings` writer | "The template loses its inert label; **the schema inventory names this as its writer** (it is the last of the four **mainline** templates — `block_embeddings` waits for the EH1 horizon, and `triple_embeddings` was conditional; its condition was met and T2.33 landed its writer on 2026-08-05)." | 04 §5.3 |
+| `triple_embeddings` template | `target-new` — **no longer inert (2026-08-05)** | **Phase 2, condition met** | **T2.33** — `triple_embeddings` writer, miss-rate gated — **landed** | "First writer to the template landed inert in T0.13 — and it ships **only** if the measured `pg_trgm` shortlist miss rate exceeds its stated bar." It did: **T2.52 measured 41.7% (5/12) on the `lexically-disjoint` slice against a 20% bar stated beforehand** (`docs/eval/2026-08-05-t2.52-contradiction-missrate.md`), so the 'not needed, measured' branch is closed and `app/services/triple_embeddings.py` is the writer. (The gate is **T2.52's** measurement, not T2.11's — the epic file's original wording named the wrong task.) | 04 §5.3, §13; 19 §3 |
 
 **Four of these ten rows are confirmed by a reciprocal promise, which is the strongest
 evidence available.** T2.27, T2.49, T3.23, T2.33, TH1.02 and TH1.05 each name T0.13 as the
@@ -635,11 +635,15 @@ checkbox that this inventory records them as the writer. An object whose future 
 own acceptance promises to update this file is a pairing neither side can drift from
 silently.
 
-**`triple_embeddings` is the one row whose writer may never ship, and that is by design.**
-It is `template only`: the template lands, and T2.33 is gated on a measured miss rate it
-may not clear. If it does not, the honest end state is a template that stays inert
-forever — which is why doc 19 §3 gives it its own `(target-new, template only)`
-disposition rather than folding it in with the others.
+**`triple_embeddings` was the one row whose writer might never have shipped, and the
+condition has now been met (2026-08-05).** It landed `template only`: the template shipped
+up front and T2.33 was gated on a measured miss rate it might not clear. It cleared —
+T2.52 measured **41.7% (5/12)** on the `lexically-disjoint` slice against a **20%** bar
+stated beforehand — so T2.33 shipped the writer and this row is now an ordinary
+`target-new` object with a live first writer. The `(target-new, template only)`
+disposition doc 19 §3 gave it was not wasted: it is what let the template land, be
+reviewed and be frozen while the decision was still open, and it stays the right label
+for the *disposition at baseline*, which is what §6 records.
 
 **Two activations are not inert objects and are recorded separately.** `api_keys` and
 `memories.importance` exist today and their schema does not change; only a later phase's
