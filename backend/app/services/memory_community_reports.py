@@ -370,8 +370,10 @@ async def generate_reports(
     min_report_size: int = DEFAULT_MIN_REPORT_SIZE,
     max_memories: int = DEFAULT_MAX_MEMORIES_IN_PROMPT,
     max_attempts: int = DEFAULT_MAX_REPORT_ATTEMPTS,
+    limit: int | None = None,
 ) -> GenerateOutcome:
-    """Fill in `report_string` for every `pending` community in `project`.
+    """Fill in `report_string` for at most `limit` `pending` communities in
+    `project` (every one of them when `limit` is None).
 
     Structurally off the hot path: this function opens its own short-lived
     session per community rather than holding one across the whole batch or
@@ -385,6 +387,11 @@ async def generate_reports(
 
     outcome = GenerateOutcome()
     for row in rows:
+        # `limit` bounds the model calls, not the loop: skipping and
+        # exhausting cost nothing, so they must not consume the caller's
+        # budget for calls it has not made yet.
+        if limit is not None and outcome.attempted >= limit:
+            break
         if report_status(row, min_report_size=min_report_size) != REPORT_STATUS_PENDING:
             continue
         attempts = report_attempts(row)

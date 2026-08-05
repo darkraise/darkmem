@@ -286,7 +286,7 @@ async def _save_topic_cursor(session, last_project: str | None) -> None:
         row.value = value
 
 
-def _make_topic_runner(registry: JobRegistry, key: str) -> JobRunner:
+def _make_topic_runner(registry: JobRegistry, key: str, llm_provider) -> JobRunner:
     """The topic-detection tick (T2.53), bound to the registry's session factory.
 
     Config is re-read every tick rather than closed over, so an operator's edit
@@ -317,6 +317,7 @@ def _make_topic_runner(registry: JobRegistry, key: str) -> JobRunner:
         batch_size = int(settings_.get("batch_size", DEFAULT_TOPIC_BATCH_SIZE))
         outcome = await run_topic_detection(
             registry.session_factory,
+            llm_provider,
             batch_size=batch_size,
             after_project=after_project,
             **knobs,
@@ -492,7 +493,7 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
             "costs that project's slice and not the batch."
         ),
         default_cron="0 4 * * *", min_interval_seconds=300,
-        runner=_make_topic_runner(registry, TOPIC_DETECTION_JOB_KEY),
+        runner=_make_topic_runner(registry, TOPIC_DETECTION_JOB_KEY, llm_provider),
         max_run_seconds=900,
         # T2.18's own schema, not the generic batch stand-in the placeholder
         # carried: the detector has four knobs beyond batch size, and an

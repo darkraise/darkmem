@@ -1,9 +1,16 @@
 """Topic detection — Leiden communities per project (doc 06 §7).
 
 **Tier C, and nothing may reach it from capture or retrieval** (invariant 15).
-Detection is deterministic given its input graph: no model call appears
-anywhere in this module. The only model-backed step doc 06 §7 names is
-`report_string`, which is T2.19's.
+
+**Where the model call is, and where it is not** (corrected by T2.93; this
+docstring previously said no model call appeared anywhere in this module).
+`detect_for_project` is still deterministic given its input graph and still
+contains no model call — that is the property the phase ordering below
+protects. What T2.93 added is one level up: `run_topic_detection` runs the
+report pass (doc 06 §7's `report_string`, T2.19's module) **after** each
+project's detection has committed, bounded by `report_batch`. Nothing in the
+clustering path waits on a vendor, and no report failure can unwind a
+clustering result.
 
 **Three phases, and the ordering is the whole safety argument.**
 
@@ -69,6 +76,12 @@ from app.repositories.memory_communities import (
 from app.services.events import record_event
 from app.services.job_registry import FieldDescriptor
 from app.services.memory_community_labels import label_communities
+from app.services.memory_community_reports import (
+    DEFAULT_MIN_REPORT_SIZE,
+    generate_reports,
+    restore_reports,
+    snapshot_reports,
+)
 from app.services.pin_suggestions import capture_topic_prior
 from app.services.memory_projection import (
     DEFAULT_EXCLUDED_ENTITY_TYPES,
@@ -83,6 +96,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_BATCH_SIZE = 5
 MAX_BATCH_SIZE = 100
 DEFAULT_MIN_COMMUNITY_SIZE = 2
+
+# Model calls one topic_detection tick may spend on reports, across every
+# project it visits. A bound an operator can reason about as a per-run cost;
+# whatever it does not reach stays `pending` for the next tick.
+DEFAULT_REPORT_BATCH = 20
 DEFAULT_RESOLUTION = 1.0
 DEFAULT_LARGE_GRAPH_NODES = 10_000
 
@@ -134,6 +152,19 @@ TOPIC_DETECTION_CONFIG_SCHEMA: list[FieldDescriptor] = [
         default=DEFAULT_MAX_PROJECTION_EDGES, min=1_000, max=100_000_000,
         help="A projection wider than this is skipped loudly rather than truncated.",
     ),
+    FieldDescriptor(
+        key="report_batch", label="Reports Per Run",
+        default=DEFAULT_REPORT_BATCH, min=0, max=200,
+        help=(
+            "Topic reports generated per run, across all visited projects. "
+            "Each is one model call; 0 detects topics without writing any report."
+        ),
+    ),
+    FieldDescriptor(
+        key="min_report_size", label="Minimum Members For A Report",
+        default=DEFAULT_MIN_REPORT_SIZE, min=2, max=1_000,
+        help="Communities smaller than this are never sent to the model.",
+    ),
 ]
 
 
@@ -148,6 +179,7 @@ class ProjectOutcome:
     labels: tuple[str, ...] = ()
     fallback: str | None = None
     skipped_reason: str | None = None
+    reports_carried: int = 0
 
 
 @dataclass
@@ -156,6 +188,8 @@ class DetectionOutcome:
     last_project: str | None = None
     communities: int = 0
     skipped: int = 0
+    reports_generated: int = 0
+    reports_failed: int = 0
     outcomes: list[ProjectOutcome] = field(default_factory=list)
     # How many projects the batch actually claimed, which is *not* derivable
     # from the counters above: a project can increment both `projects_processed`
@@ -367,16 +401,24 @@ async def detect_for_project(
         for index, group in enumerate(groups)
     ]
 
-    # Phase P — capture the census the rewrite is about to destroy (T2.91).
-    # Immediately before Phase W, not at the top of the run: everything from
-    # here to the caller's commit is one transaction, so the prior and the
-    # rows it describes as "previous" can never disagree. A run that skips or
-    # dies before this point leaves both untouched, which is the honest
+    # Phase P — capture what the rewrite is about to destroy: the census the
+    # pin-suggestion diff needs (T2.91) and the report text (T2.19's seam,
+    # wired here by T2.93). Immediately before Phase W, not at the top of the
+    # run: everything from here to the caller's commit is one transaction, so
+    # neither can disagree with the rows it describes. A run that skips or
+    # dies before this point leaves all of it untouched, which is the honest
     # state — nothing was replaced, so nothing changed.
     await capture_topic_prior(session, project)
+    carried_reports = await snapshot_reports(session, project)
 
     # Phase W.
     await replace_project_communities(session, project, drafts)
+
+    # Phase X — re-attach what survived, by label. In the detector rather than
+    # in the runner above it for the reason Phase P is: the rewrite is what
+    # destroys these rows, so the obligation to preserve them belongs to
+    # whoever performs it, not to a sequence a future caller has to remember.
+    restored = await restore_reports(session, project, carried_reports)
 
     assigned = sum(len(group) for group in groups)
     outcome = ProjectOutcome(
@@ -388,6 +430,7 @@ async def detect_for_project(
         duration_ms=elapsed_ms(),
         labels=tuple(draft.label for draft in drafts),
         fallback=fallback,
+        reports_carried=restored.carried_forward,
     )
     await _journal(session, outcome, [len(group) for group in groups])
     return outcome
@@ -395,16 +438,37 @@ async def detect_for_project(
 
 async def run_topic_detection(
     session_factory,
+    llm_provider=None,
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
     after_project: str | None = None,
+    report_batch: int = DEFAULT_REPORT_BATCH,
+    min_report_size: int = DEFAULT_MIN_REPORT_SIZE,
     **knobs,
 ) -> DetectionOutcome:
-    """Visit one rotating batch of projects, each in its own transaction."""
+    """Visit one rotating batch of projects, each in its own transaction, then
+    write reports for whatever is still pending (T2.93).
+
+    **The report pass runs after the detection commit, never inside it.** The
+    detector's own transaction is already the long one — Leiden plus the
+    rewrite — and a report is a model call measured in seconds. Folding them
+    together would hold a write transaction open across the vendor round trip,
+    and would let a vendor outage roll back a clustering result that was
+    correct. So each project's communities land first, and the reports are a
+    separate, best-effort pass over what committed.
+
+    **`report_batch` bounds the whole run, not each project.** One tick's cost
+    is what an operator budgets, and a rotation that visits five projects must
+    not cost five times its own bound; `0` turns the pass off entirely and
+    leaves detection running. Reports the bound does not reach stay `pending`
+    and are picked up by the next tick, which is the state that already means
+    "eligible, not yet attempted".
+    """
     async with session_factory() as session:
         projects = await next_projects(session, after_project, batch_size)
 
     outcome = DetectionOutcome(last_project=after_project, visited=len(projects))
+    detected: list[str] = []
     for project in projects:
         outcome.last_project = project
         try:
@@ -429,10 +493,57 @@ async def run_topic_detection(
         outcome.projects_processed += 1
         outcome.communities += project_outcome.community_count
         outcome.outcomes.append(project_outcome)
+        detected.append(project)
         if project_outcome.skipped_reason is not None:
             outcome.skipped += 1
 
+    await _run_report_pass(
+        session_factory, llm_provider, detected, outcome,
+        report_batch=report_batch, min_report_size=min_report_size,
+    )
     return outcome
+
+
+async def _run_report_pass(
+    session_factory,
+    llm_provider,
+    projects: list[str],
+    outcome: DetectionOutcome,
+    *,
+    report_batch: int,
+    min_report_size: int,
+) -> None:
+    """Fill in reports for the projects this run committed, up to the bound.
+
+    Best-effort by construction: `generate_reports` already records a failure
+    on the community and never raises, and anything it does raise is caught
+    here. A report is an enrichment of a clustering result that is already
+    durable — it must never be able to undo one.
+    """
+    if report_batch <= 0 or not projects:
+        return
+    llm = llm_provider() if callable(llm_provider) else llm_provider
+    if llm is None:
+        # Postgres-only mode. Communities are detected and browsable; their
+        # reports stay `pending`, which is what that state means.
+        return
+
+    remaining = report_batch
+    for project in projects:
+        if remaining <= 0:
+            break
+        try:
+            generated = await generate_reports(
+                session_factory, llm, project,
+                min_report_size=min_report_size,
+                limit=remaining,
+            )
+        except Exception:
+            logger.exception("Topic report pass failed for project %r", project)
+            continue
+        outcome.reports_generated += generated.generated
+        outcome.reports_failed += generated.failed
+        remaining -= generated.attempted
 
 
 async def _journal_abort(session_factory, project: str, reason: str) -> None:
