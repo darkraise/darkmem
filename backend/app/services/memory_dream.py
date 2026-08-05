@@ -1744,19 +1744,25 @@ async def run_derivation_pass(
     await _set_local_lock_timeout(session)
     seed_ids = [seed.memory_id for seed in seeds]
 
+    # One row more than the cap, so an arm holding exactly the cap is
+    # distinguishable from an arm that had nothing more to give. Without the
+    # spare row a run that dropped candidates reports zero truncation and the
+    # coverage gap is permanent and green — the same shape as reading the
+    # fingerprint sentinel.
+    arm_limit = derivation_batch + 1
     overlap = await overlap_candidates(
         session,
         seeds=seed_ids,
         threshold=overlap_threshold,
         hot_entity_cap=hot_entity_cap,
-        limit=derivation_batch,
+        limit=arm_limit,
     )
     contradiction = await contradiction_candidates(
         session,
         seeds=seed_ids,
         families=EXCLUSIVE_RELATION_FAMILIES,
         hot_entity_cap=hot_entity_cap,
-        limit=derivation_batch,
+        limit=arm_limit,
     )
     proximity: dict[tuple[str, str], float] = {}
     if fingerprint is None:
@@ -1771,7 +1777,7 @@ async def run_derivation_pass(
             fingerprint=fingerprint,
             threshold=proximity_threshold,
             neighbours=neighbours,
-            limit=derivation_batch,
+            limit=arm_limit,
         )
 
     decided = merge_candidates({
@@ -1784,19 +1790,14 @@ async def run_derivation_pass(
     # operator learns it did not. Pairs past it are never derived at all, and
     # the stable ordering that makes replay pass is exactly what would make
     # that coverage gap permanent and green.
+    #
+    # **A lower bound, not a census.** The arms stop one row past the cap, so a
+    # non-zero reading means the valve engaged and the magnitude is what this
+    # run saw rather than how many pairs exist. Buying the exact figure costs a
+    # second unbounded scan of the thing the cap exists to bound.
     outcome.candidates_truncated = max(0, len(decided) - derivation_batch)
-    # An arm that came back holding exactly its limit may have more behind it,
-    # so the window is bounded even when the merge itself did not overflow.
-    arm_truncated = any(
-        len(arm) >= derivation_batch
-        for arm in (overlap, contradiction, proximity)
-    )
     decided = decided[:derivation_batch]
-    bound = (
-        decided[-1][0]
-        if decided and (arm_truncated or outcome.candidates_truncated)
-        else None
-    )
+    bound = decided[-1][0] if decided and outcome.candidates_truncated else None
 
     identifiers = sorted({member for key, _, _ in decided for member in key})
     known = await read_memories(session, identifiers)

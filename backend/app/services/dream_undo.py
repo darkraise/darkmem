@@ -507,10 +507,21 @@ def _subsume_unchanged(action: ResolvedAction, live: LiveState) -> bool:
 
 
 def _associate_unchanged(action: ResolvedAction, live: LiveState) -> bool:
+    """Compared against the block the action actually wrote, not a fixed one.
+
+    Two passes assert associative edges — T2.12's near-duplicate arm and
+    T2.16's derivation arm — and the UNIQUE on the triple puts both blocks on
+    one row whenever they propose the same one. A hardcoded pass key here
+    compares the derivation action's journalled block against the
+    near-duplicate block on the live row: unequal, so the action reports
+    `state_changed` and is never undoable; equal by coincidence, and the
+    inverse below then clears the wrong pass's state.
+    """
+    pass_key = journal.associate_pass_key(action.payload)
     journalled = (
         (action.after.get("edge") or {}).get("properties") or {}
-    ).get(journal.NEAR_DUPLICATE_PASS)
-    return edges.pass_block_of(live.edge, journal.NEAR_DUPLICATE_PASS) == journalled
+    ).get(pass_key)
+    return edges.pass_block_of(live.edge, pass_key) == journalled
 
 
 def _refine_unchanged(action: ResolvedAction, live: LiveState) -> bool:
@@ -641,6 +652,12 @@ async def _invert_associate(
     source, target, rel_type = edge_triple(action)
     prior = action.before.get("edge")
     not_restored: list[str] = ["events"]
+    # Which pass wrote this action, read off the payload rather than assumed.
+    # Rows journalled before T2.16 carry no `pass_key` and were all the
+    # near-duplicate arm's, so that is the default; inverting a derivation
+    # action against it would restore or clear T2.12's block while reporting
+    # success, which is silent cross-pass corruption rather than a failure.
+    pass_key = journal.associate_pass_key(action.payload)
 
     if isinstance(prior, dict):
         # The block existed before this action overwrote it, whatever `created`
@@ -651,7 +668,7 @@ async def _invert_associate(
             source_memory_id=source,
             target_memory_id=target,
             rel_type=rel_type,
-            pass_key=journal.NEAR_DUPLICATE_PASS,
+            pass_key=pass_key,
             block=prior,
         )
         return UndoneAction(
@@ -667,7 +684,7 @@ async def _invert_associate(
         source_memory_id=source,
         target_memory_id=target,
         rel_type=rel_type,
-        pass_key=journal.NEAR_DUPLICATE_PASS,
+        pass_key=pass_key,
     )
     if action.payload.get("created") and exclusive:
         await edges.delete_edge(
