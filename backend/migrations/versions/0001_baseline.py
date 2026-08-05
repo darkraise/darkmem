@@ -605,6 +605,27 @@ def _pass_two() -> None:
     )
     op.execute("CREATE INDEX ix_fact_sources_fact ON fact_sources (fact_id)")
 
+    # The fact-keyed analogue of memory_access_stats (doc 08 §6, T2.84,
+    # 2026-08-05). T2.65 measured that FactsChannel serves knowledge_triples
+    # rows directly and records heat nowhere, so review_ranking's frequency
+    # arm degraded toward zero for facts channel traffic; this table is the
+    # replacement substrate, fed from that channel's serving path the same
+    # way memory_access_stats is fed from the memory hybrid's. 1:1 side table
+    # for the identical reason memory_access_stats is one rather than two
+    # columns on knowledge_triples: a per-read bump must never rewrite the
+    # fact row itself, which knowledge_triples has no updated_at trigger to
+    # protect but which fact_lift and the verification ladder both read and
+    # write at a much lower rate than facts are served.
+    op.execute(
+        """
+        CREATE TABLE fact_access_stats (
+            fact_id       UUID PRIMARY KEY REFERENCES knowledge_triples(id) ON DELETE CASCADE,
+            access_count  INTEGER NOT NULL DEFAULT 0,
+            last_accessed TIMESTAMPTZ
+        )
+        """
+    )
+
     # ------------------------------------------------------------------
     # knowledge_articles + article_citations — Layer 3 (doc 04 §8.8)
     # ------------------------------------------------------------------
@@ -1200,6 +1221,7 @@ def downgrade() -> None:
         "repositories",
         "article_citations",
         "knowledge_articles",
+        "fact_access_stats",
         "fact_sources",
         "knowledge_triples",
         "blocks",

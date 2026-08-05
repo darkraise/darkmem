@@ -170,11 +170,15 @@ they are in §8, with their own vocabulary.
 | `knowledge_articles` | 04 §8.8 | T0.12b | `target-new` | T0.12b's "articles and citations". |
 | `article_citations` | 04 §8.8 | T0.12b | `target-new` | The one hard FK — `fact_id → knowledge_triples`. |
 | `memory_access_stats` | 04 §9 | — | `target-new` | 1:1 ranking-prior side table; keeps read churn off `memories` (F-02). |
+| `fact_access_stats` | 08 §6 | — | `target-new` | The fact-keyed analogue of `memory_access_stats` (T2.84, 2026-08-05): 1:1 ranking-prior side table, `fact_id → knowledge_triples(id)`. Minted after the original baseline design — doc 04 names no such table; T2.65 recorded the design, T2.84 built it once the schema window opened. Fed from `FactsChannel`'s serving path via the same coalescing-buffer idiom `access_stats.py` uses. |
 | `alembic_version` | — | n/a (Alembic) | `carries-over` | Alembic's own bookkeeping; doc 04 never names it (F-01). |
 
-**34 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; thirteen are
-target-new. The remaining five of A.1's twenty-six are dropped and live in §8, so
-`21 + 5 = 26` reconciles the roll-call against the manifest exactly.
+**35 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; fourteen are
+target-new — thirteen from the original baseline design plus `fact_access_stats`, minted
+by T2.84 (2026-08-05) after this inventory was first written. The remaining five of A.1's
+twenty-six are dropped and live in §8, so `21 + 5 = 26` reconciles the roll-call against
+the manifest exactly; `fact_access_stats` is outside that reconciliation because it was
+never part of A.1 in the first place.
 
 **Three classes of name doc 04 backticks are deliberately not roll-call rows.** The eight
 per-fingerprint **partition parents** (`memory_embeddings`, `entity_embeddings`,
@@ -477,6 +481,7 @@ behaviour change, not a tidy-up.
 | `memory_buffer` status CHECK | CHECK | `memory_buffer` | `CHECK (status IN ('pending','claimed','done','error'))` | `target-new` | 04 §8.6 | — (F-02) |
 | `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `(community_id, project) → memory_communities(id, project) ON DELETE CASCADE`; `(memory_id, project) → memories(id, project) ON DELETE CASCADE` — **both composite, and one alone is not enough**: with only the memory-side key, a row naming a project-A community, a project-B memory and project B satisfies every constraint and is still cross-project. All three columns are NOT NULL, so MATCH SIMPLE offers no null escape. No `ON UPDATE` action — a memory changing project clears its memberships first (T2.18) | `target-new` | 04 §8.4 | — (F-02) |
 | `memory_access_stats` PK + FK | PK, FK | `memory_access_stats` | `memory_id uuid PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE` | `target-new` | 04 §9 | — (F-02) |
+| `fact_access_stats` PK + FK | PK, FK | `fact_access_stats` | `fact_id uuid PRIMARY KEY REFERENCES knowledge_triples(id) ON DELETE CASCADE` | `target-new` | 08 §6 | T2.84 |
 | `project_repositories` PK + FK | PK, FK | `project_repositories` | `PRIMARY KEY (project, repo_id)`; `repo_id → repositories(id)` | `target-new` | 04 §8.7, §10 | — (F-02) |
 | `projects` PK | PK | `projects` | `PRIMARY KEY (name)` — lazy `INSERT … ON CONFLICT (name) DO NOTHING`; **no FK enforcement yet**, every scoped table keeps its bare `project text` | `target-new` | 04 §7, §10 | T0.12b |
 | `documents` / `blocks` FKs | FK | `documents`, `blocks` | `blocks.document_id → documents ON DELETE CASCADE`; `blocks.parent_id → blocks ON DELETE CASCADE` (deleting a block takes its subtree) | `target-new, inert` | 04 §8.5 | T0.13 |
@@ -1422,8 +1427,11 @@ lists exactly `darkmem`, `darkmem_bench`, `darkmem_test`, `postgres`, `template0
 
 **Check 3 — every table is dispositioned.** Set difference of Appendix A.1's table list
 against the union of §2's and §8's first columns. Expected: **empty in both directions**.
-Measured: A.1 = 26; §2 = 34 rows (21 shared with A.1 + 13 target-new); §8 = the remaining
-5. `21 + 5 = 26`.
+Measured: A.1 = 26; §2 = 35 rows (21 shared with A.1 + 14 target-new, one of which —
+`fact_access_stats`, T2.84 — was minted after this inventory was first written and is
+outside A.1 by construction); §8 = the remaining 5. `21 + 5 = 26`. The set-difference check
+below still holds unmodified: it only requires every A.1 table to land in §2 or §8, and a
+§2 row with no A.1 counterpart does not violate that.
 
 **Check 4 — every index, constraint, trigger, function and enum is dispositioned.** Five
 set differences of A.3–A.7 against §3 and §4. Expected: **five empty differences**.
