@@ -12,12 +12,21 @@ Two arms, because the property has two halves that fail independently:
   overwhelming pile of agreement and never crosses. Asserting this through the
   real applier is what makes it a claim about the shipped promotion path rather
   than about a constant.
-- **Structural.** Exactly two scopes in the tree write ``verification_status``
-  at all, and the pair is the guarantee: one refuses ``confirmed`` outright,
-  the other cannot execute without a ``human``-kind ``fact_sources`` row. A
-  source scan holds the "exactly two" half, because a third writer added later
-  would pass every behavioural test in this file — it would simply be a path
-  this file never drove.
+- **Structural.** A closed, listed set of scopes in the tree writes
+  ``verification_status`` at all, and each one's own guarantee is what makes
+  the set safe: one refuses ``confirmed`` outright, one cannot execute without
+  a ``human``-kind ``fact_sources`` row, one validates its rung against the
+  machine-writable set. A source scan holds the "exactly these" half, because a
+  writer added later would pass every behavioural test in this file — it would
+  simply be a path this file never drove.
+
+  *An entry on that list costs a behavioural pin, checked rather than argued.*
+  The third writer was admitted on the sentence "it binds a module constant",
+  and a review showed what that sentence is worth: mutating the constant to
+  ``confirmed`` left this whole file green while the writer minted
+  machine-``confirmed`` facts. Binding a constant says nothing about the
+  constant's value, so the allowlist below now maps each writer to the test
+  here that drives it and asserts what landed.
 
   *The scan asks which scopes write the column at all, rather than which
   mention the literal.* The narrower question was the first version and a Fable

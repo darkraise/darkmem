@@ -8,12 +8,18 @@ naive test while proving nothing:
   present and writes nothing — so a test that re-derives twice and counts one
   origin may be observing the no-op rather than the rule. Every re-index below
   changes the import set, so the derivation genuinely re-executes, and the
-  count is taken with the repository's own ``COUNT(DISTINCT origin_key)``.
+  count is taken with the repository's own ``COUNT(DISTINCT origin_key)``, and
+  its negative control counts a *shared* fact reading two — a control over two
+  differently-named repositories asserts scoping, not the counter.
 * **Born-corroborated is the ladder's only exception.** Asserted from three
   directions, because the exception is only as narrow as its narrowest guard:
   the minting function refuses every other source kind, the predicate that
   keeps the rung through a recompute cannot be satisfied by one, and a scan
-  pins the repository method's single caller.
+  pins the single caller of each door onto the rung — in any position, since
+  an aliased ``f = repo.open_born_corroborated`` is the same door reached
+  through a name. The rung is **restored** on the same evidence it was granted
+  on (fix round 1), which is why the veto's precedence and the count's
+  ownership of every other fact are asserted here rather than assumed.
 * **Withdrawal invalidates.** The row survives with ``invalid_at`` closed and
   ``expired_at`` NULL, and a fact another live source still holds is untouched
   — which is the half a withdrawal test usually skips.

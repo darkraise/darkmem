@@ -3,8 +3,12 @@
 Doc 08 §5.2. This derives *candidate* facts and their ``fact_sources`` from the
 Layer-1 candidate graph and then stops: the lift **creates** the fact and its
 provenance, the Tier-C recompute (T2.09) **counts and promotes**. Nothing here
-reads the ladder, adjudicates a contradiction, or writes ``verification_status``
-— the split is what keeps a producer from grading its own output.
+reads the ladder or adjudicates a contradiction — the split is what keeps a
+producer from grading its own output. The **only** verification-axis write in
+this module is doc 10 §6's exception below, on facts whose whole provenance is
+one repository's parse: the count has no opinion about those, so there is no
+grading of its own output to do. Every memory-derived fact leaves here
+``candidate``.
 
 **Identity is ``compute_triple_key``, and the project is part of it.** A
 relation asserted by memories in two projects lifts to two facts, each sourced
@@ -54,8 +58,10 @@ independent ways rather than by intent:
 
 * it is reachable through **one named function**, :func:`mint_born_corroborated`,
   which refuses any source kind but the deterministic one before it writes;
-* the rung itself is written by **one repository method**,
-  ``open_born_corroborated``, whose only caller that function is;
+* the rung itself is written by **one repository statement**,
+  ``KnowledgeTripleRepository._write_born_rung``, reached through two doors —
+  ``open_born_corroborated`` at birth and ``restore_born_corroborated`` after a
+  lapsed dispute — each with a single scan-pinned caller here;
 * it survives the ladder through **one predicate**,
   ``OriginProfile.parse_is_the_verification``, which reads the stored
   ``source_kind`` and so cannot be satisfied by a memory or a human origin.
