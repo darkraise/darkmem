@@ -70,6 +70,28 @@ may do is label one grounded without G-D's qualification record. Doc 09 §4.3
 already withholds never-grounded articles, so the shipped behaviour before M1 is
 the one the doc already describes.
 
+**Three seams inherited by name from T2.95's review round (2026-08-06).** All
+three are unreachable today because nothing in production writes articles, and
+each becomes live the moment this task does:
+
+1. **The review queue's articles arm serves the raw article status.**
+   `list_open_articles` emits `"status": row["status"]` without going through
+   `fact_badge.row_labels`, and the `knowledge_articles` CHECK admits
+   `'corroborated'`. T2.95's gate keys on `id_kind`, which cannot protect a path
+   that never asks it, and **both enforcement scans are blind to the `status`
+   spelling** — they quantify over `verification_status`. Route it through the
+   producer here, and widen the scan to the spelling.
+2. **Opening the article gate is the judge's door, not `claim_gates`.** T2.95
+   deliberately did not touch `verification_judge.py`: two modules deciding
+   whether the judge is qualified is the drift its single-door scan exists to
+   prevent. The seam is `served_status`'s `gate=` parameter, which `row_labels`
+   does not yet forward. Today articles route to an unconditionally-closed
+   groundedness gate — correct and inert; making it *open* on G-D's record is
+   this task's work.
+3. **A minted fact record must not light an article.** T2.95's round 1 made
+   that measured rather than inferred; keep the test that proves it when the
+   article path becomes reachable.
+
 **What.** Activates the job registered inert in T2.14. Synthesises **only** from
 non-disputed corroborated/confirmed facts — a disputed fact never reaches a draft.
 
