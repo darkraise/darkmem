@@ -12,12 +12,21 @@ Two arms, because the property has two halves that fail independently:
   overwhelming pile of agreement and never crosses. Asserting this through the
   real applier is what makes it a claim about the shipped promotion path rather
   than about a constant.
-- **Structural.** Exactly two scopes in the tree write ``verification_status``
-  at all, and the pair is the guarantee: one refuses ``confirmed`` outright,
-  the other cannot execute without a ``human``-kind ``fact_sources`` row. A
-  source scan holds the "exactly two" half, because a third writer added later
-  would pass every behavioural test in this file — it would simply be a path
-  this file never drove.
+- **Structural.** A closed, listed set of scopes in the tree writes
+  ``verification_status`` at all, and each one's own guarantee is what makes
+  the set safe: one refuses ``confirmed`` outright, one cannot execute without
+  a ``human``-kind ``fact_sources`` row, one validates its rung against the
+  machine-writable set. A source scan holds the "exactly these" half, because a
+  writer added later would pass every behavioural test in this file — it would
+  simply be a path this file never drove.
+
+  *An entry on that list costs a behavioural pin, checked rather than argued.*
+  The third writer was admitted on the sentence "it binds a module constant",
+  and a review showed what that sentence is worth: mutating the constant to
+  ``confirmed`` left this whole file green while the writer minted
+  machine-``confirmed`` facts. Binding a constant says nothing about the
+  constant's value, so the allowlist below now maps each writer to the test
+  here that drives it and asserts what landed.
 
   *The scan asks which scopes write the column at all, rather than which
   mention the literal.* The narrower question was the first version and a Fable
@@ -53,14 +62,39 @@ CORROBORATIONS = 25
 _BACKEND = Path(__file__).resolve().parents[2]
 _APP = _BACKEND / "app"
 
-# The scopes permitted to write the verification axis at all. Two, and the
-# pair is the guarantee: `set_verification_status` refuses `confirmed` outright
-# (its own ValueError, tested), and `ratify` cannot execute without a
-# `human`-kind source row (its UPDATE's own WHERE clause). A third writer
-# inherits neither and must argue itself onto this list in review.
+# The scopes permitted to write the verification axis at all, mapped to the
+# test **in this file** that drives each one and asserts it cannot land the
+# human's floor. The mapping is the admission rule, and it is checked below
+# rather than left to review.
+#
+# The argument the previous version of this comment made for the third
+# entry — that it "binds a module constant rather than a parameter, so the
+# rung it writes cannot be anything else" — does not generalise, and a review
+# demonstrated it: mutating that constant to `confirmed` left all 21 tests here
+# green while the writer minted machine-`confirmed` facts. Binding a constant
+# says nothing about the constant's *value*. So each writer now needs two
+# things, and neither is prose:
+#
+#   * a guarantee in the code — `set_verification_status` refuses `confirmed`
+#     outright, `ratify` cannot execute without a `human`-kind source row, and
+#     `_write_born_rung` validates its rung against the machine-writable set
+#     before the statement runs;
+#   * a behavioural pin here, named below, that drives the writer and asserts
+#     what landed — its **own** pin, not another entry's, which the check below
+#     enforces after a second review admitted a forger on a borrowed one. A
+#     fourth writer inherits neither and must bring both.
+#
+# `_write_born_rung` is doc 10 §6's parse-is-the-verification exception (T2.28)
+# and is the single statement that puts a fact on that rung, whether it is
+# being born there or restored to it after a lapsed dispute; `test_deriver_lift`
+# pins the callers of both its doors.
 _PERMITTED_WRITERS = {
-    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.ratify",
-    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.set_verification_status",
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository._write_born_rung":
+        "test_the_born_rung_writer_cannot_land_the_human_floor",
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.ratify":
+        "test_the_human_door_itself_refuses_without_a_human_source",
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.set_verification_status":
+        "test_the_machine_writer_refuses_the_literal",
 }
 
 
@@ -159,6 +193,36 @@ async def test_the_human_door_itself_refuses_without_a_human_source(session):
         await KnowledgeTripleRepository(session).ratify(fact_id)
 
     assert await _status(session, fact_id) == "corroborated"
+
+
+@pytest.mark.asyncio
+async def test_the_born_rung_writer_cannot_land_the_human_floor(session):
+    """The third writer's own pin, and the one this file was missing.
+
+    The scan below sees *that* this writer touches the axis, never which value
+    it writes; the writer re-reads what landed, but against the same constant,
+    so it cannot catch that constant drifting. Both routes onto the rung are
+    driven here and the landed status is compared against ``CONFIRMED`` —
+    a different constant, which is what makes the comparison able to fail.
+    """
+    repo = KnowledgeTripleRepository(session)
+    born = await repo.open_born_corroborated(
+        triple_key=f"honesty-{uuid4()}",
+        subject_name="darkmem",
+        object_name="httpx",
+        rel_type="DEPENDS_ON",
+        fact="darkmem depends on httpx",
+        reference_time=REFERENCE,
+        project=PROJECT,
+    )
+    await session.flush()
+    assert born["verification_status"] != CONFIRMED
+    assert await _status(session, born["id"]) != CONFIRMED
+
+    demoted = await _fact(session, subject="darkmem", obj="uvicorn")
+    assert await repo.restore_born_corroborated(demoted) is True
+    await session.flush()
+    assert await _status(session, demoted) != CONFIRMED
 
 
 @pytest.mark.asyncio
@@ -448,11 +512,53 @@ def test_exactly_the_permitted_writers_touch_the_verification_axis():
         f"expected exactly {sorted(_PERMITTED_WRITERS)} to write "
         f"{_COLUMN!r}, found {writers}. A second path to the human's floor is "
         f"the forged-ratification failure this spec exists to refuse: it would "
-        f"pass every behavioural test above simply by never being driven. Of "
-        f"the two permitted writers, set_verification_status refuses "
-        f"{CONFIRMED!r} outright and ratify demands a human source row — a "
-        f"third writer inherits neither guarantee and must argue itself onto "
-        f"the allowlist."
+        f"pass every behavioural test above simply by never being driven. Each "
+        f"permitted writer carries a guarantee in the code and a behavioural "
+        f"pin in this file; a new writer inherits neither and must bring both."
+    )
+
+
+def test_every_permitted_writer_is_pinned_by_a_test_in_this_file():
+    """The admission rule, executable rather than argued in the comment above.
+
+    A writer earns its place on the allowlist by being *driven* here and having
+    what it landed asserted — because the scan is value-blind by design, and an
+    allowlist entry whose whole guarantee is a sentence is how a writer that
+    mints ``confirmed`` sits in plain sight and passes. That is exactly what a
+    review found: the third entry's guarantee was a comment, and mutating the
+    constant it binds left this whole file green.
+
+    What this cannot check is that the named test asserts the *right* thing —
+    no rule can, and that limit stands unchanged. What it does is force the pin
+    to exist, to be **distinct**, to live beside the property, and to be
+    reviewed here rather than in whatever file the writer's own feature tests
+    happen to be in.
+    """
+    missing = {
+        writer: pin
+        for writer, pin in _PERMITTED_WRITERS.items()
+        if pin not in globals() or not callable(globals()[pin])
+    }
+    assert not missing, (
+        f"allowlisted writer(s) name a behavioural pin that does not exist in "
+        f"this module: {missing}. The pin is the admission price."
+    )
+
+    # Existence alone admits a *borrowed* pin: a review demonstrated a fourth
+    # writer minting `confirmed` unconditionally, allowlisted against an
+    # already-shipped pin's name, passing this file untouched. Distinctness does
+    # not make the pin correct — nothing can — but it stops an entry from being
+    # paid for with another writer's test, so a forger has to add a function to
+    # this reviewed file rather than only a line to the mapping above.
+    borrowed = sorted(
+        pin for pin in set(_PERMITTED_WRITERS.values())
+        if list(_PERMITTED_WRITERS.values()).count(pin) > 1
+    )
+    assert not borrowed, (
+        f"pin(s) {borrowed} are named by more than one allowlisted writer. A "
+        f"pin drives one writer and asserts what that writer landed; shared, "
+        f"it certifies whichever writer it happens to drive and admits the "
+        f"other for free."
     )
 
 

@@ -69,6 +69,7 @@ from app.services.fact_lift import (
     DEFAULT_LIFT_BATCH,
     DEFAULT_MIN_ASSERTING_MEMORIES,
     LIFT_CONFIG_SCHEMA,
+    run_code_lift,
     run_lift,
 )
 from app.services.job_registry import FieldDescriptor, Job, JobRegistry, JobRunner
@@ -196,19 +197,36 @@ def _make_lift_runner(registry: JobRegistry, key: str) -> JobRunner:
         cfg = await registry.load_config(key)
         settings = {**registry.get(key).default_config, **cfg.config}
         async with registry.session_factory() as session:
+            batch_size = int(settings.get("batch_size", DEFAULT_LIFT_BATCH))
             outcome = await run_lift(
                 session,
-                batch_size=int(settings.get("batch_size", DEFAULT_LIFT_BATCH)),
+                batch_size=batch_size,
                 min_asserting_memories=int(
                     settings.get("min_asserting_memories", DEFAULT_MIN_ASSERTING_MEMORIES)
                 ),
             )
+            # The code half rides the same tick and the same `batch_size`
+            # rather than its own job (doc 10 §6 assigns the lift to
+            # consolidation, and a second job key would be a seventh family
+            # member the invariant-15 scan derives from this module's imports).
+            # `min_asserting_memories` is the memory half's salience bar and
+            # has no code analogue: a repository's import either exists or does
+            # not, so there is no count to threshold.
+            code = await run_code_lift(session, batch_size=batch_size)
             await session.commit()
         logger.info(
             "Fact lifting scanned %d candidate(s): %d fact(s) created, "
             "%d source(s) added, %d sources_changed event(s) emitted",
             outcome.candidates, outcome.facts_created,
             outcome.sources_added, outcome.events_emitted,
+        )
+        logger.info(
+            "Code fact lifting scanned %d candidate(s): %d fact(s) born "
+            "corroborated, %d source(s) added, %d source(s) withdrawn, "
+            "%d fact(s) invalidated, %d rung(s) restored",
+            code.candidates, code.facts_created, code.sources_added,
+            code.sources_withdrawn, code.facts_invalidated,
+            code.rungs_restored,
         )
 
     return run

@@ -88,6 +88,22 @@ and the diversity rule as `config` rows.
 **What.** Only a human ratifying, writing a `human`-kind `fact_sources` row, reaches
 `confirmed`. No machine path exists.
 
+**Rejection does not survive a re-derivation, and that is the semantics rather
+than a defect** (recorded 2026-08-06 from T2.28's rescope-1, deferred there as
+out of scope). A human rejecting a *code-derived* fact leaves the belief closed
+on that row — `reject_fact` expires it — and T2.28's restore respects that: the
+born-rung statement's WHERE carries the open-belief predicate, so no machine
+path puts a label back on the rejected row. But T2.28's **birth** path is keyed
+on `triple_key`, not on the rejected row, so while the repository still asserts
+the import the next lift tick mints a *new* open row born `corroborated` for the
+same triple. That is the round-0-reviewed "re-adding opens a new window"
+semantics and it is arguably correct — the code does still depend on the
+package, and a person's verdict about one belief window is not a standing veto
+over the world changing back. Whoever builds this task's adjudication surface
+should state the consequence to the human rather than let them discover it: a
+rejection over a fact whose evidence is a live parse is not permanent, and the
+durable remedy is removing the dependency, not re-rejecting the fact.
+
 **Done when:**
 - [ ] No code path sets `confirmed` without a `human` source row
 - [ ] Ratification is single-door by design (doc 18) and never an API-key scope

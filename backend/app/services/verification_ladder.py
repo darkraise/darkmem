@@ -563,6 +563,23 @@ def decide(
     # this function may have, so it is interposed at the applier on this
     # first-class `demote` outcome (`apply_demotion_hysteresis`, below).
     if current_status == "corroborated":
+        # The count's one exception (doc 08 §4.1, doc 10 §6): a fact a
+        # repository's parsed imports assert is born `corroborated` because
+        # the parse *is* the verification, and one such origin never reaches
+        # N. Without this branch every one of those facts would be demoted by
+        # the first recompute that saw it, so the birth would be a label with
+        # a lifetime of one tick.
+        #
+        # **It holds a rung; it never grants one.** Reached only when the
+        # fact already sits at `corroborated`, only after the confirmed hold
+        # and the absolute veto, and it returns the ordinary unblocked hold —
+        # which journals nothing, so no `verified` row is written and G-C's
+        # promotion rate sees neither a numerator nor a denominator entry it
+        # did not see before. A fact below the rung still climbs by count
+        # alone: a candidate a repo also asserts gains a second origin of a
+        # second kind, which is the ordinary diversity gate, not this.
+        if profile.parse_is_the_verification:
+            return settled("corroborated", "hold")
         return settled("candidate", "demote")
     return settled("candidate", "hold")
 

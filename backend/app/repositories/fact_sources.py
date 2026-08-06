@@ -105,10 +105,17 @@ logger = logging.getLogger(__name__)
 # silently, and a guard 2 whose predicate no longer matches the unique index's
 # scope fails in exactly the total direction described above.
 
+# The deterministic kind: a repository's parsed imports. Spelled once because
+# three things key on it — the provenance writer, the ladder's one exception
+# below, and the withdrawal that closes a code fact's window — and a fourth
+# spelling would be a fourth chance for them to disagree about which rows the
+# exception covers.
+CODE_SOURCE_KIND = "code"
+
 # The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
 # {memory, block, code, human}; `block` is held in _RESERVED_SOURCE_KINDS below
 # because no producer writes one yet.
-SOURCE_KINDS = frozenset({"memory", "code", "human"})
+SOURCE_KINDS = frozenset({MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, "human"})
 
 _RESERVED_SOURCE_KINDS = {
     "block": "no producer writes one yet",
@@ -213,6 +220,42 @@ class OriginProfile:
         bucket that names no session, so both gates read this instead.
         """
         return tuple(o for o in self.origins if not o.is_unknown)
+
+    @property
+    def parse_is_the_verification(self) -> bool:
+        """Whether a deterministic code origin stands behind this fact.
+
+        The **one** exception to "corroboration counts distinct origins" (doc
+        08 §4.1, doc 10 §6): a fact minted from a repository's parsed imports
+        is born ``corroborated`` because the parse *is* the verification, so a
+        single such origin holds a rung the count alone would not reach.
+
+        Stated as a property of the provenance rather than as a branch in the
+        ladder, and read from ``source_kinds`` — which is derived from the
+        stored rows — so the exception is a fact about the evidence, not a
+        flag a caller can set. It names exactly one kind: a ``memory`` or
+        ``human`` origin can never satisfy it, whatever else the profile
+        holds, and widening it means editing this one predicate.
+
+        It answers "is this rung already justified", never "how many origins
+        are needed": :meth:`required_origin_count_for` is untouched, so the
+        count-based ladder and its G-C promotion metrics keep reporting the
+        same ``k`` and ``n`` they always did for these facts.
+
+        **Its trust boundary, named rather than left to be discovered.** This
+        reads the stored kind and does not ask whether the repository the row
+        points at still exists or still asserts the triple — it cannot, without
+        the session this dataclass has none of, and a per-decision cross-side
+        read is exactly the crossing doc 10 §2 keeps out of the ladder. So a
+        ``code`` row whose ``source_ref`` names no live repository would hold a
+        rung for one tick. Nothing in the tree can write one (``fact_lift`` is
+        the only producer of the kind and writes a live repository's id), and
+        ``fact_lift.reconcile_code_sources`` withdraws it on the next tick,
+        after which the ordinary demotion applies. The *grant* side has no such
+        window at all: the restore runs only over provenance that pass retained
+        against a live repository's current assertions.
+        """
+        return CODE_SOURCE_KIND in self.source_kinds
 
     @property
     def kinds_are_diverse(self) -> bool:
