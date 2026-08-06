@@ -224,7 +224,7 @@ gets one more row, on top of whatever the fast arm already produced.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -665,6 +665,60 @@ async def _reconcile_from_fact_sources(
     return outcome, new_state
 
 
+
+# ── the stated-expiry arm (T2.85, doc 08 §3.1/§9 as amended 2026-08-06) ──
+
+
+@dataclass(frozen=True)
+class StatedExpiryOutcome:
+    """How many open beliefs the arm closed this tick."""
+
+    windows_closed: int = 0
+
+
+_CLOSE_STATED_EXPIRY = text(
+    """
+    UPDATE knowledge_triples
+    SET invalid_at = stated_expiry
+    WHERE expired_at IS NULL
+      AND invalid_at IS NULL
+      AND stated_expiry IS NOT NULL
+      AND stated_expiry <= CAST(:moment AS timestamptz)
+    RETURNING CAST(id AS text)
+    """
+)
+
+
+async def _close_stated_expiries(
+    session: AsyncSession, *, moment: datetime, batch_size: int
+) -> StatedExpiryOutcome:
+    """Close the belief window of every fact whose stated expiry has passed.
+
+    **`invalid_at`, not `expired_at`, and the difference is the whole ruling.**
+    `expired_at` means the fact was withdrawn — sources gone — and `as_of`
+    deliberately ignores it, so recording a stated expiry there answers the
+    historical question wrongly for every instant past the date: the fact would
+    still read as believed. `invalid_at` is what closes a belief window, which
+    is what a stated expiry actually is.
+
+    **And it is written only once the date has passed**, never at lift time.
+    `invalid_at` is only-ever-past by contract — `OPEN_BELIEF_PREDICATE` is
+    `expired_at IS NULL AND invalid_at IS NULL`, with no time comparison — so a
+    future `invalid_at` would drop the fact out of the retrieval channel the
+    day it was written rather than the day it expires. That is doc 08 §9's
+    literal reading, and it is the one this ruling rejects.
+
+    Set-based rather than row-by-row: the predicate matches the partial index
+    `ix_knowledge_triples_stated_expiry` exactly, and closing a window is a
+    single column write with no per-fact ladder to re-run. It is idempotent —
+    a closed window no longer matches `invalid_at IS NULL`.
+    """
+    if batch_size <= 0:
+        return StatedExpiryOutcome()
+    result = await session.execute(_CLOSE_STATED_EXPIRY, {"moment": moment})
+    return StatedExpiryOutcome(windows_closed=len(result.all()))
+
+
 # ── the tick ─────────────────────────────────────────────────────────────
 
 
@@ -673,6 +727,7 @@ class RecomputeOutcome:
     drain: DrainOutcome
     reconcile: ReconcileOutcome
     slow_arm_ran: bool
+    stated_expiry: StatedExpiryOutcome = field(default_factory=StatedExpiryOutcome)
 
 
 async def run_recompute(
@@ -712,7 +767,17 @@ async def run_recompute(
     else:
         reconcile_outcome = ReconcileOutcome()
 
+    # Runs every tick, not on the slow arm's cadence: a stated expiry is a
+    # date the corpus already committed to, so the only thing standing between
+    # a passed date and a closed window is how often this fires. It is one
+    # indexed UPDATE over a small partial index, which is cheap enough to pay
+    # at the fast cadence.
+    expiry_outcome = await _close_stated_expiries(
+        session, moment=moment, batch_size=batch_size,
+    )
+
     await _save_state(session, state)
     return RecomputeOutcome(
-        drain=drain_outcome, reconcile=reconcile_outcome, slow_arm_ran=due
+        drain=drain_outcome, reconcile=reconcile_outcome, slow_arm_ran=due,
+        stated_expiry=expiry_outcome,
     )

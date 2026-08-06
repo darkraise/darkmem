@@ -514,6 +514,17 @@ def _pass_two() -> None:
             source_file         TEXT,
             demotion_pending_since  TIMESTAMPTZ,
             demotion_pending_cycles INTEGER NOT NULL DEFAULT 0,
+            -- T2.85 (doc 08 §3.1/§9, ruled 2026-08-06). The expiry a fact's
+            -- own text STATES, recorded at lift time and spent later by the
+            -- recompute arm, which writes invalid_at := stated_expiry once
+            -- the date passes. It is deliberately NOT invalid_at at write
+            -- time: invalid_at is only-ever-past by contract, and a future
+            -- one drops the fact out of OPEN_BELIEF_PREDICATE the day it is
+            -- written. It is deliberately NOT expired_at either: as_of
+            -- ignores expired_at, so a stated expiry recorded there answers
+            -- the historical question wrongly for every instant past the
+            -- date. Nullable; a fact whose text states no expiry has none.
+            stated_expiry       TIMESTAMPTZ,
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT knowledge_triples_pkey PRIMARY KEY (id),
             CONSTRAINT knowledge_triples_verification_status_check
@@ -542,6 +553,15 @@ def _pass_two() -> None:
     op.execute(
         "CREATE INDEX ix_knowledge_triples_review ON knowledge_triples (review_state) "
         "WHERE review_state = 'open'"
+    )
+    # The recompute arm's sweep: open beliefs carrying a stated expiry, which
+    # is a small subset of a small subset. Partial on the same two-NULL
+    # predicate the open-belief indexes use, so it stays in step with them.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_stated_expiry "
+        "ON knowledge_triples (stated_expiry) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL "
+        "AND stated_expiry IS NOT NULL"
     )
     # The three the Layer-2 retrieval channel is born with (doc 07 §2, §7).
     # All three are partial on the CURRENTLY-OPEN-BELIEF window rather than on
