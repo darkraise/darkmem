@@ -30,6 +30,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.claim_gates import ungated_status
 from app.services.events import record_event
 from app.utils.ids import new_id
 
@@ -788,10 +789,18 @@ class KnowledgeTripleRepository:
             )
         changed = status is not None and prior_row["verification_status"] != status
         if changed or contradiction_blocked or supersession_blocked:
+            # Journal, not label: the two rungs a transition moved between are
+            # the history of the ladder, and a gated copy would record a
+            # movement that did not happen. `ungated_status` says so at the
+            # site — see `claim_gates` for what the declaration commits to.
             payload: dict[str, Any] = {
-                "before": {"verification_status": prior_row["verification_status"]},
+                "before": {
+                    "verification_status": ungated_status(
+                        prior_row["verification_status"]
+                    )
+                },
                 "after": {
-                    "verification_status": (
+                    "verification_status": ungated_status(
                         status if status is not None else prior_row["verification_status"]
                     )
                 },
@@ -914,8 +923,12 @@ class KnowledgeTripleRepository:
                 object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
                 project=prior_row["project"],
                 payload={
-                    "before": {"verification_status": prior_row["verification_status"]},
-                    "after": {"verification_status": CONFIRMED},
+                    "before": {
+                        "verification_status": ungated_status(
+                            prior_row["verification_status"]
+                        )
+                    },
+                    "after": {"verification_status": ungated_status(CONFIRMED)},
                     "outcome": RATIFY_OUTCOME,
                 },
             )

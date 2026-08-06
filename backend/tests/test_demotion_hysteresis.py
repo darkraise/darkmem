@@ -843,10 +843,18 @@ class TestServedLabelled:
         assert response.status_code == 200
         assert _wire_instant(response.json()["demotion_pending_since"]) == NOW
 
-    async def test_the_review_queue_names_the_reason(self, session):
+    async def test_the_review_queue_names_the_reason(
+        self, session, cleared_promotion_record
+    ):
         """R3: T2.46 supplies the distinguishing column ``review_queue``'s
         docstring said did not exist yet, so this row stops reporting
-        ``unspecified``."""
+        ``unspecified``.
+
+        The gate is opened because the assertion is about the rung an
+        under-sourced fact still holds, not about T2.95's suppression of it —
+        which ``tests/test_claim_serving_gates.py`` drives at this same door
+        unfixtured.
+        """
         fact_id = await _under_sourced_fact(session)
 
         items, total = await list_open_facts(session, project=PROJECT)

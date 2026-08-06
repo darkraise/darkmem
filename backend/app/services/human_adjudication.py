@@ -80,6 +80,7 @@ from app.repositories.knowledge_triples import (
     HUMAN_SOURCE_KIND,
     KnowledgeTripleRepository,
 )
+from app.services.claim_gates import ungated_status
 from app.services.events import record_event
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,9 @@ async def record_human_verdict(
         )
     payload: dict = {
         "verdict": verdict,
-        "verification_status": verification_status,
+        # Journal, not label: the audit asks which rung the fact held when the
+        # human acted, and a gated copy would answer a different question.
+        "verification_status": ungated_status(verification_status),
         "review_state": review_state,
     }
     if note:
@@ -203,9 +206,12 @@ async def reject_fact(
         actor=actor,
         note=note,
     )
+    # The pre-rejection row, for a caller's own bookkeeping. The REST door
+    # discards it and answers 204 by design, so nothing here reaches a reader
+    # as a label.
     return {
         "project": row["project"],
-        "verification_status": row["verification_status"],
+        "verification_status": ungated_status(row["verification_status"]),
         "review_state": row["review_state"],
     }
 

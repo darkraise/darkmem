@@ -72,7 +72,13 @@ class ReviewQueueFactItem(BaseModel):
     valid_at: datetime | None
     invalid_at: datetime | None
     expired_at: datetime | None
+    # The rung this door may serve, through `fact_badge.row_labels` like every
+    # other labelled surface, with the suppression reason beside it (T2.95).
+    # A triager is a reader: the queue used to serve the raw column, so a
+    # `corroborated` rung whose promotion audit does not exist reached the one
+    # screen whose whole purpose is judging how well-supported a fact is.
     verification_status: str
+    label_suppressed: str | None = None
     confidence: float | None
     review_state: str | None
     # Doc 08 §4.3's under-sourced marker, carried beside `reason` rather than

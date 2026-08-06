@@ -107,6 +107,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.claim_gates import FACT_ID_KIND
+from app.services.fact_badge import row_labels
 from app.services.review_ranking import (
     DEFAULT_RANKING_CONFIG,
     RankingConfig,
@@ -169,6 +171,24 @@ _ARTICLE_COLUMNS = (
     "fact_set_hash, review_state, synthesized_at, created_at, "
     "LEFT(content, 200) AS content_preview"
 )
+
+
+def _served_labels(verification_status: str | None) -> dict[str, Any]:
+    """The rung this door may serve, and why it differs from the column.
+
+    ``row_labels`` is asked for the whole triplet and two keys are taken: the
+    queue item declares no badge (the claim sentence belongs to the fact
+    surfaces) and no lifecycle. Taking them from the producer rather than
+    calling the gate directly is what keeps this door one of its consumers
+    instead of a second implementation of it.
+    """
+    labels = row_labels(
+        id_kind=FACT_ID_KIND, verification_status=verification_status
+    )
+    return {
+        "verification_status": labels["verification_status"],
+        "label_suppressed": labels["label_suppressed"],
+    }
 
 
 def _fact_reason(
@@ -333,10 +353,17 @@ async def list_open_facts(
                 "valid_at": row["valid_at"],
                 "invalid_at": row["invalid_at"],
                 "expired_at": row["expired_at"],
-                "verification_status": row["verification_status"],
+                # Through doc 12's one producer, like every other labelled
+                # door. A triager is a reader: serving the raw column here
+                # showed a `corroborated` rung whose promotion audit does not
+                # exist, on rows that are queued precisely because their
+                # support is in question.
+                **_served_labels(row["verification_status"]),
                 "confidence": row["confidence"],
                 "review_state": row["review_state"],
                 "demotion_pending_since": row["demotion_pending_since"],
+                # Derived from the raw rung, which is what a reason is for: it
+                # answers why the row is queued, and `disputed` is ungated.
                 "reason": _fact_reason(
                     row["verification_status"], row["demotion_pending_since"]
                 ),

@@ -49,6 +49,10 @@ export interface FactListItem {
   /** Doc 07 §5's cold-start label (T2.56): the facts list's own door onto
    *  the same `row_labels` tier the composed read's wire carries. */
   unverified: boolean
+  /** T2.95: why a promoted rung was withheld for want of its evidence record,
+   *  null when nothing was. Without it a suppressed row and a genuine
+   *  `candidate` read identically. */
+  label_suppressed: string | null
   confidence: number | null
   review_state: string | null
   /** T2.46's `under-sourced` overlay: non-null means a demotion is pending

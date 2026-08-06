@@ -45,14 +45,22 @@ _RECORD_DIR = Path(__file__).resolve().parent
 # the corroboration ladder. Minted by T2.40's run, never by hand.
 PROMOTION_RECORD_PATH = _RECORD_DIR / "promotion_metrics_record.json"
 
-# **The groundedness gate is deliberately NOT in this module.** Whether an
-# article may be labelled grounded is a question about the judge's
+# **The groundedness record is deliberately NOT read in this module.** Whether
+# an article may be labelled grounded is a question about the judge's
 # qualification; the judge module already owns that record, and a scan enforces
 # that it is the single door every consumer goes through. Importing the record
 # path to re-ask the question here tripped that scan, correctly — two modules in
 # the business of deciding whether the judge is qualified is exactly the drift
 # it exists to prevent. The article path asks the judge directly when it is
 # built (T3.02 / T3.23).
+#
+# What lives here instead is the *refusal*: an article's promoted status is
+# withheld unconditionally, because this module cannot ask the only question
+# that could release it. That is strictly stronger than the fact gate and
+# cannot be wrong in the unsafe direction — the failure mode it removes is the
+# one the review measured by inference: without keying on `id_kind`, minting
+# G-C's *fact* record would light an article's label with the article evidence
+# still absent (doc 08 §4.3 and doc 09 §4.3 keep the two records distinct).
 #
 # Note for whoever meets that scan next: it matches the module name as **text**,
 # so it fires on prose as well as imports. Writing around it is cheaper than
@@ -74,6 +82,9 @@ PROMOTION_RECORD_PATH = _RECORD_DIR / "promotion_metrics_record.json"
 PROMOTED_STATUSES: frozenset[str] = frozenset({"corroborated"})
 
 SUPPRESSED_STATUS = "candidate"
+
+FACT_ID_KIND = "fact"
+ARTICLE_ID_KIND = "article"
 
 REASON_NO_PROMOTION_RECORD = (
     "verification_unmeasured: the corroboration ladder has no G-C evidence "
@@ -137,17 +148,80 @@ def corroboration_gate(path: Path | None = None) -> ClaimGate:
     return ClaimGate(True)
 
 
-def served_status(status: str | None, gate: ClaimGate | None = None) -> tuple[str | None, str | None]:
+def groundedness_gate() -> ClaimGate:
+    """Whether a promoted article status may reach a reader. It may not.
+
+    Closed unconditionally, and the closure is the honest answer rather than a
+    placeholder: an article's claim is certified by G-D's judge qualification,
+    the judge module owns that record and is scan-enforced as its single door,
+    and this module may not ask it. A gate that cannot ask its question refuses.
+
+    Opening it is the judge's own door to open when the article channel is
+    built (T3.02 / T3.23), not a second reader of the qualification record
+    here.
+    """
+    return ClaimGate(False, REASON_NO_QUALIFICATION_RECORD)
+
+
+# The claim decides its own evidence. A fact's promoted rung is certified by
+# G-C's promotion audit and an article's by G-D's judge qualification, so one
+# gate serving both would let either record light the other's label.
+_GATE_BY_ID_KIND = {
+    FACT_ID_KIND: corroboration_gate,
+    ARTICLE_ID_KIND: groundedness_gate,
+}
+
+
+def served_status(
+    status: str | None, *, id_kind: str, gate: ClaimGate | None = None
+) -> tuple[str | None, str | None]:
     """The status a reader may see, and the suppression reason if it differs.
 
     ``(status, None)`` when nothing was withheld — including for `candidate`
     and `disputed`, which assert nothing needing evidence. ``(candidate,
     reason)`` when a promoted status was withheld, so a consumer can tell a
     measured absence of corroboration from an unmeasured verifier.
+
+    ``id_kind`` is required rather than defaulted: the default would have to
+    name one claim, and every caller that forgot it would silently gate its
+    rows against the *other* claim's evidence. An unknown kind raises, so a new
+    labelled surface fails loud instead of ungated.
     """
     if status not in PROMOTED_STATUSES:
         return status, None
-    gate = corroboration_gate() if gate is None else gate
+    if gate is None:
+        try:
+            resolve = _GATE_BY_ID_KIND[id_kind]
+        except (KeyError, TypeError):
+            raise ValueError(
+                f"no claim gate is defined for id_kind {id_kind!r}; the "
+                f"evidence records are per claim ({sorted(_GATE_BY_ID_KIND)}) "
+                "and serving a promoted status under an unrecognised one "
+                "would be gating it against nothing"
+            ) from None
+        gate = resolve()
     if gate.open:
         return status, None
     return SUPPRESSED_STATUS, gate.reason
+
+
+def ungated_status(status: str | None) -> str | None:
+    """The raw status, declared at its site as something no reader is served.
+
+    A verification status legitimately appears outside a served label — in a
+    journal payload recording which rung a transition moved off, in a candidate
+    row handed to the ranking that doc 12 lets consume promoted statuses
+    internally, in an operational return value a route discards. The scan in
+    ``tests/test_claim_serving_gates.py`` quantifies over *every*
+    ``verification_status`` emission in ``app/`` rather than enumerating the
+    ones it knows, so those sites need a way to say which side of the gate they
+    are on.
+
+    This is that way, and it is a call rather than a comment on purpose: the
+    scan reads the parsed tree, so prose can neither claim the exemption nor
+    trip the guard. Wrapping a value here is a claim that the value reaches no
+    reader as a label. A serving path that wraps itself to quiet the scan has
+    written that claim down falsely, which is a reviewable act; writing a raw
+    dict entry was not.
+    """
+    return status

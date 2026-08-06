@@ -491,13 +491,24 @@ def _labels(candidate: LayerCandidate) -> dict:
     through on a fact for exactly the reason it does not move it: doc 08
     §4.3's under-sourced overlay is a label a consumer may render, not a rung
     this layer may re-derive.
+
+    The rung comes from ``row_labels`` even though :func:`_badge_labels`
+    overwrites it whenever badges were derived. Composing without badges is a
+    supported call (``compose(badges=None)``), and on that path this dict *is*
+    the served labels — spelling the raw attribute here left a promoted status
+    on the wire for every caller that took it.
     """
     row = candidate.row
     labels: dict = {"project": row.get("project")}
     if candidate.id_kind == "memory":
         labels["status"] = row.get("status")
     else:
-        labels["verification_status"] = candidate.verification_status
+        gated = row_labels(
+            id_kind=candidate.id_kind,
+            verification_status=candidate.verification_status,
+        )
+        labels["verification_status"] = gated["verification_status"]
+        labels["label_suppressed"] = gated["label_suppressed"]
         labels["review_state"] = row.get("review_state")
     return labels
 
