@@ -36,6 +36,7 @@ from sqlalchemy import text
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.services.code_deriver import (
+    _entity_type_for,
     assert_repo_graph,
     dependency_name,
     derive_assertions,
@@ -226,6 +227,37 @@ async def test_every_derived_type_is_in_the_closed_vocabulary(session):
         assert entity["entity_type"] in ENTITY_TYPES
     for relation in derived.relations:
         assert relation["rel_type"] in RELATIONSHIP_TYPES
+
+
+def test_the_type_ladder_is_the_extraction_path_s_ladder():
+    """Each rung of ``normalize -> refine`` demonstrably runs.
+
+    Asserting only that the output lands in ``ENTITY_TYPES`` proves nothing
+    here: every raw type the deriver starts from — ``project``, ``tool``,
+    ``language`` and the curated table's own values — is *already* canonical,
+    so a ladder that was skipped entirely would still produce a legal
+    vocabulary. These three cases each need a specific rung to have run.
+    """
+    # LEGACY_ENTITY_TYPE_MAP rewrites a historical name.
+    assert _entity_type_for("anything", "framework") == "tool"
+    # An unknown type falls back to concept rather than being stored raw.
+    assert _entity_type_for("anything", "widget") == "concept"
+    # refine_entity_type re-types a library-shaped name away from project.
+    assert _entity_type_for("darkraise-ui", "project") == "tool"
+
+
+@pytest.mark.asyncio
+async def test_a_library_shaped_repo_name_is_typed_as_the_corpus_types_it(session):
+    # The anchoring rule applied to the repo entity itself: a name a memory
+    # would land as `tool` must not land as `project` here, or the bridge
+    # produces two nodes for one thing — the exact failure it exists to avoid.
+    repo_id = await _seed_repo(session, name="Deriver-UI")
+    await assert_repo_graph(session, repo_id)
+
+    entity_type = (await session.execute(
+        text("SELECT entity_type FROM entities WHERE name = 'deriver-ui'")
+    )).scalar()
+    assert entity_type == "tool"
 
 
 @pytest.mark.asyncio
