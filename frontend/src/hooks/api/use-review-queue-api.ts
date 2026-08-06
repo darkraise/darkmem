@@ -52,19 +52,20 @@ export interface VerifiedEvidenceContradiction {
   enumeration: string
 }
 
-/** The `verified` journal payload, best-effort (doc 07 §5, T2.43). Absent
- *  fields mean "this transition did not carry that evidence", not "unknown
- *  value" — see `app/repositories/knowledge_triples.py`'s conditional
- *  payload assembly. */
-// `label_suppressed` rides inside the transition objects rather than beside
-// them: the backend gates each embedded rung independently, so a payload can
-// carry a withheld `after` next to a `before` that needed no gating. Reading
-// it at the payload level would flatten that apart.
+/** One side of a journalled transition. `label_suppressed` rides inside the
+ *  transition rather than beside it: the backend gates each embedded rung
+ *  independently, so a payload can carry a withheld `after` next to a
+ *  `before` that needed no gating. Reading it at the payload level would
+ *  flatten those apart. */
 export interface VerifiedEvidenceTransition {
   verification_status: string | null
   label_suppressed?: string | null
 }
 
+/** The `verified` journal payload, best-effort (doc 07 §5, T2.43). Absent
+ *  fields mean "this transition did not carry that evidence", not "unknown
+ *  value" — see `app/repositories/knowledge_triples.py`'s conditional
+ *  payload assembly. */
 export interface VerifiedEvidencePayload {
   before?: VerifiedEvidenceTransition
   after?: VerifiedEvidenceTransition
