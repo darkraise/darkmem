@@ -561,6 +561,43 @@ the latter, and reading it as forbidding both is what left this gap.
 
 **Verify.** `cd backend && python -m pytest tests/test_code_deriver.py -q`
 
+#### T2.100 — A declaration that says the wrong thing
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.99` · `Doc: 08 §4.3, 12 §4` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-06 from T2.99's adjacent finding (AF1), with the exposure
+itself ruled acceptable** (amendment log, same date). The journal keeps
+serving the rung; what must change is the marker that claims otherwise.
+
+`claim_gates.ungated_status` defines wrapping a value as **a claim that the
+value reaches no reader**. The ladder's journal sites wrap it — correctly,
+in that a journal payload is not a served label — but `list_events` then
+hands that payload to an authenticated reader under the same auth as the
+facts door. So the declaration is false at exactly the sites where it is
+load-bearing, and the enforcement scan reads it as a settled exemption.
+
+**A false declaration is worse than an undeclared site.** An undeclared site
+trips the scan and gets looked at; a falsely declared one is trusted by the
+scan and by the next person to read it. That is the whole defect here — the
+exposure is ruled, the lie is not.
+
+**What.** Split the marker so the audit substrate declares itself as the
+audit substrate: one meaning "this value reaches no reader at all", one
+meaning "this value reaches a reader as a *record of a computation*, never
+as a claim". Both remain scan-visible; neither may be a comment. The
+`ungated_status` docstring stops asserting something untrue of its own call
+sites.
+
+**Done when:**
+- [ ] Every current `ungated_status` site is re-classified deliberately, and
+      the report says which meaning each got and why
+- [ ] The scan distinguishes the two and still fails the build on an
+      undeclared emission
+- [ ] No site declares "reaches no reader" while a route serves it — proven
+      by driving the door, not by reading the call site
+
+**Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py -q`
+
 #### T2.99 — The topics door serves a raw-rung aggregate
 
 `Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.95` · `Doc: 08 §4.3, 09 §3` · `Tag: target-new` · `Gate: standing`
@@ -2592,6 +2629,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | T2.95, T2.99, T2.100 | 2 | **Ruled: the audit journal keeps serving the rung, and the M1 safety sentence narrows to say so.** `GET /api/v1/events?object_type=fact&event_type=verified` serves `payload` verbatim under the same `require_auth` as the facts door, and every ladder transition journals `before`/`after` `verification_status` — so for any fact that has ever transitioned, the withheld rung is **directly readable, without the subtraction** the two closed oracles needed. Accepted rather than closed. What does not stand is the *declaration*: `claim_gates.ungated_status` defines wrapping as a claim that the value "reaches no reader", and the journal sites hand it to an authenticated one. **T2.100** splits the marker so the audit substrate declares itself as such | Accepted for three reasons, and the first is decisive: **G-C's own false-promotion audit reads this journal.** Narrowing the substrate to protect the gate would degrade the evidence the gate is measured with, which is self-defeating. Second, T2.59 settled the analogous content-residue question the same way six hours earlier — accept and document, never an in-app journal-rewriting path, because "make this never have happened" one bug away from the audit substrate is the worse failure. Third, a journal row and a claim surface are different speech acts: one records what the ladder computed, the other asserts what is true, and a reader of `/events` is reading a computation log by construction. **The correction that matters more than the ruling**: the M1 split's sentence has been stated all day as *no serving path can reach a label whose evidence does not exist*, and that is false as written. The honest form is *no **claim surface** serves an unbacked label; the audit journal records the ladder's own transitions and an authenticated operator can read them.* A false declaration is worse than an undeclared site — the scan trusts it and so does the next reader — which is why the marker is a fix and the exposure is a ruling |
 | 2026-08-06 | T2.11 | 2 | **Ruled: a scan-applied dispute is permanent, and that is accepted rather than fixed.** T2.11's review established that once the ladder applies a scan dispute, doc 08 §5.3's own restriction to servable facts *not already disputed* means no later pass can re-adjudicate it — so a judge false positive whose guards keep holding is a permanent manufactured dispute, and the only exits are guard-lapse or human ratification. The exclusion stays; what changes is the detector docstring, which claimed a later clean pass ends the dispute and is false outside the pre-application race window | Accepted because every alternative is worse where it matters. The exclusion is what stops the scan re-paying LLM cost on facts it has already ruled on; a disputed fact is **served labelled with both sides** rather than dropped or hidden (doc 08 §6, invariant 14), so nothing is silently lost; and human ratification is a designed exit, not an accident — `confirmed` is the one rung that never depended on the automatic ladder. The precision-first asymmetry already accepts a bounded false-positive rate behind the 0.95 bar, and re-adjudicating disputes on a schedule would spend model budget re-litigating the judge's own verdicts, which is the tune-against-your-own-output loop this epic has twice been warned off. **The docstring is the real defect here**: a comment describing a recovery path the code does not have is worse than no comment, because the next reader budgets for self-healing that will not arrive. Logged Tier 2 rather than Tier 1 because it is a standing property of the truth layer that a doc-08 reader would want to know, not a task-local correction |
 | 2026-08-06 | T2.11, T2.98 | 2 | **T2.98 minted, and `CLAUDE.md`'s dream-job paragraph corrected.** T2.11's report records that `ix_knowledge_triples_live` leads on `subject_name`, so the object half of doc 08 §5.3's "index lookup" scans — T2.98 owns widening it, deliberately not T2.11, whose schema mandate was `pg_trgm` alone. Separately, the baseline's Jobs section said each dream-job body "is a `PlaceholderJobRunner` until its owning task lands", which had been stale through **four** landings and read as a claim the whole family was inert; five of six now have real runners and only `article_synthesis` remains. The frontend event-taxonomy map gained its missing `contradiction_scanned` entry in the same edit | Both surfaced by T2.11's executor and flagged rather than taken unilaterally, which was the right call on a shared file mid-round. The `CLAUDE.md` drift is the more interesting of the two: the sentence was never edited because it was written as a *rule* ("until its owning task lands") rather than a *state*, so every landing left it technically defensible and cumulatively misleading. A reader deciding whether the consolidation family does anything today would have got the wrong answer from the baseline document. Recorded as a shape to watch — a rule-shaped sentence about a changing state ages without ever becoming false enough to trip anyone into fixing it |
 | 2026-08-06 | T2.27, T2.96, T2.97 | 2 | **Two tasks minted from T2.27's completion report, both gaps the plan did not have a row for.** **T2.96** — the deriver has no caller: `assert_repo_graph` / `derive_assertions` are reachable from nothing in `backend/app` (controller-confirmed in the tree), so `repo_ids[]` has a writer that production never runs. **T2.97** — a repo-minted entity carries no embedding, so Phase-4's ANN probe cannot see it and anchoring degrades to exact `(name, entity_type)` match: `postgres` from code and `postgresql` from a memory stay two nodes where the memory path merges them. The schema inventory gains a plain statement that no scheduled path fills the arrays yet | T2.27's executor reported both accurately and judged that neither was an amendment. The controller disagrees on both, for the same reason each time: a stated deliverable is narrower than the doc claims it is, and **no row owns the gap**, which is the Tier-2 definition. Doc 10 §6 sells the bridge specifically on anchoring — *"the anchoring benefit that makes the bridge worth building"* — so exact-match-only anchoring is the same shape as T2.16 shipping two of three signals, which was logged Tier 2 on the same reasoning. The wiring gap matters for a second reason: **the inert label on both arrays retired in this task**, and invariant 23 exists to stop scaffolding being claimed as substrate. A writer existing is a fair basis for retiring "inert", but only if the inventory says plainly that nothing schedules it — otherwise the next reader of that table concludes the bridge is live. Worth recording that T2.97's root cause is a **misread of T2.27's own constraint**: "LLM-free" forbids an extraction call, and an embedder call is not one; reading the clause as forbidding both is what left the gap unclosed rather than merely deferred |
