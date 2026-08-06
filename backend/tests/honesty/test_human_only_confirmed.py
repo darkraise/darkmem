@@ -80,7 +80,9 @@ _APP = _BACKEND / "app"
 #     `_write_born_rung` validates its rung against the machine-writable set
 #     before the statement runs;
 #   * a behavioural pin here, named below, that drives the writer and asserts
-#     what landed. A fourth writer inherits neither and must bring both.
+#     what landed — its **own** pin, not another entry's, which the check below
+#     enforces after a second review admitted a forger on a borrowed one. A
+#     fourth writer inherits neither and must bring both.
 #
 # `_write_born_rung` is doc 10 §6's parse-is-the-verification exception (T2.28)
 # and is the single statement that puts a fact on that rung, whether it is
@@ -527,9 +529,10 @@ def test_every_permitted_writer_is_pinned_by_a_test_in_this_file():
     constant it binds left this whole file green.
 
     What this cannot check is that the named test asserts the *right* thing —
-    no rule can. What it does is force the pin to exist, to live beside the
-    property, and to be reviewed here rather than in whatever file the writer's
-    own feature tests happen to be in.
+    no rule can, and that limit stands unchanged. What it does is force the pin
+    to exist, to be **distinct**, to live beside the property, and to be
+    reviewed here rather than in whatever file the writer's own feature tests
+    happen to be in.
     """
     missing = {
         writer: pin
@@ -539,6 +542,23 @@ def test_every_permitted_writer_is_pinned_by_a_test_in_this_file():
     assert not missing, (
         f"allowlisted writer(s) name a behavioural pin that does not exist in "
         f"this module: {missing}. The pin is the admission price."
+    )
+
+    # Existence alone admits a *borrowed* pin: a review demonstrated a fourth
+    # writer minting `confirmed` unconditionally, allowlisted against an
+    # already-shipped pin's name, passing this file untouched. Distinctness does
+    # not make the pin correct — nothing can — but it stops an entry from being
+    # paid for with another writer's test, so a forger has to add a function to
+    # this reviewed file rather than only a line to the mapping above.
+    borrowed = sorted(
+        pin for pin in set(_PERMITTED_WRITERS.values())
+        if list(_PERMITTED_WRITERS.values()).count(pin) > 1
+    )
+    assert not borrowed, (
+        f"pin(s) {borrowed} are named by more than one allowlisted writer. A "
+        f"pin drives one writer and asserts what that writer landed; shared, "
+        f"it certifies whichever writer it happens to drive and admits the "
+        f"other for free."
     )
 
 
