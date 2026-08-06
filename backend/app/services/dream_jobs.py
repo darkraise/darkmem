@@ -22,7 +22,7 @@ members whose owning task has since landed:
 |---|---|---|
 | `verification_recompute` | T2.09 | shipped |
 | fact lifting | T2.10 | shipped |
-| `contradiction_scan` | T2.11 | placeholder |
+| `contradiction_scan` | T2.11 | shipped |
 | memory dreaming | T2.12 | shipped |
 | `article_synthesis` | T3.02 | placeholder |
 | `topic_detection` | T2.53 | shipped |
@@ -57,6 +57,14 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from app.services.contradiction_scan import (
+    CANDIDATE_TOP_K_KEY,
+    CONTRADICTION_SCAN_CONFIG_SCHEMA,
+    DEFAULT_CANDIDATE_TOP_K,
+    DEFAULT_SCAN_BATCH,
+    SCAN_BATCH_KEY,
+    run_contradiction_scan,
+)
 from app.services.fact_lift import (
     DEFAULT_LIFT_BATCH,
     DEFAULT_MIN_ASSERTING_MEMORIES,
@@ -141,6 +149,7 @@ DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 SHIPPED_DREAM_JOBS: dict[str, str] = {
     FACT_LIFT_JOB_KEY: "fact_lift",
     VERIFICATION_RECOMPUTE_JOB_KEY: "verification_recompute",
+    CONTRADICTION_SCAN_JOB_KEY: "contradiction_scan",
     MEMORY_DREAM_JOB_KEY: "memory_dream",
     TOPIC_DETECTION_JOB_KEY: "memory_community_detection",
 }
@@ -409,6 +418,47 @@ def _make_dream_runner(
     return run
 
 
+def _make_contradiction_runner(
+    registry: JobRegistry, key: str, llm_provider
+) -> JobRunner:
+    """The contradiction-scan tick, bound to the registry's session factory.
+
+    The provider is a callable for the same reason the dreaming pass takes one:
+    `app.state.llm` is replaced whole on a config save, so a closed-over
+    orchestrator keeps dispatching at the previous configuration. The scan owns
+    its sessions rather than being handed one — its adjudication phase is a
+    model fan-out, and a session held across that would sit idle in transaction
+    for as long as the provider takes.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings_ = {**registry.get(key).default_config, **cfg.config}
+        outcome = await run_contradiction_scan(
+            registry.session_factory,
+            llm_provider,
+            batch_size=int(settings_.get(SCAN_BATCH_KEY, DEFAULT_SCAN_BATCH)),
+            top_k=int(settings_.get(CANDIDATE_TOP_K_KEY, DEFAULT_CANDIDATE_TOP_K)),
+        )
+        logger.info(
+            "Contradiction scan drained %d event(s) touching %d fact(s): "
+            "%d checked (%d unservable), %d candidate(s) over %d judged pair(s) "
+            "-> %d dispute(s), %d clear(s). Misses %d "
+            "(%d incomplete, %d unscanned, %d truncated, %d refused, "
+            "%d failed, %d invalid); watermark %s%s",
+            outcome.events_scanned, outcome.facts_touched,
+            outcome.facts_checked, outcome.facts_skipped_unservable,
+            outcome.candidates_generated, outcome.pairs_judged,
+            outcome.disputes_recorded, outcome.clears_recorded,
+            outcome.misses, outcome.facts_incomplete, outcome.facts_unscanned,
+            outcome.candidates_truncated, outcome.judge_refused,
+            outcome.judge_failed, outcome.judge_invalid,
+            "advanced" if outcome.watermark_advanced else "held",
+            f", skipped: {outcome.skipped_reason}" if outcome.skipped_reason else "",
+        )
+
+    return run
+
+
 def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     return [FieldDescriptor(
         key="batch_size", label="Batch Size", default=default,
@@ -458,30 +508,24 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         max_run_seconds=120,
         config_schema=RECOMPUTE_CONFIG_SCHEMA,
     ))
-    registry.register(_placeholder_job(
-        CONTRADICTION_SCAN_JOB_KEY, "Contradiction Scan",
-        "LLM contradiction check over same-endpoint and pg_trgm candidates, "
-        "feeding disputes into the verification veto (doc 08 §5.3). "
-        f"Placeholder — real work lands in "
-        f"{DREAM_JOB_OWNERS[CONTRADICTION_SCAN_JOB_KEY]}.",
+    registry.register(Job(
+        key=CONTRADICTION_SCAN_JOB_KEY,
+        display_name="Contradiction Scan",
+        description=(
+            "Model contradiction check over a combined same-endpoint and "
+            "pg_trgm candidate pool, scoring only overlapping-window pairs "
+            "and journalling a verdict per fact for the verification veto to "
+            "read back (doc 08 §5.3). It never writes a status itself."
+        ),
         default_cron="0 */6 * * *", min_interval_seconds=300,
+        runner=_make_contradiction_runner(
+            registry, CONTRADICTION_SCAN_JOB_KEY, llm_provider
+        ),
         max_run_seconds=1800,
-        # Doc 08 §5.3 names these two rows by value ("bounded by
-        # contradiction_scan_batch (facts per cycle) and
-        # contradiction_candidate_top_k (candidates per fact), both config
-        # rows") — matched verbatim rather than the generic batch_size knob.
-        config_schema=[
-            FieldDescriptor(
-                key="contradiction_scan_batch", label="Facts Per Cycle",
-                default=20, min=1, max=500,
-                help="Facts drained and checked per contradiction_scan run.",
-            ),
-            FieldDescriptor(
-                key="contradiction_candidate_top_k", label="Candidates Per Fact",
-                default=10, min=1, max=100,
-                help="pg_trgm shortlist size per fact needing a check.",
-            ),
-        ],
+        # Doc 08 §5.3 names these two rows by value and no third; the schema
+        # keeps the placeholder's two keys, defaults and bounds verbatim, so no
+        # value an operator already persisted is orphaned by this swap.
+        config_schema=CONTRADICTION_SCAN_CONFIG_SCHEMA,
     ))
     registry.register(Job(
         key=MEMORY_DREAM_JOB_KEY,

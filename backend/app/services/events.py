@@ -45,6 +45,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+# Named rather than spelled twice, because two modules that may not import each
+# other both depend on it meaning the same thing: the Tier-C contradiction scan
+# writes it and the veto reads it back. The vocabulary is the neutral ground
+# they share.
+CONTRADICTION_SCANNED = "contradiction_scanned"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -60,6 +66,7 @@ EVENT_TYPES: list[str] = [
     "consolidated",
     "verified",
     "sources_changed",
+    CONTRADICTION_SCANNED,
     "document_filed",
     "repo_registered",
     "repo_synced",
