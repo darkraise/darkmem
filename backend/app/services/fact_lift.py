@@ -40,9 +40,49 @@ date-valued.
 ``verification_status`` from its column list, so the row takes the schema
 default; ``_BIRTH_STATUS`` below re-reads what actually landed, because a fact
 born above ``candidate`` is exactly this layer's failure mode — silent
-over-confidence, not a crash. Only doc 10's code deriver (T2.28) may open above
+over-confidence, not a crash. Only doc 10's code deriver may open above
 ``candidate``, on the parse-is-verification rule, and ``confirmed`` is
 human-only (T2.05).
+
+**The code half, and the one exception it carries (doc 10 §6).**
+``run_code_lift`` below lifts the same shape from the *repository*-asserted
+half of the Layer-1 graph — the ``repo_ids[]`` arrays doc 06 §6.1's primitives
+write — and those facts are born ``corroborated``, because a parsed import is
+not a claim somebody made about the code, it is the code. That is the single
+exception to "promotion counts distinct origins", and it is narrow in three
+independent ways rather than by intent:
+
+* it is reachable through **one named function**, :func:`mint_born_corroborated`,
+  which refuses any source kind but the deterministic one before it writes;
+* the rung itself is written by **one repository method**,
+  ``open_born_corroborated``, whose only caller that function is;
+* it survives the ladder through **one predicate**,
+  ``OriginProfile.parse_is_the_verification``, which reads the stored
+  ``source_kind`` and so cannot be satisfied by a memory or a human origin.
+
+A repository is **one origin however many commits it is indexed across**
+(doc 08 §4.1's one-document-one-origin rule, applied to code): the provenance
+row is keyed ``(fact, 'code', repo_id)`` and carries ``origin_key = repo_id``,
+so re-derivation refreshes it and can never multiply corroboration. Its
+``detail`` addresses the code by owner-qualified names and a commit sha —
+never the ``code_graph_nodes`` bigint ids, which are meaningless the moment a
+repository re-indexes.
+
+**Withdrawal invalidates; it never deletes, and it never expires either.** When
+a repository stops asserting a triple — a dropped dependency, or the repository
+itself removed — its provenance row goes and, if it was the fact's sole source,
+``invalid_at`` closes (doc 10 §6). That is a *different verb* from the memory
+half's inline expiry (``fact_provenance``, doc 08 §3.3), and deliberately: a
+withdrawn memory means nobody asserts this any more, while a repository that
+stopped importing something means the world changed on a date, which is exactly
+what the belief window records.
+
+**The crossing stays one-direction and unjoined.** The lift reads the
+memory-side graph to find what a repository asserts and the code-side tables to
+describe *where* it read it, in separate statements; no statement names a
+Layer-1 table and a ``code_*`` table together. The one table both halves
+mention is ``repositories``, and only as the liveness predicate the baseline's
+own invariant-8 amendment already applies in ``PostgresGraphRepository``.
 
 **Every lifted fact traces to its sources by construction.** A candidate with no
 asserting memory is dropped before the fact row is minted, and each candidate is
@@ -71,17 +111,23 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.fact_sources import FactSourceRepository
+from app.repositories.fact_sources import CODE_SOURCE_KIND, FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.code_deriver import (
+    DERIVABLE_IMPORT_LANGUAGES,
+    dependency_name,
+    is_internal_import,
+)
 from app.services.events import record_event
 from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
 from app.services.job_registry import FieldDescriptor
+from app.services.suffix_index import SuffixIndex
 from app.services.triple_key import compute_triple_key
 
 logger = logging.getLogger(__name__)
@@ -400,10 +446,10 @@ async def _mint_fact(session: AsyncSession, candidate: _Candidate) -> str:
     return row["id"]
 
 
-async def _existing_refs(session: AsyncSession, fact_id: str) -> set[str]:
-    result = await session.execute(
-        _EXISTING_REFS, {"fact_id": fact_id, "kind": MEMORY_SOURCE_KIND}
-    )
+async def _existing_refs(
+    session: AsyncSession, fact_id: str, *, kind: str = MEMORY_SOURCE_KIND
+) -> set[str]:
+    result = await session.execute(_EXISTING_REFS, {"fact_id": fact_id, "kind": kind})
     return {str(ref) for ref in result.scalars().all()}
 
 
@@ -563,4 +609,570 @@ async def run_lift(
         facts_created=created,
         sources_added=added,
         events_emitted=added,
+    )
+
+
+# ───────────────────────── the code half (doc 10 §6) ─────────────────────────
+
+# The namespace a code-derived fact lands in. A repository carries no project —
+# `repositories` has no such column and the code graph is not project-scoped —
+# so the bridge has to name one, and it names the same one the schema defaults
+# `memories.project` and `knowledge_triples.project` to. The consequence is
+# stated rather than hidden: a memory captured under a *different* project
+# asserting the same triple lifts to a *different* fact, because `triple_key`
+# embeds the project verbatim, so the two do not corroborate each other. That
+# is the under-claiming direction, and the alternative — lifting one repo's
+# assertion into every project — would put a fact in scopes nothing in them
+# asserted.
+CODE_FACT_PROJECT = "default"
+
+# What a code source's `detail.basis` may say: the kind of code-side evidence
+# the assertion rests on. `import` is an `imports` edge from an indexed file to
+# a module node; `language` is the presence of indexed files written in it.
+# Two values because the deriver mints exactly two shapes of relation.
+IMPORT_BASIS = "import"
+LANGUAGE_BASIS = "language"
+
+
+@dataclass(frozen=True)
+class _CodeWitness:
+    """Where in the code one repository's assertion was read.
+
+    Addressed by name and path, never by ``code_graph_nodes.id``: those are
+    ``BIGSERIAL`` and the indexer deletes and re-inserts them on every full
+    re-index, so an id recorded today names a different node — or nothing —
+    tomorrow. ``symbol_key`` is the node's owner-qualified key, which is what
+    T2.48's citation re-verifier re-resolves against the new HEAD.
+    """
+
+    basis: str
+    file_path: str | None
+    symbol_key: str | None
+
+
+@dataclass(frozen=True)
+class _CodeCandidate:
+    """One repository-asserted Layer-1 relation, ready to lift."""
+
+    repo_id: str
+    triple_key: str
+    subject_name: str
+    rel_type: str
+    object_name: str
+    subject_id: str | None
+    object_id: str | None
+
+
+@dataclass(frozen=True)
+class CodeLiftOutcome:
+    """What one code-lift tick did, for the job log and for tests."""
+
+    candidates: int = 0
+    facts_created: int = 0
+    sources_added: int = 0
+    sources_withdrawn: int = 0
+    facts_invalidated: int = 0
+    events_emitted: int = 0
+
+
+# Every Layer-1 relation a **live** repository asserts and that still has lift
+# work outstanding.
+#
+# The `repositories` join is the liveness predicate, not a graph join: the
+# arrays carry no foreign key, so a deleted repository leaves its id behind and
+# must read as absent — the identical `NOT EXISTS (live repo)` reasoning
+# `PostgresGraphRepository.strip_repo_assertions` and `prune_orphan_entities`
+# already apply. No `code_*` table appears here, which is what keeps the
+# never-join invariant structural.
+#
+# The `open_fact` lateral matches on canonicalised names for the reason
+# `_PENDING_GROUPS` does — `entities.name` is stripped and lowered but not
+# whitespace-collapsed, while `compute_triple_key` collapses — and identity is
+# still resolved authoritatively by `_open_fact_id` on the key itself.
+_REPO_ASSERTED_RELATIONS = text(f"""
+    SELECT CAST(rp.id AS text)  AS repo_id,
+           se.name              AS subject_name,
+           r.rel_type           AS rel_type,
+           oe.name              AS object_name,
+           CAST(se.id AS text)  AS subject_id,
+           CAST(oe.id AS text)  AS object_id
+    FROM entity_relations r
+    JOIN entities se ON se.id = r.source_entity_id
+    JOIN entities oe ON oe.id = r.target_entity_id
+    JOIN repositories rp ON rp.id = ANY(r.repo_ids)
+    LEFT JOIN LATERAL (
+        SELECT kt.id
+        FROM knowledge_triples kt
+        WHERE kt.project = CAST(:project AS text)
+          AND {_canon("kt.subject_name")} = {_canon("se.name")}
+          AND kt.rel_type = r.rel_type
+          AND {_canon("kt.object_name")} = {_canon("oe.name")}
+          AND kt.expired_at IS NULL
+          AND kt.invalid_at IS NULL
+        ORDER BY kt.created_at, kt.id
+        LIMIT 1
+    ) open_fact ON TRUE
+    WHERE open_fact.id IS NULL
+       OR NOT EXISTS (
+              SELECT 1 FROM fact_sources fs
+              WHERE fs.fact_id = open_fact.id
+                AND fs.source_kind = CAST(:kind AS text)
+                AND fs.source_ref = CAST(rp.id AS text)
+          )
+    ORDER BY 1, 2, 3, 4
+    LIMIT CAST(:batch AS integer)
+""")
+
+# Every triple a repository asserts *now*, for the withdrawal comparison. The
+# same statement shape as above minus the outstanding-work filter, because
+# withdrawal asks the opposite question: not "what is missing from the vault"
+# but "what does the vault still hold that the graph no longer says".
+_REPO_ASSERTED_TRIPLES = text("""
+    SELECT CAST(rp.id AS text) AS repo_id,
+           se.name             AS subject_name,
+           r.rel_type          AS rel_type,
+           oe.name             AS object_name
+    FROM entity_relations r
+    JOIN entities se ON se.id = r.source_entity_id
+    JOIN entities oe ON oe.id = r.target_entity_id
+    JOIN repositories rp ON rp.id = ANY(r.repo_ids)
+""")
+
+# Every code-kind provenance row and the fact it justifies. Driven by the data
+# rather than by a caller who knows what changed, for `fact_provenance`'s
+# reason: a repository deleted outright leaves nobody to call a by-repo sweep,
+# and the rows it stranded keep a fact serving as corroborated forever.
+_CODE_PROVENANCE = text("""
+    SELECT fs.id AS source_id, fs.fact_id, fs.source_ref AS repo_ref,
+           kt.triple_key, kt.project, kt.invalid_at
+    FROM fact_sources fs
+    JOIN knowledge_triples kt ON kt.id = fs.fact_id
+    WHERE fs.source_kind = CAST(:kind AS text)
+    ORDER BY fs.source_ref, fs.fact_id
+""")
+
+_WITHDRAW_CODE_SOURCES = text(
+    "DELETE FROM fact_sources WHERE id = ANY(CAST(:ids AS uuid[]))"
+)
+
+_SURVIVING_SOURCES = text("""
+    SELECT DISTINCT fact_id
+    FROM fact_sources
+    WHERE fact_id = ANY(CAST(:ids AS uuid[]))
+""")
+
+# ── the code-side reads, which name no memory-side table ──
+
+_REPO_COMMIT = text(
+    "SELECT last_indexed_commit FROM repositories WHERE id = CAST(:rid AS uuid)"
+)
+
+_REPO_FILES = text(
+    "SELECT file_path, language FROM code_files WHERE repo_id = CAST(:rid AS uuid) "
+    "ORDER BY file_path"
+)
+
+_REPO_IMPORTS = text("""
+    SELECT DISTINCT source_key, target_key
+    FROM code_edges
+    WHERE repo_id = CAST(:rid AS uuid)
+      AND edge_type = 'imports'
+      AND source_kind = 'file'
+      AND target_kind = 'module'
+    ORDER BY source_key, target_key
+""")
+
+
+def _code_triple_key(subject_name: str, rel_type: str, object_name: str) -> str:
+    return compute_triple_key(
+        CODE_FACT_PROJECT, subject_name, rel_type, object_name
+    )
+
+
+async def repo_witnesses(
+    session: AsyncSession, repo_id: str
+) -> tuple[str | None, dict[str, _CodeWitness]]:
+    """One repository's commit sha and a witness per asserted entity name.
+
+    **Code-side only.** Every statement here names ``repositories``,
+    ``code_files`` or ``code_edges`` and nothing from Layer 1, so the crossing
+    stays the application-level, one-direction one doc 10 §2 requires.
+
+    The import classification is re-run through ``code_deriver``'s own
+    predicates — imported, never copied — because the witness has to fall where
+    the deriver's line fell or it would name a file that did not produce the
+    assertion. Reusing the functions means the two can only disagree if one is
+    changed without the other, and the cost of that disagreement is bounded to
+    ``detail``: a name with no witness still gets its provenance row, because
+    ``origin_key`` is what corroboration counts and it never depended on the
+    witness. It is logged rather than dropped — a fact whose ``symbol_key``
+    T2.48 cannot re-resolve is a fact whose citation can never be re-verified,
+    which is worth seeing.
+
+    The first witness in sort order wins where several files import the same
+    package. ``detail`` carries one address by doc 10 §6's shape, so the choice
+    is between a deterministic one and an arbitrary one.
+    """
+    commit_sha = (
+        await session.execute(_REPO_COMMIT, {"rid": repo_id})
+    ).scalar_one_or_none()
+
+    file_rows = (
+        await session.execute(_REPO_FILES, {"rid": repo_id})
+    ).mappings().all()
+    file_paths = [row["file_path"] for row in file_rows]
+    language_of = {
+        row["file_path"]: (row["language"] or "").strip().lower()
+        for row in file_rows
+    }
+
+    witnesses: dict[str, _CodeWitness] = {}
+    for file_path in file_paths:
+        language = language_of.get(file_path) or ""
+        # `unknown` is a failed parse, not a language, and the deriver refuses
+        # to assert it; a witness for it would describe an assertion nobody
+        # made.
+        if not language or language == "unknown":
+            continue
+        witnesses.setdefault(
+            language,
+            _CodeWitness(
+                basis=LANGUAGE_BASIS, file_path=file_path, symbol_key=file_path
+            ),
+        )
+
+    import_rows = (
+        await session.execute(_REPO_IMPORTS, {"rid": repo_id})
+    ).mappings().all()
+    suffix_index = SuffixIndex(file_paths)
+    for row in import_rows:
+        source_key, target_key = row["source_key"], row["target_key"]
+        if language_of.get(source_key) not in DERIVABLE_IMPORT_LANGUAGES:
+            continue
+        if is_internal_import(target_key, suffix_index):
+            continue
+        name = dependency_name(target_key)
+        if name is None:
+            continue
+        witnesses.setdefault(
+            name.strip().lower(),
+            _CodeWitness(
+                basis=IMPORT_BASIS, file_path=source_key, symbol_key=target_key
+            ),
+        )
+    return commit_sha, witnesses
+
+
+def code_source_detail(
+    *, commit_sha: str | None, witness: _CodeWitness | None
+) -> dict:
+    """Doc 10 §6's fixed ``detail`` shape — four keys, always all four.
+
+    Always all four because a consumer reading ``detail.get("symbol_key")`` and
+    a consumer reading ``detail["symbol_key"]`` must agree about a row with no
+    witness; a key that is sometimes absent and sometimes null is two shapes
+    wearing one name.
+    """
+    return {
+        "commit_sha": commit_sha,
+        "basis": witness.basis if witness is not None else None,
+        "file_path": witness.file_path if witness is not None else None,
+        "symbol_key": witness.symbol_key if witness is not None else None,
+    }
+
+
+async def _add_code_source(
+    session: AsyncSession, *, fact_id: str, repo_id: str, detail: dict
+) -> None:
+    """Write one repository's provenance row and enqueue the recompute.
+
+    ``source_ref`` and ``origin_key`` are both the repository id, and that is
+    the whole of "one origin per repo regardless of commit count": the unique
+    ``(fact_id, source_kind, source_ref)`` makes a second row for the same repo
+    unrepresentable, and the shared ``origin_key`` makes it uncountable even if
+    one somehow existed. Neither is a check that could be forgotten.
+    """
+    await FactSourceRepository(session).add_source(
+        fact_id=fact_id,
+        source_kind=CODE_SOURCE_KIND,
+        source_ref=repo_id,
+        origin_key=repo_id,
+        detail=detail,
+    )
+    await record_event(
+        session,
+        event_type="sources_changed",
+        object_type="fact",
+        object_id=UUID(fact_id),
+        project=CODE_FACT_PROJECT,
+        payload={"fact_id": fact_id, "repo_id": repo_id},
+    )
+
+
+CONFIRMED_IS_HUMAN_ONLY = (
+    "confirmed is human-only and is reached by ratification, never by a lift."
+)
+
+
+async def mint_born_corroborated(
+    session: AsyncSession,
+    *,
+    candidate: _CodeCandidate,
+    source_kind: str,
+    detail: dict,
+) -> str:
+    """Open a fact at the ladder's second rung. **The only path that may.**
+
+    The refusal below is the Done-when's "impossible to widen by accident": the
+    exception is not that code facts skip the count, it is that *this function*
+    does, and it will not run for a memory or a human origin however it is
+    called. A future kind that genuinely deserves the exception has to be added
+    here, in the open, rather than acquired by a caller passing a new string.
+
+    Fact and provenance are minted together, in the caller's savepoint, because
+    a fact born ``corroborated`` with no source row is an unfalsifiable claim
+    at the very rung that most needs to be falsifiable — the rung whose whole
+    justification is the source that is missing.
+    """
+    if source_kind != CODE_SOURCE_KIND:
+        raise ValueError(
+            f"a {source_kind!r} source can never open a fact above "
+            f"{_BIRTH_STATUS!r}: corroboration counts distinct origins, and "
+            f"the parse-is-the-verification exception is {CODE_SOURCE_KIND!r} "
+            f"alone (doc 08 §4.1). {CONFIRMED_IS_HUMAN_ONLY}"
+        )
+    row = await KnowledgeTripleRepository(session).open_born_corroborated(
+        triple_key=candidate.triple_key,
+        subject_name=candidate.subject_name,
+        object_name=candidate.object_name,
+        rel_type=candidate.rel_type,
+        fact=fact_sentence(
+            candidate.subject_name, candidate.rel_type, candidate.object_name
+        ),
+        reference_time=datetime.now(timezone.utc),
+        project=CODE_FACT_PROJECT,
+        subject_id=candidate.subject_id,
+        object_id=candidate.object_id,
+    )
+    fact_id = row["id"]
+    await _add_code_source(
+        session, fact_id=fact_id, repo_id=candidate.repo_id, detail=detail
+    )
+    return fact_id
+
+
+async def _code_candidates(
+    session: AsyncSession, *, batch_size: int
+) -> list[_CodeCandidate]:
+    result = await session.execute(
+        _REPO_ASSERTED_RELATIONS,
+        {"batch": batch_size, "kind": CODE_SOURCE_KIND, "project": CODE_FACT_PROJECT},
+    )
+    by_key: dict[tuple[str, str], _CodeCandidate] = {}
+    for row in result.mappings().all():
+        key = _code_triple_key(
+            row["subject_name"], row["rel_type"], row["object_name"]
+        )
+        # Two entity spellings the identity function folds are one fact, and
+        # one repository asserting it twice is one provenance row. Merging here
+        # keeps the tick from attempting two open rows on one `triple_key`,
+        # which `ux_knowledge_triples_open` would refuse.
+        by_key.setdefault(
+            (row["repo_id"], key),
+            _CodeCandidate(
+                repo_id=row["repo_id"],
+                triple_key=key,
+                subject_name=row["subject_name"],
+                rel_type=row["rel_type"],
+                object_name=row["object_name"],
+                subject_id=row["subject_id"],
+                object_id=row["object_id"],
+            ),
+        )
+    return list(by_key.values())
+
+
+async def _lift_one_code(
+    session: AsyncSession, candidate: _CodeCandidate, *, detail: dict
+) -> _LiftedOne:
+    """Resolve or mint the fact, then record this repository as a source.
+
+    **A fact that already exists is never re-graded.** Only a fact this path
+    *opens* is born ``corroborated``; when a memory lifted the same triple
+    first, the repository's assertion joins as an ordinary second origin of a
+    second kind and the Tier-C recompute decides the rung from the count — the
+    diversity gate, which two kinds satisfy at N=2. A producer that reached
+    into an existing row's ``verification_status`` would be grading its own
+    output, which is the split this module exists to keep.
+    """
+    fact_id = await _open_fact_id(session, candidate.triple_key)
+    if fact_id is None:
+        await mint_born_corroborated(
+            session,
+            candidate=candidate,
+            source_kind=CODE_SOURCE_KIND,
+            detail=detail,
+        )
+        return _LiftedOne(minted=True, sources_added=1)
+
+    stored = await _existing_refs(session, fact_id, kind=CODE_SOURCE_KIND)
+    if candidate.repo_id in stored:
+        return _LiftedOne(stalled=True)
+    await _add_code_source(
+        session, fact_id=fact_id, repo_id=candidate.repo_id, detail=detail
+    )
+    return _LiftedOne(sources_added=1)
+
+
+async def _withdraw_code_sources(
+    session: AsyncSession, *, rows: list[dict]
+) -> tuple[int, int]:
+    """Delete the rows, close the window of whatever they orphan, emit.
+
+    Returns ``(withdrawn, invalidated)``. The empty case returns before
+    touching anything: no withdrawal is no provenance change, and an event
+    emitted there is indistinguishable to the drain from real evidence
+    movement.
+
+    ``close_window`` rather than ``expire`` — doc 10 §6's own verb. A
+    repository that stopped importing a package did not stop having imported
+    it, so the belief is bounded, not withdrawn; the row stays live history and
+    ``list_live`` keeps serving it, which is invalidate-not-delete rendered on
+    the surface rather than argued in prose.
+    """
+    if not rows:
+        return 0, 0
+
+    await session.execute(
+        _WITHDRAW_CODE_SOURCES, {"ids": [str(row["source_id"]) for row in rows]}
+    )
+    fact_ids = [str(row["fact_id"]) for row in rows]
+    surviving = {
+        str(fact_id)
+        for fact_id in (
+            await session.execute(_SURVIVING_SOURCES, {"ids": fact_ids})
+        ).scalars().all()
+    }
+
+    triples = KnowledgeTripleRepository(session)
+    now = datetime.now(timezone.utc)
+    invalidated = 0
+    for row in rows:
+        fact_id = UUID(str(row["fact_id"]))
+        if str(fact_id) not in surviving and row["invalid_at"] is None:
+            await triples.close_window(fact_id, now)
+            invalidated += 1
+        await record_event(
+            session,
+            event_type="sources_changed",
+            object_type="fact",
+            object_id=fact_id,
+            project=row["project"],
+            payload={"fact_id": str(fact_id), "repo_id": row["repo_ref"]},
+        )
+    return len(rows), invalidated
+
+
+async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int]:
+    """Withdraw code provenance the Layer-1 graph no longer supports.
+
+    The code-side analogue of ``fact_provenance.reconcile_memory_sources``,
+    with one deliberate difference: it is driven by the stored provenance
+    rather than by a caller naming a repository. A repository removed outright
+    takes its ``repositories`` row with it, so there is nobody left to call a
+    by-repo sweep — and the rows it stranded would otherwise keep a fact
+    serving as ``corroborated`` on evidence that no longer exists, with no
+    error and no symptom. Reading the provenance first means the sweep costs
+    one indexed scan and stops on a vault with no code facts, which is every
+    vault until a repository is indexed.
+
+    Retention is decided by **fact identity**, not by row bookkeeping: a
+    repository still sources a fact when its current Layer-1 assertions still
+    contain that fact's triple, tested through ``compute_triple_key`` — the
+    same function that minted the key. That is exact parity with the write
+    half rather than approximate parity through SQL.
+    """
+    rows = [
+        dict(row)
+        for row in (
+            await session.execute(_CODE_PROVENANCE, {"kind": CODE_SOURCE_KIND})
+        ).mappings().all()
+    ]
+    if not rows:
+        return 0, 0
+
+    asserted: dict[str, set[str]] = {}
+    for row in (
+        await session.execute(_REPO_ASSERTED_TRIPLES)
+    ).mappings().all():
+        asserted.setdefault(row["repo_id"], set()).add(
+            _code_triple_key(
+                row["subject_name"], row["rel_type"], row["object_name"]
+            )
+        )
+
+    withdrawn = [
+        row
+        for row in rows
+        if row["triple_key"] not in asserted.get(str(row["repo_ref"]), set())
+    ]
+    return await _withdraw_code_sources(session, rows=withdrawn)
+
+
+async def run_code_lift(
+    session: AsyncSession, *, batch_size: int = DEFAULT_LIFT_BATCH
+) -> CodeLiftOutcome:
+    """One code-lift tick. Does not commit — transaction control is the caller's.
+
+    Withdrawal runs first, for the reason Phase 5 strips before it writes: a
+    repository whose imports changed has both halves of the change to apply,
+    and applying the additions first would leave a window in which the fact
+    carries a source the graph has already stopped supporting.
+
+    Each candidate is written inside its own savepoint so a poisonous one
+    settles alone. The witnesses are read once per repository rather than once
+    per candidate — a repository asserts tens to hundreds of relations and they
+    all read the same two code-side tables.
+    """
+    withdrawn, invalidated = await reconcile_code_sources(session)
+
+    candidates = await _code_candidates(session, batch_size=batch_size)
+    witnesses_by_repo: dict[str, tuple[str | None, dict[str, _CodeWitness]]] = {}
+    created = added = 0
+    for candidate in candidates:
+        if candidate.repo_id not in witnesses_by_repo:
+            witnesses_by_repo[candidate.repo_id] = await repo_witnesses(
+                session, candidate.repo_id
+            )
+        commit_sha, witnesses = witnesses_by_repo[candidate.repo_id]
+        witness = witnesses.get(candidate.object_name)
+        if witness is None:
+            logger.warning(
+                "no code witness for %r asserted by repo %s; its provenance row "
+                "will carry no symbol_key and its citation cannot be re-verified",
+                candidate.object_name, candidate.repo_id,
+            )
+        detail = code_source_detail(commit_sha=commit_sha, witness=witness)
+        try:
+            async with session.begin_nested():
+                lifted = await _lift_one_code(session, candidate, detail=detail)
+        except Exception:
+            logger.exception(
+                "code fact lifting failed for %s (%s %s %s) asserted by repo %s",
+                candidate.triple_key,
+                candidate.subject_name,
+                candidate.rel_type,
+                candidate.object_name,
+                candidate.repo_id,
+            )
+            continue
+        created += int(lifted.minted)
+        added += lifted.sources_added
+    return CodeLiftOutcome(
+        candidates=len(candidates),
+        facts_created=created,
+        sources_added=added,
+        sources_withdrawn=withdrawn,
+        facts_invalidated=invalidated,
+        events_emitted=added + withdrawn,
     )

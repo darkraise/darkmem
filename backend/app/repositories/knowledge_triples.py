@@ -57,6 +57,12 @@ _MACHINE_WRITABLE_VERIFICATION_STATUSES = frozenset({"candidate", "corroborated"
 
 CONFIRMED = "confirmed"
 
+# The rung `open_born_corroborated` opens at — the ladder's one exception
+# (doc 08 §4.1). Spelled beside the machine-writable set rather than inside
+# the method so the two values that may reach this column from this module
+# are read together.
+BORN_CORROBORATED = "corroborated"
+
 # The `fact_sources.source_kind` a ratification writes, spelled here because
 # `ratify`'s UPDATE predicate is what makes doc 08 §4.4 structural. Mirrors
 # app.repositories.fact_sources.SOURCE_KINDS' member of the same name;
@@ -276,6 +282,54 @@ class KnowledgeTripleRepository:
             params,
         )
         return _row_to_dict(result.mappings().one())
+
+    async def open_born_corroborated(self, **fields) -> dict:
+        """Open a fact directly at the ladder's second rung — the ONE exception.
+
+        Doc 08 §4.1 and doc 10 §6: a fact derived from a repository's parsed
+        imports is born ``corroborated`` because the parse *is* the
+        verification. Every other route to that rung counts distinct origins
+        and runs through the Tier-C recompute.
+
+        **A separate method rather than a parameter on ``insert_open``**, and
+        that is the whole of its design. A ``born_corroborated=True`` keyword
+        would be one token away from every ordinary lift, and the guard on it
+        would be a convention; a method nobody calls by accident is a property.
+        Its sole caller is ``fact_lift.mint_born_corroborated``, which refuses
+        any source kind but the deterministic one before reaching here.
+
+        **The birth is not journalled, and that is not an omission.** A
+        ``verified`` row means a *transition* — the append-only journal's whole
+        premise — and a fact opened at a rung moved off nothing. A row with no
+        prior status would also be a status change carrying no promotion
+        decision, which ``benchlib.promotion_metrics`` refuses by name because
+        such a row is invisible to every eligibility filter its SQL uses. What
+        records this birth is the ``fact_sources`` row that justifies it, and
+        the badge honestly reads ``verification not yet recomputed`` until the
+        ladder first visits the fact.
+
+        The rung is re-read from what actually landed rather than assumed,
+        for the reason ``fact_lift._mint_fact`` re-reads its own: a fact
+        sitting at the wrong rung is this layer's failure mode, and it is
+        silent.
+        """
+        row = await self.insert_open(**fields)
+        result = await self.session.execute(
+            text(f"""
+                UPDATE knowledge_triples
+                SET verification_status = CAST(:status AS text)
+                WHERE id = CAST(:id AS uuid)
+                RETURNING {_COLUMNS}
+            """),
+            {"id": row["id"], "status": BORN_CORROBORATED},
+        )
+        promoted = _row_to_dict(result.mappings().one())
+        if promoted["verification_status"] != BORN_CORROBORATED:
+            raise RuntimeError(
+                f"fact {promoted['id']} was to be born {BORN_CORROBORATED!r} "
+                f"and landed {promoted['verification_status']!r}"
+            )
+        return promoted
 
     async def close_window(self, triple_id: UUID | str, invalid_at: datetime) -> dict | None:
         """Close a belief's validity window. The row stays live.
