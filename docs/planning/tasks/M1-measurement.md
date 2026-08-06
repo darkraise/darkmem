@@ -103,6 +103,22 @@ never built.
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
 
+**Born-corroborated facts are invisible to this run, and that is by construction —
+inherit it knowingly (recorded 2026-08-06 from T2.28's review).** T2.28's lift mints
+code-originated facts already at `corroborated`, and its ladder branch **journals
+nothing**, so those rows enter neither the numerator nor the denominator of the
+promotion rate and never appear in the false-promotion audit. That was verified, not
+assumed: the reviewer counted zero `verified` rows after a birth plus two recomputes,
+and both metrics are journal-anchored in `benchlib/promotion_metrics.py`.
+
+The consequence to state in the ledger rather than discover later: **once this run mints
+the promotion record, born rows light `corroborated` on doc 10 §6's argument alone** —
+*the parse is the verification* — and not on anything this gate measured. That is
+exactly what the doc claims, and it may well be the right claim, since a parsed import
+is not an inference. But G-C's number will be a statement about the *counting* ladder,
+and the badge it unlocks will also appear on rows that ladder never counted. Say so
+where the number is recorded.
+
 **What.** Promotion rate `(promoted / eligible)` sliced by source-kind diversity and by
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
 under the stated bar; every ladder transition journaled.
