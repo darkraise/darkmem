@@ -161,8 +161,8 @@ they are in §8, with their own vocabulary.
 | `memory_relations` | 04 §8.2 | — | `target-new` | Five stored types; `SUPERSEDES` projected, never stored (F-02). |
 | `knowledge_triples` | 04 §8.3 | T0.12b | `target-new` | Exists at HEAD but `target-new` by doc 04 §8.3 — "treated as target-new, NOT as an activation of the dormant demo scaffolding". |
 | `fact_sources` | 04 §8.3 | T0.12b | `target-new` | Provenance child; `COUNT(DISTINCT origin_key)` is the corroboration signal. |
-| `memory_communities` | 04 §8.4 | — | `target-new` | Leiden communities per project; ids churn every run (F-02). |
-| `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)` (F-02). |
+| `memory_communities` | 04 §8.4 | — | `target-new` | Leiden communities per project; ids churn every run (F-02). Carries `UNIQUE (id, project)` — trivially satisfiable, and there solely so the members table can declare a composite endpoint FK, exactly as `memories_id_project_key` does for `memory_relations` (T2.18). |
+| `memory_community_members` | 04 §8.4 | — | `target-new` | Join table, PK `(community_id, memory_id)`, plus `project TEXT NOT NULL` and two composite endpoint FKs (F-02, T2.18). |
 | `documents` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `blocks` | 04 §8.5 | T0.12c | `target-new, inert` | Horizon; lands empty and inert. Landed with the DDL, not T0.13 (F-26). |
 | `memory_buffer` | 04 §8.6 | — | `target-new` | Tier-B durable buffer, `FOR UPDATE SKIP LOCKED` (F-02). |
@@ -170,11 +170,15 @@ they are in §8, with their own vocabulary.
 | `knowledge_articles` | 04 §8.8 | T0.12b | `target-new` | T0.12b's "articles and citations". |
 | `article_citations` | 04 §8.8 | T0.12b | `target-new` | The one hard FK — `fact_id → knowledge_triples`. |
 | `memory_access_stats` | 04 §9 | — | `target-new` | 1:1 ranking-prior side table; keeps read churn off `memories` (F-02). |
+| `fact_access_stats` | 08 §6 | — | `target-new` | The fact-keyed analogue of `memory_access_stats` (T2.84, 2026-08-05): 1:1 ranking-prior side table, `fact_id → knowledge_triples(id)`. Minted after the original baseline design — doc 04 names no such table; T2.65 recorded the design, T2.84 built it once the schema window opened. Fed from `FactsChannel`'s serving path via the same coalescing-buffer idiom `access_stats.py` uses. |
 | `alembic_version` | — | n/a (Alembic) | `carries-over` | Alembic's own bookkeeping; doc 04 never names it (F-01). |
 
-**34 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; thirteen are
-target-new. The remaining five of A.1's twenty-six are dropped and live in §8, so
-`21 + 5 = 26` reconciles the roll-call against the manifest exactly.
+**35 rows.** Twenty-one are tables the as-is manifest (A.1) already holds; fourteen are
+target-new — thirteen from the original baseline design plus `fact_access_stats`, minted
+by T2.84 (2026-08-05) after this inventory was first written. The remaining five of A.1's
+twenty-six are dropped and live in §8, so `21 + 5 = 26` reconciles the roll-call against
+the manifest exactly; `fact_access_stats` is outside that reconciliation because it was
+never part of A.1 in the first place.
 
 **Three classes of name doc 04 backticks are deliberately not roll-call rows.** The eight
 per-fingerprint **partition parents** (`memory_embeddings`, `entity_embeddings`,
@@ -316,6 +320,9 @@ specifies only `jti UNIQUE` (F-12).
 | validity-window index | `knowledge_triples` | btree `(valid_at, invalid_at)` | `target-new` | 04 §8.3, §10 | T0.12b |
 | open-belief identity | `knowledge_triples` | **partial-unique** `triple_key WHERE expired_at IS NULL AND invalid_at IS NULL` — at most one currently-open belief per fact; window-closed rows leave the unique's scope but remain live history | `target-new` | 04 §8.3, §10 | T0.12b |
 | review queue | `knowledge_triples` | partial `(review_state) WHERE review_state='open'` | `target-new` | 04 §8.3, §10 | T0.12b |
+| fact-text FTS | `knowledge_triples` | partial GIN `(to_tsvector('english', fact)) WHERE expired_at IS NULL AND invalid_at IS NULL` — an expression index, not a stored tsvector column: `fact` is written once at fact-lift time and the belief and verification axes never touch the text, so there is nothing for a trigger to maintain | `target-new` | 07 §2, §7 | T2.42 |
+| endpoint-name FTS | `knowledge_triples` | partial GIN `(to_tsvector('simple', subject_name \|\| ' ' \|\| object_name)) WHERE expired_at IS NULL AND invalid_at IS NULL` — `simple` rather than `english` because the endpoints are canonicalised identifiers, where stemming buys no recall and can collide two distinct names | `target-new` | 07 §2, §7 | T2.42 |
+| fact-channel project pushdown | `knowledge_triples` | partial `(project) WHERE expired_at IS NULL AND invalid_at IS NULL` — the analogue of `ix_memories_project_live`, serving the scope when the query carries no search term. All three of these are partial on the **currently-open-belief** window, never on `expired_at IS NULL`: doc 08 §3.1 reserves "live" for the latter, which still counts window-closed rows as history | `target-new` | 07 §2, §7 | T2.42 |
 | member-source reverse lookup | `fact_sources` | btree `(source_kind, source_ref)` — the role the removed `source_memory_ids` GIN played | `target-new` | 04 §8.3, §10 | T0.12b |
 | fact fan-out | `fact_sources` | btree `(fact_id)` | `target-new` | 04 §8.3, §10 | T0.12b |
 | one live article per subject | `knowledge_articles` | **partial-unique** `(project, subject_key) WHERE status <> 'superseded'` | `target-new` | 04 §8.8, §10 | T0.12b |
@@ -472,8 +479,9 @@ behaviour change, not a tidy-up.
 | `memory_relations` uniqueness | UNIQUE | `memory_relations` | `UNIQUE (source_memory_id, target_memory_id, rel_type)` | `target-new` | 04 §8.2, §10 | — (F-02) |
 | `memory_relations` endpoint FKs | FK | `memory_relations` | `(source_memory_id, project) → memories(id, project) ON DELETE CASCADE` and the same for `target_memory_id` — **composite**, which is why the `UNIQUE (id, project)` support above exists | `target-new` | 04 §8.2 | — (F-02) |
 | `memory_buffer` status CHECK | CHECK | `memory_buffer` | `CHECK (status IN ('pending','claimed','done','error'))` | `target-new` | 04 §8.6 | — (F-02) |
-| `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `community_id → memory_communities ON DELETE CASCADE`; `memory_id → memories ON DELETE CASCADE` | `target-new` | 04 §8.4 | — (F-02) |
+| `memory_community_members` PK + FKs | PK, FK | `memory_community_members` | `PRIMARY KEY (community_id, memory_id)`; `(community_id, project) → memory_communities(id, project) ON DELETE CASCADE`; `(memory_id, project) → memories(id, project) ON DELETE CASCADE` — **both composite, and one alone is not enough**: with only the memory-side key, a row naming a project-A community, a project-B memory and project B satisfies every constraint and is still cross-project. All three columns are NOT NULL, so MATCH SIMPLE offers no null escape. No `ON UPDATE` action — a memory changing project clears its memberships first (T2.18) | `target-new` | 04 §8.4 | — (F-02) |
 | `memory_access_stats` PK + FK | PK, FK | `memory_access_stats` | `memory_id uuid PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE` | `target-new` | 04 §9 | — (F-02) |
+| `fact_access_stats` PK + FK | PK, FK | `fact_access_stats` | `fact_id uuid PRIMARY KEY REFERENCES knowledge_triples(id) ON DELETE CASCADE` | `target-new` | 08 §6 | T2.84 |
 | `project_repositories` PK + FK | PK, FK | `project_repositories` | `PRIMARY KEY (project, repo_id)`; `repo_id → repositories(id)` | `target-new` | 04 §8.7, §10 | — (F-02) |
 | `projects` PK | PK | `projects` | `PRIMARY KEY (name)` — lazy `INSERT … ON CONFLICT (name) DO NOTHING`; **no FK enforcement yet**, every scoped table keeps its bare `project text` | `target-new` | 04 §7, §10 | T0.12b |
 | `documents` / `blocks` FKs | FK | `documents`, `blocks` | `blocks.document_id → documents ON DELETE CASCADE`; `blocks.parent_id → blocks ON DELETE CASCADE` (deleting a block takes its subtree) | `target-new, inert` | 04 §8.5 | T0.13 |
@@ -512,6 +520,8 @@ disagreement rather than reconciling it silently here.
 | `llm_purpose_configs.provider_id`, `.profile_id`, `.ml_profile_id` | **DROP** | `dropped` (§8) | 04 §7; 19 §3 | The indirection columns doc 19 §3 calls "every `*_ref`" — none is actually named `*_ref` (F-08). |
 | `llm_purpose_configs.classifier_kind` | **ADD** `text` on the `classification` purpose row | `target-new` | 04 §7 | `llm \| local` — the in-process classifier re-homed inline, replacing the deleted `ml_profiles` reference. When the `[ml]` extra is absent, classification falls back to the LLM-backed classifier. |
 | `llm_purpose_configs.provider` | **DROPPED** (T1.01, 2026-07-27) | F-10 resolved | 04 §7 vs A.2 | A.2 showed `provider varchar NOT NULL DEFAULT 'ollama'` at HEAD; doc 04 §7's inline field list omits it and fixes `api_kind` as the sole vendor-quirk home. Decided on evidence: the wizard wrote it as a verbatim copy of `api_kind` (`pcfg.provider = body.llm.api_kind`) and no runtime dispatch read it, so a second vendor column could only drift from the one that decides behaviour. **Correction (2026-07-27, post-review):** the original claim "nothing dispatched on it" was overstated — `scripts/ensure_ollama_models.py` filtered on it in both paths. That does not change the decision: because `provider` mirrored `api_kind`, and the wizard writes `api_kind='openai'` for Ollama's OpenAI-compatible endpoint, that filter already missed genuinely Ollama-served purposes. The script now keys on `api_kind` **and** the base URL's port, which fixes a pre-existing blind spot rather than merely restoring one. Dropped end-to-end: column, ORM field, `LLMPurposeConfig`, both wire schemas, and the frontend interface. |
+| `knowledge_triples.demotion_pending_since` | **ADD** `timestamptz NULL` | `target-new` | 08 §4.3, §9 | T2.46's demotion hysteresis marker, 2026-08-03. `IS NOT NULL` **is** the `under-sourced` label and the review-queue predicate; it is not a fifth ladder rung, and the `verification_status` CHECK is deliberately untouched (a test asserts the clause text and proves the database refuses `'under-sourced'` as a status). |
+| `knowledge_triples.demotion_pending_cycles` | **ADD** `integer NOT NULL DEFAULT 0` | `target-new` | 08 §9 | The second column doc 08 §9 does not name, and the reason is stated rather than assumed: the grace window is fixed in **consecutive recompute cycles**, and a timestamp cannot count cycles. With one marker only, `verification_demote_grace_cycles` would silently do nothing above its default — a config row that lies. Never the label and never the queue predicate; only the counter. |
 | `config.value` | server default `'{}'` | see F-09 | 04 §7 vs A.2 | Doc 04 §7 prints `value jsonb NOT NULL DEFAULT '{}'`; A.2 shows no server default. Same class as the `memories` deltas — adjudicated in §9. |
 | `repositories.{id, provider, default_branch, auto_sync, status}` | server defaults | **see §9** | 04 §6 vs A.2 | A.2 shows all five `NOT NULL` with **no server default**, while doc 04 §6 prints `provider 'local'` and `default_branch 'main'`. The plan for this task located the ORM-default class on `memories` alone; it is wider (§9). |
 
@@ -553,7 +563,7 @@ fingerprints could collide. The `Aux indexes` column below lists what each paren
 | `block_embeddings` | `block_embeddings__<slug>` | `block_id uuid → blocks(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(block_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **TH1.05** (§7) |
 | `relation_embeddings` | `relation_embeddings__<slug>` | `relation_id uuid → entity_relations(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(relation_id, fingerprint)`** | HNSW only | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T2.49** (§7) |
 | `article_embeddings` | `article_embeddings__<slug>` | `article_id uuid → knowledge_articles(id) CASCADE`, `fingerprint`, `embedding vector(N)`, `payload jsonb DEFAULT '{}'`, `created_at`; **PK `(article_id, fingerprint)`** | mirrors `memory_embeddings` | `target-new, inert` | 04 §5.3 | **T0.12c** (inert labelling **T0.13**) | **T3.23** (§7) |
-| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new, inert` — **template only** | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33**, conditional (§7) |
+| `triple_embeddings` | `triple_embeddings__<slug>` | `fact_id uuid → knowledge_triples(id)` — **no cascade** — `fingerprint`, `embedding vector(N)`, `created_at`; **PK `(fact_id, fingerprint)`** | HNSW only | `target-new` — **writer landed 2026-08-05, no production path writes it yet**; was `inert, template only` | 04 §5.3, §13; 19 §3 | **T0.12c** (inert labelling **T0.13**) | **T2.33** — landed, condition met (§7); its caller is **T2.11** |
 
 **Three rules in that table are load-bearing and silent when broken.**
 
@@ -607,16 +617,16 @@ finding, not a row; none was.
 
 | Object | Disposition | Phase | First-writer task | The task's own words | Doc § |
 |---|---|---|---|---|---|
-| `entities.repo_ids[]` | `target-new, inert` | **Phase 2** (doc 20 §6: "C4: `repo_ids[]` writer — the deriver, doc 10, after G-C") | **T2.27** — `assert_from_repo` — imports-only, LLM-free | "A narrow deterministic deriver minting Layer-1 assertions from a repo's import edges only, tagged into the inert `entities.repo_ids[]` / `entity_relations.repo_ids[]` landed in T0.13 — **this is their first writer**." | 04 §4.1, §4.2; 19 §3 |
-| `entity_relations.repo_ids[]` | `target-new, inert` | **Phase 2** | **T2.27** | As above — the same task writes both arrays. | 04 §4.2; 19 §3 |
-| `ix_entities_repo_ids`, `ix_entity_relations_repo_ids` | `target-new, inert` | **Phase 2** | **T2.27** | The GIN indexes exist from the baseline; T2.27 is the first task whose writes make them non-empty. | 04 §4.1, §4.2 |
+| `entities.repo_ids[]` | `target-new` — **no longer inert (2026-08-06)** | **Phase 2** (doc 20 §6: "C4: `repo_ids[]` writer — the deriver, doc 10, after G-C") | **T2.27** — `assert_from_repo` — imports-only, LLM-free — **landed** | "A narrow deterministic deriver minting Layer-1 assertions from a repo's import edges only, tagged into the inert `entities.repo_ids[]` / `entity_relations.repo_ids[]` landed in T0.13 — **this is their first writer**." `app/services/code_deriver.py` is the writer; it reaches the arrays only through `PostgresGraphRepository.assert_from_repo` / `strip_repo_assertions`, the two doc 06 §6.1 primitives it also landed. **A writer exists; nothing schedules it yet** — no job, route or reindex hook calls `assert_repo_graph`, so in production these arrays are still empty and the amended sweeps' `NOT EXISTS (live repo)` predicates still evaluate vacuously. **T2.96** owns the trigger. The label retired on the existence of a writer, which is what "inert" meant here, but invariant 23 is about not reading scaffolding as substrate — so the distinction is stated rather than left for a reader to infer from a `landed` tag. | 04 §4.1, §4.2; 19 §3 |
+| `entity_relations.repo_ids[]` | `target-new` — **no longer inert (2026-08-06)** | **Phase 2** | **T2.27** — **landed** | As above — the same task writes both arrays, in one savepointed strip-before-rewrite. | 04 §4.2; 19 §3 |
+| `ix_entities_repo_ids`, `ix_entity_relations_repo_ids` | `target-new` — **no longer inert (2026-08-06)** | **Phase 2** | **T2.27** — **landed** | The GIN indexes exist from the baseline; T2.27 is the first task whose writes make them non-empty. | 04 §4.1, §4.2 |
 | `repositories.index_debt` | `target-new, inert` | **Phase 1** | **T1.39** — T2 index-debt drain | "Dependent-caller re-trace overflow past the retrace cap persists to `repositories.index_debt` and drains in continuation batches. **Never dropped** — silent truncation here is a graph that is quietly wrong." | 04 §6 (**not** in doc 19 §3's table — F-13) |
 | `documents` (table + its partial-unique index) | `target-new, inert` | **H1 horizon** | **TH1.02** — `documents` / `blocks` first writer | "First writer to the tables landed inert in T0.13. Document identity is the partial `UNIQUE (project, uri)` with `content_hash` as the re-ingest change gate … the tables lose their inert label." | 04 §8.5; 19 §3 |
 | `blocks` (table + its two indexes) | `target-new, inert` | **H1 horizon** | **TH1.02** | As above — one task writes both tables. | 04 §8.5; 19 §3 |
 | `block_embeddings` template | `target-new, inert` | **H1 horizon** | **TH1.05** — `block_embeddings__<slug>` writer | "First writer to the block partition template landed inert in T0.13." | 04 §5.3; 19 §3 |
-| `relation_embeddings` template | `target-new, inert` | **Phase 2** | **T2.49** — `relation_embeddings` refresh job + writer | "First writer to one of the two inert partition templates that had no named owner … **The template loses its inert label and the schema inventory records this task as its first writer**." | 04 §5.3 |
-| `article_embeddings` template | `target-new, inert` | **Phase 3** | **T3.23** — Articles retrieval channel + `article_embeddings` writer | "The template loses its inert label; **the schema inventory names this as its writer** (it is the last of the four **mainline** templates — `block_embeddings` waits for the EH1 horizon, and `triple_embeddings` may never ship at all)." | 04 §5.3 |
-| `triple_embeddings` template | `target-new, inert` — **template only** | **Phase 2, conditional** | **T2.33** — `triple_embeddings` writer, miss-rate gated | "First writer to the template landed inert in T0.13 — and it ships **only** if T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar … if the bar is not exceeded, the task closes as 'not needed, measured' and **the template stays inert**." | 04 §5.3, §13; 19 §3 |
+| `relation_embeddings` template | `target-new` — **no longer inert (2026-08-06)** | **Phase 2** | **T2.49** — `relation_embeddings` refresh job + writer — **landed** | "First writer to one of the two inert partition templates that had no named owner … **The template loses its inert label and the schema inventory records this task as its first writer**." `app/services/relation_embeddings.py` is the writer; the Tier-C `relation_embedding_refresh` job keeps the partition current with an exact arm (relations with no vector under the active fingerprint) and a rotation arm (the drift backstop for a renamed entity under an already-embedded relation, which the exact arm structurally cannot see). | 04 §5.3 |
+| `article_embeddings` template | `target-new, inert` | **Phase 3** | **T3.23** — Articles retrieval channel + `article_embeddings` writer | "The template loses its inert label; **the schema inventory names this as its writer** (it is the last of the four **mainline** templates — `block_embeddings` waits for the EH1 horizon, and `triple_embeddings` was conditional; its condition was met and T2.33 landed its writer on 2026-08-05)." | 04 §5.3 |
+| `triple_embeddings` template | `target-new` — **no longer inert (2026-08-05)** | **Phase 2, condition met** | **T2.33** — `triple_embeddings` writer, miss-rate gated — **landed** | "First writer to the template landed inert in T0.13 — and it ships **only** if the measured `pg_trgm` shortlist miss rate exceeds its stated bar." It did: **T2.52 measured 41.7% (5/12) on the `lexically-disjoint` slice against a 20% bar stated beforehand** (`docs/eval/2026-08-05-t2.52-contradiction-missrate.md`), so the 'not needed, measured' branch is closed and `app/services/triple_embeddings.py` is the writer. (The gate is **T2.52's** measurement, not T2.11's — the epic file's original wording named the wrong task.) | 04 §5.3, §13; 19 §3 |
 
 **Four of these ten rows are confirmed by a reciprocal promise, which is the strongest
 evidence available.** T2.27, T2.49, T3.23, T2.33, TH1.02 and TH1.05 each name T0.13 as the
@@ -625,11 +635,15 @@ checkbox that this inventory records them as the writer. An object whose future 
 own acceptance promises to update this file is a pairing neither side can drift from
 silently.
 
-**`triple_embeddings` is the one row whose writer may never ship, and that is by design.**
-It is `template only`: the template lands, and T2.33 is gated on a measured miss rate it
-may not clear. If it does not, the honest end state is a template that stays inert
-forever — which is why doc 19 §3 gives it its own `(target-new, template only)`
-disposition rather than folding it in with the others.
+**`triple_embeddings` was the one row whose writer might never have shipped, and the
+condition has now been met (2026-08-05).** It landed `template only`: the template shipped
+up front and T2.33 was gated on a measured miss rate it might not clear. It cleared —
+T2.52 measured **41.7% (5/12)** on the `lexically-disjoint` slice against a **20%** bar
+stated beforehand — so T2.33 shipped the writer and this row is now an ordinary
+`target-new` object with a live first writer. The `(target-new, template only)`
+disposition doc 19 §3 gave it was not wasted: it is what let the template land, be
+reviewed and be frozen while the decision was still open, and it stays the right label
+for the *disposition at baseline*, which is what §6 records.
 
 **Two activations are not inert objects and are recorded separately.** `api_keys` and
 `memories.importance` exist today and their schema does not change; only a later phase's
@@ -1417,8 +1431,11 @@ lists exactly `darkmem`, `darkmem_bench`, `darkmem_test`, `postgres`, `template0
 
 **Check 3 — every table is dispositioned.** Set difference of Appendix A.1's table list
 against the union of §2's and §8's first columns. Expected: **empty in both directions**.
-Measured: A.1 = 26; §2 = 34 rows (21 shared with A.1 + 13 target-new); §8 = the remaining
-5. `21 + 5 = 26`.
+Measured: A.1 = 26; §2 = 35 rows (21 shared with A.1 + 14 target-new, one of which —
+`fact_access_stats`, T2.84 — was minted after this inventory was first written and is
+outside A.1 by construction); §8 = the remaining 5. `21 + 5 = 26`. The set-difference check
+below still holds unmodified: it only requires every A.1 table to land in §2 or §8, and a
+§2 row with no A.1 counterpart does not violate that.
 
 **Check 4 — every index, constraint, trigger, function and enum is dispositioned.** Five
 set differences of A.3–A.7 against §3 and §4. Expected: **five empty differences**.
