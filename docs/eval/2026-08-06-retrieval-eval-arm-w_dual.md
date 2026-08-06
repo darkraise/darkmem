@@ -16,7 +16,17 @@
 > partition**. The arm returned no candidates, both legs retrieved identically,
 > and every slice reported exactly 0.0000. That reads like a measured "no win"
 > and is nothing of the kind. **A ledger row from that run exists and should be
-> disregarded**; the append-only ledger keeps it, so it is named here instead.
+> disregarded**: run id `2ae27407`, appended 91 seconds before this run's own row and
+> carrying the same git sha and probe weight, so the two are near-twins and only the id
+> tells them apart. The append-only ledger keeps it, so it is named here instead.
+>
+> **Both w_dual rows are sha-misattributed, and that is a separate defect.** They record
+> `e4768c8f`, which *predates* `3f67152a` — the artefact-preparation commit whose code
+> actually produced the good run. The eval ran against a dirty tree before that fix was
+> committed. The number stands (the preparation ran; its output, 62 vectors, is printed in
+> the run itself), but the sha does not identify the code that produced it, so a reader
+> reconstructing this run from the ledger alone would check out a tree that cannot
+> reproduce it.
 >
 > The cause was a gap in the unblocking, not in the channel: `w_ppr` had been
 > given a preparation step (build the snapshot) and `w_dual` had not. Both arms
