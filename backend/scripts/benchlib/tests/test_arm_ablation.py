@@ -572,3 +572,85 @@ def test_every_list_arm_has_a_preparation_path():
         assert arm.needs_artifact in known, (
             f"{flag} declares an artefact no preparation path builds"
         )
+
+
+# ── the access-fed arms: seed and freeze (T2.31) ────────────────────────
+#
+# The blocker review overturned the original diagnosis. The contamination is
+# not answer-biased — at `retrieval_limit = len(entries)` every query's page is
+# the whole corpus, so a leg confers heat *uniformly* (the same count on every
+# row), the multiplier is constant, and order is preserved. That is a
+# guaranteed vacuous zero, and reset-between-legs converges on the same thing.
+# Seeding is the only live fix, and the freeze half is mandatory because the
+# uniform +102 swamps any seeded skew (heat saturates by ~30).
+
+
+def test_the_access_fed_arms_declare_their_artifact():
+    for flag in ("w_heat", "w_recency"):
+        assert arm_ablation.resolve_ablatable(flag).needs_artifact == "access_history"
+    assert arm_ablation.resolve_ablatable("w_importance").needs_artifact is None
+
+
+def test_the_seed_is_uncorrelated_with_the_gold_by_construction():
+    """The bug this fixture exists to avoid: if hot memories were the ones the
+    gold marks correct, the arm would be scored on a signal derived from the
+    answer key and would win by construction. The count is a pure function of
+    the memory's own id — nothing the gold knows enters it."""
+    import ast
+    import inspect
+    import textwrap
+
+    source = inspect.getsource(arm_ablation._prepare_access_history)
+    tree = ast.parse(textwrap.dedent(source)).body[0]
+    # Scan the executable body only — the docstring explains the trap in prose
+    # and would otherwise trip the scan that exists to prevent it.
+    body = tree.body[1:] if ast.get_docstring(tree) else tree.body
+    code = "\n".join(ast.unparse(node) for node in body)
+
+    for forbidden in ("gold", "relevant", "expected", "score"):
+        assert forbidden not in code.lower(), (
+            f"the access seed reads {forbidden!r}, which risks correlating the "
+            "signal with the answer key"
+        )
+    assert "sha256" in code, "the seed must be stable across processes"
+    # `hash()` is salted per process, so a run would not reproduce.
+    assert "hash(" not in code.replace("hashlib", "")
+
+
+def test_the_seed_spans_the_responsive_part_of_the_curve():
+    """`heat_signal` saturates at 1 - e^(-n/10): a range all above ~30 is flat
+    at the top, and all-zero is flat at the bottom. Either way the multiplier
+    is constant and the measurement is vacuous again."""
+    from app.services.rank_fusion import heat_signal
+
+    lo = heat_signal(0)
+    hi = heat_signal(arm_ablation._ACCESS_SEED_MODULUS - 1)
+    assert lo == 0.0
+    assert 0.5 < hi < 1.0, "the seed range must not sit in the saturated tail"
+
+
+def test_the_freeze_suppresses_recording_and_restores_it():
+    """Without the freeze the legs write the very table they measure, adding a
+    uniform count that swamps the seeded skew."""
+    from app.services import access_stats
+
+    original = access_stats.spawn_record_access
+    with arm_ablation._freeze_access_recording():
+        assert access_stats.spawn_record_access is not original
+        assert access_stats.spawn_record_access(["any-id"]) is None
+    assert access_stats.spawn_record_access is original
+
+
+def test_the_freeze_covers_the_call_site_retrieval_actually_uses():
+    """`hybrid_search` imported the recorder by value at module load, so
+    patching only `access_stats` would leave the live call site untouched —
+    the freeze would look applied and record anyway."""
+    import sys
+
+    hybrid = sys.modules.get("app.services.hybrid_search")
+    if hybrid is None:  # pragma: no cover - import order safety
+        import app.services.hybrid_search as hybrid
+    original = hybrid.spawn_record_access
+    with arm_ablation._freeze_access_recording():
+        assert hybrid.spawn_record_access is not original
+    assert hybrid.spawn_record_access is original

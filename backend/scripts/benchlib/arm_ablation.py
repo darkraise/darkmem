@@ -57,9 +57,11 @@ because it ran second.
 """
 from __future__ import annotations
 
+import hashlib
+import sys
 import uuid
 from collections.abc import Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -262,6 +264,114 @@ async def _prepare_relation_vectors(session_factory, llm_config, cache_dir):
     print(f"      embedded {written} relation vector(s) for the dual-level arm.")
 
 
+
+# The two arms whose signal is retrieval history rather than a stored column.
+# They need an artefact no ingest produces AND they need the eval to stop
+# writing to it mid-measurement — see `_prepare_access_history`.
+ACCESS_FED_FLAGS: frozenset[str] = frozenset({"w_heat", "w_recency"})
+
+# A deterministic skew, uncorrelated with the gold by construction.
+#
+# **Seeding from anything the gold knows would be the bug this fixture exists
+# to avoid.** If hot memories were the ones the gold marks correct, the arm
+# would be scored on a signal derived from the answer key and would "win" by
+# construction. So the count is a pure function of the memory's own id — a
+# fixed hash, not the corpus order, not the ingest order, and above all not
+# the gold's relevance labels.
+#
+# The spread matters as much as the independence: `heat_signal` saturates
+# (1 - e^(-n/10)), so a range that is all above ~30 is flat at the top and a
+# range that is all 0 is flat at the bottom. 0..24 spans the responsive part
+# of the curve.
+_ACCESS_SEED_MODULUS = 25
+
+
+async def _prepare_access_history(session_factory):
+    """Seed a deterministic access history, then hand back the freeze switch.
+
+    **Why seeding alone is not enough, and the freeze is mandatory.** The eval
+    records an access for every row it returns (`_record_access`), and at
+    `retrieval_limit = len(entries)` every query's page is the *whole corpus*.
+    So one leg over 102 pairs adds 102 to every row uniformly — which both
+    swamps any seeded skew (heat saturates by ~30) and, on its own, produces
+    exactly the uniform distribution that makes the arm inert. Freezing the
+    recorder for the legs' duration is what keeps the seeded distribution the
+    one being measured.
+
+    Returns a context manager the caller wraps both legs in.
+    """
+    from sqlalchemy import text as sa_text
+
+    async with session_factory() as session:
+        rows = await session.execute(
+            sa_text(
+                "SELECT CAST(id AS text) FROM memories "
+                "WHERE status = 'active' AND is_archived = false ORDER BY id"
+            )
+        )
+        ids = [row[0] for row in rows]
+        if not ids:
+            raise ArmNotMeasurable(
+                "the bench corpus ingested no live memories, so an "
+                "access-fed arm has no history to seed"
+            )
+        for memory_id in ids:
+            # `hash()` is salted per process; this must be stable across runs.
+            count = int(hashlib.sha256(memory_id.encode()).hexdigest(), 16) % _ACCESS_SEED_MODULUS
+            await session.execute(
+                sa_text(
+                    "INSERT INTO memory_access_stats "
+                    "(memory_id, access_count, last_accessed) "
+                    # CAST both uses: asyncpg deduces one type per parameter,
+                    # and :n appearing as an integer and inside an interval
+                    # expression is the AmbiguousParameterError CLAUDE.md warns
+                    # about. `make_interval` keeps it integer on both sides.
+                    "VALUES (CAST(:id AS uuid), CAST(:n AS int), "
+                    "        now() - make_interval(days => CAST(:n AS int))) "
+                    "ON CONFLICT (memory_id) DO UPDATE "
+                    "SET access_count = EXCLUDED.access_count, "
+                    "    last_accessed = EXCLUDED.last_accessed"
+                ),
+                {"id": memory_id, "n": count},
+            )
+        await session.commit()
+
+    distinct = len({
+        int(hashlib.sha256(i.encode()).hexdigest(), 16) % _ACCESS_SEED_MODULUS
+        for i in ids
+    })
+    if distinct < 2:
+        raise ArmNotMeasurable(
+            "the seeded access history is uniform, so the arm's multiplier is "
+            "constant and the run would report a zero delta indistinguishable "
+            "from a measured 'no win'"
+        )
+    print(
+        f"      seeded access history over {len(ids)} memories "
+        f"({distinct} distinct counts); recording frozen for both legs."
+    )
+    return _freeze_access_recording
+
+
+@contextmanager
+def _freeze_access_recording():
+    """Suppress the eval's own access recording for a leg's duration."""
+    from app.services import access_stats
+
+    original = access_stats.spawn_record_access
+    access_stats.spawn_record_access = lambda *a, **k: None
+    hybrid = sys.modules.get("app.services.hybrid_search")
+    hybrid_original = getattr(hybrid, "spawn_record_access", None)
+    if hybrid is not None:
+        hybrid.spawn_record_access = lambda *a, **k: None
+    try:
+        yield
+    finally:
+        access_stats.spawn_record_access = original
+        if hybrid is not None and hybrid_original is not None:
+            hybrid.spawn_record_access = hybrid_original
+
+
 class ArmNotMeasurable(RuntimeError):
     """This arm cannot be ablated on this harness, and why.
 
@@ -349,6 +459,9 @@ def resolve_ablatable(flag: str) -> AblatableArm:
             return AblatableArm(
                 flag=flag, name=arm.name, kind=KIND_FACTOR,
                 activation=arm.activation, arm=arm,
+                needs_artifact=(
+                    "access_history" if flag in ACCESS_FED_FLAGS else None
+                ),
             )
 
     blocked = _blocked_reasons()
@@ -878,24 +991,31 @@ async def run_arm_ablation(
     # is per project and mass has no meaning across two. Both legs get the
     # same scope, so the delta stays internally consistent.
     leg_filters = None
+    leg_context = nullcontext
     if arm.needs_artifact == "ppr_snapshot":
         leg_filters = await _prepare_project_scoped_arm(session_factory)
     elif arm.needs_artifact == "relation_embeddings":
         await _prepare_relation_vectors(session_factory, llm_config, cache_dir)
+    elif arm.needs_artifact == "access_history":
+        leg_context = await _prepare_access_history(session_factory)
 
     off_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
-    off_leg = await run_arm_leg(
-        off_llm, session_factory, pairs, arm=arm, weight=0.0,
-        gate_config=ingest_result.gate_config, retrieval_limit=retrieval_limit,
-        k=k, min_pairs=min_pairs, filters=leg_filters,
-    )
+    with leg_context():
+        off_leg = await run_arm_leg(
+            off_llm, session_factory, pairs, arm=arm, weight=0.0,
+            gate_config=ingest_result.gate_config,
+            retrieval_limit=retrieval_limit,
+            k=k, min_pairs=min_pairs, filters=leg_filters,
+        )
 
     on_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
-    on_leg = await run_arm_leg(
-        on_llm, session_factory, pairs, arm=arm, weight=on_weight,
-        gate_config=ingest_result.gate_config, retrieval_limit=retrieval_limit,
-        k=k, min_pairs=min_pairs, filters=leg_filters,
-    )
+    with leg_context():
+        on_leg = await run_arm_leg(
+            on_llm, session_factory, pairs, arm=arm, weight=on_weight,
+            gate_config=ingest_result.gate_config,
+            retrieval_limit=retrieval_limit,
+            k=k, min_pairs=min_pairs, filters=leg_filters,
+        )
     print(
         f"[4/4] arm={arm.flag}: off n_pairs={off_leg.run.score.n_pairs}, "
         f"on n_pairs={on_leg.run.score.n_pairs}, "
