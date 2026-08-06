@@ -1047,6 +1047,52 @@ class TestMissesAreCounted:
         assert recovered.journal_failed == 0
         assert (await _scan_verdicts(session, subject))[0]["contradicted"] is True
 
+    async def test_an_earlier_runs_verdict_cannot_mask_a_swallowed_write(
+        self, session, qualified_judge_record, monkeypatch
+    ):
+        """The read-back's ``scan_run_id`` predicate, in the steady state.
+
+        A fact cleared once and re-checked later already carries a verdict row
+        of this type on this object. Matching on ``(fact, type)`` alone would
+        find that row and report the second run's swallowed write as a success
+        — resurrecting the defect the read-back exists to close, and doing it
+        only for facts that have been scanned before, which is every fact after
+        the first cycle.
+        """
+        subject = await _fact(
+            session, subject="darkmem", obj="postgres",
+            fact="darkmem stores its vault in postgres",
+        )
+        await _source(session, subject, "sess-a")
+        counter = await _fact(
+            session, subject="darkmem", obj="mysql",
+            fact="darkmem stores its vault in mysql",
+        )
+        await _source(session, counter, "sess-b")
+        await _enqueue(session, subject)
+
+        cleared = await _run(session, StubLLM([_verdict("unsupported")]))
+        assert cleared.clears_recorded == 1
+        assert cleared.journal_failed == 0
+        assert len(await _scan_verdicts(session, subject)) == 1
+
+        # The fact is still servable — a clear leaves it where it was, which is
+        # what puts a prior verdict row in front of the next run's read-back.
+        await _enqueue(session, subject)
+
+        async def _swallowed(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(scan_module, "record_event", _swallowed)
+        lost = await _run(session, StubLLM([_verdict("contradicted")]))
+
+        assert lost.journal_failed == 1
+        assert lost.disputes_recorded == 0
+        assert lost.watermark_advanced is False
+        # Still the one row from the first run: the second wrote nothing, and
+        # the run said so rather than reading the first row as its own.
+        assert len(await _scan_verdicts(session, subject)) == 1
+
     async def test_a_refusal_counts_the_facts_it_never_reached(self, session):
         for index in range(3):
             subject = await _fact(
