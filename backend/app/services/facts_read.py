@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginGroup
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services.claim_gates import raw_statuses_for_served
 from app.services.events import object_timeline
 from app.services.fact_badge import badges_for_facts, row_labels
 from app.services.layer_composition import dispute_label
@@ -143,17 +144,31 @@ async def list_facts(
     subject_name: str | None = None,
     rel_type: str | None = None,
     object_name: str | None = None,
-    verification_status: str | None = None,
+    served_status: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
+    """A page of badged facts, filtered on the status a reader is *served*.
+
+    The filter and the field answer the same question, so they read the same
+    value. Keying the filter on the column instead inverts the claim gate: with
+    the gate closed, asking for the promoted rung returns exactly the rows
+    whose label was withheld and asking for the suppressed rung returns none of
+    them, which recovers per fact the rung the label refuses to say. The label
+    would still never appear in a response body, and the reader would still
+    have it.
+    """
     repo = KnowledgeTripleRepository(session)
     rows, total = await repo.list_live(
         project=project,
         subject_name=subject_name,
         rel_type=rel_type,
         object_name=object_name,
-        verification_status=verification_status,
+        verification_statuses=(
+            None
+            if served_status is None
+            else raw_statuses_for_served(served_status, id_kind=FACT_ID_KIND)
+        ),
         limit=limit,
         offset=offset,
     )

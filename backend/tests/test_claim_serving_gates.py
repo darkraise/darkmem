@@ -252,6 +252,48 @@ def test_minting_a_record_lights_the_label_with_no_code_change(monkeypatch, clea
     assert after["unverified"] is False
 
 
+@pytest.mark.parametrize("rung", [PROMOTED, SUPPRESSED, "confirmed", "disputed"])
+def test_the_filter_vocabulary_is_served_status_inverted(rung, tmp_path, cleared_record):
+    """`raw_statuses_for_served` is the preimage of `served_status`, so a
+    surface filtering on a served rung and a surface labelling with one cannot
+    give two answers about the same row. Asserted as the round trip at both
+    gate states rather than as a table, because a table is a second
+    implementation."""
+    for gate in (
+        claim_gates.corroboration_gate(tmp_path / "absent.json"),
+        claim_gates.corroboration_gate(cleared_record),
+    ):
+        preimage = claim_gates.raw_statuses_for_served(
+            rung, id_kind=claim_gates.FACT_ID_KIND, gate=gate
+        )
+        for raw in preimage:
+            served, _ = claim_gates.served_status(
+                raw, id_kind=claim_gates.FACT_ID_KIND, gate=gate
+            )
+            assert served == rung
+        for other in (PROMOTED, SUPPRESSED, "confirmed", "disputed"):
+            served, _ = claim_gates.served_status(
+                other, id_kind=claim_gates.FACT_ID_KIND, gate=gate
+            )
+            assert (other in preimage) is (served == rung)
+
+
+def test_the_closed_gate_leaves_the_promoted_rung_unfilterable(tmp_path):
+    """The empty set is the honest answer, not a missing filter: with the gate
+    closed nothing is *served* as corroborated, so a filter on that rung must
+    match no row rather than the rows whose label was withheld."""
+    closed = claim_gates.corroboration_gate(tmp_path / "absent.json")
+    assert (
+        claim_gates.raw_statuses_for_served(
+            PROMOTED, id_kind=claim_gates.FACT_ID_KIND, gate=closed
+        )
+        == frozenset()
+    )
+    assert claim_gates.raw_statuses_for_served(
+        SUPPRESSED, id_kind=claim_gates.FACT_ID_KIND, gate=closed
+    ) == frozenset({SUPPRESSED, PROMOTED})
+
+
 # ── structural: no serving path may bypass the producer ──────────────
 #
 # The first round's scan named two filenames and matched one node shape, and
@@ -273,6 +315,13 @@ PRODUCER_RELPATHS = frozenset(
 )
 
 GROUNDED_LABEL = "grounded"
+
+# The producer's and the gate's own entry points. A ``verification_status=``
+# keyword handed to one of these is the raw rung going *into* the gate, which
+# is the correct direction and the opposite of an emission — every serving path
+# has to do it. Naming three functions is not the enumeration this scan exists
+# to replace: they are the API the property is stated in terms of.
+GATE_ENTRY_POINTS = frozenset({"row_labels", "served_status", "ungated_status"})
 
 
 def _calls(node: ast.AST, name: str) -> bool:
@@ -331,25 +380,39 @@ def _reads_a_labels_mapping(node: ast.AST, bound: set[str]) -> bool:
 
 
 def _emissions(tree: ast.AST):
-    """Every place a mapping gains a ``verification_status`` entry.
+    """Every place a mapping or a model gains a ``verification_status`` entry.
 
-    Three shapes, not one: the first round matched ``ast.Dict`` with constant
-    values only, so ``dict(verification_status=...)``, a variable value and a
-    subscript assignment all passed it.
+    The first round matched ``ast.Dict`` with constant values only; the second
+    added ``dict()`` keywords and subscript assignment. The re-review then ran
+    fifteen shapes through it and the widest miss was the ordinary one: a
+    **pydantic response model built by keyword** — ``SomeResponse(
+    verification_status=row[...])`` — which is how a new route is written and
+    which only ``dict(...)`` calls were checked for. So the keyword rule now
+    quantifies over every call, not one callee, with the gate's own entry
+    points admitted because a keyword handed to those goes into the gate rather
+    than past it.
     """
     for node in ast.walk(tree):
         if isinstance(node, ast.Dict):
             for key, value in zip(node.keys, node.values):
                 if isinstance(key, ast.Constant) and key.value == CLAIM_LABEL_KEY:
                     yield node.lineno, value
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "dict"
-        ):
-            for keyword in node.keywords:
-                if keyword.arg == CLAIM_LABEL_KEY:
-                    yield node.lineno, keyword.value
+        elif isinstance(node, ast.Call):
+            if not any(_calls(node, entry) for entry in GATE_ENTRY_POINTS):
+                for keyword in node.keywords:
+                    if keyword.arg == CLAIM_LABEL_KEY:
+                        yield node.lineno, keyword.value
+            # ``payload.setdefault("verification_status", rung)`` writes the
+            # entry positionally, so neither the keyword rule nor the literal
+            # one sees it.
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "setdefault"
+                and len(node.args) == 2
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == CLAIM_LABEL_KEY
+            ):
+                yield node.lineno, node.args[1]
         elif isinstance(node, ast.Assign):
             for target in node.targets:
                 if (
@@ -360,8 +423,102 @@ def _emissions(tree: ast.AST):
                     yield node.lineno, node.value
 
 
+def _known_key_bindings(tree: ast.AST) -> set[str]:
+    """Names bound in this module to a mapping whose keys this module writes.
+
+    A mapping built here from a literal, a comprehension or an empty
+    constructor cannot acquire a ``verification_status`` without one of the
+    emission shapes above firing on it, so copying it is safe. Anything else —
+    a parameter, a loop variable over a database result, an attribute — is a
+    mapping whose keys this module never enumerated.
+    """
+    known: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        built_here = (
+            isinstance(value, ast.DictComp)
+            or (isinstance(value, ast.Dict) and all(k is not None for k in value.keys))
+            or (
+                isinstance(value, ast.Call)
+                and isinstance(value.func, ast.Name)
+                and value.func.id in ("dict", "defaultdict", "Counter", "OrderedDict")
+                and not value.args
+            )
+        )
+        if built_here:
+            known |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return known
+
+
+def _copy_source_is_accounted_for(node: ast.AST, known: set[str]) -> bool:
+    if isinstance(node, (ast.Dict, ast.DictComp)):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in known
+    if isinstance(node, ast.Attribute):
+        return node.attr.endswith("labels")
+    if isinstance(node, ast.Call):
+        if _calls(node, "ungated_mapping"):
+            return True
+        # ``dict(x)`` is the copy, not a source: look through it. Any other
+        # call is a value some function built, and that function's own
+        # emissions are scanned by the same walk.
+        if isinstance(node.func, ast.Name) and node.func.id == "dict":
+            return not node.args or _copy_source_is_accounted_for(node.args[0], known)
+        return True
+    return False
+
+
+def _wholesale_copies(tree: ast.AST, known: set[str]):
+    """Copies that emit every key of a mapping without naming one.
+
+    ``dict(row)``, ``{**row}`` and ``{k: row[k] for k in COLUMNS}`` put a
+    ``verification_status`` on the wire while mentioning no such string, so
+    every rule above is blind to them by construction. This one asks the same
+    question the others do — where did the value come from — of the mapping
+    rather than of the entry.
+    """
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "dict"
+            and node.args
+        ):
+            if not _copy_source_is_accounted_for(node.args[0], known):
+                yield node.lineno, node.args[0]
+        elif isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values):
+                if key is None and not _copy_source_is_accounted_for(value, known):
+                    yield node.lineno, value
+        elif isinstance(node, ast.DictComp):
+            generator = node.generators[0]
+            if (
+                isinstance(generator.target, ast.Name)
+                and isinstance(node.key, ast.Name)
+                and node.key.id == generator.target.id
+                and isinstance(node.value, ast.Subscript)
+                and isinstance(node.value.slice, ast.Name)
+                and node.value.slice.id == generator.target.id
+                and not _copy_source_is_accounted_for(node.value.value, known)
+            ):
+                yield node.lineno, node.value.value
+
+
 def ungated_label_emissions(sources) -> list[str]:
-    """Emissions whose value came from neither the producer nor a declaration."""
+    """Emissions whose value came from neither the producer nor a declaration.
+
+    Two questions, not one. Every module is asked where a named
+    ``verification_status`` entry got its value. A module that **serves the
+    claim** — one that calls the producer — is also asked where a wholesale
+    mapping copy got its keys, because that is how the label reaches a reader
+    without anyone writing its name. Restricting the second question to
+    serving modules is what keeps it a property rather than a marker sprayed
+    over every ``dict(row)`` in the tree; its reach and its blind spot are both
+    stated in the fix round 2 report.
+    """
     offenders = []
     for relpath, source in sources:
         tree = ast.parse(source)
@@ -371,7 +528,17 @@ def ungated_label_emissions(sources) -> list[str]:
                 continue
             if _calls(value, "ungated_status"):
                 continue
+            # A literal `None` is the absence of a status, not a status. The
+            # memory candidate says so explicitly because a memory's lifecycle
+            # `status` is a different vocabulary entirely.
+            if isinstance(value, ast.Constant) and value.value is None:
+                continue
             offenders.append(f"{relpath}:{lineno}: {ast.unparse(value)}")
+        if "row_labels" not in source:
+            continue
+        known = _known_key_bindings(tree)
+        for lineno, value in _wholesale_copies(tree, known):
+            offenders.append(f"{relpath}:{lineno}: copy of {ast.unparse(value)}")
     return offenders
 
 
@@ -472,6 +639,74 @@ def test_the_scan_fires_on_a_path_that_bypassed_the_producer(snippet):
 )
 def test_the_scan_admits_the_producer_and_declared_derivations(snippet):
     assert ungated_label_emissions([("app/services/new_surface.py", snippet)]) == []
+
+
+# A module that serves the claim calls the producer, and the wholesale-copy
+# half of the scan keys on exactly that. Snippets below that exercise it carry
+# the call so they are the kind of module the rule is about.
+SERVING = 'labels = row_labels(id_kind="fact")\n'
+
+# **The scan's reach, written down.** The fix round 1 re-review ran fifteen
+# emission shapes through the guard and it caught three; a scan whose reach is
+# unstated is one nobody can rely on, so the reach is a table with an expected
+# outcome per shape rather than a paragraph. `False` rows are knowingly
+# uncovered, each for a reason given in the fix round 2 report — they are
+# author-adversarial shapes, not ones an ordinary route writes by accident.
+EMISSION_SHAPES = [
+    ("dict literal", 'item = {"verification_status": "corroborated"}', True),
+    ("dict() keyword", "item = dict(verification_status=rung)", True),
+    ("subscript assignment", 'item["verification_status"] = rung', True),
+    (
+        "pydantic constructor keyword",
+        'item = FactListItem(id=fid, verification_status=row["verification_status"])',
+        True,
+    ),
+    ("function call keyword", "serialize(row, verification_status=rung)", True),
+    ("dict.update keyword", "payload.update(verification_status=rung)", True),
+    ("dict.update literal", 'payload.update({"verification_status": rung})', True),
+    ("dict.setdefault", 'payload.setdefault("verification_status", rung)', True),
+    ("wholesale dict(row)", SERVING + "item = dict(row)", True),
+    ("wholesale {**row}", SERVING + 'item = {**row, "id": fid}', True),
+    (
+        "column-loop comprehension",
+        SERVING + "item = {column: row[column] for column in COLUMNS}",
+        True,
+    ),
+    (
+        "name laundering",
+        'fact_labels = row\nitem = {"verification_status": fact_labels["verification_status"]}',
+        False,
+    ),
+    ("dict(zip(...))", SERVING + "item = dict(zip(COLUMNS, values))", False),
+    (
+        "aliased key variable",
+        'KEY = "verification_status"\nitem[KEY] = rung',
+        False,
+    ),
+    (
+        "JSON string assembly",
+        'body = \'{"verification_status": "\' + rung + \'"}\'',
+        False,
+    ),
+    (
+        "false ungated_status declaration",
+        'return {"verification_status": ungated_status(row["verification_status"])}',
+        False,
+    ),
+    ("wholesale copy outside a serving module", "item = dict(row)", False),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet,fires", EMISSION_SHAPES, ids=[s[0] for s in EMISSION_SHAPES]
+)
+def test_the_scans_reach_is_the_one_it_claims(shape, snippet, fires):
+    """Both directions of every shape the re-review ran, so widening or
+    narrowing the guard shows up here as a changed expectation rather than as
+    silence. The shape that mattered is `pydantic constructor keyword`: it is
+    how a new route builds its response, it is what T2.28's serving surface
+    will be, and it passed the previous guard."""
+    assert bool(ungated_label_emissions([("app/services/new_surface.py", snippet)])) is fires
 
 
 def test_no_path_under_app_serves_a_grounded_label_today():
@@ -757,6 +992,74 @@ async def test_a_composition_without_badges_serves_the_withheld_rung_too(session
     labels = result.rows[0].labels
     assert labels["verification_status"] == SUPPRESSED
     assert labels["label_suppressed"]
+
+
+async def _candidate_fact(session) -> str:
+    """A fact genuinely sitting at `candidate` — nothing was withheld from it."""
+    row = await KnowledgeTripleRepository(session).insert_open(
+        triple_key=f"t295-cand-{uuid.uuid4()}",
+        subject_name="pgbouncer",
+        object_name="staging",
+        rel_type="DEPLOYED_ON",
+        fact="pgbouncer DEPLOYED_ON staging",
+        reference_time=AT,
+        project=PROJECT,
+        valid_at=AT,
+    )
+    await session.flush()
+    return str(row["id"])
+
+
+async def _filtered_ids(client, auth_headers, rung: str) -> list[str]:
+    body = (
+        await client.get(
+            f"{FACTS_ROUTE}?project={PROJECT}&verification_status={rung}",
+            headers=auth_headers,
+        )
+    ).json()
+    assert body["total"] == len(body["items"]), "the count and the page disagree"
+    return [item["id"] for item in body["items"]]
+
+
+async def test_the_status_filter_cannot_invert_the_gate(
+    client, auth_headers, session, doors
+):
+    """The filter was an oracle for the rung the label withholds, measured at
+    this door: `?verification_status=corroborated` returned exactly the
+    suppressed fact and `?verification_status=candidate` returned it not at
+    all, so two requests recovered per fact what the label refuses to say. The
+    label never appeared in a body and the reader had it anyway — which is why
+    the filter now keys on the served rung, the same value the field carries."""
+    withheld = await _promoted_fact(session)
+    genuine = await _candidate_fact(session)
+
+    assert await _filtered_ids(client, auth_headers, PROMOTED) == []
+    assert set(await _filtered_ids(client, auth_headers, SUPPRESSED)) == {
+        withheld,
+        genuine,
+    }
+
+    body = (
+        await client.get(f"{FACTS_ROUTE}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    served = {item["id"]: item for item in body["items"]}
+    _assert_withheld(served[withheld], "the suppressed fact")
+    assert served[genuine]["verification_status"] == SUPPRESSED
+    assert served[genuine]["label_suppressed"] is None
+
+
+async def test_the_status_filter_follows_the_record_the_label_follows(
+    client, auth_headers, session, monkeypatch, cleared_record, doors
+):
+    """The other direction: once the record exists the two rungs are served
+    apart again, and the filter separates them the same way. A filter that
+    stayed collapsed would hide the promoted rows the gate had just released."""
+    withheld = await _promoted_fact(session)
+    genuine = await _candidate_fact(session)
+    monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", cleared_record)
+
+    assert await _filtered_ids(client, auth_headers, PROMOTED) == [withheld]
+    assert await _filtered_ids(client, auth_headers, SUPPRESSED) == [genuine]
 
 
 async def test_minting_the_record_lights_every_door_with_no_code_change(

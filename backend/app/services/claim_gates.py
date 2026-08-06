@@ -172,6 +172,19 @@ _GATE_BY_ID_KIND = {
 }
 
 
+def _resolve_gate(id_kind: str) -> ClaimGate:
+    try:
+        resolve = _GATE_BY_ID_KIND[id_kind]
+    except (KeyError, TypeError):
+        raise ValueError(
+            f"no claim gate is defined for id_kind {id_kind!r}; the "
+            f"evidence records are per claim ({sorted(_GATE_BY_ID_KIND)}) "
+            "and serving a promoted status under an unrecognised one "
+            "would be gating it against nothing"
+        ) from None
+    return resolve()
+
+
 def served_status(
     status: str | None, *, id_kind: str, gate: ClaimGate | None = None
 ) -> tuple[str | None, str | None]:
@@ -190,19 +203,42 @@ def served_status(
     if status not in PROMOTED_STATUSES:
         return status, None
     if gate is None:
-        try:
-            resolve = _GATE_BY_ID_KIND[id_kind]
-        except (KeyError, TypeError):
-            raise ValueError(
-                f"no claim gate is defined for id_kind {id_kind!r}; the "
-                f"evidence records are per claim ({sorted(_GATE_BY_ID_KIND)}) "
-                "and serving a promoted status under an unrecognised one "
-                "would be gating it against nothing"
-            ) from None
-        gate = resolve()
+        gate = _resolve_gate(id_kind)
     if gate.open:
         return status, None
     return SUPPRESSED_STATUS, gate.reason
+
+
+def raw_statuses_for_served(
+    served: str, *, id_kind: str, gate: ClaimGate | None = None
+) -> frozenset[str]:
+    """The stored statuses a reader sees as ``served`` — `served_status` inverted.
+
+    A surface that lets a reader *filter* by verification status must filter on
+    the value it serves, not on the column. With the gate closed the two
+    disagree, and the disagreement is readable: asking for the promoted rung
+    returns exactly the rows whose label was withheld, and asking for the
+    suppressed rung returns them not at all, so two requests recover per fact
+    the rung the label refuses to say. The label stays unserved and the leak
+    happens anyway, because membership of a filtered set is an answer.
+
+    Empty is a real result, not a missing filter: with the gate closed nothing
+    is served as ``corroborated``, so the honest page is no rows. Callers must
+    not read it as "no filter".
+
+    Derived from :func:`served_status` rather than written beside it, so the
+    filter and the field cannot drift into two answers to one question. The
+    preimage is complete because ``served_status`` rewrites only values in
+    ``PROMOTED_STATUSES``: every other status is served as itself, so anything
+    serving as ``served`` is either ``served`` or promoted.
+    """
+    if gate is None:
+        gate = _resolve_gate(id_kind)
+    return frozenset(
+        raw
+        for raw in {served} | set(PROMOTED_STATUSES)
+        if served_status(raw, id_kind=id_kind, gate=gate)[0] == served
+    )
 
 
 def ungated_status(status: str | None) -> str | None:
@@ -225,3 +261,20 @@ def ungated_status(status: str | None) -> str | None:
     dict entry was not.
     """
     return status
+
+
+def ungated_mapping(mapping):
+    """A mapping copied wholesale, declared as carrying no served label.
+
+    ``dict(row)``, ``{**row}`` and ``{k: row[k] for k in COLUMNS}`` emit a
+    ``verification_status`` without ever naming one, so a scan keyed on the
+    key cannot see them. The scan therefore also asks, in every module that
+    serves the claim, where a wholesale copy's source came from — and a source
+    it cannot see into needs the same kind of declaration as a raw status.
+
+    Wrapping a copy here claims one of two things: the mapping carries no
+    verification status at all, or the copy is internal and no reader receives
+    it as a label. Same contract as :func:`ungated_status` and the same reason
+    for being a call.
+    """
+    return mapping

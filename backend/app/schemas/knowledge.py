@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.facts import FactBadge
+from app.services.claim_gates import ungated_mapping
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -274,8 +275,8 @@ def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
         context=ComposedRowContext(
             match=row.context.match.value, boost=row.context.boost
         ),
-        dispute=None if row.dispute is None else dict(row.dispute),
-        grouping=None if row.grouping is None else dict(row.grouping),
+        dispute=None if row.dispute is None else dict(ungated_mapping(row.dispute)),
+        grouping=None if row.grouping is None else dict(ungated_mapping(row.grouping)),
         supported_by=[composed_row_response(nested) for nested in row.supported_by],
     )
 

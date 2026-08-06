@@ -107,7 +107,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.claim_gates import FACT_ID_KIND
+from app.services.claim_gates import FACT_ID_KIND, ungated_mapping
 from app.services.fact_badge import row_labels
 from app.services.review_ranking import (
     DEFAULT_RANKING_CONFIG,
@@ -334,7 +334,7 @@ async def list_open_facts(
         params["project"] = project
 
     result = await session.execute(text(items_sql), params)
-    rows = [dict(row) for row in result.mappings().all()]
+    rows = [dict(ungated_mapping(row)) for row in result.mappings().all()]
 
     fact_ids = [str(row["id"]) for row in rows]
     evidence_by_id = await _latest_verified_evidence(session, fact_ids)
@@ -398,7 +398,7 @@ async def list_open_articles(
         params["project"] = project
 
     result = await session.execute(text(items_sql), params)
-    rows = [dict(row) for row in result.mappings().all()]
+    rows = [dict(ungated_mapping(row)) for row in result.mappings().all()]
 
     items = []
     for row in rows:
