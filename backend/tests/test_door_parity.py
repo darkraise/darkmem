@@ -1338,8 +1338,7 @@ async def test_fact_detail_doors_serve_the_same_row(
 
 
 async def test_the_badge_crosses_both_doors_byte_for_byte(
-    client, auth_headers, session, monkeypatch
-):
+    client, auth_headers, session, monkeypatch, cleared_promotion_record):
     """Doc 12 §4's claim is shown verbatim or not at all, so the two doors
     must publish the same bytes and not merely the same meaning.
 

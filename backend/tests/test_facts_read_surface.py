@@ -170,8 +170,7 @@ async def test_the_list_answers_the_paginated_envelope(client, auth_headers, ses
 
 
 async def test_every_rung_is_listed_and_labelled_none_filtered_by_default(
-    client, auth_headers, session
-):
+    client, auth_headers, session, cleared_promotion_record):
     rungs = ("candidate", "corroborated", "disputed", "confirmed")
     for rung in rungs:
         fact_id = await _fact(
@@ -189,7 +188,7 @@ async def test_every_rung_is_listed_and_labelled_none_filtered_by_default(
     assert all(item["badge"] is not None for item in body["items"])
 
 
-async def test_the_list_carries_the_unverified_label(client, auth_headers, session):
+async def test_the_list_carries_the_unverified_label(client, auth_headers, session, cleared_promotion_record):
     """T2.56's cold-start label, at this door too (F9): ``row_labels``
     produces it for every fact row, but ``FactListItem`` had no field for
     it, so FastAPI's ``response_model`` silently dropped it here even
@@ -276,8 +275,7 @@ async def test_the_list_is_arrival_ordered_not_ranked(client, auth_headers, sess
 
 
 async def test_the_wire_badge_carries_doc_12s_fields_and_the_exact_claim(
-    client, auth_headers, session
-):
+    client, auth_headers, session, cleared_promotion_record):
     fact_id = await _fact(session, status="corroborated")
     await _source(session, fact_id, origin="session-a")
     await _source(session, fact_id, kind="code", origin="repo-b")
@@ -316,8 +314,7 @@ async def test_a_fact_row_carries_no_lifecycle_label(client, auth_headers, sessi
 
 
 async def test_sources_are_grouped_by_origin_and_the_count_is_auditable(
-    client, auth_headers, session
-):
+    client, auth_headers, session, cleared_promotion_record):
     """The fixture a row count gets wrong: three rows, two origins."""
     fact_id = await _fact(session, status="corroborated")
     await _source(session, fact_id, origin="session-a")

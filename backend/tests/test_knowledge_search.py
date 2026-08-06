@@ -289,7 +289,7 @@ def _order(document: dict) -> list[str]:
 # ── Done-when 1: the route exists and both doors spend one serialiser ─
 
 
-async def test_the_route_answers_the_composed_read(client, auth_headers, session):
+async def test_the_route_answers_the_composed_read(client, auth_headers, session, cleared_promotion_record):
     await _corpus(session)
     fact_id = await _seed_fact(session)
 

@@ -545,7 +545,7 @@ async def test_a_row_that_vanishes_between_ranking_and_reading_is_counted(sessio
     assert retrieval["envelope"]["excluded"]["not_found"] == 1
 
 
-async def test_a_fact_reaches_the_prompt_with_its_claim_verbatim(session, monkeypatch):
+async def test_a_fact_reaches_the_prompt_with_its_claim_verbatim(session, monkeypatch, cleared_promotion_record):
     """A layer that is retrieved and then dropped from the prompt is worse than
     one never asked for: the panel would show it as context this turn used
     while the model never saw it. The claim rides through as the producer built

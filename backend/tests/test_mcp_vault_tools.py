@@ -146,7 +146,7 @@ def _boom(*_args, **_kwargs):
 # ─────────────────────────────── fact_get ───────────────────────────────
 
 
-async def test_fact_get_answers_through_the_shared_service(session, monkeypatch):
+async def test_fact_get_answers_through_the_shared_service(session, monkeypatch, cleared_promotion_record):
     """The tool must reach ``facts_read.get_fact``, the function the REST
     route spends. A hand-rolled query would answer plausibly and drift."""
     from app.services import facts_read
@@ -199,7 +199,7 @@ async def test_fact_get_serves_a_belief_withdrawn_fact(session):
 # ──────────────────────────── knowledge_search ────────────────────────────
 
 
-async def test_knowledge_search_composes_both_layers(session, monkeypatch):
+async def test_knowledge_search_composes_both_layers(session, monkeypatch, cleared_promotion_record):
     """A fact and its supporting memory arrive as one group, not two rows.
 
     The nesting is what makes the answer budget spend on distinct claims
@@ -243,8 +243,7 @@ async def test_knowledge_search_composes_both_layers(session, monkeypatch):
 
 
 async def test_the_badge_is_the_producers_and_is_not_rendered_by_the_tool(
-    session, monkeypatch
-):
+    session, monkeypatch, cleared_promotion_record):
     """The served badge must equal ``fact_badge``'s own output for that fact.
 
     This is the assertion a second producer fails. Comparing the whole object

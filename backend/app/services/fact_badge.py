@@ -87,6 +87,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginProfile
+from app.services.claim_gates import served_status
 from app.services.verified_evidence import (
     CONTRADICTION_EVIDENCE_KEY,
     latest_verified_evidence,
@@ -492,11 +493,27 @@ def row_labels(
             f"an L2/L3 {id_kind} row carries no lifecycle label; the belief "
             "axis and the verification axis are not a memory's status column"
         )
+    # T2.95: the label is gated on evidence, the derivation is not. Without
+    # G-C's promotion record a promoted status is withheld and the row is
+    # served as `candidate` — the status on disk is untouched, and minting the
+    # record restores the label with no code change.
+    #
+    # Enforced here because this module is doc 12's *one* producer of the claim
+    # surface. A gate applied at each consumer would be a convention; applied
+    # at the producer it is a property, and the scan in the test suite keeps it
+    # one.
+    served, suppression = served_status(verification_status)
     return {
-        "verification_status": verification_status,
+        "verification_status": served,
         "lifecycle": None,
-        "badge": badge.as_dict() if badge is not None else None,
-        "unverified": verification_status not in VERIFIED_TIER_STATUSES,
+        # A withheld status must not carry a badge asserting the corroboration
+        # it was withheld for: the sentence names the origin count and the
+        # absence of contradiction, which is precisely the claim under gate.
+        "badge": badge.as_dict() if badge is not None and suppression is None else None,
+        "unverified": served not in VERIFIED_TIER_STATUSES,
+        # Suppressed and genuinely-candidate must not read alike, or a missing
+        # measurement becomes an apparent property of the corpus.
+        "label_suppressed": suppression,
     }
 
 

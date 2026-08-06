@@ -298,7 +298,11 @@ def test_emitting_a_verification_status_on_a_memory_row_is_refused():
         row_labels(id_kind="memory", lifecycle="active", verification_status="candidate")
 
 
-def test_a_fact_row_carries_a_badge_and_no_lifecycle():
+# The two tests below take `cleared_promotion_record` because T2.95 withholds a
+# promoted status — and its badge — at the serving boundary until G-C's evidence
+# record exists. They are about the badge's *shape*, not about the gate, so they
+# open it; the gate's own behaviour is tested in test_claim_serving_gates.py.
+def test_a_fact_row_carries_a_badge_and_no_lifecycle(cleared_promotion_record):
     labels = row_labels(
         id_kind="fact", verification_status="corroborated", badge=_badge()
     )
@@ -317,7 +321,7 @@ def test_a_fact_row_carries_a_badge_and_no_lifecycle():
         ("confirmed", False),
     ],
 )
-def test_unverified_follows_the_ladder_tier(verification_status, expected):
+def test_unverified_follows_the_ladder_tier(verification_status, expected, cleared_promotion_record):
     """T2.56's cold-start label: plain, mechanical, and read off the tier the
     ladder already wrote rather than a second adjudication of it."""
     labels = row_labels(

@@ -802,8 +802,7 @@ class TestServedLabelled:
         assert row["demotion_pending_since"] == NOW
 
     async def test_the_rest_facts_list_renders_the_label(
-        self, session, client, auth_headers
-    ):
+        self, session, client, auth_headers, cleared_promotion_record):
         """Renderable, not merely stored.
 
         ``_base_item`` hand-enumerates the wire item and ``FactListItem``

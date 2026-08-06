@@ -140,7 +140,7 @@ async def test_a_vault_with_memories_but_no_facts_returns_labelled_candidates(se
     assert result.envelope.channels["fact.keyword"].failed is False
 
 
-async def test_a_freshly_lifted_candidate_fact_is_labelled_unverified_too(session):
+async def test_a_freshly_lifted_candidate_fact_is_labelled_unverified_too(session, cleared_promotion_record):
     """Doc 07 §5: "cold-start serves candidate rows labelled as candidates".
     A fact one origin has just lifted — before any corroboration — is served
     exactly as plainly as a bare memory is, and stops being once corroborated.
