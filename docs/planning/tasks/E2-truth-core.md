@@ -782,6 +782,54 @@ it.
 
 **Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py tests/test_community_reports.py -q`
 
+#### T2.94 — The dual-level channel: nothing reads `relation_embeddings`
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.49` · `Doc: 07 §4, §11, 04 §5.3` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Minted 2026-08-06 while executing T2.32/T2.49, which together left
+doc 07 §4's three graph signals two-thirds wired and the gap invisible from
+the task list. T2.32 shipped PPR's producer and fused it as a ranked list.
+T2.49 shipped the `relation_embeddings` **vectors** and the Tier-C job that
+keeps them current. **Nothing turns those vectors into candidates**, so
+`w_dual` and `dual_level_enabled` exist as flags over a channel that does not
+exist, and T2.50 — which is chartered to measure the graph arms — assumes a
+reader that was never anyone's deliverable.
+
+This is now enforced rather than remembered: `arm_ablation.resolve_ablatable`
+returns `w_dual` as **blocked**, so `--arm w_dual` refuses with the reason
+instead of running two identical legs and reporting an exact zero delta that
+reads like a measured "no win".
+
+**The global arm is the one channel with no project column of its own** (doc
+07 §11, restated in §4 so no implementer re-opens it). `relation_embeddings`
+keys on the global `entity_relations`, which carries no project. The channel
+must therefore resolve its candidates through the asserting relations'
+`memory_ids` and re-apply the project filter to **those memories** — or label
+its results cross-project. This is the single exception the SQL pushdown does
+not cover with an index, and getting it wrong is a cross-project leak that
+returns plausible rows.
+
+**Done when:**
+- [ ] A relation-vector arm produces a ranked list of memory ids and joins the
+      fusion under `w_dual`, gated by `dual_level_enabled`, both shipping at
+      the today-equivalent off
+- [ ] Inert means the same rows, not merely the same scores — the arm is
+      appended only when it carries weight, the property T2.32's PPR arm is
+      pinned on
+- [ ] The global arm scopes through asserting memories or labels its rows;
+      a test drives a cross-project relation and proves no foreign memory is
+      returned unlabelled
+- [ ] Both doors derive the weight through one helper, as `ppr_list_weight`
+      already does for PPR, so a half-flipped config cannot mean one thing to
+      chat and another to search
+- [ ] `resolve_ablatable("w_dual")` stops being blocked, and the reason text
+      is removed rather than left stale
+
+*Unblocks T2.50's `dual_level` half; T2.50 stays the judge of whether either
+graph arm clears a bar (runbook §2).*
+
+**Verify.** `cd backend && python -m pytest tests/test_dual_level_channel.py -q`
+
 #### T2.90 — The knowledge e2e cannot seed its own subject
 
 `Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.86` · `Doc: 17, invariant 14` · `Tag: rebuild` · `Gate: G-C`
@@ -2378,6 +2426,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | T2.94, T2.50, T2.49 | 2 | **`T2.94` minted: the dual-level channel has no owner.** Doc 07 §4 names three graph signals. T2.32 shipped PPR's producer; T2.49 shipped the `relation_embeddings` vectors and their refresh job. Nothing reads those vectors, so `w_dual` and `dual_level_enabled` are flags over a channel that does not exist — and **T2.50 depends on it without saying so**, because its Done-when measures `dual_level` as if a reader were already there. T2.94 owns the reader and carries doc 07 §11's global-arm scoping rule, the one channel with no project column of its own | Found by executing the two tasks rather than by reading the graph: T2.49's Done-when says "first writer to one of the two inert partition templates", which is true and complete for a *writer*, and the epic contained no row whose Done-when was the corresponding reader. The same shape as the four `Depends`-vs-prose gaps already logged here — a constraint recorded in one task's prose and absent from the edge the scheduler consults. Now enforced in code as well as prose: `arm_ablation.resolve_ablatable` returns `w_dual` blocked, so an ablation refuses with the reason instead of reporting the exact-zero delta that reads like a measured "no win" |
 | 2026-08-05 | T2.16 | 2 | **The empty exclusive-relation-family list is ratified on the Fable review's recommendation, so doc 08 §5.5's three signals are realized as TWO in v1 — overlap and proximity, both to `RELATES_TO`.** The executor could defend no member and declined to invent one; the reviewer then checked **every** `RELATIONSHIP_TYPES` member against `taxonomy.py` and `extraction_clean.py` independently and confirmed it: `DEPLOYED_ON` absorbs `RUNS_ON`/`LOCATED_IN` plus seven rescue connectors including a bare `"on"` at 0.6 confidence, `HAPPENED_ON` absorbs `VISITED`/`LIVES_IN`, and even `EXTENDS` — the closest thing to a missed candidate — is plural under multiple inheritance. **A stored `rel_type` simply does not determine single-valuedness in this taxonomy, because normalisation collapses plural historical names into apparently-singular types.** The contradiction arm is built, wired and tested through an injected family, so ratifying a list later is a one-line edit to `EXCLUSIVE_RELATION_FAMILIES`, not a re-execution. One candidate survived and is **recorded without being adopted**: `REPLACES`-family antisymmetry (A asserts `X REPLACES Y` while B asserts `Y REPLACES X`) — deterministic, no plural-fact escape, and it flags the mutual-flip pathology the supersession ordering guard blocks; it is a different shape from D4 and belongs to its own plan round | This is the **second** scope reduction on one doc sentence in one day — §5.5 said five types from three signals, and v1 ships three types from two signals. Recorded prominently for that reason: a reader auditing §5.5 against the tree will otherwise conclude the pass is half-built, when in fact each reduction was forced by a measured property of the code rather than chosen for convenience. The pattern underneath both is worth naming: §5.5 was written against an idealised taxonomy in which a relation type carries its own arity, and the shipped taxonomy deliberately does not — `LEGACY_RELATION_TYPE_MAP` and the rescue connectors exist precisely to funnel many surface forms into few stored types, which is right for extraction recall and fatal for inferring exclusivity. **The owner may still overturn this**; the cost of doing so is populating one constant, not rebuilding the arm |
 | 2026-08-05 | T2.57, T2.52 | 1 | **Doc 17 §5.2's "at least half lexically disjoint" is read as half of the *contradiction* pairs, not half of all pairs — 12 of 22 positives, not 25 of 50.** The argument, recorded in the gold's own `LABELLING.md` where a reader of the data meets it: the disjoint slice exists to power a **recall** measurement, only positives enter recall, and a disjoint *negative* contributes nothing to it — so the whole-set reading would spend half the set on pairs that cannot move the number while crowding out the three negative classes T2.57's Done-when explicitly requires. Note §5.2 calls this a "recommended starting shape", not a bar, so this is a reasoned deviation from a recommendation rather than a missed requirement. **The consequence lands on T2.52**: 12 disjoint positives give the miss rate a granularity of 1/12 ≈ 8.3%, so §5.2's recommended 20% writer-trigger bar is breached at 3 misses | Logged here as well as in `LABELLING.md` because the two readers are different people with different questions. A reader of the gold needs to know how it was labelled; a reader scheduling **T2.52** needs to know the measurement it is about to take is coarse — 3 misses versus 2 is the whole decision on whether T2.33's writer ships, and that granularity is a property of this gold's composition rather than of T2.52's own method. The set is explicitly designed to grow from real adjudicated disputes, so the granularity improves on its own; what must not happen is T2.52 reporting a miss rate as if it were finer than the gold can express |
 | 2026-08-05 | T2.31, T2.84 | 2 | **`T2.31` gains `Depends: T2.84`, and the schema window T2.84 has been waiting for is granted to it.** `w_heat`'s input is retrieval heat; T2.65 settled that fact-level heat has no counter and that the memory-bridged proxy stands only as an interim with a stated error bound. Activating `w_heat` against that proxy would put a number in the gate ledger's arm activation log measured on a substrate already scheduled for replacement — and that log is the one artifact whose numbers are supposed to survive being re-read a year later. So the sequencing is now explicit in the graph rather than left to whoever picks the tasks up. Separately, T2.84's own blocker was never technical: it needed a **schema window**, because a fact-keyed counter needs its own table and baseline edits serialise through one owner per epic. No other lane is touching the baseline this round, so the window is granted and T2.84 is dispatched | Filed because the two halves of this row fail differently if left alone. The missing dependency fails **silently and durably**: T2.31 would have run green, produced a real number, and written it into the ledger, where nothing downstream would ever mark it as measured against an interim substrate — the same stale-premise shape T2.65 was itself minted to fix, one layer up. The schema window is the opposite: it fails **loudly and immediately**, because two lanes editing `0001_baseline.py` conflict on every line. Recording the grant is what makes the serialisation auditable — a reader should be able to see which round held the window and why, rather than inferring it from commit order |
