@@ -54,7 +54,12 @@ async def seed_fact(
     project: str = PROJECT,
     object_name: str = "object",
     rel_type: str = "RELATED_TO",
-    status: str = "corroborated",
+    # `confirmed` rather than `corroborated` (T2.99): this door's fact floor
+    # is measured on the served rung, and `corroborated` is withheld while
+    # G-C's promotion record is absent. These tests are about the diff, the
+    # project scoping and the accept/dismiss round trip, so they seed the one
+    # verified rung that reads the same at either gate state.
+    status: str = "confirmed",
 ):
     fact_id = new_id()
     triple_key = f"{project}:{subject_name}:{rel_type}:{object_name}:{fact_id}"

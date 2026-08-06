@@ -61,7 +61,15 @@ async def seed_fact(
     project: str = PROJECT,
     object_name: str = "object",
     rel_type: str = "RELATED_TO",
-    status: str = "corroborated",
+    # `confirmed` rather than `corroborated` (T2.99): the fact floor is
+    # measured on the rungs a reader is *served*, and `corroborated` is
+    # withheld while G-C's promotion record is absent. Every test below whose
+    # subject is the diff — split, merge, dedup, the article gate, accept and
+    # dismiss — wants a subject that anchors verified support at either gate
+    # state, and only the human-ratified rung does that. The gate's own effect
+    # on this count is asserted at the door, in
+    # `tests/test_claim_serving_gates.py`.
+    status: str = "confirmed",
 ):
     fact_id = new_id()
     triple_key = f"{project}:{subject_name}:{rel_type}:{object_name}:{fact_id}"

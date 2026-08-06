@@ -114,6 +114,27 @@ ladder. `verified_fact_count` matches on `subject_name` only (entities are
 lowercased on write, invariant 7, and `knowledge_triples` carries no
 `entity_type` column of its own — a soft ref, doc 08 §3), a documented
 approximation rather than a false precision.
+
+**The count is over the rungs a reader is served, not over the column**
+(T2.99). Doc 09 §3.4's floor names `corroborated`/`confirmed`, and with
+G-C's promotion record absent those two words mean different things on disk
+and on the wire: `corroborated` is withheld and served as `candidate`, while
+`confirmed` is human-ratified and served openly. Counting the column put the
+difference on the wire — a reader who lists the subject's facts sees the
+`confirmed` ones, subtracts, and recovers how many of that subject's facts
+were withheld at the promoted rung. So the counted set is resolved through
+`claim_gates.raw_statuses_for_served`, the same inversion the facts list's
+status filter uses, and the number this module serves is one a reader could
+already have computed from what it was shown.
+
+**The floor moves with it, deliberately.** `verified_fact_count` gates
+suggestion *membership* too, so a suggestion appearing at all asserts "this
+subject anchors at least `fact_floor` verified facts" — the same claim as
+the count, in existential form. Gating only the number would leave that
+claim ungated: a suggestion served with a count of zero would say the floor
+was met by facts the reader cannot see, which is the oracle again with one
+bit instead of a number. Both exits key on the one value, so both close
+together and both reopen together when the record is minted.
 """
 from __future__ import annotations
 
@@ -131,6 +152,12 @@ from app.repositories.pinned_subjects import (
     get_subject_lists,
 )
 from app.repositories.topic_priors import get_topic_prior, set_topic_prior
+from app.services.claim_gates import (
+    FACT_ID_KIND,
+    ClaimGate,
+    corroboration_gate,
+    raw_statuses_for_served,
+)
 from app.services.events import record_event
 
 # Doc 09 §3.4 says growth is measured "past a `config` growth threshold" —
@@ -157,7 +184,10 @@ OBJECT_TYPE = "topic"
 VERDICT_ACCEPTED = "accepted"
 VERDICT_DISMISSED = "dismissed"
 
-_VERIFIED_STATUSES = ("corroborated", "confirmed")
+# Doc 09 §3.4's floor, stated in the vocabulary a reader is served rather than
+# the vocabulary on the column. See the module docstring for why the
+# difference is not cosmetic while G-C's record is absent.
+VERIFIED_SERVED_STATUSES = ("corroborated", "confirmed")
 
 _FACT_COUNT = text(
     "SELECT COUNT(*) FROM knowledge_triples "
@@ -358,15 +388,36 @@ def diff_topics(
     return entries
 
 
+def served_verified_statuses(gate: ClaimGate | None = None) -> list[str]:
+    """The stored rungs that count toward a served `verified_fact_count`.
+
+    Derived from the gate's own inversion rather than written beside it, so
+    the number and the label cannot drift into two answers about the same
+    fact. With the record present this is `VERIFIED_SERVED_STATUSES`
+    unchanged; with it absent the promoted rung drops out and only the
+    human-ratified one counts.
+
+    An empty result would be a real answer and not a missing filter — were
+    every verified rung withheld, the honest count is zero — so the caller
+    passes it to the query as-is; an empty `text[]` matches no row.
+    """
+    if gate is None:
+        gate = corroboration_gate()
+    raw: set[str] = set()
+    for served in VERIFIED_SERVED_STATUSES:
+        raw |= raw_statuses_for_served(served, id_kind=FACT_ID_KIND, gate=gate)
+    return sorted(raw)
+
+
 async def _verified_fact_count(
-    session: AsyncSession, project: str, name_lower: str
+    session: AsyncSession, project: str, name_lower: str, statuses: Sequence[str]
 ) -> int:
     result = await session.execute(
         _FACT_COUNT,
         {
             "project": project,
             "name_lower": name_lower,
-            "statuses": list(_VERIFIED_STATUSES),
+            "statuses": list(statuses),
         },
     )
     return int(result.scalar_one())
@@ -412,6 +463,10 @@ async def compute_pin_suggestions(
     only ever surface first-appearance nominations, not growth nominations,
     unless it is handed a real snapshot from the last detection run.
 
+    The fact floor is measured on the rungs a reader is served, so with G-C's
+    record absent a subject whose only support is withheld is not nominated
+    at all — see the module docstring's "The floor moves with it".
+
     Deduplicated per call: two distinct communities can share the same
     dominant entity (e.g. a split leaves "postgres, replication" and
     "postgres, tuning" both dominated by `postgres`), and without this a
@@ -421,6 +476,10 @@ async def compute_pin_suggestions(
     order is kept; a second one contributes nothing.
     """
     pinned, dismissed = await get_subject_lists(session, project)
+    # Resolved once per call: the gate reads a file, and the answer cannot
+    # change part-way through one page of nominations without the page
+    # describing two different corpora.
+    counted_statuses = served_verified_statuses()
     seen_subject_keys: set[str] = set()
 
     suggestions: list[PinSuggestion] = []
@@ -439,7 +498,9 @@ async def compute_pin_suggestions(
         if await _is_live_article_subject(session, project, subject_key):
             continue
 
-        fact_count = await _verified_fact_count(session, project, entry.dominant_name)
+        fact_count = await _verified_fact_count(
+            session, project, entry.dominant_name, counted_statuses
+        )
         if fact_count < fact_floor:
             continue
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -43,12 +44,14 @@ import app.services.facts_channel as facts_channel
 import app.services.hybrid_search as hybrid_search
 from app.api.mcp import server as mcp_server
 from app.main import app as fastapi_app
+from app.repositories import memory_communities as communities_repo
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import claim_gates
 from app.services.chat import ChatService
 from app.services.fact_badge import row_labels
+from app.utils.ids import new_id
 
 BACKEND = Path(__file__).resolve().parents[1]
 
@@ -59,6 +62,9 @@ AT = datetime(2026, 7, 20, 9, 14, 0, tzinfo=timezone.utc)
 # The rung the review measured leaking, and the rung it is served as.
 PROMOTED = "corroborated"
 SUPPRESSED = "candidate"
+# The verified rung that survives a closed gate: human-ratified, and never
+# something G-C's automatic ladder certified.
+RATIFIED = "confirmed"
 SUPPRESSED_TIER = 2
 PROMOTED_TIER = 3
 
@@ -765,6 +771,7 @@ def test_this_module_never_reaches_the_judge():
 FACTS_ROUTE = "/api/v1/knowledge/facts"
 SEARCH_ROUTE = "/api/v1/knowledge/search"
 QUEUE_ROUTE = "/api/v1/review-queue/facts"
+TOPICS_ROUTE = "/api/v1/knowledge/topics/pin-suggestions"
 
 
 class _FakeLLM:
@@ -1079,6 +1086,287 @@ async def test_minting_the_record_lights_every_door_with_no_code_change(
     assert after["verification_status"] == PROMOTED
     assert after["label_suppressed"] is None
     assert after["badge"]["claim"]
+
+
+# ── no served aggregate counts the rung the label withholds ──────────
+#
+# T2.99. The label is not the only way a number can name the rung. The topics
+# door served `verified_fact_count` over the raw column, so a reader could
+# list the subject's facts — where `confirmed` is served openly and
+# `corroborated` is not — subtract, and recover per subject how many of its
+# facts were withheld. The same number gates whether the suggestion is served
+# at all, so the leak had two exits and both are driven here.
+
+
+async def _subject_fact(session, subject: str, status: str) -> None:
+    """A fact at an exact rung, written straight to the column — this suite
+    asserts what a *door* serves over stored rows, so the rung is a fixture
+    input rather than something the ladder is asked to produce."""
+    fact_id = uuid.uuid4()
+    await session.execute(
+        text(
+            "INSERT INTO knowledge_triples (id, subject_name, object_name, "
+            "rel_type, reference_time, fact, project, triple_key, "
+            "verification_status) VALUES (CAST(:id AS uuid), :subject, 'homelab', "
+            "'DEPLOYED_ON', now(), :fact, CAST(:project AS text), :key, :status)"
+        ),
+        {
+            "id": str(fact_id),
+            "subject": subject,
+            "fact": f"{subject} DEPLOYED_ON homelab",
+            "project": PROJECT,
+            "key": f"t299:{subject}:{fact_id}",
+            "status": status,
+        },
+    )
+
+
+async def _seed_topics(session, plan: dict[str, list[str]]) -> None:
+    """`subject -> the rungs of its facts`, plus one community per subject."""
+    memory_ids = []
+    for subject, statuses in plan.items():
+        for status in statuses:
+            await _subject_fact(session, subject, status)
+        memory_id = new_id()
+        await session.execute(
+            text(
+                "INSERT INTO memories (id, content, source, project, status) VALUES "
+                "(CAST(:id AS uuid), :content, 'api', CAST(:project AS text), 'active')"
+            ),
+            {"id": str(memory_id), "content": f"{subject} notes", "project": PROJECT},
+        )
+        memory_ids.append((subject, memory_id))
+    await communities_repo.replace_project_communities(
+        session,
+        PROJECT,
+        [
+            communities_repo.CommunityDraft(
+                label=f"{subject}, topic",
+                memory_ids=(memory_id,),
+                properties={
+                    "size": 1,
+                    "dominant_entities": [
+                        {"name": subject, "type": "tool", "display_name": subject}
+                    ],
+                },
+            )
+            for subject, memory_id in memory_ids
+        ],
+    )
+    await session.flush()
+
+
+async def _pin_suggestions(client, auth_headers) -> dict:
+    response = await client.get(
+        f"{TOPICS_ROUTE}?project={PROJECT}", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    return {s["dominant_name"]: s for s in body["suggestions"]}
+
+
+async def test_the_topics_count_cannot_be_subtracted_back_to_the_rung(
+    client, auth_headers, session, doors
+):
+    """Two subjects that differ only in the rung of their second fact. The
+    withheld one's second fact sits at the promoted rung and the genuine
+    one's at the suppressed rung; both serve `confirmed` on the first. If the
+    count is taken over the column the two report 2 and 1, and the difference
+    is exactly the number of facts whose label was withheld."""
+    await _seed_topics(
+        session,
+        {
+            "withheld-sub": ["confirmed", PROMOTED],
+            "genuine-sub": ["confirmed", SUPPRESSED],
+        },
+    )
+
+    served = await _pin_suggestions(client, auth_headers)
+
+    assert set(served) == {"withheld-sub", "genuine-sub"}
+    assert served["withheld-sub"]["verified_fact_count"] == 1
+    assert (
+        served["withheld-sub"]["verified_fact_count"]
+        == served["genuine-sub"]["verified_fact_count"]
+    ), "the served count separates a withheld rung from a genuine candidate"
+
+
+async def test_the_topics_membership_cannot_be_read_back_to_the_rung(
+    client, auth_headers, session, doors
+):
+    """The second exit. The count also gates whether a suggestion is served,
+    so a subject supported only by withheld facts appearing at all asserts
+    the floor was met by facts the reader is not shown — the same oracle with
+    one bit in place of a number. Both subjects here must be absent from the
+    suggestions while both remain in the diff, which is the honest shape:
+    the topic exists, the claim about its support does not."""
+    await _seed_topics(
+        session,
+        {"withheld-only": [PROMOTED], "genuine-only": [SUPPRESSED]},
+    )
+
+    response = await client.get(
+        f"{TOPICS_ROUTE}?project={PROJECT}", headers=auth_headers
+    )
+    body = response.json()
+
+    assert body["suggestions"] == []
+    assert {entry["dominant_name"] for entry in body["diff"]} == {
+        "withheld-only",
+        "genuine-only",
+    }
+
+
+async def test_minting_the_record_restores_the_topics_count_and_membership(
+    client, auth_headers, session, monkeypatch, cleared_record, doors
+):
+    """Clause 2 at this door. Both exits reopen on the record alone, with no
+    code change — the promoted rung starts counting again and the subject it
+    is the only support for is nominated again."""
+    await _seed_topics(
+        session,
+        {"withheld-sub": ["confirmed", PROMOTED], "withheld-only": [PROMOTED]},
+    )
+
+    before = await _pin_suggestions(client, auth_headers)
+    assert before["withheld-sub"]["verified_fact_count"] == 1
+    assert "withheld-only" not in before
+
+    monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", cleared_record)
+    after = await _pin_suggestions(client, auth_headers)
+
+    assert after["withheld-sub"]["verified_fact_count"] == 2
+    assert after["withheld-only"]["verified_fact_count"] == 1
+
+
+# ── the sweep, pinned: one aggregate over the rung, and it is gated ───
+
+
+_SQL_AGGREGATE = re.compile(
+    r"\b(count|sum|avg|min|max|bool_or|bool_and|array_agg|jsonb_agg|string_agg)\s*\(",
+    re.IGNORECASE,
+)
+_SQL_STATEMENT = re.compile(r"\bfrom\b", re.IGNORECASE)
+
+# Every SQL string under `app/` that aggregates while naming the verification
+# column. Over-inclusive on purpose — naming the column near an aggregate is
+# cheap to detect and each hit is cheap to account for, whereas deciding in a
+# regex whether the aggregate is *keyed* on the column is neither. The error
+# direction is the honesty guard's: an unrecognised shape lands here for a
+# human to look at rather than passing silently.
+#
+# - `pin_suggestions` counts facts per subject and serves the number.
+#   Gated: it binds the counted rungs through
+#   `claim_gates.raw_statuses_for_served`, so what it counts is what the
+#   reader was already shown (T2.99).
+# - `review_ranking` aggregates over the review queue's membership
+#   (`review_state = 'open'`), never over the rung; its one rung predicate
+#   selects `disputed`, which is ungated and its own preimage, so no
+#   aggregate downstream of it can separate a withheld rung from a candidate.
+#
+# **Reach, stated rather than implied.** This reads one string constant at a
+# time, so an aggregate and a rung filter assembled into separate fragments
+# and joined later are invisible to it — `KnowledgeTripleRepository.list_live`
+# builds its `COUNT(*)` exactly that way, and that count is gated only because
+# `facts_read` hands it a served-inverted set. Neither this scan nor the label
+# scan sees that shape. What covers it is a door drive with the gate closed.
+AGGREGATES_NAMING_THE_RUNG = {
+    "app/services/pin_suggestions.py",
+    "app/services/review_ranking.py",
+}
+
+
+def _docstrings(tree: ast.AST) -> set[int]:
+    seen: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            first = node.body[0] if node.body else None
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                seen.add(first.value.lineno)
+    return seen
+
+
+def sql_aggregates_over_the_rung(sources) -> set[str]:
+    found: set[str] = set()
+    for relpath, source in sources:
+        tree = ast.parse(source)
+        prose = _docstrings(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            if node.lineno in prose:
+                continue
+            text_ = " ".join(node.value.split())
+            if (
+                CLAIM_LABEL_KEY in text_
+                and _SQL_AGGREGATE.search(text_)
+                and _SQL_STATEMENT.search(text_)
+            ):
+                found.add(relpath)
+    return found
+
+
+def test_only_the_swept_aggregates_name_the_rung():
+    """A number is a claim about the rung as surely as a word is.
+
+    The label scan above asks where a served ``verification_status`` came
+    from, and a ``COUNT(*)`` keyed on that column answers it without ever
+    emitting one — which is how the topics door served a raw-rung aggregate
+    for as long as it did. This pins the swept result so a third site has to
+    be argued for rather than merely written."""
+    assert sql_aggregates_over_the_rung(_app_sources()) == AGGREGATES_NAMING_THE_RUNG
+
+
+def test_the_one_swept_aggregate_binds_the_rungs_the_gate_allows():
+    """Pinning the site is half of it: the site also has to be gated. This
+    asserts the binding rather than the literal, so renaming the helper does
+    not quietly evade it."""
+    from app.services import pin_suggestions
+
+    closed = claim_gates.ClaimGate(False, "no record")
+    assert pin_suggestions.served_verified_statuses(closed) == [RATIFIED]
+    assert pin_suggestions.served_verified_statuses(
+        claim_gates.ClaimGate(True)
+    ) == sorted(pin_suggestions.VERIFIED_SERVED_STATUSES)
+
+    source = (BACKEND / "app/services/pin_suggestions.py").read_text(encoding="utf-8")
+    assert "raw_statuses_for_served" in source, (
+        "the counted set no longer inverts the gate; the count and the label "
+        "have to answer the same question about the same fact"
+    )
+
+
+@pytest.mark.parametrize(
+    "snippet, fires",
+    [
+        (
+            'Q = text("SELECT COUNT(*) FROM knowledge_triples WHERE '
+            'verification_status = ANY(CAST(:s AS text[]))")',
+            True,
+        ),
+        (
+            'Q = text("SELECT count(id) FROM knowledge_triples GROUP BY '
+            'verification_status")',
+            True,
+        ),
+        # A read of the column with no aggregate is the ordinary serving
+        # shape, and the label scan owns it.
+        ('Q = text("SELECT verification_status FROM knowledge_triples")', False),
+        # Prose describing a count is not a count.
+        ('"""COUNT(*) over verification_status, from the ladder."""', False),
+    ],
+)
+def test_the_aggregate_sweep_fires_on_what_it_claims(tmp_path, snippet, fires):
+    path = tmp_path / "planted.py"
+    path.write_text(snippet, encoding="utf-8")
+    found = sql_aggregates_over_the_rung([("planted.py", path.read_text())])
+    assert bool(found) is fires
 
 
 # ── the marker survives serialization, per schema ────────────────────
