@@ -389,9 +389,11 @@ _QUOTED_TOKEN_ALLOWLIST = {
 }
 
 # Modules that may reference the judge module or its ungated probe. A consumer
-# joins here consciously — and must use judge(), never the probe, which
-# `test_the_scan_module_reaches_only_the_gated_door` re-proves against the
-# parsed tree for the one member below.
+# joins here consciously — and must use judge(), never the probe. For the one
+# member below that is re-proved against the parsed tree by
+# `test_the_ungated_probe_is_unreachable` and
+# `test_the_only_adjudicating_call_is_the_gated_door`, both in
+# tests/test_contradiction_scan.py.
 _JUDGE_REFERENCE_ALLOWLIST = {
     "app/services/verification_judge.py",
     # T2.11's Tier-C contradiction scan: the first consumer, and gated by the

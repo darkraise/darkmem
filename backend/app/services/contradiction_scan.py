@@ -38,9 +38,21 @@ is the safety property rather than an obstacle: while no qualification record
 exists the judge raises unconditionally, and this module's response is to abort
 the run *without advancing its watermark*, so nothing is silently consumed and
 nothing is adjudicated on an unqualified judge. The refusal is a global
-precondition failure, not a poisonous row, which is why it is the one failure
-this module declines to skip past — the opposite of the per-fact isolation the
-verification recompute's arms use, and deliberately so.
+precondition failure, not a poisonous row, which is why it is one of the two
+failures this module declines to skip past — the opposite of the per-fact
+isolation the verification recompute's arms use, and deliberately so.
+
+**A verdict that did not reach the journal did not happen** — the second such
+failure. ``record_event`` degrades loudly and never raises, which is right for
+a side-channel and wrong here: this journal row is the job's whole output, so a
+swallowed insert would otherwise be tallied as a recorded dispute while the
+veto never sees it, and the run would report full coverage with no miss. Every
+verdict is therefore read back out of ``events`` in its own write session
+before that session commits, and a shortfall stops the run with the watermark
+standing still. The treatment matches the refusal's because the failure class
+does: a journal insert cannot fail on the strength of one fact's content, so
+whatever broke it — a missing monthly partition above all — will still be
+broken for every fact left in the batch.
 
 **What the scan does not do is apply its own finding.** It journals a verdict
 per fact it checked; the veto reads the standing verdict back at recompute
@@ -59,6 +71,7 @@ import logging
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -257,6 +270,15 @@ _CANDIDATE_COLUMNS = (
 # matching the deterministic scan's own liveness rule: a window-closed row is
 # retained history that can still overlap, and the overlap predicate above is
 # what decides that, not a liveness filter standing in for it.
+#
+# `ORDER BY created_at, id` makes the draw deterministic, and under saturation
+# it is the *newest* structural neighbours that fall past the LIMIT. That is a
+# selection-quality choice, so it is stated rather than left to be inferred:
+# the subject is a fact whose sources just changed, so its counterparts skew
+# older than it, and what the cap drops is counted by `CandidatePool.truncated`
+# rather than lost quietly. Reordering by recency would be a retrieval-quality
+# change, and this generator's coverage has no measurement behind it yet
+# (T2.52's), so there is nothing to judge such a change against.
 _SAME_ENDPOINT_SQL = text(f"""
     SELECT {_CANDIDATE_COLUMNS}
     FROM knowledge_triples
@@ -462,9 +484,16 @@ class ScanOutcome:
 
     The miss buckets are separate fields rather than one number because they
     have different remedies: a truncated pool wants a larger `top_k`, a refusal
-    wants a qualification record, a judge failure wants the provider looked at.
-    ``misses`` is their sum and is what a caller reads to know the run's
-    coverage was incomplete at all.
+    wants a qualification record, a judge failure wants the provider looked at,
+    a journal failure wants the events partitions looked at.
+
+    ``misses`` is their sum, and it is a **detector, not a quantity**: the
+    buckets count different things (facts, candidates, pairs, and a per-run
+    refusal flag), and one undecided pair increments two of them — its own
+    `judge_failed` and the `facts_incomplete` it caused. So `misses > 0` means
+    "this run's coverage was incomplete", and nothing about the size of the
+    gap; the size question is the individual buckets', and the coverage of the
+    generator itself is a measurement no counter here attempts.
     """
 
     events_scanned: int = 0
@@ -486,6 +515,7 @@ class ScanOutcome:
     judge_refused: int = 0
     judge_failed: int = 0
     judge_invalid: int = 0
+    journal_failed: int = 0
 
     @property
     def misses(self) -> int:
@@ -496,6 +526,7 @@ class ScanOutcome:
             + self.judge_refused
             + self.judge_failed
             + self.judge_invalid
+            + self.journal_failed
         )
 
 
@@ -522,6 +553,28 @@ class _Tally:
 
 # ── the tick ────────────────────────────────────────────────────────────
 
+# The verdict count-back, on the same `(object_type, object_id, created_at)`
+# index the veto's own read-back uses. The window is generous because it exists
+# only to prune partitions, not to filter: `scan_run_id` is what identifies the
+# row, and no run outlives a day's worth of clock skew.
+_READBACK_WINDOW = timedelta(days=1)
+
+# The question is existence rather than a count because at most one row can
+# carry this `(fact, run)` pair — one verdict per fact per run — so a count
+# would only be an existence test with a constant to compare against, and a
+# numeric comparison is the one thing this module may not contain.
+_VERDICT_READBACK = text("""
+    SELECT EXISTS (
+        SELECT 1
+        FROM events
+        WHERE object_type = 'fact'
+          AND event_type = CAST(:kind AS text)
+          AND object_id = CAST(:fact_id AS uuid)
+          AND created_at >= CAST(:floor AS timestamptz)
+          AND payload ->> 'scan_run_id' = CAST(:run_id AS text)
+    )
+""")
+
 
 async def _journal(
     session: AsyncSession,
@@ -530,8 +583,17 @@ async def _journal(
     finding: dict[str, Any] | None,
     *,
     pairs_judged: int,
-) -> None:
+    run_id: str,
+) -> bool:
     """One row per completed check — the channel the veto reads back.
+
+    Returns whether the row actually landed. ``record_event`` swallows its own
+    insert failures by design, so a caller that assumed success would count a
+    dispute nobody can read; the read-back below is what makes that assumption
+    unnecessary. It runs in the caller's write session before the commit, where
+    the row is visible to its own transaction and to nothing else yet, and it
+    matches on ``scan_run_id`` because an earlier run's verdict on the same
+    fact is also a row of this type on this object.
 
     The payload carries the counterpart's ids and its triple, never the
     counterpart's ``fact`` text: the triple already states the competing claim
@@ -540,6 +602,9 @@ async def _journal(
     doc 08 §6 serves a disputed fact labelled with both sides and gates it on
     nobody's review, so a dispute a reader cannot understand is a dispute
     nobody can resolve, and the ids alone do not say why the pair conflicts.
+    ``scan_run_id`` is the other addition and copies no content at all: it is
+    the handle that read-back matches on, and it groups one run's verdicts
+    for an operator besides.
     """
     payload: dict[str, Any] = {
         "contradicted": finding is not None,
@@ -547,6 +612,7 @@ async def _journal(
         "candidates_truncated": pool.truncated,
         "pairs_judged": pairs_judged,
         "arm_counts": pool.arm_counts,
+        "scan_run_id": run_id,
     }
     if finding is not None:
         payload.update(finding)
@@ -559,6 +625,19 @@ async def _journal(
         source="job",
         payload=payload,
     )
+    return bool((await session.execute(
+        _VERDICT_READBACK,
+        {
+            "kind": CONTRADICTION_SCANNED,
+            "fact_id": str(fact["id"]),
+            # Real wall clock rather than the caller's injected `now`: the row
+            # lands at the server's own clock whatever the caller believes the
+            # time to be, and the bound is what prunes this read to one or two
+            # monthly children of the partitioned table.
+            "floor": datetime.now(timezone.utc) - _READBACK_WINDOW,
+            "run_id": run_id,
+        },
+    )).scalar_one())
 
 
 async def run_contradiction_scan(
@@ -580,6 +659,7 @@ async def run_contradiction_scan(
     """
     moment = now or datetime.now(timezone.utc)
     tally = _Tally()
+    run_id = str(uuid4())
 
     llm = llm_provider() if callable(llm_provider) else llm_provider
     if llm is None:
@@ -604,7 +684,20 @@ async def run_contradiction_scan(
         seen: set[str] = set()
         for row in rows:
             fact_id = (row["payload"] or {}).get("fact_id")
-            if fact_id and fact_id not in seen:
+            if not fact_id:
+                # Unreachable from either producer — `fact_lift` and
+                # `fact_provenance` both write the key — so this is a guard,
+                # not a counter: a bucket that can only ever read zero would
+                # dilute `misses` rather than inform it. It is loud instead,
+                # because an event this drain cannot act on is a producer
+                # having changed shape, and the drain still consumes it.
+                logger.warning(
+                    "contradiction scan: sources_changed event %s names no "
+                    "fact_id and was drained without a check",
+                    row["id"],
+                )
+                continue
+            if fact_id not in seen:
                 seen.add(fact_id)
                 fact_ids.append(fact_id)
 
@@ -637,6 +730,7 @@ async def run_contradiction_scan(
 
     judge = VerificationJudge(llm)
     refused = False
+    verdict_lost = False
     checked = 0
 
     for index, item in enumerate(work):
@@ -704,22 +798,42 @@ async def run_contradiction_scan(
             continue
 
         async with session_factory() as write_session:
-            await _journal(
-                write_session, fact, pool, finding, pairs_judged=pairs_judged
+            landed = await _journal(
+                write_session, fact, pool, finding,
+                pairs_judged=pairs_judged, run_id=run_id,
             )
-            await write_session.commit()
+            if landed:
+                await write_session.commit()
+
+        # A verdict the journal did not take is a verdict that did not happen:
+        # counting it as recorded would report the job's only output as
+        # delivered while the veto has nothing to read back.
+        if not landed:
+            logger.error(
+                "contradiction scan: the verdict for fact %s did not reach the "
+                "journal; the run stops with its watermark held",
+                fact["id"],
+            )
+            tally.add("journal_failed")
+            tally.add("facts_unscanned", len(work) - index - 1)
+            verdict_lost = True
+            break
+
         checked += 1
         tally.add("disputes_recorded" if finding is not None else "clears_recorded")
 
     tally.add("facts_checked", checked)
 
-    # The watermark stands still on a refusal. A refusal is a global
-    # precondition failure — no qualification record exists — not a poisonous
-    # row, so advancing past the drained events would silently discard a whole
-    # backlog that becomes checkable the moment the record is minted. Every
-    # other failure IS per-fact and is settled by the counters instead, exactly
-    # as the recompute settles its own.
-    if not refused:
+    # The watermark stands still on a refusal, and on a lost verdict. A refusal
+    # is a global precondition failure — no qualification record exists — not a
+    # poisonous row, so advancing past the drained events would silently
+    # discard a whole backlog that becomes checkable the moment the record is
+    # minted. A journal insert that failed is the same class: it cannot have
+    # failed because of this one fact's content, so it will fail for the rest
+    # of the batch too, and the events must stay unconsumed. Every other
+    # failure IS per-fact and is settled by the counters instead, exactly as
+    # the recompute settles its own.
+    if not refused and not verdict_lost:
         async with session_factory() as session:
             state = await _load_state(session)
             await _save_state(
@@ -733,9 +847,11 @@ async def run_contradiction_scan(
             await session.commit()
 
     return ScanOutcome(
-        watermark_advanced=not refused,
+        watermark_advanced=not (refused or verdict_lost),
         skipped_reason=(
-            "the verification judge is not qualified" if refused else None
+            "the verification judge is not qualified" if refused
+            else "a verdict could not be journalled" if verdict_lost
+            else None
         ),
         **{
             name: tally.counts.get(name, 0)
@@ -745,6 +861,7 @@ async def run_contradiction_scan(
                 "pairs_judged", "disputes_recorded", "clears_recorded",
                 "facts_incomplete", "facts_unscanned", "candidates_truncated",
                 "judge_refused", "judge_failed", "judge_invalid",
+                "journal_failed",
             )
         },
     )

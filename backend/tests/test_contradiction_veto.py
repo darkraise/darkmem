@@ -1259,8 +1259,14 @@ class TestTheFindingCarriesTheCounterpartsClaim:
 BACKEND = Path(__file__).resolve().parent.parent
 
 # The ladder is the scan's only legitimate consumer: the veto is an input to the
-# verification decision and nothing else. T2.11 registers its detector inside the
-# scan's own module, so it does not join this list.
+# verification decision and nothing else. The model scan's detector did not join
+# this list either, but not for the reason once recorded here: it lives in
+# `contradiction_veto.py` itself, the one file the scan below exempts by name.
+# That is the only layout available — `dream_jobs.py` imports the scan module,
+# which puts it out of reach of all app code under invariant 15, so a detector
+# imported from there would make the ladder-reachable veto fail the build. The
+# verdict travels as data on the events journal instead, and neither module
+# imports the other.
 _ALLOWED_VETO_FILES: set[str] = {"app/services/verification_ladder.py"}
 
 

@@ -334,9 +334,31 @@ async def detect_scanned_contradiction(
 
     The scan runs on its own six-hourly cadence and cannot be consulted
     synchronously — it costs a model call per pair — so its adjudication is
-    journalled and read back here. The most recent row wins: a later clean pass
-    over the same fact is what ends a dispute the scan opened, which is the
-    conjunctive recovery the registry below is built around.
+    journalled and read back here. The most recent row wins.
+
+    **A later clean pass is not an exit from a dispute this verdict opened**,
+    and reading "most recent row wins" as if it were would budget for a
+    self-healing this code does not have. The scan only checks facts that are
+    still servable and *not already disputed* (doc 08 §5.3), so the moment the
+    ladder applies this finding the fact leaves the scan's own working set:
+    its later ``sources_changed`` events are drained and discarded as
+    unservable, and no second verdict is ever written for it. A later clean row
+    can therefore only arrive in the window before the recompute applies the
+    first one. There are exactly two exits after that:
+
+    1. **Guard lapse** — the counterpart expires, a window closes, or the
+       witness origin joins the subject. Each is re-checked below on every
+       read, so a verdict whose grounds have gone stops disputing by itself.
+    2. **Human ratification** (doc 08 §4.4), which makes the fact immune to the
+       veto outright.
+
+    So a judge false positive whose guards keep holding is a permanent dispute
+    until a person rules on it. That permanence is a consequence of doc 08
+    §5.3's exclusion, not an oversight here: the exclusion is what stops the
+    scan re-paying a model call on every fact it has already ruled on, and a
+    disputed fact is served labelled with both sides rather than dropped (doc
+    08 §6, invariant 14). It is the bounded false-positive cost the
+    precision-first asymmetry accepts behind the judge's 0.95 bar.
 
     **Nothing is trusted from the payload except the pair it names.** A verdict
     can outlive the rows it was made about — the counterpart expires, a window

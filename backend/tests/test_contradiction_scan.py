@@ -670,6 +670,232 @@ class TestOnlyTheQualifiedJudgeAdjudicates:
         assert (await _scan_verdicts(session, subject))[0]["contradicted"] is False
 
 
+# ══════════ G2b — the verdict channel has exactly one writer ═════════════════
+#
+# The door proofs above pin adjudication inside this module. They stop one hop
+# short of the veto, which trusts `payload["contradicted"]` on any row of this
+# event type and cannot re-derive it — a verdict is a model's judgement, not a
+# guard that can be recomputed from live rows. So the single-door property
+# rests on nothing under `app/` but the scan being able to write that row, and
+# these scans are what make that structural rather than merely true today. One
+# bare `record_event` call from anywhere else would flip a fact to `disputed`
+# through the ladder with no judge in the story at all.
+
+_VERDICT_EMITTER = "app/services/contradiction_scan.py"
+
+# Where the event type may be *named* at all: the vocabulary that declares it,
+# the one module that writes it, the one module that reads it back. Joining
+# this set means taking on a share of the channel's integrity — it is not a
+# formality, and a raw `INSERT INTO events` is exactly what it exists to catch.
+_VERDICT_REFERENCE_ALLOWLIST = {
+    "app/services/events.py",
+    "app/services/contradiction_scan.py",
+    "app/services/contradiction_veto.py",
+}
+
+_VERDICT_CONSTANT = "CONTRADICTION_SCANNED"
+
+
+def _app_sources(root: Path) -> list[Path]:
+    return [p for p in (root / "app").rglob("*.py") if "__pycache__" not in str(p)]
+
+
+def _rel(path: Path, root: Path) -> str:
+    return str(path.relative_to(root)).replace("\\", "/")
+
+
+def _string_bindings(tree: ast.Module) -> dict[str, str]:
+    """Module-level names that provably hold a string, resolved one hop.
+
+    Enough to follow the two ways a call site reaches this event type without
+    spelling it inline: importing the constant, and rebinding either the
+    constant or the literal to a module-level name of its own.
+    """
+    bindings: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module == "app.services.events":
+            for alias in node.names:
+                if alias.name == _VERDICT_CONSTANT:
+                    bindings[alias.asname or alias.name] = CONTRADICTION_SCANNED
+        if not isinstance(node, ast.Assign):
+            continue
+        value = None
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            value = node.value.value
+        elif isinstance(node.value, ast.Name):
+            value = bindings.get(node.value.id)
+        elif isinstance(node.value, ast.Attribute):
+            value = (
+                CONTRADICTION_SCANNED
+                if node.value.attr == _VERDICT_CONSTANT else None
+            )
+        if value is None:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                bindings[target.id] = value
+    return bindings
+
+
+def _names_the_verdict(node: ast.expr, bindings: dict[str, str]) -> bool:
+    if isinstance(node, ast.Constant):
+        return node.value == CONTRADICTION_SCANNED
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id) == CONTRADICTION_SCANNED
+    if isinstance(node, ast.Attribute):
+        return node.attr == _VERDICT_CONSTANT
+    return False
+
+
+def _verdict_emitters(paths: list[Path], root: Path) -> set[str]:
+    """Every file holding a ``record_event`` call that journals this verdict.
+
+    Against the parsed tree, and on the keyword rather than the line: the
+    argument is keyword-only in ``record_event``'s signature, so there is no
+    positional spelling to miss, and a co-occurrence rule over raw text would
+    fire on the prose above while missing a call split across lines.
+    """
+    emitters: set[str] = set()
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        bindings = _string_bindings(tree)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = func.attr if isinstance(func, ast.Attribute) else getattr(
+                func, "id", None
+            )
+            if called != "record_event":
+                continue
+            for keyword in node.keywords:
+                if keyword.arg == "event_type" and _names_the_verdict(
+                    keyword.value, bindings
+                ):
+                    emitters.add(_rel(path, root))
+    return emitters
+
+
+def _verdict_referrers(paths: list[Path], root: Path) -> set[str]:
+    """Every file that names this event type at all, however it spells it.
+
+    The emitter scan resolves names it can follow; this one needs no
+    resolution, so it is what closes the routes that scan cannot see — a raw
+    ``INSERT INTO events`` carrying the type as SQL text, or a name laundered
+    through a caller's argument. Between them a module cannot write this
+    channel without either being caught or never mentioning the value it
+    writes.
+    """
+    referrers: set[str] = set()
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            named = (
+                (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                 and CONTRADICTION_SCANNED in node.value)
+                or (isinstance(node, ast.Name) and node.id == _VERDICT_CONSTANT)
+                or (isinstance(node, ast.Attribute) and node.attr == _VERDICT_CONSTANT)
+                or (isinstance(node, ast.alias) and node.name == _VERDICT_CONSTANT)
+            )
+            if named:
+                referrers.add(_rel(path, root))
+    return referrers
+
+
+class TestOnlyTheScanWritesTheVerdict:
+    def test_the_scan_module_is_the_only_emitter(self):
+        paths = _app_sources(BACKEND)
+        assert len(paths) > 100, (
+            f"only found {len(paths)} files under app/ — the scan would pass "
+            "vacuously; check BACKEND / the glob path"
+        )
+        emitters = _verdict_emitters(paths, BACKEND)
+        assert emitters == {_VERDICT_EMITTER}, (
+            "the contradiction verdict is journalled from somewhere other than "
+            f"the scan: {sorted(emitters)}. The veto trusts that bit and cannot "
+            "re-derive it, so a second writer is a heuristic contradiction "
+            "detector with the judge removed from the path."
+        )
+
+    def test_only_the_channel_s_three_modules_name_the_verdict(self):
+        paths = _app_sources(BACKEND)
+        referrers = _verdict_referrers(paths, BACKEND)
+        assert referrers == _VERDICT_REFERENCE_ALLOWLIST, (
+            "app code outside the verdict channel names the event type: "
+            f"{sorted(referrers - _VERDICT_REFERENCE_ALLOWLIST)}. A module that "
+            "does not declare, write or read this channel has no use for its "
+            "name — and a raw INSERT is the emitter scan's blind spot."
+        )
+
+    def test_the_emitter_scan_flags_a_bare_record_event(self, tmp_path):
+        """Negative control, and the reviewer's own bypass verbatim: one
+        `record_event` call, disputing a fact with no judge in the path."""
+        module = tmp_path / "app" / "services" / "eager_verdict.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(
+            "from app.services.events import record_event\n"
+            "async def dispute(session, fact_id):\n"
+            "    await record_event(\n"
+            "        session,\n"
+            "        event_type='contradiction_scanned',\n"
+            "        object_type='fact',\n"
+            "        object_id=fact_id,\n"
+            "        payload={'contradicted': True},\n"
+            "    )\n",
+            encoding="utf-8",
+        )
+        assert _verdict_emitters([module], tmp_path) == {
+            "app/services/eager_verdict.py"
+        }
+
+    def test_the_emitter_scan_follows_the_constant_and_its_aliases(self, tmp_path):
+        """The same bypass one indirection deeper. A guard matching only the
+        inline literal would pass this and report the tree clean."""
+        module = tmp_path / "app" / "services" / "laundered_verdict.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(
+            "from app.services.events import CONTRADICTION_SCANNED, record_event\n"
+            "KIND = CONTRADICTION_SCANNED\n"
+            "async def dispute(session, fact_id):\n"
+            "    await record_event(session, event_type=KIND, object_type='fact')\n",
+            encoding="utf-8",
+        )
+        assert _verdict_emitters([module], tmp_path) == {
+            "app/services/laundered_verdict.py"
+        }
+
+    def test_the_emitter_scan_ignores_an_unrelated_event(self, tmp_path):
+        """The other direction: a guard that flagged every `record_event` call
+        would be unfalsifiable, and its green run would mean nothing."""
+        module = tmp_path / "app" / "services" / "ordinary_writer.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(
+            "from app.services.events import record_event\n"
+            "async def note(session, fact_id):\n"
+            "    await record_event(\n"
+            "        session, event_type='sources_changed', object_type='fact'\n"
+            "    )\n",
+            encoding="utf-8",
+        )
+        assert _verdict_emitters([module], tmp_path) == set()
+        assert _verdict_referrers([module], tmp_path) == set()
+
+    def test_the_reference_scan_flags_a_raw_insert(self, tmp_path):
+        """Negative control for the scan that covers the emitter scan's blind
+        spot: no `record_event` call anywhere, the type spelled in SQL."""
+        module = tmp_path / "app" / "services" / "sql_verdict.py"
+        module.parent.mkdir(parents=True)
+        module.write_text(
+            "from sqlalchemy import text\n"
+            "STMT = text(\"INSERT INTO events (event_type, object_type) \"\n"
+            "            \"VALUES ('contradiction_scanned', 'fact')\")\n",
+            encoding="utf-8",
+        )
+        assert _verdict_referrers([module], tmp_path) == {
+            "app/services/sql_verdict.py"
+        }
+
+
 # ══════════ G3 — misses are counted, not hidden ══════════════════════════════
 
 
@@ -750,6 +976,77 @@ class TestMissesAreCounted:
         assert outcome.facts_incomplete == 1
         assert await _scan_verdicts(session, subject) == []
 
+    async def test_a_swallowed_journal_write_is_a_miss_not_a_dispute(
+        self, session, qualified_judge_record, monkeypatch
+    ):
+        """``record_event`` never raises, and this journal row is the whole
+        output. Counting the dispute anyway would drop a paid, judge-confirmed
+        finding and report the run clean — the exact shape this clause exists
+        to forbid, arriving through the one path that is not a judge failure.
+        """
+        subject = await _fact(
+            session, subject="darkmem", obj="postgres",
+            fact="darkmem stores its vault in postgres",
+        )
+        await _source(session, subject, "sess-a")
+        counter = await _fact(
+            session, subject="darkmem", obj="mysql",
+            fact="darkmem stores its vault in mysql",
+        )
+        await _source(session, counter, "sess-b")
+        await _enqueue(session, subject)
+
+        async def _swallowed(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(scan_module, "record_event", _swallowed)
+        outcome = await _run(session, StubLLM([_verdict("contradicted")]))
+
+        assert outcome.journal_failed == 1
+        assert outcome.disputes_recorded == 0
+        assert outcome.clears_recorded == 0
+        assert outcome.facts_checked == 0
+        assert outcome.misses >= 1
+        assert await _scan_verdicts(session, subject) == []
+
+    async def test_a_lost_verdict_leaves_its_event_to_be_drained_again(
+        self, session, qualified_judge_record, monkeypatch
+    ):
+        """The watermark holds, so the fact is re-checked rather than skipped.
+
+        A miss counter that reported the loss while the queue position moved
+        past it would name a fact nothing will ever return to.
+        """
+        subject = await _fact(
+            session, subject="darkmem", obj="postgres",
+            fact="darkmem stores its vault in postgres",
+        )
+        await _source(session, subject, "sess-a")
+        counter = await _fact(
+            session, subject="darkmem", obj="mysql",
+            fact="darkmem stores its vault in mysql",
+        )
+        await _source(session, counter, "sess-b")
+        await _enqueue(session, subject)
+
+        async def _swallowed(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(scan_module, "record_event", _swallowed)
+        lost = await _run(session, StubLLM([_verdict("contradicted")]))
+        assert lost.watermark_advanced is False
+        assert lost.skipped_reason == "a verdict could not be journalled"
+
+        # Restored by name rather than `monkeypatch.undo()`, which would also
+        # revert the qualification fixture's own patch and leave the second run
+        # refusing for an entirely different reason.
+        monkeypatch.setattr(scan_module, "record_event", record_event)
+        recovered = await _run(session, StubLLM([_verdict("contradicted")]))
+        assert recovered.events_scanned == 1
+        assert recovered.disputes_recorded == 1
+        assert recovered.journal_failed == 0
+        assert (await _scan_verdicts(session, subject))[0]["contradicted"] is True
+
     async def test_a_refusal_counts_the_facts_it_never_reached(self, session):
         for index in range(3):
             subject = await _fact(
@@ -794,9 +1091,10 @@ class TestMissesAreCounted:
             if f.name in {
                 "facts_incomplete", "facts_unscanned", "candidates_truncated",
                 "judge_refused", "judge_failed", "judge_invalid",
+                "journal_failed",
             }
         ]
-        assert len(buckets) == 6
+        assert len(buckets) == 7
         for index, name in enumerate(buckets, start=1):
             assert scan_module.ScanOutcome(**{name: index}).misses == index
 
@@ -846,7 +1144,17 @@ class TestTheVerdictFeedsTheVeto:
         decision = await recompute_fact(session, subject)
         assert decision.target_status == "disputed"
 
-    async def test_a_later_clean_verdict_ends_the_dispute(self, session):
+    async def test_a_later_clean_verdict_supersedes_an_earlier_one(self, session):
+        """The newest row wins — and that is all it does.
+
+        It is worth naming what this does **not** show. The fact here was never
+        disputed, and once the ladder has applied a dispute the scan's own
+        servable predicate excludes the fact, so no later verdict is ever
+        written for it: this ordering rule only decides between two rows that
+        both arrived before the dispute was applied. The two exits from an
+        applied dispute are guard lapse and human ratification, and
+        `detect_scanned_contradiction`'s docstring is where they are stated.
+        """
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
             fact="darkmem stores its vault in postgres",
