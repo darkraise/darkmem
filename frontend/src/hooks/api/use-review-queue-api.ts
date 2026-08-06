@@ -56,9 +56,18 @@ export interface VerifiedEvidenceContradiction {
  *  fields mean "this transition did not carry that evidence", not "unknown
  *  value" — see `app/repositories/knowledge_triples.py`'s conditional
  *  payload assembly. */
+// `label_suppressed` rides inside the transition objects rather than beside
+// them: the backend gates each embedded rung independently, so a payload can
+// carry a withheld `after` next to a `before` that needed no gating. Reading
+// it at the payload level would flatten that apart.
+export interface VerifiedEvidenceTransition {
+  verification_status: string | null
+  label_suppressed?: string | null
+}
+
 export interface VerifiedEvidencePayload {
-  before?: { verification_status: string | null }
-  after?: { verification_status: string | null }
+  before?: VerifiedEvidenceTransition
+  after?: VerifiedEvidenceTransition
   outcome?: string
   origin_count?: number
   required_n?: number
