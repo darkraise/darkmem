@@ -300,7 +300,7 @@ async def test_pipeline_forwards_the_scope_to_both_channels(monkeypatch):
 
         async def search(
                 self, query, limit=20, semantic_weight=0.7, filters=None,
-                ppr_weight=0.0,
+                ppr_weight=0.0, access_signals=False,
             ):
             seen["hybrid"] = filters
             return []

@@ -16,8 +16,10 @@ scalar would start moving list ordering. ``LIST_WEIGHT_KEYS`` and the
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 
 from app.services.confidence import CONFIDENCE_DEFAULT
@@ -155,6 +157,75 @@ def _weight(weights: Mapping[str, object], flag: str) -> float:
         return float(weights.get(flag, 0.0) or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+# ── the heat and recency signals (doc 07 §3, T2.29's substrate) ──────
+#
+# `memory_access_stats` stores raw counters and deliberately derives nothing
+# (that module's own docstring says so). These are the derivations, and they
+# live here beside the arm that spends them rather than beside the counter,
+# so a second consumer cannot invent a second scale for the same signal.
+
+# Accesses at which heat reaches ~63% of its ceiling. A *saturating* transform
+# rather than a normalised one is the load-bearing choice: normalising by the
+# corpus maximum (or by the page's) makes one row's signal depend on other
+# rows, so the same memory scores differently in two result sets and the two
+# doors can no longer be compared. Saturation is per-row and absolute.
+HEAT_SCALE = 10.0
+
+# Access recency, not content recency. T2.29 built `memory_access_stats` as
+# "the substrate w_heat and w_recency will read", and `last_accessed` is the
+# column it offers; `updated_at` means "content changed" and is moved by the
+# `touch_updated_at` trigger, which is a different claim entirely.
+RECENCY_HALFLIFE_DAYS = 30.0
+
+
+def heat_signal(access_count: object) -> float | None:
+    """Bounded [0, 1) heat from a raw access count.
+
+    ``None`` when there is no counter row — which `arm_factor` already treats
+    as "leave this row alone". A never-accessed memory and a zero-count one
+    are the same claim, and both must be neutral rather than penalised: heat
+    ranks *up* what is hot, and turning absence into a downward multiplier
+    would demote every newly captured memory for as long as the arm is on.
+    """
+    if access_count is None:
+        return None
+    try:
+        count = float(access_count)
+    except (TypeError, ValueError):
+        return None
+    if count <= 0.0:
+        return 0.0
+    return 1.0 - math.exp(-count / HEAT_SCALE)
+
+
+def recency_signal(last_accessed: object, now: datetime | None = None) -> float | None:
+    """Bounded (0, 1] exponential decay on time since last access."""
+    if not isinstance(last_accessed, datetime):
+        return None
+    reference = now or datetime.now(timezone.utc)
+    if last_accessed.tzinfo is None:
+        last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    age_days = (reference - last_accessed).total_seconds() / 86400.0
+    if age_days <= 0.0:
+        return 1.0
+    return math.exp(-age_days * math.log(2.0) / RECENCY_HALFLIFE_DAYS)
+
+
+ACCESS_ARM_FLAGS: tuple[str, ...] = ("w_heat", "w_recency")
+
+
+def access_arms_active(weights: Mapping[str, object]) -> bool:
+    """Whether either access-fed arm carries weight.
+
+    Lets the channel skip the `memory_access_stats` read entirely, so an
+    install with both arms at zero pays nothing for a signal nothing spends —
+    the same "inert must also mean free" property the PPR arm holds.
+    """
+    return any(_weight(weights, flag) != 0.0 for flag in ACCESS_ARM_FLAGS)
 
 
 def ppr_list_weight(weights: Mapping[str, object]) -> float:

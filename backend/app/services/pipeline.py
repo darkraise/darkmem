@@ -24,6 +24,7 @@ from app.services.fact_provenance import (
 )
 from app.services.rank_fusion import (
     IMPORTANCE_DEFAULT,
+    access_arms_active,
     any_arm_active,
     ppr_list_weight,
     rank_fusion_factor,
@@ -1278,6 +1279,7 @@ class ProcessingPipeline:
                     results = await hybrid.search(
                         query, limit=limit, semantic_weight=semantic_weight, filters=filters,
                         ppr_weight=ppr_list_weight(flags),
+                        access_signals=access_arms_active(flags),
                     )
 
                     reranked = bool(flags["reranker_enabled"])
@@ -1313,10 +1315,13 @@ class ProcessingPipeline:
         """Apply the deterministic post-fusion multiplier to retrieval scores.
 
         ``final = base * rank_fusion_factor(signals, flags)``. Confidence and
-        importance are the signals fed today, both read off the memory row in
-        the same query; the heat/recency arms have no signal source wired yet
-        (T2.31) and contribute exactly 1.0, as does any arm at weight zero,
-        so the composed factor stays bit-identical to the spent arms' one.
+        importance are read off the memory row in the same query; heat and
+        recency ride **on the row**, stamped by the shared channel
+        (`HybridSearchService._attach_access_signals`) rather than re-derived
+        here, so this door and the chat door spend one set of numbers instead
+        of two. An arm whose signal is absent contributes exactly 1.0, as does
+        any arm at weight zero, so the composed factor stays bit-identical to
+        the spent arms' one.
 
         When ``preserve_order`` is set (the reranker has already imposed a
         ranking), scores are still rescaled but the input order is kept — the
@@ -1356,10 +1361,13 @@ class ProcessingPipeline:
         for r in results:
             mid = str(r.get("memory_id") or r.get("id") or "")
             conf, imp = signal_map.get(mid, (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
+            signals: dict[str, float] = {"confidence": conf, "importance": imp}
+            for name in ("heat", "recency"):
+                value = r.get(name)
+                if value is not None:
+                    signals[name] = float(value)
             base = float(r.get(score_key, 0.0) or 0.0)
-            r[score_key] = base * rank_fusion_factor(
-                {"confidence": conf, "importance": imp}, flags,
-            )
+            r[score_key] = base * rank_fusion_factor(signals, flags)
 
         if preserve_order:
             return results

@@ -103,6 +103,7 @@ from app.services.rank_fusion import (
     ContextOutcome,
     DeclaredContext,
     RowContext,
+    access_arms_active,
     match_context,
     ppr_list_weight,
     rank_fusion_factor,
@@ -1353,6 +1354,7 @@ class LayerCompositionService:
                 query, limit=limit,
                 filters=MemoryFilter(project=project, statuses=statuses),
                 ppr_weight=ppr_list_weight(weights),
+                access_signals=access_arms_active(weights),
             )
         except Exception:
             logger.error("Layer composition: the memory channel failed outright")

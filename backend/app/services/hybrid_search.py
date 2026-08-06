@@ -16,7 +16,9 @@ from app.services.rank_fusion import (
     RRF_K,
     RankedList,
     fusion_fetch_depth,
+    heat_signal,
     normalize_row_id,
+    recency_signal,
     rrf_fuse,
 )
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_labels
@@ -53,6 +55,7 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
         ppr_weight: float = 0.0,
+        access_signals: bool = False,
     ) -> list[dict]:
         """The fused rows, ``limit`` of them.
 
@@ -81,6 +84,8 @@ class HybridSearchService:
             semantic_results, keyword_results, semantic_weight, limit,
             ppr_results, ppr_weight,
         )
+        if access_signals:
+            await self._attach_access_signals(fused)
         self._record_access(fused)
         return fused
 
@@ -91,6 +96,7 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
         ppr_weight: float = 0.0,
+        access_signals: bool = False,
     ) -> ChannelTrace:
         """Same channels and fusion as :meth:`search`, plus what each channel
         contributed per row — the input the retrieval trace envelope needs
@@ -122,6 +128,8 @@ class HybridSearchService:
             semantic_results, keyword_results, semantic_weight, limit,
             ppr_results, ppr_weight,
         )
+        if access_signals:
+            await self._attach_access_signals(fused)
         self._record_access(fused)
         return ChannelTrace(
             results=fused,
@@ -300,6 +308,56 @@ class HybridSearchService:
         if ppr_results and ppr_weight:
             lists.append(RankedList("ppr", ppr_results, ppr_weight))
         return rrf_fuse(lists, limit)
+
+    async def _attach_access_signals(self, rows: list[dict]) -> None:
+        """Stamp `heat` and `recency` onto the fused rows, in one read.
+
+        **Attached here rather than derived at each door, and that is the whole
+        point.** The chat door reads its arm signals off the row
+        (`layer_composition._signals` over `SIGNAL_KEYS`), while the search door
+        re-reads `memories` for confidence and importance. If heat and recency
+        were derived separately at each of them, the two would rank one corpus
+        differently the moment either arm was flipped on — the divergence T2.58
+        closed for the channel itself, arriving again through the signals. One
+        read, on the shared channel, and both doors see the same numbers.
+
+        A memory with no counter row is left without the keys at all, not with
+        a zero: `arm_factor` treats an absent signal as exactly 1.0, so a
+        never-accessed memory is untouched rather than demoted.
+        """
+        if not rows:
+            return
+        ids = []
+        for row in rows:
+            key = normalize_row_id(row)
+            if key:
+                ids.append(key)
+        if not ids:
+            return
+
+        result = await self.session.execute(
+            text(
+                "SELECT CAST(memory_id AS text), access_count, last_accessed "
+                "FROM memory_access_stats "
+                "WHERE memory_id = ANY(CAST(:ids AS uuid[]))"
+            ),
+            {"ids": ids},
+        )
+        stats = {row[0]: (row[1], row[2]) for row in result}
+        if not stats:
+            return
+
+        for row in rows:
+            key = normalize_row_id(row)
+            entry = stats.get(key) if key else None
+            if entry is None:
+                continue
+            heat = heat_signal(entry[0])
+            recency = recency_signal(entry[1])
+            if heat is not None:
+                row["heat"] = heat
+            if recency is not None:
+                row["recency"] = recency
 
     async def _ppr_search(
         self,
