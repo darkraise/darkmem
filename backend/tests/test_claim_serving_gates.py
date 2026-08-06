@@ -64,6 +64,26 @@ def test_a_cleared_record_opens_the_gate(cleared_record):
     assert claim_gates.corroboration_gate(cleared_record).open is True
 
 
+@pytest.mark.parametrize("value", ["INTERIM", "false", "no", 1, 0.8182])
+def test_a_truthy_non_boolean_eligibility_does_not_open_the_gate(tmp_path, value):
+    """T2.95 review finding: `gate_eligible` was checked for truthiness, so a
+    record branding itself `"INTERIM"` — or even the string `"false"` — opened
+    the gate. Only the JSON boolean `true` may."""
+    record = tmp_path / "branded.json"
+    record.write_text(json.dumps({"gate_eligible": value}))
+    assert claim_gates.corroboration_gate(record).open is False
+
+
+def test_an_undecodable_record_fails_closed_without_crashing(tmp_path):
+    """T2.95 review finding: invalid UTF-8 raises UnicodeDecodeError out of
+    the file *read* rather than the JSON parse, and an uncaught one crashed
+    the whole fact read path — candidate rows included — instead of treating
+    the record as absent."""
+    corrupt = tmp_path / "corrupt_bytes.json"
+    corrupt.write_bytes(b'{"gate_eligible": true, "note": "\xff\xfe"}')
+    assert claim_gates.corroboration_gate(corrupt).open is False
+
+
 # ── what is gated, and what is deliberately not ──────────────────────
 
 
