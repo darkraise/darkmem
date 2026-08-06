@@ -998,8 +998,8 @@ def _loader_call_package(node: ast.Call) -> str | None:
     return None
 
 
-def _loader_call_target(node: ast.AST, package: str) -> str | None:
-    """The dotted module a literal ``import_module``/``__import__`` call names.
+def _loader_call_targets(node: ast.AST, package: str) -> list[str]:
+    """The dotted modules a literal ``import_module``/``__import__`` call names.
 
     The closure's static-import walk is structurally blind to
     ``importlib.import_module("app.services.pipeline")``: it executes at
@@ -1019,28 +1019,65 @@ def _loader_call_target(node: ast.AST, package: str) -> str | None:
     a computed string statically is impossible, and this is a tripwire, so
     the residual over-approximation of the package fallback (one extra module
     scanned) is the correct direction to err in.
+
+    ``fromlist`` members are appended to the base exactly as the static
+    ``ImportFrom`` branch appends its aliases, because they name the same
+    thing: ``__import__("app.services", fromlist=["pipeline"])`` hands back
+    the package while the caller reaches through to
+    ``app.services.pipeline``, so following only the base would scan an
+    ``__init__`` and leave the submodule unreached.
+
+    **The bound this resolver does not cross, stated rather than
+    discovered.** It resolves a *call shape*, never a binding. So
+    ``import_module`` reached through an alias
+    (``from importlib import import_module as im``) or through a variable
+    holding the callable is outside it, as is any name assembled at runtime
+    — an f-string, a join, a constant lookup — and so is the
+    ``find_spec``/``module_from_spec``/``exec_module`` triple, which never
+    names a module in a call argument at all. Each is a real escape, and
+    each is left open deliberately: resolving bindings turns a tripwire into
+    a dataflow analysis, and a guard that grows until it is wrong about
+    something is worse than one whose edge is written down. What is *not*
+    in that bound, and was closed rather than argued: the keyword spelling
+    of the first argument, and ``fromlist``. Both read as oversights in a
+    resolver that already accepts a keyword ``package=``.
     """
     if not isinstance(node, ast.Call):
-        return None
+        return []
     func = node.func
     if isinstance(func, ast.Name):
         called = func.id
     elif isinstance(func, ast.Attribute):
         called = func.attr
     else:
-        return None
+        return []
     if called not in {"import_module", "__import__"}:
-        return None
-    if not node.args or not isinstance(node.args[0], ast.Constant):
-        return None
-    target = node.args[0].value
+        return []
+    named = node.args[0] if node.args else next(
+        (kw.value for kw in node.keywords if kw.arg == "name"), None
+    )
+    if not isinstance(named, ast.Constant):
+        return []
+    target = named.value
     if not isinstance(target, str) or not target:
-        return None
-    if not target.startswith("."):
-        return target
-    level = len(target) - len(target.lstrip("."))
-    base = _loader_call_package(node) or package
-    return _resolve_relative(base, level, target[level:] or None)
+        return []
+    if target.startswith("."):
+        level = len(target) - len(target.lstrip("."))
+        base = _loader_call_package(node) or package
+        resolved = _resolve_relative(base, level, target[level:] or None)
+        if not resolved:
+            return []
+        target = resolved
+    reached = [target]
+    for keyword in node.keywords:
+        if keyword.arg != "fromlist" or not isinstance(keyword.value, (ast.List, ast.Tuple)):
+            continue
+        reached += [
+            f"{target}.{element.value}"
+            for element in keyword.value.elts
+            if isinstance(element, ast.Constant) and isinstance(element.value, str)
+        ]
+    return reached
 
 
 def _import_closure(entry: Path, root: Path) -> list[Path]:
@@ -1053,7 +1090,7 @@ def _import_closure(entry: Path, root: Path) -> list[Path]:
     let ``from .pipeline import ProcessingPipeline`` pull the whole
     extraction pipeline into the deriver while every guard built on the
     closure stayed green. Literal loader calls count for the same reason
-    (``_loader_call_target``): an intermediate module carries no vocabulary
+    (``_loader_call_targets``): an intermediate module carries no vocabulary
     entry of its own precisely because the closure is what scans it, so a
     dynamic hop into one is invisible to every layer unless the closure
     follows it. The closure is small by construction — if it ever
@@ -1082,9 +1119,7 @@ def _import_closure(entry: Path, root: Path) -> list[Path]:
             elif isinstance(node, ast.Import):
                 dotted += [alias.name for alias in node.names]
             else:
-                loaded = _loader_call_target(node, package)
-                if loaded:
-                    dotted.append(loaded)
+                dotted += _loader_call_targets(node, package)
             for name in dotted:
                 if not name.startswith("app"):
                     continue
@@ -1320,7 +1355,7 @@ def test_the_closure_follows_a_dynamic_reach_as_it_follows_a_static_one(tmp_path
 def test_the_closure_follows_a_loader_call_only_when_the_name_is_literal(tmp_path):
     """The extension's scope: literals, not every call node.
 
-    Without this, ``_loader_call_target`` could pull in modules it never
+    Without this, ``_loader_call_targets`` could pull in modules it never
     resolved and the positive controls above would still pass. A computed
     name is the shared scanner's documented bound (`_reachability_scan`'s
     module docstring) — no static rework reaches it — so the honest
