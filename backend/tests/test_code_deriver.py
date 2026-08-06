@@ -769,6 +769,81 @@ async def test_the_memory_strip_spares_a_repo_asserted_relation(session):
     assert list(remaining) == [], "the stripped memory is still on the survivor"
 
 
+async def _two_repos_of_one_name(session, name: str) -> tuple[UUID, UUID]:
+    """Two distinct repositories sharing a name — a shipped row class.
+
+    ``repositories.name`` carries no unique constraint, so two rows of the
+    same name derive the same repo entity and the same relation triples;
+    ``assert_from_repo``'s ``ON CONFLICT`` then appends, leaving rows both
+    repos assert and no memory does. Stripping one is what puts the repo
+    predicates of ``strip_repo_assertions`` on the critical path.
+    """
+    return (
+        await _seed_repo(session, name=name, imports=[]),
+        await _seed_repo(session, name=name, imports=[]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_repo_strip_spares_a_relation_a_second_repo_asserts(session):
+    """The *relation* half of ``strip_repo_assertions``'s live-repo guard.
+
+    Nothing but a string count guarded this statement: swap ``repo_ids`` for
+    ``memory_ids`` in it — the copy-paste slip the shape invites — and every
+    test stayed green while a live repo's assertion was destroyed. The
+    ``lonely`` relation is the other direction, so the delete cannot pass by
+    never running.
+    """
+    first, second = await _two_repos_of_one_name(session, "same-name-repo")
+    source = await _entity(session, "both-repos-source", [], [str(first), str(second)])
+    target = await _entity(session, "both-repos-target", [], [str(first), str(second)])
+    shared = await _relation(session, source, target, [], [str(first), str(second)])
+    lonely_source = await _entity(session, "one-repo-source", [], [str(first)])
+    lonely_target = await _entity(session, "one-repo-target", [], [str(first)])
+    lonely = await _relation(session, lonely_source, lonely_target, [], [str(first)])
+    await session.flush()
+
+    await PostgresGraphRepository(session).strip_repo_assertions(first)
+
+    assert await _exists(session, "entity_relations", shared), (
+        "the repo strip deleted a relation the second repo still asserts"
+    )
+    assert not await _exists(session, "entity_relations", lonely)
+    remaining = (await session.execute(
+        text("SELECT repo_ids FROM entity_relations WHERE id = CAST(:id AS uuid)"),
+        {"id": str(shared)},
+    )).scalar()
+    assert [str(r) for r in remaining] == [str(second)]
+
+
+@pytest.mark.asyncio
+async def test_the_repo_strip_spares_an_entity_a_second_repo_asserts(session):
+    """The *entity* half of the same guard, with no relation to mask it.
+
+    ``test_an_entity_two_repos_assert_survives_one_strip`` looks like this
+    coverage but is not: there the shared entity is spared by the
+    surviving-relation FK guard, so the repo predicate never decides the
+    outcome. These rows carry no relation at all, which is the only shape
+    that puts the predicate on the critical path.
+    """
+    first, second = await _two_repos_of_one_name(session, "same-name-repo")
+    shared = await _entity(session, "both-repos-node", [], [str(first), str(second)])
+    lonely = await _entity(session, "one-repo-node", [], [str(first)])
+    await session.flush()
+
+    await PostgresGraphRepository(session).strip_repo_assertions(first)
+
+    assert await _exists(session, "entities", shared), (
+        "the repo strip deleted an entity the second repo still asserts"
+    )
+    assert not await _exists(session, "entities", lonely)
+    remaining = (await session.execute(
+        text("SELECT repo_ids FROM entities WHERE id = CAST(:id AS uuid)"),
+        {"id": str(shared)},
+    )).scalar()
+    assert [str(r) for r in remaining] == [str(second)]
+
+
 @pytest.mark.asyncio
 async def test_the_unscoped_sweep_spares_a_repo_asserted_relation(session):
     repo_id = await _seed_repo(session, name="sweep-repo", imports=[])
@@ -907,6 +982,67 @@ def _resolve_relative(package: str, level: int, module: str | None) -> str | Non
     return ".".join(base) or None
 
 
+def _loader_call_package(node: ast.Call) -> str | None:
+    """The literal ``package=`` a loader call passes, keyword or positional."""
+    for keyword in node.keywords:
+        if (
+            keyword.arg == "package"
+            and isinstance(keyword.value, ast.Constant)
+            and isinstance(keyword.value.value, str)
+        ):
+            return keyword.value.value
+    if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+        candidate = node.args[1].value
+        if isinstance(candidate, str):
+            return candidate
+    return None
+
+
+def _loader_call_target(node: ast.AST, package: str) -> str | None:
+    """The dotted module a literal ``import_module``/``__import__`` call names.
+
+    The closure's static-import walk is structurally blind to
+    ``importlib.import_module("app.services.pipeline")``: it executes at
+    import and hands back the live module, yet no ``Import`` node names it,
+    so the reached module never enters the set the guards scan and every
+    guard built on the closure stays green. That is the same class of hole
+    the relative-import resolution closed, one route over — and it is the
+    route the shared scanner's client rule already resolves for a literal
+    ``import_module("httpx")``.
+
+    An absolute literal name is the module. A relative one resolves through
+    the same ``_resolve_relative`` the static walk uses, against the call's
+    own literal ``package`` when it has one and otherwise against the
+    importing file's package — which is what ``__package__`` evaluates to,
+    the only executable spelling of a relative loader call whose package is
+    not a literal. A non-literal name resolves to nothing here: reconstructing
+    a computed string statically is impossible, and this is a tripwire, so
+    the residual over-approximation of the package fallback (one extra module
+    scanned) is the correct direction to err in.
+    """
+    if not isinstance(node, ast.Call):
+        return None
+    func = node.func
+    if isinstance(func, ast.Name):
+        called = func.id
+    elif isinstance(func, ast.Attribute):
+        called = func.attr
+    else:
+        return None
+    if called not in {"import_module", "__import__"}:
+        return None
+    if not node.args or not isinstance(node.args[0], ast.Constant):
+        return None
+    target = node.args[0].value
+    if not isinstance(target, str) or not target:
+        return None
+    if not target.startswith("."):
+        return target
+    level = len(target) - len(target.lstrip("."))
+    base = _loader_call_package(node) or package
+    return _resolve_relative(base, level, target[level:] or None)
+
+
 def _import_closure(entry: Path, root: Path) -> list[Path]:
     """Every module under ``app`` reachable from ``entry``, transitively.
 
@@ -916,7 +1052,11 @@ def _import_closure(entry: Path, root: Path) -> list[Path]:
     imports both count — a closure that followed only ``level == 0`` would
     let ``from .pipeline import ProcessingPipeline`` pull the whole
     extraction pipeline into the deriver while every guard built on the
-    closure stayed green. The closure is small by construction — if it ever
+    closure stayed green. Literal loader calls count for the same reason
+    (``_loader_call_target``): an intermediate module carries no vocabulary
+    entry of its own precisely because the closure is what scans it, so a
+    dynamic hop into one is invisible to every layer unless the closure
+    follows it. The closure is small by construction — if it ever
     grows to include a module that legitimately talks to a model, that is a
     design change to argue for, not an allowlist entry to add.
     """
@@ -941,6 +1081,10 @@ def _import_closure(entry: Path, root: Path) -> list[Path]:
                     dotted += [f"{base}.{alias.name}" for alias in node.names]
             elif isinstance(node, ast.Import):
                 dotted += [alias.name for alias in node.names]
+            else:
+                loaded = _loader_call_target(node, package)
+                if loaded:
+                    dotted.append(loaded)
             for name in dotted:
                 if not name.startswith("app"):
                     continue
@@ -1116,6 +1260,83 @@ def test_the_closure_resolves_a_parent_relative_reach(tmp_path):
     closure = _import_closure(entry, tmp_path)
     assert tmp_path / "app" / "repositories" / "graph.py" in closure
     assert _model_dispatch_offenders(closure, tmp_path)
+
+
+def _scaffold_intermediate_reach(tmp_path: Path, reach: str) -> Path:
+    """A deriver-shaped entry whose only content is ``reach``.
+
+    The reached module is an ordinary intermediate — it carries no entry in
+    either forbidden vocabulary, exactly as ``app.services.pipeline`` does
+    not — so the reach is caught only if the closure pulls it in to be
+    scanned.
+    """
+    services = tmp_path / "app" / "services"
+    services.mkdir(parents=True)
+    (tmp_path / "app" / "__init__.py").write_text("")
+    (services / "__init__.py").write_text("")
+    (services / "pipeline.py").write_text("import httpx\n")
+    entry = services / "code_deriver.py"
+    entry.write_text(reach)
+    return entry
+
+
+@pytest.mark.parametrize(
+    "reach",
+    [
+        # The static spelling and the dynamic ones are the same reach: each
+        # executes at import and hands the deriver the live pipeline. The
+        # guard has to agree across all of them or it only forbids a spelling.
+        "from app.services.pipeline import ProcessingPipeline\n",
+        'import importlib\n_p = importlib.import_module("app.services.pipeline")\n',
+        "from importlib import import_module\n"
+        '_p = import_module("app.services.pipeline")\n',
+        '_p = __import__("app.services.pipeline")\n',
+        'import importlib\n_p = importlib.import_module(".pipeline", "app.services")\n',
+        "import importlib\n"
+        '_p = importlib.import_module(".pipeline", package="app.services")\n',
+        'import importlib\n_p = importlib.import_module(".pipeline", __package__)\n',
+    ],
+)
+def test_the_closure_follows_a_dynamic_reach_as_it_follows_a_static_one(tmp_path, reach):
+    """The third guard spelling, and the static one it has to agree with.
+
+    An intermediate module has no vocabulary entry of its own — the design
+    relies on the closure to scan it — so a dynamic hop into one was
+    invisible to both layers: the module route sees no import statement, and
+    the literal route fires only on the client and surface vocabularies,
+    neither of which names an intermediate. Planted in the real deriver,
+    ``importlib.import_module("app.services.pipeline")`` handed it the whole
+    extraction/classification surface with every test green.
+    """
+    entry = _scaffold_intermediate_reach(tmp_path, reach)
+
+    closure = _import_closure(entry, tmp_path)
+    assert tmp_path / "app" / "services" / "pipeline.py" in closure, (
+        "this spelling of the reach never entered the closure"
+    )
+    assert _model_dispatch_offenders(closure, tmp_path)
+
+
+def test_the_closure_follows_a_loader_call_only_when_the_name_is_literal(tmp_path):
+    """The extension's scope: literals, not every call node.
+
+    Without this, ``_loader_call_target`` could pull in modules it never
+    resolved and the positive controls above would still pass. A computed
+    name is the shared scanner's documented bound (`_reachability_scan`'s
+    module docstring) — no static rework reaches it — so the honest
+    statement is that this route follows what is spelled, and this test is
+    what pins the extension to that claim rather than to a wider one.
+    """
+    entry = _scaffold_intermediate_reach(
+        tmp_path,
+        "import importlib\n"
+        '_name = "app.services" + ".pipeline"\n'
+        "_p = importlib.import_module(_name)\n"
+        "_q = importlib.import_module()\n",
+    )
+
+    closure = _import_closure(entry, tmp_path)
+    assert closure == [entry]
 
 
 def _cross_graph_statements(paths: list[Path], root: Path) -> list[str]:
