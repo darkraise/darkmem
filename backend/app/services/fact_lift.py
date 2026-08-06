@@ -3,8 +3,9 @@
 Doc 08 §5.2. This derives *candidate* facts and their ``fact_sources`` from the
 Layer-1 candidate graph and then stops: the lift **creates** the fact and its
 provenance, the Tier-C recompute (T2.09) **counts and promotes**. Nothing here
-reads the ladder or adjudicates a contradiction — the split is what keeps a
-producer from grading its own output. The **only** verification-axis write in
+reads the ladder, and the single contradiction adjudication it does run can only
+*refuse* a write of its own (``_restore_born_rungs``, fix round 2) — the split
+is what keeps a producer from grading its own output. The **only** verification-axis write in
 this module is doc 10 §6's exception below, on facts whose whole provenance is
 one repository's parse: the count has no opinion about those, so there is no
 grading of its own output to do. Every memory-derived fact leaves here
@@ -79,7 +80,11 @@ provably cannot: the fact's whole provenance must be a single ``code`` origin,
 which is below every threshold the ladder can pick, so no promotion the count
 would have made is taken from it and G-C's promotion rate gains neither a
 numerator nor a denominator entry. Two code origins are left to the count; a
-memory or human origin is left to the count.
+memory or human origin is left to the count. And the veto still beats the
+exception on the restore side too: the rung statement's WHERE refuses an
+*applied* dispute, while ``_restore_born_rungs`` adjudicates the standing one
+the recompute has not written yet (fix round 2), so there is no window in which
+this path outruns a verdict that already exists.
 
 A repository is **one origin however many commits it is indexed across**
 (doc 08 §4.1's one-document-one-origin rule, applied to code): the provenance
@@ -148,6 +153,7 @@ from app.services.code_deriver import (
     dependency_name,
     is_internal_import,
 )
+from app.services.contradiction_veto import adjudicate_contradiction
 from app.services.events import record_event
 from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
 from app.services.job_registry import FieldDescriptor
@@ -1028,10 +1034,23 @@ async def _restore_born_rungs(session: AsyncSession, *, rows: list[dict]) -> int
 
     Runs after the withdrawal rather than before it, so a fact that lost a
     source this tick is judged on the provenance it has now.
+
+    **The veto is consulted here, and it is the whole reason this pass composes
+    two questions instead of one** (fix round 2). ``restore_born_rung``'s WHERE
+    refuses a ``disputed`` row, which covers a dispute the recompute has already
+    *applied* — but the scan journals its verdict and the recompute is what
+    writes the status, so between the two a vetoed fact still reads
+    ``candidate``. Restoring inside that window is an upward move at the one
+    moment the ladder itself would refuse one, undone by the next recompute. The
+    consult runs only over rows already at the rung's precondition, and it can
+    only decline a restore — never grant one — so the producer still does not
+    grade its own output.
     """
     restored = 0
     for row in rows:
         if row["verification_status"] != BORN_RUNG_PRECONDITION:
+            continue
+        if await adjudicate_contradiction(session, str(row["fact_id"])):
             continue
         if await restore_born_rung(session, fact_id=str(row["fact_id"])):
             restored += 1

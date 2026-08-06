@@ -52,6 +52,8 @@ from app.repositories.fact_sources import (
 )
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.code_deriver import assert_repo_graph
+from app.services.contradiction_veto import adjudicate_contradiction
+from app.services.events import CONTRADICTION_SCANNED, record_event
 from app.services.fact_lift import (
     CODE_FACT_PROJECT,
     IMPORT_BASIS,
@@ -811,6 +813,72 @@ async def test_the_restore_reads_the_stored_kinds_not_a_callers_word(session):
 
     assert await restore_born_rung(session, fact_id=fact_id) is False
     assert (await _row(session, fact_id))[0] == "candidate"
+
+
+async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(session):
+    """Fix round 2's finding N-1: the veto's precedence past the applied case.
+
+    ``contradiction_scan`` journals its verdict and the *recompute* is what
+    writes ``disputed``. Between the two the fact still reads ``candidate`` —
+    which is exactly the value the rung statement's WHERE consults — so the
+    statement's refusal covers applied disputes only. Without the consult the
+    restore raises the fact to ``corroborated`` inside that window and the next
+    recompute knocks it straight back to ``disputed``: an upward move at the one
+    moment the ladder itself would refuse one.
+    """
+    fact_id = await _born_fact(session, name="Scan-Repo")
+
+    rival_repo = await _seed_repo(session, name="Rival-Repo", imports=["httpx"])
+    await assert_repo_graph(session, rival_repo)
+    await run_code_lift(session)
+    rival = await _fact_for(session, "rival-repo", "DEPENDS_ON", "httpx")
+    witness = (
+        await FactSourceRepository(session).origin_profile(rival["id"])
+    ).attributable_origins[0].origin_key
+
+    await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    recovered = await recompute_fact(session, fact_id, open_contradiction=False)
+    await session.flush()
+    assert recovered.target_status == "candidate"
+
+    await record_event(
+        session,
+        event_type=CONTRADICTION_SCANNED,
+        object_type="fact",
+        object_id=UUID(fact_id),
+        project=CODE_FACT_PROJECT,
+        payload={
+            "contradicted": True,
+            "counterpart_id": str(rival["id"]),
+            "witness_origin": witness,
+        },
+    )
+    await session.flush()
+
+    # The two halves of the window, asserted rather than assumed: the verdict
+    # stands right now, and nothing has applied it yet.
+    assert await adjudicate_contradiction(session, fact_id) is True
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+    outcome = await run_code_lift(session)
+
+    assert outcome.rungs_restored == 0
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+    # And the refusal is the veto's, not the evidence rule's: the same fact
+    # with the verdict withdrawn is restored on the next tick.
+    await record_event(
+        session,
+        event_type=CONTRADICTION_SCANNED,
+        object_type="fact",
+        object_id=UUID(fact_id),
+        project=CODE_FACT_PROJECT,
+        payload={"contradicted": False},
+    )
+    await session.flush()
+    assert (await run_code_lift(session)).rungs_restored == 1
+    assert (await _row(session, fact_id))[0] == "corroborated"
 
 
 async def test_the_memory_lift_still_births_candidates(session):

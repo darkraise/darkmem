@@ -1258,16 +1258,38 @@ class TestTheFindingCarriesTheCounterpartsClaim:
 
 BACKEND = Path(__file__).resolve().parent.parent
 
-# The ladder is the scan's only legitimate consumer: the veto is an input to the
-# verification decision and nothing else. The model scan's detector did not join
-# this list either, but not for the reason once recorded here: it lives in
-# `contradiction_veto.py` itself, the one file the scan below exempts by name.
-# That is the only layout available — `dream_jobs.py` imports the scan module,
-# which puts it out of reach of all app code under invariant 15, so a detector
-# imported from there would make the ladder-reachable veto fail the build. The
-# verdict travels as data on the events journal instead, and neither module
-# imports the other.
-_ALLOWED_VETO_FILES: set[str] = {"app/services/verification_ladder.py"}
+# The veto is an input to a **verification-axis decision** and nothing else, so
+# the admissible consumers are exactly the modules that decide such a write. The
+# ladder is one. `fact_lift.py` is the other and only other: doc 10 §6's
+# parse-is-the-verification exception is a verification decision that
+# deliberately sits outside the ladder, and it drives the one statement besides
+# the ladder's applier that writes the column (`_write_born_rung`, pinned to a
+# single caller by `test_deriver_lift.py`'s door scan and to a single writer by
+# `tests/honesty/test_human_only_confirmed.py`).
+#
+# It was admitted in T2.28's fix round 2 with a bounded warrant: the consult is
+# the standing-but-unapplied dispute the rung statement's WHERE cannot see, it
+# runs only over rows already at the rung's precondition, and it can only
+# *refuse* a restore — never grant a rung, never open a dispute, never write. A
+# consumer that could dispute inline would be the hot-path verdict this scan
+# exists to forbid; this one cannot reach a status write at all.
+#
+# Invariant 15 is untouched by the entry rather than traded against it:
+# `fact_lift` is a Tier-C dream-job body, already out of reach of capture and
+# retrieval by `tests/_reachability_scan.py`, so the veto gains no new caller
+# nearer the hot path than it had.
+#
+# The model scan's detector did not join this list either, but not for the
+# reason once recorded here: it lives in `contradiction_veto.py` itself, the one
+# file the scan below exempts by name. That is the only layout available —
+# `dream_jobs.py` imports the scan module, which puts it out of reach of all app
+# code under invariant 15, so a detector imported from there would make the
+# ladder-reachable veto fail the build. The verdict travels as data on the
+# events journal instead, and neither module imports the other.
+_ALLOWED_VETO_FILES: set[str] = {
+    "app/services/verification_ladder.py",
+    "app/services/fact_lift.py",
+}
 
 
 def _forbidden_veto_references(paths: list[Path], root: Path = BACKEND) -> list[str]:
