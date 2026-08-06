@@ -4,8 +4,15 @@
 faithfulness gate, proposition lifting, and the analysis surface.
 
 **Advance gate:** **G-F** — the core eval gate (retrieval eval and promotion metrics
-stable) plus maintainer appetite. The faithfulness metric (span-support coverage) must be
-**defined before build starts** and **clear its bar before ship**.
+stable) plus maintainer appetite.
+
+**The metric's ordering rule is scoped, amended 2026-08-06.** "Defined before build
+starts" was one rule doing two jobs. The job worth keeping is that a faithfulness metric
+must not be authored *after* seeing the evidence it will judge — that is anti-bar-shopping
+and it binds absolutely. The job not worth keeping is blocking a PDF parser on a metric
+definition. So: **TH1.01 must land before TH1.09, TH1.10 and TH1.17** (the serving check,
+the evidence run, the gate runner), and it no longer gates TH1.02–TH1.08 (parsers, block
+tree, embeddings, channel). **Clear its bar before ship** is unchanged.
 
 **Epic branch:** `feat/eh1-documents-pkm`
 
@@ -45,7 +52,16 @@ the bar lives as a `config` row; nothing in Lane A has been built yet.
 
 #### TH1.02 — `documents` / `blocks` first writer
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.01, T0.13` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T0.13` · `Doc: 16 §2–§3` · `Tag: horizon` · `Gate: G-F`
+
+**Unblocked for implementation 2026-08-06 (controller), with the anti-shopping
+property preserved.** TH1.01's title says "before any build", and the *reason*
+for that ordering is real: a metric authored after seeing the build can be
+tuned to flatter it. But that property only binds where the metric is
+**spent** — the serving check and the evidence run — not where documents are
+parsed and stored. So TH1.01 stops gating the parser stack and **remains a hard
+prerequisite of TH1.09, TH1.10 and TH1.17**, which is where it actually does its
+work. Metric-before-evidence holds; metric-before-plumbing does not.
 
 **What.** First writer to the tables landed inert in T0.13. Document identity is the
 partial `UNIQUE (project, uri)` with `content_hash` as the re-ingest change gate — an
@@ -150,22 +166,6 @@ as grounded** (invariant 14).
 
 **Verify.** `cd backend && python -m pytest tests/test_faithfulness_gate.py -q`
 
-#### TH1.10 — Faithfulness ship gate (G-F evidence)
-
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
-
-**What.** Double duty: TH1.09 is the per-answer runtime gate; this is the **ship** gate.
-The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
-
-**Done when:** measured on block-span entailment gold; the bar was set in TH1.01, before
-the build; verdict in `gate-ledger.md`; `CLAUDE.md` refreshed for the documents/blocks
-tables and the new jobs H1 ships; a miss leaves H1 unshipped.
-**Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
-
----
-
-## Lane D — proposition lifting (the vault bridge)
-
 #### TH1.11 — On-demand Tier-C lift
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.04` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
@@ -243,21 +243,9 @@ plainly; summaries render visibly unbadged; the surface is labelled as horizon i
 **Verify.** `cd frontend && npm test -- documents && npm run test:e2e -- documents`
 
 
-#### TH1.17 — Faithfulness-gate runner
-
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
-
-**What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
-designs the bar and reads the number (runbook §2).
-
-**Done when:** scores span-support coverage against block-span entailment gold; reports
-per-slice; emits its cost twin.
-**Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
-
----
-
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | TH1.01, TH1.02 | 2 | **A gate blocks what it certifies, not what merely precedes it.** Implementation lands **inert**; only the productive or serving path waits for evidence. This is the repo's own standing pattern, applied more consistently — T0.13's inert partitions, T2.08's `PlaceholderJobRunner` family, T2.32/T2.50's build-versus-judge split, and invariant 23's scaffolding-not-substrate. Dependency edges re-pointed off the evidence runs accordingly | Controller decision: the plan had implementation work queued behind **evaluation artifacts it does not depend on** — an SDK scaffold and a browser-extension scaffold waited on a groundedness evidence run, and a document parser waited on a faithfulness metric. That is phase coupling, not artifact coupling, and it stalls build work on datasets that do not exist yet. Evaluation is deferred to an independent measurement phase after the implementation is complete, where it can be run against the whole system rather than against fixtures. **What was deliberately left gated**: T2.28 (mints facts born `corroborated` — the exact harm G-C names), T3.02 (productive article runs — where a grounded claim first reaches a reader), T3.03 (the groundedness consumer). Freeing those would put unverified assertions in front of users, which is a different thing from unblocking a scaffold. **TH1.01 keeps its 'before any build' force where it matters**: it remains a hard prerequisite of TH1.09, TH1.10 and TH1.17, so a faithfulness metric still cannot be authored after seeing the evidence it will judge. Metric-before-evidence holds; metric-before-plumbing does not. |
 | — | — | — | (none yet) | — |

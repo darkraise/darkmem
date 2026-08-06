@@ -10,6 +10,11 @@ EPICS = [
     ("E3", "Synthesis & reach", "tasks/E3-synthesis-and-reach.md", "G-E open"),
     ("E4", "Hardening & scale", "tasks/E4-hardening-and-scale.md", "demand-gated"),
     ("EH1", "Documents / PKM", "tasks/EH1-documents-pkm.md", "G-F open"),
+    # M1 holds every evidence run and the gold they consume (created
+    # 2026-08-06). Its ids keep their original epic prefix — T2.54 stays
+    # T2.54 — because the whole tree already cites them, so the row regex
+    # must not assume a task id matches its epic key.
+    ("M1", "Measurement phase", "tasks/M1-measurement.md", "consumes implementation; gates nothing"),
 ]
 
 HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}[a-z]?) — (.+)$")
