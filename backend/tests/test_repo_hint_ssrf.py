@@ -192,7 +192,7 @@ async def _events(session, event_type: str) -> list[dict]:
     rows = await session.execute(
         text(
             "SELECT project, source, payload FROM events "
-            "WHERE event_type = :t ORDER BY created_at"
+            "WHERE event_type = :t ORDER BY created_at, id"
         ),
         {"t": event_type},
     )

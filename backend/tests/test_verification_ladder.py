@@ -631,7 +631,7 @@ async def _verified_events(session, fact_id) -> list[dict]:
     result = await session.execute(
         text(
             "SELECT payload FROM events WHERE event_type = 'verified' "
-            "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
+            "AND object_id = CAST(:id AS uuid) ORDER BY created_at, id"
         ),
         {"id": str(fact_id)},
     )
