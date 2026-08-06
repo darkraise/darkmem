@@ -467,12 +467,17 @@ either way — retrieval reads the cached snapshot, never the job. The six added
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,
 `topic_detection`. Each is scheduled, locked and configurable for real,
-but its body is a `PlaceholderJobRunner` until its owning task lands
-(T2.09, T2.10, T2.11, T2.12, T3.02, T2.53 respectively — `article_synthesis`
-is the one member whose productive run is a Phase-3 task, behind G-D, and
-T2.14 landed only its inert registration) — the marker is
-a type a test asserts, not a comment, so a placeholder can never be
-mistaken for a shipped job. **Invariant 15 binds the family: none of the
+and a member's body is a `PlaceholderJobRunner` until its owning task
+lands (T2.09, T2.10, T2.11, T2.12, T3.02, T2.53 respectively) — the
+marker is a type a test asserts, not a comment, so a placeholder can
+never be mistaken for a shipped job. **Five of the six now have real
+runners** (corrected 2026-08-06, when this paragraph's "its body is a
+`PlaceholderJobRunner`" had been stale through four landings and read as
+a claim that the whole family was inert): `fact_lift`,
+`verification_recompute`, `contradiction_scan`, `memory_dream` and
+`topic_detection` are live bodies. **`article_synthesis` is the one
+remaining placeholder** — its productive run is a Phase-3 task behind
+G-D, and T2.14 landed only its inert registration. **Invariant 15 binds the family: none of the
 six may be reached from capture or retrieval** to "accelerate" a gate,
 and a source scan over `backend/app` fails the build if one is. Five-field
 expressions are minute-precision; six-field expressions put the seconds
