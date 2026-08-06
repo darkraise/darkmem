@@ -412,6 +412,31 @@ class TestTheCombinedGenerator:
         pool = await generate_candidates(session, await _row(session, subject), top_k=10)
         assert pool.candidates == ()
 
+    async def test_the_trigram_arm_has_an_index_that_can_serve_it(self, session):
+        """"Cheap SQL on the one Postgres" is a claim about the schema.
+
+        The `%` operator was chosen over `similarity(...) >= floor` precisely
+        because only the operator is indexable, and the index's partial
+        predicate has to be the same liveness rule the arm selects on — a
+        narrower one (the open-belief predicate the two FTS indexes use) does
+        not apply to this arm at all, and the whole thing degrades to a scan of
+        the fact layer with every other test in this file still green.
+
+        Asserted against ``pg_indexes`` rather than an ``EXPLAIN`` on purpose:
+        on a fixture-sized table every plan costs about the same and the
+        planner's pick says nothing about whether the index applies.
+        """
+        definition = (await session.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE tablename = 'knowledge_triples' "
+                "AND indexname = 'ix_knowledge_triples_fact_trgm'"
+            )
+        )).scalar_one_or_none()
+        assert definition is not None, "the trigram shortlist has no index"
+        assert "gin (fact gin_trgm_ops)" in definition
+        assert "WHERE (expired_at IS NULL)" in definition
+
     async def test_an_expired_fact_is_never_a_candidate(self, session):
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
@@ -437,6 +462,16 @@ def _attribute_names(tree: ast.Module) -> list[str]:
 
 
 class TestOnlyTheQualifiedJudgeAdjudicates:
+    def test_the_verdict_event_is_in_the_closed_vocabulary(self):
+        """Taxonomy-first, and it needs its own assertion: ``record_event``
+        warns on an unknown type and inserts the row anyway, so every
+        round-trip test in this file would pass over a value that never
+        joined the vocabulary."""
+        from app.services.events import EVENT_TYPES, OBJECT_TYPES
+
+        assert CONTRADICTION_SCANNED in EVENT_TYPES
+        assert "fact" in OBJECT_TYPES
+
     def test_the_contradicted_verdict_is_the_judges_own(self):
         """A typo here would read as "no contradiction ever found" and pass
         every happy-path assertion in this file."""

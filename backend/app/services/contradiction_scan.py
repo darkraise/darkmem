@@ -449,9 +449,8 @@ def _witness(challenger_origins: set[str], asserting: set[str]) -> str | None:
     objecting. A symmetric rule would dispute both rows on one witness's
     say-so, which is a vote, and the veto is not a vote.
     """
-    for origin in sorted(challenger_origins - asserting):
-        return origin
-    return None
+    fresh = sorted(challenger_origins - asserting)
+    return fresh[0] if fresh else None
 
 
 # ── the outcome ─────────────────────────────────────────────────────────
