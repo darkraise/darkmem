@@ -55,6 +55,7 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
         ppr_weight: float = 0.0,
+        dual_weight: float = 0.0,
         access_signals: bool = False,
     ) -> list[dict]:
         """The fused rows, ``limit`` of them.
@@ -80,9 +81,12 @@ class HybridSearchService:
         ppr_results = await self._ppr_search(
             semantic_results, filters, ppr_weight, fetch_n,
         )
+        dual_results = await self._dual_level_search(
+            vector, fingerprint, filters, dual_weight, fetch_n,
+        )
         fused = self._rrf_fuse(
             semantic_results, keyword_results, semantic_weight, limit,
-            ppr_results, ppr_weight,
+            ppr_results, ppr_weight, dual_results, dual_weight,
         )
         if access_signals:
             await self._attach_access_signals(fused)
@@ -96,6 +100,7 @@ class HybridSearchService:
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
         ppr_weight: float = 0.0,
+        dual_weight: float = 0.0,
         access_signals: bool = False,
     ) -> ChannelTrace:
         """Same channels and fusion as :meth:`search`, plus what each channel
@@ -111,12 +116,16 @@ class HybridSearchService:
         ppr_results = await self._ppr_search(
             semantic_results, filters, ppr_weight, fetch_n,
         )
+        dual_results = await self._dual_level_search(
+            vector, fingerprint, filters, dual_weight, fetch_n,
+        )
 
         channel_scores: dict[str, dict[str, float]] = {}
         for source_name, rows in (
             ("semantic", semantic_results),
             ("keyword", keyword_results),
             ("ppr", ppr_results),
+            ("dual_level", dual_results),
         ):
             for row in rows:
                 key = normalize_row_id(row)
@@ -126,7 +135,7 @@ class HybridSearchService:
 
         fused = self._rrf_fuse(
             semantic_results, keyword_results, semantic_weight, limit,
-            ppr_results, ppr_weight,
+            ppr_results, ppr_weight, dual_results, dual_weight,
         )
         if access_signals:
             await self._attach_access_signals(fused)
@@ -286,6 +295,8 @@ class HybridSearchService:
         limit: int,
         ppr_results: list[dict] | None = None,
         ppr_weight: float = 0.0,
+        dual_results: list[dict] | None = None,
+        dual_weight: float = 0.0,
     ) -> list[dict]:
         """The memory channel's ranked lists, joined under their weights.
 
@@ -307,7 +318,86 @@ class HybridSearchService:
         ]
         if ppr_results and ppr_weight:
             lists.append(RankedList("ppr", ppr_results, ppr_weight))
+        if dual_results and dual_weight:
+            lists.append(RankedList("dual_level", dual_results, dual_weight))
         return rrf_fuse(lists, limit)
+
+    async def _dual_level_search(
+        self,
+        vector: list[float],
+        fingerprint: str,
+        filters: MemoryFilter | None,
+        dual_weight: float,
+        fetch_n: int,
+    ) -> list[dict]:
+        """The dual-level global arm: rank relations, resolve to memories.
+
+        The graph's edges carry meaning no single memory's text does — a query
+        about what replaced Redis matches the *edge* `redis REPLACES valkey`
+        even when no memory says it that way — which is the whole reason doc 07
+        §4 makes this a channel rather than another view of the memory vectors.
+
+        **This is the one channel with no project column of its own** (doc 07
+        §11, restated in §4 so no implementer re-opens it). `relation_embeddings`
+        keys on `entity_relations`, which is global by design, so the scope
+        cannot be pushed into the vector arm. It is re-applied on the
+        **asserting memories** instead — the relation's own `memory_ids` joined
+        to `memories` and filtered there. Skipping that join returns rows from
+        every project that happens to assert a matching edge: a cross-project
+        leak that looks like a good result, which is exactly what makes it the
+        one exception the pushdown cannot cover with an index.
+
+        Reuses the query vector the memory channel already embedded, so an
+        active arm costs one extra SQL round trip and no extra model call.
+        """
+        if not dual_weight:
+            return []
+        table = child_table("relation_embeddings", fingerprint)
+        params: dict = {
+            "vec": str(vector), "fp": fingerprint, "limit": fetch_n,
+        }
+        where_sql = "TRUE"
+        if filters is not None:
+            params.update(filters.params())
+            where_sql = filters.where_sql("m")
+
+        try:
+            async with self.session.begin_nested():
+                result = await self.session.execute(
+                    text(f"""
+                    WITH hits AS (
+                        SELECT re.relation_id,
+                               1 - (re.embedding <=> CAST(:vec AS vector)) AS score
+                        FROM {table} re
+                        WHERE re.fingerprint = CAST(:fp AS text)
+                        ORDER BY re.embedding <=> CAST(:vec AS vector)
+                        LIMIT :limit
+                    )
+                    SELECT CAST(m.id AS text) AS memory_id, max(h.score) AS score
+                    FROM hits h
+                    JOIN entity_relations r ON r.id = h.relation_id
+                    JOIN LATERAL unnest(r.memory_ids) AS u(mid) ON TRUE
+                    JOIN memories m ON m.id = u.mid
+                    WHERE {where_sql}
+                    GROUP BY m.id
+                    ORDER BY score DESC
+                    LIMIT :limit
+                """),
+                    params,
+                )
+                rows = result.all()
+        except Exception as e:
+            # An augmentation that fails must cost the fused order nothing —
+            # the same stance the PPR arm takes. A cold partition (no relation
+            # vectors under this fingerprint yet) lands here as a missing
+            # table, which is a not-yet rather than a fault.
+            logger.error("Dual-level arm failed: %s", e)
+            return []
+
+        return [
+            {"memory_id": str(row.memory_id), "score": float(row.score)}
+            for row in rows
+        ]
 
     async def _attach_access_signals(self, rows: list[dict]) -> None:
         """Stamp `heat` and `recency` onto the fused rows, in one read.

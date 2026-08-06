@@ -278,14 +278,11 @@ def _blocked_reasons() -> dict[str, str]:
     Stated as prose the runner prints verbatim rather than as a boolean,
     because the useful part is *what would have to change*, and a caller who
     only learns "no" will reach for the zero instead.
+
+    `w_dual` was here until T2.94 landed the reader; its entry was removed
+    rather than left stale, which is that task's own last Done-when.
     """
     return {
-        "w_dual": (
-            "no channel reads `relation_embeddings` yet. T2.49 landed the "
-            "vectors and their refresh job, but nothing turns them into a "
-            "ranked list, so the arm has no candidates to weight. Needs the "
-            "dual-level channel task."
-        ),
         CONTEXT_BOOST_FLAG: (
             "the retrieval runner declares no context. `match_context` needs "
             "a DeclaredContext to produce anything but the neutral outcome, "

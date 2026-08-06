@@ -478,7 +478,7 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
 
         async def search(
                 self, query, limit=20, semantic_weight=0.7, filters=None,
-                ppr_weight=0.0, access_signals=False,
+                ppr_weight=0.0, dual_weight=0.0, access_signals=False,
             ):
             return [dict(r) for r in fused]
 

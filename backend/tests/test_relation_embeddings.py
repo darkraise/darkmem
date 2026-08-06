@@ -401,19 +401,56 @@ def test_every_child_table_is_reached_through_the_parent_constant():
     assert re_mod.PARENT_TABLE == "relation_embeddings"
 
 
-def test_the_writer_is_never_reached_from_capture_or_retrieval():
-    """Doc 07 §4 puts this off the hot path. Phase 5 writing a relation vector
-    would add an embed round trip to every capture for a signal retrieval does
-    not read until its flag is on."""
+# The **writer** is what must stay off the hot path — not the partition.
+#
+# This guard originally banned the string `relation_embeddings` from every
+# capture and retrieval module, which conflated the two. Reading the partition
+# at query time is the entire point of the dual-level channel (T2.94), so the
+# first legitimate reader turned a correct invariant into a failing test. The
+# rule doc 07 §4 actually states is narrower: the vectors are *written and
+# refreshed* off the hot path, never inside Phase 5.
+#
+# Split accordingly. Capture may not touch the partition at all; retrieval may
+# read it but may never reach a writer entry point, because an embed round trip
+# inside a query is the cost the Tier-C job exists to avoid.
+
+WRITER_ENTRY_POINTS = (
+    "embed_relations",
+    "refresh_relation_embeddings",
+    "relations_missing_vectors",
+    "relations_to_rotate",
+)
+
+
+def test_capture_never_touches_the_relation_partition():
+    """Phase 5 writing a relation vector would add an embed round trip to every
+    capture, for a signal retrieval does not read until its flag is on."""
+    source = (BACKEND / "app" / "services" / "pipeline.py").read_text()
+    assert "relation_embeddings" not in source
+
+
+def test_retrieval_may_read_the_partition_but_never_the_writer():
+    """The dual-level channel reads these vectors by design; what it must never
+    do is refresh them mid-query."""
     offenders = []
-    for name in ("pipeline.py", "hybrid_search.py", "layer_composition.py"):
+    for name in ("hybrid_search.py", "layer_composition.py"):
         source = (BACKEND / "app" / "services" / name).read_text()
-        if "relation_embeddings" in source:
-            offenders.append(name)
+        for entry in WRITER_ENTRY_POINTS:
+            if entry in source:
+                offenders.append(f"{name} reaches {entry}")
     assert not offenders, (
-        "a capture or retrieval module reached the relation-embedding writer: "
-        + ", ".join(offenders)
+        "a retrieval module reached a relation-embedding writer entry point, "
+        "which puts an embed round trip on the query path: " + ", ".join(offenders)
     )
+
+
+def test_the_reader_that_now_exists_is_the_channel(_=None):
+    """Pins the direction of the split above: retrieval does read the
+    partition, so a future edit that deletes the channel would fail here
+    instead of silently satisfying the narrowed guard."""
+    source = (BACKEND / "app" / "services" / "hybrid_search.py").read_text()
+    assert "relation_embeddings" in source
+    assert "_dual_level_search" in source
 
 
 def test_the_template_is_no_longer_inert():

@@ -104,6 +104,7 @@ from app.services.rank_fusion import (
     DeclaredContext,
     RowContext,
     access_arms_active,
+    dual_list_weight,
     match_context,
     ppr_list_weight,
     rank_fusion_factor,
@@ -1354,6 +1355,7 @@ class LayerCompositionService:
                 query, limit=limit,
                 filters=MemoryFilter(project=project, statuses=statuses),
                 ppr_weight=ppr_list_weight(weights),
+                dual_weight=dual_list_weight(weights),
                 access_signals=access_arms_active(weights),
             )
         except Exception:

@@ -26,6 +26,7 @@ from app.services.rank_fusion import (
     IMPORTANCE_DEFAULT,
     access_arms_active,
     any_arm_active,
+    dual_list_weight,
     ppr_list_weight,
     rank_fusion_factor,
 )
@@ -1279,6 +1280,7 @@ class ProcessingPipeline:
                     results = await hybrid.search(
                         query, limit=limit, semantic_weight=semantic_weight, filters=filters,
                         ppr_weight=ppr_list_weight(flags),
+                        dual_weight=dual_list_weight(flags),
                         access_signals=access_arms_active(flags),
                     )
 

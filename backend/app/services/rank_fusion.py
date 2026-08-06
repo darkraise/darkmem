@@ -242,6 +242,18 @@ def ppr_list_weight(weights: Mapping[str, object]) -> float:
     return _weight(weights, "w_ppr")
 
 
+def dual_list_weight(weights: Mapping[str, object]) -> float:
+    """The dual-level list's fusion weight — zero unless its flag is on.
+
+    Same collapse as :func:`ppr_list_weight`, and here for the same reason:
+    two doors reading `dual_level_enabled` and `w_dual` separately are
+    identical while the arm is off and divergent the moment it is flipped on.
+    """
+    if not weights.get("dual_level_enabled"):
+        return 0.0
+    return _weight(weights, "w_dual")
+
+
 def arm_factor(arm: RankArm, signals: Mapping[str, float], weights: Mapping[str, object]) -> float:
     """This arm's multiplier, exactly ``1.0`` when its weight is zero or its
     signal is unavailable.
