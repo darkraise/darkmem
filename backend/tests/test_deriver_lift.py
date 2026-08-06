@@ -169,17 +169,32 @@ async def _reindex(session, repo_id: str, imports: list[str], *, commit: str) ->
 
 
 async def _fact_for(session, subject: str, rel_type: str, obj: str) -> dict | None:
+    """The one row on this triple, and it refuses to pick between two.
+
+    Strict on purpose, and the strictness was earned: an earlier version took
+    the newest row, and a mutation drill that wrongly invalidated a fact passed
+    anyway — the next tick minted a fresh open row on the same key and the
+    assertion landed on that instead. A helper that silently chooses is a
+    helper that can hide the failure it was called to detect. Two rows on one
+    key is a real state (invalidate-not-delete plus a later re-assertion opens
+    a new window), so a test that wants it has to say so.
+    """
     key = compute_triple_key(CODE_FACT_PROJECT, subject, rel_type, obj)
-    row = (await session.execute(
+    rows = (await session.execute(
         text(
             "SELECT id, verification_status, invalid_at, expired_at "
             "FROM knowledge_triples WHERE triple_key = :key "
-            "ORDER BY created_at DESC, id DESC"
+            "ORDER BY created_at, id"
         ),
         {"key": key},
-    )).mappings().first()
-    if row is None:
+    )).mappings().all()
+    if not rows:
         return None
+    assert len(rows) == 1, (
+        f"{len(rows)} rows on triple_key {key}: "
+        + "; ".join(f"{r['id']} invalid_at={r['invalid_at']}" for r in rows)
+    )
+    row = rows[0]
     # Normalised at the boundary: asyncpg hands `id` back as a UUID while every
     # repository method returns the text spelling, and a bare `==` between the
     # two is False (invariant 9).
@@ -688,6 +703,7 @@ async def test_a_fact_a_second_live_repo_still_asserts_survives(session):
     await run_code_lift(session)
 
     after = await _fact_for(session, "twin-repo", "DEPENDS_ON", "httpx")
+    assert after["id"] == fact["id"], "the fact was closed and re-opened"
     assert after["invalid_at"] is None
     assert [row["origin_key"] for row in await _sources(session, after["id"])] == [second]
 
@@ -713,6 +729,40 @@ async def test_removing_the_repository_outright_invalidates_its_facts(session):
     assert after is not None and after["id"] == fact["id"]
     assert after["invalid_at"] is not None and after["expired_at"] is None
     assert withdrawn >= 1 and invalidated >= 1
+
+
+async def test_re_adding_a_dependency_opens_a_new_window_not_the_closed_one(session):
+    """The lifecycle invalidate-not-delete implies and nothing else states.
+
+    A closed window is history and stays closed; a dependency that comes back
+    is a new belief, so it gets a new open row. Resurrecting the old one by
+    clearing ``invalid_at`` would erase the interval in which the repository
+    genuinely did not depend on it — which is the one thing the belief axis
+    exists to record.
+    """
+    repo_id = await _seed_repo(session, name="Return-Repo", imports=["httpx", "fastapi"])
+    await assert_repo_graph(session, repo_id)
+    await run_code_lift(session)
+    closed = await _fact_for(session, "return-repo", "DEPENDS_ON", "fastapi")
+
+    await _reindex(session, repo_id, ["httpx"], commit="sha0005")
+    await run_code_lift(session)
+    await _reindex(session, repo_id, ["httpx", "fastapi"], commit="sha0006")
+    await run_code_lift(session)
+
+    key = compute_triple_key(CODE_FACT_PROJECT, "return-repo", "DEPENDS_ON", "fastapi")
+    rows = (await session.execute(
+        text(
+            "SELECT id, invalid_at, expired_at, verification_status "
+            "FROM knowledge_triples WHERE triple_key = :key ORDER BY created_at, id"
+        ),
+        {"key": key},
+    )).mappings().all()
+    assert len(rows) == 2
+    assert str(rows[0]["id"]) == closed["id"] and rows[0]["invalid_at"] is not None
+    assert rows[1]["invalid_at"] is None
+    assert rows[1]["verification_status"] == "corroborated"
+    assert all(row["expired_at"] is None for row in rows), "nothing was deleted"
 
 
 async def test_an_unchanged_reindex_withdraws_and_emits_nothing(session):

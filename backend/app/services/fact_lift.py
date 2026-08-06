@@ -937,7 +937,7 @@ async def mint_born_corroborated(
     if source_kind != CODE_SOURCE_KIND:
         raise ValueError(
             f"a {source_kind!r} source can never open a fact above "
-            f"{_BIRTH_STATUS!r}: corroboration counts distinct origins, and "
+            f"{_BIRTH_STATUS!r}: corroboration is a count over origins, and "
             f"the parse-is-the-verification exception is {CODE_SOURCE_KIND!r} "
             f"alone (doc 08 §4.1). {CONFIRMED_IS_HUMAN_ONLY}"
         )
@@ -1148,7 +1148,7 @@ async def run_code_lift(
         witness = witnesses.get(candidate.object_name)
         if witness is None:
             logger.warning(
-                "no code witness for %r asserted by repo %s; its provenance row "
+                "no code witness for %r under repo %s; its provenance row "
                 "will carry no symbol_key and its citation cannot be re-verified",
                 candidate.object_name, candidate.repo_id,
             )
@@ -1158,7 +1158,7 @@ async def run_code_lift(
                 lifted = await _lift_one_code(session, candidate, detail=detail)
         except Exception:
             logger.exception(
-                "code fact lifting failed for %s (%s %s %s) asserted by repo %s",
+                "code fact lifting failed for %s (%s %s %s) under repo %s",
                 candidate.triple_key,
                 candidate.subject_name,
                 candidate.rel_type,

@@ -53,12 +53,21 @@ CORROBORATIONS = 25
 _BACKEND = Path(__file__).resolve().parents[2]
 _APP = _BACKEND / "app"
 
-# The scopes permitted to write the verification axis at all. Two, and the
-# pair is the guarantee: `set_verification_status` refuses `confirmed` outright
-# (its own ValueError, tested), and `ratify` cannot execute without a
-# `human`-kind source row (its UPDATE's own WHERE clause). A third writer
-# inherits neither and must argue itself onto this list in review.
+# The scopes permitted to write the verification axis at all, and each one's
+# own guarantee: `set_verification_status` refuses `confirmed` outright (its
+# own ValueError, tested), `ratify` cannot execute without a `human`-kind
+# source row (its UPDATE's own WHERE clause), and `open_born_corroborated`
+# binds a **module constant** rather than a parameter — no caller-supplied
+# value reaches its statement, so the rung it writes is `corroborated` and
+# cannot be anything else. A fourth writer inherits none of these and must
+# argue itself onto this list in review.
+#
+# The third entry is doc 10 §6's parse-is-the-verification exception (T2.28),
+# and it is the narrow shape this spec asks for rather than a widening: it
+# writes only at insert, only on a row it created in the same call, only the
+# one rung, and `test_deriver_lift` pins its single caller.
 _PERMITTED_WRITERS = {
+    "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.open_born_corroborated",
     "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.ratify",
     "app/repositories/knowledge_triples.py::KnowledgeTripleRepository.set_verification_status",
 }
