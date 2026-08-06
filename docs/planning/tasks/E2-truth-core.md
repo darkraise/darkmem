@@ -501,8 +501,11 @@ writer that production never reaches.
 That is not a defect in T2.27, whose scope was the primitives and the deriver,
 but it is the difference between a landed writer and a filled column — and
 invariant 23 (scaffolding-not-substrate) is precisely about not conflating
-them. The inert label retired on the strength of a writer existing; the
-schema inventory now says plainly that no scheduled path fills the arrays.
+them. The inert label retired on the strength of a writer existing, which is a
+fair basis — but the schema inventory must say plainly that nothing schedules
+it, or the next reader of that table concludes the bridge is live. **That note
+lands when T2.27 merges** (it edits the same rows on its lane, so writing it
+here first would only manufacture a conflict).
 
 **What.** Give the deriver its trigger. The natural one is a re-index: a repo
 whose imports just changed is a repo whose assertions are stale, and doc 10 §6
