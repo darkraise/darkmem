@@ -25,6 +25,14 @@ Collapsing them would turn a missing measurement into an apparent property of
 the data — the reader would conclude the corpus is unverified when the truth is
 that the *verifier* is unmeasured. So every suppressed row carries the reason.
 
+**Two declarations, because "ungated" was one word for two facts (T2.100).**
+A site that keeps a raw rung says which: :func:`unserved_status` claims no
+reader receives the value, :func:`journalled_status` claims a reader receives
+it as a record of what the ladder computed rather than as an assertion about
+the fact. The single marker they replace promised the first at sites that did
+the second, and a false declaration is worse than an undeclared one — the scan
+trusts it and so does the next reader.
+
 **Fail closed, and fail closed on unreadable too.** An absent record and a
 corrupt one both read as "no record". A parse error must not crash the read
 path open — serving the label because the gate itself broke is the one failure
@@ -241,26 +249,59 @@ def raw_statuses_for_served(
     )
 
 
-def ungated_status(status: str | None) -> str | None:
-    """The raw status, declared at its site as something no reader is served.
+def unserved_status(status: str | None) -> str | None:
+    """The raw status, declared at its site as reaching no reader at all.
 
-    A verification status legitimately appears outside a served label — in a
-    journal payload recording which rung a transition moved off, in a candidate
-    row handed to the ranking that doc 12 lets consume promoted statuses
-    internally, in an operational return value a route discards. The scan in
-    ``tests/test_claim_serving_gates.py`` quantifies over *every*
-    ``verification_status`` emission in ``app/`` rather than enumerating the
-    ones it knows, so those sites need a way to say which side of the gate they
-    are on.
+    The strong half of the split. Wrapping a value here claims it never leaves
+    the process as data a reader receives: a candidate row handed to the
+    ranking that doc 12 lets consume promoted statuses internally, an
+    operational return value the door discards without echoing.
 
-    This is that way, and it is a call rather than a comment on purpose: the
-    scan reads the parsed tree, so prose can neither claim the exemption nor
-    trip the guard. Wrapping a value here is a claim that the value reaches no
-    reader as a label. A serving path that wraps itself to quiet the scan has
-    written that claim down falsely, which is a reviewable act; writing a raw
-    dict entry was not.
+    This is a call rather than a comment on purpose: the scan reads the parsed
+    tree, so prose can neither claim the exemption nor trip the guard. A
+    serving path that wraps itself to quiet the scan has written that claim
+    down falsely, which is a reviewable act; writing a raw dict entry was not.
+
+    The claim is checked at the door, not taken on trust — the gate suite
+    drives every door these sites feed and asserts the promoted rung appears
+    nowhere in the body.
     """
     return status
+
+
+def journalled_status(status: str | None) -> str | None:
+    """The raw status, declared as a record of a computation, never a claim.
+
+    The weak half, and the one this module used to have no way to say. A
+    ladder transition journals the rung it moved off and the rung it moved to,
+    and ``GET /api/v1/events`` serves that payload **verbatim** to an
+    authenticated reader under the same ``require_auth`` as the facts door. So
+    the value does reach a reader, and a site declaring otherwise would be
+    lying at exactly the point where the declaration is load-bearing.
+
+    **The exposure is ruled acceptable, not open (T2.100, 2026-08-06).** G-C's
+    own false-promotion audit reads this journal, so narrowing the substrate to
+    protect the gate would degrade the evidence the gate is measured with;
+    T2.59 settled the analogous content-residue question the same way; and a
+    journal row and a claim surface are different speech acts — one records
+    what the ladder computed, the other asserts what is true of the fact now.
+    Do not add filtering, redaction or gating to the events door to make this
+    marker's promise smaller.
+
+    So the honest form of the M1 safety sentence is not *no serving path can
+    reach a label whose evidence does not exist*. It is: **no claim surface
+    serves an unbacked label; the audit journal records the ladder's own
+    transitions and an authenticated operator can read them.**
+
+    A gated copy here would be worse than the exposure: it would record a
+    movement that did not happen, in a table that cannot un-write it.
+    """
+    return status
+
+
+STATUS_DECLARATIONS = frozenset(
+    {unserved_status.__name__, journalled_status.__name__}
+)
 
 
 def ungated_mapping(mapping):
@@ -274,7 +315,12 @@ def ungated_mapping(mapping):
 
     Wrapping a copy here claims one of two things: the mapping carries no
     verification status at all, or the copy is internal and no reader receives
-    it as a label. Same contract as :func:`ungated_status` and the same reason
-    for being a call.
+    it as a label. Same reason for being a call as :func:`unserved_status`.
+
+    **It is deliberately not split the way the status marker is.** No site
+    carrying this declaration lands in a journal payload, so a second mapping
+    marker would have no sites and would state a distinction nothing
+    exercises — and the gate suite fails the build if one ever does, rather
+    than letting the missing half be discovered by a reader of ``/events``.
     """
     return mapping

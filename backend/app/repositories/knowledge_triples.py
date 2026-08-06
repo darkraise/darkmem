@@ -31,7 +31,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.claim_gates import ungated_status
+from app.services.claim_gates import journalled_status
 from app.services.events import record_event
 from app.utils.ids import new_id
 
@@ -810,16 +810,17 @@ class KnowledgeTripleRepository:
         if changed or contradiction_blocked or supersession_blocked:
             # Journal, not label: the two rungs a transition moved between are
             # the history of the ladder, and a gated copy would record a
-            # movement that did not happen. `ungated_status` says so at the
-            # site — see `claim_gates` for what the declaration commits to.
+            # movement that did not happen. `journalled_status` says so at the
+            # site — an authenticated reader of `/events` does receive these,
+            # and the declaration says that rather than denying it.
             payload: dict[str, Any] = {
                 "before": {
-                    "verification_status": ungated_status(
+                    "verification_status": journalled_status(
                         prior_row["verification_status"]
                     )
                 },
                 "after": {
-                    "verification_status": ungated_status(
+                    "verification_status": journalled_status(
                         status if status is not None else prior_row["verification_status"]
                     )
                 },
@@ -943,11 +944,11 @@ class KnowledgeTripleRepository:
                 project=prior_row["project"],
                 payload={
                     "before": {
-                        "verification_status": ungated_status(
+                        "verification_status": journalled_status(
                             prior_row["verification_status"]
                         )
                     },
-                    "after": {"verification_status": ungated_status(CONFIRMED)},
+                    "after": {"verification_status": journalled_status(CONFIRMED)},
                     "outcome": RATIFY_OUTCOME,
                 },
             )

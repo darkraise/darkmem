@@ -88,7 +88,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
-from app.services.claim_gates import ungated_mapping, ungated_status
+from app.services.claim_gates import ungated_mapping, unserved_status
 from app.services.fact_badge import Badge, badges_for_facts, row_labels
 from app.services.facts_channel import (
     KEYWORD_ARM,
@@ -459,7 +459,7 @@ def fact_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         layer=LAYER_BY_ID_KIND["fact"],
         channel_rank=channel_rank,
         row=row,
-        verification_status=ungated_status(row.get("verification_status")),
+        verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
@@ -479,7 +479,7 @@ def article_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         layer=LAYER_BY_ID_KIND["article"],
         channel_rank=channel_rank,
         row=row,
-        verification_status=ungated_status(row.get("verification_status")),
+        verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
@@ -960,7 +960,7 @@ def compose(
                 id_kind=candidate.id_kind,
                 layer=candidate.layer,
                 channel_rank=candidate.channel_rank,
-                verification_status=ungated_status(candidate.verification_status),
+                verification_status=unserved_status(candidate.verification_status),
                 tier=tier_for(candidate.verification_status),
                 band=candidate.channel_rank,
                 cross_layer_rrf=cross_layer_rrf(candidate.channel_rank),

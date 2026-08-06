@@ -80,7 +80,7 @@ from app.repositories.knowledge_triples import (
     HUMAN_SOURCE_KIND,
     KnowledgeTripleRepository,
 )
-from app.services.claim_gates import ungated_status
+from app.services.claim_gates import journalled_status, unserved_status
 from app.services.events import record_event
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ async def record_human_verdict(
         "verdict": verdict,
         # Journal, not label: the audit asks which rung the fact held when the
         # human acted, and a gated copy would answer a different question.
-        "verification_status": ungated_status(verification_status),
+        "verification_status": journalled_status(verification_status),
         "review_state": review_state,
     }
     if note:
@@ -200,7 +200,7 @@ async def reject_fact(
         session,
         fact_id=fact_id,
         verdict=VERDICT_REJECTED,
-        verification_status=ungated_status(row["verification_status"]),
+        verification_status=journalled_status(row["verification_status"]),
         review_state=row["review_state"],
         project=row["project"],
         actor=actor,
@@ -208,10 +208,11 @@ async def reject_fact(
     )
     # The pre-rejection row, for a caller's own bookkeeping. The REST door
     # discards it and answers 204 by design, so nothing here reaches a reader
-    # as a label.
+    # at all — unlike the copy of the same value two lines up, which the
+    # journal keeps and `/events` serves.
     return {
         "project": row["project"],
-        "verification_status": ungated_status(row["verification_status"]),
+        "verification_status": unserved_status(row["verification_status"]),
         "review_state": row["review_state"],
     }
 
@@ -289,7 +290,7 @@ async def ratify_fact(
         session,
         fact_id=fact_id,
         verdict=VERDICT_RATIFIED,
-        verification_status=ungated_status(row["verification_status"]),
+        verification_status=journalled_status(row["verification_status"]),
         review_state=row["review_state"],
         project=row["project"],
         actor=ratifier,

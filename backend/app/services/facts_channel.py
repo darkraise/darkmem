@@ -87,7 +87,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.knowledge_triples import OPEN_BELIEF_PREDICATE
 from app.schemas.retrieval_trace import ChannelStatus
-from app.services.claim_gates import ungated_status
+from app.services.claim_gates import unserved_status
 from app.services.fact_access_stats import spawn_record_access
 from app.services.rank_fusion import RankedList, rrf_fuse
 
@@ -386,7 +386,7 @@ def _row_to_candidate(row, arm: str) -> dict:
         # A ranking input, not a label: doc 12 lets the composition consume
         # promoted rungs internally (the tier orders on them), and the served
         # label is built from this row by `fact_badge.row_labels` downstream.
-        "verification_status": ungated_status(row["verification_status"]),
+        "verification_status": unserved_status(row["verification_status"]),
         "review_state": row["review_state"],
         "confidence": row["confidence"],
         "applies_when": row["applies_when"],

@@ -325,9 +325,16 @@ GROUNDED_LABEL = "grounded"
 # The producer's and the gate's own entry points. A ``verification_status=``
 # keyword handed to one of these is the raw rung going *into* the gate, which
 # is the correct direction and the opposite of an emission — every serving path
-# has to do it. Naming three functions is not the enumeration this scan exists
-# to replace: they are the API the property is stated in terms of.
-GATE_ENTRY_POINTS = frozenset({"row_labels", "served_status", "ungated_status"})
+# has to do it. Naming them is not the enumeration this scan exists to replace:
+# they are the API the property is stated in terms of. The declarations are read
+# off the gate module rather than spelled here, so the two cannot drift into
+# different vocabularies (T2.100).
+GATE_ENTRY_POINTS = frozenset(
+    {"row_labels", "served_status"} | claim_gates.STATUS_DECLARATIONS
+)
+
+UNSERVED = claim_gates.unserved_status.__name__
+JOURNALLED = claim_gates.journalled_status.__name__
 
 
 def _calls(node: ast.AST, name: str) -> bool:
@@ -532,7 +539,7 @@ def ungated_label_emissions(sources) -> list[str]:
         for lineno, value in _emissions(tree):
             if _reads_a_labels_mapping(value, bound):
                 continue
-            if _calls(value, "ungated_status"):
+            if any(_calls(value, marker) for marker in claim_gates.STATUS_DECLARATIONS):
                 continue
             # A literal `None` is the absence of a status, not a status. The
             # memory candidate says so explicitly because a memory's lifecycle
@@ -640,7 +647,8 @@ def test_the_scan_fires_on_a_path_that_bypassed_the_producer(snippet):
         'labels = row_labels(id_kind="fact")\n'
         'item = {"verification_status": labels["verification_status"]}',
         'item = {"verification_status": row.labels.get("verification_status")}',
-        'item = {"verification_status": ungated_status(row["verification_status"])}',
+        f'item = {{"verification_status": {UNSERVED}(row["verification_status"])}}',
+        f'item = {{"verification_status": {JOURNALLED}(row["verification_status"])}}',
     ],
 )
 def test_the_scan_admits_the_producer_and_declared_derivations(snippet):
@@ -695,8 +703,8 @@ EMISSION_SHAPES = [
         False,
     ),
     (
-        "false ungated_status declaration",
-        'return {"verification_status": ungated_status(row["verification_status"])}',
+        "false unserved_status declaration",
+        f'return {{"verification_status": {UNSERVED}(row["verification_status"])}}',
         False,
     ),
     ("wholesale copy outside a serving module", "item = dict(row)", False),
@@ -713,6 +721,278 @@ def test_the_scans_reach_is_the_one_it_claims(shape, snippet, fires):
     how a new route builds its response, it is what T2.28's serving surface
     will be, and it passed the previous guard."""
     assert bool(ungated_label_emissions([("app/services/new_surface.py", snippet)])) is fires
+
+
+# ── which declaration a site carries, and whether it is the true one ──
+#
+# T2.100. The single ``ungated_status`` marker defined wrapping as a claim that
+# the value reaches no reader, and the ladder's journal sites wrapped it while
+# ``GET /api/v1/events`` served the payload verbatim to an authenticated
+# reader. The exposure is ruled acceptable — G-C's own false-promotion audit
+# reads that journal — but the declaration was false at exactly the sites where
+# it was load-bearing, and a false declaration is worse than an undeclared one:
+# the scan trusts it and so does the next person to read it.
+#
+# So the marker is two markers, and this section asks the question that
+# separates them. The static half is directional: a value bound for the journal
+# may not declare that it reaches nobody. The behavioural half is at the doors,
+# below — the "false declaration" row in EMISSION_SHAPES is `False` because no
+# static scan can see that a wrapped value is served, which is why the promise
+# is checked by driving the door instead.
+
+# ``record_event`` is the sole journal writer and ``record_human_verdict`` is
+# its one wrapper; the prefix is the convention both follow. Matching the
+# prefix rather than the two names is what keeps a third wrapper from being
+# invisible to this rule the day it is written.
+JOURNAL_WRITER_PREFIX = "record_"
+
+# The declarations that may not appear on a value flowing into the journal.
+# ``ungated_mapping`` is here for the reason its docstring gives: it is
+# deliberately unsplit, and that stays honest only while no site carrying it
+# lands in a payload ``/events`` serves.
+UNJOURNALLED_DECLARATIONS = frozenset({UNSERVED, "ungated_mapping"})
+
+
+def _declaration_sites(tree: ast.AST) -> list[tuple[str, str]]:
+    """``(marker, enclosing qualname)`` for every status declaration in a module.
+
+    Attributed to the innermost enclosing definition so re-classifying a site
+    is a visible edit rather than a line-number shuffle.
+    """
+    found: list[tuple[str, str]] = []
+
+    def walk(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            for marker in claim_gates.STATUS_DECLARATIONS:
+                if _calls(child, marker):
+                    found.append((marker, scope))
+            if isinstance(
+                child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                walk(child, f"{scope}.{child.name}" if scope else child.name)
+            else:
+                walk(child, scope)
+
+    walk(tree, "")
+    return found
+
+
+def declaration_inventory(sources) -> dict[str, dict[str, dict[str, int]]]:
+    """``relpath -> marker -> qualname -> how many sites``."""
+    inventory: dict[str, dict[str, dict[str, int]]] = {}
+    for relpath, source in sources:
+        for marker, qualname in _declaration_sites(ast.parse(source)):
+            scope = inventory.setdefault(relpath, {}).setdefault(marker, {})
+            scope[qualname or "<module>"] = scope.get(qualname or "<module>", 0) + 1
+    return inventory
+
+
+# **The classification, pinned.** Every site below was decided one at a time
+# and its reason is in `docs/planning/reviews/2026-08-06-t2.100-report.md`. In
+# one sentence each: the four `journalled` scopes hand their value to
+# `record_event`, directly or through `record_human_verdict`, and `/events`
+# serves it; the four `unserved` scopes hand theirs to the ranking, to the
+# badge producer, or to a caller the door discards.
+#
+# Pinned rather than merely scanned so that adding a declared site is an
+# argument someone makes here, not a wrap someone reaches for to quiet the
+# emission scan.
+DECLARATION_INVENTORY = {
+    "app/repositories/knowledge_triples.py": {
+        JOURNALLED: {
+            "KnowledgeTripleRepository.set_verification_status": 2,
+            "KnowledgeTripleRepository.ratify": 2,
+        },
+    },
+    "app/services/human_adjudication.py": {
+        JOURNALLED: {
+            "record_human_verdict": 1,
+            "reject_fact": 1,
+            "ratify_fact": 1,
+        },
+        UNSERVED: {"reject_fact": 1},
+    },
+    "app/services/facts_channel.py": {
+        UNSERVED: {"_row_to_candidate": 1},
+    },
+    "app/services/layer_composition.py": {
+        UNSERVED: {
+            "fact_candidate": 1,
+            "article_candidate": 1,
+            "compose": 1,
+        },
+    },
+}
+
+
+def test_every_declaration_site_is_the_one_that_was_classified():
+    """A site's marker is its claim about where the value goes, and a claim
+    nobody re-reads decays. This is the whole classification in one place, so a
+    re-classification is a diff and a new declared site is an argument."""
+    assert declaration_inventory(_app_sources()) == DECLARATION_INVENTORY
+
+
+def _names_written_by(node: ast.stmt) -> set[str]:
+    """The names a simple statement mutates: targets, subscript bases, receivers."""
+    written: set[str] = set()
+    targets: list[ast.AST] = []
+    if isinstance(node, ast.Assign):
+        targets = list(node.targets)
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+        targets = [node.target]
+    elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+        # ``payload.update(...)`` / ``payload.setdefault(...)``: the mapping is
+        # the receiver, and nothing is bound to a name at all.
+        func = node.value.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            written.add(func.value.id)
+    for target in targets:
+        if isinstance(target, ast.Name):
+            written.add(target.id)
+        elif isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
+            written.add(target.value.id)
+    return written
+
+
+def journal_bound_denials(sources) -> list[str]:
+    """Values flowing into the journal under a declaration that denies a reader.
+
+    ``/events`` serves ``payload`` verbatim under the same ``require_auth`` as
+    the facts door, so anything reaching a ``record_*`` writer reaches a reader.
+    Both the inline payload and the one bound to a name a statement earlier are
+    followed, the second because that is how the human-verdict writer builds it.
+
+    **The binding is not always an ``ast.Assign``**, and assuming it was is how
+    the first version of this guard passed its own self-test while missing the
+    live site: ``payload: dict = {...}`` is an ``AnnAssign``, and a payload just
+    as often gains its entry through ``payload[...] = ...`` or
+    ``payload.update(...)`` a few lines below its construction. So a statement
+    is read for a denial anywhere in its subtree, and every name it writes
+    through — target, subscript base, or method receiver — carries the taint.
+
+    **Reach, stated.** One hop, within a module. A value handed to an ordinary
+    function that itself journals is invisible here; what covers that is the
+    events door drive below, which reads the payload rather than the call.
+    """
+    offenders: list[str] = []
+    for relpath, source in sources:
+        tree = ast.parse(source)
+        tainted: set[str] = set()
+        for node in ast.walk(tree):
+            # Simple statements only. A compound one (`if`, `for`, a whole
+            # `def`) contains every statement under it, so reading its subtree
+            # would taint every name the block writes — including the row a
+            # journal call legitimately reads from two statements away.
+            if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Expr)):
+                continue
+            if not any(
+                _calls(inner, marker)
+                for inner in ast.walk(node)
+                for marker in UNJOURNALLED_DECLARATIONS
+            ):
+                continue
+            tainted |= _names_written_by(node)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if not name.startswith(JOURNAL_WRITER_PREFIX):
+                continue
+            for inner in ast.walk(node):
+                denies = any(
+                    _calls(inner, marker) for marker in UNJOURNALLED_DECLARATIONS
+                )
+                launders = isinstance(inner, ast.Name) and inner.id in tainted
+                if denies or launders:
+                    offenders.append(f"{relpath}:{node.lineno}: {name}")
+                    break
+    return offenders
+
+
+def test_no_journal_payload_declares_that_it_reaches_no_reader():
+    """The defect T2.100 exists for, as a property rather than a review note."""
+    offenders = journal_bound_denials(_app_sources())
+    assert not offenders, (
+        "a value declared as reaching no reader is written to the journal, "
+        f"which `GET /api/v1/events` serves verbatim: {offenders}. Declare it "
+        f"`claim_gates.{JOURNALLED}` — the exposure is ruled acceptable and "
+        "the declaration is what has to be true."
+    )
+
+
+DENIAL_SHAPES = [
+    (
+        "inline payload",
+        f'record_event(session, payload={{"verification_status": {UNSERVED}(rung)}})',
+        True,
+    ),
+    (
+        "payload bound a statement earlier",
+        f'payload = {{"verification_status": {UNSERVED}(rung)}}\n'
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    # The shape the live code uses, and the one that defeated this guard's
+    # first version: an annotated binding is an `AnnAssign`, not an `Assign`,
+    # so the guard passed its own self-test above while the real journal site
+    # went unseen. Planting the shape the tree actually contains is the
+    # difference between a tested guard and a guard nobody watched fail.
+    (
+        "annotated payload binding",
+        f'payload: dict = {{"verification_status": {UNSERVED}(rung)}}\n'
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    (
+        "payload gaining the entry after construction",
+        f'payload = {{}}\npayload["verification_status"] = {UNSERVED}(rung)\n'
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    (
+        "payload updated in place",
+        f"payload = {{}}\npayload.update(verification_status={UNSERVED}(rung))\n"
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    (
+        "keyword into a journal wrapper",
+        f"record_human_verdict(session, verification_status={UNSERVED}(rung))",
+        True,
+    ),
+    (
+        "a wholesale copy into a payload",
+        "record_event(session, payload=dict(ungated_mapping(row)))",
+        True,
+    ),
+    (
+        "the journal declaration, which is the point",
+        f'record_event(session, payload={{"verification_status": {JOURNALLED}(rung)}})',
+        False,
+    ),
+    (
+        "an unserved declaration nowhere near the journal",
+        f'return {{"verification_status": {UNSERVED}(rung)}}',
+        False,
+    ),
+    (
+        "a journal call carrying no status at all",
+        'record_event(session, payload={"outcome": outcome})',
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "shape,snippet,fires", DENIAL_SHAPES, ids=[s[0] for s in DENIAL_SHAPES]
+)
+def test_the_journal_direction_guard_fires_on_what_it_claims(shape, snippet, fires):
+    """Both directions, including the shape the live code actually uses: the
+    human-verdict payload is bound to a name before ``record_event`` sees it,
+    so a guard that only walked the call would have missed the site the review
+    found."""
+    assert bool(journal_bound_denials([("app/services/new_surface.py", snippet)])) is fires
 
 
 def test_no_path_under_app_serves_a_grounded_label_today():
@@ -1086,6 +1366,141 @@ async def test_minting_the_record_lights_every_door_with_no_code_change(
     assert after["verification_status"] == PROMOTED
     assert after["label_suppressed"] is None
     assert after["badge"]["claim"]
+
+
+# ── each declaration, checked against the door it names ──────────────
+#
+# T2.100. A marker is a claim about where a value goes, and no static scan can
+# check it: the "false declaration" row in EMISSION_SHAPES is `False` precisely
+# because a serving path that wraps itself is invisible to the parsed tree.
+# What is not invisible is the response body. So both halves of the split are
+# driven — the journalled sites at the door that serves them, the unserved
+# sites at every door they feed — and a site that declared the wrong one fails
+# here rather than in a review six weeks later.
+
+EVENTS_ROUTE = "/api/v1/events"
+REJECT_ROUTE = "/api/v1/review-queue/facts/{fact_id}/reject"
+
+
+async def _events(client, auth_headers, **params) -> list[dict]:
+    response = await client.get(EVENTS_ROUTE, params=params, headers=auth_headers)
+    assert response.status_code == 200, response.text
+    return response.json()["items"]
+
+
+async def test_the_events_door_serves_the_journalled_rung_verbatim(
+    client, auth_headers, session, doors
+):
+    """The declaration `journalled_status` makes, proven true at the door.
+
+    A ladder transition journals the rung it moved off and the rung it moved
+    to, and `GET /events` hands that payload to an authenticated reader under
+    the same `require_auth` as the facts door — so for any fact that has ever
+    transitioned the withheld rung is directly readable, with none of the
+    subtraction the two closed oracles needed.
+
+    **This is ruled acceptable and is asserted, not merely tolerated** (T2.100
+    amendment log): G-C's own false-promotion audit reads this journal, so
+    narrowing the substrate to protect the gate would degrade the evidence the
+    gate is measured with. What the ruling forbids is a site claiming the
+    opposite. Anyone who "fixes" this exposure by gating the events door has to
+    delete this test to do it, which is the review the change deserves.
+    """
+    fact_id = await _candidate_fact(session)
+
+    await KnowledgeTripleRepository(session).set_verification_status(
+        fact_id, PROMOTED, outcome="promote", origin_count=2, required_n=2
+    )
+    await session.flush()
+
+    rows = await _events(
+        client, auth_headers, object_type="fact", event_type="verified"
+    )
+    journalled = next(row for row in rows if row["object_id"] == fact_id)
+
+    assert journalled["payload"]["before"]["verification_status"] == SUPPRESSED
+    assert journalled["payload"]["after"]["verification_status"] == PROMOTED
+
+
+async def test_the_rejection_journals_the_rung_and_returns_none_of_it(
+    client, auth_headers, session, doors
+):
+    """Both halves of the split on one value, in one call.
+
+    `reject_fact` reads the rung once and uses it twice: the copy handed to
+    `record_human_verdict` is `journalled_status` and the copy in the returned
+    dict is `unserved_status`. The door proves each. The verdict payload
+    carries `corroborated` to an authenticated reader; the response carries no
+    body at all, because 204 is what the route answers and the return value is
+    for an in-process caller's bookkeeping.
+    """
+    fact_id = await _promoted_fact(session, review_state="open")
+
+    response = await client.post(
+        REJECT_ROUTE.format(fact_id=fact_id), headers=auth_headers
+    )
+
+    assert response.status_code == 204, response.text
+    assert response.content == b"", "the unserved return reached the wire"
+
+    verdicts = await _events(
+        client, auth_headers, object_type="fact", event_type="human_verdict"
+    )
+    verdict = next(row for row in verdicts if row["object_id"] == fact_id)
+    assert verdict["payload"]["verification_status"] == PROMOTED
+    assert verdict["payload"]["verdict"] == "rejected"
+
+
+async def test_no_unserved_declaration_reaches_a_reader_at_any_door(
+    client, auth_headers, session, monkeypatch, doors
+):
+    """The other half: the promoted rung appears **nowhere** in what these
+    doors serve.
+
+    Stronger than the field assertions above on purpose. Those read one key
+    and pass while the same value rides a second one — which is how `tier`
+    served the withheld rung as a number for as long as it did. This searches
+    the whole body for the string, so a ranking input that leaked into any key
+    of any row fails it.
+
+    The doors are the ones the four `unserved_status` sites feed:
+    `facts_channel._row_to_candidate` and `layer_composition`'s two candidate
+    constructors and `ComposedRow` all reach the composed read, which REST,
+    MCP and chat share.
+    """
+    fact_id = await _promoted_fact(session)
+    _stub_channels(monkeypatch, fact_id)
+
+    bodies = {
+        "REST facts list": (
+            await client.get(f"{FACTS_ROUTE}?project={PROJECT}", headers=auth_headers)
+        ).text,
+        "REST fact detail": (
+            await client.get(f"{FACTS_ROUTE}/{fact_id}", headers=auth_headers)
+        ).text,
+        "MCP fact_get": await mcp_server.fact_get(fact_id=fact_id),
+        "REST knowledge search": (
+            await client.post(
+                SEARCH_ROUTE,
+                json={"query": QUERY, "project": PROJECT, "limit": 20, "fuse": True},
+                headers=auth_headers,
+            )
+        ).text,
+        "MCP knowledge_search": await mcp_server.knowledge_search(
+            query=QUERY, project=PROJECT, limit=20, fuse=True
+        ),
+    }
+
+    service = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
+    bodies["chat context"] = json.dumps(
+        await service._retrieve(QUERY, {"project": PROJECT}), default=str
+    )
+
+    for door, body in bodies.items():
+        assert PROMOTED not in body, (
+            f"{door} serves the promoted rung somewhere in its body; a site "
+            f"declaring `claim_gates.{UNSERVED}` says no reader receives it"
+        )
 
 
 # ── no served aggregate counts the rung the label withholds ──────────
