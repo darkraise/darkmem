@@ -24,10 +24,13 @@ BACKEND = Path(__file__).resolve().parent.parent
 INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
 # repositories.index_debt is no longer here: T1.39, its declared first writer
 # (schema inventory §7), landed the re-trace drain that writes it.
-INERT_COLUMNS = {
-    ("entities", "repo_ids"): "T2.27",
-    ("entity_relations", "repo_ids"): "T2.27",
-}
+# entities.repo_ids and entity_relations.repo_ids are no longer here: T2.27,
+# their declared first writer (schema inventory §7), landed
+# `app/services/code_deriver.py` and the `assert_from_repo` /
+# `strip_repo_assertions` primitives. Both arrays now have a real writer, and
+# the amended sweeps' `NOT EXISTS (live repo)` predicates are exercised
+# against non-empty arrays by `tests/test_code_deriver.py`.
+INERT_COLUMNS: dict[tuple[str, str], str] = {}
 # triple_embeddings is no longer here: T2.33, its declared first writer (schema
 # inventory §7), landed on T2.52's measured 41.7% shortlist miss rate, so the
 # conditional branch that would have kept the template inert forever is closed.
@@ -77,16 +80,11 @@ async def test_inert_tables_are_empty(session):
         assert count == 0, f"{table} is not empty — something wrote to an inert table"
 
 
-@pytest.mark.asyncio
-async def test_inert_columns_hold_only_their_empty_default(session):
-    # repo_ids must be empty everywhere: that is what makes the amended sweeps
-    # vacuously true and therefore byte-identical to their pre-amendment form.
-    for table in ("entities", "entity_relations"):
-        non_empty = (await session.execute(
-            text(f"SELECT count(*) FROM {table} "
-                 "WHERE repo_ids IS NOT NULL AND cardinality(repo_ids) > 0")
-        )).scalar()
-        assert non_empty == 0, f"{table}.repo_ids has a writer — it must stay inert"
+# The emptiness assertion over `repo_ids` retired with T2.27: the deriver is
+# its writer, so a populated array is now the expected state and asserting
+# otherwise would forbid the feature. What replaced it is stronger — the
+# sweeps are asserted against non-empty arrays in `tests/test_code_deriver.py`
+# rather than merely asserted to be vacuous here.
 
 
 # ── no code path writes to them ──────────────────────────────────────────
@@ -102,13 +100,14 @@ def test_no_app_code_writes_the_inert_columns():
     ``NOT EXISTS`` predicates, which is exactly the frozen-but-inert shape
     doc 19 §3 asks for.
     """
+    columns = tuple(sorted({column for _table, column in INERT_COLUMNS}))
     offenders: list[str] = []
     for path in _app_sources():
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for column in ("repo_ids",):
+            for column in columns:
                 writes = (
                     f".{column} =" in line
                     or f"{column}=" in line.replace("==", "")
@@ -161,26 +160,20 @@ def test_no_app_code_writes_the_inert_partitions():
 
 # ── the amendment is behaviour-preserving ────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_amended_sweeps_carry_the_live_repo_predicate(session):
-    """The predicate is present *and* vacuous.
+def test_amended_sweeps_carry_the_live_repo_predicate():
+    """The predicate is present in every statement that can delete a graph row.
 
-    Doc 04 §4.2: both sweeps gain one ``NOT EXISTS (live repo)`` clause each,
-    and with every ``repo_ids`` empty they are always true — so the deletion
-    logic is reviewed and frozen while it is riskless. The existing graph
-    tests passing unchanged is the other half of this proof.
+    Doc 04 §4.2 gave each of the four original sweep statements one
+    ``NOT EXISTS (live repo)`` clause; T2.27's ``strip_repo_assertions`` adds
+    the two code-side ones, which need it for the same reason and for a second
+    one besides — a repo stripping its own assertion must not delete a row a
+    *different* live repo still asserts. Six statements, one clause each. The
+    predicate is no longer vacuous: see ``tests/test_code_deriver.py``.
     """
     src = (BACKEND / "app" / "repositories" / "graph.py").read_text()
-    assert src.count("FROM repositories rp") == 4, (
-        "expected one live-repo predicate in each of the four sweep statements"
+    assert src.count("FROM repositories rp") == 6, (
+        "expected one live-repo predicate in each of the six delete statements"
     )
-
-    # Vacuous today: no row anywhere carries a repo assertion.
-    for table in ("entities", "entity_relations"):
-        asserted = (await session.execute(
-            text(f"SELECT count(*) FROM {table} WHERE cardinality(repo_ids) > 0")
-        )).scalar()
-        assert asserted == 0
 
 
 @pytest.mark.asyncio
@@ -190,8 +183,9 @@ async def test_live_repo_predicate_spares_a_repo_asserted_row(session):
     Doc 19 §3's rationale for landing this inert is that the deletion-logic
     change gets reviewed and tested **while it is riskless**. That is only true
     if the predicate is exercised in its non-vacuous form, so this test writes
-    ``repo_ids`` directly — the deriver that will do so for real is T2.27 —
-    and proves the sweep spares a row a live repo still asserts.
+    ``repo_ids`` directly and proves the sweep spares a row a live repo still
+    asserts. T2.27 landed the deriver that writes them for real; this stays as
+    the writer-independent proof of the sweep itself.
     """
     from uuid import uuid4
 

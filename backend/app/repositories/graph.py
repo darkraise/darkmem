@@ -563,6 +563,197 @@ class PostgresGraphRepository:
                 {"ids": candidate_ids},
             )
 
+    async def strip_repo_assertions(self, repo_id: UUID | str) -> None:
+        """Remove one repository's contribution to the graph (doc 06 §6.1).
+
+        The code-side analog of :meth:`delete_by_memory_id`, statement for
+        statement: strip the id from both arrays, then drop the relations no
+        live memory *and* no live repo still asserts, then the entities no
+        live memory, no live repo and no surviving relation still needs. The
+        "no live repo" predicate rather than "array empty" is what self-heals
+        a dangling ``repo_ids`` entry left behind by a deleted repository —
+        the arrays carry no foreign key, so a deleted repo leaves its id in
+        place and it must count as absent.
+        """
+        rid = str(repo_id)
+
+        ent_ids = [
+            str(r) for r in (await self.session.execute(
+                text("""
+                    UPDATE entities
+                    SET repo_ids = array_remove(repo_ids, CAST(:rid AS uuid))
+                    WHERE CAST(:rid AS uuid) = ANY(repo_ids)
+                    RETURNING id
+                """),
+                {"rid": rid},
+            )).scalars().all()
+        ]
+        rel_ids = [
+            str(r) for r in (await self.session.execute(
+                text("""
+                    UPDATE entity_relations
+                    SET repo_ids = array_remove(repo_ids, CAST(:rid AS uuid))
+                    WHERE CAST(:rid AS uuid) = ANY(repo_ids)
+                    RETURNING id
+                """),
+                {"rid": rid},
+            )).scalars().all()
+        ]
+
+        freed_endpoints: set[str] = set()
+        if rel_ids:
+            endpoint_rows = (await self.session.execute(
+                text("""
+                    DELETE FROM entity_relations
+                    WHERE id = ANY(CAST(:ids AS uuid[]))
+                      AND NOT EXISTS (
+                          SELECT 1 FROM memories m
+                          WHERE m.id = ANY(entity_relations.memory_ids)
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM repositories rp
+                          WHERE rp.id = ANY(entity_relations.repo_ids)
+                      )
+                    RETURNING source_entity_id, target_entity_id
+                """),
+                {"ids": rel_ids},
+            )).all()
+            freed_endpoints = {
+                str(endpoint) for row in endpoint_rows for endpoint in row
+            }
+
+        candidate_ids = list(set(ent_ids) | freed_endpoints)
+        if candidate_ids:
+            await self.session.execute(
+                text("""
+                    DELETE FROM entities e
+                    WHERE e.id = ANY(CAST(:ids AS uuid[]))
+                      AND NOT EXISTS (
+                          SELECT 1 FROM memories m WHERE m.id = ANY(e.memory_ids)
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM repositories rp WHERE rp.id = ANY(e.repo_ids)
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM entity_relations r
+                          WHERE r.source_entity_id = e.id OR r.target_entity_id = e.id
+                      )
+                """),
+                {"ids": candidate_ids},
+            )
+
+    async def assert_from_repo(
+        self,
+        repo_id: UUID | str,
+        entities: list[dict],
+        relations: list[dict],
+    ) -> dict:
+        """Replace one repository's assertions with ``entities``/``relations``.
+
+        Strip-before-rewrite per repo, the invariant-8 amendment's code-side
+        half. The strip and the write share one savepoint, so a failed write
+        rolls the strip back and the repo's previous assertions survive —
+        never the half-state where the strip landed and the write did not.
+        The savepoint lives here rather than at the call site because the
+        atomicity is a property of the replace itself, exactly as Phase 5's
+        savepoint B binds ``delete_by_memory_id`` to the write that follows it.
+
+        ``entities`` are ``{name, entity_type, properties}`` with ``name``
+        already lower-cased by the caller; ``relations`` are
+        ``{source, source_type, target, target_type, rel_type, properties,
+        weight}`` resolved against those entities by ``(name, entity_type)``.
+        """
+        rid = str(repo_id)
+        written_entities = 0
+        written_relations = 0
+
+        async with self.session.begin_nested():
+            await self.strip_repo_assertions(repo_id)
+
+            for entity in entities:
+                await self.session.execute(
+                    text("""
+                        INSERT INTO entities
+                            (id, name, entity_type, properties, memory_ids, repo_ids)
+                        VALUES (CAST(:id AS uuid), :name, :entity_type,
+                                CAST(:properties AS jsonb), '{}'::uuid[],
+                                ARRAY[CAST(:repo_id AS uuid)])
+                        ON CONFLICT (name, entity_type) DO UPDATE SET
+                            properties = entities.properties || EXCLUDED.properties,
+                            repo_ids = CASE
+                                WHEN CAST(:repo_id AS uuid) = ANY(entities.repo_ids)
+                                    THEN entities.repo_ids
+                                ELSE array_append(entities.repo_ids,
+                                                  CAST(:repo_id AS uuid))
+                            END
+                    """),
+                    {
+                        "id": str(uuid4()),
+                        "name": entity["name"],
+                        "entity_type": entity["entity_type"],
+                        "properties": json.dumps(entity.get("properties") or {}),
+                        "repo_id": rid,
+                    },
+                )
+                written_entities += 1
+
+            for relation in relations:
+                pair = (await self.session.execute(
+                    text("""
+                        SELECT s.id AS source_id, t.id AS target_id
+                        FROM entities s, entities t
+                        WHERE s.name = :source_name AND s.entity_type = :source_type
+                          AND t.name = :target_name AND t.entity_type = :target_type
+                        LIMIT 1
+                    """),
+                    {
+                        "source_name": relation["source"],
+                        "source_type": relation["source_type"],
+                        "target_name": relation["target"],
+                        "target_type": relation["target_type"],
+                    },
+                )).mappings().first()
+                if not pair:
+                    logger.debug(
+                        "assert_from_repo dropped: endpoint not resolvable (%s -%s-> %s)",
+                        relation["source"], relation["rel_type"], relation["target"],
+                    )
+                    continue
+                await self.session.execute(
+                    text("""
+                        INSERT INTO entity_relations
+                            (id, source_entity_id, target_entity_id, rel_type,
+                             properties, weight, memory_ids, repo_ids)
+                        VALUES (CAST(:id AS uuid), CAST(:source_id AS uuid),
+                                CAST(:target_id AS uuid), :rel_type,
+                                CAST(:properties AS jsonb), :weight, '{}'::uuid[],
+                                ARRAY[CAST(:repo_id AS uuid)])
+                        ON CONFLICT (source_entity_id, target_entity_id, rel_type)
+                        DO UPDATE SET
+                            weight = GREATEST(entity_relations.weight,
+                                              EXCLUDED.weight),
+                            repo_ids = CASE
+                                WHEN CAST(:repo_id AS uuid)
+                                        = ANY(entity_relations.repo_ids)
+                                    THEN entity_relations.repo_ids
+                                ELSE array_append(entity_relations.repo_ids,
+                                                  CAST(:repo_id AS uuid))
+                            END
+                    """),
+                    {
+                        "id": str(uuid4()),
+                        "source_id": str(pair["source_id"]),
+                        "target_id": str(pair["target_id"]),
+                        "rel_type": relation["rel_type"],
+                        "properties": json.dumps(relation.get("properties") or {}),
+                        "weight": relation.get("weight", 1.0),
+                        "repo_id": rid,
+                    },
+                )
+                written_relations += 1
+
+        return {"entities": written_entities, "relations": written_relations}
+
     async def prune_orphan_entities(self) -> dict:
         """Remove entities and relations that no LIVE memory asserts any more.
 
