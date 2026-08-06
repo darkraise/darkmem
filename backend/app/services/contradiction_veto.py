@@ -1,10 +1,13 @@
 """The deterministic same-endpoint contradiction scan — the veto's input today.
 
 Doc 08 §4.2 names two inputs to the fact-level veto: this deterministic
-same-endpoint scan and the Tier-C LLM contradiction scan (§5.3, T2.11). Only the
-deterministic half lives here. A memory-level ``CONTRADICTS`` edge may *flag* a
-fact for scanning but is never itself the verdict, because truth is adjudicated
-at the fact layer where the provenance lives.
+same-endpoint scan and the Tier-C LLM contradiction scan (§5.3). The
+deterministic half is adjudicated here in full; the model half is adjudicated on
+its own cadence by the Tier-C job and *read back* here from its journal row, so
+both verdicts compose in one registry without a model call ever sitting on this
+call path. A memory-level ``CONTRADICTS`` edge may *flag* a fact for scanning
+but is never itself the verdict, because truth is adjudicated at the fact layer
+where the provenance lives.
 
 **Precision first, and the direction of error is fixed.** A missed contradiction
 delays a dispute, which doc 08 §5.3 names the preferred failure; a manufactured
@@ -61,6 +64,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository
+from app.services.events import CONTRADICTION_SCANNED
 from app.services.relations import REPLACES_FAMILY
 
 logger = logging.getLogger(__name__)
@@ -300,17 +304,149 @@ async def detect_open_contradiction(
     return None
 
 
+# ── the Tier-C model scan's verdict, read back from the journal ──────────
+
+RULE_SCANNED = "llm_scan"
+
+_LATEST_SCAN_SQL = """
+    SELECT payload
+    FROM events
+    WHERE object_type = 'fact'
+      AND event_type = CAST(:kind AS text)
+      AND object_id = CAST(:id AS uuid)
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+"""
+
+_COUNTERPART_SQL = f"""
+    SELECT {_CANDIDATE_COLUMNS}
+    FROM knowledge_triples
+    WHERE id = CAST(:id AS uuid)
+      AND expired_at IS NULL
+      AND project = CAST(:project AS text)
+"""
+
+
+async def detect_scanned_contradiction(
+    session: AsyncSession, fact_id: UUID | str
+) -> ContradictionFinding | None:
+    """The model scan's standing verdict, re-validated against today's rows.
+
+    The scan runs on its own six-hourly cadence and cannot be consulted
+    synchronously — it costs a model call per pair — so its adjudication is
+    journalled and read back here. The most recent row wins.
+
+    **A later clean pass is not an exit from a dispute this verdict opened**,
+    and reading "most recent row wins" as if it were would budget for a
+    self-healing this code does not have. The scan only checks facts that are
+    still servable and *not already disputed* (doc 08 §5.3), so the moment the
+    ladder applies this finding the fact leaves the scan's own working set:
+    its later ``sources_changed`` events are drained and discarded as
+    unservable, and no second verdict is ever written for it. A later clean row
+    can therefore only arrive in the window before the recompute applies the
+    first one. There are exactly two exits after that:
+
+    1. **Guard lapse** — the counterpart expires, a window closes, or the
+       witness origin joins the subject. Each is re-checked below on every
+       read, so a verdict whose grounds have gone stops disputing by itself.
+    2. **Human ratification** (doc 08 §4.4), which makes the fact immune to the
+       veto outright.
+
+    So a judge false positive whose guards keep holding is a permanent dispute
+    until a person rules on it. That permanence is a consequence of doc 08
+    §5.3's exclusion, not an oversight here: the exclusion is what stops the
+    scan re-paying a model call on every fact it has already ruled on, and a
+    disputed fact is served labelled with both sides rather than dropped (doc
+    08 §6, invariant 14). It is the bounded false-positive cost the
+    precision-first asymmetry accepts behind the judge's 0.95 bar.
+
+    **Nothing is trusted from the payload except the pair it names.** A verdict
+    can outlive the rows it was made about — the counterpart expires, a window
+    closes, the witness origin is withdrawn — and a journal row is append-only,
+    so it can never be corrected in place. Every guard the deterministic scan
+    applies at selection time is therefore re-applied here at read time against
+    the live rows, and the counterpart triple is re-read rather than replayed
+    out of the payload. A verdict whose guards no longer hold is silence, not a
+    dispute.
+    """
+    result = await session.execute(
+        text(
+            f"SELECT {_FACT_COLUMNS} FROM knowledge_triples "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(fact_id)},
+    )
+    subject = result.mappings().first()
+    if subject is None or subject["expired_at"] is not None:
+        return None
+
+    row = (
+        await session.execute(
+            text(_LATEST_SCAN_SQL),
+            {"id": str(subject["id"]), "kind": CONTRADICTION_SCANNED},
+        )
+    ).first()
+    if row is None:
+        return None
+    payload = row[0] or {}
+    if payload.get("contradicted") is not True:
+        return None
+
+    counterpart_id = payload.get("counterpart_id")
+    witness = payload.get("witness_origin")
+    if not counterpart_id or not witness:
+        return None
+
+    counterpart = (
+        await session.execute(
+            text(_COUNTERPART_SQL),
+            {"id": str(counterpart_id), "project": subject["project"]},
+        )
+    ).mappings().first()
+    if counterpart is None:
+        return None
+    if not windows_overlap(
+        subject["valid_at"],
+        subject["invalid_at"],
+        counterpart["valid_at"],
+        counterpart["invalid_at"],
+    ):
+        return None
+
+    if witness not in await _attributable_origins(session, counterpart["id"]):
+        return None
+    if witness in await _attributable_origins(session, subject["id"]):
+        return None
+
+    return ContradictionFinding(
+        fact_id=str(subject["id"]),
+        counterpart_id=str(counterpart["id"]),
+        rule=RULE_SCANNED,
+        witness_origin=witness,
+        counterpart_subject=counterpart["subject_name"],
+        counterpart_rel_type=counterpart["rel_type"],
+        counterpart_object=counterpart["object_name"],
+    )
+
+
 ContradictionDetector = Callable[
     [AsyncSession, "UUID | str"], Awaitable[ContradictionFinding | None]
 ]
 
-# Every detector whose verdict the veto composes. **T2.11's LLM scan joins this
-# tuple; it must not be plumbed past it.** Recovery out of `disputed` is
-# conjunctive — a fact is only adjudicated clean when every wired detector
-# reports nothing — so a scan that reports through a side channel would let this
-# one's silence resolve a dispute it cannot see. Registering is what makes a
-# detector's finding both able to open a dispute and required to keep it open.
-CONTRADICTION_DETECTORS: tuple[ContradictionDetector, ...] = (detect_open_contradiction,)
+# Every detector whose verdict the veto composes. **A detector must not be
+# plumbed past this tuple.** Recovery out of `disputed` is conjunctive — a fact
+# is only adjudicated clean when every wired detector reports nothing — so a
+# scan that reported through a side channel would let another's silence resolve
+# a dispute it cannot see. Registering is what makes a detector's finding both
+# able to open a dispute and required to keep it open.
+#
+# The deterministic arm is first because it is pure SQL over indexed columns
+# and the model arm costs a journal read; the veto is absolute, so the first
+# finding ends the walk and the order is a cost ordering, never a precedence.
+CONTRADICTION_DETECTORS: tuple[ContradictionDetector, ...] = (
+    detect_open_contradiction,
+    detect_scanned_contradiction,
+)
 
 
 async def adjudicate_contradiction_finding(

@@ -52,6 +52,11 @@ def upgrade() -> None:
     # Extensions and types
     # ------------------------------------------------------------------
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # The contradiction scan's second candidate arm (doc 08 §5.3) is a trigram
+    # shortlist over knowledge_triples.fact. It is deliberately NOT an
+    # embedding channel: triple_embeddings stays template-only until a measured
+    # undercount of this generator justifies its writer (doc 04 §5.3).
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     # The ONE native enum in the schema (doc 04 §2, §11). Every other state
     # column is CHECK-constrained text and every "type" column is varchar
@@ -590,6 +595,19 @@ def _pass_two() -> None:
         "CREATE INDEX ix_knowledge_triples_name_fts ON knowledge_triples "
         "USING gin (to_tsvector('simple', subject_name || ' ' || object_name)) "
         "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    # The contradiction scan's trigram shortlist (doc 08 §5.3), and the one
+    # index here that is partial on LIVE rather than on OPEN BELIEF. The scan
+    # adjudicates a candidate pair on whether their validity windows overlap,
+    # so a window-closed row is still a legitimate counterpart; narrowing this
+    # to the open-belief predicate the FTS indexes use would silently drop
+    # exactly the succession-versus-contradiction cases the overlap guard
+    # exists to decide. Same liveness predicate the deterministic
+    # same-endpoint scan already selects on, so the two arms agree about which
+    # rows exist.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_fact_trgm ON knowledge_triples "
+        "USING gin (fact gin_trgm_ops) WHERE expired_at IS NULL"
     )
     # The project pushdown's own support, the analogue of
     # ix_memories_project_live: it serves the scope when the query carries no
