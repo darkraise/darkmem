@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.facts import FactBadge
+from app.services.claim_gates import ungated_mapping
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -70,6 +71,14 @@ class ComposedRowLabels(BaseModel):
     prose is ``badge.claim``'s alone. It is produced by the same function
     that produces every other key here, ``fact_badge.row_labels``, so a
     caller cannot receive one without the other.
+
+    ``label_suppressed`` (T2.95) is the reason a promoted rung was withheld
+    for want of its evidence record, and it is declared here because pydantic
+    drops what a model does not name. The producer emitted it from the day the
+    gate landed and every wire schema silently swallowed it, which made a
+    suppressed row and a genuinely-``candidate`` row byte-identical on every
+    door — a missing measurement reading as a property of the corpus, which is
+    the exact failure the gate exists to prevent.
     """
 
     project: str | None = None
@@ -79,6 +88,7 @@ class ComposedRowLabels(BaseModel):
     lifecycle: str | None = None
     badge: FactBadge | None = None
     unverified: bool = True
+    label_suppressed: str | None = None
 
 
 class ComposedRowContext(BaseModel):
@@ -92,6 +102,14 @@ class ComposedRowResponse(BaseModel):
     ``supported_by`` is recursive because doc 07 §5 requires a grouped memory
     to arrive whole, its own scores included; flattening it into a count would
     hand an agent a fact whose evidence it cannot read.
+
+    ``tier`` is the served rung's tier, not the row's ranking tier (T2.95).
+    The two differ only while a rung is suppressed, and there the ranking one
+    is the withheld label in numeric form: serving ``tier: 3`` beside
+    ``labels.verification_status: "candidate"`` hands a reader the promoted
+    rung back, trivially inverted through ``TIER_BY_VERIFICATION_STATUS``. The
+    row still *ranks* on its true tier — derivation may use the status the
+    wire may not reveal — so this field is the only place the two part.
     """
 
     id: str
@@ -237,7 +255,7 @@ class KnowledgeSearchResponse(BaseModel):
 
 
 def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
-    from app.services.layer_composition import rerank_document_text
+    from app.services.layer_composition import rerank_document_text, tier_for
 
     return ComposedRowResponse(
         id=row.id,
@@ -246,15 +264,19 @@ def composed_row_response(row: "ComposedRow") -> ComposedRowResponse:
         text=rerank_document_text(row),
         channel_rank=row.channel_rank,
         band=row.band,
-        tier=row.tier,
+        # Derived from the label this row is served with, never from
+        # ``row.tier`` — that one is the ranking's, computed off the raw rung,
+        # and putting it on the wire beside a suppressed label publishes the
+        # withheld rung as a number.
+        tier=tier_for(row.labels.get("verification_status")),
         score=row.weighted_score,
         rank_fusion_factor=row.rank_fusion_factor,
         labels=ComposedRowLabels(**dict(row.labels)),
         context=ComposedRowContext(
             match=row.context.match.value, boost=row.context.boost
         ),
-        dispute=None if row.dispute is None else dict(row.dispute),
-        grouping=None if row.grouping is None else dict(row.grouping),
+        dispute=None if row.dispute is None else dict(ungated_mapping(row.dispute)),
+        grouping=None if row.grouping is None else dict(ungated_mapping(row.grouping)),
         supported_by=[composed_row_response(nested) for nested in row.supported_by],
     )
 

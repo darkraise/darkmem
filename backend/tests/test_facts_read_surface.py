@@ -223,7 +223,13 @@ async def test_a_queued_fact_is_listed_like_any_other(client, auth_headers, sess
     assert queued_item["review_state"] == "open"
 
 
-async def test_verification_status_is_an_opt_in_filter(client, auth_headers, session):
+async def test_verification_status_is_an_opt_in_filter(
+    client, auth_headers, session, cleared_promotion_record
+):
+    """The gate is open here because the subject is the filter being opt-in
+    rather than defaulted. With it closed the filter still narrows, but on the
+    served rung — which is `test_claim_serving_gates.py`'s subject, not this
+    one."""
     kept = await _fact(session, obj="kept", status="corroborated")
     await _source(session, kept, origin="session-a")
     other = await _fact(session, obj="other", status="candidate")

@@ -502,7 +502,12 @@ def row_labels(
     # surface. A gate applied at each consumer would be a convention; applied
     # at the producer it is a property, and the scan in the test suite keeps it
     # one.
-    served, suppression = served_status(verification_status)
+    #
+    # `id_kind` rides through because the evidence does: a fact's promoted rung
+    # is certified by G-C's promotion audit and an article's by G-D's judge
+    # qualification. Gating both against one record would let the fact record
+    # light an article's label.
+    served, suppression = served_status(verification_status, id_kind=id_kind)
     return {
         "verification_status": served,
         "lifecycle": None,

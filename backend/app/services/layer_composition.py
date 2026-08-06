@@ -88,6 +88,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
+from app.services.claim_gates import ungated_mapping, unserved_status
 from app.services.fact_badge import Badge, badges_for_facts, row_labels
 from app.services.facts_channel import (
     KEYWORD_ARM,
@@ -458,7 +459,7 @@ def fact_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         layer=LAYER_BY_ID_KIND["fact"],
         channel_rank=channel_rank,
         row=row,
-        verification_status=row.get("verification_status"),
+        verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
@@ -478,7 +479,7 @@ def article_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         layer=LAYER_BY_ID_KIND["article"],
         channel_rank=channel_rank,
         row=row,
-        verification_status=row.get("verification_status"),
+        verification_status=unserved_status(row.get("verification_status")),
         signals=_signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
@@ -491,13 +492,24 @@ def _labels(candidate: LayerCandidate) -> dict:
     through on a fact for exactly the reason it does not move it: doc 08
     §4.3's under-sourced overlay is a label a consumer may render, not a rung
     this layer may re-derive.
+
+    The rung comes from ``row_labels`` even though :func:`_badge_labels`
+    overwrites it whenever badges were derived. Composing without badges is a
+    supported call (``compose(badges=None)``), and on that path this dict *is*
+    the served labels — spelling the raw attribute here left a promoted status
+    on the wire for every caller that took it.
     """
     row = candidate.row
     labels: dict = {"project": row.get("project")}
     if candidate.id_kind == "memory":
         labels["status"] = row.get("status")
     else:
-        labels["verification_status"] = candidate.verification_status
+        gated = row_labels(
+            id_kind=candidate.id_kind,
+            verification_status=candidate.verification_status,
+        )
+        labels["verification_status"] = gated["verification_status"]
+        labels["label_suppressed"] = gated["label_suppressed"]
         labels["review_state"] = row.get("review_state")
     return labels
 
@@ -948,7 +960,7 @@ def compose(
                 id_kind=candidate.id_kind,
                 layer=candidate.layer,
                 channel_rank=candidate.channel_rank,
-                verification_status=candidate.verification_status,
+                verification_status=unserved_status(candidate.verification_status),
                 tier=tier_for(candidate.verification_status),
                 band=candidate.channel_rank,
                 cross_layer_rrf=cross_layer_rrf(candidate.channel_rank),
@@ -1233,7 +1245,11 @@ class LayerCompositionService:
                     "reranked; a row is never scored against an empty document"
                 )
             documents.append(
-                {**dict(row.row), "content": document_text, RERANK_KEY_FIELD: row.key}
+                {
+                    **dict(ungated_mapping(row.row)),
+                    "content": document_text,
+                    RERANK_KEY_FIELD: row.key,
+                }
             )
         scored = await self.reranker.rerank(
             query,
@@ -1284,7 +1300,7 @@ class LayerCompositionService:
         facts = [c for c in candidates if c.id_kind == "fact"]
         if not facts:
             return {}
-        rows = [{**dict(c.row), "id": c.id} for c in facts]
+        rows = [{**dict(ungated_mapping(c.row)), "id": c.id} for c in facts]
         badges = await badges_for_facts(self.session, rows)
         return {c.key: badges[c.id] for c in facts}
 
@@ -1437,7 +1453,7 @@ class LayerCompositionService:
             raise CompositionUnavailable(
                 "Layer composition failed on the memory channel and "
                 + ("the fact channel" if fact_failed else "no fact channel was asked"),
-                channels=dict(channels),
+                channels=dict(ungated_mapping(channels)),
             )
 
         fact_ids = [c.id for c in candidates if c.id_kind == "fact"]
