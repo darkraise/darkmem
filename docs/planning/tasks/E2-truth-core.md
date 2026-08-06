@@ -488,6 +488,76 @@ origin per repo regardless of commit count**, matching the one-document-one-orig
 
 **Verify.** `cd backend && python -m pytest tests/test_deriver_lift.py -q`
 
+#### T2.96 — Wire the deriver: nothing calls it today
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.27` · `Doc: 10 §6, 19 §6` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-06 from T2.27's completion report, clause 4.** T2.27 landed
+`app/services/code_deriver.py`, both doc 06 §6.1 primitives, and 47 tests — and
+`assert_repo_graph` / `derive_assertions` have **no caller anywhere in
+`backend/app`**, confirmed by the controller in the tree. So `repo_ids[]` has a
+writer that production never reaches.
+
+That is not a defect in T2.27, whose scope was the primitives and the deriver,
+but it is the difference between a landed writer and a filled column — and
+invariant 23 (scaffolding-not-substrate) is precisely about not conflating
+them. The inert label retired on the strength of a writer existing; the
+schema inventory now says plainly that no scheduled path fills the arrays.
+
+**What.** Give the deriver its trigger. The natural one is a re-index: a repo
+whose imports just changed is a repo whose assertions are stale, and doc 10 §6
+already scopes the citation re-verifier (T2.48) to a re-indexed repo's changed
+files. Whether it is a `JobRegistry` Tier-C entry with its own cron and
+`job:<key>` config row, or a hook on the reindex path, is this task's call —
+but it must stay off capture and retrieval (invariant 15).
+
+**Done when:**
+- [ ] A production path fills `repo_ids[]`, proven end-to-end rather than by unit test
+- [ ] Re-running the trigger is idempotent per repo, inheriting T2.27's strip
+- [ ] Removing a repo strips its assertions (the withdrawal half of T2.28's third clause)
+
+**Verify.** `cd backend && python -m pytest tests/test_code_deriver.py -q`
+
+#### T2.97 — Repo-minted entities cannot dedup: no embedding, no ANN
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.27` · `Doc: 10 §6, 06 §5` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-06 from T2.27's completion report, clause 3.** Doc 10 §6 sells
+the bridge on anchoring: *"a `postgres` entity minted from a repo's imports is
+the same deduped node as `postgres` from a memory (the anchoring benefit that
+makes the bridge worth building)"*. As shipped, that holds only for an **exact
+`(name, entity_type)` match**. A repo-minted entity carries no embedding —
+writing one is an embedder call, which T2.27's LLM-free clause forbids — so
+Phase-4's ANN probe cannot see it: `postgres` from code and `postgresql` from a
+memory stay two nodes where the memory path would have merged them at cosine
+0.85 under the `names_distinct` guard.
+
+**This is a narrowing of a stated deliverable, not a bug**, and it is the same
+shape as T2.16 shipping two of three signals: the mechanism is right and its
+reach is smaller than the doc claims. Logged rather than silently accepted.
+
+**The decision this task owns.** Two candidate shapes, and the choice is the
+work:
+
+- **Embed at derive time.** Simplest, and it makes anchoring symmetric — but it
+  puts a model call inside a deriver whose whole doctrine is that it has none,
+  and couples repo derivation to embedder availability.
+- **A Tier-C back-fill** over repo-asserted entities with no embedding, reusing
+  the `entity_embedding_cache__<slug>` path. Keeps the deriver clean and pays
+  the same fingerprint-partition rules everything else does (invariant 2).
+
+The second is the recommendation; the task may overturn it with a reason.
+**Note an embedder call is not an LLM extraction call** — T2.27's clause forbids
+the latter, and reading it as forbidding both is what left this gap.
+
+**Done when:**
+- [ ] A repo-minted entity and a near-named memory-minted one resolve to one node,
+      proven by test at the same threshold the memory path uses
+- [ ] The deriver's LLM-free guard still passes, whichever shape is chosen
+- [ ] No cross-fingerprint comparison (invariant 2)
+
+**Verify.** `cd backend && python -m pytest tests/test_code_deriver.py -q`
+
 ---
 
 ## Lane I — retrieval-arm activations (doc 20 §5 matrix)
@@ -2463,6 +2533,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | T2.27, T2.96, T2.97 | 2 | **Two tasks minted from T2.27's completion report, both gaps the plan did not have a row for.** **T2.96** — the deriver has no caller: `assert_repo_graph` / `derive_assertions` are reachable from nothing in `backend/app` (controller-confirmed in the tree), so `repo_ids[]` has a writer that production never runs. **T2.97** — a repo-minted entity carries no embedding, so Phase-4's ANN probe cannot see it and anchoring degrades to exact `(name, entity_type)` match: `postgres` from code and `postgresql` from a memory stay two nodes where the memory path merges them. The schema inventory gains a plain statement that no scheduled path fills the arrays yet | T2.27's executor reported both accurately and judged that neither was an amendment. The controller disagrees on both, for the same reason each time: a stated deliverable is narrower than the doc claims it is, and **no row owns the gap**, which is the Tier-2 definition. Doc 10 §6 sells the bridge specifically on anchoring — *"the anchoring benefit that makes the bridge worth building"* — so exact-match-only anchoring is the same shape as T2.16 shipping two of three signals, which was logged Tier 2 on the same reasoning. The wiring gap matters for a second reason: **the inert label on both arrays retired in this task**, and invariant 23 exists to stop scaffolding being claimed as substrate. A writer existing is a fair basis for retiring "inert", but only if the inventory says plainly that nothing schedules it — otherwise the next reader of that table concludes the bridge is live. Worth recording that T2.97's root cause is a **misread of T2.27's own constraint**: "LLM-free" forbids an extraction call, and an embedder call is not one; reading the clause as forbidding both is what left the gap unclosed rather than merely deferred |
 | 2026-08-06 | T2.95, T2.28 | 2 | **T2.95 reopened: the Fable review refutes the gate, and T2.28 gains a hard hold on the repair.** Three of five Done-when clauses do not hold, measured rather than argued — `chat.py:401` and `review_queue.py:336` serve the raw promoted status off the ungated column instead of the gated `row.labels`, `label_suppressed` is dropped by `FactListItem` / `FactDetailResponse` / `ComposedRowLabels` so a suppressed label and an earned `candidate` are byte-identical on the wire, and both scans enumerate known modules rather than quantifying over serving paths (a new bypassing module and a new bypassing route each left the suite green). Two further defects were fixed inside the review: `gate_eligible` opened on any truthy JSON value, so the strings `"INTERIM"` and `"false"` both opened it — the module's own named failure mode — and a corrupt record raised `UnicodeDecodeError` through the fact read path rather than failing closed. Status `done` → `wip`; six scoped repair items in `reviews/2026-08-06-t2.95-gate-attack.md` | **This is the task the M1 split rests on, so its being wrong is the one defect in this epic that invalidates a scheduling decision rather than a feature.** The split's safety sentence is *no serving path can reach a label whose evidence does not exist*; it is false today on two doors, so every task merged under the split's licence inherits the doubt until the repair lands. Tier 2 rather than Tier 3 deliberately: **nothing here indicts the design.** Enforcement at the producer is right, and the review says so explicitly — the defects are that two consumers dodge the producer, one attribute duplicates what the labels already carry, three schemas drop a field, and two scans enumerate instead of quantify. No design doc is wrong, no gate bar moves, no honesty tag is reclassified. What it does change beyond one task is the **T2.28 edge**, which is why it is logged rather than merely fixed. Also worth recording as a process finding: T2.95 reached `done` with its mandatory Fable review still owed, and the review is what caught this — the runbook §6 rule earned its cost in a single sitting |
 | 2026-08-06 | T2.11, T2.27, T2.28 | 2 | **A gate blocks what it certifies, not what merely precedes it.** Implementation lands **inert**; only the productive or serving path waits for evidence. This is the repo's own standing pattern, applied more consistently — T0.13's inert partitions, T2.08's `PlaceholderJobRunner` family, T2.32/T2.50's build-versus-judge split, and invariant 23's scaffolding-not-substrate. Dependency edges re-pointed off the evidence runs accordingly | Controller decision: the plan had implementation work queued behind **evaluation artifacts it does not depend on** — an SDK scaffold and a browser-extension scaffold waited on a groundedness evidence run, and a document parser waited on a faithfulness metric. That is phase coupling, not artifact coupling, and it stalls build work on datasets that do not exist yet. Evaluation is deferred to an independent measurement phase after the implementation is complete, where it can be run against the whole system rather than against fixtures. **What was deliberately left gated**: T2.28 (mints facts born `corroborated` — the exact harm G-C names), T3.02 (productive article runs — where a grounded claim first reaches a reader), T3.03 (the groundedness consumer). Freeing those would put unverified assertions in front of users, which is a different thing from unblocking a scaffold. |
 | 2026-08-06 | T2.31, T2.35 | 2 | **Both activation tasks close as `done` with their arms at 0.0, measurement deferred to whole-system.** Controller decision: neither arm can be honestly measured on the bench today — T2.35 has no context-bearing corpus (so `match_context` returns neutral at every magnitude) and T2.31 has no realistic heat prior (any bench-invented distribution is gold-correlated or gold-blind). Rather than author a corpus and a workload to measure a synthetic world, both are recorded as results under the standing gate and re-measured on the complete system after the implementation phase | The standing gate already provides for exactly this — *"an arm that cannot show its number stays at weight 0, and that outcome is recorded here as a result, not a failure"* — and the T2.50 judge set the precedent hours earlier by closing community injection the same way, naming it *"the same honest floor T2.35's context axis was left at"*. The alternative on the table was ~1.5 days of corpus and workload authoring whose only output would be a number about fixtures. **Neither task had code left to write**: T1.34 shipped the context mechanism and T2.31's signal was wired 2026-08-06, so the corpus was the deliverable rather than its test — which is what made deferral the cheaper *and* more honest option rather than a shortcut. Standing gates apply per activation, so nothing is foreclosed: when real telemetry and real contexts exist, activation is a run plus a ledger row. **What is accepted deliberately**: the `applies_when` boost and the heat/recency priors ship off and stay off until then |
