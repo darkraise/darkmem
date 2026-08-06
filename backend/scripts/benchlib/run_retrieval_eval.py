@@ -530,11 +530,15 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--arm", default=None, metavar="FLAG",
         help=(
-            "Run the on/off ablation for one rank_fusion_factor arm instead "
-            "of the full-context comparison. Takes the arm's config FLAG "
-            "spelling (e.g. w_importance) -- see "
-            "app/services/rank_fusion.RANK_ARMS for the valid set, which "
-            "arm_ablation.resolve_arm() validates against at run time."
+            "Run the on/off ablation for one ranking arm instead of the "
+            "full-context comparison. Takes the arm's config FLAG spelling "
+            "(e.g. w_importance). All three signal classes are accepted: the "
+            "rank_fusion_factor arms (RANK_ARMS), the RRF list weights "
+            "(w_ppr, w_dual) and the applies_when boost (w_context_boost); "
+            "arm_ablation.resolve_ablatable() validates against all of them "
+            "at run time. An arm whose signal cannot be present on this "
+            "harness refuses with the reason rather than reporting a zero "
+            "delta that reads like a measured 'no win'."
         ),
     )
     parser.add_argument(

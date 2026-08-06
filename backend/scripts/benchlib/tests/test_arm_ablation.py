@@ -426,3 +426,120 @@ async def test_run_arm_ablation_rejects_an_unknown_arm_before_touching_the_db(tm
             cache_dir=tmp_path / "cache", corpus_path=corpus_path, gold_path=gold_path,
             report_dir=tmp_path / "report", ledger_path=tmp_path / "ledger.jsonl",
         )
+
+
+# ── the other two signal classes, and the vacuity guard ─────────────────
+#
+# `RANK_ARMS` covers only the post-fusion multipliers, so the two tasks that
+# own the other classes (T2.35's context boost, T2.50's list weights) could
+# not run their own stated Verify line: `resolve_arm` rejected every flag they
+# name. `resolve_ablatable` covers all three classes, and the guard below is
+# what keeps that coverage honest — an arm whose signal cannot be present
+# refuses rather than reporting the exact zero that reads like a verdict.
+
+
+def test_every_rank_arm_still_resolves_through_the_wider_resolver():
+    for arm in RANK_ARMS:
+        resolved = arm_ablation.resolve_ablatable(arm.flag)
+        assert resolved.arm is arm
+        assert resolved.kind == arm_ablation.KIND_FACTOR
+        assert resolved.activation == arm.activation
+
+
+def test_the_list_weights_and_the_context_boost_now_resolve():
+    ppr = arm_ablation.resolve_ablatable("w_ppr")
+    assert ppr.kind == arm_ablation.KIND_LIST
+    assert ppr.project_scoped is True
+
+    dual = arm_ablation.resolve_ablatable("w_dual")
+    assert dual.kind == arm_ablation.KIND_LIST
+
+    boost = arm_ablation.resolve_ablatable("w_context_boost")
+    assert boost.kind == arm_ablation.KIND_BOOST
+
+
+def test_semantic_weight_is_not_an_ablatable_arm():
+    """It is the split between the two base sides, not a signal that can be
+    turned off: an 'off leg' at semantic_weight=0 is a keyword-only retriever,
+    which is a different system rather than the same one missing an arm."""
+    with pytest.raises(ValueError, match="semantic_weight"):
+        arm_ablation.resolve_ablatable("semantic_weight")
+
+
+def test_the_wider_resolver_is_still_derived_not_a_hand_list(monkeypatch):
+    fake = RankArm("fake", "w_fake_arm_for_test", 0.0, activation="T9.99")
+    monkeypatch.setattr(arm_ablation, "RANK_ARMS", (*RANK_ARMS, fake))
+    assert arm_ablation.resolve_ablatable("w_fake_arm_for_test").arm is fake
+    with pytest.raises(ValueError, match="w_fake_arm_for_test"):
+        arm_ablation.resolve_ablatable("still_not_real")
+
+
+def test_a_list_arm_carries_the_gate_its_weight_needs():
+    """`w_ppr` alone is inert — `ppr_list_weight` returns zero unless
+    `ppr_enabled` is set — so pinning the weight without its companion would
+    run the off leg twice and report the difference as a delta."""
+    assert dict(arm_ablation.resolve_ablatable("w_ppr").companions) == {
+        "ppr_enabled": True
+    }
+    assert dict(arm_ablation.resolve_ablatable("w_dual").companions) == {
+        "dual_level_enabled": True
+    }
+
+
+@pytest.mark.asyncio
+async def test_the_companion_gate_is_applied_to_the_on_leg_only(_bench_db):
+    """The off leg is the control and must stay exactly the shipped
+    configuration; flipping its gate too would make both legs 'on'."""
+    arm = arm_ablation.resolve_ablatable("w_ppr")
+
+    off = await arm_ablation._pin_arm_weight(
+        arm_ablation.bench_db.session_factory, gate_config={}, arm=arm, weight=0.0,
+    )
+    assert off["w_ppr"] == 0.0
+    assert off["ppr_enabled"] is False
+
+    on = await arm_ablation._pin_arm_weight(
+        arm_ablation.bench_db.session_factory, gate_config={}, arm=arm, weight=1.0,
+    )
+    assert on["w_ppr"] == 1.0
+    assert on["ppr_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_blocked_arm_refuses_before_the_reset(monkeypatch):
+    """The guard has to fire before `reset_bench_db`, not after: a refusal
+    that has already dropped the bench schema has cost the operator a rebuild
+    to learn something knowable from the flag alone."""
+    called = False
+
+    async def _boom():
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(arm_ablation.bench_db, "reset_bench_db", _boom)
+
+    for flag in ("w_dual", "w_context_boost"):
+        with pytest.raises(arm_ablation.ArmNotMeasurable) as excinfo:
+            await arm_ablation.run_arm_ablation(arm_flag=flag)
+        # The message must say what would have to change, not merely "no".
+        assert flag in str(excinfo.value)
+        assert len(str(excinfo.value)) > 80
+    assert called is False
+
+
+def test_every_blocked_reason_names_what_would_unblock_it():
+    for flag, reason in arm_ablation._blocked_reasons().items():
+        assert "Needs" in reason, f"{flag}'s reason does not say what unblocks it"
+
+
+def test_a_list_arm_probes_at_a_list_sized_weight():
+    """1.0 means different things in the two classes. As a factor weight it is
+    a moderate swing around identity; as an RRF *list* weight it is the whole
+    share of the fusion, and the two shipped lists already split 1.0 between
+    them — so a third list at 1.0 outweighs everything else combined and the
+    delta measures the probe, not the arm. Measured: the first w_ppr run at
+    1.0 reported an aggregate MRR delta of -0.4742."""
+    assert arm_ablation.LIST_PROBE_WEIGHT < arm_ablation.DEFAULT_PROBE_WEIGHT
+    # The keyword side's own share, so the probe is one more voice of
+    # comparable size rather than a dominant one.
+    assert arm_ablation.LIST_PROBE_WEIGHT == pytest.approx(0.3)

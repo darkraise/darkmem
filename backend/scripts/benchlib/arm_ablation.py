@@ -58,8 +58,9 @@ because it ran second.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -76,7 +77,12 @@ from app.models.config import Config
 from app.services.config import get_llm_config
 from app.services.feature_flags import FEATURE_FLAGS_KEY
 from app.services.pipeline import _flag_cache_reset
-from app.services.rank_fusion import RANK_ARMS, RankArm
+from app.services.rank_fusion import (
+    CONTEXT_BOOST_FLAG,
+    LIST_WEIGHT_KEYS,
+    RANK_ARMS,
+    RankArm,
+)
 
 # Pinned to match run_retrieval_eval.py's own K/MIN_PAIRS: both runners
 # measure over the same corpus/gold under the same scoring protocol. These
@@ -108,6 +114,22 @@ REPORT_DIR = retrieval_gold.RETRIEVAL_DIR.parents[3] / "docs" / "eval"
 # actually used is always recorded in the run's own meta/report/ledger.
 DEFAULT_PROBE_WEIGHT = 1.0
 
+# **A list weight is not a factor weight, and 1.0 means something different in
+# each class.** `arm_factor` composes as `1 + weight * (signal - baseline)`, so
+# 1.0 there is a moderate swing around the identity. An RRF *list* weight is
+# the list's whole share of the fusion, and the two shipped lists already split
+# 1.0 between them (`semantic_weight` 0.7 / keyword 0.3) — so probing a third
+# list at 1.0 gives it more voice than the entire existing fusion combined, and
+# the delta then measures the probe rather than the arm.
+#
+# This is not hypothetical: the first `--arm w_ppr` run at 1.0 reported an
+# aggregate MRR delta of **-0.4742**, which reads as "PPR is catastrophic" and
+# is really "a list weighted above everything else dominates the order".
+# 0.3 is the keyword side's own share — the natural "one more voice of
+# comparable size" probe. Whether any magnitude clears a bar remains T2.50's
+# judgment, not this module's; `--weight` still overrides.
+LIST_PROBE_WEIGHT = 0.3
+
 LEG_OFF = "off"
 LEG_ON = "on"
 
@@ -135,6 +157,186 @@ def resolve_arm(flag: str) -> RankArm:
     raise ValueError(f"unknown --arm {flag!r}; valid arms are {valid}")
 
 
+async def _prepare_project_scoped_arm(session_factory):
+    """Build the PPR snapshot for the ingested corpus and return its scope.
+
+    Refuses rather than returning an empty scope in every case where the arm
+    would be measurable-looking but vacuous:
+
+    * **no project** — nothing was ingested;
+    * **more than one project** — the corpus would need a scope choice this
+      harness has no basis to make, and one project's snapshot cannot rank
+      another's rows (invariant: no cross-project mass);
+    * **an empty snapshot** — the graph had no entities to build from, so the
+      arm would contribute nothing and the run would report a zero delta that
+      reads exactly like a measured "no win".
+
+    The project is read from what was actually ingested rather than assumed
+    from the corpus file (ruling 2: nothing hardcoded from the corpus).
+    """
+    from sqlalchemy import text as sa_text
+
+    from app.repositories.vector import MemoryFilter
+    from app.services import ppr_snapshot
+
+    async with session_factory() as session:
+        rows = await session.execute(
+            sa_text(
+                "SELECT DISTINCT project FROM memories "
+                "WHERE status = 'active' AND is_archived = false"
+            )
+        )
+        projects = sorted(row[0] for row in rows)
+
+    if not projects:
+        raise ArmNotMeasurable(
+            "the bench corpus ingested no live memories, so a project-scoped "
+            "arm has nothing to rank"
+        )
+    if len(projects) > 1:
+        raise ArmNotMeasurable(
+            "the bench corpus spans more than one project "
+            f"({projects}); a PPR snapshot is per project and mass has no "
+            "defined meaning across two, so this harness cannot choose a "
+            "scope for the legs"
+        )
+
+    project = projects[0]
+    cache = ppr_snapshot.snapshot_cache()
+    cache.clear()
+    outcome = await ppr_snapshot.refresh_snapshots(
+        session_factory, batch_size=len(projects), cache=cache,
+    )
+    snapshot = cache.get(project)
+    if snapshot is None or snapshot.node_count == 0:
+        reasons = [o.skipped_reason for o in outcome.outcomes if o.skipped_reason]
+        raise ArmNotMeasurable(
+            f"no PPR snapshot could be built for project {project!r} "
+            f"({reasons or 'empty graph'}), so the arm would contribute "
+            "nothing and the run would report a zero delta indistinguishable "
+            "from a measured 'no win'"
+        )
+
+    print(
+        f"      PPR snapshot for {project!r}: {snapshot.node_count} nodes, "
+        f"{snapshot.edge_count} edges; both legs scoped to that project."
+    )
+    return MemoryFilter(project=project)
+
+
+class ArmNotMeasurable(RuntimeError):
+    """This arm cannot be ablated on this harness, and why.
+
+    **The reason this type exists is that the alternative is a zero.** An arm
+    whose signal cannot possibly be present still runs perfectly: both legs
+    retrieve identically, every slice reports a delta of exactly 0.0000, and
+    the report reads like a measured "no win". That has already happened
+    twice — `w_heat` measured before its signal was wired, and `w_ppr` would
+    measure the same way against an empty snapshot — and a zero of that kind
+    is worse than no number, because it is indistinguishable from a real one
+    once it reaches the arm-activation log.
+
+    So an arm with an unsatisfiable precondition refuses **before** the bench
+    reset and before any model call, naming what is missing and who owns it.
+    """
+
+
+@dataclass(frozen=True)
+class AblatableArm:
+    """One flag the harness can ablate, across all three signal classes.
+
+    `RANK_ARMS` covers only the post-fusion multipliers. The read path has two
+    other classes doc 07 §3 keeps deliberately separate — the RRF **list**
+    weights (`LIST_WEIGHT_KEYS`) and the `applies_when` context boost — and
+    both were rejected outright by the original resolver, so the tasks that
+    own them (T2.35, T2.50) could not run their own stated Verify line.
+
+    ``companions`` is what makes a list arm ablatable at all: `w_ppr` alone
+    does nothing, because `ppr_list_weight` returns zero unless `ppr_enabled`
+    is also set. Pinning the weight without its gate would measure the off leg
+    twice and call the result a delta.
+    """
+
+    flag: str
+    name: str
+    kind: str
+    activation: str | None = None
+    arm: RankArm | None = None
+    companions: Mapping[str, object] = field(default_factory=dict)
+    project_scoped: bool = False
+    blocked: str | None = None
+
+
+KIND_FACTOR = "factor"
+KIND_LIST = "list"
+KIND_BOOST = "boost"
+
+
+def _blocked_reasons() -> dict[str, str]:
+    """Why each currently-unmeasurable arm is unmeasurable, in one place.
+
+    Stated as prose the runner prints verbatim rather than as a boolean,
+    because the useful part is *what would have to change*, and a caller who
+    only learns "no" will reach for the zero instead.
+    """
+    return {
+        "w_dual": (
+            "no channel reads `relation_embeddings` yet. T2.49 landed the "
+            "vectors and their refresh job, but nothing turns them into a "
+            "ranked list, so the arm has no candidates to weight. Needs the "
+            "dual-level channel task."
+        ),
+        CONTEXT_BOOST_FLAG: (
+            "the retrieval runner declares no context. `match_context` needs "
+            "a DeclaredContext to produce anything but the neutral outcome, "
+            "and the gold pairs carry no env/version/situation axis, so the "
+            "boost is structurally inert at every magnitude. Needs a context "
+            "axis on the gold set — gold-authoring work, not harness work."
+        ),
+    }
+
+
+def resolve_ablatable(flag: str) -> AblatableArm:
+    """The one ablatable signal named ``flag``, across all three classes.
+
+    Every class is derived at call time from the module that defines it —
+    ``RANK_ARMS``, ``LIST_WEIGHT_KEYS``, ``CONTEXT_BOOST_FLAG`` — never a
+    hand-written second list, which is the same discipline `resolve_arm` was
+    written under and the drift `code_query.py`'s duplicate ``RRF_K`` was.
+    """
+    for arm in RANK_ARMS:
+        if arm.flag == flag:
+            return AblatableArm(
+                flag=flag, name=arm.name, kind=KIND_FACTOR,
+                activation=arm.activation, arm=arm,
+            )
+
+    blocked = _blocked_reasons()
+    if flag in LIST_WEIGHT_KEYS and flag != "semantic_weight":
+        return AblatableArm(
+            flag=flag,
+            name=flag.removeprefix("w_"),
+            kind=KIND_LIST,
+            activation="T2.50",
+            companions={"ppr_enabled": True} if flag == "w_ppr" else {"dual_level_enabled": True},
+            project_scoped=flag == "w_ppr",
+            blocked=blocked.get(flag),
+        )
+    if flag == CONTEXT_BOOST_FLAG:
+        return AblatableArm(
+            flag=flag, name="context_boost", kind=KIND_BOOST,
+            activation="T2.35",
+            blocked=blocked.get(flag),
+        )
+
+    valid = sorted(
+        {arm.flag for arm in RANK_ARMS}
+        | {f for f in LIST_WEIGHT_KEYS if f != "semantic_weight"}
+        | {CONTEXT_BOOST_FLAG}
+    )
+    raise ValueError(f"unknown --arm {flag!r}; valid arms are {valid}")
+
+
 async def _pin_arm_weight(
     session_factory, *, gate_config: dict, arm: RankArm, weight: float,
 ) -> dict:
@@ -157,6 +359,13 @@ async def _pin_arm_weight(
             "relation_rescue", FEATURE_FLAGS_DEFAULTS["relation_rescue"]
         )
         pinned[arm.flag] = weight
+        # A list weight alone is inert: `ppr_list_weight` returns zero unless
+        # `ppr_enabled` is also set, so pinning the weight without its gate
+        # would run the off leg twice and report the difference as a delta.
+        # Applied to the ON leg only — the off leg must stay exactly the
+        # shipped configuration it is the control for.
+        if weight and getattr(arm, "companions", None):
+            pinned.update(arm.companions)
 
         result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
         row = result.scalar_one_or_none()
@@ -244,6 +453,7 @@ async def run_arm_leg(
     retrieval_limit: int,
     k: int = K,
     min_pairs: int = MIN_PAIRS,
+    filters=None,
 ) -> ArmLeg:
     """Pin ``arm`` to ``weight``, run every live gold pair through the
     shipping retriever, and score it -- one leg of an ablation.
@@ -259,7 +469,10 @@ async def run_arm_leg(
     await _pin_arm_weight(session_factory, gate_config=gate_config, arm=arm, weight=weight)
     with _collect_query_fingerprints(llm) as fingerprints_seen:
         with instrument_retrieval(llm) as recorder:
-            ranked = await run_retrieval(llm, session_factory, gold_pairs, limit=retrieval_limit)
+            ranked = await run_retrieval(
+                llm, session_factory, gold_pairs, limit=retrieval_limit,
+                filters=filters,
+            )
     if len(fingerprints_seen) > 1:
         raise RuntimeError(
             f"leg at weight={weight!r} mixed embedder fingerprints, which "
@@ -560,12 +773,24 @@ async def run_arm_ablation(
     that seam. This module owns its own ``TwinningOrchestrator`` name for
     exactly the same reason, tested the same way.
     """
-    arm = resolve_arm(arm_flag)
-    on_weight = DEFAULT_PROBE_WEIGHT if weight is None else float(weight)
+    arm = resolve_ablatable(arm_flag)
+    default_probe = (
+        LIST_PROBE_WEIGHT if arm.kind == KIND_LIST else DEFAULT_PROBE_WEIGHT
+    )
+    on_weight = default_probe if weight is None else float(weight)
     if on_weight == 0.0:
         raise ValueError(
             "--weight must be nonzero: weight 0.0 is not an ablation, it is "
             "the off leg"
+        )
+
+    # Before the reset and before any model call. An arm whose signal cannot
+    # be present would otherwise run to completion and report an exact zero on
+    # every slice, which is indistinguishable from a measured "no win" once it
+    # reaches the ledger.
+    if arm.blocked:
+        raise ArmNotMeasurable(
+            f"--arm {arm.flag} cannot be measured on this harness: {arm.blocked}"
         )
 
     api_key = deepseek_api_key or run_smoke.require_deepseek_api_key()
@@ -603,18 +828,30 @@ async def run_arm_ablation(
         f"{ingest_result.live_calls}, fingerprint: {ingest_result.fingerprint}"
     )
 
+    # A project-scoped arm needs two things this harness did not previously
+    # provide, and both fail the same silent way — an exact zero on every
+    # slice. First the artefact: the PPR snapshot is built by a Tier-C job
+    # that never runs in a bench process, so an unbuilt cache makes the arm
+    # contribute nothing. Second the scope: `run_retrieval` queries wide by
+    # default, and a wide request skips the arm outright because a snapshot
+    # is per project and mass has no meaning across two. Both legs get the
+    # same scope, so the delta stays internally consistent.
+    leg_filters = None
+    if arm.project_scoped:
+        leg_filters = await _prepare_project_scoped_arm(session_factory)
+
     off_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
     off_leg = await run_arm_leg(
         off_llm, session_factory, pairs, arm=arm, weight=0.0,
         gate_config=ingest_result.gate_config, retrieval_limit=retrieval_limit,
-        k=k, min_pairs=min_pairs,
+        k=k, min_pairs=min_pairs, filters=leg_filters,
     )
 
     on_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
     on_leg = await run_arm_leg(
         on_llm, session_factory, pairs, arm=arm, weight=on_weight,
         gate_config=ingest_result.gate_config, retrieval_limit=retrieval_limit,
-        k=k, min_pairs=min_pairs,
+        k=k, min_pairs=min_pairs, filters=leg_filters,
     )
     print(
         f"[4/4] arm={arm.flag}: off n_pairs={off_leg.run.score.n_pairs}, "
