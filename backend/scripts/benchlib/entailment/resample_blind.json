@@ -1,0 +1,467 @@
+[
+  {
+    "id": "eg-0136",
+    "premise": "compactor uses loki",
+    "hypothesis": "Loki keeps logs for 30 days."
+  },
+  {
+    "id": "eg-0033",
+    "premise": "Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.",
+    "hypothesis": "Grafana on the monitoring host listens on port 3300 behind the nginx reverse proxy."
+  },
+  {
+    "id": "eg-0189",
+    "premise": "mobile app uses edge-cdn-4",
+    "hypothesis": "edge-cdn-4 uses the mobile app."
+  },
+  {
+    "id": "eg-0158",
+    "premise": "artifacts-prod deployed on minio",
+    "hypothesis": "The CI runners use Docker-in-Docker."
+  },
+  {
+    "id": "eg-0217",
+    "premise": "The NAS ran in degraded mode during the disk rebuild in May 2026.",
+    "hypothesis": "The NAS is no longer in degraded mode."
+  },
+  {
+    "id": "eg-0022",
+    "premise": "After the bake-off, Vector replaced Telegraf for metrics collection.",
+    "hypothesis": "After the bake-off, Telegraf replaced Vector for metrics collection."
+  },
+  {
+    "id": "eg-0016",
+    "premise": "Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.",
+    "hypothesis": "Production was still on Postgres 15 in December 2025."
+  },
+  {
+    "id": "eg-0163",
+    "premise": "cleanup cron job causes scratch partition",
+    "hypothesis": "The scratch partition causes the cleanup cron job."
+  },
+  {
+    "id": "eg-0034",
+    "premise": "The production Postgres runs version 16.2 on host prod-db-01.",
+    "hypothesis": "The production Postgres runs version 15.6 on host prod-db-01."
+  },
+  {
+    "id": "eg-0061",
+    "premise": "sftp-02 ships its syslog stream to the log collector on port 5514.",
+    "hypothesis": "sftp-02 ships its syslog stream to the log collector on port 6514."
+  },
+  {
+    "id": "eg-0239",
+    "premise": "Nightly backups ran at 01:00 from 2024 until the schedule moved to 02:30 in April 2026.",
+    "hypothesis": "Nightly backups currently run at 01:00."
+  },
+  {
+    "id": "eg-0214",
+    "premise": "Pi-hole handled DNS for the lab from June 2024 until it was replaced by AdGuard Home in April 2026.",
+    "hypothesis": "Pi-hole currently handles DNS for the lab."
+  },
+  {
+    "id": "eg-0205",
+    "premise": "memcached deployed on cache-02",
+    "hypothesis": "The analytics ETL depends on the orders database."
+  },
+  {
+    "id": "eg-0111",
+    "premise": "Prometheus retains metrics for 15 days.",
+    "hypothesis": "Prometheus retains metrics for 45 days."
+  },
+  {
+    "id": "eg-0150",
+    "premise": "directory replica deployed on acs-01",
+    "hypothesis": "acs-01 is deployed on the directory replica."
+  },
+  {
+    "id": "eg-0128",
+    "premise": "Nightly wiki backups land in the MinIO bucket wiki-backups.",
+    "hypothesis": "Nightly wiki backups land in the MinIO bucket tf-state."
+  },
+  {
+    "id": "eg-0225",
+    "premise": "The temporary port-forward for the game server was opened on 3 May 2026 and closed on 10 May 2026.",
+    "hypothesis": "The port-forward for the game server is still open."
+  },
+  {
+    "id": "eg-0197",
+    "premise": "expense uses ocr worker",
+    "hypothesis": "The OCR worker has at least one consumer."
+  },
+  {
+    "id": "eg-0110",
+    "premise": "wireguard deployed on udp",
+    "hypothesis": "UDP is deployed on WireGuard."
+  },
+  {
+    "id": "eg-0157",
+    "premise": "nightly dump related to orders database",
+    "hypothesis": "The nightly dump is associated with the orders database."
+  },
+  {
+    "id": "eg-0194",
+    "premise": "github actions replaces jenkins",
+    "hypothesis": "Jenkins replaces GitHub Actions."
+  },
+  {
+    "id": "eg-0093",
+    "premise": "hv-27 has part scratch partition",
+    "hypothesis": "The scratch partition has hv-27 as a part."
+  },
+  {
+    "id": "eg-0155",
+    "premise": "hv-27 has part scratch partition",
+    "hypothesis": "hv-27 is a part of the scratch partition."
+  },
+  {
+    "id": "eg-0062",
+    "premise": "apps-02 deployed on rack ups",
+    "hypothesis": "The rack UPS is deployed on apps-02."
+  },
+  {
+    "id": "eg-0175",
+    "premise": "The license-report job runs on the first of every month.",
+    "hypothesis": "The license-report job runs on the fifteenth of every month."
+  },
+  {
+    "id": "eg-0052",
+    "premise": "The monitoring stack has the alert router as one of its parts.",
+    "hypothesis": "The alert router has the monitoring stack as one of its parts."
+  },
+  {
+    "id": "eg-0084",
+    "premise": "fleet-cfg related to booking schedule",
+    "hypothesis": "There is a connection between fleet-cfg and the booking schedule."
+  },
+  {
+    "id": "eg-0202",
+    "premise": "apps/portal keeps audit-log entries for 180 days.",
+    "hypothesis": "apps/portal keeps audit-log entries for 90 days."
+  },
+  {
+    "id": "eg-0162",
+    "premise": "astro replaces mkdocs",
+    "hypothesis": "MkDocs replaces Astro."
+  },
+  {
+    "id": "eg-0083",
+    "premise": "config management agent causes lp-relay",
+    "hypothesis": "lp-relay is brought about by the config management agent."
+  },
+  {
+    "id": "eg-0187",
+    "premise": "jenkins deployed on ci-01",
+    "hypothesis": "Jenkins is deployed on ci-01 and capped at four concurrent jobs."
+  },
+  {
+    "id": "eg-0013",
+    "premise": "The rate limiter allows 100 requests per minute per API key and returns 429 beyond that.",
+    "hypothesis": "API requests are rate-limited per key."
+  },
+  {
+    "id": "eg-0208",
+    "premise": "The booking schedule sync runs at 04:15 every morning.",
+    "hypothesis": "The booking schedule sync runs at 05:45 every morning."
+  },
+  {
+    "id": "eg-0147",
+    "premise": "restic uses nas",
+    "hypothesis": "The NAS has at least one consumer."
+  },
+  {
+    "id": "eg-0216",
+    "premise": "The guest Wi-Fi password was rotated on 1 May 2026 and is scheduled to rotate again after 60 days.",
+    "hypothesis": "The guest Wi-Fi password set on 1 May 2026 is still the active one."
+  },
+  {
+    "id": "eg-0098",
+    "premise": "arc-store deployed on minio",
+    "hypothesis": "arc-store is deployed on Postgres."
+  },
+  {
+    "id": "eg-0188",
+    "premise": "restic uses wiki volume",
+    "hypothesis": "Restic snapshots the wiki volume nightly at 02:30."
+  },
+  {
+    "id": "eg-0237",
+    "premise": "The spare node was lent to the robotics club on 15 July 2026 for about a month.",
+    "hypothesis": "The spare node is currently in the lab."
+  },
+  {
+    "id": "eg-0145",
+    "premise": "The config management agent applies its catalog every 30 minutes.",
+    "hypothesis": "The config management agent applies its catalog every 60 minutes."
+  },
+  {
+    "id": "eg-0222",
+    "premise": "The lab's metrics were stored in InfluxDB 1.8 from mid-2023 until the February 2026 cutover to VictoriaMetrics.",
+    "hypothesis": "Lab metrics are stored in InfluxDB 1.8 today."
+  },
+  {
+    "id": "eg-0018",
+    "premise": "Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.",
+    "hypothesis": "Production currently runs Postgres 15."
+  },
+  {
+    "id": "eg-0172",
+    "premise": "wireguard deployed on udp",
+    "hypothesis": "WireGuard is the platform UDP is deployed on."
+  },
+  {
+    "id": "eg-0057",
+    "premise": "redis deployed on cache-01",
+    "hypothesis": "Redis is deployed on cache-01 as the only service on that host."
+  },
+  {
+    "id": "eg-0160",
+    "premise": "arc-store deployed on minio",
+    "hypothesis": "Astro replaces MkDocs."
+  },
+  {
+    "id": "eg-0010",
+    "premise": "The metrics database is sharded by tenant, with one schema per customer.",
+    "hypothesis": "Each customer gets its own schema; tenant is the sharding key for the metrics database."
+  },
+  {
+    "id": "eg-0019",
+    "premise": "The ELK stack was retired in 2025, and Kibana no longer runs anywhere in the lab.",
+    "hypothesis": "Kibana is still serving dashboards in the lab."
+  },
+  {
+    "id": "eg-0051",
+    "premise": "license-report depends on internal package mirror",
+    "hypothesis": "license-report depends on the internal package mirror."
+  },
+  {
+    "id": "eg-0058",
+    "premise": "caddy improves on nginx",
+    "hypothesis": "Nginx improves on Caddy."
+  },
+  {
+    "id": "eg-0086",
+    "premise": "lp-relay uses office label printers",
+    "hypothesis": "lp-relay makes use of printers."
+  },
+  {
+    "id": "eg-0161",
+    "premise": "customer-portal uses vault",
+    "hypothesis": "The customer-portal fetches all of its database credentials from Vault at startup."
+  },
+  {
+    "id": "eg-0144",
+    "premise": "grafana uses infra",
+    "hypothesis": "Grafana uses infra to provision every one of its dashboards."
+  },
+  {
+    "id": "eg-0120",
+    "premise": "The rack UPS in the server closet is an APC Smart-UPS 1500.",
+    "hypothesis": "The rack UPS in the server closet is an Eaton 5P 1500."
+  },
+  {
+    "id": "eg-0146",
+    "premise": "fleet-cfg pins the vehicle gateways to firmware 4.2.1.",
+    "hypothesis": "fleet-cfg pins the vehicle gateways to firmware 4.3.0."
+  },
+  {
+    "id": "eg-0154",
+    "premise": "prod-db-01 deployed on postgres",
+    "hypothesis": "prod-db-01 is deployed on MinIO."
+  },
+  {
+    "id": "eg-0177",
+    "premise": "unleash uses oidc",
+    "hypothesis": "OIDC uses Unleash."
+  },
+  {
+    "id": "eg-0109",
+    "premise": "team wiki deployed on lab-vm-3",
+    "hypothesis": "The team wiki is deployed on apps-02."
+  },
+  {
+    "id": "eg-0026",
+    "premise": "DNS queries from the guest VLAN are forwarded to Unbound; Unbound never forwards queries to the guest VLAN.",
+    "hypothesis": "Unbound forwards DNS queries to the guest VLAN."
+  },
+  {
+    "id": "eg-0036",
+    "premise": "Terraform state lives in the MinIO bucket tf-state with locking enabled.",
+    "hypothesis": "Terraform state lives in the MinIO bucket artifacts-prod with locking enabled."
+  },
+  {
+    "id": "eg-0123",
+    "premise": "sftp-02 accepts SFTP connections on port 2222.",
+    "hypothesis": "sftp-02 accepts SFTP connections on port 22."
+  },
+  {
+    "id": "eg-0236",
+    "premise": "The mosquitto broker listened on 1883 without TLS until the May 2026 hardening, when plaintext was disabled.",
+    "hypothesis": "Since June 2026, the mosquitto broker has accepted plaintext connections on 1883."
+  },
+  {
+    "id": "eg-0179",
+    "premise": "kibana has part elk",
+    "hypothesis": "ELK has Kibana as one of its parts."
+  },
+  {
+    "id": "eg-0037",
+    "premise": "The JWT access-token lifetime is 15 minutes, and refresh tokens last 30 days.",
+    "hypothesis": "The JWT access-token lifetime is 30 minutes, and refresh tokens last 15 days."
+  },
+  {
+    "id": "eg-0077",
+    "premise": "thumbs queue deployed on queue-01",
+    "hypothesis": "The thumbs queue is deployed on queue-01."
+  },
+  {
+    "id": "eg-0142",
+    "premise": "glitchtip replaces sentry",
+    "hypothesis": "GlitchTip replaces MkDocs."
+  },
+  {
+    "id": "eg-0005",
+    "premise": "Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.",
+    "hypothesis": "On the monitoring box, the Grafana service is reachable on port 3000, proxied by nginx."
+  },
+  {
+    "id": "eg-0228",
+    "premise": "Home Assistant ran in a VM on hv-27 from its installation in 2022 until it moved to a dedicated NUC in March 2026.",
+    "hypothesis": "Home Assistant currently runs in a VM on hv-27."
+  },
+  {
+    "id": "eg-0218",
+    "premise": "Docker Swarm orchestrated the lab's containers from 2023 until the January 2026 migration to k3s.",
+    "hypothesis": "In March 2026, the lab's containers were orchestrated by Docker Swarm."
+  },
+  {
+    "id": "eg-0176",
+    "premise": "Vector's on-disk buffer is capped at 512 MB.",
+    "hypothesis": "Vector's on-disk buffer is capped at 256 MB."
+  },
+  {
+    "id": "eg-0164",
+    "premise": "The ntfy server listens on port 8093.",
+    "hypothesis": "The ntfy server listens on port 8080."
+  },
+  {
+    "id": "eg-0193",
+    "premise": "The staging Postgres instance on stg-db-01 listens on port 5433.",
+    "hypothesis": "The staging Postgres instance on stg-db-01 listens on port 5432."
+  },
+  {
+    "id": "eg-0091",
+    "premise": "redis deployed on queue-01",
+    "hypothesis": "queue-01 is deployed on Redis."
+  },
+  {
+    "id": "eg-0003",
+    "premise": "The reverse proxy terminates TLS with certificates issued by Let's Encrypt.",
+    "hypothesis": "TLS is terminated at the reverse proxy using Let's Encrypt certificates."
+  },
+  {
+    "id": "eg-0048",
+    "premise": "wireguard deployed on udp",
+    "hypothesis": "WireGuard is deployed on TCP."
+  },
+  {
+    "id": "eg-0059",
+    "premise": "rooftop weather station uses iot-gw-1",
+    "hypothesis": "The weather station on the roof makes use of iot-gw-1."
+  },
+  {
+    "id": "eg-0149",
+    "premise": "Grafana's admin session lifetime is 8 hours.",
+    "hypothesis": "Grafana's admin session lifetime is 24 hours."
+  },
+  {
+    "id": "eg-0024",
+    "premise": "The January migration moved the job queue from Redis to Postgres.",
+    "hypothesis": "The January migration moved the job queue from Postgres to Redis."
+  },
+  {
+    "id": "eg-0090",
+    "premise": "search-01 is a typesense",
+    "hypothesis": "search-01 is a typesense node running version 0.25."
+  },
+  {
+    "id": "eg-0017",
+    "premise": "Since the February 2026 migration, object storage is served by MinIO; the old Ceph cluster was decommissioned.",
+    "hypothesis": "As of June 2026, MinIO serves object storage."
+  },
+  {
+    "id": "eg-0201",
+    "premise": "thumbs queue deployed on queue-01",
+    "hypothesis": "The thumbs queue is deployed on cache-01."
+  },
+  {
+    "id": "eg-0170",
+    "premise": "nginx uses client certificates",
+    "hypothesis": "Nginx employs client certificates."
+  },
+  {
+    "id": "eg-0066",
+    "premise": "Vault issues CI job tokens with a TTL of 60 minutes.",
+    "hypothesis": "Vault issues CI job tokens with a TTL of 90 minutes."
+  },
+  {
+    "id": "eg-0117",
+    "premise": "The Thanos sidecar uploads blocks to the archive bucket every 2 hours.",
+    "hypothesis": "The Thanos sidecar uploads blocks to the archive bucket every 6 hours."
+  },
+  {
+    "id": "eg-0132",
+    "premise": "github actions replaces jenkins",
+    "hypothesis": "Jenkins has been superseded."
+  },
+  {
+    "id": "eg-0088",
+    "premise": "directory replica deployed on acs-01",
+    "hypothesis": "The directory replica is deployed on apps-02."
+  },
+  {
+    "id": "eg-0053",
+    "premise": "unleash uses oidc",
+    "hypothesis": "Grafana is fronted by nginx."
+  },
+  {
+    "id": "eg-0139",
+    "premise": "thumbs queue deployed on queue-01",
+    "hypothesis": "The thumbs queue is deployed."
+  },
+  {
+    "id": "eg-0119",
+    "premise": "redis deployed on cache-01",
+    "hypothesis": "cache-01 is deployed on Redis."
+  },
+  {
+    "id": "eg-0232",
+    "premise": "Gitea hosted the lab's repositories until the November 2025 migration to Forgejo.",
+    "hypothesis": "The lab's repositories are hosted on Gitea."
+  },
+  {
+    "id": "eg-0055",
+    "premise": "kibana has part elk",
+    "hypothesis": "Kibana has at least one component."
+  },
+  {
+    "id": "eg-0079",
+    "premise": "status dashboard uses vite",
+    "hypothesis": "The status dashboard uses Vite."
+  },
+  {
+    "id": "eg-0181",
+    "premise": "The Redis instance on cache-01 runs version 7.2.",
+    "hypothesis": "The Redis instance on cache-01 runs version 6.2."
+  },
+  {
+    "id": "eg-0087",
+    "premise": "grafana uses nginx",
+    "hypothesis": "There is at least one consumer of nginx."
+  },
+  {
+    "id": "eg-0035",
+    "premise": "Prometheus scrapes the node exporters every 15 seconds, double the default interval.",
+    "hypothesis": "Prometheus scrapes the node exporters every 30 seconds."
+  }
+]
