@@ -388,7 +388,7 @@ async def test_drain_journals_a_repo_indexed_event(session, tmp_path, monkeypatc
         text("""
             SELECT payload FROM events
             WHERE event_type = 'repo_indexed' AND object_id = CAST(:r AS uuid)
-            ORDER BY created_at
+            ORDER BY created_at, id
         """),
         {"r": str(repo.id)},
     )).scalars().all()

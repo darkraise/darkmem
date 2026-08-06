@@ -14,7 +14,7 @@ import os
 import re
 import sys
 
-TID = r"T(?:H1|[0-4])\.\d{2}[a-z]?"
+TID = r"T(?:H1|[0-4])\.\d{2,3}[a-z]?"
 HEAD = re.compile(r"^#### (%s) — (.+)$" % TID, re.M)
 FIELD = re.compile(
     r"^`Model: ([^`]+)` · `Effort: ([a-z]+)` · `Size: ([SML])` · "

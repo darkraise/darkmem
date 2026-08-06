@@ -1030,7 +1030,7 @@ async def test_the_rotation_wraps_and_the_real_composition_succeeds():
                 _text(
                     "SELECT payload->>'skipped_reason' FROM events "
                     "WHERE project = CAST(:p AS text) AND object_type = 'topic' "
-                    "ORDER BY created_at"
+                    "ORDER BY created_at, id"
                 ),
                 {"p": project},
             )).scalars().all()

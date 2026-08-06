@@ -254,7 +254,7 @@ class TestTheVetoIsAbsolute:
         rows = await session.execute(
             text(
                 "SELECT payload FROM events WHERE event_type = 'verified' "
-                "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
+                "AND object_id = CAST(:id AS uuid) ORDER BY created_at, id"
             ),
             {"id": str(subject)},
         )
@@ -288,7 +288,7 @@ class TestTheVetoIsAbsolute:
         rows = await session.execute(
             text(
                 "SELECT payload FROM events WHERE event_type = 'verified' "
-                "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
+                "AND object_id = CAST(:id AS uuid) ORDER BY created_at, id"
             ),
             {"id": str(subject)},
         )
@@ -804,7 +804,7 @@ class TestRecovery:
         rows = await session.execute(
             text(
                 "SELECT payload FROM events WHERE event_type = 'verified' "
-                "AND object_id = CAST(:id AS uuid) ORDER BY created_at"
+                "AND object_id = CAST(:id AS uuid) ORDER BY created_at, id"
             ),
             {"id": str(subject)},
         )
