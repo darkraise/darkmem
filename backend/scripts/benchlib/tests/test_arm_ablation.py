@@ -518,7 +518,10 @@ async def test_a_blocked_arm_refuses_before_the_reset(monkeypatch):
 
     monkeypatch.setattr(arm_ablation.bench_db, "reset_bench_db", _boom)
 
-    for flag in ("w_dual", "w_context_boost"):
+    # `w_dual` was here until T2.94 landed its reader; the entry was removed
+    # from `_blocked_reasons` rather than left stale, so this list is derived
+    # from what is actually blocked instead of restating it.
+    for flag in sorted(arm_ablation._blocked_reasons()):
         with pytest.raises(arm_ablation.ArmNotMeasurable) as excinfo:
             await arm_ablation.run_arm_ablation(arm_flag=flag)
         # The message must say what would have to change, not merely "no".
@@ -543,3 +546,29 @@ def test_a_list_arm_probes_at_a_list_sized_weight():
     # The keyword side's own share, so the probe is one more voice of
     # comparable size rather than a dominant one.
     assert arm_ablation.LIST_PROBE_WEIGHT == pytest.approx(0.3)
+
+
+def test_both_graph_arms_declare_the_artifact_no_ingest_produces():
+    """Both fail identically without their artefact — an exact zero on every
+    slice — so the preparation belongs to resolving the arm rather than to
+    whoever remembers to call it. `w_dual` shipped once without it and
+    reported exactly that zero; this is what stops the next one."""
+    assert arm_ablation.resolve_ablatable("w_ppr").needs_artifact == "ppr_snapshot"
+    assert (
+        arm_ablation.resolve_ablatable("w_dual").needs_artifact
+        == "relation_embeddings"
+    )
+    # A factor arm reads a column the ingest already wrote, so it needs none.
+    assert arm_ablation.resolve_ablatable("w_importance").needs_artifact is None
+
+
+def test_every_list_arm_has_a_preparation_path():
+    """A list arm whose artefact nothing prepares is the vacuity bug by
+    construction: it resolves, runs, and reports a zero. Pins that each
+    declared artefact is one the runner actually knows how to build."""
+    known = {"ppr_snapshot", "relation_embeddings"}
+    for flag in ("w_ppr", "w_dual"):
+        arm = arm_ablation.resolve_ablatable(flag)
+        assert arm.needs_artifact in known, (
+            f"{flag} declares an artefact no preparation path builds"
+        )

@@ -224,6 +224,44 @@ async def _prepare_project_scoped_arm(session_factory):
     return MemoryFilter(project=project)
 
 
+async def _prepare_relation_vectors(session_factory, llm_config, cache_dir):
+    """Embed the ingested corpus's relations so the dual-level arm has vectors.
+
+    `relation_embeddings` is written by a Tier-C refresh job that never runs in
+    a bench process, so without this the partition is empty, the arm returns no
+    candidates, and the run reports an exact zero on every slice — the same
+    vacuity the PPR snapshot needed handling for, and the reason both arms
+    declare `needs_artifact` rather than leaving it to a runner to remember.
+
+    Refuses rather than proceeding on an empty partition: a zero delta measured
+    against no vectors is indistinguishable from a measured "no win" once it
+    reaches the ledger.
+    """
+    from app.services import relation_embeddings as relation_mod
+
+    prep_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
+    async with session_factory() as session:
+        fingerprint = prep_llm.llm_fingerprint()
+        relation_ids = await relation_mod.relations_missing_vectors(
+            session, fingerprint, 100_000,
+        )
+        written = 0
+        if relation_ids:
+            result = await relation_mod.embed_relations(
+                session, prep_llm, relation_ids=relation_ids,
+            )
+            written = result.written if result else 0
+        await session.commit()
+
+    if not written:
+        raise ArmNotMeasurable(
+            "the ingested corpus produced no relation vectors, so the "
+            "dual-level arm has no candidates and the run would report a zero "
+            "delta indistinguishable from a measured 'no win'"
+        )
+    print(f"      embedded {written} relation vector(s) for the dual-level arm.")
+
+
 class ArmNotMeasurable(RuntimeError):
     """This arm cannot be ablated on this harness, and why.
 
@@ -264,6 +302,11 @@ class AblatableArm:
     arm: RankArm | None = None
     companions: Mapping[str, object] = field(default_factory=dict)
     project_scoped: bool = False
+    # Names an artefact the arm reads that no bench ingest produces. Both
+    # graph arms need one, and both fail identically without it — an exact
+    # zero on every slice — so the preparation is part of resolving the arm
+    # rather than something a runner may forget.
+    needs_artifact: str | None = None
     blocked: str | None = None
 
 
@@ -317,6 +360,7 @@ def resolve_ablatable(flag: str) -> AblatableArm:
             activation="T2.50",
             companions={"ppr_enabled": True} if flag == "w_ppr" else {"dual_level_enabled": True},
             project_scoped=flag == "w_ppr",
+            needs_artifact="ppr_snapshot" if flag == "w_ppr" else "relation_embeddings",
             blocked=blocked.get(flag),
         )
     if flag == CONTEXT_BOOST_FLAG:
@@ -834,8 +878,10 @@ async def run_arm_ablation(
     # is per project and mass has no meaning across two. Both legs get the
     # same scope, so the delta stays internally consistent.
     leg_filters = None
-    if arm.project_scoped:
+    if arm.needs_artifact == "ppr_snapshot":
         leg_filters = await _prepare_project_scoped_arm(session_factory)
+    elif arm.needs_artifact == "relation_embeddings":
+        await _prepare_relation_vectors(session_factory, llm_config, cache_dir)
 
     off_llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
     off_leg = await run_arm_leg(
