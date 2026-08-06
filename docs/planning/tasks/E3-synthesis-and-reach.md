@@ -4,9 +4,22 @@
 auto-research as a committed fast-follow, and distribution (inject v1, onboarding, SDKs,
 browser capture, session checkpoints).
 
-**Entry gate:** **G-D** cleared (T2.41). **Done when:** **G-E** cleared — L3 shipped with
-per-article coverage holding above the runtime threshold in production — **and** F7
-shipped. Phase 3 → 4 is appetite, not a metric.
+**Entry gate:** **G-D** cleared (T2.41) — **for the grounded-shipping path only, amended
+2026-08-06.** G-D certifies that the verification judge is qualified, so what it may
+lawfully hold shut is what *asserts groundedness to a reader*: **T3.02** (productive
+article runs), **T3.03** (the claim-level entailment pass) and **T3.10** (truth-first
+content fill). Every other task in this epic — scorers, writers, adapters, SDK and
+extension scaffolds, checkpoints, UI — asserts nothing about groundedness and may be
+built and merged with G-D open. They land **inert** where they touch a gated path.
+
+Holding the whole epic shut on G-D was phase coupling, not artifact coupling: it queued a
+browser-extension scaffold behind a groundedness evidence run. The gate keeps its teeth
+exactly where its stated consequence lives — *"below the bar, no L3 article ships as
+grounded"* — and loses them where it never had a claim.
+
+**Done when:** **G-E** cleared — L3 shipped with per-article coverage holding above the
+runtime threshold in production — **and** F7 shipped. Phase 3 → 4 is appetite, not a
+metric. **G-E is unchanged**: shipping still requires the evidence.
 
 **Epic branch:** `feat/e3-synthesis-and-reach`
 
@@ -22,7 +35,15 @@ creep). Do not start Lane B before Lane A ships.
 
 #### T3.01 — Subject eligibility gate + priority scoring
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.41` · `Doc: 09 §4.1–§4.2` · `Tag: target-new` · `Gate: G-D (entry)`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 09 §4.1–§4.2` · `Tag: target-new` · `Gate: G-D (entry)`
+
+**Unblocked for implementation 2026-08-06 (controller).** Eligibility and
+priority *scoring* decides which subjects are worth synthesising; it does not
+ship a grounded claim, which is what G-D certifies. The scorer can be built and
+tested against the corpus it already has. **The gate moves downstream to T3.02**,
+which is where a synthesised article first reaches a reader — that is the
+"below the bar, no L3 article ships as grounded" consequence, and it is
+unchanged.
 
 **What.** A subject must clear a **hard verified-fact eligibility gate** before it is a
 synthesis candidate; eligible subjects are then ordered by a weighted priority score under
@@ -40,6 +61,13 @@ is never synthesised because it happened to rank high.
 
 `Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
 
+**Deliberately NOT unblocked by the 2026-08-06 implementation-first pass.** The
+title says *productive* runs: this is where a synthesised article first reaches
+a reader, so it is exactly what "below the bar, no L3 article ships as grounded"
+forbids. T3.01's scorer is freed; this is not. The inert registration already
+landed in T2.14, so there is nothing to build here that is not the productive
+path itself.
+
 **What.** Activates the job registered inert in T2.14. Synthesises **only** from
 non-disputed corroborated/confirmed facts — a disputed fact never reaches a draft.
 
@@ -53,6 +81,12 @@ non-disputed corroborated/confirmed facts — a disputed fact never reaches a dr
 #### T3.03 — Claim-level entailment pass + coverage routing
 
 `Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+
+**Deliberately NOT unblocked by the 2026-08-06 implementation-first pass.** The
+claim-level entailment pass *is* the groundedness consumer — it spends the
+verification judge whose qualification G-D certifies. Building it against an
+unqualified judge is safe (the judge refuses, scan-enforced) but its routing
+decisions have no meaning until the judge qualifies, so the gate stays.
 
 **What.** Every sentence must cite a fact, verified by the `verification` judge. **Coverage
 below threshold routes to review — it never ships as corroborated.** This is where the
@@ -146,7 +180,14 @@ never manufactured by a crawler visiting the same page twice.
 
 #### T3.09 — Managed-block writer, client-side pull-then-write
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.41` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 15 §3.1–§3.2` · `Tag: target-new` · `Gate: G-E`
+
+**Unblocked for implementation 2026-08-06 (controller).** The evidence run this
+task used to depend on certifies something this task does not assert, so the
+dependency was phase coupling rather than artifact coupling. Build the
+mechanism now; it lands **inert** and its productive path stays gated exactly
+as before. This is the repo's standing pattern — T0.13's inert partitions,
+T2.08's placeholder jobs, T2.32/T2.50's build-versus-judge split, invariant 23.
 
 **What.** The client pulls the F3 fused, labelled selection and rewrites a
 marker-bounded managed block in the tool's native context file. **The server never writes
@@ -393,7 +434,14 @@ claim-support coverage, not a mean — one well-covered article is not evidence.
 
 #### T3.25 — SDK scaffold and generator
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.41, T1.42d` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.42d` · `Doc: 15 §6` · `Tag: target-new` · `Gate: G-E`
+
+**Unblocked for implementation 2026-08-06 (controller).** The evidence run this
+task used to depend on certifies something this task does not assert, so the
+dependency was phase coupling rather than artifact coupling. Build the
+mechanism now; it lands **inert** and its productive path stays gated exactly
+as before. This is the repo's standing pattern — T0.13's inert partitions,
+T2.08's placeholder jobs, T2.32/T2.50's build-versus-judge split, invariant 23.
 
 **What.** Split out of T3.14, which bundled codegen infrastructure for two languages into
 one task. This one names the generator and lands the layout: `sdks/ts/`, `sdks/python/`,
@@ -405,7 +453,14 @@ build; regeneration is idempotent.
 
 #### T3.26 — Browser-extension scaffold
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.41, T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.12` · `Doc: 15 §4` · `Tag: target-new` · `Gate: G-E`
+
+**Unblocked for implementation 2026-08-06 (controller).** The evidence run this
+task used to depend on certifies something this task does not assert, so the
+dependency was phase coupling rather than artifact coupling. Build the
+mechanism now; it lands **inert** and its productive path stays gated exactly
+as before. This is the repo's standing pattern — T0.13's inert partitions,
+T2.08's placeholder jobs, T2.32/T2.50's build-versus-judge split, invariant 23.
 
 **What.** Split out of T3.15. The extension shell under `extension/` with the plain-selection
 fallback and the per-install `origin_key`, before any site adapter exists.
@@ -420,4 +475,5 @@ per-install `origin_key` is stable across restarts; no site adapter is required 
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | T3.01, T3.02, T3.03, T3.09, T3.25, T3.26 | 2 | **A gate blocks what it certifies, not what merely precedes it.** Implementation lands **inert**; only the productive or serving path waits for evidence. This is the repo's own standing pattern, applied more consistently — T0.13's inert partitions, T2.08's `PlaceholderJobRunner` family, T2.32/T2.50's build-versus-judge split, and invariant 23's scaffolding-not-substrate. Dependency edges re-pointed off the evidence runs accordingly | Controller decision: the plan had implementation work queued behind **evaluation artifacts it does not depend on** — an SDK scaffold and a browser-extension scaffold waited on a groundedness evidence run, and a document parser waited on a faithfulness metric. That is phase coupling, not artifact coupling, and it stalls build work on datasets that do not exist yet. Evaluation is deferred to an independent measurement phase after the implementation is complete, where it can be run against the whole system rather than against fixtures. **What was deliberately left gated**: T2.28 (mints facts born `corroborated` — the exact harm G-C names), T3.02 (productive article runs — where a grounded claim first reaches a reader), T3.03 (the groundedness consumer). Freeing those would put unverified assertions in front of users, which is a different thing from unblocking a scaffold. |
 | — | — | — | (none yet) | — |
