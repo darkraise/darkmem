@@ -10,7 +10,7 @@ import glob
 import io
 import re
 
-TID = r"T(?:H1|[0-4])\.\d{2}[a-z]?"
+TID = r"T(?:H1|[0-4])\.\d{2,3}[a-z]?"
 HEAD = re.compile(r"^#### (%s) — (.+)$" % TID)
 LANE = re.compile(r"^## Lane ([A-Z]) — (.+)$")
 DEP = re.compile(r"`Depends: ([^`]*)`")
