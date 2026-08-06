@@ -482,7 +482,14 @@ its number are in the ledger — including a decision to leave it at zero.
 
 #### T2.31 — `w_heat` / `w_recency` activation
 
-`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T2.29, T2.44` · `Doc: 07 §3` · `Tag: target-new + activation` · `Gate: standing`
+`Model: Fable 5` · `Effort: high` · `Size: M` · `Depends: T2.29, T2.44, T2.84` · `Doc: 07 §3` · `Tag: target-new + activation` · `Gate: standing`
+
+**`T2.84` added to `Depends` 2026-08-05.** `w_heat`'s signal is retrieval heat, and T2.65
+established that fact-level heat has **no counter** — the memory-bridged proxy is an
+interim position with a stated error bound, and T2.84 replaces it with a real fact-keyed
+table. Measuring `w_heat` before that lands would record a ledger number taken against a
+substrate scheduled for replacement, and the activation log is precisely the artifact that
+must not carry one.
 
 **What.** Same protocol, over the T2.29 feeder. **Activation bar:** retrieval-eval win
 with twin.
@@ -509,8 +516,18 @@ it is not a ranking signal (doc 17 §2).
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.52, T0.13` · `Doc: 08 §5.3` · `Tag: target-new` · `Gate: standing`
 
 **What.** First writer to the template landed inert in T0.13 — and it ships **only** if
-T2.11's measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
+the measured `pg_trgm` shortlist miss rate exceeds its stated bar. Groups facts for
 counting only; never merges rows, never rewrites `triple_key`.
+
+**The gating measurement is `T2.52`'s, not `T2.11`'s** *(corrected 2026-08-05: this text
+said "T2.11's measured miss rate", but T2.11 is `contradiction_scan` and owns no
+measurement — T2.52 is the miss-rate runner, and it is already this task's `Depends`. The
+wrong reference mattered: T2.11 is **blocked** on an unqualified judge, so a reader would
+have concluded T2.33 was blocked behind it when its gate had in fact already cleared.)*
+
+**The gate has cleared.** T2.52 measured **41.7% (5/12)** on the `lexically-disjoint`
+slice against a **20%** bar stated beforehand — `docs/eval/2026-08-05-t2.52-contradiction-missrate.md`.
+So the "not needed, measured" branch below is **closed**, and this task ships the writer.
 
 **Done when:** miss rate measured and compared to the bar before any code ships; if the
 bar is not exceeded, the task closes as "not needed, measured" and the template stays
@@ -520,28 +537,47 @@ leaf surface, not infrastructure another task consumes.*
 
 **Verify.** `cd backend && python scripts/benchlib/run_contradiction_missrate.py`
 
-#### T2.34 — `expires_at` self-expiring dated facts
+#### T2.34 — `expires_at` self-expiring dated memories
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.01, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T1.37` · `Doc: 08 §2.3` · `Tag: activation` · `Gate: G-C`
 
-**What.** Two different mechanisms that must not be conflated (doc 08 §2.3 vs §9).
+**Split 2026-08-04.** This entry was the memory *and* fact halves of one task; doc 08 §9
+and §3.1 contradict each other on the fact half and it is escalated as **T2.85**. The two
+were never one mechanism — §2.3 and §9 name them separately — and only the fact half is
+blocked, so they are split rather than both held.
 
-**Memory side:** extraction populates `memories.expires_at` from a memory's own stated
-expiry date (the write path is doc 05's; the sweep that spends it is T1.37's, reused
-unchanged including demote-before-delete).
+**What.** Extraction populates `memories.expires_at` from a memory's own stated expiry
+date, so a dated memory self-expires without a caller setting a TTL. The write path is
+doc 05's (pipeline Phase 5, savepoint A, with the rest of the memory-row enrichment); the
+sweep that spends it is T1.37's, **reused unchanged** including demote-before-delete.
 
-**Fact side:** a fact carrying a stated future expiry gets its belief window
-**pre-closed** at that date by a lightweight arm of `verification_recompute` —
-**invalidate-not-delete**, so the row survives as history. The facts table needs no
-delete job at all (doc 08 §5); applying T1.37's delete sweep to `knowledge_triples`
-would destroy the history the whole bi-temporal model exists to keep.
+**The derivation is deterministic, and the reason is the F1 bench.** Adding an expiry
+field to the extraction schema changes the system prompt, and the bench cache is keyed on
+`sha256(content + system_prompt)` — so it would invalidate every cached entry, red the
+gate until a live re-warm, and force a re-recorded F1 baseline. A post-extraction parse in
+the same idiom as the existing regex date-anchoring rescue adds no entities and no
+relations, so entity/relation F1 is untouched and the cache stays valid. *(Owner's ruling,
+2026-08-04.)*
+
+**Conservatism is a correctness requirement, not a style preference.** T1.37's sweep
+**deletes** the row — embeddings cascade, provenance is withdrawn — so a false-positive
+expiry is silent, irreversible data loss. "The licence is valid until 2026-12-31" is a
+claim about a licence, not an instruction to forget the note on that date, and a parser
+that cannot tell those apart destroys knowledge on a timer. The detector therefore matches
+only **self-referential retention instructions** — the memory addressing its own lifetime —
+and never a date merely adjacent to an expiry word.
 
 **Done when:**
-- [ ] A dated memory expires without a caller setting TTL, through T1.37's sweep
-- [ ] A dated fact's window pre-closes; the row is never deleted, proven by test
-- [ ] No code path deletes from `knowledge_triples`
+- [ ] A dated memory expires without a caller setting a TTL, through T1.37's sweep
+- [ ] A caller-set `expires_at` is never overwritten by the derivation
+- [ ] A derived expiry that is not strictly in the future is refused, so capture can never
+      arm a sweep that deletes the memory it just wrote
+- [ ] A date about some *other* subject does not become the memory's own TTL, proven by
+      test against the phrasings that tempt it
+- [ ] The extraction bench is unaffected: `run_bench.py --algo-only` stays green with no
+      re-warm
 
-**Verify.** `cd backend && python -m pytest tests/test_self_expiring_facts.py -q`
+**Verify.** `cd backend && python -m pytest tests/test_self_expiring_memories.py -q`
 
 #### T2.35 — `applies_when` magnitude tuning
 
@@ -558,9 +594,40 @@ unchanged at every magnitude tried.
 
 ## Lane J — UI (F9: signal ships with surface)
 
+#### T2.36a — The `badge` object and the facts read surface
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.03, T2.02` · `Doc: 12 §"the badge is a structured field", 13 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Split from T2.36 on 2026-08-03, because T2.36's first Done-when — "badges
+verbatim from the backend" — names a backend producer that does not exist. Nothing in
+`backend/app` emits the string `"asserted by K distinct origins of kinds [X, Y], no known
+contradiction, as of T"`; it appears only inside a docstring in
+`verification_ladder.py`. Nor is there any read surface over `knowledge_triples` beyond
+T2.22's review-queue list — `review_queue.py`'s own docstring says so. So the frontend
+task was told to render verbatim a string with no producer, which is the fifth instance
+of this epic's recurring shape: a constraint stated in prose and unsatisfiable in code.
+
+This task builds the **producer** and the **door**: doc 12's `badge` object exactly as
+that doc fixes it (including the `disputed` two-sided form and the `confirmed`
+human-ratified suffix), and the fact list + fact detail read surface doc 13 §5.1
+describes, with `fact_sources` grouped by `origin_key` so the count the badge claims is
+auditable.
+
+**Done when:**
+- [ ] `badge` is emitted with every field doc 12 fixes, and `claim` is byte-exact against
+      that doc's three forms — plain, `disputed`, `confirmed` — pinned by exact-string tests
+- [ ] `origin_count` is `COUNT(DISTINCT origin_key)` and a row-count implementation fails a test
+- [ ] The string never contains the words "true" or "verified"; a guard fails the build if it does
+- [ ] Memory rows carry `badge: null` and `verification_status: null`, and `lifecycle` instead
+- [ ] A fact list and a fact detail door exist, matching `api-rest-conventions.md`, serving
+      the belief window (`valid_at` / `invalid_at` / `expired_at`), `applies_when`, and the
+      sources grouped by `origin_key` with each source's kind
+
+**Verify.** `cd backend && python -m pytest tests/test_fact_badge.py tests/test_facts_read_surface.py -q`
+
 #### T2.36 — Facts tab — bi-temporal, multi-origin browsing
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.03` · `Doc: 13 §5.1, §5.3` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.03, T2.36a` · `Doc: 13 §5.1, §5.3` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Verification badges rendered **verbatim** — the badge string is the claim, never
 softened or recomputed client-side. Both axes visible; disputed shows both sides.
@@ -592,11 +659,395 @@ undo.
 an undone action still appears, marked undone; Simple/Advanced honoured.
 **Verify.** `cd frontend && npm test -- dream-digest`
 
+#### T2.91 — Pin suggestions have no durable prior to diff against
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.39a, T2.53` · `Doc: 09 §3` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-05 from T2.39a's Fable review (F1), which ruled T2.39a's
+clause 3 met at the **mechanism** level and unmet at the **observable** level.
+
+`GET /knowledge/topics/pin-suggestions` calls `diff_topics({}, current)` — an empty
+prior — so `prior_member_count` is always null and **every entry reads `new`,
+permanently**. `grown` / `stable` / `decayed` can never surface. The review
+established this is not merely a pre-T2.53 condition that time will fix: **the only
+snapshot that ever exists lives in memory inside the detection job's body, mid-run,
+and is discarded.** No durable prior exists anywhere for a read door to diff against.
+
+The consequence names the epic's own recurring failure: **T2.39's Done-when "pin
+suggestions show what changed between runs" is unbuildable against live data** —
+which is the exact demo-data failure the T2.39/T2.39a split was created to prevent,
+reappearing one level up.
+
+**Where it belongs is a real decision, not an obvious one.** The review verified the
+direction claim: invariant 15's scans forbid app code from reaching dream-family job
+bodies, but **nothing forbids the job body calling `pin_suggestions.py`**. So
+persisting a snapshot from `topic_detection`'s body is permitted. Whether the prior
+belongs there, in a table the door reads, or in the door itself, is this task's to
+settle and to write down.
+
+**Done when:**
+- [ ] A durable prior exists that survives across detection runs, and the door diffs
+      against it rather than against `{}`
+- [ ] `grown`, `stable` and `decayed` are all reachable on the wire, each proven by a
+      test spanning **two real detection runs** — a single-run fixture cannot see any
+      of them, which is why this was invisible until review
+- [ ] The prior keys on the stable dominant-entity label, never the churning
+      community id — the same identity rule T2.20 fixed and T2.39a mutation-proved
+- [ ] Invariant 15 is not weakened: whatever writes the snapshot, no capture or
+      retrieval path reaches a dream-family job body, and the source scan still passes
+- [ ] T2.39's clause 3 becomes satisfiable, and T2.39a's amended clause is retired
+
+**Verify.** `cd backend && python -m pytest tests/test_pin_suggestions.py tests/test_topics_read_surface.py -q`
+
+#### T2.92 — An empty LLM completion is written, read as pending, and re-billed forever
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.19` · `Doc: 09, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Minted 2026-08-05 from T2.39a's Fable review (F2), and **confirmed in the
+tree by the controller**. This is a live defect with a running cost, not a
+theoretical one.
+
+`LLMOrchestrator.chat_completion` (`app/services/llm.py:330-343`) returns the
+vendor's `content` with **no empty-content guard** — it raises on a malformed
+envelope and on truncation, and passes `""` straight through. `generate_report`
+(`app/services/memory_community_reports.py:222`) returns that raw, and its own
+docstring promises it "never swallows an error into a placeholder string" — which is
+true of exceptions and false of an empty success.
+
+So an empty completion writes `report_string = ""`. `report_status()` treats empty
+and unset identically **by design**, so the topic reads `pending` forever, and the
+next cycle regenerates it — **billing a model call every cycle, indefinitely, for a
+topic that will never leave pending.** Nothing surfaces it: `pending` is a legitimate
+state and the operator sees a topic that simply never finishes.
+
+This also invalidates a defence T2.39a made in good faith — that `ready` + empty is
+"unreachable in production". The *current* producer can write it.
+
+**The fix belongs in T2.19's module, not in the read surface.** A read door cannot
+distinguish "never generated" from "generated empty" once the empty string is on
+disk; the write path has to refuse it.
+
+**Done when:**
+- [ ] An empty or whitespace-only completion for the report purpose fails loudly
+      rather than being stored — recorded as `failed`, with the reason, so the state
+      is visible instead of silently re-attempted
+- [ ] A test drives an empty vendor completion and fails if it lands as `pending`
+- [ ] The re-billing loop is closed: a topic whose generation failed is not
+      regenerated every cycle without limit; state which policy was chosen
+- [ ] `generate_report`'s docstring stops promising something the empty case breaks
+- [ ] Whether the guard belongs on `chat_completion` (every purpose) or on the report
+      path alone is decided and written down — a global guard is the stronger fix and
+      the wider blast radius, so it is a decision, not a default
+
+**Verify.** `cd backend && python -m pytest tests/test_community_reports.py -q`
+
+#### T2.93 — Nothing calls the report pass, so no topic report is ever generated
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.53, T2.19` · `Doc: 08 §5, 06 §7` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-05 from T2.92, which went looking for the cycle that
+re-bills an empty report and found there is no cycle. `run_topic_detection`
+(`memory_community_detection.py:387`) — the body `topic_detection` actually
+dispatches — calls `detect_for_project` and nothing else. A repo-wide scan
+finds **zero** callers of `generate_reports`, `snapshot_reports` or
+`restore_reports` outside `backend/tests`.
+
+Two consequences, and the second is the one that bites. **No topic report is
+ever generated in production**, so every topic reads `pending` forever
+through T2.39a's read surface — the state is honest, the pipeline behind it
+is simply absent. And the carry-forward seam is unexercised: `report_string`
+is written against a row id that the *next* detection run deletes, so even
+if reports were generated by hand they would not survive one cycle.
+
+T2.19's docstring calls this "the seam T2.53 inherits" and states the
+sequence in full. T2.53's Done-when asked only for registration — cron,
+floor, per-job lock, 409 on a held trigger — and delivered exactly that.
+Neither task was wrong; the wiring simply sits between them and nobody owns
+it.
+
+**Done when:**
+- [ ] `topic_detection`'s runner sequences the documented order per project:
+      `snapshot_reports` (pre-rewrite) -> `detect_for_project` ->
+      `restore_reports` -> `generate_reports`
+- [ ] A test spanning **two** detection runs proves a generated report
+      survives the id churn — the property the seam exists for and that no
+      live path has ever exercised
+- [ ] The LLM pass is bounded by the job's own config, not unbounded per
+      tick, and a report failure never aborts the detection half that
+      already committed
+- [ ] Invariant 15 holds: the scan still passes, and no capture or
+      retrieval path reaches the job body
+- [ ] `PlaceholderJobRunner` status is unaffected — this is a live job
+      gaining its missing half, not a placeholder being lit
+
+**Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py tests/test_community_reports.py -q`
+
+#### T2.90 — The knowledge e2e cannot seed its own subject
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.86` · `Doc: 17, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.86's re-review, which ruled the demo-only e2e
+the **honest maximum for a fix round** and said the remedy is a task, not another
+round of that loop.
+
+The Facts surface is GET-only: `app/api/routes/facts.py` has no write door, and
+the backend tests seed by direct session insert. So a Playwright spec cannot
+create the fact it needs to look at, and every real-mode assertion about the
+knowledge surfaces is unreachable. The consequence is precise and worth stating
+in full: **wire-shape parity between `FactDetailResponse` and the frontend's
+`LiveFactDetailData` is provable only by a vitest suite that mocks `apiFetch`
+with hand-built fixtures.** Both sides can agree with each other while disagreeing
+with the wire, and nothing in the repo would notice.
+
+That is the same class as F11 on T2.36 — the doubled `/api/v1` prefix that made
+the Facts tab 404 on every request while eight good tests stayed green, found
+only because a sibling lane happened to read the file. The lesson there was that
+mocked-boundary tests cannot see the boundary. This task builds the thing that
+can.
+
+**Not a licence to add a write door.** A public `POST /knowledge/facts` would let
+a caller assert a fact directly, which the whole verification ladder exists to
+prevent — facts are *derived*, never posted. The seeding path must be test-only
+and must not become a second producer.
+
+**Done when:**
+- [ ] An e2e-visible seeding path exists that a Playwright spec can drive, and it
+      is unreachable from a normal deployment — a test-only route guarded by
+      environment, a fixture command, or a seeded disposable stack; whichever is
+      chosen, a test fails if it is reachable in production configuration
+- [ ] `frontend/tests/knowledge.spec.ts` visits the Facts tab and the fact detail
+      route against a **real backend**, not the demo fixture
+- [ ] A wire-shape drift is caught: renaming a field on `FactDetailResponse`
+      without changing the frontend fails the e2e, and a test proves that by
+      driving the rename
+- [ ] The seeding path cannot mint a fact that bypasses the ladder — whatever it
+      inserts is what `fact_lift` would have produced, or the test says plainly
+      that it is a fixture and not a derivation
+
+**Verify.** `cd frontend && npm run test:e2e -- knowledge`
+
+#### T2.89 — What an undo restored is unrecoverable after the toast
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.13` · `Doc: 08 §7, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.38's fix round, where it was **declined as
+out of lane and the decline was verified** by the scoped re-review: this is a
+backend schema gap, not a UI shortcut.
+
+`UndoBatchResponse.undone[]` carries per-action `restored` and `not_restored` —
+the only place the system ever states **which fields** an undo put back.
+`DreamAction`, the read side, carries `undone`, `undone_at`, `undone_by` and
+`undo_batch_id` but neither of those two lists
+(`app/schemas/dream_digest.py:29-52`). So the digest re-read after an undo can
+say *that* an action was undone and by whom, and cannot say *what changed back*.
+
+**The consequence is a one-shot disclosure.** The information exists exactly once,
+in an ephemeral toast, and a user who misses it cannot recover it — a second undo
+attempt correctly refuses with `already_undone` rather than re-reporting. For a
+journal whose whole premise is that the record outlives the moment, a
+lifecycle-relevant fact that survives only in a transient notification is the
+wrong shape.
+
+**Prefer reconstructing over re-storing.** The `undone` event already carries the
+batch id and the journal is append-only, so the restored/not-restored split
+should be derivable from `events` at read time rather than denormalised onto a
+new column. Check that before adding storage — the retention question over
+journal payloads is already an unresolved Tier-3 item and this task must not
+quietly enlarge it.
+
+**Done when:**
+- [ ] The digest read reports, per undone action, which fields were restored and
+      which were not — sourced from the journal rather than re-stored, unless
+      that is shown to be impossible and the reason is written down
+- [ ] A test drives undo → re-read and asserts the two lists survive the round
+      trip, failing if the read side reports only `undone: true`
+- [ ] `not_restored` keeps its name; `excluded` is owned by `ResponseEnvelope`
+      with a different meaning and `tests/test_envelope.py` fails the build on a
+      second declaration
+- [ ] The UI stops depending on the toast as the sole carrier
+
+**Verify.** `cd backend && python -m pytest tests/test_dream_digest.py tests/test_dream_undo.py -q`
+
+#### T2.87 — The duplicates response carries what a supersede direction needs
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.23` · `Doc: 08 §6` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.37's Fable review, which ruled the lane's
+refusal to build "Supersede instead" **correct restraint rather than an
+unshipped obligation**: `HygieneDuplicateItem` carries two memory ids and a
+similarity score, and nothing else. A frontend cannot honestly decide which of a
+pair is the older, superseded one from that, and a direction picker built on it
+would be the UI inventing an adjudication.
+
+Doc 08 §6 names four bulk verbs and only three are reachable, so the gap is real
+— it is just a **backend** gap, which is why it is its own task.
+
+**The enabling change is small and was measured, not guessed.**
+`build_duplicates_query` (`app/services/hygiene_queue.py:186`) already joins both
+memory rows — its `WHERE` reads `src.status = 'active'` and
+`tgt.status = 'active'` — so both sides are in scope and the SELECT simply does
+not project what a decision needs.
+
+**Undoability was never the obstacle**: supersede maps to `ACTION_SUBSUME`
+through `deprecate()`, the same invertible action prune already uses, and the
+review verified that mapping in `hygiene_queue.py` / `supersede.py` /
+`dream_digest.py`.
+
+**Done when:**
+- [ ] `HygieneDuplicateItem` carries, for **both** endpoints, at minimum
+      `created_at` and a content preview, so a direction is derivable from the
+      response alone without a second fetch
+- [ ] The preview respects the same project-isolation preview rules the
+      isolation probe enforces — a duplicates row must not become a hole through
+      which content crosses a project boundary
+- [ ] `POST /hygiene-queue/bulk/supersede` is reachable from the Hygiene queue
+      with the direction shown before it is applied, confirmed like the other
+      bulk actions and undoable through the same cycle door
+- [ ] A test fails if the response omits either side's timestamp — the whole
+      point is that one side is older
+
+**Verify.** `cd backend && python -m pytest tests/test_hygiene_queue.py -q`
+
+#### T2.88 — `GET /review-queue/counts` cannot be project-scoped
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.22` · `Doc: 08 §6, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.37's Fable review. `GET /review-queue/counts`
+(`app/api/routes/review_queue.py:70`) takes **no `project` parameter at all**,
+while `GET /facts` and `GET /articles` beside it both do. So a filtered queue
+renders a count from a different population than the list below it.
+
+T2.37 handled this the only honest way available to it — an inline
+`(unscoped — across all projects)` qualifier next to the number — and the review
+ruled that **passes invariant 14 narrowly** (the qualifier sits on the number it
+qualifies) **but is skimmable, and the note is a workaround for a backend
+asymmetry rather than a fix**.
+
+Do not delete the qualifier as part of this task without checking what replaces
+it: if the count becomes scopeable, the honest surface is a scoped number with
+no qualifier; if some arm genuinely cannot be scoped, the qualifier must survive
+and say which arm.
+
+**Done when:**
+- [ ] `GET /review-queue/counts` accepts the same `project` parameter its
+      sibling reads accept, and applies it
+- [ ] The absent parameter still means all projects, so no existing caller changes
+      behaviour
+- [ ] A test fails if the counts endpoint and the list endpoints disagree about
+      the population for the same `project` argument — that disagreement is the
+      whole defect
+- [ ] The Review queue drops the unscoped qualifier where it no longer applies
+
+**Verify.** `cd backend && python -m pytest tests/test_review_queue.py -q`
+
+#### T2.86 — The fact detail route on live data
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Minted 2026-08-04 from T2.36's fix round, which fixed the dead link by
+removing it and said plainly that wiring the page is a task rather than a fix.
+`src/routes/_authenticated/knowledge_.facts_.$factId.tsx:64` calls `useDemoFact`
+**unconditionally**, so with `DEMO` off — the default since T1.58 — any real fact
+id renders "This fact does not exist in the demo store." T2.36a shipped
+`GET /knowledge/facts/{id}` and nothing calls it.
+
+The reason this is not a fix: the page renders a verification ladder, a dispute
+panel and multiple belief windows, and `FactDetailResponse` does not carry them.
+So this task is partly a **backend** question — decide, per field, whether the
+detail door grows to serve what the page shows, or the page stops showing what
+the door cannot support. Doc 13 §5.1 describes the surface; doc 12 §2 fixes the
+route. Neither is free to be quietly narrowed to whatever is cheapest.
+
+**The row's `detail_available` flag is the thing to retire.** T2.36's fix
+introduced it as a producer capability — false on the live path — so the row
+offers no navigation it cannot honour. That is correct as an interim, and it is
+also a surface hiding a capability the system is supposed to have. Removing the
+flag is part of done, not a follow-up.
+
+**Done when:**
+- [ ] The route reads live data and a real fact id renders that fact
+- [ ] Every field the page displays is one the door actually serves; anything it
+      cannot serve is removed from the page rather than rendered empty or faked
+- [ ] A disputed fact renders **both sides** here, with the backend's two-sided
+      claim string verbatim
+- [ ] `detail_available` is retired and the Facts tab links to the detail route
+      unconditionally
+- [ ] A failed read renders as a failed read, distinct from a missing fact
+      (invariant 14) — and a 404 for a fact that genuinely does not exist is a
+      third, distinguishable state
+- [ ] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
+      coverage rather than only in the task's own file
+
+**Verify.** `cd frontend && npm test -- fact-detail && npm run test:e2e -- knowledge`
+
+*(Note the second half is a real obligation: T2.36's fix round established that
+`npm run test:e2e -- knowledge` matched zero specs before it added them, so an
+e2e Verify clause on this surface is now runnable.)*
+
+#### T2.39a — The topics read surface and the pin-suggestion door
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20, T2.19` · `Doc: 09 §3, 13 §5` · `Tag: target-new` · `Gate: G-C`
+
+**What.** Split from T2.39 on 2026-08-04, for the same reason T2.36a was split from
+T2.36 on 2026-08-03: the UI task names a backend it can call and there is no door.
+`app/services/topic_browsing.py` (`browse_topics`, `get_topic`, `topics_for_memory`,
+`get_injectable_report`) and `app/services/pin_suggestions.py` (`snapshot_topics`,
+`diff_topics`, `compute_pin_suggestions`, `journal_pin_suggestions`,
+`accept_pin_suggestion`, `dismiss_pin_suggestion`) both shipped with T2.20 and are
+well tested — and a repo-wide scan finds **zero** consumers of either module outside
+`backend/tests`. No REST route, no MCP tool, no job. Nine public callables and no
+caller.
+
+That makes two of T2.39's four Done-when clauses unsatisfiable as written:
+"accept/dismiss round-trips" has nothing to round-trip against, and "pin suggestions
+show what changed between runs" requires `diff_topics`' output to be reachable from a
+browser. A UI lane handed T2.39 unsplit would have satisfied both against
+`useDemoStore`, which is the failure T2.36's split existed to prevent.
+
+This task builds the **door**, not new mechanics: T2.20 owns the semantics and is not
+to be re-litigated. Note the identity rule T2.20 established — pin suggestions key on
+the stable dominant-entity label, never the churning community id — must survive onto
+the wire, because a route that keys accept/dismiss on the community id reintroduces the
+churn T2.20's Done-when exists to exclude.
+
+**Done when:**
+- [ ] A topics list and a topic detail door exist under `/api/v1/knowledge`, matching
+      `api-rest-conventions.md`, serving what `browse_topics` / `get_topic` return
+      including a **pending** report as pending rather than as absent
+- [ ] The injectable report is served through `get_injectable_report`, and a topic whose
+      report has not been generated is distinguishable on the wire from one whose report
+      is **failed or skipped** *(amended 2026-08-05: the original clause said "empty".
+      An empty report and an ungenerated one **do** collapse on the wire — both read
+      `pending`/`null` — and the read door cannot separate them, because the write path
+      stores `""` on an empty completion. That is **T2.92**, in T2.19's module. This
+      clause is reduced to the distinction this door can actually make.)*
+- [ ] Pin suggestions are readable with the diff `diff_topics` computes, showing what
+      changed between runs *(the 2026-08-05 reduction to "serves that shape faithfully"
+      is **retired 2026-08-05** by T2.91, which built the durable prior the original
+      clause needed. The door loads it and all four statuses are reachable on the wire,
+      each proven across two real detection runs. The clause stands as originally
+      written.)*
+- [ ] Accept and dismiss are `POST` doors that persist through `accept_pin_suggestion` /
+      `dismiss_pin_suggestion`, keyed on the **dominant-entity label**; a test fails if
+      the route keys on the community id
+- [ ] Every door is project-scoped, and a cross-project read fails a test
+- [ ] The doors journal to `events` through `record_event` with an already-vocabulary
+      event type — widening `EVENT_TYPES` is taxonomy-first and is not this task's
+
+**Verify.** `cd backend && python -m pytest tests/test_topics_read_surface.py tests/test_pin_suggestions.py -q`
+
 #### T2.39 — Topics tab
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.20, T2.39a, T2.91` · `Doc: 13 §5` · `Tag: target-new` · `Gate: G-C`
 
 **What.** Browsing, report injection, pin-suggestion diff.
+
+**Unblocked 2026-08-05.** `T2.91` was added to `Depends` and is done: the second
+clause below — the one the T2.39/T2.39a split was created to make buildable, and
+which stayed unbuildable one level up — now has a durable prior behind it, and all
+four diff statuses are reachable on the wire. Note the **first** clause is honest but
+thin until `T2.93`: no live path generates a topic report at all, so "renders as
+pending" is currently the only report state a real backend can produce.
 
 **Done when:** a pending report renders as pending; pin suggestions show what changed
 between runs; accept/dismiss round-trips; Simple/Advanced honoured.
@@ -1205,7 +1656,10 @@ answer where §6's reader sees it rather than only in a report.
       test pins the proxy's behaviour so it cannot silently drift
 - [ ] Either way, `review_ranking`'s comment stops describing a premise that no longer holds
 
-**Verify.** `cd backend && python -m pytest tests/test_review_ranking.py tests/test_access_stats.py -q`
+**Verify.** `cd backend && python -m pytest tests/test_queue_ranking.py tests/test_access_stats.py -q`
+*(Corrected 2026-08-05: the minted field named `tests/test_review_ranking.py`, which does
+not exist — the ranking's real coverage is `test_queue_ranking.py`, which this task
+extended. Fifth instance of the 2026-08-04 back-fill audit's finding.)*
 
 #### T2.66 — A one-sided database failure must degrade, not take the channel down
 
@@ -1380,10 +1834,582 @@ that guesses. Both are honest-output defects (invariant 14) rather than ranking 
 
 **Verify.** `cd backend && python -m pytest tests/test_reranker.py tests/test_layer_composition.py -q`
 
+#### T2.70 — Grouping and the result cap drop a row nobody counts
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.55` · `Doc: 07 §5, §8, invariant 14` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Found by T2.55's Fable review, 2026-08-03, on a driver over the real `search()`
+path rather than by reading. Grouping is composition's last pass and the result cap slices
+**after** it, so a memory nested under a fact that falls past the cut disappears with the
+fact. Measured at `limit=4`: ungrouped serves `[F1, M1, F2, M2]`, grouped serves
+`[F1, M1, F2, F3]` — `M2` and `F4` vanish together, uncounted, and `F3` is promoted into
+the space they left.
+
+**This is not T2.55's defect and T2.55 is not reopened.** The behaviour is the correct
+reading of the ruling T2.55 was given (a group ranks as its fact), and the reviewer
+confirmed it is not an invariant-14 violation as the contract *operationalises* that
+invariant: doc 07 §8's `excluded` vocabulary counts context conflicts and project scope,
+and has never counted the limit tail. The gap is the **plan's**. Doc 07 §5's own predicate
+is "a memory covered by a **returned** cited fact", and in this corner the fact is not
+returned — which is also exactly the rationale for T2.55's R4 (a memory whose fact is
+absent from the result set stays a top-level row, because nesting it under an absent fact
+would remove it from view entirely). The cut makes a fact absent *after* nesting decided
+it was present.
+
+**The resolution, ruled by the controller 2026-08-03:** scope nesting to the facts that
+survive the cut. That is the reading consistent with doc 07 §5, §8, R2 and R4 together.
+It is a separate task rather than a reviewer's patch because it needs a **window fixpoint
+decision**: un-nesting a memory returns it to the top-level ordering, which can change
+which rows survive the cut, which can change what nests. Choose and argue the fixpoint —
+iterate to stability, over-fetch a bounded window before grouping, or nest only within a
+prefix known to survive — rather than picking one silently.
+
+**Done when:**
+- [ ] A memory that would rank above the cut on its own is never removed by the cut solely
+      because the fact it nested under fell below it
+- [ ] The fixpoint rule is stated in the module and pinned by a test whose failure names it
+- [ ] The chosen rule terminates on an adversarial input, proven rather than assumed
+- [ ] T2.55's three Done-when clauses still hold, its tests unchanged
+- [ ] If any row is still dropped by design, it is **counted** and surfaced, per invariant 14
+
+**Verify.** `cd backend && python -m pytest tests/test_result_grouping.py tests/test_grouping_cut.py -q`
+
+#### T2.71 — Composition serves fact rows with no badge
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.36a, T2.55` · `Doc: 12 (the badge is a structured field), 07 §5` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** Found by T2.36a's Fable review, 2026-08-03, and ruled "real and live":
+`layer_composition.py` contains **zero** badge references, so every L2 fact the retrieval
+path serves today goes out without one. Doc 12 fixes the badge as present on L2/L3 rows
+and null on L0; composition satisfies half of that by accident, since it emits no badge at
+all.
+
+Not a defect in T2.36a — its brief forbade touching `layer_composition.py`, because T2.55
+held that file in the same round. The producer exists and is shaped for this:
+`fact_badge.row_labels(...)` already encodes the L0 rule and refuses a badge on a memory
+row, `badges_for_facts` batches its queries, and `ComposedRow` already carries `id_kind`
+plus a `verification_status` that is `None` for memory. This is the map over composed rows
+that nobody's lane could write.
+
+**This blocks G-C.** T2.40's evidence run makes claims about served output; a gate cleared
+while every served fact is unlabelled would overstate its coverage. Land this before T2.40
+runs.
+
+**Done when:**
+- [ ] Every served L2/L3 row carries the badge doc 12 fixes; every L0 row carries
+      `badge: null` and `verification_status: null` with `lifecycle` instead
+- [ ] The badge is read from the producer, never recomputed at the composition site — a
+      second `claim` string anywhere fails a test
+- [ ] The per-page query count does not grow with the number of facts returned
+- [ ] Removing the badge from a composed fact row fails a test
+
+**Verify.** `cd backend && python -m pytest tests/test_layer_composition.py tests/test_fact_badge.py -q`
+
+#### T2.73 — Four new surfaces took the isolation probe offline
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.23, T2.36a` · `Doc: 17, invariant 14, CLAUDE.md "the harness can break while the floor stays green"` · `Tag: rebuild` · `Gate: G-C`
+
+**What.** T2.23 and T2.36a each registered new `ContentSurface` rows — `hygiene_queue_duplicates`,
+`hygiene_queue_memories`, `knowledge_facts_browsing`, `knowledge_fact_detail` — and neither
+added the matching driver to `backend/scripts/benchlib/isolation_probe.py`'s `DRIVERS`
+table. That table's completeness check is a hard `RuntimeError`, so **the entire
+cross-project isolation probe is offline**, not merely one assertion: all eight
+`test_isolation_probe.py` tests error or fail on the one cause.
+
+This is the hazard `CLAUDE.md` names in as many words — `pyproject.toml` sets
+`testpaths = ["tests"]`, so `pytest -q` does not collect `scripts/benchlib/tests`, and the
+harness can break while the floor stays green. Both lanes were green on their Verify and
+on the repo floor, both were reviewed, and neither touched benchlib so neither ran it. The
+controller merged on a green floor rather than a green `./scripts/gate.sh`, which is where
+this should have been caught; that is recorded rather than quietly fixed.
+
+**What is actually at risk.** The probe is the guard that proves memory content does not
+cross a project boundary past its declared preview. While the driver table is out of step
+it proves nothing at all, and it would stay silent through any number of future merges.
+
+**Done when:**
+- [ ] A driver exists for each of the four surfaces, seeded and asserted the way the
+      existing `review_queue_*` and `pipeline_failure_triage` drivers are — sightings with
+      `true_project`, `true_status` where a lifecycle applies, and `_account_body` for the
+      raw wire
+- [ ] The four drivers assert against the surfaces' **declared** crossings: the two
+      hygiene arms declare `memory_ids` and `content_preview`, the two knowledge arms
+      declare `fact_content`
+- [ ] `test_driver_table_matches_the_registry` passes without weakening the completeness
+      check
+- [ ] The full benchlib suite is green **run by path**, and its number is recorded
+- [ ] Removing any one of the four drivers fails the build
+
+**Verify.** `cd backend && BENCH_DATABASE_URL=... python -m pytest scripts/benchlib/tests -q`
+
+#### T2.74 — Three surfaces declare a content preview nothing checks
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.73` · `Doc: 17, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Found while reviewing T2.73, 2026-08-03, and confirmed by its reviewer as a
+**pre-existing** gap rather than anything T2.23 or T2.36a introduced.
+`reembed_backfill_queue`, `pipeline_failure_triage` and `capture_buffer_triage` each
+declare they cross `content_preview`, and none of their drivers checks the preview
+boundary. So each is asserted to truncate and none is proven to.
+
+T2.73 built the generic checker (`_preview_boundary()`) while closing the same hole on
+`hygiene_queue_memories`, so the mechanism exists.
+
+**It is not a paste, and the reviewer measured why.** `capture_buffer_triage` declares a
+**500-character** preview while its current long fixtures end near 280, so dropping the
+helper in unmodified would false-positive rather than pass. Each surface needs its
+fixtures checked against its own declared boundary first; the per-surface preview length
+is the input, not a constant.
+
+**Done when:**
+- [ ] Each of the three drivers checks its own declared preview boundary
+- [ ] Each surface's fixtures demonstrably run past that surface's boundary, so the check
+      can fail — verified per surface, not assumed from `hygiene_queue_memories`
+- [ ] Widening any one surface's preview slice fails the probe, drilled per surface
+- [ ] The boundary guarantee does not rest on a fixture comment: a future fixture that
+      falls under the boundary fails the build rather than silently disarming the check
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_isolation_probe.py -q`
+
+#### T2.75 — The frontend spells the claim the backend owns
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.36a` · `Doc: 12 (the badge field), 13 §5.3, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Doc 13 §5.3 is explicit that the badge string is a contract and **no screen
+paraphrases it**. `frontend/src/demo/data/chat-curated.ts` and `memories-curated.ts` carry
+badge-shaped claim strings as demo fixtures, and `verification-badge.tsx` documents the
+claim in a comment. T2.36a's `assert_no_certainty_words` guard and T2.71's second-producer
+scan both walk `backend/app` only, so **no guard in this repo can see any of them**.
+
+Two independent sightings, 2026-08-03. T2.71's implementer reported the fixtures as an
+adjacent finding and correctly took no action. T2.71's reviewer reported that **a fixture
+at `knowledge-curated.ts:52` is a claim form the shipping producer can never emit** —
+`"human-ratified by q.tran on 2026-07-21; previously asserted by 2 distinct origins of
+kinds [human, memory]"`, where doc 12's confirmed form is the plain sentence with a
+trailing `, human-ratified`. That turns a stylistic worry into a demonstrated divergence.
+
+**Corrected 2026-08-03 by the controller, and the correction matters.** This section
+previously cited `chat-curated.ts:52` and recorded the sighting as partial and unverified,
+on the belief that the review had terminated on a model-tier limit before writing its
+verdict. Both halves were wrong: `review-T2.71/REVIEW.md` is a **complete** review carrying
+both verdicts, five findings and a bottom line, and its citation is `knowledge-curated.ts`.
+`chat-curated.ts:52` is `"no verification badge on this row — badge: null,
+verification_status: null (L0 memories carry lifecycle, not the ladder)"` — a **correct** L0
+badge line and not a divergence at all. So the recorded pointer aimed at a healthy row: an
+agent re-verifying it as instructed would have found nothing wrong, concluded the sighting
+was a false positive, and **discarded a real finding**. The finding is verified, not
+pending.
+
+**Why it is not merely cosmetic.** A fixture is what a developer reads when deciding what
+the UI should render, and a comment is what they read when deciding what the string means.
+Both currently disagree with the one producer, and the disagreement is invisible to CI. The
+UI is still on demo data (`useDemoFacts`), so nothing user-visible is wrong today — which
+is exactly the window in which to fix it.
+
+**Done when:**
+- [ ] Every badge-shaped string in `frontend/` is either produced by the backend payload or
+      is provably a fixture that matches a form the producer can emit
+- [ ] A guard covers `frontend/` the way `fact_badge`'s covers `backend/app` — a new
+      paraphrase fails the build rather than being noticed by a reviewer
+- [ ] The `knowledge-curated.ts:52` divergence is corrected — it is verified, not pending,
+      so this is a fix rather than a re-check
+- [ ] The forbidden words "true" and "verified" are checked on the frontend side too
+
+**Verify.** `cd frontend && npm test -- badge && npm run typecheck`
+
+#### T2.76 — `gate.sh` points the harness at the shared bench database
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: runbook §8, CLAUDE.md "Commands"` · `Tag: rebuild` · `Gate: standing`
+
+**What.** Found by T2.21, 2026-08-03, by running the gate in a live four-lane round and
+getting a red that was not its own. `scripts/gate.sh` exports `TEST_DATABASE_URL` (line
+166) and **not** `BENCH_DATABASE_URL`, so the benchlib arm falls back to the unnumbered
+shared `darkmem_bench` regardless of the lane's assignment. In a concurrent round the
+harness resets a database another lane is holding:
+
+```
+test_arm_ablation … DeadlockDetectedError: DROP SCHEMA IF EXISTS public CASCADE
+```
+
+Re-running with the variable pinned is green. **So the repo's own merge gate is the one
+command that ignores the per-lane isolation the runbook §8 requires**, and it fails in the
+shape the runbook explicitly warns about — "failures that look exactly like a code
+regression".
+
+**The fix has a precedent to follow, not to invent.** T2.54 hit the sibling defect and
+resolved it by deriving a per-checkout database name from a hash of the checkout path, so
+the result stops depending on what a human exported. The same reasoning applies here and
+the two should not diverge: a gate that must be configured correctly per invocation is a
+gate that will be wrong again next round.
+
+**Do not** resolve this by having `gate.sh` require the caller to export the variable. That
+makes a correct gate depend on a human remembering, which is what produced this bug.
+
+**Done when:**
+- [ ] `gate.sh` never points the harness at the unnumbered `darkmem_bench`
+- [ ] Two gates run concurrently from two worktrees without colliding, demonstrated rather
+      than argued
+- [ ] An explicitly exported `BENCH_DATABASE_URL` is still honoured, so a deliberate run
+      can still target a chosen database
+- [ ] The derivation matches T2.54's precedent or states why it must differ
+
+**Verify.** Two concurrent `./scripts/gate.sh` runs from two worktrees, both green.
+
+#### T2.72 — The MCP vault tools, and the door parity doc 12 already assigns
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.36a` · `Doc: 12 §2–§3, invariant 17` · `Tag: target-new` · `Gate: standing`
+
+**What.** Found by T2.36a's Fable review, 2026-08-03. Doc 12 §2's route table assigns
+`fact_get` a REST twin at `GET /knowledge/facts/{id}` — the path T2.36a built — and §3 puts
+the agent-facing vault reads on MCP's `fact_get` and `knowledge_search`. **Neither MCP tool
+exists, and no task owned them**: a scan of every epic file for `fact_get`,
+`knowledge_search` or an MCP vault tool returns nothing.
+
+**There is no live invariant-17 breach today**, precisely because no MCP vault tool exists
+— parity is not violated by a surface that is absent on both doors' agent side. T2.36a
+filed its routes as REST single-door on a trust-posture argument the reviewer judged
+**weak**: every two-door surface in this repo already pairs an unauthenticated MCP tool
+with an authenticated REST route, so posture is not what decides single-door.
+
+So this task builds the agent's side of the vault and re-files the parity row: the
+**detail** route becomes `fact_get`'s twin; the **list** route legitimately stays REST-only,
+because doc 12's list-shaped agent twin is `knowledge_search`, not a fact list.
+
+**Done when:**
+- [ ] `fact_get` and `knowledge_search` exist on MCP, serving the same rows the REST door
+      serves, through the same service layer — not a parallel implementation
+- [ ] The badge rides both doors identically, byte for byte
+- [ ] `docs/two-door-parity.md`'s row for the detail route is re-filed as two-door, and the
+      list route's REST-only classification carries doc 12's reason rather than a posture
+      argument
+- [ ] A row shape that diverges between the doors fails a test
+
+**Verify.** `cd backend && python -m pytest tests/test_door_parity.py tests/test_mcp_vault_tools.py -q`
+
+#### T2.77 — The claim-scan allowlist is the shortest path to a second producer
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.71` · `Doc: 12 (the badge field), invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** T2.71 hardened `test_no_second_claim_string_exists_under_app` to read bytes
+constants and docstrings, closing two demonstrated byte-exact evasions. Docstrings are
+scanned behind a **four-file allowlist** — `fact_sources.py`, `knowledge_triples.py`,
+`fact_lift.py`, `verification_ladder.py` — for the modules whose prose legitimately carries
+the sentence. The allowlist's staleness guard checks only that an entry **still needs its
+exemption**, never that its docstrings are *prose*. So a byte-exact docstring-template
+producer planted inside allowlisted `fact_sources.py` runs the full 102-test Verify suite
+**green**, reproduced end to end by T2.71's re-reviewer.
+
+**Why it is a task and not a ledger sentence.** The implementer proposed recording it and
+the re-reviewer escalated, on three grounds worth preserving. First, those four files are
+exactly the modules the upcoming truth-core work edits — T2.72's MCP door, `fact_lift`,
+T3.02's article claims — so the remaining hole runs through the **highest-traffic files for
+this feature**, not through some quiet corner. Second, a cheap non-brittle closure was
+verified to exist rather than assumed: none of the four reads `__doc__` or `getdoc` today,
+so forbidding `__doc__` access inside allowlisted files costs **zero** false positives, and
+a per-file fragment-count pin catches every full template because none of the four carries
+`no known contradiction` in prose. Third, R1's charter is that a second producer **fails a
+build** — a ledger sentence fails nothing.
+
+The residual the fix *did* close is strictly wider than what remains: before it, a brand-new
+file anywhere under `app/` could carry a producer; now it takes an edit to one of four named
+files a reviewer is already reading. This task closes the rest.
+
+**Done when:**
+- [ ] A byte-exact docstring-template producer planted in any allowlisted file fails the
+      build, proved by planting one and watching it fail
+- [ ] The closure costs zero false positives, re-measured rather than inherited — the
+      four-file list moves as the tree moves
+- [ ] The guard's docstring states the residuals it still cannot see (multi-file scatter,
+      true paraphrases sharing fewer than two fragments), so the next reader does not
+      re-derive them
+
+**Verify.** `cd backend && python -m pytest tests/test_layer_composition.py tests/test_fact_badge.py -q`
+
+#### T2.78 — Delete `HybridSearchService.search_code`
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.66` · `Doc: 07 §2, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** `HybridSearchService.search_code` carries the one-sided-failure defect T2.66 fixed
+in its two live siblings, **and** swallows the exception to return `[]` — invariant 14's
+exact forbidden shape, an empty list meaning "everything failed". It also carries a comment
+contradicting `CLAUDE.md`'s record that code search does fuse.
+
+It has **no callers**. T2.66's reviewer verified this independently rather than accepting the
+lane's claim: both `POST /api/v1/code/search` and MCP `code_search` route through
+`CodeQueryService`, and no other live reference exists under `backend/`. The recommended
+disposition is deletion rather than repair — fixing dead code preserves a second
+implementation that can drift from the real one, which is the condition `code_search` and
+`code_blast_radius` were already in before T1.42c consolidated them.
+
+**Why it gets its own review.** Deleting a service method on a no-callers argument is
+precisely the claim worth re-checking, and the argument has to hold against dynamic
+dispatch and string-keyed lookup, not just a grep for the name.
+
+**Done when:**
+- [ ] The no-callers claim is re-verified independently, including non-literal reference
+      paths, and the evidence is recorded
+- [ ] The method is deleted, or — if a caller is found — the invariant-14 swallow is fixed
+      and the finding is re-filed
+- [ ] The contradicting comment goes with it
+
+**Verify.** `cd backend && python -m pytest tests/test_hybrid_search.py tests/test_code_query.py -q`
+
+#### T2.79 — The harvest reproducibility test skips wherever its input is gitignored
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54` · `Doc: 17 §9, §11` · `Tag: rebuild` · `Gate: G-D`
+
+**What.** `test_harvest_l2_facts.py`'s reproducibility check skipped on a **gitignored** warm
+cache, so it ran in the main checkout and skipped in every lane worktree and every fresh
+clone — reporting success either way. The test that silently did not run is T2.54's harvest
+reproducibility anchor: the byte-identical manifest that was its reviewer's central
+evidence, for a gold set gating G-D and transitively G-C.
+
+**How it surfaced is the point.** Not an audit — **two agents disagreed about a count**. The
+controller published 459 from the main checkout; lane `ad` measured 458/1 and disputed
+rather than matching.
+
+**Done when:**
+- [ ] The input is no longer gitignored, scoped to the entries the harvest actually reads
+      rather than the whole shared cache
+- [ ] Absence is a **hard failure**, not a skip
+- [ ] A fresh clone with zero gitignored state runs it, proven rather than argued
+- [ ] No conditional skips remain anywhere in `scripts/benchlib/`
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`
+
+#### T2.80 — `POST /knowledge/search`, the REST twin doc 12 assigns and nobody owns
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.72` · `Doc: 12 §2, §3` · `Tag: target-new` · `Gate: standing`
+
+**What.** Doc 12 §2 assigns the route and §3 pairs it with MCP `knowledge_search`. T2.72
+built the agent half and filed the surface MCP-single-door because the alternatives were
+worse, logging a Tier-2 amendment. **That filing is honest but weaker than it reads**:
+`memory.search` and `code.search` are both two-door, so a cross-layer *ranked* answer is a
+capability by this repo's own precedent — leaving `knowledge_search` the only ranked
+retrieval in the system with no REST door.
+
+Build the route through the **same** `knowledge_search_response()` serialiser T2.72
+deliberately placed outside the tool for exactly this purpose, so the two doors spend one
+function rather than reshaping the composition result twice.
+
+**Two Important findings from T2.72's review must be settled here, not deferred again:**
+
+1. `api/mcp/server.py` catches a bare `RuntimeError`, and `derive_rerank_scores` raises the
+   same type — so a future reranker defect over a healthy vault is served as "unavailable".
+   That is the failed-versus-empty conflation T2.66 spent a whole task eliminating. Needs a
+   typed exception on the composition.
+2. `envelope.reranked` is permanently false because the reranker is a **door-side
+   constructor argument**. The moment this route passes one, the two doors **rank
+   differently** while every row-shape parity test stays green — those tests compare shape,
+   not order.
+
+**Done when:**
+- [ ] The route exists at doc 12 §2's path and both doors spend one serialiser
+- [ ] The composition raises a typed exception, and an empty vault is distinguishable from a
+      failed rerank at both doors
+- [ ] The two doors provably rank the **same**, by a test that compares order and not only
+      shape
+- [ ] `docs/two-door-parity.md` moves the surface to two-door
+
+**Verify.** `cd backend && python -m pytest tests/test_door_parity.py tests/test_knowledge_search.py -q`
+
+#### T2.81 — The empty-text raise has a live route and an unguarded caller
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.69` · `Doc: 07 §4, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** T2.69's review ruled the reranker's empty-text raise correct and its disclosure
+incomplete. The live half reproduced in three executed links: the wire returned 200 with
+`{"content":""}`, the pipeline wrote `payload->>'content' = ''`, and the real
+`RerankerService` raise escaped `MemoryService._search_memories_paginated_traced`
+uncaught.
+
+**The fix's own prose then turned out to be false and to hide a 500.** `MemoryUpdate`'s
+comment claimed `None` means "not being updated", but `model_dump(exclude_unset=True)`
+yields `{'content': None}` and a live `PUT` with `{"content": null}` raised uncaught — on
+the exact door the task hardened, under prose actively denying it. It was never only
+`content`: `importance`, `metadata`, `is_archived`, `project` and `status` are all NOT NULL
+columns reachable through the model and all failed identically.
+
+**Done when:**
+- [ ] The empty-text path is guarded at its live caller, proven by a wire-level test
+- [ ] Every NOT NULL column reachable through `MemoryUpdate` refuses `null` with a **422 at
+      validation**, not a service-side drop — `null` is a real instruction for the nullable
+      columns (`memory_type`, `expires_at`), so a blanket drop would either break legitimate
+      clearing or swallow an incoherent request
+- [ ] The prose that denied the failure is corrected in the same change
+
+**Verify.** `cd backend && python -m pytest tests/test_empty_content_update.py tests/test_reranker.py -q`
+
+*(Verify field corrected 2026-08-04, Tier-1 amendment: the minted text named
+`tests/test_memory_update_nulls.py`, which does not exist. The task's own commits
+(`bac41ea`, `deff41d`) put all 374 added lines of coverage in
+`tests/test_empty_content_update.py`.)*
+
+#### T2.82 — `prune-cache` drops every live entity-embedding cache under the sentinel
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T2.68` · `Doc: 04 §6, invariant 14` · `Tag: rebuild` · `Gate: standing`
+
+**What.** `POST /reembed/prune-cache` under the `|0` fingerprint sentinel **drops every live
+`entity_embedding_cache__*` child table** — the route performs no existence probe.
+Pre-existing and **destructive** rather than merely inert, which makes it the most dangerous
+member of the sentinel family: the other two sites returned nothing, this one deletes.
+
+T2.68's shipped `llm.py` docstring now describes `ReembedService` as safe to call bare,
+which is false for this route, so that claim must be corrected in the same change.
+
+**Done when:**
+- [ ] A cache child may only be dropped when its fingerprint is **resolved and registered** —
+      treat the deletion path as the invariant-bearing part
+- [ ] The sentinel drops nothing, proven by a test that fails if the guard is removed
+- [ ] The false safety claim in `llm.py` goes with it
+
+**Verify.** `cd backend && python -m pytest tests/test_reembed_prune_cache_guard.py tests/test_maintenance_journaling.py -q`
+*(Corrected 2026-08-05: the minted field named `tests/test_reembed.py`, which has never
+existed in this repository — `pytest` exits `ERROR: file or directory not found` rather
+than failing, so the box was uncheckable rather than checked. Flagged in the 2026-08-04
+Tier-2 audit row and left uncorrected there because the row was claimed by another lane.)*
+
+#### T2.83 — A wrong non-zero `dimensions` reproduces the silent-empty-forever symptom
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T1.50, T2.68` · `Doc: 04 §6` · `Tag: rebuild` · `Gate: standing`
+
+**What.** T2.68 closed the `|0` sentinel, but a **wrong non-zero** `dimensions` — 768
+configured while the model emits 1024 — reproduces the original symptom at both read
+surfaces, and that fix does not cover it. The plan never owned this case: the task was
+written around the sentinel because that is the shape someone noticed. The real class is
+**"the configured fingerprint does not match the one an embed would produce"**.
+
+**The asymmetry is what makes it invisible.** Retrieval derives its fingerprint from
+`embed()`'s **return value**, so it is structurally immune and keeps working while these
+surfaces silently empty. Nothing in a normal session would suggest a misconfiguration.
+
+**Done when:**
+- [ ] Both read surfaces refuse, or report honestly, when the configured fingerprint cannot
+      be the one an embed would produce — never a silent empty
+- [ ] The guard is keyed on the class, not on the `|0` shape, so a third wrong-fingerprint
+      form does not need a fourth task
+- [ ] A test drives a configured/actual dimension mismatch and fails if the guard is removed
+
+**Verify.** `cd backend && python -m pytest tests/test_vectors_route.py tests/test_api/test_graph.py -q`
+
+*(Verify field corrected 2026-08-04, Tier-1 amendment: the minted text named
+`tests/test_reembed.py` and `tests/test_embedder_registry.py`, neither of which
+exists anywhere in the repo. The guard lives in
+`PostgresVectorRepository.resolve_read_fingerprint` and is exercised through the
+two read surfaces, so those are the files that actually cover it.)*
+
+#### T2.84 — The fact-keyed retrieval-heat counter
+
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.65` · `Doc: 08 §6` · `Tag: target-new` · `Gate: G-C`
+
+**What.** T2.65 **settled the decision and could not execute it**: a real fact-keyed counter
+needs its own table (`fact_id REFERENCES knowledge_triples(id)`), and no lane held
+baseline-schema clearance that round, so it held the memory-bridged proxy as an *interim*
+position and recorded a ready-to-execute design in the amendment log rather than leaving it
+implicit.
+
+**The gap is live, not latent.** `FactsChannel` is unconditional traffic today through
+`LayerCompositionService.search`, behind the `knowledge_search` MCP tool T2.72 landed the
+same day — no flag gates it, and nothing analogous to `access_stats.spawn_record_access`
+sits on the path. Doc 08 §6's consequence ranking is degrading toward its salience arm right
+now.
+
+**Needs a schema window.** Schema changes serialise through one owner per epic (CLAUDE.md),
+so this cannot share a round with another baseline edit.
+
+**Done when:**
+- [ ] Retrieval heat is counted per **fact**, on its own table, not bridged through memories
+- [ ] T2.65's pinning test flips: fifty real searches no longer leave the frequency component
+      at zero
+- [ ] `FACT_KEYED_COUNTER_STATUS` / `RETRIEVAL_HEAT_STATUS` are **retired** — a marker that
+      outlives its condition is the stale-premise defect T2.65 was fixing
+- [ ] Counting stays off the hot path's critical section, as `access_stats` does
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_channel.py tests/test_access_stats.py -q`
+
+#### T2.85 — Self-expiring dated facts: rule the belief-window contradiction, then build it
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.01` · `Doc: 08 §2.3, §3.1, §9` · `Tag: activation` · `Gate: G-C`
+
+**Blocked on a Tier-3 ruling — do not start.** Split out of T2.34 on 2026-08-04. Fable
+tier and `xhigh` because the deliverable is a ruling between two design-doc sections
+before it is any code, and the wrong ruling is silent.
+
+**What the contradiction is.** Doc 08 §9 says a fact carrying a stated future expiry gets
+its belief window **"pre-closed at that date"**, which reads as writing the future date
+into `invalid_at` at population. Doc 08 §3.1's state machine says `invalid_at` is set when
+**a newer belief arrives** (`open --> window_closed`) and routes a stated expiry down the
+other edge entirely (`open --> expired`, i.e. `expired_at`). Both cannot hold.
+
+**Why the literal §9 reading is destructive rather than merely ambiguous.**
+`0001_baseline.py` makes **four** indexes partial on `expired_at IS NULL AND invalid_at IS
+NULL` — the unique `ux_knowledge_triples_open` plus doc 07 §2's three fact-channel
+retrieval indexes. A future `invalid_at` written at population therefore (a) drops the
+fact out of the retrieval channel's scope **immediately**, years before its stated expiry,
+and (b) frees the unique slot, so a second currently-open belief on the same `triple_key`
+can be written beside it. Both are silent. Note `as_of` already implements the correct
+half-open window (`valid_at <= t < invalid_at`), so the *model* is right and it is the
+shipped "currently open" predicate that assumes `invalid_at` is only ever set in the past.
+
+**The three candidate rulings**, none of which a lane may pick unilaterally:
+
+1. Make "currently open" time-aware. Impossible as a partial index — `now()` is not
+   IMMUTABLE — so it means reworking the unique constraint and all three retrieval indexes
+   and relaxing invariant 8's temporal analogue: a baseline schema change, serialising
+   through one owner per epic.
+2. Add a `stated_expiry` column; the recompute arm writes `expired_at` when it passes. A
+   schema amendment §9 does not list (its only named amendment is `demotion_pending_since`).
+3. No column: the recompute arm re-derives the stated expiry deterministically from the
+   fact text each cycle and sets `expired_at` once past. Consistent with both sections and
+   with §9's "no LLM, no separate job", at the cost of re-parsing.
+
+**Done when:**
+- [ ] The ruling is recorded against doc 08 (both sections made to agree), not just in code
+- [ ] A dated fact stops being served **at** its stated expiry and not before, proven by a
+      test that fails under the literal §9 reading
+- [ ] The row is never deleted — invalidate-not-delete, retained as history
+- [ ] No code path deletes from `knowledge_triples`, held by a source scan rather than by
+      review (doc 08 §5: the facts table needs no delete job at all, and applying T1.37's
+      sweep to it would destroy the history the bi-temporal model exists to keep)
+
+**Verify.** `cd backend && python -m pytest tests/test_self_expiring_facts.py -q`
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-05 | T2.16 | 2 | **The empty exclusive-relation-family list is ratified on the Fable review's recommendation, so doc 08 §5.5's three signals are realized as TWO in v1 — overlap and proximity, both to `RELATES_TO`.** The executor could defend no member and declined to invent one; the reviewer then checked **every** `RELATIONSHIP_TYPES` member against `taxonomy.py` and `extraction_clean.py` independently and confirmed it: `DEPLOYED_ON` absorbs `RUNS_ON`/`LOCATED_IN` plus seven rescue connectors including a bare `"on"` at 0.6 confidence, `HAPPENED_ON` absorbs `VISITED`/`LIVES_IN`, and even `EXTENDS` — the closest thing to a missed candidate — is plural under multiple inheritance. **A stored `rel_type` simply does not determine single-valuedness in this taxonomy, because normalisation collapses plural historical names into apparently-singular types.** The contradiction arm is built, wired and tested through an injected family, so ratifying a list later is a one-line edit to `EXCLUSIVE_RELATION_FAMILIES`, not a re-execution. One candidate survived and is **recorded without being adopted**: `REPLACES`-family antisymmetry (A asserts `X REPLACES Y` while B asserts `Y REPLACES X`) — deterministic, no plural-fact escape, and it flags the mutual-flip pathology the supersession ordering guard blocks; it is a different shape from D4 and belongs to its own plan round | This is the **second** scope reduction on one doc sentence in one day — §5.5 said five types from three signals, and v1 ships three types from two signals. Recorded prominently for that reason: a reader auditing §5.5 against the tree will otherwise conclude the pass is half-built, when in fact each reduction was forced by a measured property of the code rather than chosen for convenience. The pattern underneath both is worth naming: §5.5 was written against an idealised taxonomy in which a relation type carries its own arity, and the shipped taxonomy deliberately does not — `LEGACY_RELATION_TYPE_MAP` and the rescue connectors exist precisely to funnel many surface forms into few stored types, which is right for extraction recall and fatal for inferring exclusivity. **The owner may still overturn this**; the cost of doing so is populating one constant, not rebuilding the arm |
+| 2026-08-05 | T2.57, T2.52 | 1 | **Doc 17 §5.2's "at least half lexically disjoint" is read as half of the *contradiction* pairs, not half of all pairs — 12 of 22 positives, not 25 of 50.** The argument, recorded in the gold's own `LABELLING.md` where a reader of the data meets it: the disjoint slice exists to power a **recall** measurement, only positives enter recall, and a disjoint *negative* contributes nothing to it — so the whole-set reading would spend half the set on pairs that cannot move the number while crowding out the three negative classes T2.57's Done-when explicitly requires. Note §5.2 calls this a "recommended starting shape", not a bar, so this is a reasoned deviation from a recommendation rather than a missed requirement. **The consequence lands on T2.52**: 12 disjoint positives give the miss rate a granularity of 1/12 ≈ 8.3%, so §5.2's recommended 20% writer-trigger bar is breached at 3 misses | Logged here as well as in `LABELLING.md` because the two readers are different people with different questions. A reader of the gold needs to know how it was labelled; a reader scheduling **T2.52** needs to know the measurement it is about to take is coarse — 3 misses versus 2 is the whole decision on whether T2.33's writer ships, and that granularity is a property of this gold's composition rather than of T2.52's own method. The set is explicitly designed to grow from real adjudicated disputes, so the granularity improves on its own; what must not happen is T2.52 reporting a miss rate as if it were finer than the gold can express |
+| 2026-08-05 | T2.31, T2.84 | 2 | **`T2.31` gains `Depends: T2.84`, and the schema window T2.84 has been waiting for is granted to it.** `w_heat`'s input is retrieval heat; T2.65 settled that fact-level heat has no counter and that the memory-bridged proxy stands only as an interim with a stated error bound. Activating `w_heat` against that proxy would put a number in the gate ledger's arm activation log measured on a substrate already scheduled for replacement — and that log is the one artifact whose numbers are supposed to survive being re-read a year later. So the sequencing is now explicit in the graph rather than left to whoever picks the tasks up. Separately, T2.84's own blocker was never technical: it needed a **schema window**, because a fact-keyed counter needs its own table and baseline edits serialise through one owner per epic. No other lane is touching the baseline this round, so the window is granted and T2.84 is dispatched | Filed because the two halves of this row fail differently if left alone. The missing dependency fails **silently and durably**: T2.31 would have run green, produced a real number, and written it into the ledger, where nothing downstream would ever mark it as measured against an interim substrate — the same stale-premise shape T2.65 was itself minted to fix, one layer up. The schema window is the opposite: it fails **loudly and immediately**, because two lanes editing `0001_baseline.py` conflict on every line. Recording the grant is what makes the serialisation auditable — a reader should be able to see which round held the window and why, rather than inferring it from commit order |
+| 2026-08-05 | T2.16 | 2 | **T2.16 shipped with D4's exclusive-relation-family list EMPTY, so the pass derives TWO signals (entity overlap, embedding proximity) rather than three; the contradiction arm is built, wired and tested but cannot fire until a list is ratified.** The list was constructed as the plan's D4 describes and no member of `RELATIONSHIP_TYPES` survived: every type that reads single-valued in isolation is also the normalisation target of a plural historical name, so a stored `rel_type` does not determine single-valuedness. `DEPLOYED_ON` absorbs `RUNS_ON` and `LOCATED_IN` through `LEGACY_RELATION_TYPE_MAP` *and* collects seven `_RESCUE_CONNECTORS` phrases including a bare `"on"` at 0.6 confidence, so "postgres DEPLOYED_ON linux" and "postgres DEPLOYED_ON docker" are both true; `HAPPENED_ON` absorbs `VISITED` and `LIVES_IN`; the rest (`USES`, `DEPENDS_ON`, `HAS_PART`, `IMPLEMENTS`, `EXTENDS`, `CAUSES`, `AUTHORED_BY`, `MENTIONS`, `CITES`, `INSPIRED_BY`, `IS_A`, `REPLACES`, `IMPROVES_ON`) are plural by construction, and `RELATED_TO` is the normaliser's own fallback. `EXCLUSIVE_RELATION_FAMILIES` in `app/taxonomy.py` carries the reasoning beside the constant, and the arm is driven through an injected family in `tests/test_memory_relation_derivation.py` so ratifying a list is a one-line edit rather than a re-execution | Tier 2 because it narrows what doc 08 §5.5 delivers a second time — after the three-of-five row above, this is three-of-five signals realised as **two**-of-three. Both the plan's D4 and the dispatch brief make this the controller's call rather than the executor's, and the executor declined to invent a list to avoid it: a derived `CONTRADICTS` suppresses the weaker `RELATES_TO` under D3 *and* feeds the fact-level dispute surface while T2.11's judge is still unqualified, so a loose family manufactures false disputes and erases true edges at the same time. One candidate survived contact and is recorded in the plan's O3 without being adopted — `REPLACES`-family **antisymmetry** (A asserts `X REPLACES Y` while B asserts `Y REPLACES X`), which is deterministic with no plural-fact escape and flags the mutual-flip pathology the supersession ordering amendment blocks — but it is a different shape from D4's "two distinct targets under one family", so adopting it amends the reviewed plan rather than ratifying it |
+| 2026-08-05 | T2.16 | 1 | **Nine execution amendments folded into the plan's new §7a**, the two load-bearing ones being: (E1) the pass lives in `memory_dream.py` rather than the new module §5 implies, because `dream_job_implementation_modules()` derives invariant 15's forbidden set from `dream_jobs.py`'s own imports and is deliberately ONE HOP — a new sibling under `app/services/` imported only by `memory_dream` would sit outside the guard and be freely reachable from capture and retrieval, and T2.67's contract forbids widening the derivation to a transitive walk to fix that; and (E4) the strip window is the seed slice bounded above by the last decided pair key, not "the pairs this run re-evaluated" read literally — a pair whose signal has vanished produces no candidate, so the literal reading makes the strip a permanent no-op and the graph grows forever. The remaining seven cover integer-percent thresholds (`FieldDescriptor.default` is typed `int`), the hot-entity cap as a fifth config field, `candidates_truncated` being a lower bound rather than a census, two moved assertions in T2.12's test file, the journal reusing `DETECTOR = "dedup"` so four consumers need no widening, and the strip journalling nothing | Tier 1: each is task-local reality found during execution, and none changes what the task delivers. Logged rather than absorbed silently because the plan passed a Fable review, so an undocumented divergence makes that review describe a tree that no longer exists |
+| 2026-08-05 | T2.16, T2.13 | 2 | **Doc 08 §5.5's "derives the five" is realized as three-of-five in v1, ruled by the Fable plan review and logged here as that review required; and T2.16 now carries a change to T2.13's undo module.** (1) `DEPENDS_ON` and `FOLLOWS` are shipped **stored-but-underived**: neither entity overlap, embedding proximity nor contradiction carries the information those two assert, and deriving `FOLLOWS` from `created_at` would assert narrative succession from *typing order*. Cutting them from the vocabulary was considered and rejected — unlike `DERIVED_FROM` they have plausible future writers, and cutting costs taxonomy churn twice while leaving them inert forecloses nothing. **The cut-or-keep question is parked as a standing item, not closed.** (2) The plan's undo integration reaches into `dream_undo`: `_invert_associate` hardcodes `NEAR_DUPLICATE_PASS` in its restore arm, clear arm and currency CAS, so a second pass writing edges would have its undo silently invert **T2.12's** block while reporting success. The journal payload gains a `pass_key` and those three sites generalise to read it, defaulting to the near-duplicate key for existing rows | Tier 2 because it narrows what a design-doc section delivers and because it modifies another task's shipped module. The §5.5 realization is recorded rather than left implicit for the reason this epic keeps re-learning: a doc sentence that says "five" and a tree that derives three is exactly the prose-versus-graph gap that produced T2.36a, T2.39a, T2.91 and T2.93. A reader auditing §5.5 against the code should find this row rather than conclude the pass is incomplete. The undo half is worth its own emphasis: it was invisible from T2.16's own Done-when, which says nothing about undo, and would have surfaced as cross-pass corruption under a green suite — the review caught it from the plan text alone, before any code existed to debug |
+| 2026-08-05 | T2.11, T2.54 | 2 | **T2.11's block note was wrong on its central point: no lawful qualification run has ever happened, so the judge did not fail a gate.** The Fable analysis (`analyses/2026-08-05-t2.11-judge-bar.md`) found the 0.8182 was branded INTERIM by its own artifact and measured on an ineligible 41-pair gold on which **the 0.95 bar degenerates to zero-false-positives** — one FP lands at 10/11 = 0.909, so no achievable value exists between 0.909 and 1.0. The blocking artifact is the qualification record, whose eligibility lock now fails on exactly one condition: 2 of 241 pairs still carry `label_source: "author"`. **T2.54's owner sitting therefore holds two gates, not one**, and its marginal cost to T2.11 is zero additional owner work because that sitting is already mandatory for G-D | Filed because it changes the scheduling picture more than any single task here. Read the old way, T2.11 was a failed measurement needing a better judge — open-ended work behind a hard bar. Read correctly, it is one afternoon of adjudication away from being *runnable*, and G-C's critical path runs through the owner's calendar rather than through engineering. The bar itself is right and stands; the analysis explicitly declines to widen it, and records instead that the gold it was measured against could not express it. Worth noting the failure mode: an INTERIM artifact was read as a verdict for a full day and propagated into a `blocked` row, which is how a provisional number becomes a scheduling fact |
+| 2026-08-05 | T2.85 | 1 | **Commit-hygiene collision, recorded rather than rewritten: the T2.85 analysis rode into `e68a739e` (a `Task: T2.65` merge) instead of its own commit.** A `git add -A` in the controller's merge swept the analysing agent's then-untracked file while that agent was blocked on the repository's index lock. The file is byte-identical to what its author intended and is fully in history; rewriting a shared merge commit to relabel it would cost more than the mislabelling does | The controller caused it and is recording it, not the agent who reported it. The lesson is narrow and worth keeping: `git add -A` in a worktree where a concurrent agent is writing is not a safe staging command, and the collision is silent — the merge succeeded, the floor stayed green, and only the agent's own final check noticed its file had been committed under someone else's task id. Prefer explicit paths when any other actor is live in the same tree |
+| 2026-08-05 | T2.82 | 1 | **Recovered from a stalled lane; `Verify` corrected; an unreverted mutation drill found in that lane's working tree and preserved rather than merged.** Lane `ah` had landed all three Done-when clauses across three commits and then stopped, leaving its worktree carrying an *uncommitted deletion of the registry arm its own commits had just added*. That is the shape of a drill whose revert never ran — the deletion contradicts the surrounding docstring ("a drop that guesses wrong destroys tables"), and the two commits above it are literally "isolate the prune guard's first arm" and "cover the prune guard's second arm". It was stashed in that lane, not merged and not discarded, and the committed state was restored before the merge. Both arms were then re-drilled independently at the epic branch: removing the registry arm reds `test_a_retired_registry_row_refuses_and_spares_the_live_sibling`, removing the table-existence arm reds `test_a_registered_fingerprint_whose_cache_child_is_gone_refuses`, and neither drill reds the other's test — the arms are separately load-bearing, which is why one test could not have covered both. `Verify` also named `tests/test_reembed.py`, which has never existed | Recorded rather than quietly merged because two different failure modes nearly met here. A path-wide `git checkout --` in that worktree would have looked like tidying and would have silently reverted nothing of value — but the *opposite* mistake, merging the dirty tree, would have shipped the destructive defect back in under a commit message claiming to fix it, with a green suite either way except for the one test that catches that exact arm. `CLAUDE.md` already warns that a drill's revert is where work disappears; this is the same hazard from the other side, where a drill's *non*-revert is where a fix disappears. The `Verify` correction is the fourth instance of the 2026-08-04 back-fill audit's finding, and the row that audit wrote predicted this exact file |
+| 2026-08-05 | T2.93, T2.19 | 2 | **The invariant-15 report scan admitted no caller at all, which made this task's own wiring unimplementable; it now admits exactly one file and four symbols, and the guarantee is proven in two steps instead of one.** `test_no_app_code_reaches_report_generation` asserted that *nothing* under `app/` reaches `memory_community_reports` beyond five pure projection symbols. But report generation needs a live caller or no topic report is ever written, and every caller is a file under `app/` — so the scan as written forbade the only thing that could close the defect. It was written when no caller existed and encoded "nothing calls this" as if it were the invariant, when the invariant is doc 06 §7's "no *capture or retrieval* path calls this". The exemption is file-scoped **and** symbol-scoped **and** from-imports only: `app/services/memory_community_detection.py`, four names, and a whole-module import in that same file or the identical import in any other file is still an offence — each proven by its own test, plus one asserting the exemption actually covers the shipped import (a scan that passes only because the caller does not exist proves nothing). Invariant 15 now holds by composition: reachable only from the detector, and `test_communities.py`'s sibling scan proves no capture or retrieval path reaches the detector. **Also settled here:** the snapshot/restore half of T2.19's documented four-step sequence moved *into* `detect_for_project` as Phase P/X rather than staying in the runner, matching T2.91's Phase P; the runner keeps only `generate_reports` | Filed Tier 2 rather than Tier 1 because it changes what an invariant-bearing guard asserts, and because it revises the seam T2.19's docstring hands to its successor. **The tier was also escalated Sonnet -> Opus on discovery** (runbook §2): the row was minted as ordinary wiring, and amending a structural guard is not that. Worth recording in full because the shape recurs — a guard whose universal quantifier was correct while a feature was unbuilt and becomes an obstacle the moment it is built. The reason it is safe to narrow here, and would not have been safe to simply delete, is that the composed proof is strictly stronger than a bare allowlist: T2.77's finding was that an allowlist is the shortest path to a second producer, and the answer to that is not "no exemption" — which was unbuildable — but an exemption that cannot be widened without failing a test |
+| 2026-08-05 | T2.91, T2.39a, T2.39 | 2 | **The durable prior lands in `projects.properties`, the capture goes inside `detect_for_project` rather than the job runner, T2.39a's amended clause 3 is retired, and T2.39 gains `Depends: T2.91`.** Three choices the task left open, settled here. **(1) Where the prior lives:** one new `projects.properties` key via a narrowly-scoped repository (`topic_priors.py`), the same shape doc 09 §3.4 already assigns to the pinned/dismissed lists — no schema change, and therefore no baseline-clearance serialisation, which is what stalled T2.84's equivalent. A table buys nothing for one small per-project document that is read whole and written whole. **(2) Who writes it:** `detect_for_project` itself, as a new Phase P immediately before the Phase W rewrite, **not** `run_topic_detection`. The task text permitted either. Putting it in the detector makes it impossible to rewrite a project's communities without recording what they were, and — because `detect_for_project` commits internally after Phase R but not again — Phase P and Phase W land in one transaction, so the prior can never be a copy of the rows it is meant to be compared against. In the runner it would have been an ordering convention any future caller could forget. **(3) Replace, never merge:** a prior is a complete census of one run; merging would resurrect labels gone for several runs and report them decaying repeatedly | Filed Tier 2 rather than Tier 1 because it retires an amendment on a `done` task and changes another task's `Depends`. The retirement is the point worth recording: T2.39a's clause 3 was reduced on 2026-08-05 to "serves that shape faithfully" precisely because the observable was unbuildable, and the row that reduced it said the observable belongs to whichever task builds the prior. It has been built, so the clause goes back to what it originally said rather than staying quietly reduced — a reduction that outlives its cause is the stale-premise defect T2.65 was minted to fix. **T2.39 is unblocked by this and its remaining thinness is now T2.93's, not T2.91's**: pin suggestions can show what changed between runs, while "a pending report renders as pending" stays the only report state a real backend can produce until something calls the report pass |
+| 2026-08-05 | T2.92, T2.93 | 2 | **T2.92's premise is right about the defect and wrong about the running cost, and the reason it is wrong is its own task: nothing calls the report pass.** The row says an empty completion is "re-billed every cycle, indefinitely". The write defect is real and was fixed as written — an empty completion stored `""`, which `report_status` cannot tell apart from "never generated". But there is no cycle to re-bill it: `run_topic_detection` calls `detect_for_project` and returns, and `generate_reports` / `snapshot_reports` / `restore_reports` have **no caller anywhere outside `backend/tests`**. So the cost today is zero, the topic-report pipeline does not run at all, and the re-billing is what would have happened the moment T2.93 wires the pass in. Both halves of T2.92 shipped anyway, including the bounded-retry policy the third Done-when asks for | Recorded because the two readings schedule differently: "live cost, fix now" versus "latent defect, and the feature behind it is unbuilt". The controller's confirmation in the tree was of the **write path**, which is exactly what it says — the missing caller is one level further out and is invisible unless you follow the job body. Worth noting the fix is not thereby premature: the guard had to land before a caller exists, or the first wiring pass writes empty reports into a surface that has no way to distinguish them afterwards. **This is the seventh instance of the epic's recurring shape** — a sequence recorded in prose (T2.19's docstring states the four-step order in full) with nothing in the graph to run it |
+| 2026-08-05 | T2.90 | 1 | **The real-mode e2e went into a sibling file, `knowledge-real-mode.spec.ts`, not into `knowledge.spec.ts` as clause 2 literally names.** Playwright routes by **file**: `knowledge.spec.ts` is pinned to the `demo-fixture` project (port 3637, `VITE_DEMO=1`) by `playwright.config.ts`'s `testMatch`, so a real-mode test added inside it would inherit that binding and run against the demo fixture — **exactly the failure this task exists to close**. The codebase already carries the antidote for the identical problem on the code section (`code-real-mode.spec.ts` beside `code-wiki-empty.spec.ts`); that precedent was followed. `npm run test:e2e -- knowledge` matches both files by substring, so the split is invisible at the Verify boundary and the original three demo specs still pass untouched | Tier 1 under §5's own example — 'a wrong file path' is explicitly task-local. Logged rather than left implicit because the clause's literal wording, followed exactly, would have produced a test that **passes while proving nothing** — the same shape as the demo-only e2e that made this task necessary in the first place. A reader auditing clause 2 against the tree will find the named file unchanged and should find this row rather than conclude the clause was skipped |
+| 2026-08-05 | T2.39a, T2.39, T2.91, T2.92 | 2 | **T2.39a's clauses 2 and 3 amended down to what the door can actually deliver, and the two gaps minted as their own tasks.** The Fable review returned spec **FAIL** on both while rating quality Approved, because both are inherited cross-task gaps the lane surfaced loudly instead of papering over. **Clause 3:** the door calls `diff_topics({}, current)` — no durable prior exists **anywhere**, since the only snapshot ever in existence lives in memory inside the detection job's body mid-run — so every entry reads `new` permanently and `grown`/`stable`/`decayed` are unreachable. -> **T2.91**. **Clause 2:** an empty report and an ungenerated one collapse on the wire, and the lane's defence that empty is unreachable is **false** — `chat_completion` has no empty-content guard and `generate_report` returns it raw, so an empty completion stores `""`, reads `pending` forever, and is **re-billed every cycle**. Controller confirmed both in the tree. -> **T2.92** | Amended rather than left failing because the runbook's alternative is worse: leaving two clauses permanently unmet on a `done` task teaches the next reader that Done-when checkboxes are aspirational. The clauses now describe what this door can do; the observables move to the tasks that can build them, and T2.39a's amended text names both so the reduction is auditable rather than quiet. **Note the shape**: T2.39a exists because T2.39's clause was unbuildable against live data, and its own clause 3 turned out unbuildable for the same reason one level up — the split fixed the door and not the absent prior behind it. That is the third time this epic has found a constraint recorded in prose with nothing in the code to satisfy it |
+| 2026-08-05 | T2.80 | 3 | **ESCALATED, not decided: doc 12 §3 fixes the MCP degradation shape and is silent on REST's, so T2.80 had to mint one.** `POST /knowledge/search` returns 503 through the app's `ErrorEnvelope` with `error.code = "unavailable"` and the shared unavailability object at **`error.details[0]`** — a *positional* slot in a list the app otherwise fills with validation errors. The route had no alternative: `HTTPException` keeps a string `message` **or** a list of `details`, never both (`main.py:553-555`), so raising one would have left this door naming neither the outage nor its channels while its MCP twin named both. The Fable review verified that constraint is real and called the shape coherent — but ruled it **an unratified contract on a wire surface** | Tier 3 because amending the design corpus is the owner's call, and this is the corpus being *silent* rather than wrong — the same shape as T2.36a's fourth claim form, which was escalated rather than decided in-task. **The cost of deciding late is asymmetric**: doc 15's SDK reads this contract, and a positional slot is the worst thing to bake in — a consumer that learns to read `details[0]` breaks the moment a validation error occupies index 0. The review's own recommendation, offered as input rather than a decision: ratify in doc 12 §3, and key detection on `error.code` plus the object's own `status` field, **never on position**. Cheap to change now, expensive after an SDK ships against it |
+| 2026-08-04 | T2.87 | 1 | **T2.87's premise was half wrong: the supersede door already existed.** The task text said doc 08 §6's fourth bulk verb was "backend-blocked", but `POST /hygiene-queue/bulk/supersede` and `bulk_supersede()` were already live at the branch point, covered by existing tests including `TestUndoIntegration::test_bulk_supersede_is_undone_by_dream_undo`. What was actually missing was only the **data to decide a direction** — `HygieneDuplicateItem` carried two ids and a score, so no caller could tell which endpoint was older. The implementer verified rather than rebuilt that half | Corrected here rather than left, because the wrong premise was **load-bearing for a scheduling decision**: T2.37's review ruled the missing verb backend-blocked and the controller minted T2.87 on that basis. The task was still worth doing and its Done-when still describes real work — the previews and timestamps genuinely did not exist — but a reader of the original text would look for a route that was already there. Independently corroborated the same round: T2.37's round-2 re-review ruled `REFUSAL_REASON_LABELS`' `successor_not_newer` entry **not** dead for exactly this reason, noting the door was live and only the UI verb unbuilt |
+| 2026-08-04 | T2.38, T2.13, T2.23 | 2 | **The dream digest's whole-cycle undo now sends the named `event_ids` form, not the body-less form — a change to what "undo this cycle" means, logged by the controller because the fix round disclosed it but never filed the row.** The body-less door takes every not-yet-undone action *including* ones blocked by `state_changed` or a missing object, and one blocked action refuses the whole batch — so a dialog listing only the undoable actions and then firing the body-less form promised a set the door would not act on. The named form makes the dialog's promise the request. **Before:** attempt everything, refuse loudly if any member is blocked. **After:** undo exactly the displayed subset; blocked actions are excluded, and the dialog says so in an explicit exclusion sentence. **This leaves the two surfaces disagreeing about what the verb means** — the hygiene queue (`use-hygiene-queue-api.ts:213`) still calls the same door body-less, where "attempt everything, refuse loudly" is the right semantic for a bulk-action batch | Ruled **not** the client-side prefilter the 2026-08-02 amendment forbids, and the distinction is the useful part: that defect was a layer shrinking a set *after* the caller named it, whereas here the set is composed **before** confirmation, displayed, sent exactly as displayed, and then goes through whole — the backend applies no prefilter to named sets and a stale member still 409s. The race is **better**, not worse: a concurrently-undone member now 409s on `already_undone` and the 409-then-refetch flow re-reads, where the body-less form would have silently hidden the other curator's edit. Tier 2 rather than Tier 3 because doc 13 §6.3 asks only for per-action and per-batch undo and the backend contract is untouched. Filed anyway because it changes a user-facing operation's semantics **two days after a logged amendment defined them**, removes the digest's only body-less caller, and leaves the review corpus describing a tree that no longer exists — the shape of drift that is invisible until someone reads the old row and believes it |
+| 2026-08-04 | T2.87, T2.88, T2.37 | 2 | **Two backend tasks minted from T2.37's Fable review, both of which the UI lane correctly refused to paper over.** (1) `T2.87` — `HygieneDuplicateItem` carries two memory ids and a score and nothing else, so "Supersede instead" is unbuildable without the frontend inventing an adjudication; the review ruled the refusal **correct restraint, not an unshipped obligation**, and doc 08 §6's fourth bulk verb is therefore backend-blocked. `build_duplicates_query` already joins both memory rows (`src.status`/`tgt.status` in its WHERE), so the enabling change is projection, not a new join — measured, not assumed. (2) `T2.88` — `GET /review-queue/counts` takes no `project` parameter while `/facts` and `/articles` beside it do, so a filtered queue shows a count from a different population than its own list | Both are the same shape as T2.36a and T2.39a: a UI task reaching for a backend capability the corpus assumes and the code does not have. What is different, and worth recording, is that this time **the lane stopped instead of faking it** — it reported the duplicates gap as unbuilt and rendered the counts number with an inline unscoped qualifier rather than showing a figure that disagrees with the list beneath it. The review's ruling on that qualifier is the useful nuance: it passes invariant 14 **narrowly**, because the qualifier sits on the number it qualifies, but it is skimmable and it is a workaround. That is the right standard — an honest workaround is shippable and still generates a task, rather than closing the question |
+| 2026-08-04 | T2.86, T2.36 | 2 | **T2.86 minted: the fact detail route is demo-only and nothing calls T2.36a's detail door.** `knowledge_.facts_.$factId.tsx:64` calls `useDemoFact` unconditionally, so with DEMO off any real fact id renders "This fact does not exist in the demo store". T2.36's row linked there for disputed facts, which is how the dead link shipped. The fix round closed the link by **not offering it** — a new `detail_available` producer capability, false on the live path — and said explicitly that wiring the page is a task, not a fix, because the page renders a verification ladder, a dispute panel and multiple belief windows that `FactDetailResponse` does not carry | Filed as its own task rather than widened into T2.36's fix round for a reason worth recording: it is **partly a backend question**. Whether the detail door grows to serve what doc 13 §5.1's page shows, or the page stops showing what the door cannot support, is a per-field decision neither doc settles, and a fix round under time pressure would have settled it by whichever was cheapest. Note `detail_available` is itself scheduled for retirement inside T2.86 — an interim honesty flag that outlives its condition becomes the stale-premise defect T2.65 was minted to fix, so it is part of done rather than a follow-up. The article detail route (`knowledge_.articles_.$articleId.tsx`) has the same shape but is **not** minted here: `article_synthesis` is still a `PlaceholderJobRunner`, so `knowledge_articles` has no production writer and there is nothing live to wire it to |
+| 2026-08-04 | T2.79–T2.84 | 2 | **Audited every Verify command on the six back-filled entries; three more name files that do not exist.** After T2.83's field was found wrong, the same check was run across all six. `T2.81` (already **done**) named `tests/test_memory_update_nulls.py` — its own commits put all 374 lines of added coverage in `tests/test_empty_content_update.py`, so the field is corrected here. `T2.82` (currently **wip** in lane ah) names `tests/test_reembed.py`, which does not exist and never has; that lane will hit the same error, and the correct target is one or more of `test_reembed_absent_partition.py` / `test_reembed_code_chunks.py` / `unit/test_reembed_helpers.py` — **left uncorrected deliberately, because the row is owned by another lane and the controller does not edit a claimed task.** `T2.80` names `tests/test_knowledge_search.py`, which is legitimate: that task creates it. T2.79 and T2.84 are clean | The failure mode is what makes this worth a Tier-2 row rather than three Tier-1 fixes. A Verify command naming a missing file does not fail — `pytest` exits with `ERROR: file or directory not found`, which a careless reading scans as 'nothing failed'. Runbook §4 requires the Verify command to be *actually run with its real output recorded*, and a command that cannot run makes that box uncheckable rather than checked. T2.81 passed a Fable review and a scoped re-review with this field wrong in the tree, so the defect survives adversarial reading — it is invisible to everyone who does not try to run the command. The root cause is structural: these six were minted straight into `progress.md` from review findings and back-filled into the epic file on 2026-08-04, so their Verify fields were **reconstructed rather than observed**. Any future back-fill should run every Verify field it writes |
+| 2026-08-04 | T2.83 | 1 | **Verify field corrected: it named two test files that do not exist.** The minted text said `tests/test_reembed.py tests/test_embedder_registry.py`; neither is in the repo, and `pytest` exits with `ERROR: file or directory not found` rather than passing vacuously. The real coverage is `tests/test_vectors_route.py tests/test_api/test_graph.py`, because the guard lives in `PostgresVectorRepository.resolve_read_fingerprint` and is observable only through the two read surfaces that call it | Found by the T2.83 implementer, which ran the command as written, reported the error verbatim and did not route around it silently. Worth logging rather than just fixing: T2.83 was one of the six entries minted straight into `progress.md` from a review finding and back-filled into the epic file on 2026-08-04, so its Verify field was reconstructed rather than derived from a real run — the other five back-filled entries carry the same risk and nobody has checked them. A Verify command naming a missing file is the worst shape available: it *errors* rather than fails, so a careless run reads as 'no tests failed' |
+| 2026-08-04 | T2.39, T2.39a | 2 | **T2.39 split; `T2.39a` minted to own the topics read surface and the pin-suggestion door, and T2.39 gains `Depends: T2.39a`.** T2.20 shipped `topic_browsing.py` and `pin_suggestions.py` — nine public callables, both modules well tested — and a repo-wide scan finds **zero** consumers of either outside `backend/tests`: no REST route, no MCP tool, no job. Two of T2.39's four Done-when clauses therefore had nothing to satisfy them. "accept/dismiss round-trips" has no door to round-trip against, and "pin suggestions show what changed between runs" needs `diff_topics`' output reachable from a browser. `topics-tab.tsx` is meanwhile a demo-data surface, so nothing fails loudly and a lane would have satisfied both clauses against `useDemoStore` | Caught by the controller at brief-writing time, reading the tree rather than the task text — the same way T2.36a was caught the day before, and the **sixth** instance of this epic's recurring shape: a constraint recorded in prose and absent from the graph. Split rather than widened for the reason the T2.36 split gives: widening in place pushes a Size-M task to L without the reviewed step-level plan runbook §3 requires. Both halves are Sonnet here — the door is plumbing over semantics T2.20 already fixed and tested, not a new honesty contract — which is the one way this differs from the T2.36/T2.36a split. The identity rule is what makes the door non-trivial: T2.20's Done-when pins pin suggestions to the stable dominant-entity label rather than the churning community id, and a route that keys accept/dismiss on the id would silently reintroduce exactly the churn that clause excludes, with a green suite either way |
+| 2026-08-03 | T2.78 | 1 | **T2.78's Verify command names `backend/tests/test_code_query.py`, which has never existed in this repository** — `git log --all` for that path returns nothing, and no file of that name exists under any tests directory at the branch point. Ran the actual coverage of `CodeQueryService.search_code` instead — `tests/test_code_search_order.py` plus `tests/test_mcp.py`, `tests/test_mcp_surface_parity.py`, `tests/test_door_parity.py`, `tests/test_pushdown_reason_code.py` (54 passed) — and `tests/test_hybrid_search.py` (10 passed, including the new deletion-proving test) as named | Task-local: a wrong file path in the Verify field, carried into the lane brief unchanged. Recorded rather than silently substituted so the next reader does not re-derive which file the command actually meant, and does not read a clean run of a nonexistent file as having happened |
+| 2026-08-03 | T2.76, T2.21 | 2 | **T2.76 minted: `gate.sh` sends the harness to the shared `darkmem_bench` in every round.** It exports `TEST_DATABASE_URL` and not `BENCH_DATABASE_URL`, so the benchlib arm ignores a lane's bench assignment entirely; T2.21 hit it as a `DeadlockDetectedError` on `DROP SCHEMA` while a sibling lane held the database, and green on a re-run with the variable pinned. **The repo's own merge gate is therefore the one command that violates the per-lane isolation runbook §8 mandates** | Recorded rather than patched inline because the fix has a precedent worth matching: T2.54 hit the sibling defect *this same day* — a harness test whose result depended on an ambient environment variable — and resolved it by deriving the database name from a hash of the checkout path so the environment stops deciding. Two components solving the same problem two different ways is how the two RRF constants already drifted. Note also the failure's shape: it is indistinguishable from a code regression, which is precisely what the runbook warns about, and it cost the controller a red gate earlier in this round that was attributed to a killed run — a diagnosis that may have been right for the wrong reason |
+| 2026-08-03 | T2.75, T2.71, T2.36a | 2 | **T2.75 minted: the badge guards are backend-only, and the frontend carries claim strings none of them can see.** Doc 13 §5.3 forbids a screen paraphrasing the claim; two demo-fixture files and a component comment do. T2.36a's certainty-word guard and T2.71's second-producer scan both walk `backend/app` exclusively. Two independent sightings the same day: T2.71's implementer flagged the fixtures and took no action, and T2.71's **reviewer reported a fixture at `knowledge-curated.ts:52` in a claim form the producer can never emit** — a demonstrated divergence rather than a stylistic worry | Logged because the interesting property is the **shape of the blind spot**, not the three files. Two separate guards were built this round to stop a second producer of the honesty sentence, both were mutation-proved, and both stop at the language boundary — so the surface doc 13 actually cares about, the one a human reads, is the one surface neither covers. The UI is still on demo data, so nothing user-visible is wrong today; that is the argument for fixing it now rather than after it is wired |
+| 2026-08-03 | T2.75 | 1 | **Corrected the sighting's citation and its status.** The row above previously cited `chat-curated.ts:52` and recorded the sighting as partial, on the belief that T2.71's review terminated on a model-tier limit before writing its verdict. Both were wrong: the review is **complete** (both verdicts, five findings, a bottom line), and its citation is `knowledge-curated.ts:52`. `chat-curated.ts:52` is a **correct** L0 badge line | The error was not cosmetic and is worth keeping as a lesson about provenance. The recorded pointer aimed at a **healthy** row, and the Done-when box instructed the next agent to re-verify that line and record a false positive if it found none — which is exactly what it would have found. A mis-cited finding is more dangerous than a lost one, because the re-check manufactures false confidence that the surface is clean. The prior row's own closing sentence — that an unverified sighting is worth more than a lost one "provided nobody later reads it as settled" — was right about the risk and pointed at the wrong line |
+| 2026-08-03 | T2.74, T2.73 | 2 | **T2.74 minted: three surfaces declare a `content_preview` crossing that no driver checks** — `reembed_backfill_queue`, `pipeline_failure_triage`, `capture_buffer_triage`. Pre-existing, not introduced by this round: each is *asserted* to truncate and none is *proven* to. T2.73's `_preview_boundary()` is the mechanism, but the reviewer measured that it does **not** drop in unmodified — `capture_buffer_triage` declares a 500-character preview while its long fixtures end near 280, so naive reuse false-positives | Recorded as its own task because the interesting part is the shape: T2.73 was minted for a guard that was *absent*, and reviewing it surfaced three more that are *present and vacuous*. A vacuous guard is the worse of the two — the absent one raised loudly and got fixed within the day, while these three have been reporting clean for as long as they have existed. The per-surface preview length being an input rather than a constant is exactly why 'extend the helper to the other three' is not a paste, and is stated here so the next reader does not size it as one |
+| 2026-08-03 | T2.73, T2.23, T2.36a | 2 | **T2.73 minted: the isolation probe is offline on the epic branch, and the controller's merge process is what let it through.** T2.23 and T2.36a each added `ContentSurface` rows without the matching `isolation_probe.DRIVERS` entry. The table's completeness check raises, so **all eight** `test_isolation_probe.py` tests error or fail — the cross-project leak guard is not weakened but entirely absent. Both lanes were green on Verify and on the repo floor, both passed Fable review, and neither touched benchlib so neither ran it | The mechanism is documented in `CLAUDE.md` verbatim — `testpaths = ["tests"]` means `pytest -q` does not collect `scripts/benchlib/tests`, so "the harness can break while the floor stays green", and the stated remedy is to run `./scripts/gate.sh`. **The controller merged three lanes on a green floor rather than a green gate**, which is the process defect; the reviewers were scoped to their lanes and the briefs asked for the floor. Recorded as an amendment rather than fixed silently because the same gap will recur on every future round that adds a surface: the fix is the merge procedure, not just these four drivers. Note what the guard protects — the probe is the only thing proving memory content does not cross a project boundary past its declared preview, and an offline guard is indistinguishable from a passing one in any report that only quotes the floor |
+| 2026-08-03 | T2.23, T2.13 | 1 | **T2.23 falsified the 2026-08-02 row's "unreachable from today's producer" premise for the empty-string tombstone key, and the code now guards it.** That row recorded `_invert_subsume` writing a tombstone under an empty-string key if a payload lacked `pair.newer`, and closed it as unreachable and one-line-fixable. T2.23's `prune` bulk action journals `pair.newer=None` by design — deprecation retires a memory without a successor — so undoing a prune reached exactly that path. `dream_undo._invert_subsume` now writes `counterpart or "_none"`; the AST atomicity guard re-runs unchanged and `test_dream_undo.py` is 88 passed. The re-review verified the sentinel on disk after a prune→undo round trip and found it **doubly inert**: the by-id reader never asks for it, and a null-counterpart `content_sha` cannot match. **The older row's text is left standing** — an amendment log is a record of what was believed when, not a document to retro-edit | Worth logging as its own row rather than as a footnote to T2.23, because the interesting content is the *shape*: a defect closed as unreachable became reachable two days later when a new caller supplied the one input the old producer never did. "Unreachable from today's producer" is a claim with an expiry date nobody sets. The disclosure also failed the first time — T2.23's own report did not mention it, and the reviewer found it; the fix round is where it was stated plainly. Five deferred minors from the re-review are recorded in the round's review file: the now-dead caller-supplied `cycle_id` parameter (whose only reachable use would relabel a mixed cycle wholesale, since `MIN` ignores NULLs), the untested `created_at` floor clause, the unpinned `_none` sentinel, the read-path guard's perimeter excluding hybrid search, and a `subject_name`/`subject_id` docstring slip whose surrounding argument the reviewer verified holds anyway |
+| 2026-08-03 | T2.36a, T2.71, T2.72 | 2 | **Two tasks minted from T2.36a's review, and one question escalated to the owner.** (1) `T2.71` — `layer_composition.py` contains zero badge references, so every L2 fact retrieval serves today goes out unlabelled; **tagged G-C-blocking**, because T2.40's evidence run makes claims about served output and a gate cleared over unlabelled facts would overstate its coverage. (2) `T2.72` — doc 12 §2 assigns `fact_get` a REST twin at exactly the path T2.36a built, and §3 puts the agent-facing vault reads on MCP's `fact_get`/`knowledge_search`; a scan of every epic file for those names returns **nothing**, so no task owned them. No live invariant-17 breach today, since parity is not violated by a surface absent on both doors' agent side — but T2.36a's REST-only filing rests on a trust-posture argument the reviewer judged weak, every two-door surface in this repo already pairing unauthenticated MCP with authenticated REST. (3) **Escalated, not decided here:** T2.36a emits a fourth `claim` form, `", verification not yet recomputed"`, for a fact with no journalled `verified` event. Doc 12 fixes three forms and is silent on this one, which is the form a cold-start vault renders on *every* fact. The reviewer accepts it and recommends doc 12 gain it; amending the design corpus is the owner's call | Neither task is scope creep: T2.71 is a live honesty gap on the served path, and T2.72 is a contract doc 12 already wrote that nothing was scheduled to satisfy — the sixth instance in this epic of a constraint recorded in the corpus and absent from the graph. T2.71 exists as a separate task only because of round mechanics: T2.36a's brief forbade `layer_composition.py` since T2.55 held it the same round, so the one map over composed rows fell between two lanes. Worth noting the reviewer reached its verdict by extracting doc 12's worked example **by script** and diffing it against a live `build_claim` call, and by inventing two mutation drills the implementer had not run (a quiet `as_of` fallback to `created_at`, and a default `corroborated` list filter) — both of which the suite caught, which is the evidence that the exact-string discipline works |
+| 2026-08-03 | T2.55, T2.70 | 2 | **T2.70 minted: grouping and the result cap drop a row nobody counts, and the controller rules the resolution is to scope nesting to the facts that survive the cut.** T2.55's reviewer built a driver on the real `search()` path and measured it: at `limit=4`, ungrouped serves `[F1, M1, F2, M2]` and grouped serves `[F1, M1, F2, F3]` — the nested memory leaves with its fact, uncounted, and an unrelated row is promoted. Ratified by ruling rather than patched in-lane: the behaviour is the correct reading of T2.55's R2, and it is **not** an invariant-14 violation as doc 07 §8 operationalises that invariant, whose `excluded` vocabulary has never counted the limit tail. But it sits outside doc 07 §5's own warrant — §5 says "a memory covered by a **returned** cited fact" — and the cut makes the fact un-returned *after* nesting decided it was returned | The gap is the plan's, not the implementer's: R2 and R4 were both written by the controller and they meet in a corner neither anticipated, since R4 already says a memory whose fact is absent stays top-level and the cut is a second way for a fact to be absent. Routed to its own task because the fix needs a **window fixpoint** decision — un-nesting returns a memory to the ordering, which changes what survives the cut, which changes what nests — and a reviewer patching that inside a scoped fix round would be choosing a fixpoint silently. Recorded before G-C at the reviewer's recommendation, since G-C's claims are about served output. Note the shape: the review found this by *running the real path*, not by reading the diff, which is the second time this round that an executable check beat an inspection |
+| 2026-08-03 | T2.36, T2.36a | 2 | **T2.36 split; `T2.36a` minted to own doc 12's `badge` object and the facts read surface, and T2.36 gains `Depends: T2.36a`.** T2.36's first Done-when is "badges verbatim from the backend", and there is no backend producer: `rg "no known contradiction" backend/app` returns nothing, and the canonical sentence exists only inside `verification_ladder.py`'s `compute_confidence` docstring. There is also no read surface over `knowledge_triples` for a browsing tab to call — `review_queue.py`'s docstring states it in as many words ("no REST GET beyond this module's own queue list"). The Facts tab is meanwhile a demo-data surface (`useDemoFacts`), so nothing would have failed loudly; a lane could have satisfied "verbatim" by formatting the string client-side, which is precisely what invariant 14 forbids and what the Done-when's word *verbatim* exists to prevent | Caught by the controller at brief-writing time, reading the tree rather than the task text. This is the **fifth** instance of this epic's recurring shape — a constraint recorded in prose and absent from the code and the graph — and the second in which the missing producer would have been silently substituted by the consumer. Split rather than widened because the two halves are different tiers and different failure modes: the badge is an honesty contract whose string doc 12 fixes byte-exactly and whose `origin_count` must be `COUNT(DISTINCT origin_key)` (Opus, silent-correctness-drift), while the tab is a UI surface on an existing component (Sonnet). Widening T2.36 in place would have run it at the lower tier and pushed a Size-M task to L without the reviewed step-level plan runbook §3 requires. Note the 2026-07-29 amendment already treats the badge as T2.36's — "three later tasks read this number: T2.06's journal evidence, **T2.36's badge**, and the review queue's consequence ranking" — so the ownership is not new, only its unbuilt state |
 | 2026-08-03 | T2.43, T2.13, T2.58, T2.55 | 1 | **Five deferred minors recorded from the two final re-reviews, each found after the named findings were closed — the point at which a suite is most trusted and least probed.** From T2.43: (a) the F3 guard pinning that channel weights are order-inert **has a blind spot** — inserting `-weighted_score` as a tie-break *after* band and tier passes all 46 tests, because no fixture holds an equal-tier cross-channel pair, so the guard catches the realistic mutation and not the subtle one; (b) the empty-text rerank warning is reachable but unasserted, and a row whose declared text field is empty is still scored against an empty document, warned only; (c) the article title-fallback in `RERANK_TEXT_FIELDS` is untested, its producer being T3.02's; (d) **plan §2.3 still names `with_trace` in the seam signature** though the parameter was deliberately not built, so **T2.58's brief must state the flagless seam** or §2.3 be amended by the corpus owner; (e) the `limit` test pins the length of the cut, not that the cut keeps the head of the total order. From T2.13: (f) in the combined `action` + `event_ids` form the stray-id check computes membership *after* the action filter, so an in-cycle id of another kind is refused with a message saying it is not in the cycle — the refusal is right, only the message misleads; (g) the new `unsupported_action` reason's **ladder position is untested** — hoisting the comparator check above all three older reasons survives all 88 tests, so the tuple order is pinned but no test proves an older reason wins at runtime | All seven were found by re-reviewers running mutations after the Important findings were closed. None is a defect in shipped behaviour: (a), (e) and (g) are guards narrower than they read, (b) and (c) are unasserted paths, (d) is a plan/code divergence with a named owner, and (f) is a message. Recorded rather than looped because each is either another task's input (d), a fixture gap whose producer does not exist yet (c), or a one-line hardening better bundled with the next change to its file — and because the alternative is that T2.55, T2.56 and T2.58 each pay to rediscover them. **Note (a) and (g) are the same shape**: a guard proven against the mutation its author imagined, blind to one they did not |
 | 2026-08-02 | T2.69, T2.43 | 2 | **T2.69 minted: `RerankerService` returns `0.0` for a per-document failure, and never declares what field carries a document's text.** The first makes *asked and failed* indistinguishable from *rated worst* inside a window — T2.43's all-zero guard catches only a total outage. The second is worse and was found by T2.43's review: the service resolves text through a fall-through chain (`content` → `payload.content` → `chunk_content`), and a fact's text lives under `fact`, so **every L2 fact reaching the reranker was scored against an empty string** — silently, because the model returns a real number for an empty document, so neither the all-zero guard nor the terminal band could see it | Found from two directions in one round: the per-document conflation was reported by T2.43's implementer as O9 and confirmed unowned, and the empty-document defect by its reviewer, which probed the real service and captured `document_text=''` for the fact row beside the memory row's real content. T2.43 fixed its own construction site with a **closed dispatch that raises** on an undeclared layer rather than another fall-through — deliberately, since a fall-through is what produced the bug — but the producer still has no contract, so the next consumer inherits the same trap. Minted rather than folded into T2.43 because both halves live in `reranker.py`, which is not that task's file and which no task owned; scoped S because each half is small, and paired because they share one cause — a service that takes documents on trust and returns numbers that cannot be told apart |
 | 2026-08-02 | T2.23, T2.13, T2.12 | 2 | **`T2.23` gains `Depends: T2.13, T2.12`.** Its third Done-when clause reads "bulk actions are undoable **through the T2.13 primitive**" — naming a task that has not started — while its `Depends` field read `T2.22` alone. So the task graph permitted claiming a task whose acceptance criterion is unsatisfiable in code, exactly as it did for T2.41 before T2.54 and for T2.11 before T2.26's qualification record. `T2.12` is added in the same edit because T2.12 is what actually produces the queue's rows: it writes `memory_relations.properties.dream.near_duplicate.hygiene_state`, and T2.12's re-review established that the marker survives re-derivation through **two** mechanisms — the pass-keyed `jsonb_set` and a Python-side carry-forward — **neither of which may be dropped alone**. A T2.23 built without reading that would re-open triaged items nightly | Caught by the controller at claim time, running runbook §1.5's entry check rather than trusting the `Depends` field, which is what that check exists for. This is the **fourth** instance of the same shape in this epic: a constraint recorded in a task's prose and absent from the edge the scheduler actually consults. Worth noting the pattern rather than only the instance — prose is where these constraints get written because that is where they are discovered, and nothing yet forces the edge to follow. Also note T2.23 is tagged *terminal-by-design*, which is now wrong in one direction: T2.12's re-review routed it a within-cycle ordering item (a duplicate pair outranking a subsume pair writes an edge against a memory retired later in the same cycle), so T2.23 has inherited work rather than being a pure leaf |
@@ -1449,3 +2475,15 @@ that guesses. Both are honest-output defects (invariant 14) rather than ranking 
 | 2026-08-02 | T2.13, T2.38 | 1 | **`POST /cycles/{id}/undo` silently shrank an explicitly named set; the already-undone prefilter is now scoped to the body-less whole-cycle form.** The door filtered `not view.undone` **before** intersecting with `body.event_ids`, so a request naming an action another curator had already undone returned **200 carrying only the rest** — no 409, no mention of the dropped action — defeating the primitive, which would have refused on `already_undone`, the first reason in the tested precedence. The failure is a two-curator race and it broke the 409-then-refetch flow T2.38 is built around. A named set (`event_ids` **or** `action`) now goes through whole and the primitive decides; the body-less form keeps the prefilter, where *undo what is left of this cycle* is what the request means. An `event_ids` entry outside the cycle is now 404'd rather than dropped, the same defect in its other shape | Found by the Fable task review, reproduced with a driver. The primitive was never wrong — this was the door only, which is why T2.23 (which consumes `undo()` directly) was judged unaffected. Guarded by four tests and drilled: restoring the prefilter turns the 409 back into a 404/200 |
 | 2026-08-02 | T2.13 | 1 | **Two accepted review minors.** (1) An action kind with no registered inverse now reports a distinct `unsupported_action` rather than `state_changed`: the state may be pristine, and saying it changed sends an operator looking for a write that never happened. This is the reason a fourth reversible action kind (§8 O4) will meet before its inverse exists. (2) `undo()` issues `SET LOCAL lock_timeout`, which is scoped to the **transaction**, not the call, so an in-process caller that keeps working on the same session inherits a 5s timeout it did not choose — now stated in the three-outcome contract on the module docstring. Harmless for the HTTP door, whose transaction ends with the request | Both from the Fable task review. Two further minors were recorded rather than fixed: the pointer-guard docstring was softened to claim only the two syntactic properties its AST actually enforces (it cannot see that the bound status is a *journalled* value, which lives in the behavioural tests), and `_invert_subsume` would write a tombstone under an empty-string key if a payload lacked `pair.newer` — unreachable from today's producer, closable in one line |
 | 2026-08-02 | T2.13, T1.29e | 1 | **Audit of every `_account_body(..., set())` arm in `isolation_probe.py`: one latent instance found and fixed, none remaining.** Nine arms enumerate nothing. Four are 202 capture acks carrying only a pre-minted id; three (the entity listing, its neighbours, and the content-free sweep) are *correctly* strict, because their surfaces declare no content crossing at all, so any sentinel is a real leak rather than an unmodelled field; one is the duplicates probe's absent-partition case, where every row is already forced-V1 and `set()` is maximal rather than lax. The ninth, `GET /api/v1/analytics/pipeline-logs`, is the closest analogue of the `/events/timeline` arm this task fixed and is **safe by payload shape rather than by accident**: the door returns `events.payload` verbatim for `extracted` rows, and `pipeline.py` writes `{**status, "outcome": ...}` — a closed status dict with no memory-derived text. Widening that payload would make the arm fire loud, which is the correct behaviour | Chartered by the controller as the cheapest moment to look, after this task found the `/events/timeline` arm enumerating nothing and passing only because no fixture reached it. Recorded so the next person to widen an `extracted` payload knows the arm is load-bearing |
+| 2026-08-03 | T2.46 | 1 | **The grace bookkeeping is two columns, not one: `demotion_pending_since` plus `demotion_pending_cycles`.** Doc 08 §4.3/§9 names one "`demotion_pending_since` marker" and fixes the window in *consecutive recompute cycles*; a timestamp cannot count cycles, so a single marker can only implement grace = 1 and would make `verification_demote_grace_cycles` a knob that silently does nothing above its default | Two single-column alternatives were considered and rejected. Deriving the count from the `verified` journal makes a correctness threshold depend on journal retention (an unresolved Tier-3 policy, CLAUDE.md) and on a payload shape `benchlib.promotion_metrics` validates as a closed vocabulary. Expressing the grace in wall time would make the ladder read the recompute job's cadence, which `verification_ladder`'s module docstring explicitly refuses ("never schedules itself"). The marker keeps its documented role untouched: `demotion_pending_since IS NOT NULL` is still the label and still the review-queue predicate `derive_review_state` registers, and the counter is never either |
+| 2026-08-03 | T2.46 | 1 | **Lane file list extended by four files the task cannot be built without** (row corrected 2026-08-03 in the fix round: it said three and omitted `app/services/review_queue.py`, which the brief listed as read-only and which the task in fact writes — docstring, `_FACT_COLUMN_NAMES`, `_fact_reason`, `list_open_facts` — under R3's instruction to let the queue name the reason). The brief's may-touch list named `verification_ladder.py`, `app/models/`, the baseline and `tests/`, but the ladder's only write path into the verification axis is `KnowledgeTripleRepository.set_verification_status`, and its only read projection is that module's `_COLUMNS` | The marker must ride the status write (one statement, one lock) for the reason `review_state` does — the T2.62 argument transfers verbatim, since a status moved without the marker leaves a demoted fact still wearing the overlay that promised it had not been demoted — and it must ride `_COLUMNS` or "served labelled" is unprovable against the read path. `app/schemas/review_queue.py` gained one optional response field so the label reaches the queue's wire surface. `app/services/verification_recompute.py` gained the one-recompute-per-fact-per-tick skip (next row) |
+| 2026-08-03 | T2.46, T2.09 | 2 | **The recompute job could burn two grace cycles in one tick, collapsing the shipped one-cycle window entirely.** When the slow arm is due it slices over facts the fast arm recomputed moments earlier in the same tick — always, on any vault smaller than the slice size — and both looks run in one session and one transaction, so the second cannot observe anything new. `_reconcile_from_fact_sources` now skips `DrainOutcome.recomputed_ids` and reports `facts_skipped_fresh` | Before hysteresis this was only wasteful (a lock, a read and a no-op write per duplicated fact); with the window counted in recompute cycles it is a correctness bug whose symptom is the hysteresis silently not applying on precisely the ticks the slow arm is due. Surfaced rather than absorbed silently because it changes a T2.09 module's tick semantics: the backstop is unweakened (a fact the fast arm just recomputed is by definition not one it missed, and the cursor still advances over it, so the rotation period is unchanged), but the two arms are now ordered rather than independent |
+| 2026-08-03 | T2.46, T2.40 | 2 | **Demotion thrash is now absorbed, and absorbing it leaves no journal trace — so the metric doc 17 §5.1 names has no input.** Entering, holding and cancelling the `under-sourced` state move no rung, so none of them journals a `verified` row; the eventual demotion journals normally. Doc 17 §5.1 tunes the hysteresis parameters "against measured demotion-thrash counts from the same journal", and the flaps the window absorbs are exactly the ones that no longer reach it | Journaling the holds was deliberately not done here. `benchlib.promotion_metrics` raises `UnrecognisedPayloadError` on a `hold` that is neither contradiction- nor supersession-blocked, and its own message states the remediation: the promotion-rate denominator "must be re-derived to account for it before this number can be trusted". That is a gate-metric decision T2.40 owns, not a side effect of landing the column. The row-level record survives — `demotion_pending_since` carries the instant the window opened, on the row and on every read path — so the input exists; what does not exist is a journal stream a G-C query can count flaps from |
+| 2026-08-03 | T2.46 | 1 | **"Every fact read path carries the marker" was an overclaim, and two serving surfaces did not carry it.** `verification_ladder`'s module docstring (and commit `4027910`'s body) asserted a universal that `_COLUMNS` cannot deliver, because a surface that hand-enumerates its own projection has to name the marker itself. `facts_read._base_item` — doc 13 §5.1's Facts tab, exactly where §5.3's caution overlay renders — and `facts_channel`'s row payload both omitted it. Fixed by carrying the field on both (plus `FactListItem`, which gates what survives serialisation) and by replacing the universal with the finite list of surfaces that carry it, stated as a list a new surface has to be added to | Found by the Fable task review (F1, Important). Nothing was ever *withheld* — no path filters on the marker — so the honesty clause held, but the live surface could only reach `under-sourced` by elimination (`corroborated` + `review_state='open'`), which is the derivation T2.62 rejected for the queue and which stops being sound as soon as a second opener exists. Proved renderable through `GET /api/v1/knowledge/facts` (list and detail) and mutation-drilled on both halves. Two docstring claims were corrected in the same pass: the applier's "served on every read path", and the cancellation test's narration of a self-healing mutant it does not actually catch |
+| 2026-08-03 | T2.72 | 2 | **No task owns `POST /api/v1/knowledge/search`, doc 12 §2's REST twin for `knowledge_search`.** T2.72 shipped the tool and it lands MCP-single-door in `docs/two-door-parity.md` for the agent-shaped-projection reason the six code tools carry — the rows are REST-reachable in their own key spaces, the cross-layer ranked question is not. That reading is honest but it is the *seventh* MCP-ahead-of-REST row, and unlike the code family doc 12 does not claim this twin already exists: §2 lists the route among the ones the reshape adds, and a scan of every epic file returns no owner for it. T2.56 owns the sectioned and fused output *shapes*, not the route. The serialiser both doors need is deliberately outside the tool, in `app/schemas/knowledge.py`, so a route spends the same function rather than reshaping `LayerCompositionService.search`'s result a second time | Recorded rather than built: adding a REST route is outside the lane's file list, and inventing a permanent single-door justification would contradict doc 12 §3's own tool table, which assigns the twin. Filing it as a schedule is what `test_every_single_door_surface_states_a_real_reason` rejects, so the row states the shape-versus-capability distinction and records the discrepancy the way the code rows record theirs. The next scheduling pass should mint the route as its own task |
+| 2026-08-04 | T2.34 | 3 | **ESCALATED — doc 08 §9 and §3.1 disagree on which column a fact's stated expiry writes, and the literal §9 reading silently breaks retrieval and a uniqueness invariant. Not implemented; no code written.** §9 says a dated fact "gets its belief window **pre-closed at that date**", which reads as setting `invalid_at` to the future expiry at population. §3.1's state machine says `invalid_at` is set when **a newer belief arrives** (`open --> window_closed`), and routes a stated expiry down the *other* edge entirely (`open --> expired`, i.e. `expired_at`). They cannot both hold. The literal §9 reading is not merely ambiguous, it is destructive: `0001_baseline.py` makes **four** indexes partial on `expired_at IS NULL AND invalid_at IS NULL` — the unique `ux_knowledge_triples_open` plus doc 07 §2's three fact-channel retrieval indexes — so a future `invalid_at` written today (a) drops the fact out of the retrieval channel's scope **immediately**, years before its stated expiry, and (b) frees the unique slot, letting a second currently-open belief on the same `triple_key` exist beside it. Both failures are silent. Note `as_of` already implements the correct half-open window (`valid_at <= t < invalid_at`), so the *model* is right and it is the shipped "currently open" predicate that assumes `invalid_at` is only ever set in the past. **Three ways out, none of which a lane may pick unilaterally:** (1) make "currently open" time-aware — impossible as a partial index, since `now()` is not IMMUTABLE, so it means reworking the unique constraint and all three retrieval indexes and relaxing invariant 8's temporal analogue, i.e. a baseline schema change that serialises through one owner; (2) add a `stated_expiry` column and have the recompute arm write `expired_at` when it passes — a schema amendment §9 does not list (§9's only named amendment is `demotion_pending_since`); (3) no column at all — the recompute arm re-derives the stated expiry deterministically from the fact text each cycle and sets `expired_at` once past, which is consistent with both sections and with §9's "no LLM, no separate job", at the cost of re-parsing | Found while bootstrapping T2.34, before any code. Runbook §5 Tier 3: the corpus doc wins until a human decides, and this would relax an invariant either way. **The memory side is unaffected and remains buildable** — the owner has already settled it as a deterministic post-extraction parse with no prompt change, which keeps the F1 bench cache valid (the cache key is `sha256(content + system_prompt)`, so a schema edit there would red the gate until a live DeepSeek re-warm and force a re-recorded F1 baseline). Recommend splitting T2.34 on that seam once the fact side is ruled |
+| 2026-08-04 | T2.34, T2.85 | 2 | **T2.34 split on the escalation seam; the fact half is minted as T2.85 and the memory half proceeds.** The two were never one mechanism — doc 08 names them in separate sections and the task's own text said "two different mechanisms that must not be conflated" — and only the fact half is blocked by the Tier-3 row above, so holding both would have parked a buildable activation behind a doc ruling it does not depend on. T2.34 keeps the memory side, drops to `Size: S`, and loses its `T2.01` dependency (that was the fact half's); T2.85 keeps `T2.01`, carries the contradiction and the three candidate rulings in full, and is **Fable/xhigh** because its first deliverable is a ruling between two design-doc sections rather than code. The `Verify` files split with them (`test_self_expiring_memories.py` / `test_self_expiring_facts.py`) | Runbook §5 Tier 2: a new task the plan missed, so both the epic file and `progress.md` are edited and the split is called out in the completion report |
+| 2026-08-04 | T2.34 | 1 | **The stated-expiry detector is narrowed to self-referential retention instructions, because T1.37's sweep deletes.** Doc 08 §2.3's illustrative phrasing is "valid until end of Q3", which reads naturally as any date near an expiry word. But `expired_memory_cleanup` **deletes** the row — embeddings cascade, provenance is withdrawn — so a false positive is silent, irreversible data loss, and "the licence is valid until 2026-12-31" is a claim *about a licence*, not an instruction to forget the note on that date. A deterministic parser cannot tell those apart from phrasing alone, so it matches only a memory addressing **its own** lifetime, and additionally refuses any derived instant not strictly in the future — otherwise capture could arm a sweep that deletes the memory it just wrote | The narrowing costs recall on unusual phrasings, which is the correct direction: a missed expiry leaves a memory alive one cycle longer and is recoverable, while a false positive is not recoverable at all. Recorded so the next reader meets the reasoning rather than widening the patterns to match the doc's illustrative example |
+| 2026-08-04 | T2.79, T2.80, T2.81, T2.82, T2.83, T2.84 | 2 | **Six tasks had tracker rows but no epic entry anywhere — minted here.** Every one was minted straight into `progress.md` from a review finding, which is the fast path and also the one that leaves a task undefined: `gen_progress.py` derives ids and titles *from* the epic files, so a row with no entry behind it is a row the generator refuses to regenerate. Three of the six (T2.80, T2.83, T2.84) were `todo` and therefore **unexecutable** — an agent claiming one had the Note cell and nothing else: no `Depends`, no `Doc`, no Done-when, no `Verify`. The entries reconstruct scope from the review findings that minted them, so the two already-`done` rows (T2.79, T2.81) document what shipped and the four open ones can now be picked up | Found at the start of the 2026-08-04 session by running `gen_progress.py`, which had been failing on all six for days and could not be run at all. The lesson is the generator's, not the minter's: minting into the tracker is the natural move after a review, so the epic entry has to be part of that same edit or it never happens |
+| 2026-08-04 | T2.65 | 2 | **Decided: the memory-bridged proxy stands as an interim position, not a fact-keyed counter, and the measurement behind that decision found the gap is already live traffic, not a hypothetical one.** `layer_composition.LayerCompositionService.search` — wired unconditionally behind the `knowledge_search` MCP tool, no feature flag gating it — calls `FactsChannel.search_with_trace` for every invocation, and that channel serves `knowledge_triples` rows directly with no call anywhere analogous to `access_stats.spawn_record_access`. So "the facts channel has no consumer wired" does not hold as a defence; a fact served only through `knowledge_search` scores zero retrieval-frequency heat today, on live traffic, not on a hypothetical future one. The proxy is kept anyway because the honest fix — a fact-keyed analogue of `memory_access_stats`, keyed `fact_id REFERENCES knowledge_triples(id)` — needs a new table, and no lane holds baseline-schema clearance this round. `review_ranking.py`'s docstring and `FACT_KEYED_COUNTER_STATUS` now state this as an interim bound rather than the stale "reads exclusively through source memories" premise, and `facts_channel.py` carries a matching `RETRIEVAL_HEAT_STATUS` breadcrumb; `tests/test_queue_ranking.py::test_facts_channel_traffic_never_feeds_retrieval_frequency` pins the gap against fifty real `FactsChannel` searches and was watched to fail when the recording was mutated in | Recorded as a Tier-2 amendment because it is a newly discovered dependency the plan did not carry: the next schema window should mint a task for the `fact_access_stats` table (same shape and coalescing-buffer idiom as `access_stats.py`, fed from `FactsChannel`'s serving path) rather than assume this proxy is permanent. Nothing here builds that table — R6 of the T2.65 brief forbids a schema change this round, and this decision converts the task into exactly the "decision plus a ready-to-execute plan" outcome the brief names as legitimate |
+| 2026-08-05 | T2.16 | 1 | **Fix round 1 on the Fable task review: the derivation strip no longer retires edges whose signal no arm measured, and the cap-engaged bound finally has a test that can fail.** (I1) With the proximity arm skipped under an unresolvable fingerprint, `kept` cannot hold a proximity pair, so the strip retired every proximity edge in the seed window without re-measuring a single cosine — silently, because the strip journals nothing, and irreversibly, because the original write's undo CAS-refuses once its block is gone. On a deployment whose embedding purpose carries no `dimensions` the canary never recovers and the whole proximity graph is swept one seed slice at a time. `strip_stale_edges` now takes `unmeasured_signals` and spares any triple whose stored block rests on one, counted as `spared_unmeasured`. (I2) The truncation test named for the bound exercised the *unbounded* branch, so deleting the bound clause outright left all 24 tests green; `test_the_bound_spares_edges_past_the_decided_prefix` drives the engaged bound instead. Three minors fixed with them: the proximity fan-out becomes its own config row `derivation_neighbours` (it used to read the judge's `pair_candidates`, so tuning the judge silently moved which proximity edges could exist), the digest's `action_detail` renders `signal` (this pass has no verdict, so it was the only answer to "why is this edge here"), and §7a gains E10 recording that the cursor advances under a dead canary. Two declined with reasons in the fix report: row locks in `write_derived_edge` (Phase D commits once, so mirroring `apply_associate`'s `FOR UPDATE` would hold locks on up to 2x`derivation_batch` `memories` rows for the whole pass and block the capture path — a worse hazard than the self-healing one it closes) and the expired-memory filter asymmetry (`MemoryFilter` has no expiry predicate at all and is the shared retrieval scope class, so closing it here is a repo-wide retrieval change out of this lane) | Tier 1: both Important findings are task-local and neither reopens the design — the review's own disposition. Recorded rather than absorbed because I1 changes what D9 means (retire only what this run re-evaluated now binds the arms, not just the pairs) and F-M1 adds a row to D6's config list |
