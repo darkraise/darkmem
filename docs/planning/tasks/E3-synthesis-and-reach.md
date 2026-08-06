@@ -59,14 +59,16 @@ is never synthesised because it happened to rank high.
 
 #### T3.02 — `article_synthesis` productive runs
 
-`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14, T2.95` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
 
-**Deliberately NOT unblocked by the 2026-08-06 implementation-first pass.** The
-title says *productive* runs: this is where a synthesised article first reaches
-a reader, so it is exactly what "below the bar, no L3 article ships as grounded"
-forbids. T3.01's scorer is freed; this is not. The inert registration already
-landed in T2.14, so there is nothing to build here that is not the productive
-path itself.
+**Buildable now; the grounded label waits (amended 2026-08-06 with the M1
+split).** The title says *productive* runs, and this is where a synthesised
+article first reaches a reader — so "below the bar, no L3 article ships as
+grounded" binds absolutely. It binds on the **word grounded**, not on synthesis.
+With `T2.95` in place articles may be synthesised, stored and read; what no path
+may do is label one grounded without G-D's qualification record. Doc 09 §4.3
+already withholds never-grounded articles, so the shipped behaviour before M1 is
+the one the doc already describes.
 
 **What.** Activates the job registered inert in T2.14. Synthesises **only** from
 non-disputed corroborated/confirmed facts — a disputed fact never reaches a draft.
@@ -80,13 +82,15 @@ non-disputed corroborated/confirmed facts — a disputed fact never reaches a dr
 
 #### T3.03 — Claim-level entailment pass + coverage routing
 
-`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26, T2.95` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
 
-**Deliberately NOT unblocked by the 2026-08-06 implementation-first pass.** The
-claim-level entailment pass *is* the groundedness consumer — it spends the
-verification judge whose qualification G-D certifies. Building it against an
-unqualified judge is safe (the judge refuses, scan-enforced) but its routing
-decisions have no meaning until the judge qualifies, so the gate stays.
+**Buildable now (amended 2026-08-06 with the M1 split).** This pass spends the
+verification judge whose qualification G-D certifies, and building it against an
+unqualified judge is already safe by construction: `judge()` refuses
+unconditionally without a record, scan-enforced. So the pass, its coverage
+routing and its tests can all land; what they cannot do is produce a served
+grounded label, which is `T2.95`'s gate. Its routing decisions become
+*meaningful* when the judge qualifies — that is an activation, not a build.
 
 **What.** Every sentence must cite a fact, verified by the `verification` judge. **Coverage
 below threshold routes to review — it never ships as corroborated.** This is where the
@@ -383,23 +387,6 @@ injected text; `checkpoint_saved` / `resumed` events visible; Simple/Advanced ho
 
 ## Lane G — gate
 
-#### T3.22 — G-E evidence run
-
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
-
-**What.** L3 shipped **and** the per-article coverage distribution holding above the
-runtime threshold in production — a distribution, not a single flattering article.
-
-**Done when:** the coverage distribution is reported (not just a mean); the threshold
-was stated before measuring; F7 shipped; verdict in `gate-ledger.md`; `CLAUDE.md`
-refreshed to the shipped L3 shape. The production read is the one sanctioned exception
-to "nothing automated touches `darkmem`" — it is **read-only** and may never write.
-**Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
-
----
-
-## Lane H — added by review
-
 #### T3.23 — Articles retrieval channel + `article_embeddings` writer
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
@@ -417,20 +404,6 @@ has no L3 tier to read, and G-E's "L3 shipped" is unverifiable.
 - [ ] A stale article is returned labelled stale, not withheld
 
 **Verify.** `cd backend && python -m pytest tests/test_articles_channel.py -q`
-
-#### T3.24 — Coverage-distribution runner
-
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
-
-**What.** The plumbing behind T3.22's verify. Reports the **distribution** of per-article
-claim-support coverage, not a mean — one well-covered article is not evidence.
-
-**Done when:**
-- [ ] Distribution reported with percentiles, not a summary statistic
-- [ ] The production read is **read-only** (the sanctioned exception in runbook §8)
-- [ ] Runs against a named snapshot so the number is reproducible
-
-**Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
 
 #### T3.25 — SDK scaffold and generator
 

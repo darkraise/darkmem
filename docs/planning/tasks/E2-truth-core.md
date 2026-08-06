@@ -453,14 +453,18 @@ landed in T0.13 — **this is their first writer.**
 
 #### T2.28 — Lift to facts born `corroborated`
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.27, T2.10` · `Doc: 10 §6, 08 §4.1` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.27, T2.10, T2.95` · `Doc: 10 §6, 08 §4.1` · `Tag: target-new` · `Gate: G-C`
 
-**Deliberately NOT unblocked by the 2026-08-06 implementation-first pass.**
-This is the task G-C exists for: it mints facts **born `corroborated`**, which
-is an assertion at the ladder's second rung, and shipping it over an unproven
-ladder is the precise harm the gate names. The mechanism may be built inert
-behind its flag — that is free — but **no promotion path may go live before
-G-C**, and the Done-when keeps that clause.
+**Buildable now; the label waits, not the code (amended 2026-08-06 with the M1
+split).** This is the task G-C exists for — it mints facts **born
+`corroborated`**, an assertion at the ladder's second rung, and serving that
+badge over an unproven ladder is the precise harm the gate names. But the harm
+is in the *badge*, not in the derivation. With `T2.95`'s serving gate in place
+the lift can be built, tested and merged in full: without G-C's
+promotion-metrics record every one of these rows leaves the read surface
+labelled `candidate`, scan-enforced, and minting the record later lights them up
+with no code change. **G-C keeps its teeth on the label and loses them on the
+build.**
 
 **What.** Consolidation lifts a corroborated Layer-1 assertion to a fact born
 `corroborated` — the parse *is* the verification — with `origin_key = repo_id`. **One
@@ -804,6 +808,51 @@ it.
 
 **Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py tests/test_community_reports.py -q`
 
+#### T2.95 — Claim-serving gates: an evidence record gates the label, not the code
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.26` · `Doc: 08 §4.3, 09 §4.3, 17 §11` · `Tag: target-new` · `Gate: standing`
+
+**What.** Minted 2026-08-06 with the M1 split. It is the mechanism that lets
+implementation run ahead of evidence without ever putting an unbacked claim in
+front of a user, and it generalises a pattern already shipped rather than
+inventing one: `VerificationJudge.judge()` has refused unconditionally without a
+qualification record since T2.26, scan-enforced, and that refusal never delayed
+T2.26's own construction.
+
+Two more truth claims need the same treatment:
+
+- **`corroborated` on a fact.** Without G-C's promotion-metrics record, the
+  ladder still computes — the internal bookkeeping is unaffected — but the
+  **badge is not served**: rows leave the read surface labelled `candidate`.
+- **`grounded` on an article.** Without G-D's judge-qualification record,
+  articles synthesise and store, but no serving path may label one grounded.
+  Doc 09 §4.3 already withholds never-grounded articles, so this narrows an
+  existing rule rather than adding a surface.
+
+**The refusal must be structural, not procedural.** A flag someone can flip, or
+a convention someone must remember, is exactly what the M1 split cannot rest
+on: the whole safety argument for building years ahead of measurement is that
+no code path *can* serve an unbacked label. Both refusals get the AST scan
+treatment `verification_judge` already has — a test that fails the build when a
+serving module reaches the label without the record.
+
+**Done when:**
+- [ ] A fact with no promotion-metrics record serves as `candidate` on every
+      door, and a test drives both doors rather than asserting the shape
+- [ ] An article with no qualification record cannot be served labelled
+      grounded, by any path, proven by a scan and not by inspection
+- [ ] Absence of a record is distinguishable in the trace from a genuine
+      `candidate` — a suppressed label and an earned one must not read alike,
+      or the suppression becomes a silent downgrade
+- [ ] Minting a record lights the labels with **no code change**, proven by
+      writing a fixture record and re-reading both surfaces
+- [ ] The scans fail the build on a new serving path that bypasses either gate
+
+*This is the load-bearing task of the M1 split: if it is wrong, implementation
+running ahead of evidence stops being safe.*
+
+**Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py -q`
+
 #### T2.94 — The dual-level channel: nothing reads `relation_embeddings`
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.49` · `Doc: 07 §4, §11, 04 §5.3` · `Tag: target-new` · `Gate: G-C`
@@ -1127,41 +1176,6 @@ between runs; accept/dismiss round-trips; Simple/Advanced honoured.
 
 ## Lane K — gates
 
-#### T2.40 — G-C evidence run
-
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
-
-**What.** Promotion rate `(promoted / eligible)` sliced by source-kind diversity and by
-which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
-under the stated bar; every ladder transition journaled.
-
-**Done when:** all three measured from the `events` journal by SQL; bars stated as
-`config` before measuring, not after; **facts have actually flowed through the ladder**
-(a 0/0 promotion rate is under-powered, not a pass); verdict in `gate-ledger.md`;
-`CLAUDE.md` refreshed to the shipped L2 shape; a miss leaves G-C open and the deriver
-lane (T2.27–T2.28) closed.
-**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
-
-#### T2.41 — G-D evidence run
-
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`
-
-**What.** The judge's precision/recall on the labelled gold clears its bar — the single
-gate that opens Phase 3.
-
-**Done when:** precision and recall recorded per class; the bar was stated before the run;
-verdict in `gate-ledger.md`; `CLAUDE.md` refreshed for the judge and its config rows;
-E3 stays closed on a miss.
-**Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py --gate`
-
----
-
-## Lane L — mechanisms the first draft missed (added by review)
-
-Findings A-4, A-5, A-13, B-F7, B-F9. Each traces to a design-doc mechanism with no owning
-task; without them E2 ships facts nobody can retrieve and G-C measures machinery that was
-never built.
-
 #### T2.42 — Facts retrieval channel, born with pushdown
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.03, T1.29c` · `Doc: 07 §2` · `Tag: target-new` · `Gate: G-C`
@@ -1380,42 +1394,6 @@ bar T2.33 must exceed before the `triple_embeddings` writer ships at all.
 **Done when:** registered under the umbrella with cron, floor, and per-job lock; a manual
 trigger while held returns 409.
 **Verify.** `cd backend && python -m pytest tests/test_dream_jobs.py -q`
-
-#### T2.54 — Label the entailment gold set
-
-`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.25, T2.10` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
-
-**What.** Split from T2.25 so the compute half cannot stall on the human half. T2.25
-harvests candidate claim/fact pairs; this task is the labelling itself, which is bounded by
-your afternoon rather than by a machine.
-
-**Composition is gate-binding, not just volume** (added 2026-07-31 from T2.25's review).
-Doc 17 §11's stance is explicit: the qualification gold is *"seeded from real synthesis
-drafts and real block answers once Layer 2 is live — **synthetic-only entailment gold is
-rejected as unrepresentative**; ≥ 200 pairs per task variant before the corresponding gate
-can open"*. T2.25's 41 pairs are 100% hand-authored, correctly and honestly so — neither
-named source existed at its branch point — and its two reserved provenances
-(`synthesis-draft`, `l2-fact`) sit test-pinned at zero waiting for this task. **So G-D
-cannot open on T2.25's composition however far it is grown.** Volume is necessary and not
-sufficient.
-
-**This is not the deadlock T2.25's text feared, for the claim/fact variant.** §11 says
-"once **Layer 2** is live", and Layer 2 is verified facts — `knowledge_triples`, whose
-producer is `fact_lift` (**T2.10**, this epic), not the Phase-3 article synthesiser. So
-real premises for the `claim-fact` variant become available inside E2, which is why T2.10
-is now a dependency. The `synthesis-draft` provenance and the block-answer variant stay
-behind T3.02 and doc 16's horizon respectively; they gate those variants' own bars, not
-this one.
-
-**Done when:**
-- [ ] Grounded and ungrounded sentences both represented, including hard near-misses
-- [ ] Labelling rationale recorded, so a later contributor labels consistently
-- [ ] Inter-label consistency spot-checked on a resample
-- [ ] Gold committed as JSON on disk (invariant 1)
-- [ ] The `claim-fact` variant reaches ≥ 200 pairs **and** carries real `l2-fact` premises
-      rather than hand-authored ones — the §11 composition rule, not volume alone
-
-**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
 #### T2.55 — Grouping under the fact, and the no-triple-count rule
 

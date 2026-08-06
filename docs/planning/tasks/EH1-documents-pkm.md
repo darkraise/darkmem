@@ -166,22 +166,6 @@ as grounded** (invariant 14).
 
 **Verify.** `cd backend && python -m pytest tests/test_faithfulness_gate.py -q`
 
-#### TH1.10 — Faithfulness ship gate (G-F evidence)
-
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
-
-**What.** Double duty: TH1.09 is the per-answer runtime gate; this is the **ship** gate.
-The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
-
-**Done when:** measured on block-span entailment gold; the bar was set in TH1.01, before
-the build; verdict in `gate-ledger.md`; `CLAUDE.md` refreshed for the documents/blocks
-tables and the new jobs H1 ships; a miss leaves H1 unshipped.
-**Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
-
----
-
-## Lane D — proposition lifting (the vault bridge)
-
 #### TH1.11 — On-demand Tier-C lift
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: TH1.04` · `Doc: 16 §5` · `Tag: horizon` · `Gate: G-F`
@@ -258,19 +242,6 @@ with the lane, labelled horizon.
 plainly; summaries render visibly unbadged; the surface is labelled as horizon in the IA.
 **Verify.** `cd frontend && npm test -- documents && npm run test:e2e -- documents`
 
-
-#### TH1.17 — Faithfulness-gate runner
-
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
-
-**What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
-designs the bar and reads the number (runbook §2).
-
-**Done when:** scores span-support coverage against block-span entailment gold; reports
-per-slice; emits its cost twin.
-**Verify.** `cd backend && python scripts/benchlib/run_faithfulness_gate.py`
-
----
 
 ## Amendment log
 
