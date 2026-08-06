@@ -698,3 +698,70 @@ def test_retrieval_reads_the_artefact_and_never_the_job():
     )
     for forbidden in ("refresh_snapshots", "build_snapshot", "next_projects"):
         assert forbidden not in source
+
+
+# ── the seed must stay a neighbourhood, not a census (T2.50's finding) ──
+#
+# The independent judge measured the shipped arm returning a **byte-identical
+# ranked list for every query, including one matching nothing in the corpus**.
+# Cause: the seed was every semantic hit, the semantic list is read to
+# FUSION_FETCH_DEPTH (300), and any project smaller than that therefore put
+# every entity in the reset set — and PPR with a full uniform reset set is
+# global PageRank. Not an eval artifact: it was production behaviour.
+
+
+def test_the_seed_is_bounded_to_the_top_hits():
+    from app.services.ppr_snapshot import PPR_SEED_TOP_K
+
+    class _Snap:
+        memory_ids = tuple((f"m{i}",) for i in range(50))
+
+    seeds = ppr.seed_vertices_for_memories(
+        _Snap(), [f"m{i}" for i in range(50)], top_k=PPR_SEED_TOP_K,
+    )
+    assert len(seeds) == PPR_SEED_TOP_K
+    assert seeds == list(range(PPR_SEED_TOP_K))
+
+
+async def test_two_different_queries_seed_two_different_neighbourhoods(session):
+    """The property whose absence was the defect. If these two ranked lists
+    are identical, the arm is answering global popularity and the query is
+    decoration."""
+    snapshot, _, mems = await _line_graph(session)
+    cache = ppr.SnapshotCache()
+    cache.put(snapshot)
+
+    from_a = await ppr.ppr_ranked_list(
+        PROJECT, [str(mems["a"])], limit=10, cache=cache, seed_top_k=1,
+    )
+    from_c = await ppr.ppr_ranked_list(
+        PROJECT, [str(mems["c"])], limit=10, cache=cache, seed_top_k=1,
+    )
+
+    assert from_a != from_c, (
+        "the arm returned the same ranking for two different seeds — it is "
+        "computing global PageRank, not a personalized one"
+    )
+
+
+async def test_an_unbounded_seed_over_a_small_corpus_degenerates(session):
+    """The regression itself, stated as a measurement rather than a warning:
+    seeding from every memory makes the ranking query-independent."""
+    snapshot, _, mems = await _line_graph(session)
+    cache = ppr.SnapshotCache()
+    cache.put(snapshot)
+
+    everything = [str(m) for m in mems.values()]
+    unbounded_a = await ppr.ppr_ranked_list(
+        PROJECT, everything, limit=10, cache=cache, seed_top_k=0,
+    )
+    unbounded_b = await ppr.ppr_ranked_list(
+        PROJECT, list(reversed(everything)), limit=10, cache=cache, seed_top_k=0,
+    )
+    # Same reset set either way — which is exactly the degeneration.
+    assert unbounded_a == unbounded_b
+
+    bounded = await ppr.ppr_ranked_list(
+        PROJECT, everything, limit=10, cache=cache, seed_top_k=1,
+    )
+    assert bounded != unbounded_a

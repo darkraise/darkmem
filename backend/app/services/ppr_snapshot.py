@@ -60,6 +60,25 @@ logger = logging.getLogger(__name__)
 PPR_SNAPSHOT_JOB_KEY = "ppr_snapshot"
 
 DEFAULT_DAMPING = 0.85
+
+# How many of the semantic arm's top hits seed the personalization vector.
+#
+# **Unbounded, this arm silently stops being personalized.** Doc 07 §11 says
+# "the entities of the **top-K** memory-semantic hits", and the K is
+# load-bearing rather than decorative: the semantic list is read to
+# `FUSION_FETCH_DEPTH` (300), so for any project smaller than that the list is
+# the *whole corpus*, every entity lands in the reset set, and PPR with a full
+# uniform reset set is exactly global PageRank. The symptom is a ranked list
+# byte-identical for every query — including one matching nothing — which is
+# the "global-popularity list fused into every query" this module's own
+# `personalized_pagerank` docstring refuses from the empty-seed end. T2.50's
+# independent judgment measured that degeneration in shipped code before this
+# bound existed.
+#
+# 10 is a page's worth of hits: enough that a query's neighbourhood is more
+# than its single best match, small enough that the reset set stays a
+# neighbourhood rather than a census.
+PPR_SEED_TOP_K = 10
 DEFAULT_SYNONYMY_THRESHOLD = 0.8
 DEFAULT_SYNONYMY_TOP_K = 5
 
@@ -462,7 +481,7 @@ def _pair(
 
 
 def seed_vertices_for_memories(
-    snapshot: Snapshot, memory_ids: Iterable[str]
+    snapshot: Snapshot, memory_ids: Iterable[str], *, top_k: int | None = None
 ) -> list[int]:
     """The vertices to seed PPR from, given the memories a channel already found.
 
@@ -472,7 +491,10 @@ def seed_vertices_for_memories(
     on the query path, while this reads a mapping the snapshot already holds,
     so an active arm adds no query-time database read at all (invariant 15).
     """
-    wanted = {str(m) for m in memory_ids}
+    ordered = [str(m) for m in memory_ids]
+    if top_k is not None and top_k > 0:
+        ordered = ordered[:top_k]
+    wanted = set(ordered)
     if not wanted:
         return []
     return [
@@ -532,6 +554,7 @@ async def ppr_ranked_list(
     limit: int,
     damping: float = DEFAULT_DAMPING,
     cache: SnapshotCache | None = None,
+    seed_top_k: int = PPR_SEED_TOP_K,
 ) -> list[dict]:
     """The PPR arm's ranked list, or an empty one.
 
@@ -544,7 +567,9 @@ async def ppr_ranked_list(
     snapshot = (cache or _CACHE).get(project)
     if snapshot is None:
         return []
-    seeds = seed_vertices_for_memories(snapshot, seed_memory_ids)
+    seeds = seed_vertices_for_memories(
+        snapshot, seed_memory_ids, top_k=seed_top_k,
+    )
     if not seeds:
         return []
 
