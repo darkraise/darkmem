@@ -455,6 +455,17 @@ landed in T0.13 — **this is their first writer.**
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.27, T2.10, T2.95` · `Doc: 10 §6, 08 §4.1` · `Tag: target-new` · `Gate: G-C`
 
+**HELD 2026-08-06, later the same day: the gate this task's licence rests on
+does not hold yet.** The paragraph below is the standing position and it is
+still right in principle — but T2.95's Fable review measured the serving gate
+leaking on two doors (chat and the review queue read the ungated column), found
+suppression invisible on the wire, and demonstrated that the scans do not fail
+the build on a *new* bypassing path. T2.28 adds exactly such a path — a second
+labelled surface — so building it now would stack a claim on a producer that is
+not yet the single producer. **Start this task when T2.95's six repair items
+land and are re-verified**, not before; nothing else about the reasoning below
+changes.
+
 **Buildable now; the label waits, not the code (amended 2026-08-06 with the M1
 split).** This is the task G-C exists for — it mints facts **born
 `corroborated`**, an assertion at the ladder's second rung, and serving that
@@ -850,6 +861,32 @@ serving module reaches the label without the record.
 
 *This is the load-bearing task of the M1 split: if it is wrong, implementation
 running ahead of evidence stops being safe.*
+
+**REOPENED 2026-08-06 — it was wrong, and the sentence above is why that
+matters.** The Fable review (`reviews/2026-08-06-t2.95-gate-attack.md`) refutes
+clauses 1, 3 and 5 with measured drills, and records clause 2 as discharged by
+argument rather than by the scan it demands. The design is vindicated —
+enforcing at the producer is right — but two consumers dodge the producer,
+three schemas drop `label_suppressed`, and the scans enumerate known modules
+instead of quantifying over serving paths. The repair is bounded and scoped in
+the review's closing section:
+
+1. `chat.py` reads `row.labels["verification_status"]`; `review_queue`'s fact
+   arm routes through `row_labels`.
+2. Decide `tier`'s semantics under suppression — recompute off the served
+   status, or document it as ranking-only and strip it from the wire. Serving
+   tier 3 beside `labels: candidate` leaks the withheld rung numerically.
+3. `label_suppressed` reaches the wire on `FactListItem`,
+   `FactDetailResponse` and `ComposedRowLabels`, with a wire-level test.
+4. Both scans walk `app/` structurally — routes and MCP included — and assert
+   the absence of any `verification_status` emission not originating in
+   `row_labels`. Quantifying is the only shape that fails on the *next* new
+   path; enumerating is a snapshot.
+5. At least one REST and one MCP door driven with the gate closed and **no
+   fixture**.
+6. The gate keys on `id_kind`, so the article surface cannot light on the fact
+   record. `served_status` does not key on it today, which means G-C's record
+   would light `grounded` when T3.02 lands.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py -q`
 
@@ -2426,6 +2463,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-06 | T2.95, T2.28 | 2 | **T2.95 reopened: the Fable review refutes the gate, and T2.28 gains a hard hold on the repair.** Three of five Done-when clauses do not hold, measured rather than argued — `chat.py:401` and `review_queue.py:336` serve the raw promoted status off the ungated column instead of the gated `row.labels`, `label_suppressed` is dropped by `FactListItem` / `FactDetailResponse` / `ComposedRowLabels` so a suppressed label and an earned `candidate` are byte-identical on the wire, and both scans enumerate known modules rather than quantifying over serving paths (a new bypassing module and a new bypassing route each left the suite green). Two further defects were fixed inside the review: `gate_eligible` opened on any truthy JSON value, so the strings `"INTERIM"` and `"false"` both opened it — the module's own named failure mode — and a corrupt record raised `UnicodeDecodeError` through the fact read path rather than failing closed. Status `done` → `wip`; six scoped repair items in `reviews/2026-08-06-t2.95-gate-attack.md` | **This is the task the M1 split rests on, so its being wrong is the one defect in this epic that invalidates a scheduling decision rather than a feature.** The split's safety sentence is *no serving path can reach a label whose evidence does not exist*; it is false today on two doors, so every task merged under the split's licence inherits the doubt until the repair lands. Tier 2 rather than Tier 3 deliberately: **nothing here indicts the design.** Enforcement at the producer is right, and the review says so explicitly — the defects are that two consumers dodge the producer, one attribute duplicates what the labels already carry, three schemas drop a field, and two scans enumerate instead of quantify. No design doc is wrong, no gate bar moves, no honesty tag is reclassified. What it does change beyond one task is the **T2.28 edge**, which is why it is logged rather than merely fixed. Also worth recording as a process finding: T2.95 reached `done` with its mandatory Fable review still owed, and the review is what caught this — the runbook §6 rule earned its cost in a single sitting |
 | 2026-08-06 | T2.11, T2.27, T2.28 | 2 | **A gate blocks what it certifies, not what merely precedes it.** Implementation lands **inert**; only the productive or serving path waits for evidence. This is the repo's own standing pattern, applied more consistently — T0.13's inert partitions, T2.08's `PlaceholderJobRunner` family, T2.32/T2.50's build-versus-judge split, and invariant 23's scaffolding-not-substrate. Dependency edges re-pointed off the evidence runs accordingly | Controller decision: the plan had implementation work queued behind **evaluation artifacts it does not depend on** — an SDK scaffold and a browser-extension scaffold waited on a groundedness evidence run, and a document parser waited on a faithfulness metric. That is phase coupling, not artifact coupling, and it stalls build work on datasets that do not exist yet. Evaluation is deferred to an independent measurement phase after the implementation is complete, where it can be run against the whole system rather than against fixtures. **What was deliberately left gated**: T2.28 (mints facts born `corroborated` — the exact harm G-C names), T3.02 (productive article runs — where a grounded claim first reaches a reader), T3.03 (the groundedness consumer). Freeing those would put unverified assertions in front of users, which is a different thing from unblocking a scaffold. |
 | 2026-08-06 | T2.31, T2.35 | 2 | **Both activation tasks close as `done` with their arms at 0.0, measurement deferred to whole-system.** Controller decision: neither arm can be honestly measured on the bench today — T2.35 has no context-bearing corpus (so `match_context` returns neutral at every magnitude) and T2.31 has no realistic heat prior (any bench-invented distribution is gold-correlated or gold-blind). Rather than author a corpus and a workload to measure a synthetic world, both are recorded as results under the standing gate and re-measured on the complete system after the implementation phase | The standing gate already provides for exactly this — *"an arm that cannot show its number stays at weight 0, and that outcome is recorded here as a result, not a failure"* — and the T2.50 judge set the precedent hours earlier by closing community injection the same way, naming it *"the same honest floor T2.35's context axis was left at"*. The alternative on the table was ~1.5 days of corpus and workload authoring whose only output would be a number about fixtures. **Neither task had code left to write**: T1.34 shipped the context mechanism and T2.31's signal was wired 2026-08-06, so the corpus was the deliverable rather than its test — which is what made deferral the cheaper *and* more honest option rather than a shortcut. Standing gates apply per activation, so nothing is foreclosed: when real telemetry and real contexts exist, activation is a run plus a ledger row. **What is accepted deliberately**: the `applies_when` boost and the heat/recency priors ship off and stay off until then |
 | 2026-08-06 | T2.94, T2.50, T2.49 | 2 | **`T2.94` minted: the dual-level channel has no owner.** Doc 07 §4 names three graph signals. T2.32 shipped PPR's producer; T2.49 shipped the `relation_embeddings` vectors and their refresh job. Nothing reads those vectors, so `w_dual` and `dual_level_enabled` are flags over a channel that does not exist — and **T2.50 depends on it without saying so**, because its Done-when measures `dual_level` as if a reader were already there. T2.94 owns the reader and carries doc 07 §11's global-arm scoping rule, the one channel with no project column of its own | Found by executing the two tasks rather than by reading the graph: T2.49's Done-when says "first writer to one of the two inert partition templates", which is true and complete for a *writer*, and the epic contained no row whose Done-when was the corresponding reader. The same shape as the four `Depends`-vs-prose gaps already logged here — a constraint recorded in one task's prose and absent from the edge the scheduler consults. Now enforced in code as well as prose: `arm_ablation.resolve_ablatable` returns `w_dual` blocked, so an ablation refuses with the reason instead of reporting the exact-zero delta that reads like a measured "no win" |
