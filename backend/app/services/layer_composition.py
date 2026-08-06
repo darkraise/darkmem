@@ -104,6 +104,7 @@ from app.services.rank_fusion import (
     DeclaredContext,
     RowContext,
     match_context,
+    ppr_list_weight,
     rank_fusion_factor,
     row_context_from_applies_when,
 )
@@ -1351,6 +1352,7 @@ class LayerCompositionService:
             memory_trace = await HybridSearchService(self.llm, self.session).search_with_trace(
                 query, limit=limit,
                 filters=MemoryFilter(project=project, statuses=statuses),
+                ppr_weight=ppr_list_weight(weights),
             )
         except Exception:
             logger.error("Layer composition: the memory channel failed outright")

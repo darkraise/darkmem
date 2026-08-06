@@ -52,6 +52,7 @@ class HybridSearchService:
         limit: int = 20,
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
+        ppr_weight: float = 0.0,
     ) -> list[dict]:
         """The fused rows, ``limit`` of them.
 
@@ -61,13 +62,25 @@ class HybridSearchService:
         therefore fuse the same candidate set and the first is a prefix of the
         second — deriving the arm depth from the caller's own limit is what let
         chat and the search surface rank one corpus two ways.
+
+        ``ppr_weight`` defaults to zero, and at zero this method does exactly
+        what it did before the graph arm existed: no snapshot read, no PPR run,
+        and a fusion over the same two lists. Callers derive it from
+        :func:`rank_fusion.ppr_list_weight` rather than reading the flag pair
+        themselves.
         """
         fetch_n = fusion_fetch_depth(limit)
         vector, fingerprint = await self.llm.embed(query)
         semantic_results, keyword_results, _, _ = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
         )
-        fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        ppr_results = await self._ppr_search(
+            semantic_results, filters, ppr_weight, fetch_n,
+        )
+        fused = self._rrf_fuse(
+            semantic_results, keyword_results, semantic_weight, limit,
+            ppr_results, ppr_weight,
+        )
         self._record_access(fused)
         return fused
 
@@ -77,6 +90,7 @@ class HybridSearchService:
         limit: int = 20,
         semantic_weight: float = 0.7,
         filters: MemoryFilter | None = None,
+        ppr_weight: float = 0.0,
     ) -> ChannelTrace:
         """Same channels and fusion as :meth:`search`, plus what each channel
         contributed per row — the input the retrieval trace envelope needs
@@ -88,16 +102,26 @@ class HybridSearchService:
         semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
             query, vector, fingerprint, fetch_n, filters,
         )
+        ppr_results = await self._ppr_search(
+            semantic_results, filters, ppr_weight, fetch_n,
+        )
 
         channel_scores: dict[str, dict[str, float]] = {}
-        for source_name, rows in (("semantic", semantic_results), ("keyword", keyword_results)):
+        for source_name, rows in (
+            ("semantic", semantic_results),
+            ("keyword", keyword_results),
+            ("ppr", ppr_results),
+        ):
             for row in rows:
                 key = normalize_row_id(row)
                 if key is None:
                     continue
                 channel_scores.setdefault(key, {})[source_name] = float(row["score"])
 
-        fused = self._rrf_fuse(semantic_results, keyword_results, semantic_weight, limit)
+        fused = self._rrf_fuse(
+            semantic_results, keyword_results, semantic_weight, limit,
+            ppr_results, ppr_weight,
+        )
         self._record_access(fused)
         return ChannelTrace(
             results=fused,
@@ -252,18 +276,63 @@ class HybridSearchService:
         keyword_results: list[dict],
         semantic_weight: float,
         limit: int,
+        ppr_results: list[dict] | None = None,
+        ppr_weight: float = 0.0,
     ) -> list[dict]:
-        """The memory channel's two ranked lists, joined under their weights.
+        """The memory channel's ranked lists, joined under their weights.
 
         ``semantic_weight`` splits the memory channel's weight between its
         two sides; it is a list weight inside the fusion and never a
         per-row multiplier. Additional ranked producers join by appending a
         ``RankedList`` here, each with its own config-row weight.
+
+        The PPR list is appended only when it carries weight. Appending it at
+        weight zero would be arithmetically inert but not *observably* so: a
+        row found by PPR alone would enter the fused set with an
+        ``rrf_score`` of exactly 0.0 and displace nothing, yet still appear in
+        a result page that would not have contained it. Inert has to mean the
+        same rows, not merely the same scores.
         """
-        return rrf_fuse(
-            [
-                RankedList("semantic", semantic_results, semantic_weight),
-                RankedList("keyword", keyword_results, 1.0 - semantic_weight),
-            ],
-            limit,
-        )
+        lists = [
+            RankedList("semantic", semantic_results, semantic_weight),
+            RankedList("keyword", keyword_results, 1.0 - semantic_weight),
+        ]
+        if ppr_results and ppr_weight:
+            lists.append(RankedList("ppr", ppr_results, ppr_weight))
+        return rrf_fuse(lists, limit)
+
+    async def _ppr_search(
+        self,
+        semantic_results: list[dict],
+        filters: MemoryFilter | None,
+        ppr_weight: float,
+        fetch_n: int,
+    ) -> list[dict]:
+        """The graph arm's ranked list, seeded from the semantic hits.
+
+        Returns immediately at weight zero — the import itself is deferred, so
+        an install that never turns the arm on never pays for it. The seeds are
+        the semantic side's own rows, so this adds no database read: the
+        snapshot's entity→memory mapping is already in process (invariant 15),
+        and the whole arm is skipped for a wide (project-less) request because
+        the snapshot is project-scoped and there is no defined mass across two
+        of them.
+        """
+        if not ppr_weight:
+            return []
+        project = getattr(filters, "project", None)
+        if not project:
+            return []
+        from app.services.ppr_snapshot import ppr_ranked_list
+
+        try:
+            return await ppr_ranked_list(
+                project,
+                [str(row["memory_id"]) for row in semantic_results],
+                limit=fetch_n,
+            )
+        except Exception as e:
+            # An augmentation that fails must cost the fused order nothing;
+            # the two base arms already carry their own outage semantics.
+            logger.error("PPR arm failed: %s", e)
+            return []

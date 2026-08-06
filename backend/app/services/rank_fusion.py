@@ -39,7 +39,14 @@ FUSION_FETCH_DEPTH = 300
 
 IMPORTANCE_DEFAULT = 0.5
 
-LIST_WEIGHT_KEYS: frozenset[str] = frozenset({"semantic_weight"})
+# Every weight that moves a ranked list's RRF contribution, and nothing that
+# moves a per-row score. `w_ppr` and `w_dual` join here rather than as
+# `RankArm`s deliberately: both name a *producer of candidates*, so their
+# weight belongs to the fusion. Filed as arms they would have multiplied rows
+# the graph never proposed.
+LIST_WEIGHT_KEYS: frozenset[str] = frozenset(
+    {"semantic_weight", "w_ppr", "w_dual"}
+)
 
 
 # ── class 1: ranked lists ────────────────────────────────────────────
@@ -148,6 +155,20 @@ def _weight(weights: Mapping[str, object], flag: str) -> float:
         return float(weights.get(flag, 0.0) or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def ppr_list_weight(weights: Mapping[str, object]) -> float:
+    """The PPR list's fusion weight — zero unless its flag is on.
+
+    The flag-to-weight collapse lives here and is called by every door rather
+    than spelled at each of them. Two doors reading `ppr_enabled` and `w_ppr`
+    separately is exactly the shape that let chat and the search surface rank
+    one corpus two ways before T2.58: identical while both were off, divergent
+    the moment one was flipped, with no error on either side.
+    """
+    if not weights.get("ppr_enabled"):
+        return 0.0
+    return _weight(weights, "w_ppr")
 
 
 def arm_factor(arm: RankArm, signals: Mapping[str, float], weights: Mapping[str, object]) -> float:

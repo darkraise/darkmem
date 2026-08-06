@@ -22,7 +22,12 @@ from app.services.fact_provenance import (
     reconcile_memory_sources,
     withdraw_memory_sources,
 )
-from app.services.rank_fusion import IMPORTANCE_DEFAULT, any_arm_active, rank_fusion_factor
+from app.services.rank_fusion import (
+    IMPORTANCE_DEFAULT,
+    any_arm_active,
+    ppr_list_weight,
+    rank_fusion_factor,
+)
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
 from app.services import prompt
@@ -1272,6 +1277,7 @@ class ProcessingPipeline:
                     hybrid = HybridSearchService(self.llm, session)
                     results = await hybrid.search(
                         query, limit=limit, semantic_weight=semantic_weight, filters=filters,
+                        ppr_weight=ppr_list_weight(flags),
                     )
 
                     reranked = bool(flags["reranker_enabled"])

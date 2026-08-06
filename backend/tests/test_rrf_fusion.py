@@ -476,7 +476,10 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
         def __init__(self, llm, sess):
             pass
 
-        async def search(self, query, limit=20, semantic_weight=0.7, filters=None):
+        async def search(
+                self, query, limit=20, semantic_weight=0.7, filters=None,
+                ppr_weight=0.0,
+            ):
             return [dict(r) for r in fused]
 
     class _StubReranker:
