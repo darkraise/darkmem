@@ -881,6 +881,41 @@ async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(sessio
     assert (await _row(session, fact_id))[0] == "corroborated"
 
 
+async def test_the_restore_never_reopens_a_closed_belief_window(session):
+    """Fix round 2's finding N-2: the open-belief half of the rung's WHERE.
+
+    ``OPEN_BELIEF_PREDICATE`` is what stops the restore writing a machine label
+    back over a closed belief — the state a human's rejection leaves (that door
+    reaches the same predicate through ``expired_at``) and the state doc 10 §6's
+    withdrawal leaves through ``invalid_at``. Deleting the predicate left the
+    whole lift and honesty suite green, because only the status half of that
+    WHERE had a test that could fail. This drives the ``invalid_at`` half, on a
+    row that stays live as retained history.
+    """
+    fact_id = await _born_fact(session, name="Rejected-Repo")
+
+    await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    recovered = await recompute_fact(session, fact_id, open_contradiction=False)
+    await session.flush()
+    assert recovered.target_status == "candidate", (
+        "the fact has to reach candidate or the window is not what refuses it"
+    )
+
+    closed = await KnowledgeTripleRepository(session).close_window(
+        fact_id, datetime.now(timezone.utc)
+    )
+    await session.flush()
+    assert closed is not None and closed["invalid_at"] is not None
+    assert closed["expired_at"] is None, "the row stays live; only the window shut"
+
+    assert await restore_born_rung(session, fact_id=fact_id) is False
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+    assert (await run_code_lift(session)).rungs_restored == 0
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+
 async def test_the_memory_lift_still_births_candidates(session):
     """The exception must not have leaked into the path it sits beside."""
     memory_id = await _seed_memory(session, content="darkmem uses pgvector", origin_key="s9")
