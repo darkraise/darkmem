@@ -17,11 +17,11 @@ EPICS = [
     ("M1", "Measurement phase", "tasks/M1-measurement.md", "consumes implementation; gates nothing"),
 ]
 
-HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2}[a-z]?) — (.+)$")
+HEAD = re.compile(r"^#### (T(?:H1|[0-4])\.\d{2,3}[a-z]?) — (.+)$")
 META = re.compile(r"`Model: ([^`]+?)`")
 SIZE = re.compile(r"`Size: ([SML])`")
 EFFORT = re.compile(r"`Effort: ([a-z]+)`")
-ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2}[a-z]?) \|")
+ROW = re.compile(r"^\| (T(?:H1|[0-4])\.\d{2,3}[a-z]?) \|")
 CELL = re.compile(r"(?<!\\)\|")
 
 STATUSES = ["todo", "wip", "blocked", "review", "done", "dropped"]
@@ -171,6 +171,25 @@ r.append("| **Total** | **%d** | %s | |" % (
 out.append("\n".join(r) + "\n")
 out.append("---\n")
 out.extend(tables)
+
+# `progress.md` is canonical on `master` only (runbook §6), and every branch
+# carries a frozen copy whose banner says so. Regenerating outside `master`
+# rewrites that copy from the branch's own task files and **deletes the banner
+# in the process** — so the file stops announcing that it is stale at exactly
+# the moment it becomes misleading, and the state columns reset to whatever the
+# branch's stale copy carried. That banner exists because three agents in one
+# session reported the stale copy as a bug; losing it undoes their fix. The
+# refusal is here rather than in a caller because the caller is usually an
+# agent following a runbook line, not a person who read this file.
+_branch = os.popen("git rev-parse --abbrev-ref HEAD 2>/dev/null").read().strip()
+if _branch and _branch != "master" and not os.environ.get("GEN_PROGRESS_ALLOW_BRANCH"):
+    sys.exit(
+        "refusing to regenerate progress.md on branch %r: it is canonical on master "
+        "only, and rewriting a branch copy silently drops the stale-copy banner. "
+        "Run this in the master worktree (.worktrees/master-claim), or set "
+        "GEN_PROGRESS_ALLOW_BRANCH=1 if you genuinely mean to rewrite this copy."
+        % _branch
+    )
 
 io.open("progress.md", "w", encoding="utf-8", newline="\n").write("\n".join(out))
 print("total tasks:", totals)
