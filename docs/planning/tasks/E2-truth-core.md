@@ -561,6 +561,38 @@ the latter, and reading it as forbidding both is what left this gap.
 
 **Verify.** `cd backend && python -m pytest tests/test_code_deriver.py -q`
 
+#### T2.99 — The topics door serves a raw-rung aggregate
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.95` · `Doc: 08 §4.3, 09 §3` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-06 from T2.95's second rescope (DF1).** `GET
+/topics/pin-suggestions` is live-mounted and puts `verified_fact_count` on
+the wire; `pin_suggestions._FACT_COUNT` computes it over the **raw**
+`verification_status IN ('corroborated','confirmed')`. With G-C's record
+absent, a reader subtracts the visible `confirmed` facts and recovers the
+withheld-rung count.
+
+This is the same class as the facts-list inversion oracle T2.95's round 2
+closed, and it is weaker in the same direction — per-subject counting rather
+than per-fact membership — but it is a live door and the count also gates
+suggestion **membership** through a fact floor, so the leak has two exits.
+
+**The principle that decides the shape, already settled on `tier`:**
+*derivation may use the true status; the wire may not reveal it.* Whether
+membership keeps computing on the true rung while only the served number is
+gated, or both are gated, is this task's call — but a suggestion that appears
+with a served count of zero still hints at the membership decision, and the
+answer has to say why that residue is acceptable or close it.
+
+**Done when:**
+- [ ] With the gate closed, no served number distinguishes a withheld
+      `corroborated` from a genuine `candidate` — driven at the door, not asserted
+      at the counter
+- [ ] Minting the record restores the true counts with no code change
+- [ ] A sweep shows no other served aggregate over the raw rung
+
+**Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
+
 #### T2.98 — The same-endpoint arm has an index for half of itself
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.11` · `Doc: 08 §5.3, 04 §8.3` · `Tag: target-new` · `Gate: G-C`
