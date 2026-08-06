@@ -241,6 +241,19 @@ class OriginProfile:
         are needed": :meth:`required_origin_count_for` is untouched, so the
         count-based ladder and its G-C promotion metrics keep reporting the
         same ``k`` and ``n`` they always did for these facts.
+
+        **Its trust boundary, named rather than left to be discovered.** This
+        reads the stored kind and does not ask whether the repository the row
+        points at still exists or still asserts the triple — it cannot, without
+        the session this dataclass has none of, and a per-decision cross-side
+        read is exactly the crossing doc 10 §2 keeps out of the ladder. So a
+        ``code`` row whose ``source_ref`` names no live repository would hold a
+        rung for one tick. Nothing in the tree can write one (``fact_lift`` is
+        the only producer of the kind and writes a live repository's id), and
+        ``fact_lift.reconcile_code_sources`` withdraws it on the next tick,
+        after which the ordinary demotion applies. The *grant* side has no such
+        window at all: the restore runs only over provenance that pass retained
+        against a live repository's current assertions.
         """
         return CODE_SOURCE_KIND in self.source_kinds
 

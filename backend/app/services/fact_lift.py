@@ -60,6 +60,21 @@ independent ways rather than by intent:
   ``OriginProfile.parse_is_the_verification``, which reads the stored
   ``source_kind`` and so cannot be satisfied by a memory or a human origin.
 
+The rung is **restored on the same terms it was granted** (fix round 1). A
+contradiction knocks a born fact off the rung — the veto beats the exception,
+which is correct — and the recovery that follows the dispute lapsing re-enters
+the count, which one origin never meets. So the fact lands ``candidate`` and
+the ladder, which holds a rung but never grants one, cannot put it back: a
+transient false positive would convert a permanent-evidence fact into a
+permanent under-label. ``restore_born_rung`` closes that, and it is the *same*
+door as the birth rather than a second one — a re-derivation is a fresh parse,
+and doc 10 §6 says the parse is the verification. It fires only where the count
+provably cannot: the fact's whole provenance must be a single ``code`` origin,
+which is below every threshold the ladder can pick, so no promotion the count
+would have made is taken from it and G-C's promotion rate gains neither a
+numerator nor a denominator entry. Two code origins are left to the count; a
+memory or human origin is left to the count.
+
 A repository is **one origin however many commits it is indexed across**
 (doc 08 §4.1's one-document-one-origin rule, applied to code): the provenance
 row is keyed ``(fact, 'code', repo_id)`` and carries ``origin_key = repo_id``,
@@ -118,7 +133,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import CODE_SOURCE_KIND, FactSourceRepository
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.knowledge_triples import (
+    BORN_RUNG_PRECONDITION,
+    KnowledgeTripleRepository,
+)
 from app.services.code_deriver import (
     DERIVABLE_IMPORT_LANGUAGES,
     dependency_name,
@@ -672,6 +690,11 @@ class CodeLiftOutcome:
     sources_added: int = 0
     sources_withdrawn: int = 0
     facts_invalidated: int = 0
+    # Rungs the reconcile put back (fix round 1). Counted separately from
+    # `facts_created` because it is not a birth and separately from
+    # `events_emitted` because it journals nothing: a restore is the same claim
+    # the birth made, on evidence that never changed.
+    rungs_restored: int = 0
     events_emitted: int = 0
 
 
@@ -744,7 +767,7 @@ _REPO_ASSERTED_TRIPLES = text("""
 # and the rows it stranded keep a fact serving as corroborated forever.
 _CODE_PROVENANCE = text("""
     SELECT fs.id AS source_id, fs.fact_id, fs.source_ref AS repo_ref,
-           kt.triple_key, kt.project, kt.invalid_at
+           kt.triple_key, kt.project, kt.invalid_at, kt.verification_status
     FROM fact_sources fs
     JOIN knowledge_triples kt ON kt.id = fs.fact_id
     WHERE fs.source_kind = CAST(:kind AS text)
@@ -961,6 +984,59 @@ async def mint_born_corroborated(
     return fact_id
 
 
+async def restore_born_rung(session: AsyncSession, *, fact_id: str) -> bool:
+    """Put a fact back on the rung its parse justifies. **The only path that may.**
+
+    The birth's counterpart, and the answer to the one way a born fact can lose
+    its rung: the veto. A contradiction moves it to ``disputed``; when the
+    dispute lapses, the ladder's recovery re-enters the ordinary count, and one
+    origin never meets it — so the fact settles at ``candidate`` while the
+    repository still asserts the triple that justified the rung in the first
+    place. The exception branch in ``verification_ladder.decide`` cannot undo
+    that, deliberately: it holds a rung and never grants one, which is what
+    makes it reviewable.
+
+    **The precondition is the stored evidence, not a caller's argument.** The
+    fact's whole provenance must be a *single* ``code`` origin — the shape a
+    birth leaves behind, read back through the same ``OriginProfile`` the
+    ladder consults, so the two cannot drift. That is also what keeps this out
+    of the count's way: one origin is below every threshold
+    ``required_origin_count_for`` can pick, so no promotion the ladder would
+    have journalled is taken from it. A fact two repositories assert, or one a
+    memory also asserts, is the count's business and is left alone here even
+    though its parse says the same thing — the narrow rule is the one that can
+    be argued.
+
+    The caller's own warrant is that the repository *currently* asserts the
+    triple: this runs over the provenance rows the withdrawal pass retained,
+    which is a fresh read of Layer 1 in the same tick, not a stored claim.
+    """
+    profile = await FactSourceRepository(session).origin_profile(fact_id)
+    if profile.origin_count != 1 or profile.source_kinds != (CODE_SOURCE_KIND,):
+        return False
+    return await KnowledgeTripleRepository(session).restore_born_corroborated(fact_id)
+
+
+async def _restore_born_rungs(session: AsyncSession, *, rows: list[dict]) -> int:
+    """Restore every retained row's fact that is sitting below its rung.
+
+    Runs after the withdrawal rather than before it, so a fact that lost a
+    source this tick is judged on the provenance it has now.
+    """
+    restored = 0
+    for row in rows:
+        if row["verification_status"] != BORN_RUNG_PRECONDITION:
+            continue
+        if await restore_born_rung(session, fact_id=str(row["fact_id"])):
+            restored += 1
+            logger.info(
+                "restored the born rung on fact %s: repo %s still asserts it "
+                "and its whole provenance is that parse",
+                row["fact_id"], row["repo_ref"],
+            )
+    return restored
+
+
 async def _code_candidates(
     session: AsyncSession, *, batch_size: int
 ) -> list[_CodeCandidate]:
@@ -1073,8 +1149,18 @@ async def _withdraw_code_sources(
     return len(rows), invalidated
 
 
-async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int]:
-    """Withdraw code provenance the Layer-1 graph no longer supports.
+async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int, int]:
+    """Reconcile stored code provenance against what the repositories assert.
+
+    Two halves of one comparison, which is why they share a pass. A stored row
+    the graph no longer supports is withdrawn; a stored row the graph *still*
+    supports is a fresh parse of the same assertion, and doc 10 §6 says the
+    parse is the verification — so a fact sitting below the rung that parse
+    justifies is put back on it (``restore_born_rung``, which decides whether
+    it may on the fact's own provenance). Both halves read the same
+    ``asserted`` map, so "still asserted" means the identical thing on either
+    side, and neither can be reached by a row whose repository is gone: the
+    liveness join is in the map's own statement.
 
     The code-side analogue of ``fact_provenance.reconcile_memory_sources``,
     with one deliberate difference: it is driven by the stored provenance
@@ -1099,7 +1185,7 @@ async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int]:
         ).mappings().all()
     ]
     if not rows:
-        return 0, 0
+        return 0, 0, 0
 
     asserted: dict[str, set[str]] = {}
     for row in (
@@ -1111,12 +1197,19 @@ async def reconcile_code_sources(session: AsyncSession) -> tuple[int, int]:
             )
         )
 
-    withdrawn = [
-        row
+    still_asserted = [
+        row["triple_key"] in asserted.get(str(row["repo_ref"]), set())
         for row in rows
-        if row["triple_key"] not in asserted.get(str(row["repo_ref"]), set())
     ]
-    return await _withdraw_code_sources(session, rows=withdrawn)
+    withdrawn, invalidated = await _withdraw_code_sources(
+        session,
+        rows=[row for row, live in zip(rows, still_asserted) if not live],
+    )
+    restored = await _restore_born_rungs(
+        session,
+        rows=[row for row, live in zip(rows, still_asserted) if live],
+    )
+    return withdrawn, invalidated, restored
 
 
 async def run_code_lift(
@@ -1134,7 +1227,7 @@ async def run_code_lift(
     per candidate — a repository asserts tens to hundreds of relations and they
     all read the same two code-side tables.
     """
-    withdrawn, invalidated = await reconcile_code_sources(session)
+    withdrawn, invalidated, restored = await reconcile_code_sources(session)
 
     candidates = await _code_candidates(session, batch_size=batch_size)
     witnesses_by_repo: dict[str, tuple[str | None, dict[str, _CodeWitness]]] = {}
@@ -1174,5 +1267,6 @@ async def run_code_lift(
         sources_added=added,
         sources_withdrawn=withdrawn,
         facts_invalidated=invalidated,
+        rungs_restored=restored,
         events_emitted=added + withdrawn,
     )

@@ -55,6 +55,7 @@ from app.services.fact_lift import (
     mint_born_corroborated,
     reconcile_code_sources,
     repo_witnesses,
+    restore_born_rung,
     run_code_lift,
     run_lift,
 )
@@ -291,24 +292,51 @@ async def _entity_exists(session, name: str) -> bool:
     return found is not None
 
 
-async def test_two_repositories_asserting_one_fact_are_two_origins(session):
-    """The count's other direction. If one repo re-indexed a hundred times is
-    one origin because ``origin_key`` collapses it, a rule that collapsed *any*
-    code source to one origin would pass the test above and be wrong."""
+async def test_one_repositorys_sources_do_not_bleed_onto_anothers_fact(session):
+    """Two differently-named repositories lift two *different* facts, because
+    each repo's own name is the subject. Each fact carries only its own repo's
+    provenance — which is a statement about scoping, not about the counter."""
     first = await _seed_repo(session, name="Alpha-Repo", imports=["httpx"])
     second = await _seed_repo(session, name="Beta-Repo", imports=["httpx"])
     for repo_id in (first, second):
         await assert_repo_graph(session, repo_id)
     await run_code_lift(session)
 
-    # Both repos assert `USES/DEPENDS_ON python`, which is the shared triple:
-    # each repo's own name makes its dependency facts distinct.
     fact = await _fact_for(session, "alpha-repo", "DEPENDS_ON", "httpx")
     other = await _fact_for(session, "beta-repo", "DEPENDS_ON", "httpx")
     assert fact["id"] != other["id"]
 
     rows = await _sources(session, fact["id"])
     assert [row["origin_key"] for row in rows] == [first]
+
+
+async def test_two_repositories_asserting_one_fact_are_two_origins(session):
+    """The counter's genuine negative control, and it needs a *shared* fact.
+
+    The clause-1 test above proves one repository re-indexed a hundred times
+    counts once. A rule that collapsed *any* code provenance to a single origin
+    would pass it and be wrong, so the count has to be seen reading two — which
+    only happens when two repositories assert the same triple. Since the
+    subject of a derived dependency fact is the repository's own name, that
+    means two repositories of the same name (the shape
+    ``test_a_fact_a_second_live_repo_still_asserts_survives`` also uses).
+    """
+    first = await _seed_repo(session, name="Counted-Repo", imports=["httpx"])
+    await assert_repo_graph(session, first)
+    await run_code_lift(session)
+    fact = await _fact_for(session, "counted-repo", "DEPENDS_ON", "httpx")
+    assert await FactSourceRepository(session).count_distinct_origins(fact["id"]) == 1
+
+    second = await _seed_repo(session, name="Counted-Repo", imports=["httpx"])
+    await assert_repo_graph(session, second)
+    await run_code_lift(session)
+
+    same = await _fact_for(session, "counted-repo", "DEPENDS_ON", "httpx")
+    assert same["id"] == fact["id"], "the second repo minted its own fact"
+    assert await FactSourceRepository(session).count_distinct_origins(fact["id"]) == 2
+    assert sorted(row["origin_key"] for row in await _sources(session, fact["id"])) == (
+        sorted([first, second])
+    )
 
 
 # ── the provenance shape T2.48 consumes ──────────────────────────────────
@@ -519,9 +547,19 @@ async def _row(session, fact_id) -> tuple[str, object]:
     return row["verification_status"], row["demotion_pending_since"]
 
 
-async def test_an_existing_fact_is_never_re_graded_by_the_code_lift(session):
+async def test_a_fact_a_memory_also_asserts_is_never_re_graded_by_the_code_lift(
+    session,
+):
     """A producer that reached into an existing row's rung would be grading its
-    own output. Only a fact this path *opens* is born corroborated."""
+    own output. A fact carrying evidence of its own belongs to the **count**:
+    the repository's assertion joins as a second origin of a second kind and
+    the recompute decides the rung on the ladder's own terms — journalling the
+    promotion, which is the row G-C's promotion rate is made of.
+
+    Driven across two ticks rather than one, because the restore added in fix
+    round 1 runs over provenance the *previous* tick stored: a single-tick
+    assertion would pass without saying anything about it.
+    """
     subject, rel_type, obj = "regrade-repo", "DEPENDS_ON", "httpx"
     existing = await KnowledgeTripleRepository(session).insert_open(
         triple_key=compute_triple_key(CODE_FACT_PROJECT, subject, rel_type, obj),
@@ -533,17 +571,240 @@ async def test_an_existing_fact_is_never_re_graded_by_the_code_lift(session):
         project=CODE_FACT_PROJECT,
     )
     assert existing["verification_status"] == "candidate"
+    memory_id = await _seed_memory(session, content="regrade", origin_key="s7")
+    await FactSourceRepository(session).add_source(
+        fact_id=existing["id"],
+        source_kind=MEMORY_SOURCE_KIND,
+        source_ref=memory_source_ref(memory_id),
+        origin_key="s7",
+    )
+    await session.flush()
 
     repo_id = await _seed_repo(session, name="Regrade-Repo", imports=["httpx"])
     await assert_repo_graph(session, repo_id)
     outcome = await run_code_lift(session)
+    second_tick = await run_code_lift(session)
 
     after = await _fact_for(session, subject, rel_type, obj)
     assert after["id"] == existing["id"], "a second open row was minted on one key"
     assert after["verification_status"] == "candidate"
     assert outcome.sources_added >= 1
+    assert (outcome.rungs_restored, second_tick.rungs_restored) == (0, 0)
     kinds = {row["source_kind"] for row in await _sources(session, existing["id"])}
-    assert CODE_SOURCE_KIND in kinds
+    assert kinds == {CODE_SOURCE_KIND, MEMORY_SOURCE_KIND}
+
+    # The count is what moves it, and it leaves the journal row the promotion
+    # rate reads. Taking this here is what makes "the lift stayed out of the
+    # count's way" a measured claim rather than an absence.
+    decision = await recompute_fact(session, existing["id"])
+    await session.flush()
+    assert (decision.target_status, decision.outcome) == ("corroborated", "promote")
+    assert await _verified_outcomes(session, existing["id"]) == ["promote"]
+
+
+async def test_a_fact_whose_whole_evidence_is_one_parse_is_raised_to_the_rung(session):
+    """The other side of the rule, stated so it cannot arrive as a surprise.
+
+    The rung follows the *evidence*, not which producer got to the triple
+    first: a fact whose entire provenance is one repository's parse holds it
+    whether this path minted the row or found it. The alternative — a rung that
+    depends on creation order — would give two facts with identical evidence
+    two different labels.
+    """
+    subject, rel_type, obj = "found-repo", "DEPENDS_ON", "httpx"
+    existing = await KnowledgeTripleRepository(session).insert_open(
+        triple_key=compute_triple_key(CODE_FACT_PROJECT, subject, rel_type, obj),
+        subject_name=subject,
+        object_name=obj,
+        rel_type=rel_type,
+        fact=f"{subject} depends on {obj}",
+        reference_time=datetime.now(timezone.utc),
+        project=CODE_FACT_PROJECT,
+    )
+    repo_id = await _seed_repo(session, name="Found-Repo", imports=["httpx"])
+    await assert_repo_graph(session, repo_id)
+
+    adding = await run_code_lift(session)
+    assert adding.rungs_restored == 0, (
+        "the tick that adds a source must leave the rung to the next parse: "
+        "the provenance it just wrote has not been re-read against the graph"
+    )
+    assert (await _fact_for(session, subject, rel_type, obj))["verification_status"] == (
+        "candidate"
+    )
+
+    restoring = await run_code_lift(session)
+    assert restoring.rungs_restored == 1
+    after = await _fact_for(session, subject, rel_type, obj)
+    assert after["id"] == existing["id"]
+    assert after["verification_status"] == "corroborated"
+
+
+async def _verified_outcomes(session, fact_id) -> list[str]:
+    rows = (await session.execute(
+        text(
+            "SELECT payload FROM events WHERE object_type = 'fact' "
+            "AND event_type = 'verified' AND object_id = CAST(:id AS uuid) "
+            "ORDER BY created_at, id"
+        ),
+        {"id": str(fact_id)},
+    )).scalars().all()
+    return [row.get("outcome") for row in rows]
+
+
+async def _born_fact(session, *, name: str) -> str:
+    repo_id = await _seed_repo(session, name=name, imports=["httpx"])
+    await assert_repo_graph(session, repo_id)
+    await run_code_lift(session)
+    fact = await _fact_for(session, name.lower(), "DEPENDS_ON", "httpx")
+    assert fact["verification_status"] == "corroborated"
+    return fact["id"]
+
+
+async def test_a_lapsed_dispute_gets_the_born_rung_back_on_the_next_parse(session):
+    """Fix round 1's finding I-1, driven end to end.
+
+    The veto beats the exception — correctly — so a contradicted born fact
+    goes to ``disputed``. When the dispute lapses, the ladder's recovery
+    re-enters the ordinary count, which one origin never meets, so the fact
+    lands ``candidate``; and the exception branch only *holds* a rung, so
+    before this fix no machine path put it back. A judge false positive that
+    later lapsed therefore converted a permanent-evidence fact into a permanent
+    under-label. The next parse restores it, because the parse is the
+    verification and the repository still asserts the triple.
+    """
+    fact_id = await _born_fact(session, name="Lapse-Repo")
+
+    disputed = await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    assert disputed.target_status == "disputed"
+
+    recovered = await recompute_fact(session, fact_id, open_contradiction=False)
+    await session.flush()
+    assert (recovered.target_status, recovered.outcome) == ("candidate", "recover"), (
+        "the fact has to reach candidate for this test to be about the finding"
+    )
+
+    outcome = await run_code_lift(session)
+
+    assert outcome.rungs_restored == 1
+    assert await _row(session, fact_id) == ("corroborated", None)
+    # The restore is a re-grade, not a re-birth and not new evidence.
+    assert outcome.facts_created == 0 and outcome.sources_added == 0
+    assert await FactSourceRepository(session).count_distinct_origins(fact_id) == 1
+
+    # And it settles there: the ladder's own branch holds what the parse
+    # restored, so the next tick is not a second re-grade.
+    held = await recompute_fact(session, fact_id)
+    await session.flush()
+    assert (held.target_status, held.outcome) == ("corroborated", "hold")
+    assert (await run_code_lift(session)).rungs_restored == 0
+
+
+async def test_the_restore_never_lifts_a_fact_out_of_a_standing_dispute(session):
+    """The veto's precedence, at the one place the fix could have broken it.
+
+    The restore is an UPDATE whose WHERE names the rung it writes over, so a
+    ``disputed`` fact is not a row it can reach — not a check the caller
+    performs and a later refactor can drop.
+    """
+    fact_id = await _born_fact(session, name="Veto-Repo")
+
+    await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    assert (await _row(session, fact_id))[0] == "disputed"
+
+    outcome = await run_code_lift(session)
+
+    assert outcome.rungs_restored == 0
+    assert (await _row(session, fact_id))[0] == "disputed"
+
+    # Directly at the repository, so the refusal is the statement's and not the
+    # reconcile's decision about which rows to offer it.
+    assert await KnowledgeTripleRepository(session).restore_born_corroborated(
+        fact_id
+    ) is False
+    assert (await _row(session, fact_id))[0] == "disputed"
+
+
+async def test_the_restore_journals_nothing_and_stays_invisible_to_the_gate(session):
+    """G-C's promotion rate and false-promotion audit read ``verified`` rows.
+
+    A born fact enters neither, because its birth is not a transition anything
+    journals. The restore makes the same claim on the same evidence, so it must
+    not journal either — otherwise two identical claims would sit on two sides
+    of the gate's own measurement.
+    """
+    fact_id = await _born_fact(session, name="Silent-Repo")
+    assert await _verified_outcomes(session, fact_id) == []
+
+    await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    await recompute_fact(session, fact_id, open_contradiction=False)
+    await session.flush()
+    during_dispute = await _verified_outcomes(session, fact_id)
+    assert during_dispute == ["dispute", "recover"]
+
+    assert (await run_code_lift(session)).rungs_restored == 1
+
+    assert await _verified_outcomes(session, fact_id) == during_dispute
+
+
+async def test_two_code_origins_are_left_to_the_count(session):
+    """The restore's scope is exactly where the count cannot reach.
+
+    Two repositories asserting one triple is two origins, which the ladder's
+    thresholds do have an opinion about, so this path declines it rather than
+    pre-empting a promotion the count would have journalled. The consequence is
+    stated rather than hidden: such a fact stays ``candidate`` after a lapsed
+    dispute until its origins meet the bar. It under-claims, and it keeps the
+    promotion rate's numerator the count's alone.
+    """
+    first = await _seed_repo(session, name="Pair-Repo", imports=["httpx"])
+    await assert_repo_graph(session, first)
+    await run_code_lift(session)
+    second = await _seed_repo(session, name="Pair-Repo", imports=["httpx"])
+    await assert_repo_graph(session, second)
+    await run_code_lift(session)
+
+    fact = await _fact_for(session, "pair-repo", "DEPENDS_ON", "httpx")
+    assert await FactSourceRepository(session).count_distinct_origins(fact["id"]) == 2
+
+    await recompute_fact(session, fact["id"], open_contradiction=True)
+    await session.flush()
+    recovered = await recompute_fact(session, fact["id"], open_contradiction=False)
+    await session.flush()
+    assert recovered.target_status == "candidate" and recovered.required_n > 2
+
+    outcome = await run_code_lift(session)
+
+    assert outcome.rungs_restored == 0
+    assert (await _row(session, fact["id"]))[0] == "candidate"
+
+
+async def test_the_restore_reads_the_stored_kinds_not_a_callers_word(session):
+    """The narrowing this path inherits is the predicate over stored evidence
+    (narrowing 3), not the caller's string (narrowing 1): a fact whose single
+    origin is a memory is refused at the service door, whatever asked."""
+    fact_id = await _born_fact(session, name="Kinds-Repo")
+    await session.execute(
+        text(
+            "UPDATE fact_sources SET source_kind = 'memory' "
+            "WHERE fact_id = CAST(:id AS uuid)"
+        ),
+        {"id": fact_id},
+    )
+    await session.execute(
+        text(
+            "UPDATE knowledge_triples SET verification_status = 'candidate' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": fact_id},
+    )
+    await session.flush()
+
+    assert await restore_born_rung(session, fact_id=fact_id) is False
+    assert (await _row(session, fact_id))[0] == "candidate"
 
 
 async def test_the_memory_lift_still_births_candidates(session):
@@ -600,21 +861,50 @@ async def _assert_memory_relation(
     await session.flush()
 
 
-def test_the_rung_has_exactly_one_writer_under_app():
-    """The repository method is the only route to the column at insert time,
-    and the minting function is its only caller. A scan rather than a
+def _references(tree: ast.AST, method: str) -> bool:
+    """Whether a scope names ``method`` on an object, in *any* position.
+
+    Deliberately not a call check. ``x.open_born_corroborated(...)`` in ``Call``
+    position was the first version of this scan and a review defeated it in one
+    line: ``f = repo.open_born_corroborated`` then ``await f(...)`` is the same
+    call reached through a name, and an attribute in ``Load`` context is
+    invisible to a call-shaped rule. ``getattr(repo, "…")`` is the same evasion
+    spelled dynamically, so the string form counts too.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr == method:
+            return True
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value == method
+        ):
+            return True
+    return False
+
+
+# Each door onto the born rung, and the single function in `app/` allowed to
+# reach it. The rung's own statement is `_write_born_rung`, which both of these
+# share, so this pins the whole population that can put a fact on it.
+_RUNG_DOORS = {
+    "open_born_corroborated": "mint_born_corroborated",
+    "restore_born_corroborated": "restore_born_rung",
+}
+
+
+@pytest.mark.parametrize("method,enclosing_name", sorted(_RUNG_DOORS.items()))
+def test_the_rung_has_exactly_one_writer_under_app(method, enclosing_name):
+    """The repository owns the only statement that writes the rung, and each
+    door onto it has exactly one caller in one function. A scan rather than a
     convention: the exception is narrow only while that stays true."""
-    callers = []
-    for path in sorted((BACKEND / "app").rglob("*.py")):
-        relpath = path.relative_to(BACKEND).as_posix()
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "open_born_corroborated"
-            ):
-                callers.append(relpath)
+    callers = [
+        path.relative_to(BACKEND).as_posix()
+        for path in sorted((BACKEND / "app").rglob("*.py"))
+        if _references(ast.parse(path.read_text()), method)
+    ]
     assert callers == ["app/services/fact_lift.py"], callers
 
     lift = ast.parse((BACKEND / "app" / "services" / "fact_lift.py").read_text())
@@ -622,14 +912,24 @@ def test_the_rung_has_exactly_one_writer_under_app():
         node.name
         for node in ast.walk(lift)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and any(
-            isinstance(inner, ast.Call)
-            and isinstance(inner.func, ast.Attribute)
-            and inner.func.attr == "open_born_corroborated"
-            for inner in ast.walk(node)
-        )
+        and _references(node, method)
     ]
-    assert enclosing == ["mint_born_corroborated"], enclosing
+    assert enclosing == [enclosing_name], enclosing
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        "async def f(repo):\n    await repo.{method}(x)\n",
+        "async def f(repo):\n    alias = repo.{method}\n    await alias(x)\n",
+        "async def f(repo):\n    await getattr(repo, '{method}')(x)\n",
+    ],
+)
+def test_the_caller_scan_sees_an_aliased_door(shape):
+    """A guard that cannot fail is not a guard, and the aliased shape is the
+    one the call-position version of this scan walked straight past."""
+    for method in _RUNG_DOORS:
+        assert _references(ast.parse(shape.format(method=method)), method)
 
 
 # ── clause 3: withdrawal invalidates, never deletes ──────────────────────
@@ -723,12 +1023,13 @@ async def test_removing_the_repository_outright_invalidates_its_facts(session):
     )
     await session.flush()
 
-    withdrawn, invalidated = await reconcile_code_sources(session)
+    withdrawn, invalidated, restored = await reconcile_code_sources(session)
 
     after = await _fact_for(session, "gone-repo", "DEPENDS_ON", "httpx")
     assert after is not None and after["id"] == fact["id"]
     assert after["invalid_at"] is not None and after["expired_at"] is None
     assert withdrawn >= 1 and invalidated >= 1
+    assert restored == 0, "a dead repository's rows are withdrawn, never restored"
 
 
 async def test_re_adding_a_dependency_opens_a_new_window_not_the_closed_one(session):

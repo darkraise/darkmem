@@ -223,9 +223,10 @@ def _make_lift_runner(registry: JobRegistry, key: str) -> JobRunner:
         logger.info(
             "Code fact lifting scanned %d candidate(s): %d fact(s) born "
             "corroborated, %d source(s) added, %d source(s) withdrawn, "
-            "%d fact(s) invalidated",
+            "%d fact(s) invalidated, %d rung(s) restored",
             code.candidates, code.facts_created, code.sources_added,
             code.sources_withdrawn, code.facts_invalidated,
+            code.rungs_restored,
         )
 
     return run

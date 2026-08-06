@@ -57,11 +57,17 @@ _MACHINE_WRITABLE_VERIFICATION_STATUSES = frozenset({"candidate", "corroborated"
 
 CONFIRMED = "confirmed"
 
-# The rung `open_born_corroborated` opens at — the ladder's one exception
+# The rung the born-rung writer opens at — the ladder's one exception
 # (doc 08 §4.1). Spelled beside the machine-writable set rather than inside
 # the method so the two values that may reach this column from this module
 # are read together.
 BORN_CORROBORATED = "corroborated"
+
+# The rung the schema seeds and the only value the born-rung writer will write
+# *over*. Named because it is a precondition rather than a default: the write
+# is an UPDATE whose WHERE carries it, so nothing that already moved off this
+# rung — a dispute above all — can be raised by that path.
+BORN_RUNG_PRECONDITION = "candidate"
 
 # The `fact_sources.source_kind` a ratification writes, spelled here because
 # `ratify`'s UPDATE predicate is what makes doc 08 §4.4 structural. Mirrors
@@ -308,28 +314,97 @@ class KnowledgeTripleRepository:
         the badge honestly reads ``verification not yet recomputed`` until the
         ladder first visits the fact.
 
-        The rung is re-read from what actually landed rather than assumed,
-        for the reason ``fact_lift._mint_fact`` re-reads its own: a fact
-        sitting at the wrong rung is this layer's failure mode, and it is
-        silent.
+        The rung itself is written by ``_write_born_rung``, which the restore
+        below shares: one statement in the tree puts a fact on this rung,
+        whether it is arriving for the first time or returning.
         """
         row = await self.insert_open(**fields)
+        promoted = await self._write_born_rung(row["id"])
+        if promoted is None:
+            raise RuntimeError(
+                f"fact {row['id']} was to be born {BORN_CORROBORATED!r} and "
+                f"was not at {BORN_RUNG_PRECONDITION!r} the instant after it "
+                f"was inserted"
+            )
+        return promoted
+
+    async def restore_born_corroborated(self, triple_id: UUID | str) -> bool:
+        """Put a fact back on the born rung. Returns whether it moved.
+
+        T2.28 fix round 1. The birth above is not the only moment doc 10 §6's
+        rule applies: a fact the veto knocked off the rung recovers to
+        ``candidate`` when the dispute lapses, because recovery re-enters the
+        count and one origin never meets it — and the count is exactly what the
+        parse-is-the-verification rule says does not apply here. Without this
+        method a transient contradiction converts a permanent-evidence fact
+        into a permanent under-label, with no machine path back.
+
+        **The same statement as the birth**, deliberately: one place in the
+        tree can put a fact on this rung, so a reader checks one statement
+        rather than two, and the restore cannot acquire a guarantee the birth
+        does not have. Its caller
+        (``fact_lift.restore_born_rung``) carries the evidence precondition —
+        the fact's whole provenance is one repository's parse — the way
+        ``mint_born_corroborated`` carries the source-kind refusal.
+
+        It is not journalled, for the reason the birth is not: a ``verified``
+        row is the G-C promotion rate's unit, and a born fact holds its rung on
+        doc 10 §6's argument rather than on a promotion decision. Journalling
+        the restore and not the birth would put two identical claims on two
+        sides of the gate's measurement.
+        """
+        return await self._write_born_rung(triple_id) is not None
+
+    async def _write_born_rung(self, triple_id: UUID | str) -> dict | None:
+        """The one statement that writes doc 10 §6's rung. Returns the row.
+
+        ``None`` means the row was not at ``BORN_RUNG_PRECONDITION`` or is no
+        longer an open belief, so nothing was written. Both conditions live in
+        the WHERE rather than in a caller's read-then-write: a ``disputed``
+        fact must not be raised by this path at all, and a check taken in
+        Python could be taken against a row another transaction has since
+        moved.
+        """
+        # The mutation this guard exists for is a one-token edit of the
+        # constant above, which the honesty suite's writer allowlist cannot
+        # see: it asks which scopes write the column, never which value they
+        # write. Validating against the machine-writable set makes "no machine
+        # path reaches confirmed" a property of the writer rather than of the
+        # constant it happens to bind.
+        if BORN_CORROBORATED not in _MACHINE_WRITABLE_VERIFICATION_STATUSES:
+            raise ValueError(
+                f"the born rung is {BORN_CORROBORATED!r}, which is not a "
+                f"machine-writable status: only a human reaches "
+                f"{CONFIRMED!r}, via the ratification path T2.05 owns"
+            )
         result = await self.session.execute(
             text(f"""
                 UPDATE knowledge_triples
                 SET verification_status = CAST(:status AS text)
                 WHERE id = CAST(:id AS uuid)
+                  AND verification_status = CAST(:precondition AS text)
+                  AND {OPEN_BELIEF_PREDICATE}
                 RETURNING {_COLUMNS}
             """),
-            {"id": row["id"], "status": BORN_CORROBORATED},
+            {
+                "id": str(triple_id),
+                "status": BORN_CORROBORATED,
+                "precondition": BORN_RUNG_PRECONDITION,
+            },
         )
-        promoted = _row_to_dict(result.mappings().one())
-        if promoted["verification_status"] != BORN_CORROBORATED:
+        row = result.mappings().first()
+        if row is None:
+            return None
+        landed = _row_to_dict(row)
+        # Re-read from what the statement returned rather than assumed, for
+        # the reason `fact_lift._mint_fact` re-reads its own: a fact sitting at
+        # the wrong rung is this layer's failure mode, and it is silent.
+        if landed["verification_status"] != BORN_CORROBORATED:
             raise RuntimeError(
-                f"fact {promoted['id']} was to be born {BORN_CORROBORATED!r} "
-                f"and landed {promoted['verification_status']!r}"
+                f"fact {landed['id']} was to be written {BORN_CORROBORATED!r} "
+                f"and landed {landed['verification_status']!r}"
             )
-        return promoted
+        return landed
 
     async def close_window(self, triple_id: UUID | str, invalid_at: datetime) -> dict | None:
         """Close a belief's validity window. The row stays live.
