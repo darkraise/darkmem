@@ -36,6 +36,8 @@ from sqlalchemy import text
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.services.code_deriver import (
+    DERIVABLE_IMPORT_LANGUAGES,
+    UNDERIVABLE_IMPORT_LANGUAGES,
     _entity_type_for,
     assert_repo_graph,
     dependency_name,
@@ -93,7 +95,12 @@ async def _seed_repo(
     sources = imports if imports is not None else (
         EXTERNAL_IMPORTS + INTERNAL_IMPORTS + BUILTIN_IMPORTS
     )
-    for source in sources:
+    for entry in sources:
+        # A bare string is an import from the repo's first file; a pair names
+        # the importing file, which is what carries the language.
+        importing_file, source = (
+            entry if isinstance(entry, tuple) else (REPO_FILES[0][0], entry)
+        )
         await session.execute(
             text("""
                 INSERT INTO code_edges
@@ -101,7 +108,7 @@ async def _seed_repo(
                 VALUES (CAST(:rid AS uuid), 'file', :src, 'module', :tgt, 'imports')
                 ON CONFLICT DO NOTHING
             """),
-            {"rid": str(repo_id), "src": REPO_FILES[0][0], "tgt": source},
+            {"rid": str(repo_id), "src": importing_file, "tgt": source},
         )
     await session.flush()
     return repo_id
@@ -215,6 +222,136 @@ def test_a_dependency_collapses_to_its_package_root(source, expected):
     assert dependency_name(source) == expected
 
 
+# ── the languages the deriver can actually parse ─────────────────────────
+
+# What the indexer writes for the grammars this module does not parse: raw
+# statement text where the one-level scan found no dotted-name or string
+# child, and scoped names whose root segment is meaningless. Every one of
+# these produced an `entities` row before the language gate landed.
+POLYGLOT_FILES = [
+    ("src/main.rs", "rust"),
+    ("cmd/serve.go", "go"),
+    ("src/App.java", "java"),
+    ("src/Api.cs", "csharp"),
+]
+
+POLYGLOT_IMPORTS = [
+    ("src/main.rs", "use std::collections::HashMap;"),
+    ("src/main.rs", "std::collections::HashMap"),
+    ("cmd/serve.go", 'import "fmt"'),
+    ("cmd/serve.go", "fmt"),
+    ("cmd/serve.go", "encoding/json"),
+    ("src/App.java", "com.fasterxml.jackson.databind"),
+    ("src/App.java", "java.util.List"),
+    ("src/Api.cs", "System.Collections.Generic"),
+]
+
+
+def test_every_indexed_language_is_classified_one_way_or_the_other():
+    """A new indexed language must be a decision, not a default.
+
+    ``code_parser.EXTENSION_TO_LANGUAGE`` widens freely — it is the indexer's
+    business — while the deriver's import rules are Python's and JS/TS's and
+    nobody else's. If a grammar joins the indexer without joining one of these
+    two sets, the deriver would start reading its import statements with rules
+    that do not fit them, which is how ``use std::collections::hashmap;``
+    became a ``tool``. Fail the build at that moment instead.
+    """
+    from app.services.code_parser import EXTENSION_TO_LANGUAGE
+
+    # `unknown` is `_fallback_parse`'s label for a file no grammar handled;
+    # it reaches `code_files.language` like any other value.
+    indexed = set(EXTENSION_TO_LANGUAGE.values()) | {"unknown"}
+    unclassified = (
+        indexed - DERIVABLE_IMPORT_LANGUAGES - UNDERIVABLE_IMPORT_LANGUAGES
+    )
+    assert not unclassified, (
+        "the indexer learned a language the deriver has not been told about: "
+        f"{sorted(unclassified)}. Either teach `dependency_name` its import "
+        "shape and add it to DERIVABLE_IMPORT_LANGUAGES, or add it to "
+        "UNDERIVABLE_IMPORT_LANGUAGES so its imports are skipped and counted."
+    )
+    assert not DERIVABLE_IMPORT_LANGUAGES & UNDERIVABLE_IMPORT_LANGUAGES
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "use std::collections::HashMap;",
+        "std::collections::HashMap",
+        'import "fmt"',
+        "from typing import Any",
+        "#include <stdio.h>",
+    ],
+)
+def test_a_name_that_is_not_lexically_a_package_is_never_a_dependency(source):
+    # The last stop before a name becomes an `entities` row, behind the
+    # language gate rather than instead of it: a package name is one lexical
+    # token, so whitespace, quotes, a terminator or a scope operator means
+    # this is statement text, not a name anyone resolved.
+    assert dependency_name(source) is None
+
+
+@pytest.mark.asyncio
+async def test_a_language_the_deriver_cannot_parse_asserts_no_dependency(session):
+    """The whole of I5, as one repository.
+
+    Every source here is what the indexer really writes for these grammars,
+    and every one of them minted an entity before: a ``tool`` literally named
+    ``use std::collections::hashmap;``, plus ``fmt``, ``encoding``, ``com``,
+    ``java`` and ``system``. A repository the deriver cannot read now asserts
+    its own name and its languages — facts that are true — and nothing else.
+    """
+    repo_id = await _seed_repo(
+        session, name="polyglot-repo",
+        files=POLYGLOT_FILES, imports=POLYGLOT_IMPORTS,
+    )
+    derived = await derive_assertions(session, repo_id)
+
+    assert {entity["name"] for entity in derived.entities} == {
+        "polyglot-repo", "rust", "go", "java", "csharp",
+    }
+    assert derived.skipped_by_language == {
+        "csharp": 1, "go": 3, "java": 2, "rust": 2,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_polyglot_repo_derives_from_the_half_it_can_read(session):
+    # The gate is per importing file, not per repository: a Python service
+    # with a Rust sidecar keeps its Python dependencies.
+    repo_id = await _seed_repo(
+        session, name="mixed-repo",
+        files=[("backend/app/main.py", "python"), ("src/main.rs", "rust")],
+        imports=[
+            ("backend/app/main.py", "fastapi"),
+            ("src/main.rs", "use std::collections::HashMap;"),
+        ],
+    )
+    derived = await derive_assertions(session, repo_id)
+
+    names = {entity["name"] for entity in derived.entities}
+    assert "fastapi" in names
+    assert names == {"mixed-repo", "python", "rust", "fastapi"}
+    assert derived.skipped_by_language == {"rust": 1}
+
+
+@pytest.mark.asyncio
+async def test_an_unparsed_file_never_becomes_a_language(session):
+    # `unknown` is a parse failure, not a language the repository is written
+    # in — the same class of wrong fact the import gate exists to stop.
+    repo_id = await _seed_repo(
+        session, name="opaque-repo",
+        files=[("data/blob.bin", "unknown"), ("app/x.py", "python")],
+        imports=[],
+    )
+    derived = await derive_assertions(session, repo_id)
+
+    assert {entity["name"] for entity in derived.entities} == {
+        "opaque-repo", "python",
+    }
+
+
 # ── the closed taxonomy ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -272,6 +409,23 @@ async def test_a_curated_datastore_is_used_not_depended_on(session):
 
     library = [r for r in derived.relations if r["target"] == "fastapi"]
     assert library and library[0]["rel_type"] == "DEPENDS_ON"
+
+
+@pytest.mark.asyncio
+async def test_a_repo_uses_its_languages(session):
+    # Doc 10 §6 fixes this edge by name — "the relations `repo —USES/DEPENDS_ON
+    # → dep` and `repo —USES→ language`". The doc leaves the dependency half
+    # open and the language half closed; the deriver shipped `DEPENDS_ON` for
+    # both, and no test pinned it either way.
+    repo_id = await _seed_repo(session)
+    derived = await derive_assertions(session, repo_id)
+
+    languages = {
+        relation["target"]: relation["rel_type"]
+        for relation in derived.relations
+        if relation["target_type"] == "language"
+    }
+    assert languages == {"python": "USES", "typescript": "USES"}
 
 
 # ── what one derivation asserts ──────────────────────────────────────────
@@ -573,6 +727,49 @@ async def test_an_edge_survives_when_its_endpoint_is_spared_for_repo_reasons(ses
 
 
 @pytest.mark.asyncio
+async def test_the_memory_strip_spares_a_repo_asserted_relation(session):
+    """The *relation* half of the strip's live-repo guard, both directions.
+
+    A relation both a memory and a live repo assert is a state this task
+    creates on every run: ``assert_from_repo``'s ``ON CONFLICT`` appends
+    ``repo_ids`` onto a relation a memory already wrote whenever the two
+    assert the same triple. Stripping that memory must leave the repo's
+    assertion standing. Nothing but a string count guarded this statement
+    before, and a count catches a deleted predicate, not a weakened one: swap
+    ``repo_ids`` for ``memory_ids`` in it — the copy-paste slip the shape
+    invites — and the count still reads six while a repo's assertion is
+    silently destroyed. The ``lonely`` relation is the other direction, so
+    the delete cannot pass this test by simply never running.
+    """
+    repo_id = await _seed_repo(session, name="relation-sparing-repo", imports=[])
+    memory_id = uuid4()
+    session.add(Memory(id=memory_id, content="x", source="test"))
+    await session.flush()
+
+    source = await _entity(session, "rel-source", [str(memory_id)], [str(repo_id)])
+    target = await _entity(session, "rel-target", [str(memory_id)], [str(repo_id)])
+    shared = await _relation(
+        session, source, target, [str(memory_id)], [str(repo_id)],
+    )
+    lonely_source = await _entity(session, "lonely-source", [str(memory_id)], [])
+    lonely_target = await _entity(session, "lonely-target", [str(memory_id)], [])
+    lonely = await _relation(session, lonely_source, lonely_target, [str(memory_id)], [])
+    await session.flush()
+
+    await PostgresGraphRepository(session).delete_by_memory_id(memory_id)
+
+    assert await _exists(session, "entity_relations", shared), (
+        "the memory strip deleted a relation a live repo still asserts"
+    )
+    assert not await _exists(session, "entity_relations", lonely)
+    remaining = (await session.execute(
+        text("SELECT memory_ids FROM entity_relations WHERE id = CAST(:id AS uuid)"),
+        {"id": str(shared)},
+    )).scalar()
+    assert list(remaining) == [], "the stripped memory is still on the survivor"
+
+
+@pytest.mark.asyncio
 async def test_the_unscoped_sweep_spares_a_repo_asserted_relation(session):
     repo_id = await _seed_repo(session, name="sweep-repo", imports=[])
     source = await _entity(session, "sweep-source", [], [str(repo_id)])
@@ -644,11 +841,14 @@ _LLM_SURFACES = frozenset({
 })
 
 # The clients a hand-rolled model call would need, closing the route that
-# bypasses the orchestrator entirely. Matched on the **import route only**:
-# these are bare, ordinary words that appear in this repository as data —
-# `_TYPE_OVERRIDES` types the entity name "openai" as a service — so matching
-# them as literals would flag the corpus's own vocabulary, and a guard that
-# fires on data is a guard that gets deleted.
+# bypasses the orchestrator entirely. Matched on **every** route the shared
+# scanner offers, literals included: a literal is how the executable dynamic
+# reach `importlib.import_module("httpx")` spells itself, and the import
+# route is structurally blind to it. The one collision — `_TYPE_OVERRIDES`
+# types the entity names "openai" and "anthropic" as services, corpus
+# vocabulary rather than a reach — is exempted by node identity in
+# `_curated_type_table_constants`, not by narrowing the vocabulary or
+# dropping the route.
 _HTTP_CLIENTS = frozenset({"httpx", "aiohttp", "requests", "openai", "anthropic"})
 
 _LLM_DISPATCH_ATTRS = frozenset({
@@ -669,46 +869,125 @@ _CODE_GRAPH_TABLES = ("code_graph_nodes", "code_edges", "code_symbols",
 _MEMORY_GRAPH_TABLES = ("entities", "entity_relations")
 
 
-def _module_path(dotted: str) -> Path | None:
-    module = BACKEND / Path(dotted.replace(".", "/") + ".py")
+def _module_path(dotted: str, root: Path) -> Path | None:
+    module = root / Path(dotted.replace(".", "/") + ".py")
     if module.exists():
         return module
-    package = BACKEND / Path(dotted.replace(".", "/")) / "__init__.py"
+    package = root / Path(dotted.replace(".", "/")) / "__init__.py"
     return package if package.exists() else None
 
 
-def _deriver_path_modules() -> list[Path]:
-    """Every module under ``app`` the deriver reaches, transitively.
+def _package_of(path: Path, root: Path) -> str:
+    """The dotted package a module at ``path`` lives in.
+
+    A module's package is its parent directory; a package's ``__init__.py``
+    lives in the package it *is*, which is the same computation.
+    """
+    return ".".join(path.relative_to(root).parts[:-1])
+
+
+def _resolve_relative(package: str, level: int, module: str | None) -> str | None:
+    """The absolute dotted path a relative import names.
+
+    ``from .pipeline import X`` inside ``app/services/code_deriver.py`` is a
+    reach into ``app.services.pipeline`` and must enter the closure exactly as
+    ``from app.services.pipeline import X`` does. Resolving it needs the
+    importing file's own package, which is why this lives here rather than in
+    the shared scanner: the scanner sees one file at a time and matches a
+    relative import on its trailing segments, a discipline that answers "does
+    *this* file reach a forbidden module" but cannot answer "which file does
+    it pull into the set I am about to scan".
+    """
+    parts = package.split(".") if package else []
+    if level - 1 > len(parts):
+        return None
+    base = parts[: len(parts) - (level - 1)]
+    if module:
+        base = base + module.split(".")
+    return ".".join(base) or None
+
+
+def _import_closure(entry: Path, root: Path) -> list[Path]:
+    """Every module under ``app`` reachable from ``entry``, transitively.
 
     Transitive, not one hop: "no LLM call anywhere in the path" is a claim
     about everything the deriver can execute, and a one-hop scan would pass
-    while a helper it imports dispatched freely. The closure is small by
-    construction — if it ever grows to include a module that legitimately
-    talks to a model, that is a design change to argue for, not an allowlist
-    entry to add.
+    while a helper it imports dispatched freely. Relative and absolute
+    imports both count — a closure that followed only ``level == 0`` would
+    let ``from .pipeline import ProcessingPipeline`` pull the whole
+    extraction pipeline into the deriver while every guard built on the
+    closure stayed green. The closure is small by construction — if it ever
+    grows to include a module that legitimately talks to a model, that is a
+    design change to argue for, not an allowlist entry to add.
     """
     seen: set[Path] = set()
-    stack = [BACKEND / "app" / "services" / "code_deriver.py"]
+    stack = [entry]
     while stack:
         path = stack.pop()
         if path in seen:
             continue
         seen.add(path)
         tree = ast.parse(path.read_text(), filename=str(path))
+        package = _package_of(path, root)
         for node in ast.walk(tree):
             dotted: list[str] = []
-            if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                dotted.append(node.module)
-                dotted += [f"{node.module}.{alias.name}" for alias in node.names]
+            if isinstance(node, ast.ImportFrom):
+                base = (
+                    node.module if node.level == 0
+                    else _resolve_relative(package, node.level, node.module)
+                )
+                if base:
+                    dotted.append(base)
+                    dotted += [f"{base}.{alias.name}" for alias in node.names]
             elif isinstance(node, ast.Import):
                 dotted += [alias.name for alias in node.names]
             for name in dotted:
                 if not name.startswith("app"):
                     continue
-                resolved = _module_path(name)
+                resolved = _module_path(name, root)
                 if resolved is not None and resolved not in seen:
                     stack.append(resolved)
     return sorted(seen)
+
+
+def _deriver_path_modules() -> list[Path]:
+    return _import_closure(BACKEND / "app" / "services" / "code_deriver.py", BACKEND)
+
+
+def _curated_type_table_constants(rel: str, tree: ast.Module) -> set[int]:
+    """The string constants of ``extraction_clean``'s curated type table.
+
+    The client vocabulary is bare, ordinary words, and this one data
+    structure types the entity names "openai" and "anthropic" as services —
+    corpus vocabulary, not a reach. The narrow exemption is those specific
+    constant nodes, identified by walking the assignment's own value; the
+    literal route stays live for every other constant in that file and every
+    other file in the closure. Dropping the route wholesale instead — which
+    is what a first pass did — reopens
+    ``importlib.import_module("httpx")``, an executable dynamic reach the
+    import route structurally cannot see.
+    """
+    if rel != "app/services/extraction_clean.py":
+        return set()
+    exempt: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        named = any(
+            isinstance(target, ast.Name) and target.id == "_TYPE_OVERRIDES"
+            for target in targets
+        )
+        if not named or node.value is None:
+            continue
+        exempt |= {
+            id(child) for child in ast.walk(node.value)
+            if isinstance(child, ast.Constant)
+        }
+    return exempt
 
 
 def _model_dispatch_offenders(paths: list[Path], root: Path) -> list[str]:
@@ -717,13 +996,10 @@ def _model_dispatch_offenders(paths: list[Path], root: Path) -> list[str]:
         ReachabilityRules(forbidden_modules=_LLM_SURFACES,
                           forbidden_attrs=_LLM_DISPATCH_ATTRS),
     )
-    client_reaches = find_forbidden_reach(
+    offenders += find_forbidden_reach(
         paths, root, ReachabilityRules(forbidden_modules=_HTTP_CLIENTS),
+        exempt_node_ids=_curated_type_table_constants,
     )
-    offenders += [
-        offense for offense in client_reaches
-        if "import route:" in offense or "loader-call route:" in offense
-    ]
     return offenders
 
 
@@ -751,6 +1027,12 @@ def test_the_deriver_path_reaches_no_model_dispatch():
         "async def enrich(client, msgs):\n"
         "    return await client.chat_completion('extraction', msgs)\n",
         "import httpx\n",
+        # The dynamic route. Executes at import, hands back the live client,
+        # and names the client only as a literal — so an import-route-only
+        # client rule walks straight past it.
+        "import importlib\n"
+        '_client = importlib.import_module("httpx")\n',
+        '__import__("openai")\n',
     ],
 )
 def test_the_model_dispatch_scan_flags_a_planted_reach(tmp_path, planted_source):
@@ -760,11 +1042,80 @@ def test_the_model_dispatch_scan_flags_a_planted_reach(tmp_path, planted_source)
     assert _model_dispatch_offenders([planted], tmp_path)
 
 
-def test_the_model_dispatch_scan_ignores_a_client_name_used_as_data(tmp_path):
-    clean = tmp_path / "app" / "services" / "fine.py"
-    clean.parent.mkdir(parents=True)
-    clean.write_text('OVERRIDES = {"openai": "service", "anthropic": "service"}\n')
-    assert _model_dispatch_offenders([clean], tmp_path) == []
+def test_the_curated_type_table_is_exempt_by_identity_not_by_wording(tmp_path):
+    """Both directions of the one collision, in one file.
+
+    A guard's negative control has to prove it still fires. Two dicts with
+    the same words sit side by side here: the curated table the deriver
+    genuinely reads, and an ordinary one. Exactly the ordinary one is
+    flagged — so the exemption is scoped to a structurally identified node
+    rather than to the file, the words, or the whole literal route.
+    """
+    planted = tmp_path / "app" / "services" / "extraction_clean.py"
+    planted.parent.mkdir(parents=True)
+    planted.write_text(
+        '_TYPE_OVERRIDES: dict[str, str] = {"openai": "service", '
+        '"anthropic": "service"}\n'
+        'ELSEWHERE = {"httpx": "tool"}\n'
+    )
+
+    offenders = _model_dispatch_offenders([planted], tmp_path)
+    assert len(offenders) == 1, offenders
+    assert "httpx" in offenders[0]
+
+
+@pytest.mark.parametrize(
+    "reach",
+    ["from app.services.pipeline import ProcessingPipeline",
+     "from app.services import pipeline"],
+)
+@pytest.mark.parametrize("spelling", ["absolute", "relative"])
+def test_the_closure_follows_a_relative_reach_as_it_follows_an_absolute_one(
+    tmp_path, reach, spelling,
+):
+    """The hole the closure had, and its own control.
+
+    The absolute spelling of a reach was always caught; the relative one was
+    not, because the closure skipped every ``level > 0`` import and the
+    reached module therefore never entered the scanned set. Both spellings
+    name the same module and both must pull it in — otherwise every guard
+    built on this closure is one ``from .pipeline import X`` away from blind.
+    """
+    services = tmp_path / "app" / "services"
+    services.mkdir(parents=True)
+    (tmp_path / "app" / "__init__.py").write_text("")
+    (services / "__init__.py").write_text("")
+    (services / "pipeline.py").write_text("import httpx\n")
+    entry = services / "code_deriver.py"
+    if spelling == "relative":
+        reach = reach.replace("from app.services.", "from .").replace(
+            "from app.services import", "from . import"
+        )
+    entry.write_text(reach + "\n")
+
+    closure = _import_closure(entry, tmp_path)
+    assert services / "pipeline.py" in closure, (
+        f"the {spelling} spelling of the same reach never entered the closure"
+    )
+    assert _model_dispatch_offenders(closure, tmp_path)
+
+
+def test_the_closure_resolves_a_parent_relative_reach(tmp_path):
+    # `from ..repositories import graph` two packages up: the resolution has
+    # to drop one segment per extra level, not treat every relative import
+    # as a sibling.
+    (tmp_path / "app" / "services").mkdir(parents=True)
+    (tmp_path / "app" / "repositories").mkdir(parents=True)
+    (tmp_path / "app" / "__init__.py").write_text("")
+    (tmp_path / "app" / "services" / "__init__.py").write_text("")
+    (tmp_path / "app" / "repositories" / "__init__.py").write_text("")
+    (tmp_path / "app" / "repositories" / "graph.py").write_text("import aiohttp\n")
+    entry = tmp_path / "app" / "services" / "code_deriver.py"
+    entry.write_text("from ..repositories.graph import PostgresGraphRepository\n")
+
+    closure = _import_closure(entry, tmp_path)
+    assert tmp_path / "app" / "repositories" / "graph.py" in closure
+    assert _model_dispatch_offenders(closure, tmp_path)
 
 
 def _cross_graph_statements(paths: list[Path], root: Path) -> list[str]:

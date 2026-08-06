@@ -769,9 +769,14 @@ class PostgresGraphRepository:
         entity's embeddings go with it (which is what stops the dedup match).
 
         Invariant-8 amendment (T0.13): a row survives while any live memory OR
-        any live repo still asserts it. ``repo_ids`` is empty everywhere until
-        the code deriver (T2.27) ships, so the added predicate is
-        vacuously true and this sweep behaves byte-identically to before."""
+        any live repo still asserts it. The predicate landed vacuous —
+        ``repo_ids`` was empty everywhere — and stopped being so with T2.27,
+        which shipped ``app/services/code_deriver.py`` as its first writer.
+        ``tests/test_code_deriver.py`` exercises it in both directions: a row
+        a live repo asserts survives, a row only a *dead* repo asserts is
+        reaped. Note the deriver has no scheduled caller yet (T2.96), so in
+        production the arrays are still empty; the non-vacuous exercise is of
+        the test database."""
         rel_ids = (await self.session.execute(text("""
             DELETE FROM entity_relations r
             WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(r.memory_ids))

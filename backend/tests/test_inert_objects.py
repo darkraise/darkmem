@@ -29,7 +29,15 @@ INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
 # `app/services/code_deriver.py` and the `assert_from_repo` /
 # `strip_repo_assertions` primitives. Both arrays now have a real writer, and
 # the amended sweeps' `NOT EXISTS (live repo)` predicates are exercised
-# against non-empty arrays by `tests/test_code_deriver.py`.
+# against non-empty arrays by `tests/test_code_deriver.py` — of the test
+# database; the deriver has no scheduled caller until T2.96, so in production
+# the arrays are still empty.
+#
+# The set is now EMPTY, and every test below that loops over it therefore
+# quantifies over nothing. That is intended — this is the scaffold the next
+# inert column plugs into, not a live assertion — so each of those tests
+# skips with a reason rather than passing silently, because a green tick on a
+# vacuous loop reads exactly like a green tick on a real one.
 INERT_COLUMNS: dict[tuple[str, str], str] = {}
 # triple_embeddings is no longer here: T2.33, its declared first writer (schema
 # inventory §7), landed on T2.52's measured 41.7% shortlist miss rate, so the
@@ -56,6 +64,8 @@ async def test_inert_tables_exist(session):
 
 @pytest.mark.asyncio
 async def test_inert_columns_exist(session):
+    if not INERT_COLUMNS:
+        pytest.skip("no inert column remains — see INERT_COLUMNS")
     for (table, column) in INERT_COLUMNS:
         found = (await session.execute(
             text("SELECT 1 FROM information_schema.columns "
@@ -100,6 +110,8 @@ def test_no_app_code_writes_the_inert_columns():
     ``NOT EXISTS`` predicates, which is exactly the frozen-but-inert shape
     doc 19 §3 asks for.
     """
+    if not INERT_COLUMNS:
+        pytest.skip("no inert column remains — see INERT_COLUMNS")
     columns = tuple(sorted({column for _table, column in INERT_COLUMNS}))
     offenders: list[str] = []
     for path in _app_sources():

@@ -241,6 +241,14 @@ _RESCUE_SKIP_SHORT: frozenset[str] = frozenset({
 # Known type overrides: the LLM occasionally confuses tools/services/databases
 # for these well-known names. We snap them to the canonical type used across
 # the darkmem corpus. Keys are lower-cased.
+#
+# Underscore-private by name but exported in `__all__` and read by a second
+# module: `app/services/code_deriver.py` runs names minted from code through
+# this same table so a name from a repository and the same name from a memory
+# land on one `(name, entity_type)` row. Changing a value here re-types both
+# paths at once; changing the binding's name breaks the deriver's guard
+# exemption in `tests/test_code_deriver.py`, which identifies this assignment
+# structurally.
 _TYPE_OVERRIDES: dict[str, str] = {
     # Self-projects
     "darkmem": "project",

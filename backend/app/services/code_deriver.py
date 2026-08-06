@@ -16,6 +16,14 @@ invariant structural rather than a matter of discipline (doc 10 §2).
 **Imports are the entire reach.** Symbols, calls, communities and processes
 never originate facts, and nothing here climbs to Layer 2 — a repo-asserted
 entity is a candidate signal, not a verified fact.
+
+**And only the imports of the languages it can parse.** The indexer writes
+``imports`` edges for every grammar it supports; this module understands the
+Python and JS/TS import shapes and no others, so it derives from those and
+declines the rest by name (``DERIVABLE_IMPORT_LANGUAGES`` /
+``UNDERIVABLE_IMPORT_LANGUAGES``), counting what it declined. Covering four
+more ecosystems badly is worse than covering two openly: for a bridge that
+*originates* facts, a missing fact is cheaper than a wrong one.
 """
 
 from __future__ import annotations
@@ -38,11 +46,11 @@ from app.taxonomy import (
 )
 
 # A dependency the repo pulls in is something it *depends on*; a datastore,
-# a running service or a wire protocol is something it *uses*. Both live in
-# RELATIONSHIP_TYPES and both pass through normalize_relation_type, so the
-# split is a naming choice inside the closed vocabulary, not an extension of
-# it.
-_USES_ENTITY_TYPES = frozenset({"database", "service", "protocol"})
+# a running service, a wire protocol or a language is something it *uses*.
+# Doc 10 §6 fixes the language half by name (`repo —USES→ language`); the
+# rest is a naming choice inside the closed vocabulary, since both values
+# live in RELATIONSHIP_TYPES and both pass through normalize_relation_type.
+_USES_ENTITY_TYPES = frozenset({"database", "service", "protocol", "language"})
 
 # Import prefixes that can only ever name something inside this repository:
 # a dotted or slash relative import, an absolute in-repo path, a bundler
@@ -70,6 +78,39 @@ _HOSTLIKE_SEGMENT = re.compile(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$", re.IGNORECASE)
 
 _MIN_DEPENDENCY_NAME_LENGTH = 2
 
+# A package name is one lexical token. Anything carrying whitespace, quotes,
+# a statement terminator or a scope operator is not a name the indexer
+# resolved — it is raw statement text that reached here through a grammar
+# whose import shape nothing below understands. The language gate should
+# already have caught it; this is the last stop before a name becomes an
+# `entities` row, and a wrong name there is exactly what a fact-originating
+# bridge must never mint.
+_MALFORMED_NAME = re.compile(r"""[\s"'`;,()<>{}\[\]]|::""")
+
+# The languages whose import statements the rules below actually parse.
+# `node:` prefixes, `@scope/pkg` heads, a dotted package path collapsing to
+# its root, `sys.stdlib_module_names` and `_NODE_BUILTINS` are Python's and
+# JS/TS's shapes and nobody else's.
+DERIVABLE_IMPORT_LANGUAGES = frozenset({"python", "typescript", "javascript"})
+
+# Every other label `code_parser.EXTENSION_TO_LANGUAGE` can attach to an
+# indexed file, plus the `unknown` a failed parse falls back to. The indexer
+# writes `imports` edges for these grammars too, but their target keys arrive
+# as raw statement text or as a scoped name whose root segment means nothing
+# — `use std::collections::HashMap;`, `import "fmt"`, `java.util.List`,
+# `System.Collections.Generic` — so deriving from them originates *wrong*
+# facts, the one direction doc 10 §6 forbids. They are skipped, counted and
+# reported rather than half-parsed. Widening the coverage means teaching
+# `dependency_name` that language's import shape and moving it across; it
+# never means relaxing this gate. `tests/test_code_deriver.py` fails the
+# build if the indexer learns a language neither set names.
+UNDERIVABLE_IMPORT_LANGUAGES = frozenset({
+    "bash", "c", "cmake", "cpp", "csharp", "css", "elixir", "go", "haskell",
+    "html", "java", "json", "julia", "kotlin", "lua", "make", "markdown",
+    "objc", "ocaml", "php", "ruby", "rust", "scala", "sql", "swift", "toml",
+    "unknown", "xml", "yaml", "zig",
+})
+
 
 @dataclass(frozen=True)
 class DerivedAssertions:
@@ -82,6 +123,12 @@ class DerivedAssertions:
     # diagnostics: the internal/external line is the deriver's single
     # highest-leverage judgement and an operator needs to see where it fell.
     internal_imports: list[str] = field(default_factory=list)
+    # Distinct import sources dropped because the importing file's language
+    # is one this module cannot parse, keyed by that language. Counted rather
+    # than silently discarded: an operator looking at a Go repository that
+    # asserts nothing needs to see that the deriver declined, not guess that
+    # the repository has no dependencies.
+    skipped_by_language: dict[str, int] = field(default_factory=dict)
 
 
 def _entity_type_for(name: str, default_raw_type: str) -> str:
@@ -136,17 +183,20 @@ def is_internal_import(source: str, suffix_index: SuffixIndex) -> bool:
 def dependency_name(source: str) -> str | None:
     """The package an import source names, or ``None`` if it names none.
 
-    ``None`` covers the two cases that are not dependencies at all: a builtin
+    ``None`` covers the cases that are not dependencies at all: a builtin
     module (the language's own standard library, which every repo in that
-    language has and which therefore distinguishes nothing) and a name too
-    short to be anything but noise. A builtin that the corpus has already
-    curated a type for — ``asyncio`` is the live example — is kept, because
-    the curated table is the corpus saying that name does carry meaning.
+    language has and which therefore distinguishes nothing), a name too short
+    to be anything but noise, and a name that is not lexically a package name
+    at all. A builtin that the corpus has already curated a type for —
+    ``asyncio`` is the live example — is kept, because the curated table is
+    the corpus saying that name does carry meaning.
     """
     normalized = source.strip().replace("\\", "/").rstrip("/")
     if not normalized:
         return None
     if normalized.startswith("node:"):
+        return None
+    if _MALFORMED_NAME.search(normalized):
         return None
 
     segments = normalized.split("/")
@@ -195,26 +245,51 @@ async def derive_assertions(session: AsyncSession, repo_id: UUID | str) -> Deriv
         {"rid": rid},
     )).mappings().all()
     file_paths = [row["file_path"] for row in file_rows]
-    languages = sorted({
-        row["language"].strip().lower()
+    language_of = {
+        row["file_path"]: (row["language"] or "").strip().lower()
         for row in file_rows
-        if row["language"] and row["language"].strip()
+    }
+    # `unknown` is what a failed parse falls back to, not a language the
+    # repository is written in; asserting it would be the same class of wrong
+    # fact the import gate below exists to stop.
+    languages = sorted({
+        language for language in language_of.values()
+        if language and language != "unknown"
     })
 
-    import_sources = [
-        row for row in (await session.execute(
-            text("""
-                SELECT DISTINCT target_key
-                FROM code_edges
-                WHERE repo_id = CAST(:rid AS uuid)
-                  AND edge_type = 'imports'
-                  AND source_kind = 'file'
-                  AND target_kind = 'module'
-                ORDER BY target_key
-            """),
-            {"rid": rid},
-        )).scalars().all()
-    ]
+    # A `file` key is the file path verbatim (`app/utils/graph_keys.py`), so
+    # the importing file's language is one dict lookup away — which is what
+    # lets the derivation be scoped to the grammars it can actually parse.
+    import_rows = (await session.execute(
+        text("""
+            SELECT DISTINCT source_key, target_key
+            FROM code_edges
+            WHERE repo_id = CAST(:rid AS uuid)
+              AND edge_type = 'imports'
+              AND source_kind = 'file'
+              AND target_kind = 'module'
+            ORDER BY source_key, target_key
+        """),
+        {"rid": rid},
+    )).mappings().all()
+
+    sources_by_language: dict[str, set[str]] = {}
+    for row in import_rows:
+        language = language_of.get(row["source_key"]) or "unknown"
+        sources_by_language.setdefault(language, set()).add(row["target_key"])
+
+    import_sources = sorted({
+        source
+        for language, sources in sources_by_language.items()
+        if language in DERIVABLE_IMPORT_LANGUAGES
+        for source in sources
+    })
+    skipped_by_language = {
+        language: len(sources - set(import_sources))
+        for language, sources in sorted(sources_by_language.items())
+        if language not in DERIVABLE_IMPORT_LANGUAGES
+        and sources - set(import_sources)
+    }
 
     suffix_index = SuffixIndex(file_paths)
 
@@ -264,6 +339,7 @@ async def derive_assertions(session: AsyncSession, repo_id: UUID | str) -> Deriv
         entities=list(entities.values()),
         relations=list(relations.values()),
         internal_imports=internal,
+        skipped_by_language=skipped_by_language,
     )
 
 
@@ -278,4 +354,5 @@ async def assert_repo_graph(session: AsyncSession, repo_id: UUID | str) -> dict:
         "entities": written["entities"],
         "relations": written["relations"],
         "internal_imports": len(derived.internal_imports),
+        "skipped_by_language": derived.skipped_by_language,
     }
