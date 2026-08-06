@@ -45,6 +45,7 @@ from app.services.contradiction_veto import (
     adjudicate_contradiction,
     adjudicate_contradiction_finding,
     detect_open_contradiction,
+    detect_scanned_contradiction,
     windows_overlap,
 )
 from app.services.relations import REPLACES_FAMILY
@@ -820,14 +821,17 @@ class TestRecovery:
 
 
 class TestDetectorComposition:
-    def test_only_the_deterministic_scan_is_wired_today(self):
-        """T2.11's LLM scan joins this tuple when it lands.
+    def test_both_veto_inputs_are_wired(self):
+        """Doc 08 §4.2's two inputs, and only those two.
 
-        Recorded as an assertion rather than a comment so the hand-off cannot
+        Recorded as an assertion rather than a comment so a hand-off cannot
         happen silently: a detector plumbed past the registry would keep its own
-        disputes open while this one's silence resolved them.
+        disputes open while another's silence resolved them.
         """
-        assert CONTRADICTION_DETECTORS == (detect_open_contradiction,)
+        assert CONTRADICTION_DETECTORS == (
+            detect_open_contradiction,
+            detect_scanned_contradiction,
+        )
 
     async def test_any_registered_detector_can_open_a_dispute(self, session, monkeypatch):
         """The registry is read, not decorative.

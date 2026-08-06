@@ -388,11 +388,15 @@ _QUOTED_TOKEN_ALLOWLIST = {
     "app/services/config.py",               # PURPOSES + get_llm_config defaults
 }
 
-# Modules that may reference the judge module or its ungated probe. Empty
-# beyond the judge itself: no consumer exists yet (T2.11, T3.03). A future
-# consumer joins here consciously — and must use judge(), never the probe.
+# Modules that may reference the judge module or its ungated probe. A consumer
+# joins here consciously — and must use judge(), never the probe, which
+# `test_the_scan_module_reaches_only_the_gated_door` re-proves against the
+# parsed tree for the one member below.
 _JUDGE_REFERENCE_ALLOWLIST = {
     "app/services/verification_judge.py",
+    # T2.11's Tier-C contradiction scan: the first consumer, and gated by the
+    # judge's own refusal rather than by this list.
+    "app/services/contradiction_scan.py",
 }
 
 # Capture/retrieval-path modules the judge may NEVER be reachable from
