@@ -510,9 +510,21 @@ children. Readers: `GET /events`, `/events/timeline`, `/events/calendar`
 UTC expression verbatim), and `GET /auth/audit`, which filters
 `auth_*`/`setup_*` rows from the same table. Journal payloads may carry
 content previews that **outlive deletion of their memory** — append-only
-by design; the retention policy is an escalated, unresolved Tier-3
-question (it spans `events` and chat's `messages.context` citation
-snapshots), not an oversight to fix silently.
+by design. **The retention policy is settled (T2.59, ruled 2026-08-06):
+accept the residue and document it.** Deleting a memory is not a content
+purge and the DELETE route says so. The residue is wider than two stores —
+full refine summaries in `consolidated`/`undone`, contradiction counterparts
+in `verified`, `knowledge_triples.fact` by design, 24h of raw content in
+`memory_buffer` done rows, and `messages.context` keeping cited fact rows
+untrimmed. The pasted-secret case is answered by an operator break-glass
+procedure (`docs/runbook-content-purge.md`), **never an in-app
+journal-rewriting path**: that would put "make this never have happened" one
+bug away from the audit substrate. The ruling's load-bearing argument is
+measured, not aesthetic — the assistant's own unbounded `messages.content`
+prose and the storage substrate sit *below* every option considered, so the
+alternatives pay permanent costs to narrow a gap none of them closes.
+**Write-time minimization is the standing rule**: a new event payload copies
+content only when a feature demonstrably needs it, and says so at the writer.
 
 `undone` joined the vocabulary with T2.13, and it is the **first by-id
 consumer of `events`** — the composite `PRIMARY KEY (id, created_at)`
