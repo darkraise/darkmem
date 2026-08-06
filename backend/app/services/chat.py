@@ -398,7 +398,13 @@ class ChatService:
                 "id": row.id,
                 "layer": row.layer,
                 "text": rerank_document_text(row),
-                "verification_status": row.verification_status,
+                # Off the labels, never off ``ComposedRow.verification_status``:
+                # that attribute is the raw column the ranking is allowed to
+                # consume, and reading it here served promoted statuses the
+                # gate had withheld — into the prompt, into ``messages.context``
+                # and onto the context panel.
+                "verification_status": row.labels.get("verification_status"),
+                "label_suppressed": row.labels.get("label_suppressed"),
                 "review_state": row.labels.get("review_state"),
                 "badge": (
                     FactBadge.model_validate(badge).model_dump(mode="json")

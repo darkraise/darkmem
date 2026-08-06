@@ -22,6 +22,7 @@ while staying live.
 
 import json
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -30,6 +31,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.claim_gates import ungated_status
 from app.services.events import record_event
 from app.utils.ids import new_id
 
@@ -454,7 +456,7 @@ class KnowledgeTripleRepository:
         subject_name: str | None = None,
         rel_type: str | None = None,
         object_name: str | None = None,
-        verification_status: str | None = None,
+        verification_statuses: Collection[str] | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
@@ -462,10 +464,17 @@ class KnowledgeTripleRepository:
 
         **It does not rank and it does not gate.** The order is arrival
         (``created_at DESC, id DESC``), a queued, disputed or candidate fact is
-        listed like any other, and ``verification_status`` is a filter the
+        listed like any other, and ``verification_statuses`` is a filter the
         caller opts into rather than a default that hides rungs. Doc 08 §6's
         rule that the review queue is never a gate on the read path is a rule
         about *this* kind of surface too.
+
+        The status filter takes a *set* because the caller filters on what a
+        reader is served, and a served rung can stand for more than one stored
+        one while a claim gate is closed. Resolving that set is the serving
+        layer's job (``facts_read``); this method matches the column against
+        whatever it is given, and an empty set matches nothing rather than
+        everything.
 
         ``project`` is required as a keyword but may be ``None``, unlike
         ``get_live`` and ``as_of`` where it is mandatory. Those two answer a
@@ -483,11 +492,22 @@ class KnowledgeTripleRepository:
             ("subject_name", subject_name),
             ("rel_type", rel_type),
             ("object_name", object_name),
-            ("verification_status", verification_status),
         ):
             if value is not None:
                 conditions.append(f"{column} = CAST(:{column} AS text)")
                 params[column] = value
+        if verification_statuses is not None:
+            # Membership spelled as a subquery rather than the house
+            # `= ANY(CAST(...))`: the verification axis is guarded by a scan
+            # that reads a bare `verification_status =` binding as a write to
+            # the column, and it is right to, since the shipped writer builds
+            # its SET list as exactly such a fragment. A filter must not look
+            # like the one thing only two functions are allowed to do.
+            conditions.append(
+                "verification_status IN "
+                "(SELECT unnest(CAST(:verification_statuses AS text[])))"
+            )
+            params["verification_statuses"] = sorted(verification_statuses)
         where_sql = " AND ".join(conditions)
 
         result = await self.session.execute(
@@ -788,10 +808,18 @@ class KnowledgeTripleRepository:
             )
         changed = status is not None and prior_row["verification_status"] != status
         if changed or contradiction_blocked or supersession_blocked:
+            # Journal, not label: the two rungs a transition moved between are
+            # the history of the ladder, and a gated copy would record a
+            # movement that did not happen. `ungated_status` says so at the
+            # site — see `claim_gates` for what the declaration commits to.
             payload: dict[str, Any] = {
-                "before": {"verification_status": prior_row["verification_status"]},
+                "before": {
+                    "verification_status": ungated_status(
+                        prior_row["verification_status"]
+                    )
+                },
                 "after": {
-                    "verification_status": (
+                    "verification_status": ungated_status(
                         status if status is not None else prior_row["verification_status"]
                     )
                 },
@@ -914,8 +942,12 @@ class KnowledgeTripleRepository:
                 object_id=triple_id if isinstance(triple_id, UUID) else UUID(str(triple_id)),
                 project=prior_row["project"],
                 payload={
-                    "before": {"verification_status": prior_row["verification_status"]},
-                    "after": {"verification_status": CONFIRMED},
+                    "before": {
+                        "verification_status": ungated_status(
+                            prior_row["verification_status"]
+                        )
+                    },
+                    "after": {"verification_status": ungated_status(CONFIRMED)},
                     "outcome": RATIFY_OUTCOME,
                 },
             )

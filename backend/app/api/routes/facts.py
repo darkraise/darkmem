@@ -15,6 +15,10 @@ Nothing on this surface ranks or filters by verification status by default.
 ``verification_status`` is a filter the caller opts into; absent it, a
 candidate, a disputed and a corroborated fact are listed alike and labelled
 apart. That is doc 08 §6's never-a-gate rule applied to a browsing read.
+
+The filter matches the status each row is **served** with, not the column
+behind it — while a claim gate is closed the two differ, and a filter on the
+column would let two requests recover per fact the rung the label withholds.
 """
 
 from __future__ import annotations
@@ -50,7 +54,7 @@ async def list_facts(
         subject_name=subject_name,
         rel_type=rel_type,
         object_name=object_name,
-        verification_status=verification_status,
+        served_status=verification_status,
         limit=limit,
         offset=offset,
     )

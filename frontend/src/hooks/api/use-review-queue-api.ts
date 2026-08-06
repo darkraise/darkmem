@@ -86,6 +86,10 @@ export interface ReviewQueueFactItem {
   invalid_at: string | null
   expired_at: string | null
   verification_status: string
+  /** T2.95: why a promoted rung was withheld for want of its evidence record,
+   *  null when nothing was. The queue serves the gated rung like every other
+   *  labelled door. */
+  label_suppressed: string | null
   confidence: number | null
   review_state: string | null
   demotion_pending_since: string | null

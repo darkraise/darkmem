@@ -80,6 +80,12 @@ class FactListItem(BaseModel):
     # composed read's wire carries it through — this is the facts list's own
     # door onto the tier, not a second adjudication of it.
     unverified: bool
+    # Why a promoted rung was withheld, or ``None`` when nothing was (T2.95).
+    # Undeclared, pydantic dropped it and a suppressed row read exactly like a
+    # genuine ``candidate`` — the silent downgrade the gate exists to prevent.
+    # This is the third field this model has lost that way; ``unverified`` was
+    # the second.
+    label_suppressed: str | None = None
     confidence: float | None
     review_state: str | None
     demotion_pending_since: datetime | None = None
