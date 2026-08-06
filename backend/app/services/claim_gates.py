@@ -105,7 +105,11 @@ def _load_record(path: Path) -> dict | None:
     try:
         with open(path, encoding="utf-8") as fh:
             record = json.load(fh)
-    except (OSError, json.JSONDecodeError):
+    # ValueError rather than JSONDecodeError alone: a record with invalid
+    # UTF-8 raises UnicodeDecodeError out of the *read*, not the parse, and an
+    # uncaught one here took the whole fact read path down with it — every
+    # row, candidate rows included, 500ing because the gate file was corrupt.
+    except (OSError, ValueError):
         logger.warning("claim-gate record %s is unreadable; treating as absent", path)
         return None
     return record if isinstance(record, dict) else None
@@ -125,7 +129,10 @@ def corroboration_gate(path: Path | None = None) -> ClaimGate:
     # operator, or by a test proving the record lights the label. A gate whose
     # own reversibility cannot be exercised is a gate nobody can verify.
     record = _load_record(PROMOTION_RECORD_PATH if path is None else path)
-    if record is None or not record.get("gate_eligible"):
+    # `is True`, not truthiness: a record whose artifact brands eligibility as
+    # a *string* — "INTERIM", or even "false" — is truthy, and truthiness
+    # would read the exact branding this gate exists to refuse as a pass.
+    if record is None or record.get("gate_eligible") is not True:
         return ClaimGate(False, REASON_NO_PROMOTION_RECORD)
     return ClaimGate(True)
 
