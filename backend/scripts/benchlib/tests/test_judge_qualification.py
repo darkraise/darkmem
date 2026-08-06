@@ -103,7 +103,15 @@ def test_sanity_fixtures_live_outside_the_gold():
 # ── gate eligibility: the T2.54 lock (doc 17 §11) ────────────────────────
 
 
-def _synthetic_gold(n_live, n_l2, n_author):
+_MISSING = object()
+
+
+def _certified_resample():
+    return {"n": 93, "disagreements": 0, "seed": 4242,
+            "performed_by": "owner", "date": "2026-08-06"}
+
+
+def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
     pairs = []
     for i in range(n_live):
         pairs.append({
@@ -111,7 +119,7 @@ def _synthetic_gold(n_live, n_l2, n_author):
             "verdict": "entailed",
             "label_source": "author" if i < n_author else "adjudicated",
         })
-    return {
+    doc = {
         "pairs": pairs,
         "declared_provenance_counts": {
             "hand-authored-synthetic-fact": n_live - n_l2,
@@ -120,21 +128,29 @@ def _synthetic_gold(n_live, n_l2, n_author):
             "l2-fact": n_l2,
         },
     }
+    doc["resample"] = _certified_resample() if resample is _MISSING else resample
+    return doc
 
 
 def test_the_real_gold_is_refused_with_counts_surfaced():
-    # Post-Step-5 composition: size and the 50% floor clear, 239/241 pairs
-    # blind-adjudicated; the remaining refusal ground is the two pairs in
-    # the owner's escalation queue, still label_source author.
+    """Post-Step-6 composition: size, the 50% floor and the author-label
+    condition all clear — the owner's 2026-08-06 sitting ratified the rulebook
+    fork and resolved both escalations to `label_source: "owner"`.
+
+    **The remaining refusal ground is the resample**, and that is the point.
+    Clearing the author condition is what first made this gold reachable as
+    "eligible", and until 2026-08-06 the lock would have said so while its
+    label error was uncertified.
+    """
     eligibility = jq.gate_eligibility(entailment_gold.load_entailment_gold())
     assert eligibility.eligible is False
     assert eligibility.live_pairs == 241
     assert eligibility.l2_fact_pairs == 153
-    assert eligibility.author_labelled_pairs == 2
+    assert eligibility.author_labelled_pairs == 0
     joined = "\n".join(eligibility.reasons)
     assert "l2-fact: 153/241" in joined
-    assert "author-labelled: 2/241" in joined
-    assert "await" in joined and "adjudication" in joined
+    assert "author-labelled: 0/241" in joined
+    assert "resample: absent" in joined
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
@@ -530,6 +546,10 @@ def _write_eligible_gold(tmp_path):
             "hand-authored-bench-corpus": 0,
             "synthesis-draft": 0,
         },
+        # An eligible gold must now carry a certified resample: Layer 3's
+        # n = 93 / <= 1 disagreement is what measures label accuracy, and the
+        # lock enforces it since 2026-08-06.
+        "resample": _certified_resample(),
         "pairs": pairs,
     }
     path = tmp_path / "eligible_gold.json"
@@ -643,7 +663,12 @@ def test_gate_mode_refuses_the_real_gold_before_any_call(tmp_path):
         _run(tmp_path, stub_cls, gate=True)
     message = str(excinfo.value)
     assert "l2-fact: 153/241" in message
-    assert "author-labelled: 2/241" in message
+    # 0 since the owner's 2026-08-06 Step-6 sitting resolved both escalations.
+    # The refusal now rests on the resample, which is the condition that
+    # actually certifies label accuracy — and the one the lock did not carry
+    # until clearing the author condition made this gold reachable.
+    assert "author-labelled: 0/241" in message
+    assert "resample: absent" in message
     assert seen == [], "eligibility refusal must precede any model call"
 
 
@@ -684,3 +709,45 @@ def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
     gold = result.twin.channels["judge_call"]
     assert fixture.live.n == len(SANITY_PREMISES)
     assert gold.live.n == result.score.n_pairs == 241
+
+
+# ── the resample condition (T2.54 Step 6, 2026-08-06) ───────────────────
+
+
+def test_a_gold_without_a_resample_is_refused():
+    """The hole this closes: before 2026-08-06 the lock checked size, the
+    l2-fact floor and author-labels and nothing else, so a gold whose
+    escalations were resolved read as eligible with its label error never
+    measured — a policy standing between it and a gate claim that no code
+    enforced."""
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0, resample=None))
+    assert eligibility.eligible is False
+    assert "resample: absent" in "\n".join(eligibility.reasons)
+
+
+def test_an_undersized_resample_is_refused():
+    small = {**_certified_resample(), "n": jq.RESAMPLE_N - 1}
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0, resample=small))
+    assert eligibility.eligible is False
+    assert "below the ratified floor" in "\n".join(eligibility.reasons)
+
+
+def test_a_resample_over_the_disagreement_bar_is_refused():
+    failed = {**_certified_resample(),
+              "disagreements": jq.RESAMPLE_MAX_DISAGREEMENTS + 1}
+    eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0, resample=failed))
+    assert eligibility.eligible is False
+    assert "exceeds the ratified bar" in "\n".join(eligibility.reasons)
+
+
+def test_an_uncitable_resample_is_refused():
+    """A resample nobody can reproduce or attribute certifies nothing — the
+    seed and the performer are what make it a measurement rather than a
+    claim."""
+    for field in ("seed", "performed_by", "date"):
+        anonymous = {**_certified_resample(), field: None}
+        eligibility = jq.gate_eligibility(
+            _synthetic_gold(200, 100, 0, resample=anonymous)
+        )
+        assert eligibility.eligible is False, field
+        assert f"{field!r} missing" in "\n".join(eligibility.reasons)

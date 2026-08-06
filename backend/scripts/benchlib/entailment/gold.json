@@ -307,8 +307,8 @@
         "direction"
       ],
       "provenance": "hand-authored-synthetic-fact",
-      "label_source": "author",
-      "rationale": "Reversed functional role. The premise does not assert the reverse arrangement, but nothing in it excludes a separate one either, so this is unsupported, not contradicted (reversal rule, non-exclusive case)."
+      "label_source": "owner",
+      "rationale": "Reversed functional role. The premise does not assert the reverse arrangement, but nothing in it excludes a separate one either, so this is unsupported, not contradicted (reversal rule, non-exclusive case). OWNER RULING (T2.54 Step 6, 2026-08-06): no new rule needed. LABELLING.md's existing load-balancing-roles precedent (non-exclusive, eg-0023/eg-0025) already decides this; the blind passes' 'contradicted' came from a condensed reversal table that dropped it. The recorded verdict follows the ratified text and stands."
     },
     {
       "id": "eg-0024",
@@ -2393,8 +2393,8 @@
         "value-swap"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
-      "rationale": "Replaced-object swap (sentry -> mkdocs) with the sentence shape preserved; the one thing a named replacement retired is a single-valued slot (the exclusive-slot rule's 'one thing a named migration replaced' shape), so the differing value contradicts under the exclusive-slot rule. mkdocs is corpus-plausible as a replaced tool - it is genuinely replaced (by astro) in the harvest world.",
+      "label_source": "owner",
+      "rationale": "Replaced-object swap (sentry -> mkdocs) with the sentence shape preserved; the one thing a named replacement retired is a single-valued slot (the exclusive-slot rule's 'one thing a named migration replaced' shape), so the differing value contradicts under the exclusive-slot rule. mkdocs is corpus-plausible as a replaced tool - it is genuinely replaced (by astro) in the harvest world. OWNER RULING (T2.54 Step 6, 2026-08-06): proposed rule 3 RATIFIED — the object of a named replacement/migration (REPLACES) is single-valued. The recorded verdict stands; the blind passes' 'unsupported' followed a rulebook that lacked the category, so the divergence was a rulebook gap and not a mislabel.",
       "fact_key": {
         "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
         "subject_name": "glitchtip",

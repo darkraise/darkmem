@@ -333,7 +333,40 @@ pairs: the reversal is entailed, and the slice admits no such verdict.
 This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 (16 relations, checked against the source on 2026-08-03).
 
-## Step-5 rulebook fork — proposed extensions, UNRATIFIED (2026-08-03)
+## Step-5 rulebook fork — RATIFIED by the owner (2026-08-06)
+
+> **All three proposals below were ratified in the T2.54 Step-6 sitting on
+> 2026-08-06, and item 4's clarification was accepted.** They are no longer
+> proposals; this file now *is* the rulebook they describe, and a future
+> condensation that drops any of them is a fork to be fixed rather than a
+> reading to be honoured.
+>
+> Consequences, applied:
+>
+> - **Rule 1 ratified** — the six `value-swap` host-swap pairs (eg-0048,
+>   eg-0088, eg-0098, eg-0109, eg-0154, eg-0201) keep their recorded
+>   `contradicted` verdicts. No retire-and-replace. **Their blind agreement
+>   remains procedurally weak evidence** — it was manufactured by the shared
+>   fork rather than independently reached — so they are exactly the pairs the
+>   resample's full `contradicted` census exists to test.
+> - **Rule 2 ratified** — zero live pairs change; the category is now lawful
+>   for future authoring.
+> - **Rule 3 ratified** — **eg-0142**'s recorded `contradicted` stands. The
+>   blind passes' `unsupported` followed a rulebook that lacked the category,
+>   so the divergence was a rulebook gap, not a mislabel.
+> - **Item 4 accepted** — **eg-0023**'s recorded `unsupported` stands under
+>   this file's existing load-balancing precedent. The reversal rule below now
+>   names balancer/backend explicitly so a condensed restatement cannot lose it
+>   again.
+>
+> Both escalations are therefore resolved and carry `label_source: "owner"` — a
+> provenance distinct from `adjudicated`, which means two blind passes agreed.
+> **The escalation queue is empty. The resample has NOT been run**; see the
+> History entry for why it cannot be delegated.
+
+### The proposals as they were put (retained verbatim for audit)
+
+
 
 The Step-4 authoring protocol and the Step-5 blind-pass briefs embedded a
 condensed rulebook instead of this file (to keep the skip log above from
@@ -426,6 +459,30 @@ exists.
   blocker B4).
 
 ## History
+
+- **2026-08-06 (T2.54 Step 6, owner sitting — partial).** The owner ratified
+  all three Step-5 rulebook extensions and accepted item 4's clarification, in
+  the mandated rule-then-pairs order. Both escalations resolved without
+  retire-and-replace: eg-0142 under ratified rule 3, eg-0023 under this file's
+  pre-existing precedent. `gold.json` now carries 239 `adjudicated` + 2 `owner`
+  and **zero** `author` labels, which clears the last eligibility-lock
+  condition.
+
+  **The n = 93 seeded blind resample remains outstanding, and it was
+  deliberately not delegated.** Every label in this gold was produced by
+  Claude-family agents, and the Steps 0–5 review measured the failure mode
+  directly: the second blind pass "added ~zero bits and diverged identically to
+  pass A" — correlated error, not independent confirmation. A Claude agent
+  drawing the resample would reproduce the same correlated errors, pass the
+  ≤ 1-disagreement bar comfortably, and certify nothing — while flipping the
+  gold to lock-eligible, because `judge_qualification` checks size, the
+  `l2-fact` floor and author-labels but **not** whether the resample ever ran.
+  That combination — a passing number that means nothing, guarding a gate that
+  cannot detect its absence — is the one outcome this protocol exists to
+  prevent. The resample is the first independent accuracy measurement this gold
+  receives and it must come from outside the family that labelled it.
+
+
 
 - **2026-07-30 (T2.25).** 41 pairs seeded, author-labelled; 41/41
   blind-agreement on the pre-commit check.

@@ -144,11 +144,57 @@ class Eligibility:
     reasons: tuple[str, ...]
 
 
+
+# The resample certification, and why the lock has to carry it.
+#
+# `LABELLING.md`'s Layer 3 requires a seeded blind resample (n = 93, bar <= 1
+# disagreement) before the gold is trustworthy, and the Steps 0-5 review
+# established that it is the **first independent accuracy measurement** this
+# gold ever receives: the two blind passes are Claude-family agents labelling
+# work Claude-family agents authored, and pass B "added ~zero bits and diverged
+# identically to pass A".
+#
+# Until 2026-08-06 this lock checked size, the l2-fact floor and author-labels
+# and **nothing else** — so a gold whose escalations were resolved read as
+# eligible with its label error uncertified, and the one artifact standing
+# between it and a gate claim was a policy no code enforced. T2.54's Step-6
+# sitting cleared the author-label condition and made that reachable, so the
+# condition is now enforced rather than remembered.
+RESAMPLE_N = 93
+RESAMPLE_MAX_DISAGREEMENTS = 1
+
+
+def _resample_reasons(resample: object) -> list[str]:
+    if not isinstance(resample, dict):
+        return [
+            "resample: absent — LABELLING.md Layer 3 requires a seeded blind "
+            f"resample (n = {RESAMPLE_N}, bar <= {RESAMPLE_MAX_DISAGREEMENTS} "
+            "disagreement) before this gold certifies anything. It is the "
+            "first independent accuracy measurement the set receives and must "
+            "come from outside the family that labelled it"
+        ]
+    out: list[str] = []
+    n = resample.get("n")
+    disagreements = resample.get("disagreements")
+    if not isinstance(n, int) or n < RESAMPLE_N:
+        out.append(f"resample: n = {n!r} below the ratified floor {RESAMPLE_N}")
+    if not isinstance(disagreements, int) or disagreements > RESAMPLE_MAX_DISAGREEMENTS:
+        out.append(
+            f"resample: {disagreements!r} disagreements exceeds the ratified "
+            f"bar of {RESAMPLE_MAX_DISAGREEMENTS}"
+        )
+    for field in ("seed", "performed_by", "date"):
+        if not resample.get(field):
+            out.append(f"resample: {field!r} missing — an uncitable resample certifies nothing")
+    return out
+
+
 def gate_eligibility(gold_doc: dict) -> Eligibility:
     live = [p for p in gold_doc["pairs"] if not p.get("retired")]
     n_live = len(live)
     n_l2 = gold_doc.get("declared_provenance_counts", {}).get("l2-fact", 0)
     n_author = sum(p.get("label_source") == "author" for p in live)
+    resample = gold_doc.get("resample")
 
     reasons = [
         f"composition: {n_live} live pairs; l2-fact: {n_l2}/{n_live}; "
@@ -170,6 +216,7 @@ def gate_eligibility(gold_doc: dict) -> Eligibility:
             f"author-labelled: {n_author}/{n_live} live pairs await "
             "adjudication (doc 17 §11; T2.54's re-adjudication flips them)"
         )
+    reasons.extend(_resample_reasons(resample))
 
     eligible = len(reasons) == 1
     return Eligibility(

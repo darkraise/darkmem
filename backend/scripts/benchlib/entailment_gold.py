@@ -116,7 +116,12 @@ FACT_KEY_FIELDS = (
     "triple_key", "subject_name", "rel_type", "object_name", "project",
 )
 
-LABEL_SOURCES = frozenset({"author", "adjudicated"})
+# `owner` is a third provenance, not a synonym for `adjudicated` (T2.54 Step 6,
+# 2026-08-06). `adjudicated` means two independent blind passes agreed with the
+# recorded verdict; `owner` means the escalation reached Layer 3 and a human
+# ruled. Collapsing them would tell T2.41 that a label carried blind-pass
+# agreement it never had — and the gate must report its metrics per population.
+LABEL_SOURCES = frozenset({"author", "adjudicated", "owner"})
 
 
 def load_l2_harvest(path: str | Path = HARVEST_PATH) -> dict:
