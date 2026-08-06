@@ -391,3 +391,172 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
         worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
         await worker.process_batch(batch_size=batch_size)
     return run
+
+
+def make_ppr_snapshot_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Rebuild a rotating batch of projects' PPR snapshots (doc 07 §4).
+
+    Tier C, and the only writer of the in-process cache the graph arms read.
+    It is deliberately *not* a member of the dreaming family: contract 6 fixes
+    that family as the consolidation passes, and doc 07 §4 owns this artefact's
+    mechanics separately. Invariant 15 is unaffected either way — retrieval
+    reads the artefact, never this runner.
+
+    **The cursor advances on a visited project, not a successful one.** A
+    project whose graph fails deterministically would otherwise pin the
+    rotation and starve every project behind it, which is the failure the
+    rotation exists to avoid. A short batch means the rotation reached the end,
+    so the cursor resets — without that the job goes inert after one pass and
+    still reports ``ok``, the half `run_topic_detection` originally missed.
+
+    **A missing fingerprint degrades the snapshot; it never fails the run.**
+    Without one the synonymy arm is skipped and the graph is relation-only,
+    which is a weaker snapshot but a correct one. Refusing to build at all
+    would retire the arm entirely on any install whose embedder is still
+    settling.
+    """
+    async def run() -> None:
+        from app.repositories.vector import PostgresVectorRepository
+        from app.services.ppr_snapshot import (
+            PPR_SNAPSHOT_CONFIG_SCHEMA,
+            PPR_SNAPSHOT_JOB_KEY,
+            refresh_snapshots,
+        )
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in PPR_SNAPSHOT_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(PPR_SNAPSHOT_JOB_KEY)
+            knobs.update(cfg.config or {})
+        batch_size = int(knobs.pop("batch_size"))
+
+        fingerprint: str | None = None
+        llm = getattr(app.state, "llm", None)
+        if llm is not None:
+            try:
+                async with session_factory() as session:
+                    fingerprint = await PostgresVectorRepository(
+                        session
+                    ).resolve_read_fingerprint(llm)
+            except Exception as e:
+                logger.info(
+                    "ppr_snapshot: no resolvable read fingerprint (%s); "
+                    "building relation-only snapshots", e,
+                )
+
+        after_project = await _load_ppr_cursor(session_factory)
+        outcome = await refresh_snapshots(
+            session_factory,
+            fingerprint=fingerprint,
+            batch_size=batch_size,
+            after_project=after_project,
+            synonymy_threshold=float(knobs["synonymy_threshold_pct"]) / 100.0,
+            synonymy_top_k=int(knobs["synonymy_top_k"]),
+            synonymy_max_nodes=int(knobs["synonymy_max_nodes"]),
+            max_snapshot_edges=int(knobs["max_snapshot_edges"]),
+            build_timeout_seconds=float(knobs["build_timeout_seconds"]),
+        )
+
+        wrapped = outcome.projects_visited < batch_size
+        cursor = None if wrapped else outcome.last_project
+        await _save_ppr_cursor(session_factory, cursor)
+
+        logger.info(
+            "PPR snapshot visited %d project(s) from cursor %r: %d built, "
+            "%d skipped; cursor now %r%s",
+            outcome.projects_visited, after_project, outcome.snapshots_built,
+            outcome.skipped, cursor, " (wrapped to start)" if wrapped else "",
+        )
+    return run
+
+
+def make_relation_embedding_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Keep `relation_embeddings__<slug>` current (doc 07 §4, doc 19 §6).
+
+    Tier C: the dual-level channel's global arm reads these vectors, and
+    writing them during Phase 5 would put an extra embed round trip on every
+    capture for a signal retrieval does not read until its flag is on.
+
+    Without an orchestrator there is nothing to embed with, so the run is a
+    no-op rather than a failure — the same stance every other model-spending
+    runner takes in Postgres-only mode.
+    """
+    async def run() -> None:
+        from app.services.relation_embeddings import (
+            RELATION_EMBEDDING_CONFIG_SCHEMA,
+            RELATION_EMBEDDING_JOB_KEY,
+            refresh_relation_embeddings,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("relation_embedding_refresh skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in RELATION_EMBEDDING_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(RELATION_EMBEDDING_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await refresh_relation_embeddings(
+                session, llm,
+                missing_batch=int(knobs["missing_batch"]),
+                rotation_batch=int(knobs["rotation_batch"]),
+                chunk_size=int(knobs["embed_chunk"]),
+            )
+            await session.commit()
+
+        if outcome.total:
+            logger.info(
+                "Relation embeddings: %d new, %d rotated under %s",
+                outcome.missing_written, outcome.rotated, outcome.fingerprint,
+            )
+    return run
+
+
+_PPR_STATE_CONFIG_KEY = "job:ppr_snapshot:state"
+
+
+async def _load_ppr_cursor(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str | None:
+    from app.models.config import Config
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Config).where(Config.key == _PPR_STATE_CONFIG_KEY)
+            )
+        ).scalar_one_or_none()
+        if row is None or not isinstance(row.value, dict):
+            return None
+        cursor = row.value.get("last_project")
+        return cursor if isinstance(cursor, str) and cursor else None
+
+
+async def _save_ppr_cursor(
+    session_factory: async_sessionmaker[AsyncSession],
+    last_project: str | None,
+) -> None:
+    from app.models.config import Config
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Config).where(Config.key == _PPR_STATE_CONFIG_KEY)
+            )
+        ).scalar_one_or_none()
+        value = {"last_project": last_project}
+        if row is None:
+            session.add(Config(key=_PPR_STATE_CONFIG_KEY, value=value))
+        else:
+            row.value = value
+        await session.commit()

@@ -376,7 +376,13 @@ share one task. `_flag_cache_reset` is a test hook only.
 
 Current behavioral flags (the rest govern concurrency or thresholds):
 `hybrid_search_enabled`, `reranker_enabled`, `relation_rescue`,
-`confidence_rank_gamma`. The ranking arms `w_importance` / `w_heat` /
+`confidence_rank_gamma`. The graph arms landed inert with T2.32 —
+`ppr_enabled` / `dual_level_enabled` / `community_injection_enabled` off,
+`w_ppr` / `w_dual` at 0. `w_ppr` and `w_dual` are RRF **list** weights
+(`rank_fusion.LIST_WEIGHT_KEYS`), never `RankArm` multipliers, and both
+doors derive the PPR weight through `rank_fusion.ppr_list_weight` so a
+half-flipped config cannot mean one thing to chat and another to search.
+The dual-level channel itself is T2.49's; only its flag exists today. The ranking arms `w_importance` / `w_heat` /
 `w_recency` / `w_context_boost` exist at weight 0 and are provably inert
 there (`rank_fusion.RANK_ARMS`); each flips only on a measured retrieval
 win reported with its latency/cost twin, recorded in the gate ledger's
@@ -443,15 +449,20 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Fifteen** registered jobs (`app/main.py`) in two groups.
-The nine live ones: `repo_sync`,
+expressions. **Sixteen** registered jobs (`app/main.py`) in two groups.
+The ten live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
-`expired_memory_cleanup`. Note `buffer_flush` and `code_reconcile`
-register via the constants `BUFFER_FLUSH_JOB_KEY` and
-`CODE_RECONCILE_JOB_KEY` rather than string literals, so a grep for
-quoted keys undercounts the list. The six added by T2.08 are the
+`expired_memory_cleanup`, `ppr_snapshot`. Note `buffer_flush`,
+`code_reconcile` and `ppr_snapshot` register via the constants
+`BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY` and
+`PPR_SNAPSHOT_JOB_KEY` rather than string literals, so a grep for
+quoted keys undercounts the list. **`ppr_snapshot` is Tier C but is
+deliberately not a dream-job family member** (T2.32): contract 6 fixes
+that family as the consolidation passes, while doc 07 §4 owns the
+graph-retrieval artefact refresh separately. Invariant 15 is unaffected
+either way — retrieval reads the cached snapshot, never the job. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,

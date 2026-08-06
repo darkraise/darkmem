@@ -31,9 +31,11 @@ INERT_COLUMNS = {
 # triple_embeddings is no longer here: T2.33, its declared first writer (schema
 # inventory §7), landed on T2.52's measured 41.7% shortlist miss rate, so the
 # conditional branch that would have kept the template inert forever is closed.
+# relation_embeddings is no longer here: T2.49, its declared first writer
+# (schema inventory §7), landed `app/services/relation_embeddings.py` and the
+# Tier-C refresh job that keeps the partition current.
 INERT_TEMPLATES = {
     "block_embeddings": "TH1.05",
-    "relation_embeddings": "T2.49",
     "article_embeddings": "T3.23",
 }
 

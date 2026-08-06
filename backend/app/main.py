@@ -220,6 +220,16 @@ async def lifespan(app: FastAPI):
         make_graph_orphan_cleanup_runner,
         make_tag_orphan_cleanup_runner,
         make_expired_memory_cleanup_runner,
+        make_ppr_snapshot_runner,
+        make_relation_embedding_runner,
+    )
+    from app.services.ppr_snapshot import (
+        PPR_SNAPSHOT_CONFIG_SCHEMA,
+        PPR_SNAPSHOT_JOB_KEY,
+    )
+    from app.services.relation_embeddings import (
+        RELATION_EMBEDDING_CONFIG_SCHEMA,
+        RELATION_EMBEDDING_JOB_KEY,
     )
     from app.services.code_reconcile import (
         CODE_RECONCILE_CRON,
@@ -354,6 +364,40 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=60,
         runner=make_expired_memory_cleanup_runner(async_session_factory),
         max_run_seconds=300,
+    ))
+    job_registry.register(Job(
+        key=PPR_SNAPSHOT_JOB_KEY,
+        display_name="PPR Graph Snapshot",
+        description=(
+            "Rebuilds the cached in-process entity-graph snapshot the PPR "
+            "retrieval arm ranks against (doc 07 §4), one rotating batch of "
+            "projects per run. Off the hot path by design: retrieval reads "
+            "the snapshot and can never trigger a build. Leaving this off "
+            "costs nothing while ppr_enabled is off, and starves the arm of "
+            "a snapshot once it is on."
+        ),
+        default_cron="30 * * * *",
+        min_interval_seconds=300,
+        runner=make_ppr_snapshot_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=PPR_SNAPSHOT_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=RELATION_EMBEDDING_JOB_KEY,
+        display_name="Relation Embedding Refresh",
+        description=(
+            "Keeps the relation_embeddings partition current for the "
+            "dual-level retrieval channel (doc 07 §4): embeds relations that "
+            "have no vector under the active embedder, then rotates the "
+            "oldest embedded slice so a renamed entity's stale vector is "
+            "corrected. Off the hot path — never inside capture. Each run "
+            "spends embedding calls, so 0 on either batch disables that arm."
+        ),
+        default_cron="15 * * * *",
+        min_interval_seconds=300,
+        runner=make_relation_embedding_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=RELATION_EMBEDDING_CONFIG_SCHEMA,
     ))
 
     # The Tier-C consolidation ("dreaming") family — doc 08 §5. Every member
