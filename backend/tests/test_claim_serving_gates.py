@@ -846,11 +846,22 @@ def _names_written_by(node: ast.stmt) -> set[str]:
         func = node.value.func
         if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
             written.add(func.value.id)
-    for target in targets:
+    # Unpacking targets are walked into, subscript *slices* deliberately are
+    # not: ``payload, extra = {...}, None`` writes both names, while
+    # ``payload[key] = ...`` writes `payload` and merely reads `key`.
+    def _from_target(target: ast.AST) -> None:
         if isinstance(target, ast.Name):
             written.add(target.id)
         elif isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name):
             written.add(target.value.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for element in target.elts:
+                _from_target(element)
+        elif isinstance(target, ast.Starred):
+            _from_target(target.value)
+
+    for target in targets:
+        _from_target(target)
     return written
 
 
@@ -870,28 +881,50 @@ def journal_bound_denials(sources) -> list[str]:
     is read for a denial anywhere in its subtree, and every name it writes
     through — target, subscript base, or method receiver — carries the taint.
 
-    **Reach, stated.** One hop, within a module. A value handed to an ordinary
-    function that itself journals is invisible here; what covers that is the
-    events door drive below, which reads the payload rather than the call.
+    **Taint moves through a second name.** ``inner = {…denial…}`` then
+    ``payload = {"wrapped": inner}`` used to be blind — one ordinary refactor
+    away from the live before/after payload style, and undisclosed. A statement
+    that reads a tainted name now taints what it writes, iterated to a fixpoint
+    because a module's statements are not walked in source order.
+
+    **Reach, stated.** One hop *out of the module*: a value handed to an
+    ordinary function that itself journals is invisible here. What covers that
+    is **not** the events door drive, which the first report claimed — a door
+    drive asserts the presence of a rung on a known transition and can never
+    catch a falsely-`unserved` value inside a payload. The backstop is
+    ``DECLARATION_INVENTORY``: every declared site in the tree is pinned, so a
+    site reached through any number of hops is an argument someone makes there
+    before this guard is ever consulted.
     """
     offenders: list[str] = []
     for relpath, source in sources:
         tree = ast.parse(source)
+        # Simple statements only. A compound one (`if`, `for`, a whole `def`)
+        # contains every statement under it, so reading its subtree would taint
+        # every name the block writes — including the row a journal call
+        # legitimately reads from two statements away.
+        statements = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Expr))
+        ]
         tainted: set[str] = set()
-        for node in ast.walk(tree):
-            # Simple statements only. A compound one (`if`, `for`, a whole
-            # `def`) contains every statement under it, so reading its subtree
-            # would taint every name the block writes — including the row a
-            # journal call legitimately reads from two statements away.
-            if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Expr)):
-                continue
-            if not any(
-                _calls(inner, marker)
-                for inner in ast.walk(node)
-                for marker in UNJOURNALLED_DECLARATIONS
-            ):
-                continue
-            tainted |= _names_written_by(node)
+        while True:
+            grown = set(tainted)
+            for node in statements:
+                carries = any(
+                    _calls(inner, marker)
+                    for inner in ast.walk(node)
+                    for marker in UNJOURNALLED_DECLARATIONS
+                ) or any(
+                    isinstance(inner, ast.Name) and inner.id in tainted
+                    for inner in ast.walk(getattr(node, "value", node) or node)
+                )
+                if carries:
+                    grown |= _names_written_by(node)
+            if grown == tainted:
+                break
+            tainted = grown
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -956,6 +989,28 @@ DENIAL_SHAPES = [
         "record_event(session, payload=payload)",
         True,
     ),
+    # Both of these were measured blind in review. The first sits inside the
+    # docstring's own claimed reach ("every name it writes through"), and the
+    # second is one refactor away from the live before/after payload style.
+    (
+        "payload bound through a tuple target",
+        f'payload, extra = {{"verification_status": {UNSERVED}(rung)}}, None\n'
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    (
+        "the denial laundered through a second name",
+        f'inner = {{"verification_status": {UNSERVED}(rung)}}\n'
+        'payload = {"wrapped": inner}\n'
+        "record_event(session, payload=payload)",
+        True,
+    ),
+    (
+        "a second name that was never tainted",
+        'inner = {"origin_count": 2}\npayload = {"wrapped": inner}\n'
+        "record_event(session, payload=payload)",
+        False,
+    ),
     (
         "keyword into a journal wrapper",
         f"record_human_verdict(session, verification_status={UNSERVED}(rung))",
@@ -993,6 +1048,80 @@ def test_the_journal_direction_guard_fires_on_what_it_claims(shape, snippet, fir
     so a guard that only walked the call would have missed the site the review
     found."""
     assert bool(journal_bound_denials([("app/services/new_surface.py", snippet)])) is fires
+
+
+# ── who reads a journal payload, and who gates it ────────────────────
+#
+# T2.100 fix round. The declaration guard above asks where a *written* value
+# goes; this asks the mirror question, which is the one the review answered by
+# measurement: which modules **read** the journal back, because a payload
+# embedded in a claim surface is that surface's own output. The ruling that
+# accepts the raw rung is about the events door, so it does not travel with
+# the bytes into a body whose purpose is to state a fact's status.
+
+JOURNAL_PAYLOAD_READERS = frozenset(
+    {"list_events", "object_timeline", "calendar_counts", "latest_verified_evidence"}
+)
+
+EMBEDDING_GATE = claim_gates.gated_journal_payload.__name__
+
+
+def journal_payload_reach(sources) -> dict[str, dict[str, bool]]:
+    """``relpath -> reader -> whether the module also gates what it reads``."""
+    reach: dict[str, dict[str, bool]] = {}
+    for relpath, source in sources:
+        tree = ast.parse(source)
+        gated = any(_calls(node, EMBEDDING_GATE) for node in ast.walk(tree))
+        for node in ast.walk(tree):
+            for reader in JOURNAL_PAYLOAD_READERS:
+                if _calls(node, reader):
+                    reach.setdefault(relpath, {})[reader] = gated
+    return reach
+
+
+# **The reader set, pinned, with its disposition.** The review measured this
+# set at three doors when every statement of it named one, which is this
+# task's own defect class: a stated reach narrower than the measured readers.
+#
+# - `api/routes/events.py` is the audit substrate's own door. It serves the
+#   payload verbatim to an authenticated reader and that is the ruling; the
+#   drives below assert both the rung and the authentication.
+# - `facts_read.py` (`ladder`) and `review_queue.py` (`evidence`) embed the
+#   payload in a claim surface, so both gate it.
+# - `fact_badge.py` and `layer_composition.py` read the same journal and serve
+#   **no** payload from it: the badge takes `as_of` and a contradiction
+#   boolean, and `dispute_label` copies named counterpart fields. Neither
+#   carries a rung, which is why neither gates — and a third of these is a
+#   diff here before it is a leak.
+JOURNAL_PAYLOAD_REACH = {
+    "app/api/routes/events.py": {
+        "list_events": False,
+        "object_timeline": False,
+        "calendar_counts": False,
+    },
+    "app/services/fact_badge.py": {"latest_verified_evidence": False},
+    "app/services/facts_read.py": {
+        "object_timeline": True,
+        "latest_verified_evidence": True,
+    },
+    "app/services/layer_composition.py": {"latest_verified_evidence": False},
+    "app/services/review_queue.py": {"latest_verified_evidence": True},
+}
+
+
+def test_every_reader_of_a_journal_payload_is_the_one_that_was_classified():
+    """A new reader of the journal is an argument someone makes here.
+
+    Scanned over the whole tree including the producer and the gate, because
+    the question is who reads the substrate rather than who serves a label —
+    `fact_badge` is a reader and is exempt from the emission scan.
+    """
+    sources = _app_sources() + [
+        (path.relative_to(BACKEND).as_posix(), path.read_text())
+        for path in sorted((BACKEND / "app").rglob("*.py"))
+        if path.relative_to(BACKEND).as_posix() in PRODUCER_RELPATHS
+    ]
+    assert journal_payload_reach(sources) == JOURNAL_PAYLOAD_REACH
 
 
 def test_no_path_under_app_serves_a_grounded_label_today():
@@ -1073,7 +1202,17 @@ def doors(session, monkeypatch):
 
 
 async def _promoted_fact(session, *, review_state: str | None = None) -> str:
-    """A fact sitting at the promoted rung on disk, with no evidence record."""
+    """A fact promoted **the way production promotes one**, with no evidence
+    record.
+
+    It used to reach the rung by direct UPDATE, and that quietly made the
+    whole-body door drive below assert a property of the fixture rather than
+    of the doors: a fact that never transitioned has no ``verified`` journal
+    row, so no door could have embedded one, so "the rung appears nowhere"
+    held without any door doing anything. Driving the ladder's own applier
+    journals the transition, which is what every real corroborated fact
+    carries — and what the fact detail and the review queue then embed.
+    """
     row = await KnowledgeTripleRepository(session).insert_open(
         triple_key=f"t295-{uuid.uuid4()}",
         subject_name="pgbouncer",
@@ -1085,12 +1224,8 @@ async def _promoted_fact(session, *, review_state: str | None = None) -> str:
         valid_at=AT,
         review_state=review_state,
     )
-    await session.execute(
-        text(
-            "UPDATE knowledge_triples SET verification_status = 'corroborated' "
-            "WHERE id = CAST(:id AS uuid)"
-        ),
-        {"id": row["id"]},
+    await KnowledgeTripleRepository(session).set_verification_status(
+        row["id"], PROMOTED, outcome="promote", origin_count=2, required_n=2
     )
     await FactSourceRepository(session).add_source(
         fact_id=row["id"],
@@ -1451,11 +1586,124 @@ async def test_the_rejection_journals_the_rung_and_returns_none_of_it(
     assert verdict["payload"]["verdict"] == "rejected"
 
 
+async def test_an_events_read_requires_an_authenticated_reader(client, session):
+    """The ruling's own qualifier, asserted.
+
+    What was accepted is that *an authenticated operator* can read the ladder's
+    transitions off the audit substrate. The events door drive above sends auth
+    headers and would stay green if the dependency were dropped, so it cannot
+    tell "an authenticated operator can read them" from "anyone can" — and the
+    difference is the whole scope of what was ruled. All three readers of the
+    table are driven, because the payload is served verbatim by each.
+    """
+    await _promoted_fact(session)
+
+    for route in (EVENTS_ROUTE, f"{EVENTS_ROUTE}/timeline", f"{EVENTS_ROUTE}/calendar"):
+        response = await client.get(route)
+        assert response.status_code == 401, (
+            f"{route} served the journal to an unauthenticated reader; the "
+            "exposure ruled acceptable was to an authenticated operator"
+        )
+
+
+async def _ladder(client, auth_headers, fact_id: str) -> list[dict]:
+    response = await client.get(f"{FACTS_ROUTE}/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    return response.json()["ladder"]
+
+
+async def _queue_evidence(client, auth_headers, fact_id: str) -> dict:
+    body = (
+        await client.get(f"{QUEUE_ROUTE}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    return next(item for item in body["items"] if item["id"] == fact_id)["evidence"]
+
+
+async def test_the_fact_detail_ladder_serves_the_journal_through_the_gate(
+    client, auth_headers, session, doors
+):
+    """An accepted residue is scoped to the surface it was accepted on.
+
+    `/events` may serve the rung raw because a reader of that door is reading a
+    computation log by construction of the door they opened — an argument about
+    the door, not about the bytes. Embedded in a body whose purpose is to state
+    this fact's status, the same payload is the claim surface's own output: a
+    detail response that suppresses the rung in `verification_status` and hands
+    it back two keys later in `ladder` has not gated anything, it has moved the
+    answer.
+
+    Driven end to end with a production-shaped transition, which is the part
+    that matters — a fact promoted by direct UPDATE has no journal row, and a
+    fixture like that is why this was measured in review rather than by a test.
+    """
+    fact_id = await _promoted_fact(session)
+
+    response = await client.get(f"{FACTS_ROUTE}/{fact_id}", headers=auth_headers)
+    body = response.json()
+
+    assert PROMOTED not in response.text, "the ladder handed back the withheld rung"
+    _assert_withheld(body, "REST fact detail")
+    transition = next(
+        entry for entry in body["ladder"] if entry["event_type"] == "verified"
+    )
+    payload = transition["payload"]
+    # The rung is served, not dropped: a trace that silently rewrote the
+    # transition would record a movement to `candidate` the ladder never made.
+    assert payload["after"][CLAIM_LABEL_KEY] == SUPPRESSED
+    assert "verification_unmeasured" in payload["after"]["label_suppressed"]
+    # And the transition's own starting rung was genuinely `candidate`, so the
+    # marker is what tells the two apart inside one payload.
+    assert payload["before"][CLAIM_LABEL_KEY] == SUPPRESSED
+    assert "label_suppressed" not in payload["before"]
+
+
+async def test_the_review_queue_evidence_serves_the_journal_through_the_gate(
+    client, auth_headers, session, doors
+):
+    """The second embedding, and the surface where it reads worst: the queue
+    exists to show a triager how well-supported a fact is, and it was handing
+    back the withheld rung in the evidence block beside the suppressed label."""
+    fact_id = await _promoted_fact(session, review_state="open")
+
+    response = await client.get(f"{QUEUE_ROUTE}?project={PROJECT}", headers=auth_headers)
+    item = next(row for row in response.json()["items"] if row["id"] == fact_id)
+
+    assert PROMOTED not in response.text, "the evidence handed back the withheld rung"
+    _assert_withheld(item, "REST review queue")
+    payload = item["evidence"]["payload"]
+    assert payload["after"][CLAIM_LABEL_KEY] == SUPPRESSED
+    assert "verification_unmeasured" in payload["after"]["label_suppressed"]
+
+
+async def test_minting_the_record_returns_the_rung_to_both_embeddings(
+    client, auth_headers, session, monkeypatch, cleared_record, doors
+):
+    """Reversibility, at the two surfaces this round closed. The gate withholds
+    the rung; it does not edit the journal, and the record is what puts the
+    transition back on both bodies with no code change."""
+    fact_id = await _promoted_fact(session, review_state="open")
+
+    assert PROMOTED not in json.dumps(await _ladder(client, auth_headers, fact_id))
+    assert PROMOTED not in json.dumps(
+        await _queue_evidence(client, auth_headers, fact_id), default=str
+    )
+
+    monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", cleared_record)
+
+    ladder = await _ladder(client, auth_headers, fact_id)
+    transition = next(entry for entry in ladder if entry["event_type"] == "verified")
+    assert transition["payload"]["after"][CLAIM_LABEL_KEY] == PROMOTED
+    assert "label_suppressed" not in transition["payload"]["after"]
+
+    evidence = await _queue_evidence(client, auth_headers, fact_id)
+    assert evidence["payload"]["after"][CLAIM_LABEL_KEY] == PROMOTED
+
+
 async def test_no_unserved_declaration_reaches_a_reader_at_any_door(
     client, auth_headers, session, monkeypatch, doors
 ):
     """The other half: the promoted rung appears **nowhere** in what these
-    doors serve.
+    doors serve, for a fact promoted the way production promotes one.
 
     Stronger than the field assertions above on purpose. Those read one key
     and pass while the same value rides a second one — which is how `tier`
@@ -1467,6 +1715,15 @@ async def test_no_unserved_declaration_reaches_a_reader_at_any_door(
     `facts_channel._row_to_candidate` and `layer_composition`'s two candidate
     constructors and `ComposedRow` all reach the composed read, which REST,
     MCP and chat share.
+
+    **The fixture is the assertion here**, and it was the defect. This claim
+    was measured false at its own fact-detail door for any journalled fact,
+    and it passed only because `_promoted_fact` reached the rung by direct
+    UPDATE — so the blanket string search was a property of a fact with no
+    ladder rather than of the doors. `_promoted_fact` now drives the ladder's
+    applier, so the detail body carries a real `verified` transition and the
+    claim holds because the door gates that payload (T2.100 fix round I-1),
+    not because there was nothing to leak.
     """
     fact_id = await _promoted_fact(session)
     _stub_channels(monkeypatch, fact_id)

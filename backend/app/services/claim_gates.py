@@ -31,7 +31,10 @@ reader receives the value, :func:`journalled_status` claims a reader receives
 it as a record of what the ladder computed rather than as an assertion about
 the fact. The single marker they replace promised the first at sites that did
 the second, and a false declaration is worse than an undeclared one — the scan
-trusts it and so does the next reader.
+trusts it and so does the next reader. What the second marker permits is scoped
+to the audit door: a journalled payload embedded in a claim surface is served
+through :func:`gated_journal_payload`, because the reasoning that accepts the
+raw rung on ``/events`` is about which door was opened, not about the bytes.
 
 **Fail closed, and fail closed on unreadable too.** An absent record and a
 corrupt one both read as "no record". A parse error must not crash the read
@@ -249,6 +252,58 @@ def raw_statuses_for_served(
     )
 
 
+JOURNAL_STATUS_KEY = "verification_status"
+JOURNAL_SUPPRESSION_KEY = "label_suppressed"
+
+
+def gated_journal_payload(value, *, id_kind: str, gate: ClaimGate | None = None):
+    """A journal record embedded in a claim surface, mapped through the gate.
+
+    **An accepted residue is scoped to the surface it was accepted on**
+    (T2.100 fix round, ruled 2026-08-06). ``/events`` may serve the raw rung
+    because a reader of that door is reading a computation log by construction
+    of the door they opened — an argument about the door, not about the bytes.
+    It evaporates the moment the same payload is embedded in a response whose
+    purpose is to state a fact's status: a body that suppresses the rung in
+    ``verification_status`` and hands it back two keys later in ``ladder`` has
+    not gated anything, it has moved the answer.
+
+    So every ``verification_status`` anywhere in the structure is served
+    through :func:`served_status`, and a withheld one gains a
+    ``label_suppressed`` sibling in the same object. Rewriting it silently
+    would be the worse failure: the trace would record a movement to
+    ``candidate`` that the ladder never made, and a suppressed transition
+    would read as a genuine one.
+
+    What the marker discloses is exactly what the row's own served labels
+    already disclose on the same body — that a promoted rung was withheld here
+    — and no more; the rung itself is never in the response. Dropping the
+    marker to close that last inch is the one thing the ruling forbids.
+
+    Takes any JSON-shaped value, so a caller hands over a whole page and the
+    gate resolves **once** for it. Resolving per row would let a record minted
+    mid-response serve half a page gated and half not.
+    """
+    if gate is None:
+        gate = _resolve_gate(id_kind)
+    if isinstance(value, dict):
+        out: dict = {}
+        withheld: str | None = None
+        for key, item in value.items():
+            if key == JOURNAL_STATUS_KEY and (item is None or isinstance(item, str)):
+                out[key], withheld = served_status(item, id_kind=id_kind, gate=gate)
+                continue
+            out[key] = gated_journal_payload(item, id_kind=id_kind, gate=gate)
+        # After the loop, so a payload that already carried the key cannot
+        # overwrite the marker with a stale one.
+        if withheld is not None:
+            out[JOURNAL_SUPPRESSION_KEY] = withheld
+        return out
+    if isinstance(value, list):
+        return [gated_journal_payload(item, id_kind=id_kind, gate=gate) for item in value]
+    return value
+
+
 def unserved_status(status: str | None) -> str | None:
     """The raw status, declared at its site as reaching no reader at all.
 
@@ -274,19 +329,34 @@ def journalled_status(status: str | None) -> str | None:
 
     The weak half, and the one this module used to have no way to say. A
     ladder transition journals the rung it moved off and the rung it moved to,
-    and ``GET /api/v1/events`` serves that payload **verbatim** to an
-    authenticated reader under the same ``require_auth`` as the facts door. So
-    the value does reach a reader, and a site declaring otherwise would be
+    and that payload does reach readers — a site declaring otherwise would be
     lying at exactly the point where the declaration is load-bearing.
 
-    **The exposure is ruled acceptable, not open (T2.100, 2026-08-06).** G-C's
-    own false-promotion audit reads this journal, so narrowing the substrate to
-    protect the gate would degrade the evidence the gate is measured with;
-    T2.59 settled the analogous content-residue question the same way; and a
-    journal row and a claim surface are different speech acts — one records
-    what the ladder computed, the other asserts what is true of the fact now.
-    Do not add filtering, redaction or gating to the events door to make this
-    marker's promise smaller.
+    **Three readers, and they do not all serve it the same way.** The reach
+    sentence here named only ``/events`` until the T2.100 review measured the
+    other two, which is this marker's own defect class one level up: a
+    declaration whose stated reach is narrower than its readers.
+
+    - ``GET /api/v1/events`` (and the timeline and calendar over the same
+      table) serves the payload **verbatim** to an authenticated reader, under
+      the same ``require_auth`` as the facts door.
+    - ``GET /api/v1/knowledge/facts/{id}`` embeds it in ``ladder`` — as does
+      MCP's ``fact_get``, which serves the same response model — and
+      ``GET /api/v1/review-queue/facts`` embeds it in ``evidence``. All go
+      through :func:`gated_journal_payload`, because an accepted residue is
+      scoped to the surface it was accepted on.
+
+    **The events-door exposure is ruled acceptable, not open (T2.100,
+    2026-08-06).** G-C's own false-promotion audit reads this journal, so
+    narrowing the substrate to protect the gate would degrade the evidence the
+    gate is measured with; T2.59 settled the analogous content-residue question
+    the same way; and a journal row and a claim surface are different speech
+    acts — one records what the ladder computed, the other asserts what is true
+    of the fact now. Do not add filtering, redaction or gating to the events
+    door to make this marker's promise smaller. **The ruling is about that
+    door, so it does not travel with the bytes**: the same payload embedded in
+    a body whose purpose is to state a fact's status is a claim surface's
+    output and is gated as one.
 
     So the honest form of the M1 safety sentence is not *no serving path can
     reach a label whose evidence does not exist*. It is: **no claim surface

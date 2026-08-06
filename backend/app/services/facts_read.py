@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginGroup
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.services.claim_gates import raw_statuses_for_served
+from app.services.claim_gates import gated_journal_payload, raw_statuses_for_served
 from app.services.events import object_timeline
 from app.services.fact_badge import badges_for_facts, row_labels
 from app.services.layer_composition import dispute_label
@@ -208,6 +208,11 @@ async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
         limit=LADDER_LIMIT,
         newest_first=True,
     )
-    item["ladder"] = list(reversed(ladder_items))
+    # The ladder is journal rows embedded in a claim surface, so it is served
+    # through the gate rather than verbatim: this body states the fact's
+    # status, and a rung suppressed two keys above may not reappear here.
+    item["ladder"] = gated_journal_payload(
+        list(reversed(ladder_items)), id_kind=FACT_ID_KIND
+    )
     item["ladder_total"] = ladder_total
     return item

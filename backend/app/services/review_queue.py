@@ -107,7 +107,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.claim_gates import FACT_ID_KIND, ungated_mapping
+from app.services.claim_gates import (
+    FACT_ID_KIND,
+    gated_journal_payload,
+    ungated_mapping,
+)
 from app.services.fact_badge import row_labels
 from app.services.review_ranking import (
     DEFAULT_RANKING_CONFIG,
@@ -337,7 +341,12 @@ async def list_open_facts(
     rows = [dict(ungated_mapping(row)) for row in result.mappings().all()]
 
     fact_ids = [str(row["id"]) for row in rows]
-    evidence_by_id = await _latest_verified_evidence(session, fact_ids)
+    # Journal rows embedded in a claim surface: the triager reads this block
+    # beside a label the gate may have suppressed, so it goes through the gate
+    # too. One call for the page, so the whole page answers to one gate state.
+    evidence_by_id = gated_journal_payload(
+        await _latest_verified_evidence(session, fact_ids), id_kind=FACT_ID_KIND
+    )
 
     items = []
     for row in rows:
