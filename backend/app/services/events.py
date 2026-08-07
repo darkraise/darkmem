@@ -85,7 +85,19 @@ EVENT_TYPES: list[str] = [
     "repo_indexed",
     "inject",
     "inject_curbed",
-    "setup_completed",
+    # "setup_completed" carried a spelling drift against the literal
+    # `setup.py` actually journals ("setup_complete", no trailing "d") —
+    # found by T2.102, fixed by T2.103. The vocabulary is corrected to
+    # match the emitted value rather than the other way around: changing
+    # the emitted literal would be a behaviour change to what the audit
+    # trail records, and existing rows already carry the "setup_complete"
+    # spelling.
+    "setup_complete",
+    "auth_setup",
+    "auth_login_success",
+    "auth_login_failed",
+    "auth_logout",
+    "auth_password_change",
     "auth_lockout",
     "repo_hint_rejected",
     "buffer_requeued",
