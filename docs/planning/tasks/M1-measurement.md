@@ -79,6 +79,56 @@ this one.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
+#### T2.107 — The resample sitting's instrument
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54 (partial)` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-07 at the owner's request, to shorten the one step no agent may
+perform.** T2.54's Layer-3 blind resample is the last outstanding clause on the gold set,
+and it blocks G-D (T2.41) and — as T2.40's run established — G-C's false-promotion audit
+as well.
+
+**Most of the instrument already exists and is well built.** `resample_draw.py` has drawn
+the sample (n = 93; full census of `contradicted` at 55, proportional `unsupported` 17 and
+`entailed` 21), pinned its seed to the gold's own SHA-256 so it can be neither re-rolled
+nor chosen, deliberately recorded no ids, and emitted a shuffled blind export at
+`entailment/resample_blind.json` carrying only `id`, `premise`, `hypothesis`.
+
+**What is missing is the return path.** `judge_qualification.py`'s lock requires
+`gold_doc["resample"]` to carry `n`, `disagreements`, `seed`, `performed_by` and `date`,
+and nothing computes or writes that block. So the owner can sit and label, and there is
+no supported way to score the result.
+
+**What.** Two pieces, and the discipline around them is most of the work:
+
+1. **A readable sheet** generated from the existing blind export — 93 items, each with its
+   premise, hypothesis and the `LABELLING.md` rule references a labeller needs, in the
+   export's shuffled order, with a slot for one verdict per item. It must leak nothing the
+   export does not already leak: no stratum, no neighbouring-item hint, no ordering signal.
+2. **A scorer** that takes the completed verdicts, compares them against the stored gold,
+   counts disagreements, and writes the `resample` block.
+
+**Done when:**
+- [ ] The sheet is generated from `resample_blind.json`, never from `gold.json` — proven
+      structurally, so a future edit cannot reach the labels
+- [ ] The scorer refuses when `gold.json`'s SHA-256 no longer matches the manifest's
+      `gold_sha256`: the draw is pinned to one gold version, and scoring a stale draw
+      certifies nothing
+- [ ] The scorer writes `n`, `disagreements`, `seed` (from the manifest, never recomputed
+      from a changed gold), `performed_by` and `date`, and `judge_qualification`'s lock
+      accepts the block it writes — tested against the real lock, not a mock
+- [ ] **A re-run cannot improve the number**: scoring is recorded once per draw, and a
+      second sitting requires a new draw against a new gold SHA. State how this is enforced
+- [ ] The disagreeing items are reported by id with both verdicts, since a miss is the
+      instrument's most useful output — it localises where the rulebook is underspecified
+
+**No agent labels any pair, in the sheet, the scorer, or the tests.** The resample is the
+first accuracy measurement made from outside the family that labelled the set; an agent
+supplying either side of the comparison destroys the only thing it measures. Test fixtures
+use synthetic pairs, never the real gold's verdicts.
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_resample_draw.py scripts/benchlib/tests/test_judge_qualification.py -q`
+
 #### T2.41 — G-D evidence run
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`
