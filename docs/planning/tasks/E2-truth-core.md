@@ -667,6 +667,48 @@ answer has to say why that residue is acceptable or close it.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
 
+#### T2.103 — The auth family is emitted outside the closed vocabulary
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 04 §8.1, 12 §6` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.102's adjacent findings, controller-verified in the tree.**
+`EVENT_TYPES` is a closed vocabulary and `record_event` logs a warning for any value
+outside it — deliberately, because event types are never LLM output, so an unknown
+value must surface rather than be rewritten to a fallback. The auth family is inverted
+against that rule in both directions:
+
+- **Emitted but absent from the vocabulary:** `auth_login_success`, `auth_login_failed`,
+  `auth_logout`, `auth_password_change` (`app/api/routes/auth.py:103,108,124,163`) and
+  `auth_setup` (`app/api/routes/setup.py:342`).
+- **In the vocabulary with no emitter:** `auth_lockout`.
+
+So every login, logout, password change and setup writes
+`events: event_type ... is outside the doc 04 §8.1 closed vocabulary` to the log — five
+values, on the hottest security-relevant path — while the one auth value the vocabulary
+does acknowledge is never written.
+
+**This is not cosmetic.** `GET /auth/audit` (`app/api/routes/auth.py:250`) serves the
+security audit trail by filtering `auth_*`/`setup_*` rows out of `events`. The audit
+surface is therefore built entirely on values the closed vocabulary does not admit,
+which is exactly the taxonomy-first rule ("land the value in the vocabulary before its
+emitter ships") failing on the one family where an unrecognised row is most consequential.
+
+**What.** Land the emitted values in `EVENT_TYPES`, and settle `auth_lockout` — either
+it gains its emitter or it leaves the vocabulary; an entry with no writer is the
+scaffolding-not-substrate shape invariant 23 exists to catch. Check the
+`setup_completed` / `setup_complete` spelling drift T2.102 also recorded while you are
+in here.
+
+**Done when:**
+- [ ] No `record_event` call in `backend/app` emits a value outside `EVENT_TYPES` —
+      proven by a scan that fails the build, not by grep at review time
+- [ ] `auth_lockout` either has an emitter or is gone, and the report says which and why
+- [ ] `GET /auth/audit` returns the same rows before and after, proven at the door
+- [ ] T2.102's frontend map guard still passes — these values become newly *live-emitted*
+      in its eyes, so each needs a tab or a recorded exclusion
+
+**Verify.** `cd backend && python -m pytest tests/test_events.py tests/test_event_taxonomy_map.py -q`
+
 #### T2.101 — Retroactive entity merge: the anchoring order that never heals
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.97` · `Doc: 10 §6, 06 §5` · `Tag: target-new` · `Gate: G-C`
@@ -2866,3 +2908,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-07 | T2.48, T2.86 | 2 | **T2.86 gains a clause naming the `stale` field, and its missing `progress.md` row is restored.** T2.48's rescope judged M-5 NOT ADDRESSED as a self-sufficient disposition: routing "render the stale flag" to T2.86 was right in principle, but every T2.86 clause binds only the *removal* direction, so nothing obliged rendering a field the door already serves — and T2.86 had **zero rows in `progress.md`**, making it invisible to scheduling | The routing was an effective drop, not a handoff, and neither half was visible from inside the lane. The `progress.md` gap is the more alarming of the two: the runbook makes that file canonical for scheduling, so a task absent from it cannot be picked up however complete its text is. Worth a sweep for other task ids present in an epic file and absent from `progress.md` |
 | 2026-08-07 | T2.102 | 2 | **T2.102 minted: three consecutive rounds each found one missing entry in the frontend event-taxonomy map and fixed exactly that one.** `contradiction_scanned` (T2.11), then `citation_stale` (T2.48). T2.48's rescope swept the whole vocabulary and found seven unmapped values with live emitters | Each one-line fix was correct in isolation and none was the fix. The map is maintained reactively and nothing fails when it does not learn a new value — the taxonomy-first rule governs the vocabulary but does not reach this map. A defect found three times the same way is a missing guard, not three oversights |
 | 2026-08-07 | T2.96, T2.97, T2.48 | 1 | **`CLAUDE.md`'s job count reconciled centrally at merge to nineteen registered / thirteen live.** Three lanes each found the sentence already stale (T2.49's `relation_embedding_refresh` was never counted) and each corrected it for its own addition alone, so all three were locally right and collectively wrong | The keys that escaped the count all register via **constants rather than string literals**, which is exactly how a grep-based check undercounts — now stated in the sentence itself. T2.48's contribution is the durable one: `test_code_deriver.py` derives the roster from `app/main.py`'s AST, so the next job cannot silently desynchronise the baseline. Recorded because the same sentence going stale through four landings, then being independently rediscovered by three concurrent lanes, is a maintenance-shape signal rather than a typo |
+| 2026-08-07 | T2.103 | 2 | **T2.103 minted: the auth family is emitted outside the closed `EVENT_TYPES` vocabulary.** Five live values (`auth_login_success`, `auth_login_failed`, `auth_logout`, `auth_password_change`, `auth_setup`) are absent from it, so `record_event` logs a vocabulary warning on every one; `auth_lockout` is in the vocabulary with no emitter. Surfaced by T2.102 as an adjacent finding and verified in the tree by the controller before minting | T2.102 correctly flagged rather than took it — its scope was the frontend map. The reason this outranks a cosmetic mismatch is `GET /auth/audit`: the security audit trail is served by filtering `auth_*` rows out of `events`, so the audit surface rests entirely on values the closed vocabulary refuses to admit. Taxonomy-first exists precisely to stop that, and it failed on the family where an unrecognised row costs the most |
