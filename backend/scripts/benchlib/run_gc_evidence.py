@@ -76,13 +76,16 @@ async def _prepare_retrieval(api_key: str, bench_url: str, db_name: str) -> int:
     return harvest.n_facts
 
 
-async def _prepare_promotion(api_key: str, bench_url: str, db_name: str) -> int:
+async def _prepare_promotion(
+    api_key: str, bench_url: str, db_name: str, *, simulate_capture_time: bool
+) -> int:
     target = bench_db.BenchDatabase(bench_url)
     try:
         prepared = await promotion_corpus.prepare(
             api_key=api_key,
             session_factory=target.session_factory,
             reset=target.reset,
+            simulate_capture_time=simulate_capture_time,
         )
     finally:
         await target.dispose()
@@ -114,6 +117,15 @@ async def main(argv: list[str] | None = None) -> int:
             "recorded run) or T2.108's promotion measurement corpus"
         ),
     )
+    parser.add_argument(
+        "--no-capture-time-simulation", action="store_true",
+        help=(
+            "promotion corpus only: leave every fact_sources row carrying its "
+            "write time instead of the capture time of the memory that asserted "
+            "it. This is what makes T2.108's one simulated step auditable rather "
+            "than asserted -- run it to see exactly which buckets rest on it"
+        ),
+    )
     args = parser.parse_args(argv)
 
     api_key = require_deepseek_api_key()
@@ -124,7 +136,10 @@ async def main(argv: list[str] | None = None) -> int:
     if args.corpus == RETRIEVAL_CORPUS:
         await _prepare_retrieval(api_key, bench_url, db_name)
     else:
-        await _prepare_promotion(api_key, bench_url, db_name)
+        await _prepare_promotion(
+            api_key, bench_url, db_name,
+            simulate_capture_time=not args.no_capture_time_simulation,
+        )
 
     target = bench_db.BenchDatabase(bench_url)
     try:

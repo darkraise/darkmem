@@ -36,7 +36,7 @@ recompute: 2 ticks, 38 facts recomputed, 31 journaled transitions
 # Promotion metrics — 2026-05-09 to 2026-08-07
 
 - database: `localhost:5433/darkmem_bench_cv` (read-only)
-- window: `2026-05-09T12:56:04.088462+00:00` .. `2026-08-07T12:56:04.088462+00:00`
+- window: `2026-05-09T13:16:42.257200+00:00` .. `2026-08-07T13:16:42.257200+00:00`
 - schema present: True
 - `verified` payloads validated (T2.60 / unknown-vocabulary guard): 31
 - under-powered threshold: < 5 observations
