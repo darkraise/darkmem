@@ -352,6 +352,72 @@ class TestFalsePromotionAudit:
         assert report.false_promotion.rate == pytest.approx(0.0)
 
     @pytest.mark.asyncio
+    async def test_a_corroborated_fact_later_expired_is_reported_as_r2s_companion(self):
+        """`promotion_bars` R2: the audit may not be quoted without this count.
+
+        A fold retires one of two rows, so a later dispute can land on an id
+        carrying no corroboration event and the audit's join never sees it.
+        The companion is what caps a zero rate, so a corroborated fact that
+        was later expired must be visible and one that was not must not
+        inflate it.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+
+            folded = await _make_fact(session, key="t2.108-r2-folded")
+            for name in ("sess-fold-1", "sess-fold-2", "sess-fold-3"):
+                await _add_origin(session, folded, name, kind="memory")
+            assert (await recompute_fact(session, folded)).outcome == "promote"
+            await session.commit()
+
+            kept = await _make_fact(session, key="t2.108-r2-kept")
+            for name in ("sess-kept-1", "sess-kept-2", "sess-kept-3"):
+                await _add_origin(session, kept, name, kind="memory")
+            assert (await recompute_fact(session, kept)).outcome == "promote"
+            await session.commit()
+
+            await KnowledgeTripleRepository(session).expire(folded)
+            await session.commit()
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+
+        assert report.false_promotion.total_corroborations == 2
+        assert report.false_promotion.expired_after_corroboration == 1
+        assert "R2 companion" in pm.render_report(report)
+        assert (
+            pm.to_ledger_row(report)["false_promotion"]["expired_after_corroboration"] == 1
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_expiry_before_its_corroboration_is_not_an_r2_fold(self):
+        """The companion counts expiry *after* corroboration, like the dispute arm.
+
+        Without the ordering compare every expired fact that was ever
+        corroborated would count, and the cap would stop meaning what R2 says
+        it means.
+        """
+        async with bench_db.session_factory() as session:
+            since = await _db_now(session)
+
+            fact = await _make_fact(session, key="t2.108-r2-expired-first")
+            await KnowledgeTripleRepository(session).expire(fact)
+            await session.commit()
+
+            for name in ("sess-order-1", "sess-order-2", "sess-order-3"):
+                await _add_origin(session, fact, name, kind="memory")
+            assert (await recompute_fact(session, fact)).outcome == "promote"
+            await session.commit()
+
+            report = await pm.compute_promotion_metrics(
+                session, since=since, until=since + _WINDOW_SLACK, database_identity="test",
+            )
+
+        assert report.false_promotion.total_corroborations == 1
+        assert report.false_promotion.expired_after_corroboration == 0
+
+    @pytest.mark.asyncio
     async def test_same_transaction_events_are_ordered_by_the_created_at_id_tuple(self):
         """T2.06's own landmine, re-caught here: within one transaction
         `now()` is constant, so two `verified` events written in the same

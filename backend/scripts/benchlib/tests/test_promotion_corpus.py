@@ -84,6 +84,54 @@ def test_claim_key_strips_only_a_single_character_variant():
     assert pc.claim_key("ld-undersourced-1") == "ld-undersourced"
 
 
+def test_loader_refuses_a_variant_marker_with_no_sibling(entries):
+    """``claim_key``'s convention, guarded where it is fragile.
+
+    A lone ``pg-c`` reads as a variant of an invented claim ``pg``, and the
+    design check would then validate a grouping nobody wrote down.
+    """
+    broken = copy.deepcopy(entries)
+    broken[0] = {**broken[0], "key": "pg-c"}
+    with pytest.raises(ValueError, match="no other entry shares the claim"):
+        pc.validate_claim_key_convention(broken)
+
+
+def test_the_committed_corpus_keeps_the_claim_key_convention(entries):
+    pc.validate_claim_key_convention(entries)
+
+
+def test_every_diversity_claim_is_seconded_by_a_fixture_import(entries):
+    """The cross-file half of the diversity design, proven rather than assumed."""
+    resolved = pc.validate_diversity_group_against_fixture(
+        entries, pc.load_repo_fixture()
+    )
+    claims = {
+        pc.claim_key(entry["key"])
+        for entry in entries
+        if entry["group"] == "diversity"
+    }
+    assert set(resolved) == claims
+    assert len(set(resolved.values())) == len(resolved)
+
+
+def test_diversity_guard_refuses_a_claim_whose_import_is_missing(entries):
+    """The silent edit: a claim loads, validates, runs — and holds at one origin."""
+    fixture = pc.load_repo_fixture()
+    fixture["imports"] = [
+        edge for edge in fixture["imports"] if edge["target_key"] != "redis"
+    ]
+    with pytest.raises(ValueError, match="names none of the repository's"):
+        pc.validate_diversity_group_against_fixture(entries, fixture)
+
+
+def test_diversity_guard_refuses_two_claims_naming_one_dependency(entries):
+    broken = copy.deepcopy(entries)
+    claims = [e for e in broken if e["group"] == "diversity"]
+    claims[0]["content"] = claims[1]["content"] + " (restated)"
+    with pytest.raises(ValueError, match="both name"):
+        pc.validate_diversity_group_against_fixture(broken, pc.load_repo_fixture())
+
+
 @pytest.mark.parametrize("origin", [None, "", "   ", "unknown", "unknown:mcp:default"])
 def test_loader_refuses_an_unattributed_origin(tmp_path, entries, origin):
     """T2.40's defect, refused at the door.

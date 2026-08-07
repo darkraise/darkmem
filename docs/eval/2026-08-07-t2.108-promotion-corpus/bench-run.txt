@@ -1,6 +1,6 @@
 JWT_SECRET is weak — set a 32+ character secret for production
 bench_db: darkmem_bench_cv
-corpus: promotion (66 captures, sha256 242cd4afeb3c6470)
+corpus: promotion (66 captures, sha256 9c74f451b0cbfa14)
 ingest live_calls: 0
 embedder fingerprint: qwen3-embedding:0.6b|1024
 lift: {'ticks': 2, 'facts_created': 37, 'sources_added': 70, 'stalled_candidates': 0, 'salience_min_asserting_memories': 1}
@@ -36,7 +36,7 @@ recompute: 2 ticks, 38 facts recomputed, 31 journaled transitions
 # Promotion metrics — 2026-05-09 to 2026-08-07
 
 - database: `localhost:5433/darkmem_bench_cv` (read-only)
-- window: `2026-05-09T13:16:42.257200+00:00` .. `2026-08-07T13:16:42.257200+00:00`
+- window: `2026-05-09T13:50:49.723653+00:00` .. `2026-08-07T13:50:49.723653+00:00`
 - schema present: True
 - `verified` payloads validated (T2.60 / unknown-vocabulary guard): 31
 - under-powered threshold: < 5 observations
@@ -73,6 +73,9 @@ Count of DISTINCT corroborated facts later disputed or human-rejected (doc 17 §
 - later human-rejected: 0
 - DISTINCT facts in either arm: 0
 - false-promotion rate: 0.0000
+- corroborated facts later expired (R2 companion): 0
+
+**The last line is `promotion_bars` ruling R2's companion, and the rate above must not be quoted without it.** An entity-merge fact fold keeps one row's id and retires the other, so a corroboration and a later dispute can land on two ids that the audit's join can never bring together — the audit then undercounts, the one direction it may not err in silently. A non-zero count here caps what a zero rate claims. It is an upper bound on folds by construction: human adjudication and provenance withdrawal expire facts too, and the journal carries no discriminator, so this counts every expiry after an in-window corroboration rather than narrowing the cap on a guess.
 
 The three counts above do not sum: a fact the human rejects is usually one the queue served them *because* it was disputed, so it appears in both arms. doc 17 §5.1 counts facts, so the rate divides the DISTINCT union — summing the arms reported 200% off a single fact.
 
@@ -87,5 +90,5 @@ by gate_fired: decidable=True (eligible per bucket: [11, 10, 10], promotions: 31
 by diversity: decidable=True (eligible per bucket: [11, 20], promotions: 31)
   bucket diverse: powered=True clears=True
   bucket homogeneous: powered=True clears=True
-false-promotion audit: decidable=True clears=True (corroborations: 31, rate: 0.0)
+false-promotion audit: decidable=True clears=True (corroborations: 31, rate: 0.0, R2 companion -- corroborated facts later expired: 0)
 journal completeness: clears=True over 38 facts (1 carve-out rows) -- vacuous unless transitions occurred

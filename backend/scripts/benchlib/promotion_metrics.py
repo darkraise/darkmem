@@ -32,6 +32,10 @@ Concretely:
   which is the same discipline T2.06 applied to machine transitions.
   ``KNOWN_HUMAN_VERDICTS`` now guards the verdict vocabulary instead: an
   unrecognised value means a writer bypassed ``record_human_verdict``.
+- The audit's R2 companion -- ``expired`` events on facts carrying a prior
+  in-window corroboration -- also reads ``events`` alone. It is not a rate
+  and clears no bar; it is the cap ``promotion_bars``' ruling R2 requires
+  beside any quoted audit number.
 
 **The denominator, derived, not guessed.** "Eligible candidate facts" is
 *not* every candidate fact -- doc 08's ordinary holds are deliberately
@@ -491,6 +495,40 @@ _FALSE_PROMOTION_AUDIT_SQL = text("""
 # serves the human disputed facts, so a fact they reject is in both arms by
 # construction. Summing scored such a fact twice and reported a 200%
 # false-promotion rate off a single fact.
+# `promotion_bars`' ruling R2 requires every measurement run to report the
+# in-window fold count beside the audit, because an entity-merge fact fold can
+# put a corroboration and a later dispute on two different ids, where they
+# never join and a genuine false promotion goes uncounted — the one direction
+# this metric must not err in silently. Nothing computed it, so the ruling's
+# "never quote the audit without it" was unenforceable.
+#
+# R2's own definition is `expired` events on facts carrying a prior in-window
+# corroboration, and that is deliberately WIDER than folds: `expire` is also
+# reached by human adjudication and by provenance withdrawal. The number is a
+# cap on what the audit's zero may claim, so over-counting is the conservative
+# direction — a fold-only count would need a discriminator the journal does not
+# carry, and inventing one would silently narrow the cap.
+_EXPIRED_AFTER_CORROBORATION_SQL = text("""
+    WITH corroborated AS (
+        SELECT p.object_id, p.created_at, p.id
+        FROM events p
+        WHERE p.event_type = 'verified'
+          AND p.object_type = 'fact'
+          AND p.created_at >= :since AND p.created_at <= :until
+          AND p.payload->'after'->>'verification_status' = 'corroborated'
+    )
+    SELECT COUNT(DISTINCT c.object_id) AS expired_after_corroboration
+    FROM corroborated c
+    JOIN events e
+      ON e.object_id = c.object_id
+     AND e.event_type = 'expired'
+     AND e.object_type = 'fact'
+     -- Unbounded above and tuple-compared for the same two reasons the
+     -- dispute arm is: a fold after the window still breaks the join the
+     -- audit depends on, and `now()` is constant within a transaction.
+     AND (e.created_at, e.id) > (c.created_at, c.id)
+""")
+
 _FALSE_PROMOTED_FACTS_SQL = text("""
     WITH corroborated AS (
         SELECT p.object_id, p.created_at, p.id
@@ -560,6 +598,11 @@ class FalsePromotionAudit:
     #: DISTINCT facts satisfying *either* arm. Not derivable from the two
     #: counts above -- see `false_promotions`.
     false_promoted_facts: int = 0
+    #: `promotion_bars` R2's companion number: in-window corroborated facts
+    #: later expired. It enters no rate and vetoes nothing — it caps what a
+    #: zero above may claim, because a fold can move a later dispute onto an
+    #: id the audit's join cannot reach.
+    expired_after_corroboration: int = 0
 
     @property
     def false_promotions(self) -> int:
@@ -690,11 +733,16 @@ async def compute_promotion_metrics(
         (await session.execute(_FALSE_PROMOTED_FACTS_SQL, {"since": since, "until": until}))
         .scalar_one()
     )
+    expired_after_corroboration = int(
+        (await session.execute(_EXPIRED_AFTER_CORROBORATION_SQL, {"since": since, "until": until}))
+        .scalar_one()
+    )
     false_promotion = FalsePromotionAudit(
         total_corroborations=audit_row.total_corroborations,
         disputed_after_corroboration=audit_row.disputed_after_corroboration,
         human_rejected=human_rejected,
         false_promoted_facts=false_promoted_facts,
+        expired_after_corroboration=expired_after_corroboration,
     )
 
     notes: list[str] = []
@@ -854,6 +902,19 @@ def render_report(report: PromotionMetricsReport) -> str:
         f"- later human-rejected: {fp.human_rejected}\n",
         f"- DISTINCT facts in either arm: {fp.false_promotions}\n",
         f"- false-promotion rate: {fp_rate}{fp_powered}\n",
+        f"- corroborated facts later expired (R2 companion): "
+        f"{fp.expired_after_corroboration}\n",
+        "\n",
+        "**The last line is `promotion_bars` ruling R2's companion, and the "
+        "rate above must not be quoted without it.** An entity-merge fact fold "
+        "keeps one row's id and retires the other, so a corroboration and a "
+        "later dispute can land on two ids that the audit's join can never "
+        "bring together — the audit then undercounts, the one direction it may "
+        "not err in silently. A non-zero count here caps what a zero rate "
+        "claims. It is an upper bound on folds by construction: human "
+        "adjudication and provenance withdrawal expire facts too, and the "
+        "journal carries no discriminator, so this counts every expiry after "
+        "an in-window corroboration rather than narrowing the cap on a guess.\n",
         "\n",
         "The three counts above do not sum: a fact the human rejects is "
         "usually one the queue served them *because* it was disputed, so it "
@@ -914,6 +975,10 @@ def to_ledger_row(report: PromotionMetricsReport, *, extra: dict | None = None) 
             "false_promotions": report.false_promotion.false_promotions,
             "rate": report.false_promotion.rate,
             "powered": report.false_promotion.powered,
+            # R2's companion. A recorded rate without it cannot be re-read
+            # later for the fold blind spot, and the ruling forbids quoting
+            # the audit without this number.
+            "expired_after_corroboration": report.false_promotion.expired_after_corroboration,
         },
         "notes": list(report.notes),
     }

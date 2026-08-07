@@ -11,7 +11,16 @@
     "by hand is what the ladder reads to decide, and nothing here is.",
     "The imports are all real, published Python packages, none of which is a",
     "stdlib module or a suffix of an indexed file path -- the two conditions",
-    "code_deriver.dependency_name / is_internal_import decline on."
+    "code_deriver.dependency_name / is_internal_import decline on.",
+    "EDITING CONSTRAINT: this file is half of the corpus's diversity design.",
+    "Every `diversity` claim in corpus.json is seconded by exactly one import",
+    "edge here, so removing or renaming a target_key removes that claim's",
+    "second origin -- it would still load and run, and would silently hold at",
+    "one origin outside the diversity bucket. Both directions are checked by",
+    "promotion_corpus.validate_diversity_group_against_fixture; edit the claim",
+    "and its import together. An import no claim mentions is allowed: it mints",
+    "a code-only fact born on the rung, which the completeness probe counts as",
+    "a carve-out rather than losing."
   ],
   "repo": {
     "name": "payments-gateway",

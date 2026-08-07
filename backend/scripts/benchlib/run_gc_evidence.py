@@ -225,7 +225,9 @@ async def main(argv: list[str] | None = None) -> int:
             f"false-promotion audit: decidable="
             f"{promotion_bars.audit_decidable(fp.total_corroborations, bars)} "
             f"clears={promotion_bars.audit_clears(fp.rate, fp.total_corroborations, bars)} "
-            f"(corroborations: {fp.total_corroborations}, rate: {fp.rate})"
+            f"(corroborations: {fp.total_corroborations}, rate: {fp.rate}, "
+            f"R2 companion -- corroborated facts later expired: "
+            f"{fp.expired_after_corroboration})"
         )
         print(
             f"journal completeness: clears="
