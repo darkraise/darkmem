@@ -17,7 +17,24 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BACKEND="$REPO_ROOT/backend"
 FRONTEND="$REPO_ROOT/frontend"
-PY="$BACKEND/.venv/bin/python"
+
+# Resolve Python interpreter: allow env override, prefer local .venv, fall back to main checkout
+if [ -z "${PY:-}" ]; then
+    LOCAL_PY="$BACKEND/.venv/bin/python"
+    if [ -x "$LOCAL_PY" ]; then
+        PY="$LOCAL_PY"
+    else
+        # No local .venv; check if we're in a worktree and fall back to main checkout
+        if [ -d "$REPO_ROOT/.." ] && [ "$(basename "$REPO_ROOT/..")" = ".worktrees" ]; then
+            # We're in a worktree; main checkout is at $REPO_ROOT/../..
+            MAIN_CHECKOUT="$REPO_ROOT/../.."
+        else
+            # We're in the main checkout
+            MAIN_CHECKOUT="$REPO_ROOT"
+        fi
+        PY="$MAIN_CHECKOUT/backend/.venv/bin/python"
+    fi
+fi
 
 FULL=0
 for arg in "$@"; do
@@ -106,6 +123,13 @@ preflight_fail() {
 # which reaches it after the whole floor has already run.
 [ "$FULL" -eq 0 ] || [ -n "${DEEPSEEK_API_KEY:-}" ] || preflight_fail \
     "DEEPSEEK_API_KEY not set — the retrieval eval under --full dispatches against DeepSeek"
+
+# Report which Python interpreter is being used. This is critical for worktrees:
+# a silent fallback to the wrong checkout's interpreter would produce a green gate
+# that means nothing. Explicit reporting ensures lanes cannot miss that they are
+# testing the main checkout's code rather than their own.
+printf '\n\033[1m── resolved interpreter ──\033[0m\n'
+printf 'Python: %s\n' "$PY"
 
 
 # ── the floor ────────────────────────────────────────────────────────────
