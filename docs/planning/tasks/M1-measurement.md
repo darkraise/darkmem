@@ -79,6 +79,51 @@ this one.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
+#### T2.108 — A measurement corpus that can actually promote
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.10` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-07 from the gate-ordering analysis, which found this is the long pole
+under every option considered — and that no task owned it.**
+
+T2.40's G-C run returned *not evaluable* on all four probes. The judge dependency gets the
+attention, but it blocks **one arm of one probe**. The corpus starves **all four**: the
+production `darkmem` journal holds 0 events, and the only existing corpus is structurally
+incapable of promoting — all 62 facts are anonymous-origin, folding into the bucket that
+counts once and can never fire a gate.
+
+**And the production route is circular before the cutover.** Doc 17 §11's own sequencing
+puts the homelab cutover *after* G-C and G-D, so "wait for real traffic" is not available
+to a gate that must clear first. A purpose-built measurement corpus is the only
+pre-cutover route to any G-C verdict at all.
+
+**What.** A corpus that exercises the promotion ladder for real: facts reaching the
+eligible population with **distinct `origin_key`s**, so `COUNT(DISTINCT origin_key)`
+crosses the required N and promotions actually journal. Enough of them that G-C's
+decidability thresholds are met — `promotion_rate_min_eligible` (5 per bucket) and
+`false_promotion_min_corroborated` (20 in-window), both already committed in
+`promotion_bars.py`.
+
+**The trap this task exists inside.** A corpus built to make a gate clear is not evidence,
+it is a fixture wearing evidence's clothes. What makes this admissible is that it must
+exercise the *shipped* lift and the *shipped* recompute — T2.40's own run is the
+precedent: 62 facts flowed end to end through the production path with 0 live model calls.
+Hand-writing journal rows, or seeding `verification_status` directly, measures the
+fixture. State plainly in the report which parts of the path the corpus drives and which
+it stubs, because the gate's credibility rests entirely on that boundary.
+
+**Done when:**
+- [ ] Facts flow through the shipped lift and recompute — no hand-written `verified`
+      events, no directly-seeded statuses
+- [ ] Distinct `origin_key`s produce real promotions that journal, proven by a non-zero
+      promotion count read back from `events` by SQL
+- [ ] Both decidability thresholds in `promotion_bars.py` are met, so every probe that
+      does not need the judge becomes decidable
+- [ ] The corpus is reproducible from a committed definition, not a one-off database state
+- [ ] The report states exactly what is driven and what is stubbed
+
+**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
+
 #### T2.107 — The resample sitting's instrument
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54 (partial)` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
