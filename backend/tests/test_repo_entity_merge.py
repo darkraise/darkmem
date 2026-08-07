@@ -51,10 +51,13 @@ from app.services.embedder_registry import EmbedderInfo, child_table, embedder_r
 from app.services.entity_merge import (
     MERGE_THRESHOLD,
     EntityMergeRefused,
+    MergeScanState,
+    load_scan_state,
     merge_entities,
     merge_repo_entity_duplicates,
     repo_entity_merge_candidates,
 )
+from app.services.triple_key import compute_triple_key
 
 BACKEND = Path(__file__).resolve().parent.parent
 MODULE_PATH = BACKEND / "app" / "services" / "entity_merge.py"
@@ -176,20 +179,77 @@ async def _names(session) -> list[str]:
     )).scalars().all())
 
 
-async def _pair(session, *, loser_repo=False) -> tuple[str, str]:
+async def _pair(session, *, loser_repo=False, same_age=False) -> tuple[str, str]:
     """``postgres`` (repo-asserted) and ``postgresql`` (memory-asserted), the
-    calibration pair, embedded far enough apart to be well inside 0.85."""
+    calibration pair, embedded far enough apart to be well inside 0.85.
+
+    The memory-minted row is stamped explicitly **older** unless a caller asks
+    for equal ages. Both rows inserted in one transaction would share
+    ``now()``, and then a mutation that drops the repo-asserted preference
+    falls through to the id tie-break on two random uuids — the arm meant to
+    prove the preference would be red only about half of the time. Made older,
+    the age fallback picks the *loser*, so the mutation is deterministically red.
+    """
     await _register(session)
     repo_id = uuid4()
-    survivor = await _entity(session, "postgres", "database", repo_ids=[repo_id])
+    survivor = await _entity(
+        session, "postgres", "database", repo_ids=[repo_id],
+        created_at=None if same_age else datetime(2026, 1, 1, tzinfo=UTC),
+    )
     loser = await _entity(
         session, "postgresql", "database",
         memory_ids=[uuid4()], repo_ids=[repo_id] if loser_repo else (),
+        created_at=None if same_age else datetime(2025, 1, 1, tzinfo=UTC),
     )
     await _embed(session, survivor, _vec(1.0))
     await _embed(session, loser, _vec(0.999, 0.0447))
     await session.flush()
     return survivor, loser
+
+
+async def _fact(
+    session, *, subject_id: str | None, object_id: str | None,
+    subject_name: str, object_name: str, rel_type: str = "DEPENDS_ON",
+    project: str = "default", status: str = "candidate",
+    reference_time: datetime | None = None, created_at: datetime | None = None,
+    invalid_at: datetime | None = None,
+) -> str:
+    """One ``knowledge_triples`` row, keyed the way the lift keys it."""
+    fact_id = str(uuid4())
+    await session.execute(
+        text("""
+            INSERT INTO knowledge_triples
+                (id, subject_id, object_id, subject_name, object_name, rel_type,
+                 project, reference_time, fact, triple_key, verification_status,
+                 created_at, invalid_at)
+            VALUES (CAST(:id AS uuid), CAST(:subj AS uuid), CAST(:obj AS uuid),
+                    CAST(:sname AS text), CAST(:oname AS text),
+                    CAST(:rel AS text), CAST(:project AS text),
+                    CAST(:ref AS timestamptz), CAST(:fact AS text),
+                    CAST(:key AS text), CAST(:status AS text),
+                    COALESCE(CAST(:created AS timestamptz), now()),
+                    CAST(:invalid AS timestamptz))
+        """),
+        {
+            "id": fact_id, "subj": subject_id, "obj": object_id,
+            "sname": subject_name, "oname": object_name, "rel": rel_type,
+            "project": project,
+            "ref": reference_time or datetime(2026, 1, 1, tzinfo=UTC),
+            "fact": f"{subject_name} {rel_type.lower()} {object_name}",
+            "key": compute_triple_key(project, subject_name, rel_type, object_name),
+            "status": status, "created": created_at, "invalid": invalid_at,
+        },
+    )
+    return fact_id
+
+
+async def _facts(session) -> list[tuple]:
+    rows = (await session.execute(text("""
+        SELECT subject_name, object_name, triple_key, verification_status,
+               expired_at IS NULL AND invalid_at IS NULL AS open_belief
+        FROM knowledge_triples ORDER BY created_at, id
+    """))).all()
+    return [tuple(row) for row in rows]
 
 
 # ── relation endpoints ───────────────────────────────────────────────────
@@ -333,17 +393,9 @@ async def test_knowledge_triple_endpoints_follow_the_survivor(session):
     """No foreign key holds these, and nothing would report the dangling id —
     ``review_ranking``'s salience arm would just read zero neighbours forever."""
     survivor, loser = await _pair(session)
-    fact_id = uuid4()
-    await session.execute(
-        text("""
-            INSERT INTO knowledge_triples
-                (id, subject_id, object_id, subject_name, object_name,
-                 rel_type, reference_time, fact, triple_key)
-            VALUES (CAST(:id AS uuid), CAST(:subj AS uuid), CAST(:obj AS uuid),
-                    'postgresql', 'postgresql', 'RELATED_TO', now(),
-                    'we run postgresql', 'k')
-        """),
-        {"id": str(fact_id), "subj": loser, "obj": loser},
+    await _fact(
+        session, subject_id=loser, object_id=loser,
+        subject_name="postgresql", object_name="postgresql", rel_type="RELATED_TO",
     )
     await session.flush()
 
@@ -354,6 +406,228 @@ async def test_knowledge_triple_endpoints_follow_the_survivor(session):
         "FROM knowledge_triples"
     ))).one()
     assert tuple(row) == (survivor, survivor)
+
+
+@pytest.mark.asyncio
+async def test_the_fact_layers_names_and_key_follow_the_survivor_too(session):
+    """The ids are half of it; fact *identity* is name-keyed.
+
+    Every consumer of a fact's identity — the lift's own pending predicate, the
+    open-belief unique, the contradiction scan's same-endpoint arm — reads the
+    denormalised names and the ``triple_key`` derived from them, and the
+    canonicalisation is lexical, so ``postgres`` and ``postgresql`` are two
+    identities. Leaving the names behind re-qualifies the lifted group as
+    pending and mints a duplicate open triple for one assertion set.
+    """
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+    )
+    await session.flush()
+
+    pair = await merge_entities(session, survivor, loser)
+
+    assert (pair.facts_renamed, pair.facts_folded) == (1, 0)
+    assert await _facts(session) == [(
+        "our-app", "postgres",
+        compute_triple_key("default", "our-app", "DEPENDS_ON", "postgres"),
+        "candidate", True,
+    )]
+
+
+@pytest.mark.asyncio
+async def test_a_window_closed_fact_is_renamed_but_never_folded(session):
+    """``ux_knowledge_triples_open`` is partial on the open-belief predicate, so
+    a history row's recomputed key cannot collide — and retained history that
+    kept the vanished spelling would answer "what did we believe" under a name
+    the graph no longer holds."""
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        invalid_at=datetime(2026, 2, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        created_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    await session.flush()
+
+    pair = await merge_entities(session, survivor, loser)
+
+    assert (pair.facts_renamed, pair.facts_folded) == (1, 0)
+    key = compute_triple_key("default", "our-app", "DEPENDS_ON", "postgres")
+    assert await _facts(session) == [
+        ("our-app", "postgres", key, "candidate", False),
+        ("our-app", "postgres", key, "candidate", True),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_colliding_open_fact_is_folded_not_raised(session):
+    """The recomputed ``triple_key`` can already be taken, and that is a fact
+    merge rather than an integrity error.
+
+    Two open rows for one logical fact would split corroboration, double-serve
+    the facts channel, and — because ``ux_knowledge_triples_open`` refuses the
+    second — abort the entity merge outright if left to the constraint.
+    """
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    kept = await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    retired = await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        created_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    await session.flush()
+
+    pair = await merge_entities(session, survivor, loser)
+
+    assert (pair.facts_renamed, pair.facts_folded) == (1, 1)
+    rows = {
+        str(row[0]): row[1]
+        for row in (await session.execute(text(
+            "SELECT CAST(id AS text), expired_at IS NULL FROM knowledge_triples"
+        ))).all()
+    }
+    assert rows == {kept: True, retired: False}, (
+        "the older row keeps the id and the open window; the duplicate is "
+        "expired rather than deleted, because article_citations takes a hard FK"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("promoted", ["renamed", "partner"])
+async def test_the_fold_keeps_the_higher_verification_rung(session, promoted):
+    """Which row keeps the id is a truth-layer choice, so it is made on the
+    verification axis: ``confirmed`` outranks everything because the machine
+    never moves a ratified fact in either direction.
+
+    Driven from both sides — a fold that always kept the pre-existing row would
+    pass one parameter and drop a human's ratification on the other. The
+    *younger* row carries the rung in both cells, so the age tie-break cannot
+    produce the answer by accident.
+    """
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    old = datetime(2026, 1, 1, tzinfo=UTC)
+    young = datetime(2026, 2, 1, tzinfo=UTC)
+    partner_is_promoted = promoted == "partner"
+    partner = await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        status="confirmed" if partner_is_promoted else "candidate",
+        created_at=young if partner_is_promoted else old,
+    )
+    renamed = await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        status="candidate" if partner_is_promoted else "confirmed",
+        created_at=old if partner_is_promoted else young,
+    )
+    await session.flush()
+
+    await merge_entities(session, survivor, loser)
+
+    open_row = (await session.execute(text(
+        "SELECT CAST(id AS text), verification_status FROM knowledge_triples "
+        "WHERE expired_at IS NULL"
+    ))).one()
+    assert tuple(open_row) == (
+        (partner, "confirmed") if partner_is_promoted else (renamed, "confirmed")
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_fold_moves_the_provenance_onto_one_row(session):
+    """``fact_sources`` is what ``COUNT(DISTINCT origin_key)`` reads, so the
+    evidence has to end up on one row — moved, not copied, or one memory would
+    corroborate one claim twice. Serving heat is summed for the same reason."""
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    kept = await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    retired = await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        created_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    shared, only_retired = str(uuid4()), str(uuid4())
+    for fact_id, refs in ((kept, [shared]), (retired, [shared, only_retired])):
+        for ref in refs:
+            await session.execute(
+                text("""
+                    INSERT INTO fact_sources (id, fact_id, source_kind, source_ref,
+                                              origin_key)
+                    VALUES (gen_random_uuid(), CAST(:f AS uuid), 'memory',
+                            CAST(:ref AS text), CAST(:ref AS text))
+                """),
+                {"f": fact_id, "ref": ref},
+            )
+    await session.execute(
+        text("INSERT INTO fact_access_stats (fact_id, access_count) "
+             "VALUES (CAST(:k AS uuid), 3), (CAST(:r AS uuid), 4)"),
+        {"k": kept, "r": retired},
+    )
+    await session.flush()
+
+    await merge_entities(session, survivor, loser)
+
+    sources = (await session.execute(text(
+        "SELECT CAST(fact_id AS text), source_ref FROM fact_sources "
+        "ORDER BY source_ref"
+    ))).all()
+    assert sorted(tuple(row) for row in sources) == sorted(
+        [(kept, shared), (kept, only_retired)]
+    ), "the duplicate witness is dropped, the unique one moves, none is copied"
+    stats = (await session.execute(text(
+        "SELECT CAST(fact_id AS text), access_count FROM fact_access_stats"
+    ))).all()
+    assert [tuple(row) for row in stats] == [(kept, 7)]
+
+
+@pytest.mark.asyncio
+async def test_the_fold_takes_the_earlier_reference_time(session):
+    """The union of two open-ended belief windows starts at the earlier of the
+    two, which is also what a single lift over the merged graph would have
+    produced — the convergence this whole pass exists for."""
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    early = datetime(2025, 6, 1, tzinfo=UTC)
+    kept = await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        reference_time=datetime(2026, 3, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        reference_time=early, created_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    await session.flush()
+
+    await merge_entities(session, survivor, loser)
+
+    reference = (await session.execute(
+        text("SELECT reference_time FROM knowledge_triples "
+             "WHERE id = CAST(:k AS uuid)"),
+        {"k": kept},
+    )).scalar_one()
+    assert reference == early
 
 
 @pytest.mark.asyncio
@@ -479,7 +753,7 @@ async def test_two_repo_asserted_rows_break_the_tie_on_age(session, older):
 async def test_equal_timestamps_fall_through_to_the_id_tie_break(session):
     """Same-transaction rows share ``now()``, so age decides nothing and the
     outcome must still not depend on which side the scan reached first."""
-    survivor, loser = await _pair(session, loser_repo=True)
+    survivor, loser = await _pair(session, loser_repo=True, same_age=True)
     expected = min(survivor, loser)
 
     pair = await merge_entities(session, loser, survivor)
@@ -589,6 +863,79 @@ async def test_only_repo_asserted_entities_with_a_vector_are_probed(session):
 
     assert [row["entity_id"] for row in candidates] == [embedded]
     assert unembedded not in {row["entity_id"] for row in candidates}
+
+
+@pytest.mark.asyncio
+async def test_the_scan_rotates_instead_of_re_probing_one_fixed_prefix(session):
+    """A stable ``ORDER BY`` with a ``LIMIT`` and no cursor is a fixed prefix:
+    an install with more repo-asserted entities than the batch never probes the
+    rest, forever, with no error and no symptom. Asserted over three runs
+    because two would pass under a cursor that advanced once and stuck.
+    """
+    await _register(session)
+    ids = []
+    for index in range(3):
+        entity_id = await _entity(
+            session, f"repo-tool-{index}", repo_ids=[uuid4()],
+            created_at=datetime(2026, 1, 1 + index, tzinfo=UTC),
+        )
+        await _embed(session, entity_id, _vec(1.0, index))
+        ids.append(entity_id)
+    await session.flush()
+
+    seen = []
+    for _ in range(3):
+        state = await load_scan_state(session)
+        window = await repo_entity_merge_candidates(session, FINGERPRINT, 1, state)
+        seen.append([row["entity_id"] for row in window])
+        await merge_repo_entity_duplicates(
+            session, FingerprintOnly(), candidate_batch=1,
+        )
+
+    assert seen == [[ids[0]], [ids[1]], [ids[2]]]
+
+
+@pytest.mark.asyncio
+async def test_a_short_window_wraps_the_cursor_back_to_the_start(session):
+    """Fewer rows than the batch is the end of the table, so the next run starts
+    over — without the reset the walk would stop at the tail and the head would
+    never be probed again."""
+    await _register(session)
+    entity_id = await _entity(session, "repo-tool", repo_ids=[uuid4()])
+    await _embed(session, entity_id, _vec(1.0))
+    await session.flush()
+
+    outcome = await merge_repo_entity_duplicates(
+        session, FingerprintOnly(), candidate_batch=5,
+    )
+
+    assert (outcome.probed, outcome.wrapped) == (1, True)
+    assert await load_scan_state(session) == MergeScanState()
+
+
+@pytest.mark.asyncio
+async def test_the_merge_journals_one_entity_row(session):
+    """A destructive, user-visible mutation — a node deleted, edges rewritten,
+    memories' ``technologies`` moved — leaves a record in the one audit
+    substrate, or an operator watching a name vanish has nothing to read."""
+    survivor, loser = await _pair(session)
+    app = await _entity(session, "our-app", "project")
+    await _relation(session, app, loser, "DEPENDS_ON")
+    await session.flush()
+
+    await merge_entities(session, survivor, loser)
+
+    # Scoped to this survivor: the anchoring suite's end-to-end test commits,
+    # so its own `merged` row is visible here for the rest of the session.
+    row = (await session.execute(
+        text("SELECT event_type, object_type, CAST(object_id AS text), payload "
+             "FROM events WHERE event_type = 'merged' "
+             "AND object_id = CAST(:s AS uuid)"),
+        {"s": survivor},
+    )).one()
+    assert (row[0], row[1], row[2]) == ("merged", "entity", survivor)
+    assert row[3]["loser"]["name"] == "postgresql"
+    assert row[3]["relations_repointed"] == 1
 
 
 @pytest.mark.asyncio

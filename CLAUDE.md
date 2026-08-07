@@ -533,14 +533,47 @@ name. A merge moves, in one savepoint per pair: the `memory_ids` /
 `repo_ids[]` unions, **every** relation endpoint in both directions
 (a repointed endpoint colliding with the `(source, target, rel_type)`
 uniqueness is a relation merge of its own — union, keep the greater
-weight, drop the duplicate — never an error left for the constraint),
-`knowledge_triples.subject_id` / `object_id` (entity ids carrying **no**
-foreign key, which `review_ranking`'s salience arm reads as zero
-neighbours when they dangle), and the lowercase `technologies` denorm for
+weight, drop the duplicate — never an error left for the constraint), the
+fact layer's identity, and the lowercase `technologies` denorm for
 every memory whose entity set changed. The losing row's vectors go with
 it through the `entity_embeddings__<slug>` cascade, in every partition.
 A relation the repointing missed **fails the savepoint** rather than
-being swallowed by that same cascade. The six added by T2.08 are the
+being swallowed by that same cascade.
+
+**The fact layer moves by name, not only by id** (T2.101 fix round 1).
+`knowledge_triples.subject_id` / `object_id` are entity ids carrying **no**
+foreign key, which `review_ranking`'s salience arm reads as zero neighbours
+when they dangle — but repointing them is only half the move, because fact
+*identity* is name-keyed: the table denormalises both endpoint names and
+derives `triple_key` from them, and `compute_triple_key`'s canonicalisation
+is lexical, so `postgres` and `postgresql` are two identities. `fact_lift`
+groups the graph by live entity name and matches open facts on that name, so
+an id-only repoint re-qualifies every already-lifted group as pending and
+mints a **second** open triple for one assertion set on the next tick —
+corroboration and verification split across two rows. So the names and the
+key move with the ids. Recomputing the key can collide with an already-open
+row on `ux_knowledge_triples_open`, and **that collision is a fact merge**:
+the higher `verification_status` rung keeps the id (`confirmed` >
+`disputed` > `corroborated` > `candidate`, ties to the older `created_at`
+then the smaller id), which is what lets the fold write **no** verification
+column at all — the surviving rung is the one the sanctioned door already
+wrote, so no promotion escapes the ladder and no `verified` row appears for
+a transition no evidence explains. `fact_sources` is **moved** onto the
+keeper (copied, one memory would corroborate one claim twice), serving heat
+is summed, the belief window takes the earlier `reference_time` / `valid_at`
+and the earlier `stated_expiry`, and the duplicate is **expired, never
+deleted** — `article_citations` takes a hard FK on the premise that facts
+are invalidate-not-delete, and `expired_at` rather than `invalid_at` is what
+keeps the contradiction scan from pairing a fact against itself under its
+other name. A fact row whose endpoint id is NULL or already dangling keeps
+its name: nothing ties it to the losing row, and the group it came from no
+longer exists under the vanished name, so nothing re-lifts it.
+
+The candidate scan **rotates** through the repo-asserted population on a
+`(created_at, id)` keyset cursor in the `config` row
+`repo_entity_merge_state`, wrapping when a window comes back short —
+`candidate_batch` bounds one run's cost, never the coverage. A merge
+journals one `merged` `events` row against the surviving entity. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,

@@ -19,6 +19,7 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   contradiction_scanned: "verification",
   citation_stale: "verification",
   consolidated: "consolidation",
+  merged: "consolidation",
   superseded: "consolidation",
   deprecated: "consolidation",
   expired: "consolidation",
