@@ -656,9 +656,10 @@ async def test_the_keyless_fraction_of_a_real_derivation_is_measured(session):
     """The input distribution, taken from the producer rather than assumed.
 
     T2.48's brief asks for the fraction of code citations carrying a resolvable
-    key. Measured 2026-08-07 over the producer: **12 of 12** on this import set,
-    and 8 of 8 on a deliberately awkward one (a scoped npm package, a Go module
-    path, a dotted Java package, mixed casing). Both bases key reliably — an
+    key. Measured 2026-08-07 over the producer: **7 of 7** on this import set
+    (5 import-basis + 2 language-basis), and 8 of 8 on a deliberately awkward
+    one (a scoped npm package, a Go module path, a dotted Java package, mixed
+    casing). Both bases key reliably — an
     import cites the module key the edge carries, a language cites the file path
     — so the keyless population is a defensive path, not a fraction of live
     traffic. The floor is 0.9 rather than 1.0 because the witness lookup is a
