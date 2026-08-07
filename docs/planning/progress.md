@@ -45,15 +45,19 @@ and the Note says so. That rule is the whole point of this file.
 
 | Epic | Tasks | todo | wip | blocked | review | done | dropped | Gate |
 |---|---|---|---|---|---|---|---|---|
-| E0 — Baseline & harness | 22 | 2 | 0 | 0 | 0 | 20 | 0 | **G-A CLEARED 2026-07-27** |
+| E0 — Baseline & harness | 22 | 0 | 0 | 0 | 0 | 22 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
-| E2 — Truth core | 99 | 4 | 0 | 0 | 0 | 95 | 0 | G-C, G-D open |
+| E2 — Truth core | 106 | 0 | 0 | 0 | 0 | 106 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 24 | 24 | 0 | 0 | 0 | 0 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 7 | 6 | 0 | 1 | 0 | 0 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 9 | 5 | 0 | 1 | 0 | 3 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **262** | **62** | **0** | **1** | **0** | **198** | **1** | |
+| **Total** | **271** | **55** | **0** | **1** | **0** | **214** | **1** | |
+
+These counts are **derived from the section tables below**, not maintained by hand;
+E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
+every open item on its critical path now sits in M1.
 
 ---
 
