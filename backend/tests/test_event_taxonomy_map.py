@@ -10,12 +10,24 @@ the map did not learn about it. This module is what fails.
 
 **What counts as "live".** A value in ``EVENT_TYPES`` with no emitter yet —
 landed taxonomy-first, ahead of its feature — must not fail the build; that
-would punish exactly the discipline the corpus requires
-(``inject``/``inject_curbed``/``setup_completed``/``auth_lockout`` are all
-in this state today: the vocabulary carries them, nothing calls
-``record_event`` with them). "Live" is defined operationally: some call
-anywhere under ``backend/app`` passes a literal string equal to that value
-through a keyword argument literally named ``event_type``.
+would punish exactly the discipline the corpus requires (``inject`` and
+``inject_curbed`` are in this state today: the vocabulary carries them,
+nothing calls ``record_event`` with them). "Live" is defined operationally:
+some call anywhere under ``backend/app`` passes a literal string equal to
+that value through a keyword argument literally named ``event_type``.
+
+**``auth_lockout`` is a known blind spot in that operational definition,
+not evidence it lacks an emitter.** T2.103 (2026-08-07) wired it up in
+``app/api/routes/auth.py``, but the literal travels through
+``_record_audit``'s positional ``action`` parameter, never through a
+keyword literally named ``event_type`` at any resolvable call site — the
+same shape that keeps ``auth_login_failed`` out of ``emitted`` below. See
+``backend/tests/test_events.py`` for the scan that *does* trace that
+shape (it exists to enforce the closed vocabulary, not frontend coverage,
+so it lives in its own module). This test still treats ``auth_lockout``
+as not-live and does not require the frontend map to classify it for that
+reason; T2.103 classified it in ``EVENT_TYPES_WITHOUT_TAB`` anyway, ahead
+of what this guard would have required.
 
 **Why match any ``event_type=`` keyword, not just calls to
 ``record_event`` itself.** The obvious version — walk calls to
@@ -62,10 +74,17 @@ TAXONOMY_TS = REPO_ROOT / "frontend/src/features/activity/event-taxonomy.ts"
 # fails until the new site is triaged and either taught to the resolver or
 # added here with its own reason.
 _EXPECTED_UNRESOLVED = {
-    # `_record_audit`'s only caller passes the literal "auth_login_failed",
-    # which is not an EVENT_TYPES member at all (a pre-existing, separate
-    # gap between auth's ad hoc event types and the closed vocabulary —
-    # out of this task's scope, see the T2.102 report).
+    # `_record_audit`'s callers pass literals ("auth_login_failed",
+    # "auth_lockout") through its positional `action` parameter, which
+    # `record_event(..., event_type=action)` inside it then forwards as a
+    # bare Name this one-hop resolver cannot follow back to a constant.
+    # Both literals are EVENT_TYPES members as of T2.103 (2026-08-07),
+    # which closed the earlier gap between auth's event types and the
+    # closed vocabulary; `tests/test_events.py` is the scan that traces
+    # this exact wrapper shape to enforce that membership. This test's
+    # own "live" definition still can't see through it (see module
+    # docstring), which only affects whether the frontend map guard
+    # *requires* a classification here — it does not affect correctness.
     ("app/api/routes/auth.py", "record_event"),
     # `list_events`'s `event_type` is a read-side query filter parameter,
     # not a value being emitted — same keyword name, unrelated concept.
