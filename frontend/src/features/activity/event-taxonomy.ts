@@ -32,6 +32,7 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   citation_stale: "verification",
   human_verdict: "verification",
   consolidated: "consolidation",
+  merged: "consolidation",
   superseded: "consolidation",
   deprecated: "consolidation",
   expired: "consolidation",

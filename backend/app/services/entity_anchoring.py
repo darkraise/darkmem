@@ -29,9 +29,11 @@ calls on its own schedule.
 arrives anchors: the vector is in the partition by the time Phase 4 probes. A
 repo indexed *after* the memory already minted the near-named node does not —
 Phase 4 dedups at write time and nothing re-runs it, so the two rows coexist
-and only a retroactive merge pass could join them. That pass is a different
+and only a retroactive merge pass can join them. That pass is a different
 mechanism (it must move ``memory_ids``/``repo_ids``, re-point relation
-endpoints and recompute the ``technologies`` denorm) and it is not this job.
+endpoints and recompute the ``technologies`` denorm) and it is not this job:
+it is :mod:`app.services.entity_merge` (T2.101), which spends the vectors this
+job writes and would have nothing to compare without them.
 
 **One fingerprint, resolved by data, and the write follows the embedder.**
 Candidates are selected under the fingerprint

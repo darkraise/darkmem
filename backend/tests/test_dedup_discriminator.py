@@ -144,8 +144,11 @@ def spy_probe(monkeypatch) -> list[dict]:
     calls: list[dict] = []
     real = PostgresGraphRepository.find_similar_entity
 
-    async def probe(self, embedding, fingerprint, threshold=0.85, entity_type=None):
-        match = await real(self, embedding, fingerprint, threshold, entity_type)
+    async def probe(self, embedding, fingerprint, threshold=0.85, entity_type=None,
+                    exclude_entity_id=None):
+        match = await real(
+            self, embedding, fingerprint, threshold, entity_type, exclude_entity_id,
+        )
         calls.append({
             "entity_type": entity_type,
             "fingerprint": fingerprint,

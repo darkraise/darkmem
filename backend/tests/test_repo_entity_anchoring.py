@@ -18,11 +18,14 @@ Four things are asserted, and each is one a naive test passes without proving:
   *same* 0.974 as ``postgres``/``postgresql`` and must NOT merge. The test
   asserts the probe actually *returned* the neighbour at that score, so a
   threshold drift cannot turn it green for the wrong reason.
-* **The order production produces is the one that fails.** A repo indexed after
-  a memory already minted the near-named node still leaves two rows — Phase 4
-  dedups at write time and nothing re-runs it. That is asserted here rather than
-  only described in a report, because a silent narrowing is exactly what T2.97
-  was minted to correct.
+* **The order production produces used to be the one that failed.** A repo
+  indexed after a memory already minted the near-named node left two rows —
+  Phase 4 dedups at write time and nothing re-ran it. T2.97 asserted that
+  limitation here rather than only describing it in a report; T2.101 closed it
+  with a retroactive merge pass, and the two tests below are the inverse of the
+  one that recorded it: the late order now converges on the *same* single node
+  the eager order produces, and the discriminating-token pair still refuses to
+  merge on that path too.
 * **Invariant 2 rides the table, and the write follows the embedder.** A
   fingerprint that rotates between the selection query and the write lands its
   vectors in the new partition, never mixed into the old one.
@@ -53,6 +56,7 @@ from app.services.entity_anchoring import (
     refresh_repo_entity_anchors,
     repo_entities_missing_vectors,
 )
+from app.services.entity_merge import merge_repo_entity_duplicates
 from app.services.pipeline import _flag_cache_reset
 from tests.conftest import test_engine
 from tests.test_code_deriver import _seed_repo
@@ -146,6 +150,23 @@ async def anchor(factory, embedder, missing_batch=200):
         )
         await s.commit()
     return outcome
+
+
+async def merge(factory, embedder, candidate_batch=200):
+    async with factory() as s:
+        outcome = await merge_repo_entity_duplicates(
+            s, embedder, candidate_batch=candidate_batch,
+        )
+        await s.commit()
+    return outcome
+
+
+async def technologies_of(factory, memory_id) -> list[str]:
+    async with factory() as s:
+        return (await s.execute(
+            text("SELECT technologies FROM memories WHERE id = CAST(:m AS uuid)"),
+            {"m": str(memory_id)},
+        )).scalar_one()
 
 
 async def embedded_names(factory, fingerprint: str) -> set[str]:
@@ -405,17 +426,23 @@ async def test_a_type_mismatch_still_refuses_the_anchor(
 
 
 @pytest.mark.asyncio
-async def test_a_repo_indexed_after_the_memory_still_leaves_two_nodes(
+async def test_a_repo_indexed_after_the_memory_merges_retroactively(
     setup_database, monkeypatch,
 ):
-    """The window this shape leaves open, asserted rather than described.
+    """The inverse of the limitation T2.97 recorded here (T2.101).
 
-    Phase 4 dedups at write time. A vector that arrives after the memory-minted
-    node was written merges nothing: the deriver's own write is an exact-key
-    upsert with no ANN probe, so it mints its own row beside the existing one
-    and both end up embedded and distinct. Closing this needs a retroactive
-    merge pass over ``entities`` — a different mechanism from an embedding
-    backfill, and not this job's.
+    Phase 4 dedups at write time, so a vector arriving after the memory-minted
+    node was written merges nothing on its own: the deriver's write is an
+    exact-key upsert with no probe, and it mints its row beside the existing
+    one. This test drives that exact order — memory first, repo second — and
+    asserts the two-node state *before* the merge pass, so the single node
+    afterwards can only be that pass's doing.
+
+    The end state is asserted to be byte-identical to
+    ``test_a_repo_minted_postgres_anchors_a_memory_minted_postgresql``'s. That
+    equality is the property the task exists for: the graph a deployment ends
+    up with must not depend on whether it indexed its repositories before or
+    after it captured its memories.
     """
     fingerprint = "anchor-late|8"
     full, short = _pair(2, POSTGRES_POSTGRESQL_COSINE)
@@ -446,11 +473,99 @@ async def test_a_repo_indexed_after_the_memory_still_leaves_two_nodes(
 
         assert {"postgres", "postgresql"} <= await embedded_names(
             factory, fingerprint
-        ), "both nodes are embedded, and they are still two nodes"
+        ), "both nodes are embedded, and at this point they are still two nodes"
         assert await entity_rows(factory, ["postgres", "postgresql"]) == [
             ("postgres", "database", 0),
             ("postgresql", "database", 1),
-        ]
+        ], "anchoring alone must still leave the pair apart on this order"
+        assert await technologies_of(factory, memory_ids[0]) == ["postgresql"]
+
+        probes = spy_probe(monkeypatch)
+        outcome = await merge(factory, embedder)
+        assert outcome.merged == 1
+        assert {p["threshold"] for p in probes} == {0.85}, (
+            "the retroactive pass must probe at the write path's threshold, "
+            "not one chosen to make more pairs merge"
+        )
+        matched = [p["match"] for p in probes if p["match"] is not None]
+        assert [m["name"] for m in matched] == ["postgresql"]
+        assert matched[0]["score"] == pytest.approx(
+            POSTGRES_POSTGRESQL_COSINE, abs=1e-6
+        )
+
+        assert await entity_rows(factory, ["postgres", "postgresql"]) == [
+            ("postgres", "database", 1)
+        ], "the late order must land on the node the eager order produces"
+
+        async with factory() as s:
+            row = (await s.execute(text(
+                "SELECT cardinality(memory_ids), cardinality(repo_ids) "
+                "FROM entities WHERE name = 'postgres'"
+            ))).one()
+        assert tuple(row) == (1, 1)
+        assert await technologies_of(factory, memory_ids[0]) == ["postgres"], (
+            "the lowercase denorm supersession and the retrieval filter read "
+            "must follow the surviving name, not keep the vanished one"
+        )
+    finally:
+        await cleanup(factory, memory_ids, [fingerprint], names)
+        await cleanup_repo(factory, repo_id)
+
+
+@pytest.mark.asyncio
+async def test_a_discriminating_token_refuses_the_retroactive_merge_too(
+    setup_database, monkeypatch,
+):
+    """The precision half of the retroactive path, at the same 0.974.
+
+    ``psycopg2``/``psycopg3`` are driven at the similarity the merging pair
+    sits at, and the probe is asserted to have *returned* the neighbour at that
+    score — so what keeps them apart is ``names_distinct``, not a similarity
+    that failed to clear the bar. Without this the suite above would prove only
+    that similarity alone merges.
+    """
+    fingerprint = "merge-version|8"
+    two, three = _pair(4, POSTGRES_POSTGRESQL_COSINE)
+    names = ["psycopg2", "psycopg3", "python", "merge-version-repo"]
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    _flag_cache_reset()
+    memory_ids = await seed_memories(factory, ["we moved to psycopg3"])
+    repo_id = await seed_repo(factory, "merge-version-repo", ["psycopg2"])
+
+    try:
+        embedder = AnchoringEmbedder(
+            fingerprint, {"psycopg2": two, "psycopg3": three}
+        )
+        await register(factory, fingerprint)
+
+        pipe = make_pipeline(
+            factory, embedder,
+            [entities_of(("psycopg3", "tool"))],
+            monkeypatch,
+        )
+        await pipe.process_batch(
+            [{"memory_id": memory_ids[0], "content": "we moved to psycopg3",
+              "source": "api"}]
+        )
+        await derive(factory, repo_id)
+        await anchor(factory, embedder)
+
+        probes = spy_probe(monkeypatch)
+        outcome = await merge(factory, embedder)
+
+        assert outcome.merged == 0
+        matched = [p["match"] for p in probes if p["match"] is not None]
+        assert [m["name"] for m in matched] == ["psycopg3"], (
+            "the pass never saw the neighbour, so this proves nothing about "
+            "the discriminator"
+        )
+        assert matched[0]["score"] == pytest.approx(
+            POSTGRES_POSTGRESQL_COSINE, abs=1e-6
+        )
+        assert await entity_rows(factory, ["psycopg2", "psycopg3"]) == [
+            ("psycopg2", "tool", 0),
+            ("psycopg3", "tool", 1),
+        ], "a version token must survive the retroactive pass as a discriminator"
     finally:
         await cleanup(factory, memory_ids, [fingerprint], names)
         await cleanup_repo(factory, repo_id)

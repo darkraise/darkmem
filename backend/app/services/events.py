@@ -74,6 +74,7 @@ EVENT_TYPES: list[str] = [
     "invalidated",
     "extracted",
     "consolidated",
+    "merged",
     "verified",
     "sources_changed",
     CITATION_STALE,

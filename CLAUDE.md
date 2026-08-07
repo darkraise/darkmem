@@ -449,32 +449,33 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Twenty** registered jobs (`app/main.py`) in two groups
+expressions. **Twenty-one** registered jobs (`app/main.py`) in two groups
 (count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
 T2.49 landed `relation_embedding_refresh` without updating it, and four
 concurrent lanes each found it stale independently — a stale count on a
 "here is the full list" sentence is exactly invariant 23's concern.
 `tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
 AST, so the next job added cannot silently desynchronise this list).
-The fourteen live ones: `repo_sync`,
+The fifteen live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`,
-`citation_reverify`. Note
+`repo_entity_merge`, `citation_reverify`. Note
 `buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
-`relation_embedding_refresh`, `repo_entity_anchoring` and
-`citation_reverify` register via
+`relation_embedding_refresh`, `repo_entity_anchoring`,
+`repo_entity_merge` and `citation_reverify` register via
 the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
-`RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY` and
-`CITATION_REVERIFY_JOB_KEY` rather
+`RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
+`REPO_ENTITY_MERGE_JOB_KEY` and `CITATION_REVERIFY_JOB_KEY` rather
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
-**`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`
-`code_deriver` and `citation_reverify` are Tier C but are deliberately
-not dream-job family members** (T2.32, T2.49, T2.97, T2.96, T2.48): contract 6 fixes that family as
+**`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
+`repo_entity_merge`, `code_deriver` and `citation_reverify` are Tier C but
+are deliberately not dream-job family members** (T2.32, T2.49, T2.97,
+T2.101, T2.96, T2.48): contract 6 fixes that family as
 the consolidation passes, while doc 07 §4 and doc 10 §6 own their
 artefact refreshes separately. Invariant 15 is unaffected either way —
 retrieval reads the cached snapshot and Phase 4 reads the entity
@@ -510,10 +511,69 @@ never raises. The doc correction is owed and is tracked as a Tier-3 amendment.
 **`repo_entity_anchoring` is what makes the code bridge's anchoring
 reach past an exact name match** (T2.97): the deriver is LLM-free by
 structural guard, so the embed that lets Phase 4's ANN probe see a
-repo-minted entity happens in this job, one tick behind derivation. A
-repo indexed *after* a memory already minted the near-named node still
-leaves two rows — Phase 4 dedups at write time, `assert_from_repo` is an
-exact-key upsert with no probe, and nothing re-runs the dedup. The six added by T2.08 are the
+repo-minted entity happens in this job, one tick behind derivation. That
+closes **one order only** — repo indexed, anchored, then the memory
+ingested.
+
+**`repo_entity_merge` closes the other order, which is the common one**
+(T2.101). A repo indexed *after* a memory already minted the near-named
+node used to leave two rows forever: Phase 4 dedups at write time,
+`assert_from_repo` is an exact-key `ON CONFLICT (name, entity_type)`
+upsert with no probe, and the strip-and-rewrite is keyed the same way, so
+re-derivation reproduces them. That is what every existing install
+produces the first time it indexes a repo. The job re-runs Phase 4's own
+comparison after the fact — `find_similar_entity` at the same 0.85 under
+the same `names_distinct` gate, with the query vector read out of the
+partition rather than re-embedded, so both sides of every cosine come
+from one child table and the pass needs no embedder call. **The survivor
+is the repo-asserted row**, older `created_at` with an id tie-break when
+both are, so the two indexing orders converge on the same node rather
+than trading an order-dependent node count for an order-dependent node
+name. A merge moves, in one savepoint per pair: the `memory_ids` /
+`repo_ids[]` unions, **every** relation endpoint in both directions
+(a repointed endpoint colliding with the `(source, target, rel_type)`
+uniqueness is a relation merge of its own — union, keep the greater
+weight, drop the duplicate — never an error left for the constraint), the
+fact layer's identity, and the lowercase `technologies` denorm for
+every memory whose entity set changed. The losing row's vectors go with
+it through the `entity_embeddings__<slug>` cascade, in every partition.
+A relation the repointing missed **fails the savepoint** rather than
+being swallowed by that same cascade.
+
+**The fact layer moves by name, not only by id** (T2.101 fix round 1).
+`knowledge_triples.subject_id` / `object_id` are entity ids carrying **no**
+foreign key, which `review_ranking`'s salience arm reads as zero neighbours
+when they dangle — but repointing them is only half the move, because fact
+*identity* is name-keyed: the table denormalises both endpoint names and
+derives `triple_key` from them, and `compute_triple_key`'s canonicalisation
+is lexical, so `postgres` and `postgresql` are two identities. `fact_lift`
+groups the graph by live entity name and matches open facts on that name, so
+an id-only repoint re-qualifies every already-lifted group as pending and
+mints a **second** open triple for one assertion set on the next tick —
+corroboration and verification split across two rows. So the names and the
+key move with the ids. Recomputing the key can collide with an already-open
+row on `ux_knowledge_triples_open`, and **that collision is a fact merge**:
+the higher `verification_status` rung keeps the id (`confirmed` >
+`disputed` > `corroborated` > `candidate`, ties to the older `created_at`
+then the smaller id), which is what lets the fold write **no** verification
+column at all — the surviving rung is the one the sanctioned door already
+wrote, so no promotion escapes the ladder and no `verified` row appears for
+a transition no evidence explains. `fact_sources` is **moved** onto the
+keeper (copied, one memory would corroborate one claim twice), serving heat
+is summed, the belief window takes the earlier `reference_time` / `valid_at`
+and the earlier `stated_expiry`, and the duplicate is **expired, never
+deleted** — `article_citations` takes a hard FK on the premise that facts
+are invalidate-not-delete, and `expired_at` rather than `invalid_at` is what
+keeps the contradiction scan from pairing a fact against itself under its
+other name. A fact row whose endpoint id is NULL or already dangling keeps
+its name: nothing ties it to the losing row, and the group it came from no
+longer exists under the vanished name, so nothing re-lifts it.
+
+The candidate scan **rotates** through the repo-asserted population on a
+`(created_at, id)` keyset cursor in the `config` row
+`repo_entity_merge_state`, wrapping when a window comes back short —
+`candidate_batch` bounds one run's cost, never the coverage. A merge
+journals one `merged` `events` row against the surviving entity. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,
