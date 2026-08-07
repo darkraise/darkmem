@@ -55,7 +55,11 @@ const nav: NavGroup[] = [
     label: "Knowledge",
     items: [
       { label: "Facts", href: "/knowledge/facts", icon: ScrollText },
-      { label: "Articles", href: "/knowledge/articles", icon: FileText },
+      // L3 has no live channel until article synthesis ships behind G-D; the
+      // route stays reachable and honest, but nothing advertises an empty layer.
+      ...(DEMO
+        ? [{ label: "Articles", href: "/knowledge/articles", icon: FileText }]
+        : []),
       { label: "Topics", href: "/knowledge/topics", icon: Tags },
       { label: "Review", href: "/knowledge/review", icon: ClipboardCheck },
     ],

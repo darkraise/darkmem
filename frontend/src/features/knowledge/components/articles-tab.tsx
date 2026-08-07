@@ -10,11 +10,19 @@ import {
   SelectValue,
 } from "darkraise-ui/components/select"
 import { ExclusionStrip, LayerChip, VerificationBadge } from "@/components/darkmem"
+import { DEMO } from "@/lib/demo-flag"
 import { useDemoArticles } from "@/demo/hooks"
 import { liveArticles, withheldArticles } from "@/demo/knowledge"
 import type { DemoArticle } from "@/demo/types"
 import { ListSurface } from "./list-surface"
 import { StaleBadge } from "./fact-parts"
+
+/* L3 has no live channel: article synthesis ships behind G-D, which is open.
+   Serving the demo fixture unbranched would put fabricated `confirmed` claims
+   and invented coverage ratios in front of a real reader, under chrome
+   promising every claim links to a verified fact. Stable identity so the
+   memos below do not re-run each render. */
+const NO_ARTICLES: DemoArticle[] = []
 
 function ArticleRow({ article }: { article: DemoArticle }) {
   return (
@@ -68,7 +76,8 @@ function ArticleRow({ article }: { article: DemoArticle }) {
 }
 
 export function ArticlesTab() {
-  const articles = useDemoArticles()
+  const demoArticles = useDemoArticles()
+  const articles = DEMO ? demoArticles : NO_ARTICLES
   const [project, setProject] = useState("darkmem")
 
   const projects = useMemo(
@@ -136,7 +145,11 @@ export function ArticlesTab() {
           <EmptyState
             icon={<FileText aria-hidden className="h-6 w-6" />}
             title="No articles yet"
-            description="Articles are synthesised once corroborated facts exist for a subject — none do here yet. No corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one."
+            description={
+              DEMO
+                ? "Articles are synthesised once corroborated facts exist for a subject — none do here yet. No corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one."
+                : "Article synthesis is not shipped yet — it ships behind the groundedness gate, which is still open. Nothing is being withheld from you here: there is no article channel to read."
+            }
           />
         )}
       </ListSurface>
