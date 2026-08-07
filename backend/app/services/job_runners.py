@@ -522,6 +522,56 @@ def make_relation_embedding_runner(
     return run
 
 
+def make_repo_entity_anchoring_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Embed repo-minted entities so the code bridge anchors (doc 10 §6, T2.97).
+
+    Tier C, and deliberately not a dreaming-family member: contract 6 fixes that
+    family at six, and this is an artefact refresh in the same class as
+    `ppr_snapshot` and `relation_embedding_refresh`. Invariant 15 is unaffected
+    — Phase 4 reads the partition this fills, never this runner.
+
+    The deriver that mints these entities is LLM-free by structural guard, so
+    the embed cannot live at derive time; it lives here, one scheduled tick
+    behind. Without an orchestrator there is nothing to embed with, so the run
+    is a no-op rather than a failure.
+    """
+    async def run() -> None:
+        from app.services.entity_anchoring import (
+            REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
+            REPO_ENTITY_ANCHORING_JOB_KEY,
+            refresh_repo_entity_anchors,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("repo_entity_anchoring skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in REPO_ENTITY_ANCHORING_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(REPO_ENTITY_ANCHORING_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await refresh_repo_entity_anchors(
+                session, llm,
+                missing_batch=int(knobs["missing_batch"]),
+                chunk_size=int(knobs["embed_chunk"]),
+            )
+            await session.commit()
+
+        if outcome.written:
+            logger.info(
+                "Repo entity anchoring: %d entities embedded under %s",
+                outcome.written, outcome.fingerprint,
+            )
+    return run
+
+
 _PPR_STATE_CONFIG_KEY = "job:ppr_snapshot:state"
 
 

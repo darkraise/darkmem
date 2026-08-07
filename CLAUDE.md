@@ -449,20 +449,31 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Sixteen** registered jobs (`app/main.py`) in two groups.
-The ten live ones: `repo_sync`,
+expressions. **Eighteen** registered jobs (`app/main.py`) in two groups.
+The twelve live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
-`expired_memory_cleanup`, `ppr_snapshot`. Note `buffer_flush`,
-`code_reconcile` and `ppr_snapshot` register via the constants
-`BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY` and
-`PPR_SNAPSHOT_JOB_KEY` rather than string literals, so a grep for
-quoted keys undercounts the list. **`ppr_snapshot` is Tier C but is
-deliberately not a dream-job family member** (T2.32): contract 6 fixes
-that family as the consolidation passes, while doc 07 §4 owns the
-graph-retrieval artefact refresh separately. Invariant 15 is unaffected
-either way — retrieval reads the cached snapshot, never the job. The six added by T2.08 are the
+`expired_memory_cleanup`, `ppr_snapshot`,
+`relation_embedding_refresh`, `repo_entity_anchoring`. Note
+`buffer_flush`, `code_reconcile`, `ppr_snapshot`,
+`relation_embedding_refresh` and `repo_entity_anchoring` register via
+the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
+`PPR_SNAPSHOT_JOB_KEY`, `RELATION_EMBEDDING_JOB_KEY` and
+`REPO_ENTITY_ANCHORING_JOB_KEY` rather than string literals, so a grep
+for quoted keys undercounts the list. **`ppr_snapshot`,
+`relation_embedding_refresh` and `repo_entity_anchoring` are Tier C but
+are deliberately not dream-job family members** (T2.32, T2.49, T2.97):
+contract 6 fixes that family as the consolidation passes, while doc 07 §4
+and doc 10 §6 own their artefact refreshes separately. Invariant 15 is
+unaffected either way — retrieval reads the cached snapshot and Phase 4
+reads the entity partition, never the job. `repo_entity_anchoring` is
+what makes the code bridge's anchoring reach past an exact name match:
+the deriver is LLM-free by structural guard, so the embed that lets
+Phase 4's ANN probe see a repo-minted entity happens in this job, one
+tick behind derivation. A repo indexed *after* a memory already minted
+the near-named node still leaves two rows — Phase 4 dedups at write
+time and nothing re-runs it. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,
