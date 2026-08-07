@@ -1425,3 +1425,390 @@ def test_the_cross_graph_scan_flags_a_planted_join(tmp_path):
         "ON n.label = e.name'\n"
     )
     assert _cross_graph_statements([planted], tmp_path)
+
+
+# ── T2.96: production trigger (job) + withdrawal on repo delete ──────────
+#
+# Everything above proves the primitives are correct when called directly —
+# which is exactly what T2.27 already proved. What was missing is a caller.
+# The tests below drive the real entry points: `JobRegistry.trigger` for the
+# forward direction, the `DELETE /repos/{id}` route for the withdrawal — and
+# read the result off the database, never off the primitive's return value.
+
+
+def _direct_job_registrations(source: str) -> list[ast.Call]:
+    """Every `job_registry.register(Job(...))` call in `app/main.py`.
+
+    Deliberately excludes the dream-job family, which never calls
+    `job_registry.register` directly — it rides through
+    `register_dream_jobs(job_registry, ...)` instead — so this collects
+    exactly the roster CLAUDE.md calls "the thirteen live ones", the direct
+    registrations `code_deriver` joined.
+    """
+    tree = ast.parse(source)
+    calls = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "job_registry"
+            and node.args
+            and isinstance(node.args[0], ast.Call)
+            and isinstance(node.args[0].func, ast.Name)
+            and node.args[0].func.id == "Job"
+        ):
+            calls.append(node.args[0])
+    return calls
+
+
+def _job_kwarg(call: ast.Call, name: str) -> ast.expr | None:
+    for kw in call.keywords:
+        if kw.arg == name:
+            return kw.value
+    return None
+
+
+def _binding_token(node: ast.expr) -> str:
+    """The source-level identity of a `Job(...)` keyword value: the
+    referenced name for a `Name` node (e.g. `CODE_DERIVER_JOB_KEY`), the
+    literal for a string `Constant` (e.g. `"repo_sync"`). Checking the
+    *binding* rather than a resolved runtime value is what makes deleting
+    either the import or the whole registration block fail this test — the
+    RRF binding-scans in `test_chat_retrieval_parity.py` are the same shape,
+    checked against `rank_fusion.py`.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return node.id
+    raise AssertionError(f"unexpected Job() keyword expression: {ast.dump(node)}")
+
+
+def test_main_registers_the_full_direct_job_roster():
+    """A source-substring check over `inspect.getsource(app.main)` — the
+    test this replaces — passes when the *entire*
+    `job_registry.register(Job(key=CODE_DERIVER_JOB_KEY, ...))` block is
+    deleted and only its import lines survive: measured directly by the
+    T2.96 adversarial review, which deleted exactly that block and watched
+    116/116 tests pass, the substring test included (import lines alone
+    satisfy all three substrings). It proved nothing about production
+    reachability, which is the one thing this task exists to establish.
+
+    An AST scan over the *binding* each `Job(key=...)` resolves to, not the
+    source text, closes that hole: deleting the block deletes its `Job(...)`
+    call node, so its key vanishes from what this scan collects and the
+    roster comparison goes red — imports lingering or not.
+
+    Scanning the *full* direct roster, not only `code_deriver`'s row, closes
+    the identical, pattern-inherited exposure the review flagged in
+    `test_code_reconcile.py`'s twin and, by inspection, `ppr_snapshot`'s —
+    both keys are asserted here through the same mechanism, at no extra
+    cost, so their equivalent tests may keep their existing (weaker) shape
+    without leaving the gap unclosed.
+    """
+    import app.main as main
+
+    source = Path(main.__file__).read_text()
+    registrations = _direct_job_registrations(source)
+    keys = {_binding_token(_job_kwarg(call, "key")) for call in registrations}
+
+    expected = {
+        "repo_sync", "BUFFER_FLUSH_JOB_KEY", "code_enrichment",
+        "CODE_RECONCILE_JOB_KEY", "CODE_DERIVER_JOB_KEY",
+        "token_blocklist_cleanup", "pipeline_failure_cleanup",
+        "graph_orphan_cleanup", "tag_orphan_cleanup",
+        "expired_memory_cleanup", "PPR_SNAPSHOT_JOB_KEY",
+        "RELATION_EMBEDDING_JOB_KEY", "REPO_ENTITY_ANCHORING_JOB_KEY",
+    }
+    assert keys == expected, (
+        f"direct job registrations in app/main.py drifted from the roster "
+        f"CLAUDE.md documents: missing={expected - keys}, "
+        f"unexpected={keys - expected}"
+    )
+
+    deriver_calls = [
+        call for call in registrations
+        if _binding_token(_job_kwarg(call, "key")) == "CODE_DERIVER_JOB_KEY"
+    ]
+    assert len(deriver_calls) == 1
+    deriver = deriver_calls[0]
+
+    runner_expr = _job_kwarg(deriver, "runner")
+    assert isinstance(runner_expr, ast.Call) and isinstance(runner_expr.func, ast.Name)
+    assert runner_expr.func.id == "make_code_deriver_runner", (
+        "code_deriver's Job() is not wired to make_code_deriver_runner"
+    )
+
+    interval_expr = _job_kwarg(deriver, "min_interval_seconds")
+    assert _binding_token(interval_expr) == "CODE_DERIVER_MIN_INTERVAL_SECONDS"
+
+
+def test_code_deriver_is_not_a_dream_job_family_member():
+    """Contract 6 fixes the dream-job family at six. This job must register
+    directly in `app/main.py`, the same way `ppr_snapshot` does, and never
+    ride in through `dream_jobs.register_dream_jobs`."""
+    import app.services.dream_jobs as dream_jobs
+
+    source = Path(dream_jobs.__file__).read_text()
+    assert "code_deriver" not in source
+    assert "CODE_DERIVER_JOB_KEY" not in source
+
+
+def test_code_deriver_cron_and_floor_are_valid():
+    from app.services.code_deriver_job import (
+        CODE_DERIVER_CRON,
+        CODE_DERIVER_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.job_registry import is_valid_cron
+
+    assert is_valid_cron(CODE_DERIVER_CRON)
+    assert CODE_DERIVER_MIN_INTERVAL_SECONDS > 0
+
+
+@pytest.mark.asyncio
+async def test_code_deriver_shares_lock_with_manual_trigger():
+    """Registered through the real `Job`/`JobRegistry` contract, the deriver
+    job gets the same per-job lock the scheduled loop and manual trigger
+    share — a trigger while it's held must busy-error, never queue."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.config import settings
+    from app.services.code_deriver_job import (
+        CODE_DERIVER_CRON,
+        CODE_DERIVER_JOB_KEY,
+        CODE_DERIVER_MAX_RUN_SECONDS,
+        CODE_DERIVER_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.job_registry import Job, JobBusyError, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    registry = JobRegistry(factory)
+
+    async def _noop():
+        return None
+
+    registry.register(Job(
+        key=CODE_DERIVER_JOB_KEY,
+        display_name="Code Graph Deriver",
+        description="d",
+        default_cron=CODE_DERIVER_CRON,
+        min_interval_seconds=CODE_DERIVER_MIN_INTERVAL_SECONDS,
+        runner=_noop,
+        max_run_seconds=CODE_DERIVER_MAX_RUN_SECONDS,
+    ))
+    job = registry.get(CODE_DERIVER_JOB_KEY)
+    await job.lock.acquire()
+    try:
+        with pytest.raises(JobBusyError):
+            await registry.trigger(CODE_DERIVER_JOB_KEY)
+    finally:
+        job.lock.release()
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_runner_derives_repo_ids_end_to_end(setup_database):
+    """The real production trigger, not a direct `assert_repo_graph` call.
+
+    Registers the job through a real `JobRegistry`, fires it with
+    `trigger()` — exactly what a scheduled tick or a manual trigger does —
+    and reads `entities.repo_ids` straight off the database.
+
+    Also carries the idempotency clause: three triggers in a row, and each
+    one is checked for the same property T2.27 asserted for the primitive —
+    the repo id appears *exactly once* per array, and contents (not just
+    counts) are identical run over run. Byte-identical row ids are not
+    asserted, deliberately: strip-before-rewrite gives every row a fresh id
+    on each run, which is expected, not a bug (see `_repo_snapshot`'s
+    docstring above).
+
+    Uses its own `async_sessionmaker` bound to `tests.conftest.test_engine`
+    rather than the `session` fixture, because `make_code_deriver_runner`
+    opens its own sessions via a session factory — those need to see
+    committed rows from a genuinely separate connection, which the
+    `session` fixture's rollback-only transaction never produces.
+    """
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.code import Repository
+    from app.services.code_deriver_job import (
+        CODE_DERIVER_CRON,
+        CODE_DERIVER_JOB_KEY,
+        CODE_DERIVER_MAX_RUN_SECONDS,
+        CODE_DERIVER_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.job_registry import Job, JobRegistry
+    from app.services.job_runners import make_code_deriver_runner
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+
+    async with factory() as session:
+        repo_id = await _seed_repo(session, name="trigger-repo")
+        # The runner selects repos by `last_indexed_commit IS NOT NULL` —
+        # the same "already indexed" gate `code_reconcile` uses — so a repo
+        # that was never indexed is correctly left alone.
+        await session.execute(
+            text("UPDATE repositories SET last_indexed_commit = 'sha-1' "
+                 "WHERE id = CAST(:id AS uuid)"),
+            {"id": str(repo_id)},
+        )
+        await session.commit()
+
+    registry = JobRegistry(factory)
+    registry.register(Job(
+        key=CODE_DERIVER_JOB_KEY,
+        display_name="Code Graph Deriver",
+        description="d",
+        default_cron=CODE_DERIVER_CRON,
+        min_interval_seconds=CODE_DERIVER_MIN_INTERVAL_SECONDS,
+        runner=make_code_deriver_runner(factory),
+        max_run_seconds=CODE_DERIVER_MAX_RUN_SECONDS,
+    ))
+
+    try:
+        first_snapshot = None
+        for _ in range(3):
+            await registry.trigger(CODE_DERIVER_JOB_KEY)
+            async with factory() as session:
+                snapshot = await _repo_snapshot(session, repo_id)
+                # A per-row occurrence count, not `max(cardinality(repo_ids))`:
+                # cardinality proves "this repo is the array's sole occupant",
+                # which only coincides with "the repo id appears exactly once"
+                # because no other committed test shares an entity with this
+                # repo's rows. `sqlalchemy`/`fastapi` are global
+                # (name, entity_type) keys a neighbouring test could
+                # legitimately co-assert, which would push cardinality past 1
+                # while the repo id still appears exactly once per row.
+                not_exactly_once = {
+                    table: (await session.execute(
+                        text(
+                            f"SELECT count(*) FROM {table} "
+                            "WHERE (SELECT count(*) FROM unnest(repo_ids) u "
+                            "WHERE u = CAST(:rid AS uuid)) != 1 "
+                            "AND CAST(:rid AS uuid) = ANY(repo_ids)"
+                        ),
+                        {"rid": str(repo_id)},
+                    )).scalar()
+                    for table in ("entities", "entity_relations")
+                }
+            assert snapshot["entities"], "the trigger must actually write something"
+            assert snapshot["relations"], "the trigger must actually write something"
+            assert not_exactly_once["entities"] == 0, (
+                "repo id duplicated within some entities.repo_ids row"
+            )
+            assert not_exactly_once["entity_relations"] == 0, (
+                "repo id duplicated within some entity_relations.repo_ids row"
+            )
+            if first_snapshot is None:
+                first_snapshot = snapshot
+            else:
+                assert snapshot == first_snapshot, (
+                    "re-triggering changed the derivation contents"
+                )
+    finally:
+        await registry.stop_all()
+        async with factory() as session:
+            # entities/entity_relations carry no FK to `repositories` — this
+            # test commits for real (a genuinely separate connection is the
+            # point), so an entity like `sqlalchemy` this run minted is a row
+            # every other test in this file shares (entities are keyed by
+            # `(name, entity_type)`, not scoped to a repo). Deleting only the
+            # Repository row would leave it dangling and contaminate a later
+            # test's `session`-fixture transaction, which reads the same
+            # already-committed database under READ COMMITTED. Stripping
+            # first is also the production withdrawal path exercised for
+            # real, not a test-only shortcut.
+            from app.repositories.graph import PostgresGraphRepository
+            await PostgresGraphRepository(session).strip_repo_assertions(repo_id)
+            await session.execute(sa_delete(Repository).where(Repository.id == repo_id))
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_runner_skips_repos_never_indexed(setup_database):
+    """A repo with no `last_indexed_commit` has no code graph to derive
+    from — the runner must not even attempt it (it would just assert an
+    empty repo entity with no dependencies, which is not "derived", it's
+    noise)."""
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.code import Repository
+    from app.services.job_runners import make_code_deriver_runner
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+
+    async with factory() as session:
+        repo_id = await _seed_repo(session, name="never-indexed-repo")
+        await session.commit()
+
+    try:
+        runner = make_code_deriver_runner(factory)
+        await runner()
+
+        async with factory() as session:
+            snapshot = await _repo_snapshot(session, repo_id)
+        assert snapshot == {"entities": [], "relations": []}
+    finally:
+        async with factory() as session:
+            await session.execute(sa_delete(Repository).where(Repository.id == repo_id))
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_delete_repo_route_strips_its_assertions(client, session, auth_headers):
+    """Prove the withdrawal at the route (`DELETE /repos/{id}`), not at
+    `PostgresGraphRepository.strip_repo_assertions` directly — T2.27 already
+    proved the primitive; what was missing is a caller."""
+    repo_id = await _seed_repo(session, name="withdraw-repo")
+    await assert_repo_graph(session, repo_id)
+    before = await _repo_snapshot(session, repo_id)
+    assert before["entities"] and before["relations"], (
+        "setup must actually assert something for the drill to mean anything"
+    )
+
+    resp = await client.delete(f"/api/v1/repos/{repo_id}", headers=auth_headers)
+    assert resp.status_code == 204
+
+    after = await _repo_snapshot(session, repo_id)
+    assert after == {"entities": [], "relations": []}
+
+    # Orphaned inline, not left for graph_orphan_cleanup: an entity only
+    # this repo asserted, with no live memory and no surviving relation,
+    # must be gone from the table entirely — not merely detached from an
+    # array that still points at a deleted repository.
+    still_present = (await session.execute(
+        text("SELECT count(*) FROM entities WHERE name = 'sqlalchemy' AND entity_type = 'tool'")
+    )).scalar()
+    assert still_present == 0
+
+
+@pytest.mark.asyncio
+async def test_delete_repo_route_spares_an_entity_a_second_repo_still_asserts(
+    client, session, auth_headers,
+):
+    first = await _seed_repo(session, name="shared-repo-1", imports=["redis"])
+    second = await _seed_repo(session, name="shared-repo-2", imports=["redis"])
+    await assert_repo_graph(session, first)
+    await assert_repo_graph(session, second)
+
+    row = (await session.execute(
+        text("SELECT repo_ids FROM entities WHERE name = 'redis'"),
+    )).mappings().first()
+    assert {str(first), str(second)} <= {str(r) for r in row["repo_ids"]}
+
+    resp = await client.delete(f"/api/v1/repos/{first}", headers=auth_headers)
+    assert resp.status_code == 204
+
+    row_after = (await session.execute(
+        text("SELECT repo_ids FROM entities WHERE name = 'redis'"),
+    )).mappings().first()
+    assert row_after is not None, "the second repo's assertion must survive"
+    assert [str(r) for r in row_after["repo_ids"]] == [str(second)]

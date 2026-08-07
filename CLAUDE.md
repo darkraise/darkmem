@@ -449,31 +449,54 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Eighteen** registered jobs (`app/main.py`) in two groups.
-The twelve live ones: `repo_sync`,
-`buffer_flush`, `code_enrichment`, `code_reconcile`,
+expressions. **Nineteen** registered jobs (`app/main.py`) in two groups
+(count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
+T2.49 landed `relation_embedding_refresh` without updating it, and three
+concurrent lanes each found it stale independently — a stale count on a
+"here is the full list" sentence is exactly invariant 23's concern.
+`tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
+AST, so the next job added cannot silently desynchronise this list).
+The thirteen live ones: `repo_sync`,
+`buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
 `relation_embedding_refresh`, `repo_entity_anchoring`. Note
-`buffer_flush`, `code_reconcile`, `ppr_snapshot`,
+`buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
 `relation_embedding_refresh` and `repo_entity_anchoring` register via
 the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
-`PPR_SNAPSHOT_JOB_KEY`, `RELATION_EMBEDDING_JOB_KEY` and
-`REPO_ENTITY_ANCHORING_JOB_KEY` rather than string literals, so a grep
-for quoted keys undercounts the list. **`ppr_snapshot`,
-`relation_embedding_refresh` and `repo_entity_anchoring` are Tier C but
-are deliberately not dream-job family members** (T2.32, T2.49, T2.97):
-contract 6 fixes that family as the consolidation passes, while doc 07 §4
-and doc 10 §6 own their artefact refreshes separately. Invariant 15 is
-unaffected either way — retrieval reads the cached snapshot and Phase 4
-reads the entity partition, never the job. `repo_entity_anchoring` is
-what makes the code bridge's anchoring reach past an exact name match:
-the deriver is LLM-free by structural guard, so the embed that lets
-Phase 4's ANN probe see a repo-minted entity happens in this job, one
-tick behind derivation. A repo indexed *after* a memory already minted
-the near-named node still leaves two rows — Phase 4 dedups at write
-time and nothing re-runs it. The six added by T2.08 are the
+`CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
+`RELATION_EMBEDDING_JOB_KEY` and `REPO_ENTITY_ANCHORING_JOB_KEY` rather
+than string literals, so a grep for quoted keys undercounts the list —
+which is precisely how this sentence went stale for four landings.
+**`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`
+and `code_deriver` are Tier C but are deliberately not dream-job family
+members** (T2.32, T2.49, T2.97, T2.96): contract 6 fixes that family as
+the consolidation passes, while doc 07 §4 and doc 10 §6 own their
+artefact refreshes separately. Invariant 15 is unaffected either way —
+retrieval reads the cached snapshot and Phase 4 reads the entity
+partition, never the job.
+
+**`code_deriver` is the production trigger for
+`code_deriver.assert_repo_graph`** (doc 10 §6, T2.96) — T2.27 shipped
+that primitive with no caller anywhere in `backend/app`. The job sweeps
+every repo with a non-null `last_indexed_commit` on its own hourly cron
+and journals a derivation failure under `pipeline_failures` with
+`pipeline_name="code_deriver"`, distinct from `"code_index"`, so a
+derivation failure never fails an index run. The withdrawal half lives
+in `RepoManager.delete`, which calls
+`PostgresGraphRepository.strip_repo_assertions` before removing the
+repository row — `entities.repo_ids[]` / `entity_relations.repo_ids[]`
+carry no foreign key to `repositories`, so without it an entity's
+`repo_ids` keeps a dangling id after the repo is gone.
+
+**`repo_entity_anchoring` is what makes the code bridge's anchoring
+reach past an exact name match** (T2.97): the deriver is LLM-free by
+structural guard, so the embed that lets Phase 4's ANN probe see a
+repo-minted entity happens in this job, one tick behind derivation. A
+repo indexed *after* a memory already minted the near-named node still
+leaves two rows — Phase 4 dedups at write time, `assert_from_repo` is an
+exact-key upsert with no probe, and nothing re-runs the dedup. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,

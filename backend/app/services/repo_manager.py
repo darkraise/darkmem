@@ -265,6 +265,19 @@ class RepoManager:
         if not repo:
             return False
 
+        # T2.96's withdrawal half: entities.repo_ids[] / entity_relations.repo_ids[]
+        # carry no foreign key to `repositories`, so deleting the row below would
+        # otherwise leave a dangling id in place (self-healed only the next time
+        # something else strips that entity). Stripping here, before the row is
+        # gone and in the same transaction as its removal, keeps the withdrawal
+        # atomic with the deletion rather than deferred to a later sweep. Orphans
+        # this leaves behind (no live memory, no live repo, no surviving relation)
+        # are removed inline by strip_repo_assertions itself, the same self-healing
+        # `delete_by_memory_id` does on the memory side — graph_orphan_cleanup is
+        # not involved.
+        from app.repositories.graph import PostgresGraphRepository
+        await PostgresGraphRepository(self.session).strip_repo_assertions(repo_id)
+
         if repo.auth_token_ref:
             config = await self.session.get(Config, repo.auth_token_ref)
             if config:
