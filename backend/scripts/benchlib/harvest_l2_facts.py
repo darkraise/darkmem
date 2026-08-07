@@ -57,7 +57,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 from sqlalchemy import text  # noqa: E402
 
 from benchlib import bench_db  # noqa: E402  (ensures DATABASE_URL override first)
-from benchlib import retrieval_gold, run_smoke  # noqa: E402
+from benchlib import db_target, retrieval_gold, run_smoke  # noqa: E402
 from benchlib.caching_llm import CachingLLMOrchestrator  # noqa: E402
 from benchlib.ingest import GateConfig, run_ingest  # noqa: E402
 
@@ -111,7 +111,10 @@ _MANIFEST_FACTS = text(f"""
 
 
 def bench_db_name(url: str = bench_db.BENCH_DATABASE_URL) -> str:
-    return url.rsplit("/", 1)[-1].split("?", 1)[0]
+    # Not a path split: a `?database=` query param overrides the path for the
+    # asyncpg dialect, so splitting the query off returns the name that is
+    # *not* connected to. See bench_db.resolved_database_name.
+    return db_target.resolved_database_name(url)
 
 
 def assert_bench_db_allowed(name: str, *, allow_unnumbered: bool = False) -> None:

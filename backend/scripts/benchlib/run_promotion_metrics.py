@@ -54,7 +54,7 @@ from sqlalchemy.engine import make_url  # noqa: E402
 from sqlalchemy.exc import DBAPIError  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
-from benchlib import ledger, promotion_metrics as pm  # noqa: E402
+from benchlib import db_target, ledger, promotion_metrics as pm  # noqa: E402
 
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem"
 FORBIDDEN_DATABASE_NAMES = {"darkmem_test"}
@@ -86,20 +86,17 @@ def _database_identity(url: str) -> str:
 
 
 def _assert_not_forbidden(url: str) -> None:
-    # `make_url(...).database`, percent-decoded, not `urlsplit(url).path`
-    # compared as a raw string: a URL-encoded name (`darkmem%5Ftest`) does
-    # not match the literal string `darkmem_test` under a naive check, but
-    # asyncpg's own DSN parser decodes it when a raw connection string
-    # reaches it directly (proven: `asyncpg.connect("...darkmem%5Ftest")`
-    # connects to `darkmem_test`) -- a different code path than the
-    # decomposed-kwargs one `create_async_engine` uses today, but the two
-    # must not be allowed to disagree on what counts as forbidden. The read
-    # -only GUC still blocks writes either way, but an unguarded encoded
-    # name could let the runner measure a database an in-flight
+    # The name resolution lives in `db_target` so all five harness doors read
+    # one rule. This site used to call `make_url(url).database` itself, which
+    # is the *path* component: a `?database=` query param overrides it for the
+    # asyncpg dialect, so the check approved a URL that reached the database
+    # it was refusing. The read-only GUC still blocks writes either way, but an
+    # unguarded name lets the runner measure a database an in-flight
     # `DROP SCHEMA` is tearing down and emit a garbage number into a gate
-    # report. `unquote` matches the more permissive (decoding) reading, so
-    # the check is never looser than whichever code path ends up connecting.
-    db = unquote(make_url(url).database or "")
+    # report. `db_target` also percent-decodes, since asyncpg's own DSN parser
+    # does, so this check is never looser than whichever path ends up
+    # connecting.
+    db = db_target.resolved_database_name(url)
     if db in FORBIDDEN_DATABASE_NAMES or db.startswith("darkmem_test_"):
         raise RuntimeError(
             f"refusing to point the promotion-metrics runner at {db!r} — "

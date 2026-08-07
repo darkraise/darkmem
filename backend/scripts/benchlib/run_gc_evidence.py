@@ -52,7 +52,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 from sqlalchemy import text  # noqa: E402
 
 from benchlib import bench_db  # noqa: E402  (DATABASE_URL override first)
-from benchlib import promotion_bars, promotion_corpus, promotion_metrics as pm  # noqa: E402
+from benchlib import db_target, promotion_bars, promotion_corpus, promotion_metrics as pm  # noqa: E402
 from benchlib.harvest_l2_facts import assert_bench_db_allowed, run_harvest  # noqa: E402
 from benchlib.run_smoke import require_deepseek_api_key  # noqa: E402
 
@@ -130,7 +130,7 @@ async def main(argv: list[str] | None = None) -> int:
 
     api_key = require_deepseek_api_key()
     bench_url = bench_db.BENCH_DATABASE_URL
-    db_name = bench_url.rsplit("/", 1)[-1].split("?", 1)[0]
+    db_name = db_target.resolved_database_name(bench_url)
     assert_bench_db_allowed(db_name)
 
     if args.corpus == RETRIEVAL_CORPUS:

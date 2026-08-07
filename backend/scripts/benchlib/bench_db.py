@@ -22,6 +22,14 @@ os.environ["DATABASE_URL"] = BENCH_DATABASE_URL
 
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
+from benchlib.db_target import (  # noqa: E402
+    assert_destructive_target_allowed,
+    resolved_database_name,
+)
+
+# Re-exported so the historical import site keeps working; the rule itself
+# lives in db_target, which has no import-time side effects.
+__all__ = ["assert_destructive_target_allowed", "resolved_database_name"]
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]  # .../backend
 
@@ -70,6 +78,7 @@ async def reset_bench_db() -> None:
       backend/tests/test_pipeline_process_batch.py's docstring for the
       same gotcha in the main test suite).
     """
+    assert_destructive_target_allowed(BENCH_DATABASE_URL, actor="reset_bench_db")
     await _reset_schema()
     await engine.dispose()
     _run_alembic_upgrade()
@@ -97,8 +106,9 @@ class BenchDatabase:
     """
 
     def __init__(self, url: str):
+        assert_destructive_target_allowed(url, actor="BenchDatabase")
         self.url = url
-        self.database = url.rsplit("/", 1)[-1].split("?", 1)[0]
+        self.database = resolved_database_name(url)
         self.engine = create_async_engine(url)
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
 
