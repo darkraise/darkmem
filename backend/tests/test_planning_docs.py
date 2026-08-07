@@ -36,21 +36,41 @@ def get_task_ids_from_headings() -> set[str]:
 def get_task_ids_from_progress() -> set[str]:
     """Extract all task IDs from progress.md table rows.
 
+    Reads from master branch (the canonical source per runbook §6), not the
+    working tree. The epic branch's progress.md is stale by design.
+
     Matches: | T<numbers>[.<letters>] | in markdown table rows.
     Only matches at line start (after whitespace) to avoid prose mentions.
     """
-    progress_file = Path(__file__).parent.parent.parent / "docs" / "planning" / "progress.md"
+    import subprocess
     task_ids = set()
 
     # Pattern matches: | followed by T<digits>.<digits>[<letters>] followed by |
     # Anchored to line start (after optional whitespace) to ignore prose mentions.
     pattern = re.compile(r"^\| (T\d+\.\d+[a-z]*)\s*\|")
 
-    with open(progress_file, encoding="utf-8") as f:
-        for line in f:
-            match = pattern.match(line.strip())
-            if match:
-                task_ids.add(match.group(1))
+    try:
+        result = subprocess.run(
+            ["git", "show", "master:docs/planning/progress.md"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        )
+        content = result.stdout
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"Could not read progress.md from master branch: {e.stderr}"
+        ) from e
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to read master:docs/planning/progress.md: {e}"
+        ) from e
+
+    for line in content.split("\n"):
+        match = pattern.match(line.strip())
+        if match:
+            task_ids.add(match.group(1))
 
     return task_ids
 
