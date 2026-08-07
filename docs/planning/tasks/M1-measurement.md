@@ -218,9 +218,34 @@ where the number is recorded.
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
 under the stated bar; every ladder transition journaled.
 
+**A decidable number is not automatically a meaningful one — established 2026-08-07 by
+T2.108 and confirmed on data by its adversarial review.** With a corpus that actually
+promotes (31 facts, all three gate buckets), the false-promotion audit reads *decidable,
+clears* at rate 0.0000 — and that reading is **vacuous**, because the numerator is
+structurally zero rather than measured. All three legs verified: no qualification record
+exists so `VerificationJudge.judge()` raises unconditionally; `SINGLE_VALUED_RELATIONS`
+is empty (`contradiction_veto.py:104`) and the corpus's stored `rel_type`s carry no
+REPLACES-family edge, so the deterministic arm never arms; and there are zero
+`human_verdict` events. `audit_clears(0.0, 31)` returns True and **cannot distinguish
+precision from inoperability.**
+
+The review sharpened it twice, and both sharpenings survive attack: the vacuity is a joint
+bar-plus-corpus property — an inverse-REPLACES corpus could drive machine disputes
+judge-free — but **no corpus in the 20–99 band can be both operable-numerator and passing
+under the strict 1% bar**, so the defect attributes to the bar. Probes 1–2 carry a weaker
+form of the same shape: `blocked ≡ 0` is data-precluded, so `slice_clears` reads True with
+its failing direction unreachable. The asymmetry matters — probes 1–2's decidability
+carries earned content (31 journaled promotions where the first run had zero), the audit's
+carries none of its numerator's operability.
+
+**This re-measure must rule on that before recording any verdict**, and rule on both
+instances under one lens. A gate that clears on a number which cannot fail is the shape
+doc 20 §4's "no layer advances on intuition" exists to forbid.
+
 **Done when:** all three measured from the `events` journal by SQL; bars stated as
 `config` before measuring, not after; **facts have actually flowed through the ladder**
-(a 0/0 promotion rate is under-powered, not a pass); verdict in `gate-ledger.md`;
+(a 0/0 promotion rate is under-powered, not a pass); **each probe's decidability is ruled
+operable or vacuous, with the reasoning recorded** (above); verdict in `gate-ledger.md`;
 `CLAUDE.md` refreshed to the shipped L2 shape; a miss leaves G-C open and the deriver
 lane (T2.27–T2.28) closed.
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
@@ -290,3 +315,4 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
 | 2026-08-06 | T2.40, T2.41, T2.54, T3.22, T3.24, TH1.10, TH1.17 | 2 | **Epic created; all seven evidence-and-gold tasks moved here from E2, E3 and EH1, ids unchanged.** Ids keep their original epic prefix deliberately — every gate-ledger row, analysis and commit message in the tree already cites them, and renumbering would break that trail to buy nothing | Controller decision: implementation must not queue behind datasets. One unlabelled gold (T2.54) was holding six E2 tasks and, through the epic entry gates, most of E3 and EH1 — while 89 of 96 E2 tasks had already closed without any gold at all, which is the measurement that the coupling was accidental. Moving them out makes the dependency explicit rather than structural: M1 consumes implementation, never gates it. Safety is preserved by `T2.95`'s serving gate, not by ordering |
+| 2026-08-07 | T2.40, T2.108 | 2 | **T2.40 gains a clause: a decidable probe is not automatically a meaningful one, and this re-measure must rule on that before recording a verdict.** With T2.108's corpus the false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is structurally zero — judge unqualified, `SINGLE_VALUED_RELATIONS` empty with no REPLACES-family edge in the corpus, no `human_verdict` events — and the committed predicate cannot distinguish precision from inoperability | Verified on data by T2.108's adversarial review, not inferred. The review's own attack sharpened rather than weakened it: the vacuity is joint bar-plus-corpus, but no corpus in the 20–99 band can be both operable-numerator and passing under the 1% bar, so it attributes to the bar. Probes 1–2 carry a weaker form (`blocked ≡ 0` data-precluded) that T2.108's report did not frame as the same shape. Recorded on T2.40 rather than fixed anywhere, because changing a bar after a measurement is exactly what the pre-statement rule forbids — the gate owner rules |
