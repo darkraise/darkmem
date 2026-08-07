@@ -353,6 +353,50 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
   })
 
+  // T2.86, T2.48's rescope: `FactSourceGroup.stale` is served (once the
+  // backend schema declares it) but was read nowhere — a broken code
+  // citation looked identical to a live one. Doc 10 §6: this is a
+  // downgrade of corroboration, never a contradiction, so the label must
+  // not read as a dispute.
+  it("a stale code citation renders as stale, not as disputed", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        sources: [
+          {
+            origin_key: "repo-b",
+            unknown_origin: false,
+            stale: true,
+            source_kinds: ["code"],
+            first_seen: "2026-06-01T09:00:00Z",
+            last_seen: "2026-06-01T09:00:00Z",
+            sources: [
+              {
+                id: "s2",
+                source_kind: "code",
+                source_ref: "code@def6789",
+                detail: { symbol_key: "main" },
+                created_at: "2026-06-01T09:00:00Z",
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(BADGE.claim)
+    expect(screen.getByText("stale")).toBeInTheDocument()
+    expect(screen.queryByText("disputed")).not.toBeInTheDocument()
+  })
+
+  it("a live-only source group renders no stale label", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(detailItem())
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    await screen.findByText(BADGE.claim)
+    expect(screen.queryByText("stale")).not.toBeInTheDocument()
+  })
+
   // T2.86 fix round (F8): the belief window section's `meta` used to read
   // `fact.project` — every other section's meta is a count or a state, and
   // this one read like a stray copy from the Record section below it. It

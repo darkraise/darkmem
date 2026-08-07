@@ -51,6 +51,7 @@ interface TestFactSource {
   ref: string
   detail: string
   at: string
+  stale?: boolean
 }
 
 const TRACE = {
@@ -160,6 +161,30 @@ describe("detail level: fact-sources honesty count renders in both modes", () =>
     expect(screen.queryByText("memory abc12345")).not.toBeInTheDocument()
     expect(screen.getByText("origin_key: session-a")).toBeInTheDocument()
   })
+
+  // T2.86, T2.48's rescope: doc 10 §6's stale overlay is an honesty signal
+  // (a downgraded corroboration) and must survive Simple mode exactly like
+  // the origin count above it — collapsing it would hide the one thing a
+  // human auditing a downgraded badge came here to see.
+  const STALE_SOURCES: TestFactSource[] = [
+    {
+      origin_key: "repo-b",
+      kind: "code",
+      ref: "code@def6789",
+      detail: "parsed from source",
+      at: "2026-06-02 10:00",
+      stale: true,
+    },
+  ]
+
+  it.each(["simple", "advanced"] as const)(
+    "the stale label on a downgraded origin renders in %s mode",
+    (level) => {
+      useDetailLevel.setState({ level })
+      render(<FactSourcesGroups sources={STALE_SOURCES} />)
+      expect(screen.getByText("stale")).toBeInTheDocument()
+    },
+  )
 })
 
 const DREAM_CYCLE_ID = "20260803-01"

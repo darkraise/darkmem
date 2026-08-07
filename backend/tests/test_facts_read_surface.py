@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import text
 
-from app.repositories.fact_sources import FactSourceRepository
+from app.repositories.fact_sources import STALE_DETAIL_KEY, FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.events import record_event
 
@@ -342,6 +342,35 @@ async def test_sources_are_grouped_by_origin_and_the_count_is_auditable(
     code_group = next(g for g in item["sources"] if g["origin_key"] == "repo-b")
     assert code_group["source_kinds"] == ["code"]
     assert code_group["sources"][0]["detail"]["commit_sha"] == "abc123"
+
+
+async def test_a_stale_origin_group_is_labelled_on_the_wire(
+    client, auth_headers, session, cleared_promotion_record
+):
+    """T2.86: `facts_read._source_group` has computed `stale` since T2.48, but
+    `FactSourceGroup` never declared the field, so FastAPI's response-model
+    validation silently dropped it before it reached the wire — the citation
+    was retained (this test's own row proves that half worked) but its
+    breakage was invisible to a reader auditing the badge. A live origin in
+    the same fact must not be swept into that label by a group-vs-fact mixup.
+    """
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await _source(
+        session,
+        fact_id,
+        kind="code",
+        origin="repo-b",
+        detail={"symbol_key": "main", STALE_DETAIL_KEY: True},
+    )
+    await session.flush()
+
+    item = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+    groups = {g["origin_key"]: g for g in item["sources"]}
+    assert groups["session-a"]["stale"] is False
+    assert groups["repo-b"]["stale"] is True
+    # The stale origin is retained, not filtered out of the audit view.
+    assert groups["repo-b"]["sources"][0]["detail"][STALE_DETAIL_KEY] is True
 
 
 async def test_anonymous_provenance_is_one_labelled_bucket(

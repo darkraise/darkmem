@@ -1409,10 +1409,24 @@ and say which arm.
 
 #### T2.86 — The fact detail route on live data
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
 
-**What.** Minted 2026-08-04 from T2.36's fix round, which fixed the dead link by
-removing it and said plainly that wiring the page is a task rather than a fix.
+**What (corrected 2026-08-07 — see Amendment log).** Minted 2026-08-04 from
+T2.36's fix round. **The "What" below described the tree as it stood before
+any of this task's own work started; that work landed and merged
+(`claude/e2-lane-az`, commits `d5af8d4f..83a8e261`, fix round `d7ce0dd8`) while
+this row had no `progress.md` entry, so a later scheduling pass re-minted the
+same text as if none of it existed.** `useDemoFact` is no longer called
+unconditionally: `FactDetail` (`features/knowledge/components/fact-detail.tsx`)
+branches `DEMO ? <DemoFactDetail/> : <LiveFactDetail/>`, and `LiveFactDetail`
+calls `GET /knowledge/facts/{id}` through `useFactDetail`. `FactDetailResponse`
+now carries `sources`, `ladder` (+`ladder_total`), `dispute`, `triple_key`,
+`learned_in`, `source_file`, `reference_time` and `belief_window`.
+`detail_available` is retired — the only surviving reference is a test comment
+recording that fact. Failed/not-found/invalid/loading are four distinguishable
+states. Below is preserved as the historical record of what the task looked
+like when minted; do not read it as the tree's current state.
+
 `src/routes/_authenticated/knowledge_.facts_.$factId.tsx:64` calls `useDemoFact`
 **unconditionally**, so with `DEMO` off — the default since T1.58 — any real fact
 id renders "This fact does not exist in the demo store." T2.36a shipped
@@ -1432,14 +1446,24 @@ also a surface hiding a capability the system is supposed to have. Removing the
 flag is part of done, not a follow-up.
 
 **Done when:**
-- [ ] The route reads live data and a real fact id renders that fact
-- [ ] Every field the page displays is one the door actually serves; anything it
-      cannot serve is removed from the page rather than rendered empty or faked
-- [ ] A disputed fact renders **both sides** here, with the backend's two-sided
-      claim string verbatim
-- [ ] `detail_available` is retired and the Facts tab links to the detail route
-      unconditionally
-- [ ] **A stale code citation renders as stale** (added 2026-08-07 from T2.48's
+- [x] The route reads live data and a real fact id renders that fact —
+      already satisfied by `claude/e2-lane-az`'s merge (`d5af8d4f`..`d7ce0dd8`),
+      proven by `fact-detail.test.tsx`'s "renders the fact on a successful
+      read" and the visiting Playwright spec (`83a8e261`)
+- [x] Every field the page displays is one the door actually serves; anything it
+      cannot serve is removed from the page rather than rendered empty or faked —
+      already satisfied by the same merge, which grew the door rather than
+      shrinking the page and delivered a 17-row per-field audit table
+      (`reviews/2026-08-05-t2.86-*`), reviewed clause-by-clause; the one field
+      the audit could not have caught because it did not exist yet is the next
+      clause below
+- [x] A disputed fact renders **both sides** here, with the backend's two-sided
+      claim string verbatim — already satisfied (`LiveDisputePanel`,
+      `dispute.claim` rendered verbatim, proven by
+      `test_facts_read_surface.py` and `fact-detail.test.tsx`)
+- [x] `detail_available` is retired and the Facts tab links to the detail route
+      unconditionally — already satisfied by the same merge
+- [x] **A stale code citation renders as stale** (added 2026-08-07 from T2.48's
       rescope). T2.48 serves `FactSourceGroup.stale` and types it on the
       frontend, and `fact-sources.tsx` reads it nowhere — so a human auditing a
       downgraded badge sees the broken citation looking identical to a live one,
@@ -1447,12 +1471,27 @@ flag is part of done, not a follow-up.
       this here and the routing was correct in principle, but every clause above
       binds only the *removal* direction ("anything it cannot serve is removed"),
       so nothing obliged rendering a field the door already serves. Naming it
-      makes the disposition real rather than nominal.
-- [ ] A failed read renders as a failed read, distinct from a missing fact
+      makes the disposition real rather than nominal. **Built 2026-08-07
+      (`claude/e2-lane-cn`).** The frontend gap named here was real, but it was
+      the smaller of two: `FactSourceGroup` in `app/schemas/facts.py` never
+      declared `stale` either, so FastAPI's `response_model` validation
+      silently dropped the key `facts_read._source_group` had been computing
+      since T2.48 — the field never reached the wire at all, the same
+      undeclared-field shape `label_suppressed` and `unverified` hit earlier in
+      this same schema family. Fixed both: the schema now declares `stale`
+      (proven by a test reverted-and-restored to show it catches the drop), and
+      `fact-sources.tsx` renders the existing `StaleBadge` per stale origin
+      group, with the sources caption's own "badge's K" corrected to exclude
+      stale origins so it keeps agreeing with `badge.origin_count`, which
+      already excludes them server-side
+- [x] A failed read renders as a failed read, distinct from a missing fact
       (invariant 14) — and a 404 for a fact that genuinely does not exist is a
-      third, distinguishable state
-- [ ] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
-      coverage rather than only in the task's own file
+      third, distinguishable state — already satisfied by the same merge (four
+      states: `loading`, `not_found`, `invalid`, `failed`)
+- [x] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
+      coverage rather than only in the task's own file — already satisfied by
+      the same merge ("the fact detail page's honesty labels render in both
+      modes" block); extended 2026-08-07 to cover the stale-source label too
 
 **Verify.** `cd frontend && npm test -- fact-detail && npm run test:e2e -- knowledge`
 
@@ -2919,3 +2958,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-07 | T2.96, T2.97, T2.48 | 1 | **`CLAUDE.md`'s job count reconciled centrally at merge to nineteen registered / thirteen live.** Three lanes each found the sentence already stale (T2.49's `relation_embedding_refresh` was never counted) and each corrected it for its own addition alone, so all three were locally right and collectively wrong | The keys that escaped the count all register via **constants rather than string literals**, which is exactly how a grep-based check undercounts — now stated in the sentence itself. T2.48's contribution is the durable one: `test_code_deriver.py` derives the roster from `app/main.py`'s AST, so the next job cannot silently desynchronise the baseline. Recorded because the same sentence going stale through four landings, then being independently rediscovered by three concurrent lanes, is a maintenance-shape signal rather than a typo |
 | 2026-08-07 | T2.103 | 2 | **T2.103 minted: the auth family is emitted outside the closed `EVENT_TYPES` vocabulary.** Five live values (`auth_login_success`, `auth_login_failed`, `auth_logout`, `auth_password_change`, `auth_setup`) are absent from it, so `record_event` logs a vocabulary warning on every one; `auth_lockout` is in the vocabulary with no emitter. Surfaced by T2.102 as an adjacent finding and verified in the tree by the controller before minting | T2.102 correctly flagged rather than took it — its scope was the frontend map. The reason this outranks a cosmetic mismatch is `GET /auth/audit`: the security audit trail is served by filtering `auth_*` rows out of `events`, so the audit surface rests entirely on values the closed vocabulary refuses to admit. Taxonomy-first exists precisely to stop that, and it failed on the family where an unrecognised row costs the most |
 | 2026-08-07 | T2.62, T2.101 | 1 | **T2.62 gains a clause: an expired fact can sit in the review queue with nothing able to clear it.** `build_facts_query` has no liveness predicate and `verification_recompute` skips expired rows, so a `disputed`-then-expired fact stays queued indefinitely | Found by T2.101's rescope, which correctly routed it here rather than fixing it in a merge job — but routing is only real if the receiving task's clauses bind it, which is the lesson T2.86 taught earlier the same day (a disposition pointed at a task whose Done-when clauses did not oblige the work is an effective drop). The state is **pre-existing**: a stated expiry already produces it, so T2.101 added a second route rather than the defect itself |
+| 2026-08-07 | T2.86 | 2 | **T2.86 dispatched a second time (`claude/e2-lane-cn`) found five of its six Done-when clauses already satisfied by the merged `claude/e2-lane-az` work, and the task's `Size` corrected `M` → `S` for what genuinely remained: the stale-citation clause.** Its own text still described the pre-merge tree (`useDemoFact` called unconditionally, no live door caller, `FactDetailResponse` missing every field the page shows) though that state had not been true since `d7ce0dd8`. All six clauses are now checked, with each already-satisfied one naming what satisfied it. The stale-citation build turned out to be two bugs, not one: the frontend gap T2.48's rescope named (`fact-sources.tsx` read `FactSourceGroup.stale` nowhere) was real, but the field never reached the wire to begin with — `FactSourceGroup` in `app/schemas/facts.py` never declared `stale`, so FastAPI's `response_model` validation silently dropped the key `facts_read._source_group` had been computing since T2.48. Both fixed | Logged Tier 2 rather than Tier 1 because it corrects a scheduling-relevant field (`Size`) on a task another agent may still be triaging, and because the wire-level bug is the **third** instance of this exact schema shape in `app/schemas/facts.py` — `label_suppressed` and `unverified` were both silently dropped by an undeclared-field response model before being caught, per that file's own accumulated comments. A fourth occurrence would be worth a structural guard (e.g. a test asserting every key a `facts_read` builder function writes is declared on its response schema) rather than a fourth spot-fix; not built here because it is outside this task's named scope, but worth a future task's attention. Caught by writing the test against the live endpoint rather than against the service function in isolation — a unit test on `_source_group` alone would have passed while the wire silently lost the field, which is the same shape invariant 14 exists to catch one layer up |

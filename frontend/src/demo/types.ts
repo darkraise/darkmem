@@ -97,6 +97,11 @@ export interface FactSource {
   detail: string
   /** Display timestamp line, e.g. "captured 2026-06-01 09:00". */
   at: string
+  /** Doc 10 §6 (T2.48/T2.86): true when the live door's origin group this row
+   *  came from is stale — a code citation the re-verifier could no longer
+   *  resolve. Absent in every demo fixture, which has no re-verifier; the
+   *  live adapter broadcasts the group's `stale` onto each of its rows. */
+  stale?: boolean
 }
 
 export interface BeliefWindow {

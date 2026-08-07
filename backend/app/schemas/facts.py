@@ -55,10 +55,21 @@ class FactSourceGroup(BaseModel):
     ``origin_key`` is ``None`` for the merged unknown-identity bucket, which
     is one origin however many anonymous rows fell into it; ``unknown_origin``
     says so in-band so a renderer does not read the null as missing data.
+
+    ``stale`` (doc 10 §6, T2.48/T2.86) is true when every row of this origin
+    has stopped resolving — a code citation the re-verifier could no longer
+    match against its repository's current HEAD. The group is still served in
+    full: a broken citation is retained evidence, not deleted evidence, and
+    dropping it here would make a downgraded badge look like a fact whose
+    provenance silently vanished. This field was undeclared until T2.86 found
+    it: ``facts_read._source_group`` has computed it since T2.48, but pydantic
+    silently drops any key a response model does not declare, so it never
+    reached the wire — the same shape invariant 14 exists to catch.
     """
 
     origin_key: str | None
     unknown_origin: bool
+    stale: bool
     source_kinds: list[str]
     first_seen: datetime
     last_seen: datetime

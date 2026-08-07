@@ -20,6 +20,11 @@ export interface OriginGroup {
   origin_key: string
   kind: OriginKind
   rows: FactSource[]
+  /** Mirrors the live door's `FactSourceGroup.stale` (doc 10 §6): true only
+   *  when every row of this origin is stale. Recomputed after grouping
+   *  rather than carried, since a row can join its group before the last
+   *  row of that origin has been seen. */
+  stale: boolean
 }
 
 /** Groups fact_sources by origin_key, preserving first-seen order. */
@@ -35,10 +40,14 @@ export function groupSourcesByOrigin(sources: FactSource[]): OriginGroup[] {
         origin_key: source.origin_key,
         kind: source.kind,
         rows: [source],
+        stale: false,
       }
       byKey.set(source.origin_key, group)
       groups.push(group)
     }
+  }
+  for (const group of groups) {
+    group.stale = group.rows.every((row) => row.stale === true)
   }
   return groups
 }
