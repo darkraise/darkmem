@@ -667,6 +667,72 @@ answer has to say why that residue is acceptable or close it.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
 
+#### T2.101 — Retroactive entity merge: the anchoring order that never heals
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.97` · `Doc: 10 §6, 06 §5` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-07 from T2.97's completion report and confirmed by its adversarial
+review.** T2.97 gave repo-minted entities embeddings, so Phase 4's ANN probe can see
+them — but it closes **one order only**. Repo indexed → anchoring tick → memory
+ingested merges into one node. Memory ingested first, repo indexed later, **never**
+merges: `assert_from_repo` is an exact-key `ON CONFLICT (name, entity_type)` upsert
+with no ANN probe, and Phase 4 dedups only at memory-write time, so nothing re-runs
+the comparison. Re-derivation cannot heal it either — the strip-and-rewrite is keyed
+the same way.
+
+That is the order **an existing install produces the first time it indexes a repo**,
+which makes it the common case rather than the corner. The limitation is pinned by
+`test_a_repo_indexed_after_the_memory_still_leaves_two_nodes`, so this task turns a
+red test into a decision rather than discovering the problem fresh.
+
+**What.** A retroactive merge pass over entities that a repo asserted and a
+near-named memory-minted node already exists for. The hard part is not finding the
+pairs — it is that merging two live entities means rewriting `memory_ids`,
+`repo_ids[]`, every relation endpoint, and the `technologies` denorm, atomically,
+without breaking the `(name, entity_type)` uniqueness the whole graph rests on.
+
+**Done when:**
+- [ ] A memory-first-then-repo pair resolves to one node, at the same 0.85 threshold
+      and under the same `names_distinct` guard the write path uses
+- [ ] `test_a_repo_indexed_after_the_memory_still_leaves_two_nodes` is replaced by its
+      inverse, not deleted
+- [ ] Merging is idempotent and never merges across `entity_type`
+- [ ] Tier C, off capture and retrieval (invariant 15)
+
+**Verify.** `cd backend && python -m pytest tests/test_repo_entity_anchoring.py -q`
+
+#### T2.102 — One deliberate pass over the frontend event-taxonomy map
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 13 §4` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.48's rescope, which called the gap systemic rather than
+incidental — correctly.** `frontend/src/features/activity/event-taxonomy.ts` maps
+`EVENT_TYPES` values onto activity tabs, and a value missing from the map surfaces
+only under "all", never on its own tab. Three consecutive rounds have each found one
+missing and fixed exactly that one: `contradiction_scanned` (T2.11), `citation_stale`
+(T2.48). The rescope then swept the whole vocabulary and found **seven** unmapped
+values with live emitters, of which `invalidated`, `human_verdict` and `undone` fit
+existing tabs cleanly.
+
+**Three one-line fixes in three rounds is the signal.** Each was correct in isolation
+and none was the fix, because the map is maintained reactively — a value lands in the
+closed vocabulary, its emitter ships, and nothing fails when the map does not learn
+about it. The taxonomy-first rule already governs the vocabulary; it does not reach
+this map.
+
+**What.** One pass mapping every emitting `EVENT_TYPES` value deliberately, plus the
+guard that makes the next miss impossible: a test that fails when a value with a live
+emitter has no entry. A value that genuinely belongs only under "all" is a decision to
+record in the map, not an absence to infer.
+
+**Done when:**
+- [ ] Every `EVENT_TYPES` value with a live emitter is classified deliberately, and the
+      report says which got which tab and why
+- [ ] A new vocabulary value with an emitter and no map entry fails the build
+- [ ] Values that belong only under "all" say so explicitly rather than by omission
+
+**Verify.** `cd frontend && npm test -- event-taxonomy`
+
 #### T2.98 — The same-endpoint arm has an index for half of itself
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.11` · `Doc: 08 §5.3, 04 §8.3` · `Tag: target-new` · `Gate: G-C`
@@ -1331,6 +1397,15 @@ flag is part of done, not a follow-up.
       claim string verbatim
 - [ ] `detail_available` is retired and the Facts tab links to the detail route
       unconditionally
+- [ ] **A stale code citation renders as stale** (added 2026-08-07 from T2.48's
+      rescope). T2.48 serves `FactSourceGroup.stale` and types it on the
+      frontend, and `fact-sources.tsx` reads it nowhere — so a human auditing a
+      downgraded badge sees the broken citation looking identical to a live one,
+      which is the visible-cause story ending at the API boundary. T2.48 routed
+      this here and the routing was correct in principle, but every clause above
+      binds only the *removal* direction ("anything it cannot serve is removed"),
+      so nothing obliged rendering a field the door already serves. Naming it
+      makes the disposition real rather than nominal.
 - [ ] A failed read renders as a failed read, distinct from a missing fact
       (invariant 14) — and a 404 for a fact that genuinely does not exist is a
       third, distinguishable state
@@ -2787,3 +2862,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-05 | T2.16 | 1 | **Fix round 1 on the Fable task review: the derivation strip no longer retires edges whose signal no arm measured, and the cap-engaged bound finally has a test that can fail.** (I1) With the proximity arm skipped under an unresolvable fingerprint, `kept` cannot hold a proximity pair, so the strip retired every proximity edge in the seed window without re-measuring a single cosine — silently, because the strip journals nothing, and irreversibly, because the original write's undo CAS-refuses once its block is gone. On a deployment whose embedding purpose carries no `dimensions` the canary never recovers and the whole proximity graph is swept one seed slice at a time. `strip_stale_edges` now takes `unmeasured_signals` and spares any triple whose stored block rests on one, counted as `spared_unmeasured`. (I2) The truncation test named for the bound exercised the *unbounded* branch, so deleting the bound clause outright left all 24 tests green; `test_the_bound_spares_edges_past_the_decided_prefix` drives the engaged bound instead. Three minors fixed with them: the proximity fan-out becomes its own config row `derivation_neighbours` (it used to read the judge's `pair_candidates`, so tuning the judge silently moved which proximity edges could exist), the digest's `action_detail` renders `signal` (this pass has no verdict, so it was the only answer to "why is this edge here"), and §7a gains E10 recording that the cursor advances under a dead canary. Two declined with reasons in the fix report: row locks in `write_derived_edge` (Phase D commits once, so mirroring `apply_associate`'s `FOR UPDATE` would hold locks on up to 2x`derivation_batch` `memories` rows for the whole pass and block the capture path — a worse hazard than the self-healing one it closes) and the expired-memory filter asymmetry (`MemoryFilter` has no expiry predicate at all and is the shared retrieval scope class, so closing it here is a repo-wide retrieval change out of this lane) | Tier 1: both Important findings are task-local and neither reopens the design — the review's own disposition. Recorded rather than absorbed because I1 changes what D9 means (retire only what this run re-evaluated now binds the arms, not just the pairs) and F-M1 adds a row to D6's config list |
 | 2026-08-06 | T2.50 | 1 | **The Verify line is corrected to two invocations with the flag spellings the CLI validates.** The stated `--arm w_ppr,dual_level` exits 1 with `unknown --arm 'w_ppr,dual_level'; valid arms are [...]`: `run_retrieval_eval.py` takes one `--arm` per run, and `arm_ablation.resolve_ablatable` deliberately accepts only config-flag spellings (`w_ppr`, `w_dual`), never the short names — the same one-spelling discipline `resolve_arm` documents. Fixed to `--arm w_ppr && ... --arm w_dual` | Found by running the line verbatim during T2.50's execution (the judge's own definition of done requires running the stated Verify); the recorded ablations had already used the correct per-arm invocations, so the defect was in the task text alone |
 | 2026-08-07 | T2.97 | 1 | **A third candidate shape existed and the task text named only two: `reembed.py` is already a missing-fingerprint back-fill, and a repo-minted entity is exactly what it calls obsolete.** Added to the task text so the choice is made against the real option set, together with the shipped decision and its boundary. Shape 1 (embed at derive time) turns out to be blocked rather than merely awkward — T2.27's guard forbids the whole orchestrator surface, `embed_batch_chunked` included, and it is reached through the same handle a `chat_completion` is, so permitting the embed means permitting an extraction. Shape 3 was rejected because `reembed_entities` is a whole-corpus operator action with a lock set and a progress broadcast: scheduling it re-embeds every entity missing a vector, which after an embedder rotation is the entire corpus, on a cron nobody asked for. Shipped shape 2 narrowed to `repo_ids <> '{}'`, the one set with no other writer | Runbook §5 Tier 1: task-local, the brief instructed the amendment, and a reader meeting only two options would weigh the recommendation against a false alternative set. The boundary is recorded in the same row because it is the part a future reader is most likely to assume away: the job makes anchoring work when a repo is indexed before the memory arrives, and does nothing for the reverse order |
+| 2026-08-07 | T2.97, T2.101 | 2 | **T2.101 minted: the anchoring order that never heals has no owner.** T2.97 gave repo-minted entities embeddings so Phase 4's ANN probe can see them, and its adversarial review confirmed independently that this closes **one order only** — `assert_from_repo` is an exact-key upsert with no probe and Phase 4 dedups at memory-write time, so memory-first-then-repo forks permanently and re-derivation cannot heal it. That is the order an existing install produces the first time it indexes a repo | The executor disclosed it, pinned it with a named failing-direction test, and said plainly that no task owned closing it. Same shape as T2.16 shipping two of three signals and T2.27's two gaps: a stated deliverable is narrower than the doc claims and **no row owns the gap**, which is the Tier-2 definition. Worth recording that the disclosure is what made this cheap — a limitation pinned by a test becomes a decision for the next task rather than a discovery |
+| 2026-08-07 | T2.48, T2.86 | 2 | **T2.86 gains a clause naming the `stale` field, and its missing `progress.md` row is restored.** T2.48's rescope judged M-5 NOT ADDRESSED as a self-sufficient disposition: routing "render the stale flag" to T2.86 was right in principle, but every T2.86 clause binds only the *removal* direction, so nothing obliged rendering a field the door already serves — and T2.86 had **zero rows in `progress.md`**, making it invisible to scheduling | The routing was an effective drop, not a handoff, and neither half was visible from inside the lane. The `progress.md` gap is the more alarming of the two: the runbook makes that file canonical for scheduling, so a task absent from it cannot be picked up however complete its text is. Worth a sweep for other task ids present in an epic file and absent from `progress.md` |
+| 2026-08-07 | T2.102 | 2 | **T2.102 minted: three consecutive rounds each found one missing entry in the frontend event-taxonomy map and fixed exactly that one.** `contradiction_scanned` (T2.11), then `citation_stale` (T2.48). T2.48's rescope swept the whole vocabulary and found seven unmapped values with live emitters | Each one-line fix was correct in isolation and none was the fix. The map is maintained reactively and nothing fails when it does not learn a new value — the taxonomy-first rule governs the vocabulary but does not reach this map. A defect found three times the same way is a missing guard, not three oversights |
+| 2026-08-07 | T2.96, T2.97, T2.48 | 1 | **`CLAUDE.md`'s job count reconciled centrally at merge to nineteen registered / thirteen live.** Three lanes each found the sentence already stale (T2.49's `relation_embedding_refresh` was never counted) and each corrected it for its own addition alone, so all three were locally right and collectively wrong | The keys that escaped the count all register via **constants rather than string literals**, which is exactly how a grep-based check undercounts — now stated in the sentence itself. T2.48's contribution is the durable one: `test_code_deriver.py` derives the roster from `app/main.py`'s AST, so the next job cannot silently desynchronise the baseline. Recorded because the same sentence going stale through four landings, then being independently rediscovered by three concurrent lanes, is a maintenance-shape signal rather than a typo |
