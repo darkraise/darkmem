@@ -49,6 +49,18 @@ class LLMConfigResponse(BaseModel):
     reasoning: LLMPurposeConfigSchema
     summarization: LLMPurposeConfigSchema
     reranker: LLMPurposeConfigSchema
+    # T2.104: `app.services.config.PURPOSES` has always resolved eight
+    # purposes and both `/config/llm` routes have always built a payload
+    # keyed on all eight (`{p: cfg_to_schema(c) for p, c in config.items()}`)
+    # — this model declared only six, so pydantic's default extra="ignore"
+    # silently dropped these two. `verification` is live: doc 04 §8's judge
+    # service resolves and dispatches on it since T2.26. `synthesis` stays
+    # seeded inert (first consumer T3.02). Read-only here: the request-side
+    # `LLMConfigUpdate` below still declares only six, so a write to either
+    # purpose through this route is a separate, undecided wire-contract
+    # change (see the task's report).
+    synthesis: LLMPurposeConfigSchema
+    verification: LLMPurposeConfigSchema
 
 
 class LLMConfigUpdateResponse(LLMConfigResponse):

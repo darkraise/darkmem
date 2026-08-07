@@ -41,14 +41,17 @@ describe("LLMTab", () => {
     expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
   })
 
-  it("renders the two inert Tier-C purposes, clearly labelled and never omitted", () => {
+  it("renders the two Tier-C purposes, clearly labelled and never omitted", () => {
     renderTab()
     for (const purpose of ["synthesis", "verification"]) {
       expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
     }
-    expect(screen.getAllByText("inert").length).toBe(2)
+    // synthesis has no consumer yet; verification is live and dispatched
+    // (T2.26) but read-only here until the write wire carries it too.
+    expect(screen.getByText("tier c · inert")).toBeInTheDocument()
+    expect(screen.getByText("tier c · live")).toBeInTheDocument()
     expect(screen.getByText(/T3\.02/)).toBeInTheDocument()
-    expect(screen.getByText(/T2\.26/)).toBeInTheDocument()
+    expect(screen.getByText(/dispatched/)).toBeInTheDocument()
   })
 
   it("carries dimensions only on embedding", () => {

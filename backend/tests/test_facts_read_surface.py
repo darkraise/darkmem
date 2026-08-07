@@ -25,7 +25,9 @@ from sqlalchemy import text
 
 from app.repositories.fact_sources import STALE_DETAIL_KEY, FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.services import facts_read
 from app.services.events import record_event
+from tests.response_coverage import undeclared_keys
 
 pytestmark = pytest.mark.asyncio
 
@@ -631,3 +633,79 @@ async def test_a_disputed_fact_with_no_recorded_counterpart_says_so(
     assert dispute is not None
     assert dispute["counterpart"] is None
     assert dispute["counterpart_absent"] == "no_finding_recorded"
+
+
+# ───────────────── the undeclared-field guard (T2.104) ─────────────────
+#
+# Every test above pins one field at a time and would need a new line every
+# time a builder gained one. These two diff the builder's own dict against
+# the wire wholesale, so a field `facts_read` starts computing tomorrow and
+# the schema does not yet declare fails here without anyone writing a new
+# assertion for it — which is exactly the gap `stale` fell through for a
+# full task cycle (T2.48 to T2.86): three review passes read the builder and
+# the frontend type and agreed they matched, and none drove the door to
+# check the wire in between.
+
+
+async def test_the_list_response_declares_every_key_the_builder_writes(
+    client, auth_headers, session, cleared_promotion_record
+):
+    fact_id = await _fact(session, status="corroborated")
+    await _source(session, fact_id, origin="session-a")
+    await session.flush()
+
+    built_items, _ = await facts_read.list_facts(session, project=PROJECT)
+    served_items = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()["items"]
+    served_by_id = {item["id"]: item for item in served_items}
+
+    assert built_items, "fixture produced nothing to diff"
+    for built in built_items:
+        missing = undeclared_keys(built, served_by_id[built["id"]])
+        assert not missing, f"FactListItem dropped: {missing}"
+
+
+async def test_the_detail_response_declares_every_key_the_builder_writes(
+    client, auth_headers, session, cleared_promotion_record
+):
+    """Maximises the shape in one fixture — a stale *and* a live source
+    group, a disputed badge with a recorded counterpart, and ladder
+    history — so the diff walks every nested block `get_fact` produces,
+    not only the flat top-level fields."""
+    fact_id = await _fact(
+        session, status="disputed", review_state="open", obj="docker"
+    )
+    await _source(session, fact_id, origin="session-a")
+    await _source(
+        session,
+        fact_id,
+        kind="code",
+        origin="repo-b",
+        detail={"symbol_key": "main", STALE_DETAIL_KEY: True},
+    )
+    await record_event(
+        session,
+        event_type="verified",
+        object_type="fact",
+        object_id=uuid.UUID(fact_id),
+        project=PROJECT,
+        payload={
+            "contradiction": {
+                "counterpart_id": str(uuid.uuid4()),
+                "counterpart_subject": "postgres",
+                "counterpart_rel_type": "DEPLOYED_ON",
+                "counterpart_object": "fly.io",
+                "rule": "functional_object_conflict",
+                "witness_origin": "origin-7",
+                "enumeration": "first_finding",
+            }
+        },
+    )
+    await session.commit()
+
+    built = await facts_read.get_fact(session, fact_id)
+    served = (await client.get(f"{FACTS}/{fact_id}", headers=auth_headers)).json()
+
+    missing = undeclared_keys(built, served)
+    assert not missing, f"FactDetailResponse dropped: {missing}"

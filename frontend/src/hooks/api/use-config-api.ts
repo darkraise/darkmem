@@ -26,6 +26,14 @@ export interface LlmConfigResponse {
   reasoning?: LlmPurposeConfig
   summarization?: LlmPurposeConfig
   reranker?: LlmPurposeConfig
+  // Tier-C purposes (T2.104): the backend has resolved and served these
+  // alongside the six live purposes since `LLMConfigResponse` learned to
+  // declare them; `verification` is live and dispatched (T2.26),
+  // `synthesis` stays seeded inert (first consumer T3.02). Read-only from
+  // here — `useUpdateLlmConfig`'s wire body still only carries the six live
+  // purposes, so writing either through this hook is a no-op today.
+  synthesis?: LlmPurposeConfig
+  verification?: LlmPurposeConfig
 }
 
 export function useLlmConfig(enabled: boolean = true) {
