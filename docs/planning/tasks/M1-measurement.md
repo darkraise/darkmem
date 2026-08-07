@@ -253,6 +253,21 @@ carries none of its numerator's operability.
 instances under one lens. A gate that clears on a number which cannot fail is the shape
 doc 20 §4's "no layer advances on intuition" exists to forbid.
 
+**A third instance, and the clause must absorb it (E2 whole-branch review, 2026-08-08,
+silent-success lens).** The vacuity above is about the numerator; this one is about the
+substrate. `record_event` never raises by design (`events.py`), and
+`set_verification_status` — the journaller for every rung the ladder moves
+(`knowledge_triples.py`) — never counts its row back. Every G-C metric is SQL over
+`events` alone, and nothing reconciles rung state in `knowledge_triples` against the
+journaled transitions. So a broken or missing monthly partition lets the ladder move
+while the measurement substrate records nothing, and every probe reads clean over a
+journal that is silently short. That is a second route to "the audit reads clean while
+measuring nothing", independent of the numerator argument, and it degrades the *denominator*
+rather than the numerator — so it does not announce itself as under-powered either.
+**The re-measure must therefore prove its substrate complete before reading any number
+off it**, not merely rule the numerator operable. The codebase already owns the pattern:
+`dream_undo` counts its journal rows back and raises when short.
+
 **Done when:** all three measured from the `events` journal by SQL; bars stated as
 `config` before measuring, not after; **facts have actually flowed through the ladder**
 (a 0/0 promotion rate is under-powered, not a pass); **each probe's decidability is ruled

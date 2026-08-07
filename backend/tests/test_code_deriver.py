@@ -1442,7 +1442,7 @@ def _direct_job_registrations(source: str) -> list[ast.Call]:
     Deliberately excludes the dream-job family, which never calls
     `job_registry.register` directly — it rides through
     `register_dream_jobs(job_registry, ...)` instead — so this collects
-    exactly the roster CLAUDE.md calls "the fourteen live ones", the direct
+    exactly the roster CLAUDE.md calls "the fifteen live ones", the direct
     registrations `code_deriver` joined.
     """
     tree = ast.parse(source)

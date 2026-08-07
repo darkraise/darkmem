@@ -788,9 +788,9 @@ class PostgresGraphRepository:
         which shipped ``app/services/code_deriver.py`` as its first writer.
         ``tests/test_code_deriver.py`` exercises it in both directions: a row
         a live repo asserts survives, a row only a *dead* repo asserts is
-        reaped. Note the deriver has no scheduled caller yet (T2.96), so in
-        production the arrays are still empty; the non-vacuous exercise is of
-        the test database."""
+        reaped. T2.96 wired the ``code_deriver`` job as the deriver's production
+        caller, so the arrays are populated in production too; this said the
+        deriver had no scheduled caller until 2026-08-08."""
         rel_ids = (await self.session.execute(text("""
             DELETE FROM entity_relations r
             WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = ANY(r.memory_ids))
