@@ -438,13 +438,17 @@ class TestTheCombinedGenerator:
         assert "WHERE (expired_at IS NULL)" in definition
 
     async def test_the_same_endpoint_arm_has_an_index_for_both_halves(self, session):
-        """T2.98: the `subject_name = X OR object_name = Y` shape needs BOTH
-        disjuncts indexed for the planner to build a BitmapOr — one indexed
-        side is not enough, since Postgres cannot use a partial index for one
-        arm of an OR and something else for the other. `EXPLAIN` evidence for
-        the actual win (measured on a seeded 120k-row table, not this
-        fixture-sized one) lives in the T2.98 report, for the same reason the
-        trigram test above gives for asserting via `pg_indexes` here.
+        """T2.98: each side of the `subject_name = X OR object_name = Y`
+        shape needs *some* btree containing its column for a bitmap plan to
+        exist at all. Without a leading index on `object_name`, that arm
+        does not vanish from the plan — it degrades to a full traversal of
+        the *other* index (a boundary-less `Index Cond` scanning every leaf
+        page), or, under a skewed value and fresh statistics, the whole
+        query falls back to a literal heap Seq Scan. `EXPLAIN` evidence for
+        both the win and the degraded fallback (measured on seeded tables at
+        realistic scale, not this fixture-sized one) lives in the T2.98
+        report and its fix-round-1 report, for the same reason the trigram
+        test above gives for asserting via `pg_indexes` here.
         """
         rows = (await session.execute(
             text(
