@@ -138,6 +138,65 @@ def make_code_reconcile_runner(app, session_factory: async_sessionmaker[AsyncSes
     return run
 
 
+def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
+    """Sweep every indexed repository through `assert_repo_graph` (doc 10 §6).
+
+    T2.96's production trigger for the T2.27 deriver — see
+    `code_deriver_job.py` for why this is a Tier-C job rather than a reindex
+    hook. Each repo runs in its own session/transaction so one repo's
+    failure can't roll back another's write, mirroring
+    `make_code_reconcile_runner` above.
+
+    A failure never raises out of the sweep: it is recorded in
+    `pipeline_failures` under `pipeline_name=CODE_DERIVER_PIPELINE_NAME`,
+    distinct from the index run's own `"code_index"` rows, and the sweep
+    moves on to the next repo. That is how the failure surfaces without
+    ever failing an index run — visible on `GET /api/v1/pipeline-failures`
+    the same way an indexing failure is.
+    """
+    async def run() -> None:
+        from app.models.code import Repository
+        from app.services.code_deriver import assert_repo_graph
+        from app.services.code_deriver_job import CODE_DERIVER_PIPELINE_NAME
+        from app.services.pipeline_failures import PipelineFailureService
+
+        async with session_factory() as list_session:
+            repo_ids = (await list_session.execute(
+                select(Repository.id).where(Repository.last_indexed_commit.isnot(None))
+            )).scalars().all()
+
+        for repo_id in repo_ids:
+            async with session_factory() as repo_session:
+                failure_svc = PipelineFailureService(repo_session)
+                try:
+                    result = await assert_repo_graph(repo_session, repo_id)
+                    await repo_session.commit()
+                    await failure_svc.resolve(
+                        "code_repo", repo_id, CODE_DERIVER_PIPELINE_NAME,
+                    )
+                    await repo_session.commit()
+                    logger.info(
+                        "Code deriver: repo=%s entities=%d relations=%d",
+                        repo_id, result["entities"], result["relations"],
+                    )
+                except Exception as e:
+                    await repo_session.rollback()
+                    logger.error("Code deriver failed for repo %s: %s", repo_id, e)
+                    try:
+                        await failure_svc.record(
+                            entity_type="code_repo", entity_id=repo_id,
+                            pipeline_name=CODE_DERIVER_PIPELINE_NAME,
+                            failed_step="derive",
+                            error_message=f"{type(e).__name__}: {e}"[:2000],
+                        )
+                        await repo_session.commit()
+                    except Exception as e2:
+                        logger.error(
+                            "Failed to record deriver failure for %s: %s", repo_id, e2,
+                        )
+    return run
+
+
 def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
     """Delete expired entries from the token blocklist."""
     async def run() -> None:

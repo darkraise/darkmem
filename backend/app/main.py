@@ -222,6 +222,7 @@ async def lifespan(app: FastAPI):
         make_expired_memory_cleanup_runner,
         make_ppr_snapshot_runner,
         make_relation_embedding_runner,
+        make_code_deriver_runner,
     )
     from app.services.ppr_snapshot import (
         PPR_SNAPSHOT_CONFIG_SCHEMA,
@@ -236,6 +237,12 @@ async def lifespan(app: FastAPI):
         CODE_RECONCILE_JOB_KEY,
         CODE_RECONCILE_MAX_RUN_SECONDS,
         CODE_RECONCILE_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.code_deriver_job import (
+        CODE_DERIVER_CRON,
+        CODE_DERIVER_JOB_KEY,
+        CODE_DERIVER_MAX_RUN_SECONDS,
+        CODE_DERIVER_MIN_INTERVAL_SECONDS,
     )
     from app.services.dream_jobs import register_dream_jobs
 
@@ -297,6 +304,22 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=CODE_RECONCILE_MIN_INTERVAL_SECONDS,
         runner=make_code_reconcile_runner(app, async_session_factory),
         max_run_seconds=CODE_RECONCILE_MAX_RUN_SECONDS,
+    ))
+    job_registry.register(Job(
+        key=CODE_DERIVER_JOB_KEY,
+        display_name="Code Graph Deriver",
+        description=(
+            "Derives each indexed repository's Layer-1 graph assertions from "
+            "its import edges (doc 10 §6) — the repo itself, its external "
+            "dependencies and languages — into entities.repo_ids[] / "
+            "entity_relations.repo_ids[]. Off the reindex path by design: a "
+            "derivation failure here is journaled under its own "
+            "pipeline_name and never fails an index run."
+        ),
+        default_cron=CODE_DERIVER_CRON,
+        min_interval_seconds=CODE_DERIVER_MIN_INTERVAL_SECONDS,
+        runner=make_code_deriver_runner(async_session_factory),
+        max_run_seconds=CODE_DERIVER_MAX_RUN_SECONDS,
     ))
     job_registry.register(Job(
         key="token_blocklist_cleanup",

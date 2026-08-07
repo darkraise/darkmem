@@ -449,20 +449,38 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Sixteen** registered jobs (`app/main.py`) in two groups.
-The ten live ones: `repo_sync`,
-`buffer_flush`, `code_enrichment`, `code_reconcile`,
+expressions. **Eighteen** registered jobs (`app/main.py`) in two groups
+(corrected 2026-08-07: this count had read "Sixteen" / "ten live ones"
+since T2.49 landed `relation_embedding` without updating it — a stale
+count on a "here is the full list" sentence is exactly invariant 23's
+concern, so it is fixed here rather than carried forward again).
+The twelve live ones: `repo_sync`,
+`buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
-`expired_memory_cleanup`, `ppr_snapshot`. Note `buffer_flush`,
-`code_reconcile` and `ppr_snapshot` register via the constants
-`BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY` and
-`PPR_SNAPSHOT_JOB_KEY` rather than string literals, so a grep for
-quoted keys undercounts the list. **`ppr_snapshot` is Tier C but is
+`expired_memory_cleanup`, `ppr_snapshot`, `relation_embedding`. Note
+`buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot` and
+`relation_embedding` register via the constants `BUFFER_FLUSH_JOB_KEY`,
+`CODE_RECONCILE_JOB_KEY`, `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`
+and `RELATION_EMBEDDING_JOB_KEY` rather than string literals, so a grep
+for quoted keys undercounts the list. **`ppr_snapshot` is Tier C but is
 deliberately not a dream-job family member** (T2.32): contract 6 fixes
 that family as the consolidation passes, while doc 07 §4 owns the
 graph-retrieval artefact refresh separately. Invariant 15 is unaffected
-either way — retrieval reads the cached snapshot, never the job. The six added by T2.08 are the
+either way — retrieval reads the cached snapshot, never the job.
+**`code_deriver` is the same shape** (T2.96): a Tier-C sweep, not a
+dream-job family member, registered directly in `app/main.py`. It is
+the production trigger for `code_deriver.assert_repo_graph` (doc 10
+§6) — T2.27 shipped that primitive with no caller anywhere in
+`backend/app`; this job sweeps every repo with a non-null
+`last_indexed_commit` on its own hourly cron and journals a derivation
+failure under `pipeline_failures` with `pipeline_name="code_deriver"`,
+distinct from `"code_index"`, so a derivation failure never fails an
+index run. The withdrawal half lives in `RepoManager.delete`, which now
+calls `PostgresGraphRepository.strip_repo_assertions` before removing
+the repository row — `entities.repo_ids[]` / `entity_relations.repo_ids[]`
+carry no foreign key to `repositories`, so without this an entity's
+`repo_ids` would keep a dangling id after the repo is gone. The six added by T2.08 are the
 **Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
 by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
 `contradiction_scan`, `memory_dream`, `article_synthesis`,
