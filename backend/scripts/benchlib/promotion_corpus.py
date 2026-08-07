@@ -48,7 +48,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import text
@@ -65,6 +65,11 @@ from benchlib.ingest import GateConfig, _parse_created_at, run_ingest
 # about what "exhausted" means.
 from benchlib.harvest_l2_facts import _lift_to_exhaustion
 
+from app.repositories.fact_sources import (
+    CORROBORATION_N_DEFAULT,
+    CORROBORATION_N_DIVERSE,
+    CORROBORATION_TIME_GAP_DAYS,
+)
 from app.services import fact_lift
 from app.services.code_deriver import assert_repo_graph
 from app.services.config import get_llm_config
@@ -105,8 +110,51 @@ CORPUS_GROUPS = frozenset({
 NON_PROMOTING_GROUPS = frozenset({"echo", "under_sourced"})
 
 
+# The corroboration parameters the design is written against. Imported from
+# the repository that owns them rather than re-typed: a corpus validated
+# against a stale copy of N or of the gap would claim a structure the ladder
+# no longer reads, and it would claim it silently.
+_GAP = timedelta(days=CORROBORATION_TIME_GAP_DAYS)
+
+# What each group's claims must look like for the group to mean what its name
+# says. `(min_origins, max_origins, gap)` where `gap` is 'ge' (the time gate
+# must fire), 'lt' (it must not) or None (not constrained).
+_DESIGN: dict[str, tuple[int, int | None, str | None]] = {
+    # One memory origin is enough: the indexed repository supplies the second
+    # origin AND the second kind, which is the diversity gate at N=2.
+    "diversity": (1, None, None),
+    # Two sessions, far enough apart that the time gate fires at N=2.
+    "time_gap": (CORROBORATION_N_DIVERSE, None, "ge"),
+    # Three sessions inside one week: no gate fires, so the default N applies
+    # and is met exactly.
+    "none": (CORROBORATION_N_DEFAULT, None, "lt"),
+    # One session saying the same thing repeatedly. Must stay one origin.
+    "echo": (1, 1, None),
+    # Two same-kind sessions inside one week: k=2 against N=3.
+    "under_sourced": (CORROBORATION_N_DIVERSE, CORROBORATION_N_DIVERSE, "lt"),
+}
+
+
 def memory_id_for_key(key: str) -> str:
     return str(uuid.uuid5(MEMORY_ID_NAMESPACE, key))
+
+
+def claim_key(key: str) -> str:
+    """Which claim an entry asserts, read off its ``key``.
+
+    The corpus's corroboration structure is a property of *claims*, not of
+    entries, so the design check needs to know which entries are re-assertions
+    of one claim. The rule is the key's own convention: a trailing single-
+    character segment is the variant marker (``at-k8s-a`` / ``at-k8s-b``,
+    ``ld-postgres-1``..``-3``), everything else is the claim. A key with no
+    variant marker is its own claim.
+
+    Deliberately derived rather than stored beside each entry: a declared
+    claim label can disagree with the content, and a wrong label would make
+    the design check validate a structure the corpus does not have.
+    """
+    head, _, tail = key.rpartition("-")
+    return head if head and len(tail) == 1 else key
 
 
 def repo_id_for_name(name: str) -> str:
@@ -175,7 +223,72 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
             ) from exc
 
         entry["memory_id"] = memory_id_for_key(key)
+    validate_corroboration_design(entries)
     return entries
+
+
+def validate_corroboration_design(entries: list[dict]) -> None:
+    """Assert that each claim really has the corroboration shape its group claims.
+
+    The failure this exists to prevent is not a crash — it is a corpus that
+    still loads, still runs and still produces numbers, while asserting a
+    structure it no longer has. Two concrete edits do it: giving each of an
+    echo's saves its own ``origin_key`` turns the designed refusal into a
+    promotion, and moving one half of a ``time_gap`` pair to within a week of
+    the other silently reclassifies its facts into the ``none`` bucket at an N
+    they cannot meet. Both leave the gate reading a corpus whose design
+    document is wrong, which is worse than a corpus that fails to load.
+    """
+    by_claim: dict[str, list[dict]] = {}
+    for entry in entries:
+        by_claim.setdefault(claim_key(entry["key"]), []).append(entry)
+
+    for claim, group_entries in sorted(by_claim.items()):
+        groups = {entry["group"] for entry in group_entries}
+        if len(groups) > 1:
+            raise ValueError(
+                f"claim {claim!r} spans several groups {sorted(groups)}; a claim "
+                f"belongs to exactly one design group"
+            )
+        group = groups.pop()
+        min_origins, max_origins, gap_rule = _DESIGN[group]
+
+        first_seen: dict[str, datetime] = {}
+        for entry in group_entries:
+            captured = datetime.fromisoformat(entry["created_at"])
+            origin = entry["origin_key"].strip().lower()
+            if origin not in first_seen or captured < first_seen[origin]:
+                first_seen[origin] = captured
+        origins = len(first_seen)
+
+        if origins < min_origins:
+            raise ValueError(
+                f"claim {claim!r} in group {group!r} is asserted by {origins} "
+                f"distinct origin(s); the design needs at least {min_origins}"
+            )
+        if max_origins is not None and origins > max_origins:
+            raise ValueError(
+                f"claim {claim!r} in group {group!r} is asserted by {origins} "
+                f"distinct origin(s); the design allows at most {max_origins}. "
+                f"Adding an origin here changes what the group demonstrates"
+            )
+
+        if gap_rule is None:
+            continue
+        times = sorted(first_seen.values())
+        span = times[-1] - times[0]
+        if gap_rule == "ge" and span < _GAP:
+            raise ValueError(
+                f"claim {claim!r} in group {group!r} spans {span} across its "
+                f"origins, under the {_GAP} the time-gap gate needs; its facts "
+                f"would fall into the 'none' bucket instead"
+            )
+        if gap_rule == "lt" and span >= _GAP:
+            raise ValueError(
+                f"claim {claim!r} in group {group!r} spans {span} across its "
+                f"origins, at or over {_GAP}, so the time-gap gate fires and the "
+                f"claim leaves the bucket its group exists to populate"
+            )
 
 
 def load_repo_fixture(path: str | Path = REPO_FIXTURE_PATH) -> dict:
