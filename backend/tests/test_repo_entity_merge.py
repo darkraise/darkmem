@@ -541,6 +541,37 @@ async def test_the_pass_merges_the_pair_and_a_second_run_changes_nothing(
 
 
 @pytest.mark.asyncio
+async def test_the_union_appends_rather_than_re_sorting_what_was_there(session):
+    """The survivor's own ``memory_ids`` keep the order Phase 5's
+    ``array_append`` gave them.
+
+    ``array_agg(DISTINCT ...)`` would produce the same *set* and pass every
+    membership assertion while rewriting a column the merge has no reason to
+    reorder — assertion order is what the array records.
+    """
+    await _register(session)
+    first, second, third = sorted((uuid4(), uuid4(), uuid4()), reverse=True)
+    survivor = await _entity(
+        session, "postgres", "database", repo_ids=[uuid4()],
+        memory_ids=[first, second],
+    )
+    loser = await _entity(
+        session, "postgresql", "database", memory_ids=[second, third],
+    )
+    await session.flush()
+
+    await merge_entities(session, survivor, loser)
+
+    stored = (await session.execute(text(
+        "SELECT memory_ids FROM entities WHERE name = 'postgres'"
+    ))).scalar_one()
+    assert [str(x) for x in stored] == [str(first), str(second), str(third)], (
+        "descending inserts must stay descending, with the loser's new id "
+        "appended rather than the whole array sorted"
+    )
+
+
+@pytest.mark.asyncio
 async def test_only_repo_asserted_entities_with_a_vector_are_probed(session):
     """The scope, on both halves. A memory-only entity is not this pass's
     business — Phase 4 already deduped it against everything embedded at write
