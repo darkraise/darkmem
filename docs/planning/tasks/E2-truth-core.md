@@ -667,6 +667,41 @@ answer has to say why that residue is acceptable or close it.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
 
+#### T2.106 — `/config/llm` can now be read for eight purposes and written for six
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.104` · `Doc: 11 §6, 12 §2` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.104, which fixed the read half and deliberately left the
+write half as a separate decision.** `LLMConfigResponse` now declares all eight purposes,
+so an operator can finally *see* `synthesis` and `verification`. `LLMConfigUpdate`
+(`backend/app/schemas/config.py:60`) still declares six, so neither can be *changed*
+through the route that shows them.
+
+That half-state is an improvement over the silent drop and it is not a resting place:
+a settings surface that displays a value it cannot edit invites the reasonable
+assumption that the value is not editable at all, when in fact it is simply unreachable
+from this door.
+
+**The decision this task owns is whether the write should exist, per purpose, and it is
+not symmetric.** `synthesis` is seeded inert with no consumer until T3.02 — widening the
+write for it is cheap and low-consequence. `verification` is **live**:
+`app/services/verification_judge.py` dispatches on it, and `VerificationJudge.judge()`
+already refuses without a qualification record. Letting an operator repoint a live judge's
+model through a settings form is a real capability with a real failure mode, and it
+interacts with G-D: a judge qualified on one model and then silently repointed to another
+has a qualification record that no longer describes what runs. **Decide it deliberately,
+per purpose, and record the reasoning** — an answer of "read-only for `verification`, and
+here is why" is a complete answer.
+
+**Done when:**
+- [ ] The read/write asymmetry is resolved deliberately per purpose, with the reasoning
+      recorded — not closed by symmetry alone
+- [ ] If `verification` becomes writable, the interaction with its qualification record is
+      stated and guarded; if it stays read-only, the UI says so rather than appearing broken
+- [ ] T2.104's guard still passes, and any new asymmetry it would catch is caught
+
+**Verify.** `cd backend && python -m pytest tests/test_llm_config.py -q`
+
 #### T2.105 — A task with no `progress.md` row is invisible to scheduling
 
 `Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: runbook §6` · `Tag: target-new` · `Gate: none (planning integrity)`
@@ -3060,3 +3095,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-07 | T2.86 | 2 | **T2.86 dispatched a second time (`claude/e2-lane-cn`) found five of its six Done-when clauses already satisfied by the merged `claude/e2-lane-az` work, and the task's `Size` corrected `M` → `S` for what genuinely remained: the stale-citation clause.** Its own text still described the pre-merge tree (`useDemoFact` called unconditionally, no live door caller, `FactDetailResponse` missing every field the page shows) though that state had not been true since `d7ce0dd8`. All six clauses are now checked, with each already-satisfied one naming what satisfied it. The stale-citation build turned out to be two bugs, not one: the frontend gap T2.48's rescope named (`fact-sources.tsx` read `FactSourceGroup.stale` nowhere) was real, but the field never reached the wire to begin with — `FactSourceGroup` in `app/schemas/facts.py` never declared `stale`, so FastAPI's `response_model` validation silently dropped the key `facts_read._source_group` had been computing since T2.48. Both fixed | Logged Tier 2 rather than Tier 1 because it corrects a scheduling-relevant field (`Size`) on a task another agent may still be triaging, and because the wire-level bug is the **fourth** instance of this exact schema shape in `app/schemas/facts.py`, not the third as first logged here — `demotion_pending_since` (T2.46, `99a47930`) was the first, `label_suppressed` and `unverified` the second and third, all three silently dropped by an undeclared-field response model before being caught, per that file's own accumulated comments (corrected 2026-08-07 by this task's own adversarial review, which found the earlier instance the original count missed). The fourth occurrence is worth the structural guard (a test asserting every key a `facts_read` builder function writes is declared on its response schema); not built here because it is outside this task's named scope, and minted as T2.104. Caught by writing the test against the live endpoint rather than against the service function in isolation — a unit test on `_source_group` alone would have passed while the wire silently lost the field, which is the same shape invariant 14 exists to catch one layer up |
 | 2026-08-07 | T2.104, T2.48, T2.86 | 2 | **T2.104 minted: a response model silently drops any key its builder writes but it does not declare — third instance in one schema file.** T2.86 found that `FactSourceGroup.stale` never reached the wire at all: the builder computed it from T2.48's landing, the frontend typed it, and the schema never declared it, so pydantic's `extra="ignore"` dropped it with no error. `label_suppressed` and `unverified` were the same shape earlier | **The instructive part is that three review passes agreed on the wrong claim.** T2.48's report, its Fable adversarial review and its rescope all recorded the flag as *served but unrendered* — the visible-cause story "ending at the API boundary". It ended one layer earlier. Each pass read the builder and the frontend type, which are both correct in isolation; none drove the door and diffed the payload, because a silently-dropped field has no symptom. The controller then repeated the claim from the same evidence. A defect class that survives an adversarial review and a rescope is a missing guard, not a missed inspection |
 | 2026-08-07 | T2.105, T2.86, T2.104 | 2 | **T2.105 minted: a task with no `progress.md` row is invisible to scheduling, and the gap occurred twice in one day.** T2.86 sat rowless from 2026-08-04 while adjacent work built five of its six clauses; T2.104 was minted rowless by the controller in the very session that fixed T2.86's row | The second occurrence is what makes this a guard rather than a lapse. The controller had already written the detecting sweep, run it, used its output to restore T2.86 — and then reproduced the defect within hours, catching it only by chance re-running the same sweep. A check that exists, works, and is not wired to anything is indistinguishable from no check at all. Same reasoning as T2.104's own mint: a defect that survives the people who just fixed its twin is a missing guard |
+| 2026-08-07 | T2.106, T2.104 | 2 | **T2.106 minted: `/config/llm` now reads eight purposes and writes six.** T2.104 fixed the response model's silent drop of `synthesis` and `verification` and deliberately did not widen `LLMConfigUpdate`, reporting the write path as a separate wire-contract decision | The restraint was right — the brief told it to report rather than fix extra findings, and widening a write for a **live** purpose is not a bookkeeping change. `verification` dispatches a judge whose qualification record describes a specific model, so an operator repointing it through a settings form would leave a qualification that no longer describes what runs, which reaches into G-D. The asymmetry needs a per-purpose decision, and "read-only for `verification`, with the reason" is a complete answer |
