@@ -84,6 +84,7 @@ FULL_CONTEXT_LIMIT = 10
 
 CACHE_DIR = retrieval_gold.RETRIEVAL_DIR / "cache"
 REPORT_DIR = REPO_ROOT / "docs" / "eval"
+GATE_LEDGER_PATH = REPO_ROOT / "docs" / "planning" / "gate-ledger.md"
 
 
 def report_path(run_date, report_dir: Path = REPORT_DIR) -> Path:
@@ -91,9 +92,70 @@ def report_path(run_date, report_dir: Path = REPORT_DIR) -> Path:
 
     Overwriting an existing same-date report (rather than minting a variant)
     is the caller's job -- ``Path.write_text`` already does that, and ruling
-    4 says a same-day re-run is a correction, not a second artifact.
+    4 says a same-day re-run is a correction, not a second artifact. That
+    ruling is about UNCITED reports, i.e. still-working files. Once
+    ``gate-ledger.md`` cites a report as a cleared gate's evidence it is no
+    longer scratch output, and ``run_eval`` (below) refuses to overwrite it
+    via ``_refuse_if_cited`` -- a check this function deliberately does not
+    make itself, since it has no caller/ledger context, only a date.
     """
     return Path(report_dir) / f"{run_date.isoformat()}-retrieval-eval.md"
+
+
+def find_ledger_citations(rel_path: str, ledger_path: Path = GATE_LEDGER_PATH) -> list[str]:
+    """Lines in ``gate-ledger.md`` that mention ``rel_path`` verbatim.
+
+    A literal-substring search over the raw text, not a markdown parser: it
+    matches the path however the ledger happens to write it -- backticked,
+    bare, mid-sentence, inside a table cell -- at the cost of being blind to
+    any citation form that does not contain this exact string (a glob, a
+    renamed variable, a path written relative to a different root). A
+    citation that dodges this search reads as UNCITED, which is the unsafe
+    direction for a refusal check: prefer keeping the ledger's citation
+    style literal (as it is today, exclusively ``docs/eval/...`` paths) over
+    trusting this function's silence as proof nothing points at a file.
+    """
+    if not Path(ledger_path).exists():
+        return []
+    hits = []
+    text = Path(ledger_path).read_text(encoding="utf-8")
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if rel_path in line:
+            hits.append(f"{Path(ledger_path).name}:{lineno}: {line.strip()}")
+    return hits
+
+
+def _refuse_if_cited(out_path: Path, ledger_path: Path = GATE_LEDGER_PATH) -> None:
+    """Refuse to overwrite ``out_path`` if ``gate-ledger.md`` cites it.
+
+    Only fires when ``out_path`` already exists (nothing to protect on a
+    file's first write) and sits inside the repo (a scratch ``report_dir``
+    outside ``REPO_ROOT`` -- e.g. a test's ``tmp_path`` -- cannot be named
+    by a ledger that cites repo-relative paths, so it is out of scope for
+    this check by construction, not by accident). This is what keeps ruling
+    4 intact: a same-day re-run of an UNCITED report still overwrites freely,
+    since it never matches any line here.
+    """
+    if not out_path.exists():
+        return
+    try:
+        rel_path = out_path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return
+    hits = find_ledger_citations(rel_path, ledger_path)
+    if hits:
+        raise RuntimeError(
+            f"refusing to overwrite {out_path} -- gate-ledger.md cites it as "
+            "gate evidence:\n" + "\n".join(hits) + "\n"
+            "This file is no longer scratch output; a same-day re-run "
+            "correcting an UNCITED report is still fine (ruling 4), but this "
+            "one backs a ratified gate verdict and overwriting it would "
+            "silently detach that verdict from the artifact it names. If "
+            "the eval genuinely needs re-running, mint a differently-named "
+            "report by hand (pass a distinct report_dir or rename after "
+            "writing) and update the ledger's citation to it in the same "
+            "commit -- never overwrite the cited file."
+        )
 
 
 def _score_summary(score: ScoreReport) -> dict:
@@ -380,6 +442,7 @@ async def run_eval(
     full_context_limit: int = FULL_CONTEXT_LIMIT,
     report_dir: str | Path = REPORT_DIR,
     ledger_path: str | Path = ledger.DEFAULT_PATH,
+    gate_ledger_path: str | Path = GATE_LEDGER_PATH,
     now: datetime | None = None,
 ) -> EvalRunResult:
     """Run the full eval end to end and emit the report + one ledger row.
@@ -498,6 +561,10 @@ async def run_eval(
     print(f"[6/6] comparing, writing report, recording ledger... (total live calls: {total_live_calls})")
     report_text = render_report(comparison, meta)
     out_path = report_path(run_date, report_dir)
+    # T0.18: refuse before writing or appending to the JSONL ledger below, so
+    # a refusal leaves no partial artifact either -- same discipline as the
+    # F1 caveat-kind guard above.
+    _refuse_if_cited(out_path, gate_ledger_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report_text, encoding="utf-8")
 
