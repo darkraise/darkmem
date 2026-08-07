@@ -87,6 +87,22 @@ class AnchoringEmbedder(CalibratedEmbedder):
         return self.fingerprint
 
 
+class RotatingEmbedder(AnchoringEmbedder):
+    """An embedder whose configured fingerprint is not the one it produces.
+
+    The mid-run rotation, reproduced without a live model: the selection query
+    runs under the fingerprint config still names, and by the time the vectors
+    come back they belong to a different embedding space.
+    """
+
+    def __init__(self, configured: str, produced: str, vectors: dict):
+        super().__init__(produced, vectors)
+        self._configured = configured
+
+    def llm_fingerprint(self) -> str:
+        return self._configured
+
+
 async def register_fingerprint(session, fingerprint: str) -> None:
     """Register a fingerprint the way boot does, so a read can resolve it."""
     model_id, _, dims = fingerprint.rpartition("|")
@@ -437,6 +453,10 @@ async def test_the_write_follows_the_fingerprint_the_embedder_produced(session):
     embedding space, so it goes to the new partition — writing it under the
     selection key would put two geometries in one table, where a cosine has no
     defined meaning.
+
+    Driven through the whole tick rather than through the writer alone: the
+    writer takes no fingerprint argument, so calling it directly cannot tell a
+    correct implementation from one that keys on static config.
     """
     selected = "anchor-selected|8"
     produced = "anchor-produced|8"
@@ -449,11 +469,11 @@ async def test_the_write_follows_the_fingerprint_the_embedder_produced(session):
     missing = await repo_entities_missing_vectors(session, selected, 100)
     assert [row["entity_id"] for row in missing] == [entity_id]
 
-    embedder = AnchoringEmbedder(
-        produced, {"rotating-tool": [1.0] + [0.0] * (DIMS - 1)}
+    embedder = RotatingEmbedder(
+        selected, produced, {"rotating-tool": [1.0] + [0.0] * (DIMS - 1)}
     )
-    written = await embed_repo_entities(session, embedder, entities=missing)
-    assert written is not None and written.fingerprint == produced
+    outcome = await refresh_repo_entity_anchors(session, embedder)
+    assert (outcome.written, outcome.fingerprint) == (1, produced)
 
     for fingerprint, expected in ((produced, 1), (selected, 0)):
         table = child_table(anchor_mod.PARENT_TABLE, fingerprint)
