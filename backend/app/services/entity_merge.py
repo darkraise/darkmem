@@ -68,13 +68,24 @@ on ``ux_knowledge_triples_open``. That collision is a **fact merge**, the
 analogue one layer up of the relation fold below, and its rules are in
 ``_fold_open_facts``.
 
-**One residue, stated rather than papered over.** A fact row whose endpoint id
-is NULL or already dangling — the rot a strip-and-recreate leaves behind, since
-the recreated entity carries a new id — keeps its name, because nothing ties it
-to the losing row and the fact layer carries no ``entity_type`` to disambiguate
-a name-only match. That row is not the duplicate-lift defect: the graph group it
-came from no longer exists under the vanished name, so nothing re-lifts it. It
-is an orphaned open fact, and it was orphaned before this pass ran.
+**Two residues, stated rather than papered over.**
+
+A fact row whose endpoint id is NULL or already dangling — the rot a
+strip-and-recreate leaves behind, since the recreated entity carries a new id —
+keeps its name, because nothing ties it to the losing row and the fact layer
+carries no ``entity_type`` to disambiguate a name-only match. That row is not
+the duplicate-lift defect: the graph group it came from no longer exists under
+the vanished name, so nothing re-lifts it. It is an orphaned open fact, and it
+was orphaned before this pass ran.
+
+``fact_lift`` resolves its endpoints with unlocked ``SELECT``s, so a lift whose
+in-savepoint re-read of the graph happens before this merge commits and whose
+own commit lands after it writes a triple carrying the losing id and the losing
+name, which no later run can repair — the id is gone. The window is that gap
+alone: a re-read on the *other* side of the commit sees the memory asserting the
+surviving name, its recomputed identity no longer matches the candidate, and the
+lift mints nothing. Closing it properly means locking entity rows from the lift,
+which is that module's decision and not this one's.
 
 **``(name, entity_type)`` uniqueness is what makes this delicate**, and the
 relation constraint mirrors it: repointing an endpoint onto the survivor can
@@ -83,7 +94,14 @@ merge of its own — union the arrays, keep the greater weight, drop the duplica
 — never an integrity error left for the constraint to raise. Every pair is
 merged inside one ``begin_nested()`` savepoint, the idiom ``assert_from_repo``
 already uses, so a failure rolls back to two intact nodes rather than a
-half-merged one.
+half-merged one. The transaction boundary stays with the caller — the runner
+commits once — and the row locks a merge takes therefore live until the run
+ends. That is left rather than split into a commit per pair, because a pass that
+merges nothing takes no row locks at all (nothing is locked until a probe
+matches), and a run that merges nothing is the steady state; the first-run
+backlog is bounded by the rotation window. Committing here instead would mean
+committing a session this module does not own, which the unit suite's rollback
+isolation also rules out.
 
 **Tier C, and not a dream-job family member** (contract 6 fixes that family at
 six; ``ppr_snapshot``, ``code_deriver`` and ``repo_entity_anchoring`` are the
