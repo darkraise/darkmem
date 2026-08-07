@@ -25,9 +25,11 @@ if [ -z "${PY:-}" ]; then
         PY="$LOCAL_PY"
     else
         # No local .venv; check if we're in a worktree and fall back to main checkout
-        if [ -d "$REPO_ROOT/.." ] && [ "$(basename "$REPO_ROOT/..")" = ".worktrees" ]; then
-            # We're in a worktree; main checkout is at $REPO_ROOT/../..
-            MAIN_CHECKOUT="$REPO_ROOT/../.."
+        # Resolve parent path to absolute to check its name
+        PARENT_DIR="$(cd "$REPO_ROOT/.." && pwd -P)"
+        if [ "$(basename "$PARENT_DIR")" = ".worktrees" ]; then
+            # We're in a worktree; main checkout is one level up from .worktrees
+            MAIN_CHECKOUT="$(cd "$PARENT_DIR/.." && pwd -P)"
         else
             # We're in the main checkout
             MAIN_CHECKOUT="$REPO_ROOT"
