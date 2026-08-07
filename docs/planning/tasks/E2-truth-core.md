@@ -676,9 +676,23 @@ file.** FastAPI + pydantic v2 default to `extra="ignore"`, so a key a `facts_rea
 builder writes and the response model does not declare is dropped **silently** — no
 error, no warning, no log line. The field simply is not on the wire.
 
-Three occurrences in `backend/app/schemas/facts.py` alone: `label_suppressed`,
-`unverified`, and now `stale` (T2.48's stale-citation flag, which the builder computed
-from T2.48's landing and which never reached a client until T2.86 declared it).
+**Four** occurrences in `backend/app/schemas/facts.py` alone (this count was minted as
+"three" and corrected 2026-08-07 by T2.86's review, which found the earliest one — the
+miscount had already propagated into three documents, which is its own small instance of
+the same problem): `demotion_pending_since` (T2.46, fixed at `99a47930`),
+`label_suppressed`, `unverified`, and now `stale` — T2.48's stale-citation flag, which
+the builder computed from T2.48's landing and which never reached a client until T2.86
+declared it.
+
+**And it is not confined to one file.** T2.86's reviewer swept further and found
+`GET /config/llm`: the route builds all **eight** LLM purposes, `LLMConfigResponse`
+(`backend/app/schemas/config.py:45`) declares **six**, so `synthesis` and `verification`
+are dropped — proven empirically. `verification` is not inert: it is a live, dispatched
+purpose (`app/services/verification_judge.py`), so its real configuration is invisible to
+the settings surface, and the frontend covers the hole with a hardcoded seed mirror whose
+"nothing dispatches on these" premise is itself stale. That makes the guard's scope wider
+than `facts_read`, and it makes the failure mode concrete: an operator cannot see the
+config of a purpose the system is actively using.
 
 **What makes this worth a task rather than a fourth fix is how the third one survived
 review.** T2.48's own report, its Fable adversarial review, and its rescope all
@@ -699,7 +713,10 @@ mutation-drill it by removing a declared field.
 **Done when:**
 - [ ] A key written by a builder and undeclared on its response model fails the build,
       proven by drill on a real field
-- [ ] The guard covers `facts_read`'s builders at minimum; state what it does not cover
+- [ ] The guard covers `facts_read`'s builders **and the `/config/llm` purpose set** at
+      minimum; state what it does not cover
+- [ ] `synthesis` and `verification` reach the `/config/llm` payload, and the frontend's
+      hardcoded seed mirror is retired or its stale premise corrected
 - [ ] Existing served payloads are unchanged — this adds a guard, not fields
 
 **Verify.** `cd backend && python -m pytest tests/test_facts_read_surface.py -q`
