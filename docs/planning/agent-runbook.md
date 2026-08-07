@@ -304,6 +304,21 @@ collision produces failures indistinguishable from a real regression. If a comma
 outlive a step, say so in the report rather than detaching and stopping — handing control
 back mid-verification leaves nothing driving the work.
 
+**The root cause was found on 2026-08-07 and it is mechanical, not a discipline problem.**
+Six lanes stalled this way in one day, every one of them having read the paragraph above.
+A shell command that runs past the tool's default limit is **auto-backgrounded**, and the
+agent then stops with its work unverified and often uncommitted. Wrapping the command in
+a `timeout` binary does not prevent this — the backgrounding is the *tool's* decision, not
+the shell's. **Pass the Bash tool's own `timeout` parameter, set longer than the run needs
+(the backend floor takes ~4–5 minutes, so 600000 ms is a safe floor for it).** Both are
+worth doing: the tool parameter stops the auto-backgrounding, the `timeout` binary stops a
+genuinely hung run from lingering. A lane that only does the second still stalls.
+
+**Commit before every long run, not only before a mutation drill.** The stall itself is
+recoverable — every one of the six was resumed with its work intact — but a lane that
+stalls with nine modified files and no commits is one bad revert away from losing a whole
+task, and that has happened twice for other reasons.
+
 **A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
 does not populate it. The merge gate (`./scripts/gate.sh`) automatically resolves this:
 it detects when running in a worktree, falls back to the main checkout's interpreter
