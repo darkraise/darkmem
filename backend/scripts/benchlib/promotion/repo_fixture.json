@@ -1,0 +1,44 @@
+{
+  "_notes": [
+    "The indexed-repository stand-in for the promotion corpus's diversity arm.",
+    "This is the code-side half of the CORPUS, not a stand-in for any part of",
+    "the truth core: it supplies the rows a completed index run would have left",
+    "behind (repositories + code_files + code_edges), and every assertion, fact,",
+    "provenance row and ladder decision downstream of it is produced by shipped",
+    "code -- code_deriver.assert_repo_graph, fact_lift.run_code_lift,",
+    "verification_recompute.run_recompute. Writing these three tables by hand is",
+    "the same act as writing the memory corpus by hand; what may not be written",
+    "by hand is what the ladder reads to decide, and nothing here is.",
+    "The imports are all real, published Python packages, none of which is a",
+    "stdlib module or a suffix of an indexed file path -- the two conditions",
+    "code_deriver.dependency_name / is_internal_import decline on."
+  ],
+  "repo": {
+    "name": "payments-gateway",
+    "url": "https://example.invalid/acme/payments-gateway",
+    "local_path": "/srv/repos/payments-gateway",
+    "default_branch": "main",
+    "last_indexed_commit": "9c1f4a7e2b83d05614a9f7c3e8d21b6045af9c37"
+  },
+  "files": [
+    {"file_path": "service/app.py", "language": "python"},
+    {"file_path": "service/webhooks.py", "language": "python"},
+    {"file_path": "service/settlement.py", "language": "python"},
+    {"file_path": "service/storage.py", "language": "python"},
+    {"file_path": "service/observability.py", "language": "python"}
+  ],
+  "imports": [
+    {"source_key": "service/app.py", "target_key": "httpx"},
+    {"source_key": "service/app.py", "target_key": "pydantic"},
+    {"source_key": "service/app.py", "target_key": "structlog"},
+    {"source_key": "service/webhooks.py", "target_key": "pydantic"},
+    {"source_key": "service/webhooks.py", "target_key": "stripe"},
+    {"source_key": "service/webhooks.py", "target_key": "tenacity"},
+    {"source_key": "service/settlement.py", "target_key": "celery"},
+    {"source_key": "service/settlement.py", "target_key": "boto3"},
+    {"source_key": "service/storage.py", "target_key": "sqlalchemy"},
+    {"source_key": "service/storage.py", "target_key": "alembic"},
+    {"source_key": "service/storage.py", "target_key": "redis"},
+    {"source_key": "service/observability.py", "target_key": "prometheus_client"}
+  ]
+}

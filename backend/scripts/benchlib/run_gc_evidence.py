@@ -26,9 +26,16 @@ Run from backend/ with the key inline:
   DEEPSEEK_API_KEY=... BENCH_DATABASE_URL=postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench_<lane> \
       python scripts/benchlib/run_gc_evidence.py
 Expected ``live_calls == 0`` against the warm retrieval cache.
+
+``--corpus promotion`` (T2.108) swaps in the purpose-built measurement corpus
+whose captures carry an ``origin_key``, leaving everything from the recompute
+ticks down — the SQL, the pre-stated verdicts, the refusal to mint a record —
+byte-identical. The default remains the retrieval corpus this file shipped
+with, so T2.40's recorded run stays reproducible from the same command.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import sys
@@ -45,7 +52,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 from sqlalchemy import text  # noqa: E402
 
 from benchlib import bench_db  # noqa: E402  (DATABASE_URL override first)
-from benchlib import promotion_bars, promotion_metrics as pm  # noqa: E402
+from benchlib import promotion_bars, promotion_corpus, promotion_metrics as pm  # noqa: E402
 from benchlib.harvest_l2_facts import assert_bench_db_allowed, run_harvest  # noqa: E402
 from benchlib.run_smoke import require_deepseek_api_key  # noqa: E402
 
@@ -54,13 +61,11 @@ from app.services.verification_recompute import run_recompute  # noqa: E402
 MAX_RECOMPUTE_TICKS = 20
 WINDOW_DAYS = 90
 
+RETRIEVAL_CORPUS = "retrieval"
+PROMOTION_CORPUS = "promotion"
 
-async def main() -> int:
-    api_key = require_deepseek_api_key()
-    bench_url = bench_db.BENCH_DATABASE_URL
-    db_name = bench_url.rsplit("/", 1)[-1].split("?", 1)[0]
-    assert_bench_db_allowed(db_name)
 
+async def _prepare_retrieval(api_key: str, bench_url: str, db_name: str) -> int:
     harvest = await run_harvest(api_key=api_key, bench_url=bench_url, write=False)
     header = harvest.manifest["header"]
     print(f"bench_db: {db_name}")
@@ -68,6 +73,58 @@ async def main() -> int:
     print(f"embedder fingerprint: {header['embedder_fingerprint']}")
     print(f"lift: {header['lift']}")
     print(f"facts minted through the shipping lift: {harvest.n_facts}")
+    return harvest.n_facts
+
+
+async def _prepare_promotion(api_key: str, bench_url: str, db_name: str) -> int:
+    target = bench_db.BenchDatabase(bench_url)
+    try:
+        prepared = await promotion_corpus.prepare(
+            api_key=api_key,
+            session_factory=target.session_factory,
+            reset=target.reset,
+        )
+    finally:
+        await target.dispose()
+    print(f"bench_db: {db_name}")
+    print(f"corpus: promotion ({prepared.corpus_entries} captures, "
+          f"sha256 {prepared.corpus_sha256[:16]})")
+    print(f"ingest live_calls: {prepared.live_calls}")
+    print(f"embedder fingerprint: {prepared.fingerprint}")
+    print(f"lift: {prepared.lift}")
+    print(f"capture-time provenance stamped (SIMULATED CLOCK): "
+          f"{prepared.capture_time_stamped} rows")
+    print(f"repo assertions: {prepared.repo_assertions}")
+    print(f"code lift: {prepared.code_lift}")
+    print(f"facts minted through the shipping lift: {prepared.n_facts}")
+    for note in prepared.notes:
+        print(f"note: {note}")
+    return prepared.n_facts
+
+
+async def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Flow a corpus through the shipping ladder and measure it."
+    )
+    parser.add_argument(
+        "--corpus", choices=(RETRIEVAL_CORPUS, PROMOTION_CORPUS),
+        default=RETRIEVAL_CORPUS,
+        help=(
+            "which corpus to flow: the committed retrieval corpus (T2.40's "
+            "recorded run) or T2.108's promotion measurement corpus"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    api_key = require_deepseek_api_key()
+    bench_url = bench_db.BENCH_DATABASE_URL
+    db_name = bench_url.rsplit("/", 1)[-1].split("?", 1)[0]
+    assert_bench_db_allowed(db_name)
+
+    if args.corpus == RETRIEVAL_CORPUS:
+        await _prepare_retrieval(api_key, bench_url, db_name)
+    else:
+        await _prepare_promotion(api_key, bench_url, db_name)
 
     target = bench_db.BenchDatabase(bench_url)
     try:
@@ -111,6 +168,12 @@ async def main() -> int:
             completeness = (
                 await session.execute(text(promotion_bars.JOURNAL_COMPLETENESS_SQL))
             ).one()
+
+        if args.corpus == PROMOTION_CORPUS:
+            async with target.session_factory() as session:
+                back = await promotion_corpus.read_back(session)
+            print()
+            print(promotion_corpus.render_read_back(back))
 
         print()
         print(pm.render_report(report))
