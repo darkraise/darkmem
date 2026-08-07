@@ -545,6 +545,25 @@ def _pass_two() -> None:
         "ON knowledge_triples (subject_name, rel_type, object_name) "
         "WHERE expired_at IS NULL"
     )
+    # T2.98 (doc 08 §5.3, 2026-08-07). The contradiction scan's same-endpoint
+    # arm probes `subject_name = X OR object_name = Y`, and a BitmapOr needs
+    # BOTH disjuncts indexed or Postgres falls back to scanning the whole of
+    # whatever index is narrowest — the subject one above, in this table's
+    # case, since it is still cheaper than the heap. That is real work
+    # proportional to every live triple, not a lookup, which is what doc
+    # 08 §5.3's "cheap SQL" cost argument assumes for both endpoints.
+    # Mirrors the subject index's column order rather than staying
+    # object-name-only: `GET /api/v1/knowledge/facts` (`facts_read.list_facts`
+    # via `get_live`/`list_live`) filters `object_name` together with
+    # `rel_type` and no `subject_name`, the exact object-side analogue of the
+    # subject probe the leading `(subject_name, rel_type, ...)` order already
+    # serves. A narrower object-name-only index would miss that combination's
+    # leading column.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_live_object "
+        "ON knowledge_triples (object_name, rel_type, subject_name) "
+        "WHERE expired_at IS NULL"
+    )
     op.execute(
         "CREATE INDEX ix_knowledge_triples_window ON knowledge_triples (valid_at, invalid_at)"
     )

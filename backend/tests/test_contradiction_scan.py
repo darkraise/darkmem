@@ -437,6 +437,36 @@ class TestTheCombinedGenerator:
         assert "gin (fact gin_trgm_ops)" in definition
         assert "WHERE (expired_at IS NULL)" in definition
 
+    async def test_the_same_endpoint_arm_has_an_index_for_both_halves(self, session):
+        """T2.98: the `subject_name = X OR object_name = Y` shape needs BOTH
+        disjuncts indexed for the planner to build a BitmapOr — one indexed
+        side is not enough, since Postgres cannot use a partial index for one
+        arm of an OR and something else for the other. `EXPLAIN` evidence for
+        the actual win (measured on a seeded 120k-row table, not this
+        fixture-sized one) lives in the T2.98 report, for the same reason the
+        trigram test above gives for asserting via `pg_indexes` here.
+        """
+        rows = (await session.execute(
+            text(
+                "SELECT indexname, indexdef FROM pg_indexes "
+                "WHERE tablename = 'knowledge_triples' "
+                "AND indexname IN ('ix_knowledge_triples_live', "
+                "'ix_knowledge_triples_live_object')"
+            )
+        )).all()
+        definitions = {row.indexname: row.indexdef for row in rows}
+        assert set(definitions) == {
+            "ix_knowledge_triples_live", "ix_knowledge_triples_live_object",
+        }
+        assert "(subject_name, rel_type, object_name)" in definitions[
+            "ix_knowledge_triples_live"
+        ]
+        assert "(object_name, rel_type, subject_name)" in definitions[
+            "ix_knowledge_triples_live_object"
+        ]
+        for definition in definitions.values():
+            assert "WHERE (expired_at IS NULL)" in definition
+
     async def test_an_expired_fact_is_never_a_candidate(self, session):
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
