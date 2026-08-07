@@ -24,14 +24,16 @@ if [ -z "${PY:-}" ]; then
     if [ -x "$LOCAL_PY" ]; then
         PY="$LOCAL_PY"
     else
-        # No local .venv; check if we're in a worktree and fall back to main checkout
-        # Resolve parent path to absolute to check its name
-        PARENT_DIR="$(cd "$REPO_ROOT/.." && pwd -P)"
-        if [ "$(basename "$PARENT_DIR")" = ".worktrees" ]; then
-            # We're in a worktree; main checkout is one level up from .worktrees
-            MAIN_CHECKOUT="$(cd "$PARENT_DIR/.." && pwd -P)"
+        # No local .venv; fall back to main checkout's interpreter.
+        # Use git to robustly detect if we're in a worktree: git rev-parse --git-common-dir
+        # returns the shared .git directory for both main checkout and worktrees.
+        # In a worktree at /path/to/worktrees/<name>, it returns /path/to/.git,
+        # so the main checkout is its parent.
+        if GIT_COMMON_DIR="$(cd "$REPO_ROOT" && git rev-parse --git-common-dir 2>/dev/null)"; then
+            # We have a git repository; use git-common-dir to find the main checkout
+            MAIN_CHECKOUT="$(cd "$GIT_COMMON_DIR/.." && pwd -P)"
         else
-            # We're in the main checkout
+            # Fall back to current directory if git fails
             MAIN_CHECKOUT="$REPO_ROOT"
         fi
         PY="$MAIN_CHECKOUT/backend/.venv/bin/python"
@@ -107,6 +109,13 @@ run_gate() {
 
 cd "$REPO_ROOT" || exit 1
 
+# Report which Python interpreter is being used. This is critical for worktrees:
+# a silent fallback to the wrong checkout's interpreter would produce a green gate
+# that means nothing. Explicit reporting happens before preflight checks so it
+# always prints, even when other toolchain dependencies are missing.
+printf '\n\033[1m── resolved interpreter ──\033[0m\n'
+printf 'Python: %s\n' "$PY"
+
 # ── preflight ────────────────────────────────────────────────────────────
 # A missing toolchain is an environment problem, not a failing gate. Say so
 # in those words: a bare `tsc: not found` (exit 127) sends the reader after
@@ -125,13 +134,6 @@ preflight_fail() {
 # which reaches it after the whole floor has already run.
 [ "$FULL" -eq 0 ] || [ -n "${DEEPSEEK_API_KEY:-}" ] || preflight_fail \
     "DEEPSEEK_API_KEY not set — the retrieval eval under --full dispatches against DeepSeek"
-
-# Report which Python interpreter is being used. This is critical for worktrees:
-# a silent fallback to the wrong checkout's interpreter would produce a green gate
-# that means nothing. Explicit reporting ensures lanes cannot miss that they are
-# testing the main checkout's code rather than their own.
-printf '\n\033[1m── resolved interpreter ──\033[0m\n'
-printf 'Python: %s\n' "$PY"
 
 
 # ── the floor ────────────────────────────────────────────────────────────
