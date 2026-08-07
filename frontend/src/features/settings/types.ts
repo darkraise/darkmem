@@ -78,6 +78,13 @@ export type LLMPurposeName =
   | "reasoning"
   | "summarization"
   | "reranker"
+  // T2.106: writable alongside the six live purposes — seeded inert (no
+  // consumer until T3.02), so it is rendered as a normal editable card,
+  // not a Tier-C read-only one. `verification` stays out of this union:
+  // it is not writable through `/config/llm` (see the backend schema's
+  // docstring), so it is not a valid `savePurpose` target and continues
+  // to render through `TIER_C_LLM_PURPOSES` / `TierCPurposeCard` only.
+  | "synthesis"
 
 export interface DemoLLMPurpose {
   purpose: LLMPurposeName

@@ -1,29 +1,36 @@
 /**
- * The two Tier-C purposes T1.05 seeded (doc 11 §6): rows exist in
- * `llm_purpose_configs` and resolve through `get_llm_config`, and since
- * T2.104 `/config/llm` serves both alongside the six live purposes — the
- * backend used to resolve eight and declare six, silently dropping these
- * two the same way `facts_read` dropped fields on the Facts tab.
+ * The Tier-C purpose that stays read-only on the LLM settings tab (T2.106,
+ * following on from T2.104's read-side fix).
  *
- * `verification` is **live**: `app/services/verification_judge.py` resolves
- * and dispatches on it since T2.26. `synthesis` has no consumer yet and
- * stays inert until T3.02. This module used to hardcode a `model`/`api_kind`
- * mirror of `DEFAULT_PURPOSE_CONFIGS` (`backend/app/services/llm_seed.py`)
- * for both, with a comment asking a future editor to keep the two in sync by
- * hand — that mirror's own premise ("nothing dispatches on these, in either
- * demo or real mode") went stale for `verification` the moment T2.26 landed
- * and nothing here noticed. T2.104 retires it: connection fields now come
- * from `/config/llm` in real mode (`useLLMTabBinding`), same as the six live
- * purposes, and only demo mode still supplies a fixture, which is what demo
- * mode does everywhere.
+ * Doc 11 §6 seeded two Tier-C rows beyond the six live purposes:
+ * `synthesis` and `verification`. Both resolve through `get_llm_config` and
+ * both have served on `/config/llm` GET since T2.104. The write side is
+ * where they diverge, and deliberately so:
  *
- * Read-only regardless of mode: `LLMConfigUpdate` still declares only six
- * purposes, so a write to either of these two is silently dropped on the
- * request side the same way the response side used to drop them — a
- * separate wire-contract change, not this task's to make.
+ * - `synthesis` has no consumer until T3.02, so widening its write was
+ *   cheap and low-consequence. It moved out of this module and into the
+ *   normal editable purpose list (`LLMPurposeName`, `LIVE_PURPOSE_META` in
+ *   `use-llm-tab-binding.ts`) — it now renders and saves exactly like the
+ *   six always-live purposes.
+ * - `verification` is live: `app/services/verification_judge.py` resolves
+ *   and dispatches on it since T2.26, and its qualification record is
+ *   G-D's gate evidence (doc 17 §6) — a precision/recall measurement
+ *   pinned to one resolved model identity. Letting an operator repoint
+ *   that identity through this form is a real capability with a real
+ *   failure mode: the judge's gated door already fails closed the moment
+ *   the resolved identity no longer matches the recorded qualification,
+ *   so a repoint cannot silently keep serving stale verdicts — but the
+ *   write-time half of that story (warn before save, or invalidate the
+ *   on-disk record at the moment of a repoint) means touching the
+ *   verification ladder's enforcement path, which is out of scope here.
+ *   `LLMConfigUpdate` deliberately does not declare this purpose, so a
+ *   write to it is dropped before the route ever sees it. This module
+ *   stays the single Tier-C entry for it, rendered disabled with the
+ *   reason stated inline (`TierCPurposeCard`) — never a field that looks
+ *   editable and silently drops its write.
  */
 export interface TierCLLMPurpose {
-  purpose: "synthesis" | "verification"
+  purpose: "verification"
   role: string
   /** Task id that gives this purpose its first consumer, or null when it
    *  already has one (dispatched, just not yet write-editable here). */
@@ -31,11 +38,6 @@ export interface TierCLLMPurpose {
 }
 
 export const TIER_C_LLM_PURPOSES: TierCLLMPurpose[] = [
-  {
-    purpose: "synthesis",
-    role: "Tier-C article synthesis from the corroborated fact set",
-    activatesWith: "T3.02",
-  },
   {
     purpose: "verification",
     role: "fact verification-ladder judgments",

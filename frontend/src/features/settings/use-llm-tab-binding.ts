@@ -15,11 +15,12 @@ import {
 } from "@/hooks/api"
 import { TIER_C_LLM_PURPOSES, type TierCLLMPurpose } from "./llm-tier-c-purposes"
 
-/** Documentation copy for the six live purposes in real (non-demo) mode.
- *  Connection fields (model/api_kind/base_url/...) come from the API; this
- *  is only the descriptive text the demo fixture also carries, kept short
- *  here rather than imported from the demo module (real code should not
- *  depend on `@/demo/**` fixture data). */
+/** Documentation copy for the seven writable purposes in real (non-demo)
+ *  mode — the six always-live ones plus `synthesis` (T2.106). Connection
+ *  fields (model/api_kind/base_url/...) come from the API; this is only the
+ *  descriptive text the demo fixture also carries, kept short here rather
+ *  than imported from the demo module (real code should not depend on
+ *  `@/demo/**` fixture data). */
 const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> = {
   embedding: {
     tier: "tier A / B / C",
@@ -45,6 +46,14 @@ const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> 
     tier: "tier A",
     role: "retrieval rerank scoring, top-40 RRF rows, flag-gated",
   },
+  // T2.106: promoted out of the Tier-C read-only list. Seeded inert (no
+  // consumer until T3.02, doc 11 §6) but writable — a mis-set connection
+  // here fails the day article synthesis finally dispatches on it, not
+  // before, and nothing today reads this row.
+  synthesis: {
+    tier: "tier C",
+    role: "Layer-3 article write-ups, auto-research write-ups — no consumer yet (T3.02)",
+  },
 }
 
 const LIVE_PURPOSES = Object.keys(LIVE_PURPOSE_META) as Array<
@@ -56,16 +65,16 @@ export interface TierCPurposeView extends TierCLLMPurpose {
   api_kind: string
 }
 
-/** Demo mode has no backend row for either Tier-C purpose (the demo store's
- *  `CURATED_LLM_PURPOSES` fixture only covers the six live ones), so this is
- *  a small demo-only display fixture — not a mirror of backend truth the way
- *  the retired hardcoded constant was, just the same kind of placeholder
- *  every other demo fixture in this tab already is. */
+/** Demo mode has no backend row for the one remaining Tier-C purpose (the
+ *  demo store's `CURATED_LLM_PURPOSES` fixture covers the seven writable
+ *  ones, `synthesis` included since T2.106), so this is a small demo-only
+ *  display fixture — not a mirror of backend truth the way the retired
+ *  hardcoded constant was, just the same kind of placeholder every other
+ *  demo fixture in this tab already is. */
 const DEMO_TIER_C_CONNECTION: Record<
   TierCLLMPurpose["purpose"],
   { model: string; api_kind: string }
 > = {
-  synthesis: { model: "qwen2.5:3b", api_kind: "ollama" },
   verification: { model: "qwen2.5:3b", api_kind: "ollama" },
 }
 
@@ -104,7 +113,8 @@ function toWirePatch(
 
 export interface LLMTabBinding {
   purposes: DemoLLMPurpose[]
-  /** The two Tier-C purposes, read-only (see llm-tier-c-purposes.ts). */
+  /** The one remaining Tier-C purpose, read-only (see
+   *  llm-tier-c-purposes.ts). `synthesis` moved into `purposes` above. */
   tierCPurposes: TierCPurposeView[]
   classifierKind: "llm" | "local"
   /** null = not live-bound in this mode (real mode has no buckets endpoint

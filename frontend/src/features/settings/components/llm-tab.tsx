@@ -42,10 +42,10 @@ const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   summarization: FileText,
   reranker: ArrowDownUp,
   reasoning: Bot,
+  synthesis: FileText,
 }
 
 const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
-  synthesis: FileText,
   verification: ShieldCheck,
 }
 
@@ -353,9 +353,14 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
         {live ? (
           <>
             Seeded row, resolvable, and dispatched — this connection judges
-            fact verification-ladder promotions today. Read-only here: the
-            save wire only carries the six live purposes above, so editing
-            this row lands with a separate task.
+            fact verification-ladder promotions today. Read-only by
+            deliberate ruling (T2.106), not an oversight: its qualification
+            record is G-D's gate evidence, pinned to this exact model
+            identity, and a settings-form repoint is a real capability with
+            a real failure mode. The judge already refuses to serve on a
+            mismatched identity, but the write-time guard that would make
+            editing this row safe means touching the verification ladder's
+            enforcement path — out of scope here.
           </>
         ) : (
           <>
@@ -468,9 +473,9 @@ function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
             Saved — {lastSave.purpose} purpose updated
           </span>
           <span className="text-muted-foreground text-sm">
-            The orchestrator was rebuilt from all six purpose rows and the live
-            reference was swapped in-process. This change is already serving
-            requests — no redeploy needed.
+            The orchestrator was rebuilt from all eight resolved purpose rows
+            and the live reference was swapped in-process. This change is
+            already serving requests — no redeploy needed.
           </span>
         </div>
         <Button size="sm" variant="ghost" onClick={binding.dismissSave}>
@@ -490,8 +495,8 @@ function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
             orchestrator
           </span>
           <span>
-            new instance built from six purpose rows, reference swapped
-            atomically
+            new instance built from all eight resolved purpose rows,
+            reference swapped atomically
           </span>
         </div>
         <div className="flex gap-2.5">
@@ -559,9 +564,12 @@ export function LLMTab() {
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
-          Six inline purpose cards — each a self-contained connection binding
-          — plus the two Tier-C purposes, read-only here. A save live-reloads
-          the orchestrator; no redeploy, no LLM_* env vars.
+          Seven inline purpose cards — each a self-contained connection
+          binding, including the seeded-inert `synthesis` purpose — plus
+          `verification`, read-only here (T2.106: it judges the
+          verification ladder and its qualification is a gate's evidence).
+          A save live-reloads the orchestrator; no redeploy, no LLM_* env
+          vars.
         </span>
         <HelpTip label="About the LLM tab">
           Each purpose is one row with no provider/profile indirection. Every
