@@ -121,6 +121,10 @@ def _source_group(group: OriginGroup) -> dict[str, Any]:
     return {
         "origin_key": group.origin_key,
         "unknown_origin": group.is_unknown,
+        # Served rather than filtered: a stale origin is retained evidence that
+        # stopped corroborating, and the flag is what lets a reader reconcile
+        # the group list against the badge's origin count.
+        "stale": group.is_stale,
         "source_kinds": list(group.source_kinds),
         "first_seen": group.first_seen,
         "last_seen": group.last_seen,

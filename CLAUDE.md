@@ -449,29 +449,32 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Nineteen** registered jobs (`app/main.py`) in two groups
+expressions. **Twenty** registered jobs (`app/main.py`) in two groups
 (count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
-T2.49 landed `relation_embedding_refresh` without updating it, and three
+T2.49 landed `relation_embedding_refresh` without updating it, and four
 concurrent lanes each found it stale independently — a stale count on a
 "here is the full list" sentence is exactly invariant 23's concern.
 `tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
 AST, so the next job added cannot silently desynchronise this list).
-The thirteen live ones: `repo_sync`,
+The fourteen live ones: `repo_sync`,
 `buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
 `expired_memory_cleanup`, `ppr_snapshot`,
-`relation_embedding_refresh`, `repo_entity_anchoring`. Note
+`relation_embedding_refresh`, `repo_entity_anchoring`,
+`citation_reverify`. Note
 `buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
-`relation_embedding_refresh` and `repo_entity_anchoring` register via
+`relation_embedding_refresh`, `repo_entity_anchoring` and
+`citation_reverify` register via
 the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
 `CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
-`RELATION_EMBEDDING_JOB_KEY` and `REPO_ENTITY_ANCHORING_JOB_KEY` rather
+`RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY` and
+`CITATION_REVERIFY_JOB_KEY` rather
 than string literals, so a grep for quoted keys undercounts the list —
 which is precisely how this sentence went stale for four landings.
 **`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`
-and `code_deriver` are Tier C but are deliberately not dream-job family
-members** (T2.32, T2.49, T2.97, T2.96): contract 6 fixes that family as
+`code_deriver` and `citation_reverify` are Tier C but are deliberately
+not dream-job family members** (T2.32, T2.49, T2.97, T2.96, T2.48): contract 6 fixes that family as
 the consolidation passes, while doc 07 §4 and doc 10 §6 own their
 artefact refreshes separately. Invariant 15 is unaffected either way —
 retrieval reads the cached snapshot and Phase 4 reads the entity
@@ -489,6 +492,20 @@ in `RepoManager.delete`, which calls
 repository row — `entities.repo_ids[]` / `entity_relations.repo_ids[]`
 carry no foreign key to `repositories`, so without it an entity's
 `repo_ids` keeps a dangling id after the repo is gone.
+
+**`citation_reverify` is doc 10 §6's second sanctioned crossing** (T2.48): it
+re-resolves each code citation's recorded `symbol_key` against its repository's
+current HEAD, marks a citation that no longer resolves stale, and **enqueues the
+citing fact for the verification recompute, which downgrades the badge — never
+expiring the fact**, because a deleted symbol may be a rename a human should
+confirm. It reads the code graph and writes the memory-side vault, one direction,
+no join. Note it does **not** scope by the run's changed-file set as doc 10 §6
+describes: that scoping key is `detail.symbol_key`, which for an import-basis
+citation is a module name (`httpx`), never a path, so the doc's literal predicate
+would match only language citations. The job scopes by comparing a citation's
+`detail.reverified_at_sha` against the repository's `last_indexed_commit`
+instead — self-healing where an event-payload design is not, since `record_event`
+never raises. The doc correction is owed and is tracked as a Tier-3 amendment.
 
 **`repo_entity_anchoring` is what makes the code bridge's anchoring
 reach past an exact name match** (T2.97): the deriver is LLM-free by

@@ -1442,7 +1442,7 @@ def _direct_job_registrations(source: str) -> list[ast.Call]:
     Deliberately excludes the dream-job family, which never calls
     `job_registry.register` directly — it rides through
     `register_dream_jobs(job_registry, ...)` instead — so this collects
-    exactly the roster CLAUDE.md calls "the thirteen live ones", the direct
+    exactly the roster CLAUDE.md calls "the fourteen live ones", the direct
     registrations `code_deriver` joined.
     """
     tree = ast.parse(source)
@@ -1521,6 +1521,7 @@ def test_main_registers_the_full_direct_job_roster():
         "graph_orphan_cleanup", "tag_orphan_cleanup",
         "expired_memory_cleanup", "PPR_SNAPSHOT_JOB_KEY",
         "RELATION_EMBEDDING_JOB_KEY", "REPO_ENTITY_ANCHORING_JOB_KEY",
+        "CITATION_REVERIFY_JOB_KEY",
     }
     assert keys == expected, (
         f"direct job registrations in app/main.py drifted from the roster "

@@ -17,6 +17,7 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   sources_changed: "pipeline",
   verified: "verification",
   contradiction_scanned: "verification",
+  citation_stale: "verification",
   consolidated: "consolidation",
   superseded: "consolidation",
   deprecated: "consolidation",

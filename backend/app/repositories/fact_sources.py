@@ -29,6 +29,12 @@ Four rules, all enforced here rather than left to callers:
    ``origin_key`` is NULL, blank, or carries the capture layer's ``unknown:``
    marker folds into a single reserved bucket **per fact**, so ten anonymous
    rows are one origin, never ten.
+5. **Evidence that no longer resolves stops counting** — every count applies
+   ``LIVE_SOURCE_PREDICATE``, so a citation the re-verifier marked stale (doc
+   10 §6) is retained, served and auditable but corroborates nothing. Without
+   this the marker would be decoration: the badge would keep claiming an
+   origin whose address does not resolve at the repository's current HEAD,
+   which is precisely the silent degradation invariant 14 forbids.
 
 **The collapsing scheme for rule 4, and why this one.** The normalised origin is
 ``lower(btrim(origin_key))``, except that NULL, whitespace-only, the bare word
@@ -160,6 +166,22 @@ _NORMALIZED_ORIGIN = """
             ELSE lower(btrim(origin_key))
         END
 """
+
+# The `detail` marker doc 10 §6 gives the citation re-verifier: a code citation
+# whose recorded address no longer resolves at the repository's current HEAD.
+# Spelled here rather than beside the producer because the marker's *whole*
+# effect is arithmetic — a stale row stops corroborating — and a producer and a
+# counter that disagreed about the spelling would leave a broken citation
+# holding up the badge it no longer supports, with no error and no symptom.
+STALE_DETAIL_KEY = "stale"
+
+# What still counts. The direction is the module's fixed one: a row this
+# predicate excludes can only *lower* a count, never raise one, so a marker
+# written in error delays a promotion rather than fabricating one. `detail` is
+# nullable and free-form, so anything other than the literal JSON `true` — a
+# missing key, `false`, a string, a NULL row — reads as live; the marker has to
+# be asserted, never merely not-refuted.
+LIVE_SOURCE_PREDICATE = f"(detail -> '{STALE_DETAIL_KEY}') IS DISTINCT FROM 'true'::jsonb"
 
 _COLUMNS = "id, fact_id, source_kind, source_ref, origin_key, detail, created_at"
 
@@ -358,6 +380,26 @@ class OriginGroup:
     def is_unknown(self) -> bool:
         return self.origin_key is None
 
+    @property
+    def is_stale(self) -> bool:
+        """True when every row of this origin has stopped resolving.
+
+        The audit's counterpart to ``LIVE_SOURCE_PREDICATE``. This view keeps
+        stale rows — a citation that broke is exactly what a human auditing a
+        downgraded badge came to see, and dropping it would make the demotion
+        look like evidence that silently vanished (invariant 14). So the two
+        sides stay reconcilable through this flag instead of through matching
+        row sets: the number of groups where this is false is the number the
+        badge claims.
+
+        An origin with any surviving row is not stale, matching the count: the
+        predicate excludes rows, so a mixed origin keeps its live ones.
+        """
+        return all(
+            (source.get("detail") or {}).get(STALE_DETAIL_KEY) is True
+            for source in self.sources
+        )
+
 
 @dataclass(frozen=True)
 class MemorySource:
@@ -496,6 +538,7 @@ class FactSourceRepository:
                 SELECT COUNT(DISTINCT {_NORMALIZED_ORIGIN}) AS origin_count
                 FROM fact_sources
                 WHERE fact_id = CAST(:fact_id AS uuid)
+                  AND {LIVE_SOURCE_PREDICATE}
             """),
             {"fact_id": str(fact_id), **_UNKNOWN_ORIGIN_MATCH},
         )
@@ -543,6 +586,7 @@ class FactSourceRepository:
                     COUNT(*) AS row_count
                 FROM fact_sources
                 WHERE fact_id = ANY(CAST(:fact_ids AS uuid[]))
+                  AND {LIVE_SOURCE_PREDICATE}
                 GROUP BY 1, 2
                 ORDER BY 1, MIN(created_at), 2
             """),
@@ -569,10 +613,17 @@ class FactSourceRepository:
         """Every provenance row, grouped under the origin that wrote it.
 
         This is what makes the badge's ``origin_count`` auditable rather than
-        asserted: a reader counts the groups and gets the number the badge
-        claims. The grouping expression is ``_NORMALIZED_ORIGIN`` — the same
-        one ``origin_profiles`` counts on, referenced rather than restated, so
-        the audit cannot disagree with the claim it audits.
+        asserted: a reader counts the groups that are **not** ``is_stale`` and
+        gets the number the badge claims. The grouping expression is
+        ``_NORMALIZED_ORIGIN`` — the same one ``origin_profiles`` counts on,
+        referenced rather than restated, so the audit cannot disagree with the
+        claim it audits.
+
+        Unlike the counts, this view is **not** filtered by
+        ``LIVE_SOURCE_PREDICATE``. The counts answer "what corroborates this
+        fact"; this answers "what was ever recorded as evidence, and what
+        happened to it", and a broken citation dropped from here would make a
+        downgraded badge look like a fact whose evidence never existed.
         """
         result = await self.session.execute(
             text(f"""

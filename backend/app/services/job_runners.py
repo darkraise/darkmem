@@ -635,6 +635,51 @@ def make_repo_entity_anchoring_runner(
     return run
 
 
+def make_citation_reverify_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Re-resolve code citations against each repository's current HEAD.
+
+    Tier C, and not a dream-job family member — contract 6 fixes that family at
+    six, and the PPR snapshot is the standing precedent for a scheduled Tier-C
+    job outside it. Invariant 15 binds by proximity: a re-index **enqueues**,
+    and this job is what the enqueue eventually feeds; neither capture nor
+    retrieval may reach it.
+
+    No orchestrator and no model: re-resolution is two indexed lookups and a
+    jsonb write, so the run is meaningful in Postgres-only mode where the
+    model-spending runners degrade to a no-op.
+    """
+    async def run() -> None:
+        from app.services.citation_reverify import (
+            CITATION_REVERIFY_CONFIG_SCHEMA,
+            CITATION_REVERIFY_JOB_KEY,
+            DEFAULT_REVERIFY_BATCH,
+            reverify_citations,
+        )
+
+        knobs = {fd.key: fd.default for fd in CITATION_REVERIFY_CONFIG_SCHEMA}
+        registry = getattr(app.state, "job_registry", None)
+        if registry is not None:
+            cfg = await registry.load_config(CITATION_REVERIFY_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await reverify_citations(
+                session,
+                batch_size=int(knobs.get("batch_size", DEFAULT_REVERIFY_BATCH)),
+            )
+            await session.commit()
+
+        if outcome.marked_stale or outcome.cleared:
+            logger.info(
+                "Citation re-verify: %d stale, %d cleared, %d facts enqueued",
+                outcome.marked_stale, outcome.cleared, outcome.facts_enqueued,
+            )
+    return run
+
+
 _PPR_STATE_CONFIG_KEY = "job:ppr_snapshot:state"
 
 
