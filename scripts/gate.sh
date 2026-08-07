@@ -220,7 +220,16 @@ if [ "$FULL" -eq 1 ]; then
 
     # run_retrieval_eval.py imports benchlib.bench_db, same resolution as the
     # benchlib suite above — it needs BENCH_DATABASE_URL passed through too.
-    run_gate "retrieval eval" 3600 "$BACKEND" \
+    # Named "replay" deliberately (2026-08-08). This arm runs the eval and
+    # fails on a crash, a missing key or a cross-fingerprint refusal — it does
+    # NOT fail on the numbers it produces, and a negative ΔMRR exits green.
+    # Unlike the F1 bench above, no floor exists to enforce: the G-B row
+    # requires the retrieval eval be *reported* with its latency/cost twin,
+    # never floored, so adding a bar here would be a bar set after measuring,
+    # which the ledger forbids. Setting one is a pre-registration decision the
+    # gate owner has to make deliberately; until then the label must not imply
+    # a health check nobody wrote.
+    run_gate "retrieval eval replay" 3600 "$BACKEND" \
         env -C "$BACKEND" \
             BENCH_DATABASE_URL="${BENCH_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench}" \
             "$PY" scripts/benchlib/run_retrieval_eval.py

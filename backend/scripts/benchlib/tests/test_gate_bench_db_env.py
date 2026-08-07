@@ -77,7 +77,7 @@ def _resolve_in_bash(assignment: str, exported_value: str | None) -> str:
     return result.stdout
 
 
-@pytest.fixture(params=["benchlib tests", "retrieval eval"])
+@pytest.fixture(params=["benchlib tests", "retrieval eval replay"])
 def bench_touching_block(request):
     return request.param, _extract_run_gate_block(_gate_sh_text(), request.param)
 
@@ -86,7 +86,7 @@ def test_block_invokes_the_expected_bench_touching_script(bench_touching_block):
     name, block = bench_touching_block
     expected_target = {
         "benchlib tests": "pytest scripts/benchlib/tests",
-        "retrieval eval": "scripts/benchlib/run_retrieval_eval.py",
+        "retrieval eval replay": "scripts/benchlib/run_retrieval_eval.py",
     }[name]
     assert expected_target in block, (
         f'run_gate "{name}" no longer invokes {expected_target!r} — this guard is '
