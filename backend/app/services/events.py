@@ -51,6 +51,16 @@ logger = logging.getLogger(__name__)
 # they share.
 CONTRADICTION_SCANNED = "contradiction_scanned"
 
+# Doc 10 §6's re-verify outcome. Named rather than spelled twice for the reason
+# above: the re-verifier writes it and a human reading a downgraded badge is
+# what reads it back, and the two only meet through this vocabulary. It is
+# deliberately its own type rather than a second `sources_changed`: that one
+# says a fact's evidence moved and is the recompute's queue, while this one says
+# *why* a particular citation stopped resolving — the address, the sha it broke
+# at — which is the record invariant 14 requires a silent-looking demotion to
+# leave behind.
+CITATION_STALE = "citation_stale"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -66,6 +76,7 @@ EVENT_TYPES: list[str] = [
     "consolidated",
     "verified",
     "sources_changed",
+    CITATION_STALE,
     CONTRADICTION_SCANNED,
     "document_filed",
     "repo_registered",
