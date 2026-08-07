@@ -26,12 +26,16 @@ export interface LlmConfigResponse {
   reasoning?: LlmPurposeConfig
   summarization?: LlmPurposeConfig
   reranker?: LlmPurposeConfig
-  // Tier-C purposes (T2.104): the backend has resolved and served these
-  // alongside the six live purposes since `LLMConfigResponse` learned to
-  // declare them; `verification` is live and dispatched (T2.26),
-  // `synthesis` stays seeded inert (first consumer T3.02). Read-only from
-  // here — `useUpdateLlmConfig`'s wire body still only carries the six live
-  // purposes, so writing either through this hook is a no-op today.
+  // Tier-C purposes (T2.104 read, T2.106 write). Both resolve and serve
+  // alongside the six live purposes. `synthesis` is seeded inert (first
+  // consumer T3.02) and is now writable through this hook, same as the six
+  // live purposes. `verification` is live and dispatched (T2.26) and stays
+  // read-only here on purpose: `LLMConfigUpdate` deliberately does not
+  // declare it, because repointing the qualified judge's model through a
+  // settings form is a real capability whose write-time guard would mean
+  // touching the verification ladder (see the backend schema's docstring
+  // for the full reasoning). A write to `verification` through this hook
+  // is a no-op — dropped by the backend before the route sees it.
   synthesis?: LlmPurposeConfig
   verification?: LlmPurposeConfig
 }

@@ -55,10 +55,10 @@ class LLMConfigResponse(BaseModel):
     # — this model declared only six, so pydantic's default extra="ignore"
     # silently dropped these two. `verification` is live: doc 04 §8's judge
     # service resolves and dispatches on it since T2.26. `synthesis` stays
-    # seeded inert (first consumer T3.02). Read-only here: the request-side
-    # `LLMConfigUpdate` below still declares only six, so a write to either
-    # purpose through this route is a separate, undecided wire-contract
-    # change (see the task's report).
+    # seeded inert (first consumer T3.02).
+    #
+    # T2.106 decided the write side per purpose (see `LLMConfigUpdate`
+    # below): `synthesis` is now writable, `verification` stays read-only.
     synthesis: LLMPurposeConfigSchema
     verification: LLMPurposeConfigSchema
 
@@ -70,12 +70,45 @@ class LLMConfigUpdateResponse(LLMConfigResponse):
 
 
 class LLMConfigUpdate(BaseModel):
+    """T2.106 — the write side is not symmetric with `LLMConfigResponse`'s
+    eight-purpose read side, and that asymmetry is deliberate, not an
+    oversight left for a later task:
+
+    `synthesis` is seeded inert (no consumer until T3.02), so widening its
+    write is cheap: a mis-set connection fails the day someone finally
+    dispatches on it, not before, and nothing today reads this row.
+
+    `verification` stays unreachable from this route. `VerificationJudge`
+    (`app/services/`, T2.26) is live and dispatches on this
+    purpose, and its qualification record is G-D's gate
+    evidence (doc 17 §6) — a precision/recall measurement pinned to one
+    resolved model identity (`judge_identity`: model, base_url, api_kind,
+    dimensions, reasoning, params). Repointing that identity through a
+    settings form is a real capability with a real failure mode: the
+    judge's gated door already re-derives the identity hash and refuses
+    with `JudgeNotQualifiedError` the moment it no longer matches the
+    recorded one (`qualification_state`, fail-closed, checked on every
+    call) — so a repoint cannot silently keep serving stale verdicts —
+    but building the *write-time* half of that story (warning the operator
+    before the save, or explicitly invalidating the on-disk qualification
+    record at the moment of a repoint) means touching the verification
+    ladder's enforcement path, which this task's own scope excludes
+    ("do not change what any purpose does, or touch the judge") and which
+    is Opus/Fable-tier work by the runbook's escalation rule, not a wire
+    contract fix. Until that follow-on task exists, read-only here is the
+    complete and correct answer, and the settings UI says so explicitly
+    rather than rendering an editable-looking field that silently drops
+    its write (`TIER_C_LLM_PURPOSES` / `TierCPurposeCard`,
+    `frontend/src/features/settings`).
+    """
+
     embedding: LLMPurposeConfigUpdate | None = None
     extraction: LLMPurposeConfigUpdate | None = None
     classification: LLMPurposeConfigUpdate | None = None
     reasoning: LLMPurposeConfigUpdate | None = None
     summarization: LLMPurposeConfigUpdate | None = None
     reranker: LLMPurposeConfigUpdate | None = None
+    synthesis: LLMPurposeConfigUpdate | None = None
 
 
 class StatsResponse(BaseModel):

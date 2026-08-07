@@ -79,4 +79,63 @@ describe("useLLMTabBinding (DEMO off — real /config/llm)", () => {
     expect(body.extraction.model).toBe("gpt-4o-mini")
     expect(body.extraction.params).toEqual({ temperature: 0 })
   })
+
+  // T2.106: this is the live-wire proof, not just the demo fixture — the
+  // real /config/llm response drives which array `synthesis` lands in.
+  it("maps synthesis into the editable purposes, not tierCPurposes, over the real wire", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      synthesis: {
+        base_url: "http://localhost:11434/v1",
+        model: "qwen2.5:3b",
+        api_key: null,
+        dimensions: null,
+        reasoning: false,
+        api_kind: "ollama",
+        params: { temperature: 0.3 },
+      },
+      verification: {
+        base_url: "http://localhost:11434/v1",
+        model: "qwen2.5:3b",
+        api_key: null,
+        dimensions: null,
+        reasoning: false,
+        api_kind: "ollama",
+        params: {},
+      },
+    })
+
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const synthesis = result.current.purposes.find((p) => p.purpose === "synthesis")
+    expect(synthesis).toBeDefined()
+    expect(synthesis?.model).toBe("qwen2.5:3b")
+
+    expect(result.current.tierCPurposes.map((p) => p.purpose)).toEqual([
+      "verification",
+    ])
+  })
+
+  it("synthesis saves through the same wire as any live purpose, over the real wire", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({})
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    result.current.savePurpose("synthesis", { model: "qwen2.5:7b" })
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/config/llm",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    )
+    const call = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST")
+    expect(call).toBeDefined()
+    const body = JSON.parse((call![1] as RequestInit).body as string)
+    expect(body.synthesis.model).toBe("qwen2.5:7b")
+    // savePurpose's type signature does not admit "verification" — proven
+    // at compile time (LLMPurposeName), not re-proven here at runtime.
+  })
 })
