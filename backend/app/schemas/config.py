@@ -79,8 +79,8 @@ class LLMConfigUpdate(BaseModel):
     dispatches on it, not before, and nothing today reads this row.
 
     `verification` stays unreachable from this route. `VerificationJudge`
-    (`app/services/verification_judge.py`) is live and dispatches on this
-    purpose since T2.26, and its qualification record is G-D's gate
+    (`app/services/`, T2.26) is live and dispatches on this
+    purpose, and its qualification record is G-D's gate
     evidence (doc 17 §6) — a precision/recall measurement pinned to one
     resolved model identity (`judge_identity`: model, base_url, api_kind,
     dimensions, reasoning, params). Repointing that identity through a
