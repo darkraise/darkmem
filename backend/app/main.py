@@ -223,12 +223,17 @@ async def lifespan(app: FastAPI):
         make_ppr_snapshot_runner,
         make_relation_embedding_runner,
         make_repo_entity_anchoring_runner,
+        make_repo_entity_merge_runner,
         make_code_deriver_runner,
         make_citation_reverify_runner,
     )
     from app.services.entity_anchoring import (
         REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
         REPO_ENTITY_ANCHORING_JOB_KEY,
+    )
+    from app.services.entity_merge import (
+        REPO_ENTITY_MERGE_CONFIG_SCHEMA,
+        REPO_ENTITY_MERGE_JOB_KEY,
     )
     from app.services.citation_reverify import (
         CITATION_REVERIFY_CONFIG_SCHEMA,
@@ -451,6 +456,25 @@ async def lifespan(app: FastAPI):
         runner=make_repo_entity_anchoring_runner(app, async_session_factory),
         max_run_seconds=900,
         config_schema=REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=REPO_ENTITY_MERGE_JOB_KEY,
+        display_name="Repo Entity Merge",
+        description=(
+            "Fuses a repository-asserted entity with the near-named node a "
+            "memory already minted, at the same 0.85 threshold and under the "
+            "same discriminator Phase 4 uses (doc 10 §6). Anchoring only "
+            "closes the order where the repo is indexed first; a repo indexed "
+            "after its memories — what every existing install produces — "
+            "leaves 'postgres' and 'postgresql' as two nodes forever, because "
+            "the deriver's write is an exact-key upsert with no probe. Off "
+            "the hot path: it merges after the fact, never during capture."
+        ),
+        default_cron="50 * * * *",
+        min_interval_seconds=300,
+        runner=make_repo_entity_merge_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=REPO_ENTITY_MERGE_CONFIG_SCHEMA,
     ))
     job_registry.register(Job(
         key=CITATION_REVERIFY_JOB_KEY,

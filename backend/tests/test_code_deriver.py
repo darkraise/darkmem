@@ -1521,7 +1521,7 @@ def test_main_registers_the_full_direct_job_roster():
         "graph_orphan_cleanup", "tag_orphan_cleanup",
         "expired_memory_cleanup", "PPR_SNAPSHOT_JOB_KEY",
         "RELATION_EMBEDDING_JOB_KEY", "REPO_ENTITY_ANCHORING_JOB_KEY",
-        "CITATION_REVERIFY_JOB_KEY",
+        "REPO_ENTITY_MERGE_JOB_KEY", "CITATION_REVERIFY_JOB_KEY",
     }
     assert keys == expected, (
         f"direct job registrations in app/main.py drifted from the roster "

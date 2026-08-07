@@ -23,7 +23,7 @@ class PostgresGraphRepository:
 
     async def find_similar_entity(
         self, embedding: list[float], fingerprint: str, threshold: float = 0.85,
-        entity_type: str | None = None,
+        entity_type: str | None = None, exclude_entity_id: str | None = None,
     ) -> dict | None:
         # An untyped probe is a defect, not a supported mode: a name embedding
         # alone can't tell a `tool` named "react" from a `concept` named
@@ -34,6 +34,15 @@ class PostgresGraphRepository:
         # for existing keyword callers.
         if entity_type is None:
             raise ValueError("find_similar_entity requires an entity_type")
+        # ``exclude_entity_id`` serves the retroactive merge pass, whose query
+        # vector is read out of the partition rather than embedded from a name:
+        # the nearest neighbour of a stored row is the row itself at cosine 1.0,
+        # and LIMIT 1 would return nothing else. Phase 4 needs no such argument
+        # — it probes with a fresh name that has no row yet — so the default
+        # leaves the write path's query byte-identical.
+        exclude_clause = (
+            "  AND e.id <> CAST(:exclude AS uuid)\n" if exclude_entity_id else ""
+        )
         table = child_table("entity_embeddings", fingerprint)
         # The ORDER BY ... <=> uses the HNSW index for ranking; the threshold in
         # WHERE is a cheap post-filter on the single nearest row (LIMIT 1). A
@@ -50,10 +59,15 @@ class PostgresGraphRepository:
                 JOIN entities e ON e.id = ee.entity_id
                 WHERE 1 - (ee.embedding <=> CAST(:vec AS vector)) >= :threshold
                   AND e.entity_type = :etype
+                {exclude_clause}
                 ORDER BY ee.embedding <=> CAST(:vec AS vector)
                 LIMIT 1
             """),
-            {"vec": str(embedding), "threshold": threshold, "etype": entity_type},
+            {
+                "vec": str(embedding), "threshold": threshold,
+                "etype": entity_type,
+                **({"exclude": exclude_entity_id} if exclude_entity_id else {}),
+            },
         )
         row = result.mappings().first()
         if not row:

@@ -635,6 +635,54 @@ def make_repo_entity_anchoring_runner(
     return run
 
 
+def make_repo_entity_merge_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Fuse the near-named pairs the anchoring order left behind (T2.101).
+
+    Tier C, and deliberately not a dreaming-family member for the same reason
+    `repo_entity_anchoring` is not: contract 6 fixes that family at six, and
+    this is a graph repair in the class doc 10 §6 owns. Invariant 15 is
+    unaffected — neither capture nor retrieval reaches this runner.
+
+    The pass reads vectors rather than producing them, so the orchestrator is
+    needed only to name the fingerprint a partition read may key on. Without
+    one there is nothing to resolve, so the run is a no-op rather than a
+    failure.
+    """
+    async def run() -> None:
+        from app.services.entity_merge import (
+            REPO_ENTITY_MERGE_CONFIG_SCHEMA,
+            REPO_ENTITY_MERGE_JOB_KEY,
+            merge_repo_entity_duplicates,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("repo_entity_merge skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in REPO_ENTITY_MERGE_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(REPO_ENTITY_MERGE_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await merge_repo_entity_duplicates(
+                session, llm, candidate_batch=int(knobs["candidate_batch"]),
+            )
+            await session.commit()
+
+        if outcome.merged:
+            logger.info(
+                "Repo entity merge: %d pair(s) fused of %d probed under %s",
+                outcome.merged, outcome.probed, outcome.fingerprint,
+            )
+    return run
+
+
 def make_citation_reverify_runner(
     app,
     session_factory: async_sessionmaker[AsyncSession],
