@@ -16,7 +16,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import event, text
 
-from app.services.config import PURPOSES, get_llm_config
+from app.services.config import PURPOSES, cfg_to_schema, get_llm_config
+from tests.response_coverage import undeclared_keys
 
 
 class _QueryCounter:
@@ -187,3 +188,31 @@ async def test_absent_purposes_fall_back_to_settings_defaults(session):
     config = await get_llm_config(session)
     assert set(config) == set(PURPOSES)
     assert config["embedding"].model
+
+
+# ───────────────── the undeclared-field guard (T2.104) ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_config_llm_route_serves_every_purpose_it_resolves(
+    client, auth_headers, session
+):
+    """`get_llm_config` resolves all eight `PURPOSES` and `GET /config/llm`
+    always builds a payload keyed on all eight of them, but
+    `LLMConfigResponse` used to declare six — dropping `synthesis` and
+    `verification` exactly like `facts_read`'s fields, one directory over.
+    Diffs the resolved purpose set against the served JSON instead of
+    hand-listing eight names, so a ninth purpose added later is covered
+    without a new assertion.
+    """
+    config = await get_llm_config(session)
+    built = {
+        purpose: cfg_to_schema(cfg).model_dump() for purpose, cfg in config.items()
+    }
+
+    response = await client.get("/api/v1/config/llm", headers=auth_headers)
+    served = response.json()
+
+    missing = undeclared_keys(built, served)
+    assert not missing, f"LLMConfigResponse dropped: {missing}"
+    assert set(PURPOSES) <= set(served)
