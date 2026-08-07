@@ -46,6 +46,7 @@ Stubbed — two inputs, both of them *corpus*, neither of them ladder input:
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -152,6 +153,13 @@ def claim_key(key: str) -> str:
     Deliberately derived rather than stored beside each entry: a declared
     claim label can disagree with the content, and a wrong label would make
     the design check validate a structure the corpus does not have.
+
+    **The convention is guard-by-convention, so it is guarded.** On its own
+    this rule reads a key like ``pg-c`` as a variant of claim ``pg`` —
+    a grouping nobody wrote down, which the design check would then happily
+    validate. :func:`validate_claim_key_convention` runs in the loader and
+    refuses that shape, so the only single-character tails the corpus can
+    contain are ones with a sibling.
     """
     head, _, tail = key.rpartition("-")
     return head if head and len(tail) == 1 else key
@@ -223,8 +231,37 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
             ) from exc
 
         entry["memory_id"] = memory_id_for_key(key)
+    validate_claim_key_convention(entries)
     validate_corroboration_design(entries)
     return entries
+
+
+def validate_claim_key_convention(entries: list[dict]) -> None:
+    """Refuse a variant marker that groups nothing.
+
+    :func:`claim_key` reads any trailing single-character segment as a
+    variant marker, so a future ``pg-c`` would be filed under a claim ``pg``
+    that no entry declares and no reader expects — and the design check would
+    validate that invented grouping rather than refusing it. Variants exist in
+    sets by construction (``-a``/``-b``, ``-1``..``-3``), so a marker with no
+    sibling sharing its head is a key that means something else. The fix is to
+    rename it (``pg-cx``), which is what this message says.
+    """
+    by_head: dict[str, list[str]] = {}
+    for entry in entries:
+        key = entry["key"]
+        head, _, tail = key.rpartition("-")
+        if head and len(tail) == 1:
+            by_head.setdefault(head, []).append(key)
+    for head, keys in sorted(by_head.items()):
+        if len(keys) == 1:
+            raise ValueError(
+                f"key {keys[0]!r} ends in a single-character segment, which "
+                f"claim_key reads as a variant marker, but no other entry "
+                f"shares the claim {head!r}. A variant with no sibling is a "
+                f"key whose last segment is not a variant marker at all; give "
+                f"it a final segment of two characters or more"
+            )
 
 
 def validate_corroboration_design(entries: list[dict]) -> None:
@@ -289,6 +326,83 @@ def validate_corroboration_design(entries: list[dict]) -> None:
                 f"origins, at or over {_GAP}, so the time-gap gate fires and the "
                 f"claim leaves the bucket its group exists to populate"
             )
+
+
+def validate_diversity_group_against_fixture(
+    entries: list[dict], fixture: dict
+) -> dict[str, str]:
+    """Tie each ``diversity`` claim to the repository import that seconds it.
+
+    The diversity group's design spans two committed files, and the dependency
+    between them was unguarded: a ``diversity`` claim naming a package the
+    fixture does not import still loads, still validates and still runs, and
+    then quietly yields a one-origin ``candidate`` — the bucket shrinks with
+    no error and no symptom, which is the same genus of silent-wrongness
+    :func:`validate_corroboration_design` exists to refuse one file down.
+    ``_DESIGN`` cannot catch it: it grants ``diversity`` a single memory origin
+    precisely because the second origin is supposed to come from the parse.
+
+    Refuses three shapes and returns the claim → dependency map it proved:
+
+    - a claim naming none of the fixture's dependencies (the import was never
+      added, or was renamed out from under the claim);
+    - a claim naming several (the grouping is ambiguous, so which fact the
+      claim lands on is not readable off the corpus);
+    - two claims naming the same dependency (they converge on one fact, so the
+      bucket carries fewer claims than the corpus appears to declare).
+
+    The other direction is deliberately allowed: an import no memory notes is
+    a code-only fact born on the rung, counted by the completeness probe's
+    carve-out rather than lost.
+    """
+    from app.services.code_deriver import dependency_name
+
+    dependencies: set[str] = set()
+    for edge in fixture.get("imports", ()):
+        name = dependency_name(edge["target_key"])
+        if name is None:
+            raise ValueError(
+                f"repo fixture import {edge['target_key']!r} is not a "
+                f"dependency the deriver will assert, so it seconds nothing"
+            )
+        dependencies.add(name.lower())
+
+    by_claim: dict[str, list[dict]] = {}
+    for entry in entries:
+        if entry["group"] != "diversity":
+            continue
+        by_claim.setdefault(claim_key(entry["key"]), []).append(entry)
+
+    resolved: dict[str, str] = {}
+    for claim, group_entries in sorted(by_claim.items()):
+        text_ = " ".join(entry["content"] for entry in group_entries).lower()
+        named = sorted(
+            dep for dep in dependencies
+            if re.search(rf"(?<![\w-]){re.escape(dep)}(?![\w-])", text_)
+        )
+        if not named:
+            raise ValueError(
+                f"diversity claim {claim!r} names none of the repository's "
+                f"imported dependencies {sorted(dependencies)}; without the "
+                f"import there is no second origin, so the claim silently "
+                f"holds at one origin and leaves the diversity bucket"
+            )
+        if len(named) > 1:
+            raise ValueError(
+                f"diversity claim {claim!r} names several imported "
+                f"dependencies {named}; which fact it corroborates is then "
+                f"not readable off the corpus"
+            )
+        dependency = named[0]
+        if dependency in resolved.values():
+            twin = next(k for k, v in resolved.items() if v == dependency)
+            raise ValueError(
+                f"diversity claims {twin!r} and {claim!r} both name "
+                f"{dependency!r}; they converge on one fact, so the bucket "
+                f"holds fewer claims than the corpus appears to declare"
+            )
+        resolved[claim] = dependency
+    return resolved
 
 
 def load_repo_fixture(path: str | Path = REPO_FIXTURE_PATH) -> dict:
@@ -658,6 +772,7 @@ async def prepare(
     corpus_bytes = Path(corpus_path).read_bytes()
     entries = load_promotion_corpus(corpus_path)
     fixture = load_repo_fixture(fixture_path)
+    validate_diversity_group_against_fixture(entries, fixture)
 
     await reset()
     await run_smoke.seed_llm_purpose_configs(session_factory, api_key)
