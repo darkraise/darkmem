@@ -169,8 +169,12 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
             async with session_factory() as repo_session:
                 failure_svc = PipelineFailureService(repo_session)
                 try:
+                    # One commit covers both the derivation write and the
+                    # resolve() update: if resolve() itself raises, the
+                    # rollback below undoes the derivation too, so the except
+                    # branch records a real failure rather than a phantom one
+                    # for a repo whose derivation had actually succeeded.
                     result = await assert_repo_graph(repo_session, repo_id)
-                    await repo_session.commit()
                     await failure_svc.resolve(
                         "code_repo", repo_id, CODE_DERIVER_PIPELINE_NAME,
                     )

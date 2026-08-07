@@ -1436,17 +1436,113 @@ def test_the_cross_graph_scan_flags_a_planted_join(tmp_path):
 # read the result off the database, never off the primitive's return value.
 
 
-def test_main_registers_the_code_deriver_job():
-    """Wired into the process that actually runs, not only constructible —
-    the lifespan is where every other job is registered."""
-    import inspect
+def _direct_job_registrations(source: str) -> list[ast.Call]:
+    """Every `job_registry.register(Job(...))` call in `app/main.py`.
 
+    Deliberately excludes the dream-job family, which never calls
+    `job_registry.register` directly — it rides through
+    `register_dream_jobs(job_registry, ...)` instead — so this collects
+    exactly the roster CLAUDE.md calls "the twelve live ones", the direct
+    registrations `code_deriver` joined.
+    """
+    tree = ast.parse(source)
+    calls = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "job_registry"
+            and node.args
+            and isinstance(node.args[0], ast.Call)
+            and isinstance(node.args[0].func, ast.Name)
+            and node.args[0].func.id == "Job"
+        ):
+            calls.append(node.args[0])
+    return calls
+
+
+def _job_kwarg(call: ast.Call, name: str) -> ast.expr | None:
+    for kw in call.keywords:
+        if kw.arg == name:
+            return kw.value
+    return None
+
+
+def _binding_token(node: ast.expr) -> str:
+    """The source-level identity of a `Job(...)` keyword value: the
+    referenced name for a `Name` node (e.g. `CODE_DERIVER_JOB_KEY`), the
+    literal for a string `Constant` (e.g. `"repo_sync"`). Checking the
+    *binding* rather than a resolved runtime value is what makes deleting
+    either the import or the whole registration block fail this test — the
+    RRF binding-scans in `test_chat_retrieval_parity.py` are the same shape,
+    checked against `rank_fusion.py`.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return node.id
+    raise AssertionError(f"unexpected Job() keyword expression: {ast.dump(node)}")
+
+
+def test_main_registers_the_full_direct_job_roster():
+    """A source-substring check over `inspect.getsource(app.main)` — the
+    test this replaces — passes when the *entire*
+    `job_registry.register(Job(key=CODE_DERIVER_JOB_KEY, ...))` block is
+    deleted and only its import lines survive: measured directly by the
+    T2.96 adversarial review, which deleted exactly that block and watched
+    116/116 tests pass, the substring test included (import lines alone
+    satisfy all three substrings). It proved nothing about production
+    reachability, which is the one thing this task exists to establish.
+
+    An AST scan over the *binding* each `Job(key=...)` resolves to, not the
+    source text, closes that hole: deleting the block deletes its `Job(...)`
+    call node, so its key vanishes from what this scan collects and the
+    roster comparison goes red — imports lingering or not.
+
+    Scanning the *full* direct roster, not only `code_deriver`'s row, closes
+    the identical, pattern-inherited exposure the review flagged in
+    `test_code_reconcile.py`'s twin and, by inspection, `ppr_snapshot`'s —
+    both keys are asserted here through the same mechanism, at no extra
+    cost, so their equivalent tests may keep their existing (weaker) shape
+    without leaving the gap unclosed.
+    """
     import app.main as main
 
-    source = inspect.getsource(main)
-    assert "make_code_deriver_runner" in source
-    assert "CODE_DERIVER_JOB_KEY" in source
-    assert "CODE_DERIVER_MIN_INTERVAL_SECONDS" in source
+    source = Path(main.__file__).read_text()
+    registrations = _direct_job_registrations(source)
+    keys = {_binding_token(_job_kwarg(call, "key")) for call in registrations}
+
+    expected = {
+        "repo_sync", "BUFFER_FLUSH_JOB_KEY", "code_enrichment",
+        "CODE_RECONCILE_JOB_KEY", "CODE_DERIVER_JOB_KEY",
+        "token_blocklist_cleanup", "pipeline_failure_cleanup",
+        "graph_orphan_cleanup", "tag_orphan_cleanup",
+        "expired_memory_cleanup", "PPR_SNAPSHOT_JOB_KEY",
+        "RELATION_EMBEDDING_JOB_KEY",
+    }
+    assert keys == expected, (
+        f"direct job registrations in app/main.py drifted from the roster "
+        f"CLAUDE.md documents: missing={expected - keys}, "
+        f"unexpected={keys - expected}"
+    )
+
+    deriver_calls = [
+        call for call in registrations
+        if _binding_token(_job_kwarg(call, "key")) == "CODE_DERIVER_JOB_KEY"
+    ]
+    assert len(deriver_calls) == 1
+    deriver = deriver_calls[0]
+
+    runner_expr = _job_kwarg(deriver, "runner")
+    assert isinstance(runner_expr, ast.Call) and isinstance(runner_expr.func, ast.Name)
+    assert runner_expr.func.id == "make_code_deriver_runner", (
+        "code_deriver's Job() is not wired to make_code_deriver_runner"
+    )
+
+    interval_expr = _job_kwarg(deriver, "min_interval_seconds")
+    assert _binding_token(interval_expr) == "CODE_DERIVER_MIN_INTERVAL_SECONDS"
 
 
 def test_code_deriver_is_not_a_dream_job_family_member():
@@ -1581,19 +1677,33 @@ async def test_runner_derives_repo_ids_end_to_end(setup_database):
             await registry.trigger(CODE_DERIVER_JOB_KEY)
             async with factory() as session:
                 snapshot = await _repo_snapshot(session, repo_id)
-                worst = {
+                # A per-row occurrence count, not `max(cardinality(repo_ids))`:
+                # cardinality proves "this repo is the array's sole occupant",
+                # which only coincides with "the repo id appears exactly once"
+                # because no other committed test shares an entity with this
+                # repo's rows. `sqlalchemy`/`fastapi` are global
+                # (name, entity_type) keys a neighbouring test could
+                # legitimately co-assert, which would push cardinality past 1
+                # while the repo id still appears exactly once per row.
+                not_exactly_once = {
                     table: (await session.execute(
-                        text(f"SELECT max(cardinality(repo_ids)) FROM {table} "
-                             "WHERE CAST(:rid AS uuid) = ANY(repo_ids)"),
+                        text(
+                            f"SELECT count(*) FROM {table} "
+                            "WHERE (SELECT count(*) FROM unnest(repo_ids) u "
+                            "WHERE u = CAST(:rid AS uuid)) != 1 "
+                            "AND CAST(:rid AS uuid) = ANY(repo_ids)"
+                        ),
                         {"rid": str(repo_id)},
                     )).scalar()
                     for table in ("entities", "entity_relations")
                 }
             assert snapshot["entities"], "the trigger must actually write something"
             assert snapshot["relations"], "the trigger must actually write something"
-            assert worst["entities"] == 1, "repo id duplicated in entities.repo_ids"
-            assert worst["entity_relations"] == 1, (
-                "repo id duplicated in entity_relations.repo_ids"
+            assert not_exactly_once["entities"] == 0, (
+                "repo id duplicated within some entities.repo_ids row"
+            )
+            assert not_exactly_once["entity_relations"] == 0, (
+                "repo id duplicated within some entity_relations.repo_ids row"
             )
             if first_snapshot is None:
                 first_snapshot = snapshot
