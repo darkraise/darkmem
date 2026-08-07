@@ -1,0 +1,10 @@
+ facts | distinct_origins | source_rows | kinds | verified | sources_changed | expired 
+-------+------------------+-------------+-------+----------+-----------------+---------
+    62 |                0 |          62 |     1 |        0 |              62 |       0
+(1 row)
+
+ multi_origin_facts 
+--------------------
+                  0
+(1 row)
+

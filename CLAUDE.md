@@ -669,6 +669,59 @@ read at **nomination** time by `generate_pairs`, which is not a
 lifecycle change — `supersede()` still retires that exact pair for any
 caller that asks.
 
+## Verified facts (L2)
+
+`knowledge_triples` is the fact vault, on two independent axes. The
+**belief** axis is the validity window (`reference_time` / `valid_at` /
+`invalid_at` / `expired_at`) and is invalidate-not-delete —
+`article_citations` takes a hard FK on that premise. The **verification**
+axis is the ladder `candidate → corroborated → confirmed`, with
+`disputed` sideways: `confirmed` is human-only (`ratify` is the one
+writer in the tree); the machine's ceiling is `corroborated`.
+Corroboration counts `COUNT(DISTINCT origin_key)` over `fact_sources`,
+never rows: N = 3, or 2 when two **attributable** origins differ in
+source-kind or lie ≥ 7 days apart. Anonymous origins (NULL, blank,
+`unknown:*`) fold into one reserved bucket per fact that counts once and
+never fires a gate, and a citation `citation_reverify` marked stale is
+retained but corroborates nothing (`LIVE_SOURCE_PREDICATE`). The three
+thresholds are **floors** (`verification_ladder` config row): tightening
+is free; loosening below a floor is honoured only for parameters named in
+the `ladder_measurements` config row by a recorded G-C measurement, else
+clamped with a warning. The decision (`verification_ladder.decide`) is a
+pure function; the contradiction veto is absolute — one non-echo
+contradiction beats any count, no config on its path — and its only
+instrument is the qualified `verification` judge, so **machine disputes
+are unreachable until a qualification record exists** (T2.54 → T2.41).
+Demotion carries hysteresis (`verification_demote_grace_cycles`; the
+`under-sourced` label is served, never withheld).
+
+**One journaller.** `KnowledgeTripleRepository.set_verification_status`
+is the sole writer of `verified` events (before/after status plus the
+full decision evidence — `outcome`, `origin_count`, `required_n`,
+`gate_fired`, `source_kinds`, the two blocked flags, T2.64's
+contradiction counterpart). Ordinary holds journal nothing;
+contradiction- and supersession-blocked holds journal.
+`_write_born_rung` — the deriver birth **and** the post-dispute restore —
+writes `corroborated` with no journal row on doc 10 §6's licence (*the
+parse is the verification*); G-C's metrics knowingly exclude those rows,
+and the gate ledger says so where the number lives.
+
+**An evidence record gates the label, never the code** (`claim_gates`,
+T2.95/T2.100): a promoted fact status reaches a reader only while
+`app/services/promotion_metrics_record.json` exists with `gate_eligible`
+exactly `true` — minted only by a cleared G-C run, never by hand.
+**G-C was measured 2026-08-07 (T2.40) and is not evaluable: under-powered
+on every probe — no fact has ever exited `candidate` in any journal this
+machine can see — so the gate stays open, the record stays unminted, and
+every promoted or born badge serves as `candidate` with the
+`verification_unmeasured` reason, scan-enforced.** The bars are stated as
+config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
+(committed before the first measurement; the pin test makes moving one a
+visible two-file diff), the metrics are SQL over `events` alone in
+`benchlib/promotion_metrics.py`, and the false-promotion audit cannot
+produce a non-vacuous number before the judge qualifies — both its arms
+(machine dispute, human rejection) dead-end on the unqualified judge.
+
 ## MCP endpoint
 
 `/mcp` is unauthenticated (local-network trust model); its only
