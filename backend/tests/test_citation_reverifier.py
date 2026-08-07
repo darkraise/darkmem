@@ -524,6 +524,58 @@ async def test_two_ticks_over_one_run_mark_once_and_enqueue_once(session):
     ) == 1
 
 
+async def test_a_head_move_while_still_broken_marks_once_and_advances_the_stamp(
+    session,
+):
+    """The ``already_stale`` branch: a break survives a further HEAD move.
+
+    ``test_two_ticks_over_one_run_mark_once_and_enqueue_once`` reuses one HEAD,
+    so its second tick selects zero candidates and never reaches this branch.
+    Production does reach it: two re-index runs can land between two Tier-C
+    ticks, and if the second run still lacks the node, the repository's sha
+    moves again while the citation is *already* marked. Without this branch a
+    second break would either re-journal (two rows for one break) or leave
+    ``reverified_at_sha`` stuck at the first broken sha, which would make every
+    later tick re-select the row forever. ``stale_at_sha`` must also keep
+    recording the sha the citation *first* broke at, not the latest one it was
+    merely re-observed broken at.
+    """
+    repo_id = await _lifted(session, name="Redouble-Repo")
+    fact = await _fact_for(session, "redouble-repo", "DEPENDS_ON", "httpx")
+    before_enqueues = len(await _events(session, "sources_changed", fact["id"]))
+
+    await _drop_node(session, repo_id, "httpx")
+    await _set_head(session, repo_id, NEW_SHA)
+    first = await reverify_citations(session)
+    assert first.marked_stale == 1
+    assert first.already_stale == 0
+
+    third_sha = "d00dfeed"
+    await _set_head(session, repo_id, third_sha)
+    second = await reverify_citations(session)
+
+    assert second.citations_scanned == 3, (
+        "the moved HEAD re-selects every citation of the repo, language basis included"
+    )
+    assert second.marked_stale == 0
+    assert second.already_stale == 1, "the second break must take the already_stale branch"
+    assert second.confirmed == 2, "the two still-resolving language citations are untouched"
+    assert second.cleared == 0
+    assert second.facts_enqueued == 0, "one marking per break enqueues nothing further"
+
+    assert len(await _events(session, CITATION_STALE, fact["id"])) == 1, (
+        "one marking per break, even across a further HEAD move"
+    )
+    assert (
+        len(await _events(session, "sources_changed", fact["id"])) - before_enqueues
+    ) == 1, "the second tick must enqueue nothing further"
+
+    detail = (await _sources(session, fact["id"]))[0]["detail"]
+    assert detail[STALE_DETAIL_KEY] is True
+    assert detail[STALE_AT_SHA_KEY] == NEW_SHA, "the sha it first broke at must not move"
+    assert detail[REVERIFIED_AT_SHA_KEY] == third_sha, "the stamp still advances"
+
+
 async def test_a_run_whose_citations_all_resolve_emits_nothing_at_all(session):
     """The provenance no-op, and the direction a passing test most easily fakes.
 
