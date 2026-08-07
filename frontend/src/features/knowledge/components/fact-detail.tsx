@@ -175,7 +175,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
             value="sources"
             title="Sources"
             meta={`${distinctOrigins} distinct ${distinctOrigins === 1 ? "origin" : "origins"} · ${fact.sources.length} ${fact.sources.length === 1 ? "row" : "rows"}`}
-            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over these groups, never the raw row count."
+            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over the non-stale groups, never the raw row count."
           >
             <FactSourcesGroups sources={fact.sources} />
             {fact.under_sourced_note && (
@@ -383,7 +383,7 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
             value="sources"
             title="Sources"
             meta={`${fact.sources.length} distinct ${fact.sources.length === 1 ? "origin" : "origins"} · ${rowCount} ${rowCount === 1 ? "row" : "rows"}`}
-            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over these groups, never the raw row count."
+            hint="fact_sources rows grouped by origin_key; the badge's K is COUNT(DISTINCT origin_key) over the non-stale groups, never the raw row count."
           >
             <FactSourcesGroups sources={flatSources} />
           </DetailSection>
