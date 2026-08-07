@@ -667,6 +667,45 @@ answer has to say why that residue is acceptable or close it.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
 
+#### T2.105 — A task with no `progress.md` row is invisible to scheduling
+
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: runbook §6` · `Tag: target-new` · `Gate: none (planning integrity)`
+
+**Minted 2026-08-07, after the gap occurred twice in one day.** The runbook makes
+`progress.md` canonical for scheduling. A task that exists in an epic file with complete
+text but has no row there **cannot be picked up**, however finished its specification is,
+and nothing announces the absence.
+
+It has now happened twice, and the second time is the more damning:
+
+- **T2.86** sat rowless from 2026-08-04. Adjacent work built five of its six clauses
+  while it was invisible, nobody could close it, and it surfaced only because T2.48 tried
+  to route work to it. Its own correction then cited an artifact that does not exist,
+  because the earlier dispatch was equally unrecorded.
+- **T2.104** was minted 2026-08-07 by the controller — *in the same session that fixed
+  T2.86's missing row* — and immediately had none itself. It was caught only because the
+  controller happened to re-run the ad-hoc sweep it had written hours earlier.
+
+That is the signature of a missing guard rather than carelessness: the check exists, it
+works, and nothing runs it.
+
+**What.** A test that fails when the two files disagree in either direction — a
+`#### T<id>` heading in any `docs/planning/tasks/*.md` with no `| T<id> |` row in
+`progress.md`, or a row naming a task no epic file defines. Both directions matter: the
+second catches a row surviving a task's deletion or renumbering.
+
+Keep it cheap and dependency-free — this is a text comparison over two globs, not a
+planning-document parser. It belongs wherever the repo's other planning-hygiene checks
+run, and it must name the offending ids in its failure message, since "the files
+disagree" without the ids just relocates the search.
+
+**Done when:**
+- [ ] A task heading with no row fails the build, naming the id — mutation-drilled
+- [ ] A row with no task heading fails the same way, also drilled
+- [ ] The check passes on the tree as it stands today, or names exactly what it found
+
+**Verify.** `cd backend && python -m pytest tests/test_planning_docs.py -q`
+
 #### T2.104 — A response model that silently drops what the builder writes
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 12 §2` · `Tag: target-new` · `Gate: standing`
@@ -3020,3 +3059,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-07 | T2.62, T2.101 | 1 | **T2.62 gains a clause: an expired fact can sit in the review queue with nothing able to clear it.** `build_facts_query` has no liveness predicate and `verification_recompute` skips expired rows, so a `disputed`-then-expired fact stays queued indefinitely | Found by T2.101's rescope, which correctly routed it here rather than fixing it in a merge job — but routing is only real if the receiving task's clauses bind it, which is the lesson T2.86 taught earlier the same day (a disposition pointed at a task whose Done-when clauses did not oblige the work is an effective drop). The state is **pre-existing**: a stated expiry already produces it, so T2.101 added a second route rather than the defect itself |
 | 2026-08-07 | T2.86 | 2 | **T2.86 dispatched a second time (`claude/e2-lane-cn`) found five of its six Done-when clauses already satisfied by the merged `claude/e2-lane-az` work, and the task's `Size` corrected `M` → `S` for what genuinely remained: the stale-citation clause.** Its own text still described the pre-merge tree (`useDemoFact` called unconditionally, no live door caller, `FactDetailResponse` missing every field the page shows) though that state had not been true since `d7ce0dd8`. All six clauses are now checked, with each already-satisfied one naming what satisfied it. The stale-citation build turned out to be two bugs, not one: the frontend gap T2.48's rescope named (`fact-sources.tsx` read `FactSourceGroup.stale` nowhere) was real, but the field never reached the wire to begin with — `FactSourceGroup` in `app/schemas/facts.py` never declared `stale`, so FastAPI's `response_model` validation silently dropped the key `facts_read._source_group` had been computing since T2.48. Both fixed | Logged Tier 2 rather than Tier 1 because it corrects a scheduling-relevant field (`Size`) on a task another agent may still be triaging, and because the wire-level bug is the **fourth** instance of this exact schema shape in `app/schemas/facts.py`, not the third as first logged here — `demotion_pending_since` (T2.46, `99a47930`) was the first, `label_suppressed` and `unverified` the second and third, all three silently dropped by an undeclared-field response model before being caught, per that file's own accumulated comments (corrected 2026-08-07 by this task's own adversarial review, which found the earlier instance the original count missed). The fourth occurrence is worth the structural guard (a test asserting every key a `facts_read` builder function writes is declared on its response schema); not built here because it is outside this task's named scope, and minted as T2.104. Caught by writing the test against the live endpoint rather than against the service function in isolation — a unit test on `_source_group` alone would have passed while the wire silently lost the field, which is the same shape invariant 14 exists to catch one layer up |
 | 2026-08-07 | T2.104, T2.48, T2.86 | 2 | **T2.104 minted: a response model silently drops any key its builder writes but it does not declare — third instance in one schema file.** T2.86 found that `FactSourceGroup.stale` never reached the wire at all: the builder computed it from T2.48's landing, the frontend typed it, and the schema never declared it, so pydantic's `extra="ignore"` dropped it with no error. `label_suppressed` and `unverified` were the same shape earlier | **The instructive part is that three review passes agreed on the wrong claim.** T2.48's report, its Fable adversarial review and its rescope all recorded the flag as *served but unrendered* — the visible-cause story "ending at the API boundary". It ended one layer earlier. Each pass read the builder and the frontend type, which are both correct in isolation; none drove the door and diffed the payload, because a silently-dropped field has no symptom. The controller then repeated the claim from the same evidence. A defect class that survives an adversarial review and a rescope is a missing guard, not a missed inspection |
+| 2026-08-07 | T2.105, T2.86, T2.104 | 2 | **T2.105 minted: a task with no `progress.md` row is invisible to scheduling, and the gap occurred twice in one day.** T2.86 sat rowless from 2026-08-04 while adjacent work built five of its six clauses; T2.104 was minted rowless by the controller in the very session that fixed T2.86's row | The second occurrence is what makes this a guard rather than a lapse. The controller had already written the detecting sweep, run it, used its output to restore T2.86 — and then reproduced the defect within hours, catching it only by chance re-running the same sweep. A check that exists, works, and is not wired to anything is indistinguishable from no check at all. Same reasoning as T2.104's own mint: a defect that survives the people who just fixed its twin is a missing guard |
