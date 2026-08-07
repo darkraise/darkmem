@@ -397,6 +397,72 @@ describe("FactDetail (DEMO off — GET /knowledge/facts/{id})", () => {
     expect(screen.queryByText("stale")).not.toBeInTheDocument()
   })
 
+  // T2.86 fix round (F3): the earlier "not as disputed" assertion held
+  // trivially, because that fixture's `verification_status` was not
+  // `disputed` — the string could not have rendered regardless of the
+  // stale treatment. This fixture *is* disputed (proven by asserting the
+  // dispute claim renders first), so a global `queryByText("disputed")`
+  // would now find it legitimately elsewhere on the page. The scoped
+  // assertion is what actually tests the doc 10 §6 claim: the stale
+  // group's own markup — badge plus inline note — never picks up a
+  // dispute-styled "disputed" treatment just because the fact it belongs
+  // to happens to be disputed.
+  it("a stale source group inside a disputed fact still reads as stale, not disputed", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      detailItem({
+        verification_status: "disputed",
+        review_state: "open",
+        badge: { ...BADGE, verification_status: "disputed", claim: DISPUTED_CLAIM },
+        dispute: {
+          review_state: "open",
+          claim: { subject: "darkmem", rel_type: "USES", object: "postgres", id: "f1" },
+          counterpart: {
+            subject: "darkmem",
+            rel_type: "AVOIDS",
+            object: "postgres",
+            id: "f2",
+          },
+          counterpart_absent: null,
+          rule: "functional_object_conflict",
+          witness_origin: "origin-7",
+          enumeration: "first_finding",
+        },
+        sources: [
+          {
+            origin_key: "repo-b",
+            unknown_origin: false,
+            stale: true,
+            source_kinds: ["code"],
+            first_seen: "2026-06-01T09:00:00Z",
+            last_seen: "2026-06-01T09:00:00Z",
+            sources: [
+              {
+                id: "s2",
+                source_kind: "code",
+                source_ref: "code@def6789",
+                detail: { symbol_key: "main" },
+                created_at: "2026-06-01T09:00:00Z",
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    render(<FactDetail factId="f1" />, { wrapper })
+
+    // Confirms the fixture is genuinely disputed — the word legitimately
+    // appears on the page, so the scoped check below is non-vacuous.
+    await screen.findByText(DISPUTED_CLAIM)
+    fireEvent.click(screen.getByText("Sources"))
+
+    const staleGroup = screen
+      .getByText("origin_key: repo-b")
+      .closest<HTMLDivElement>("div.rounded-md")
+    expect(staleGroup).not.toBeNull()
+    expect(within(staleGroup!).getByText("stale")).toBeInTheDocument()
+    expect(within(staleGroup!).queryByText(/disputed/i)).not.toBeInTheDocument()
+  })
+
   // T2.86 fix round (F8): the belief window section's `meta` used to read
   // `fact.project` — every other section's meta is a count or a state, and
   // this one read like a stray copy from the Record section below it. It
