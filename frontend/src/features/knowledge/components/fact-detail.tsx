@@ -23,6 +23,7 @@ import {
   AppliesWhenChips,
   FactTriple,
   RungTransition,
+  SuppressedBadge,
   UnderSourcedBadge,
 } from "./fact-parts"
 import { FactSourcesGroups, sourceGroupsToFlatSources } from "./fact-sources"
@@ -340,6 +341,9 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           <LayerChip layer={2} />
           <VerificationBadge status={fact.verification_status} detail={fact.claim} />
           {fact.under_sourced && <UnderSourcedBadge />}
+          {fact.label_suppressed && (
+            <SuppressedBadge reason={fact.label_suppressed} />
+          )}
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             fact {fact.id.slice(0, 8)}
           </span>

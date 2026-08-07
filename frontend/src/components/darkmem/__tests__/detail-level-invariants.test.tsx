@@ -308,6 +308,7 @@ const FACT_ROW: FactRowData = {
   review_state: "open",
   as_of: "2026-07-27T18:55:00Z",
   under_sourced: true,
+  label_suppressed: null,
   window_closed: true,
   invalid_at: "2025-01-01T00:00:00Z",
   expired: false,

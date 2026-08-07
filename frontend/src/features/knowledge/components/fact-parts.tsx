@@ -1,4 +1,4 @@
-import { ArrowRight, BatteryLow, CalendarOff, History, RefreshCcw } from "lucide-react"
+import { ArrowRight, BatteryLow, CalendarOff, EyeOff, History, RefreshCcw } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { cn } from "darkraise-ui/lib"
 import { VerificationBadge, type VerificationStatus } from "@/components/darkmem"
@@ -96,6 +96,34 @@ export function UnderSourcedBadge({ className }: { className?: string }) {
     >
       <BatteryLow aria-hidden className="h-3 w-3" />
       under-sourced
+    </Badge>
+  )
+}
+
+// T2.95's suppression marker, rendered beside the rung it replaced. The
+// backend withholds a promoted status when its evidence record is absent and
+// serves `candidate` instead — honest about the rung, silent about the reason.
+// Without this the suppressed row and a genuinely-candidate row are identical
+// on screen, so a reader cannot tell "not yet corroborated" from "corroborated,
+// but we have not earned the right to say so". The reason arrives as a full
+// sentence from `claim_gates`, not a slug, so it is shown rather than re-worded:
+// this surface has one job, which is not to paraphrase the gate.
+export function SuppressedBadge({
+  reason,
+  className,
+}: {
+  reason: string
+  className?: string
+}) {
+  return (
+    <Badge
+      variant="outline"
+      size="sm"
+      title={reason}
+      className={cn("border-muted-foreground/50 text-muted-foreground gap-1", className)}
+    >
+      <EyeOff aria-hidden className="h-3 w-3" />
+      label withheld
     </Badge>
   )
 }

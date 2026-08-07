@@ -29,6 +29,7 @@ import {
   BeliefStateBadge,
   FactTriple,
   InReviewBadge,
+  SuppressedBadge,
   UnderSourcedBadge,
 } from "./fact-parts"
 
@@ -67,6 +68,9 @@ export function FactRow({
           detail={fact.claim}
         />
         {fact.under_sourced && <UnderSourcedBadge />}
+        {fact.label_suppressed && (
+          <SuppressedBadge reason={fact.label_suppressed} />
+        )}
         <BeliefStateBadge
           windowClosed={fact.window_closed}
           expired={fact.expired}

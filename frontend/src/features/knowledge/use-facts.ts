@@ -57,6 +57,10 @@ export interface FactRowData {
   /** T2.46's `under-sourced` overlay. Served, never withheld: a corroborated
    *  fact with a pending demotion renders the caution and stays in the list. */
   under_sourced: boolean
+  /** T2.95: the reason a promoted rung was withheld, null when nothing was.
+   *  Carried so a suppressed row and a genuine `candidate` are distinguishable
+   *  on screen, which is the whole point of the backend emitting it. */
+  label_suppressed: string | null
   /** The belief axis, independent of the verification axis above. */
   window_closed: boolean
   invalid_at: string | null
@@ -110,6 +114,10 @@ function fromDemo(fact: DemoFact): FactRowData {
     review_state: fact.review_state,
     as_of: fact.as_of,
     under_sourced: Boolean(fact.under_sourced_note),
+    // The fixture has no suppression: the demo store is not behind a claim
+    // gate, so it has no withheld rung to explain. Null is the honest value,
+    // not a placeholder.
+    label_suppressed: null,
     window_closed: current?.invalid_at != null,
     invalid_at: current?.invalid_at ?? null,
     expired: current?.expired_at != null,
@@ -134,6 +142,7 @@ function fromApi(item: FactListItem): FactRowData {
     review_state: item.review_state === "open" ? "open" : null,
     as_of: badge?.as_of ?? item.created_at,
     under_sourced: item.demotion_pending_since !== null,
+    label_suppressed: item.label_suppressed,
     window_closed: item.belief_window.invalid_at !== null,
     invalid_at: item.belief_window.invalid_at,
     expired: item.belief_window.expired_at !== null,
@@ -291,6 +300,7 @@ export interface LiveFactDetailData {
   review_state: "open" | null
   as_of: string
   under_sourced: boolean
+  label_suppressed: string | null
   demotion_pending_since: string | null
   belief_window: { valid_at: string | null; invalid_at: string | null; expired_at: string | null }
   applies_when: AppliesWhen[]
@@ -321,6 +331,7 @@ function fromApiDetail(item: FactDetailItem): LiveFactDetailData {
     review_state: item.review_state === "open" ? "open" : null,
     as_of: badge?.as_of ?? item.created_at,
     under_sourced: item.demotion_pending_since !== null,
+    label_suppressed: item.label_suppressed,
     demotion_pending_since: item.demotion_pending_since,
     belief_window: item.belief_window,
     applies_when: appliesWhenFromLabels(item.applies_when_labels),
