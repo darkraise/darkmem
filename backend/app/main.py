@@ -222,6 +222,14 @@ async def lifespan(app: FastAPI):
         make_expired_memory_cleanup_runner,
         make_ppr_snapshot_runner,
         make_relation_embedding_runner,
+        make_citation_reverify_runner,
+    )
+    from app.services.citation_reverify import (
+        CITATION_REVERIFY_CONFIG_SCHEMA,
+        CITATION_REVERIFY_CRON,
+        CITATION_REVERIFY_JOB_KEY,
+        CITATION_REVERIFY_MAX_RUN_SECONDS,
+        CITATION_REVERIFY_MIN_INTERVAL_SECONDS,
     )
     from app.services.ppr_snapshot import (
         PPR_SNAPSHOT_CONFIG_SCHEMA,
@@ -398,6 +406,24 @@ async def lifespan(app: FastAPI):
         runner=make_relation_embedding_runner(app, async_session_factory),
         max_run_seconds=900,
         config_schema=RELATION_EMBEDDING_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=CITATION_REVERIFY_JOB_KEY,
+        display_name="Citation Re-verify",
+        description=(
+            "Re-resolves every code citation's recorded symbol_key against "
+            "its repository's current HEAD (doc 10 §6). A citation that no "
+            "longer resolves is marked stale and its fact is queued for the "
+            "verification recompute, which downgrades the badge — never "
+            "expiring the fact, because a deleted symbol may be a rename a "
+            "human should confirm. Leaving this off lets a badge keep "
+            "claiming evidence that no longer exists."
+        ),
+        default_cron=CITATION_REVERIFY_CRON,
+        min_interval_seconds=CITATION_REVERIFY_MIN_INTERVAL_SECONDS,
+        runner=make_citation_reverify_runner(app, async_session_factory),
+        max_run_seconds=CITATION_REVERIFY_MAX_RUN_SECONDS,
+        config_schema=CITATION_REVERIFY_CONFIG_SCHEMA,
     ))
 
     # The Tier-C consolidation ("dreaming") family — doc 08 §5. Every member
