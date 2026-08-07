@@ -305,12 +305,14 @@ outlive a step, say so in the report rather than detaching and stopping — hand
 back mid-verification leaves nothing driving the work.
 
 **A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
-does not populate it and there is no interpreter at the path every **Verify** field names.
-Run the main checkout's interpreter by absolute path
-(`/root/repositories/darkmem/backend/.venv/bin/python`) *from* your worktree's `backend/`
-directory, so imports resolve against your code rather than the main checkout's. The same
-applies to the bench cache below, for the same reason — both are gitignored, and both fail
-in ways that look like a code problem rather than a missing file.
+does not populate it. The merge gate (`./scripts/gate.sh`) automatically resolves this:
+it detects when running in a worktree, falls back to the main checkout's interpreter
+(`/root/repositories/darkmem/backend/.venv/bin/python`), and prints which interpreter
+it resolved so you cannot silently gate against the wrong tree's code. The same
+fallback applies when you manually run the main checkout's interpreter by absolute path
+*from* your worktree's `backend/` directory, so imports resolve against your code rather
+than the main checkout's. The bench cache below has no such automation — both are gitignored,
+and both fail in ways that look like a code problem rather than a missing file.
 
 **The extraction bench does not work cold.** `scripts/extraction_bench/.cache/` is
 gitignored and machine-local, and `--algo-only` exits non-zero on any uncached content.
