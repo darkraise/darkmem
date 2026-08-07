@@ -25,7 +25,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 |---|---|---|---|---|
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
-| G-C | L2 → deriver; Phase 2 exit | **open** | — | — |
+| G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
 | G-D | L2 → L3 | **open** | — | — |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
@@ -492,14 +492,79 @@ never silently absorbed.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | Every powered bucket ≥ 0.5 (`promotion_rate_floor`); axis decidable only with ≥ 1 powered bucket (eligible ≥ 5, `promotion_rate_min_eligible` = the harness's own `UNDER_POWERED_THRESHOLD`) **and** ≥ 1 journaled `promote` in window (`promotion_rate_min_promotions`); stated 2026-08-07, before any gate run | — | — | — |
-| Promotion rate, sliced by which N fired | Same bar family, same keys, per bucket; under-powered buckets reported with denominators, never collapsed, and can neither clear nor fail; stated 2026-08-07, before any gate run | — | — | — |
-| False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | — | — | — |
-| Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | — | — | — |
+| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | Every powered bucket ≥ 0.5 (`promotion_rate_floor`); axis decidable only with ≥ 1 powered bucket (eligible ≥ 5, `promotion_rate_min_eligible` = the harness's own `UNDER_POWERED_THRESHOLD`) **and** ≥ 1 journaled `promote` in window (`promotion_rate_min_promotions`); stated 2026-08-07, before any gate run | **0 eligible, 0 promotions** on both targets (window 2026-05-09 → 2026-08-07): production `darkmem` journal holds 0 `verified` events; bench corpus (62 facts through the shipping lift + recompute) journaled 0 transitions — every fact is a single anonymous origin (`origin_key` NULL on all 62 `fact_sources` rows, folded to the reserved bucket, which counts once and can never fire a gate), so nothing can meet N. Axis not decidable under the pre-stated predicate | `docs/eval/2026-08-07-promotion-metrics.md` (production probe, the task's Verify); `docs/eval/2026-08-07-t2.40-gc-evidence/` (bench run + corpus structure); reproduce: `run_promotion_metrics.py`, `run_gc_evidence.py` | **UNDER-POWERED — not evaluable; gate stays open** |
+| Promotion rate, sliced by which N fired | Same bar family, same keys, per bucket; under-powered buckets reported with denominators, never collapsed, and can neither clear nor fail; stated 2026-08-07, before any gate run | Same numbers, same window, same two targets: 0 eligible in every bucket on both axes (`gate_fired` buckets empty) | same | **UNDER-POWERED — not evaluable; gate stays open** |
+| False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
+| Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
+
+### G-C verdict: **NOT CLEARED — the gate cannot yet be evaluated** (2026-08-07, T2.40)
+
+**The measurement ran and the honest result is that no fact has ever flowed through the
+counting ladder, anywhere this machine can see.** The production `darkmem` database is
+migrated but its journal is empty (0 events of any type). The only corpus that exists —
+the committed retrieval corpus, flowed end-to-end through the shipping lift and the
+production recompute's fast drain (62 `sources_changed` events drained, 62 facts
+recomputed, 0 live LLM calls, fingerprint `qwen3-embedding:0.6b|1024`) — is structurally
+incapable of powering the gate: all 62 facts carry exactly one `fact_sources` row with a
+NULL `origin_key`, which rule 4 of `fact_sources` folds into the reserved anonymous
+bucket; that bucket counts once and is excluded from both gates by design, so no fact can
+ever meet N on this corpus. A 0/0 is under-powered, not a pass, and it is recorded as
+that. **The deriver lane's consequence holds where it now lives — on the label, not the
+build** (M1 split, 2026-08-06): T2.27/T2.28 are merged, but
+`claim_gates.PROMOTION_RECORD_PATH` remains absent — this run minted **no** promotion
+record, so every born-`corroborated` row keeps serving as `candidate` with the
+`verification_unmeasured` reason, scan-enforced. "The deriver lane stays closed" means
+exactly that and nothing more.
+
+**The reason this gate should not clear, looked for hardest and found (three, compounding):**
+
+1. **Starvation is structural, not circumstantial.** No corpus with attributable,
+   diverse origins exists; the bench corpus cannot be made to promote without authoring
+   origin structure, and a corpus authored to promote measures its own design.
+2. **The false-promotion audit cannot produce a non-vacuous number until the
+   `verification` judge qualifies.** Machine disputes flow only through
+   `contradiction_scan` → `VerificationJudge.judge()`, which refuses unconditionally
+   without a qualification record (T2.41, behind T2.54's gold); human rejections flow
+   only through a review queue that only disputes and blocked holds can fill. Both
+   numerator arms dead-end today. **G-C therefore has G-D's judge qualification on its
+   critical path** — a sequencing dependency stated nowhere before this run (T2.40's
+   Depends list does not carry it). Clearing G-C on a zero recorded while the dispute
+   machinery was unreachable would certify the ladder's precision using an audit that
+   could not have caught an imprecision.
+3. **Once the record is minted, the badge outruns the measurement — say so here, where
+   the number lives (T2.28's inherited consequence).** The promotion record this gate
+   mints will light `corroborated` on born rows that the counting ladder never counted:
+   they enter neither the promotion rate's numerator nor its denominator, never appear
+   in the false-promotion audit, and their birth (and post-dispute restore,
+   `_write_born_rung`) journals nothing, by design. Doc 10 §6's argument — *the parse is
+   the verification* — may well be right, since a parsed import is not an inference. But
+   G-C's number is a statement about the **counting** ladder only, and the badge it
+   unlocks will also appear on rows outside that statement's scope. Any future reader of
+   a cleared G-C row must read its claim that narrowly.
+
+**What would evaluate this gate.** Either (a) a production journal window after the
+homelab cutover, with organically captured facts asserted by ≥ 2 attributable
+`origin_key`s across ≥ 2 source kinds or ≥ 7-day gaps, measured **after** T2.54 → T2.41
+qualify the judge so the dispute arm is live — sized to at least one powered bucket per
+axis (≥ 5 eligible), ≥ 20 distinct corroborated facts, ≥ 1 promote; or (b) a
+purpose-built measurement corpus with designed origin/kind/time-gap structure, authored
+under the gold discipline (separate owner, adversarial review — T2.54's pattern), with
+the stated caveat that its promotion rate partially measures the corpus design, and the
+same judge-qualification precondition for the audit. Hand-written journal rows evaluate
+nothing and are forbidden in both branches.
+
+**Twin (rule 2):** this run made **0 live LLM calls** (ingest fully cache-served; lift,
+recompute and every metric are SQL); the bench arm end-to-end is ~40 s wall clock on the
+dev machine, dominated by LAN embedding of the 94-entry corpus. There is no accuracy
+figure here to twin — every rate came back undefined — but the cost column is recorded so
+a future powered run has a baseline for what the measurement itself costs.
 
 **Consequence of a miss:** the code-deriver lane (T2.27–T2.28) stays closed. The deriver
 mints facts born `corroborated`; shipping it over an unproven ladder would put unverified
-assertions into the vault at the ladder's second rung.
+assertions into the vault at the ladder's second rung. *(Updated 2026-08-07: the lane's
+code is merged under the M1 split; "closed" is enforced at the label —
+`claim_gates.corroboration_gate` fails closed while the promotion record stays unminted,
+and this run deliberately minted none.)*
 
 ---
 
