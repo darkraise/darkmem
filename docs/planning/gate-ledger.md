@@ -521,17 +521,34 @@ exactly that and nothing more.
 1. **Starvation is structural, not circumstantial.** No corpus with attributable,
    diverse origins exists; the bench corpus cannot be made to promote without authoring
    origin structure, and a corpus authored to promote measures its own design.
-2. **The false-promotion audit's only *systematic* detector is dark until the
-   `verification` judge qualifies.** Machine disputes flow only through
-   `contradiction_scan` → `VerificationJudge.judge()`, which refuses unconditionally
-   without a qualification record (T2.41, behind T2.54's gold). **G-C therefore has G-D's
+2. **The false-promotion audit's *broadest* systematic detector is dark until the
+   `verification` judge qualifies.** The Tier-C LLM `contradiction_scan` reaches
+   `VerificationJudge.judge()`, which refuses unconditionally without a qualification
+   record (T2.41, behind T2.54's gold). **G-C therefore has G-D's
    judge qualification on its critical path** — a sequencing dependency stated nowhere
    before this run (T2.40's Depends list does not carry it), ratified into doc 20 §3 on
    2026-08-07. The dependency binds to G-D **passing at the currently configured judge
    identity**, not merely running: a G-D miss keeps this arm dark until a model or prompt
-   change re-qualifies. Clearing G-C on a zero recorded while the dispute machinery was
-   unreachable would certify the ladder's precision using an audit that could not have
-   caught an imprecision.
+   change re-qualifies. Clearing G-C on a zero recorded while the audit's broadest
+   detector was dark would certify the ladder's precision using an instrument that could
+   not have caught most of an imprecision.
+
+   **Second correction (2026-08-08, E2 whole-branch review, claim-honesty lens).** As
+   first written *and as corrected on 2026-08-07*, this item said machine disputes "flow
+   only through `contradiction_scan` → `VerificationJudge.judge()`". That is false, and
+   the 2026-08-07 pass reinforced it rather than catching it. The veto has a **second,
+   judge-free instrument**: `adjudicate_contradiction_finding` runs
+   `CONTRADICTION_DETECTORS`, and `verification_ladder` reaches it on every recompute, so
+   the `inverse_replacement` arm can dispute a fact with no qualification record. Whether
+   it fires is a corpus property, not a code one — it needs a stored REPLACES-family edge,
+   and T2.108's corpus had none, which is the finding that was mistaken for a code-level
+   dead-end. The sibling `single_valued` arm is separately disarmed
+   (`SINGLE_VALUED_RELATIONS` is empty). **G-C's verdict is unaffected** — the arm's
+   sensitivity over a corpus with no such edges is nil, and the gate stays open on the
+   corpus grounds of item 1. What changes is the *reason*: the judge is not a total
+   barrier to machine disputes, and the gate-ordering analysis that ratified the
+   G-C→G-D cross-edge never considered this arm. The cross-edge stands on the LLM scan's
+   breadth; it does not stand on machine disputes being unreachable.
 
    **Correction (2026-08-07, Tier-3 analysis `2026-08-07-gate-ordering.md`, ratified).**
    This item originally read "human rejections flow only through a review queue that only

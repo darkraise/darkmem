@@ -271,9 +271,13 @@ switch, and do not reintroduce a classification on/off flag.
 Triggered inside Phase 5 when the new memory carries a relation in the
 **`REPLACES` family** — `REPLACES`, `IMPROVES_ON`, or the legacy
 `BUILDS_ON` — not the literal `REPLACES` alone (T1.36, 2026-07-28). The
-predicate lives in both `pipeline.py` and `supersession.py` and they must
-change together; narrowing one is a silent behaviour change, not a
-cleanup. A candidate is flipped to `superseded` only if **all** hold:
+predicate is **one shared function**, `supersession.is_supersession_trigger`,
+which `pipeline.py` imports (corrected 2026-08-08 — this said the predicate
+lived in both files and had to change together, which was true when written
+and describes a drift hazard that has since been engineered out). Narrowing
+it is still a silent behaviour change rather than a cleanup; there is now
+just one place to narrow. A candidate is flipped to `superseded` only if
+**all** hold:
 
 1. Same `project` as the new memory.
 2. Candidate `status = 'active'`.
@@ -692,18 +696,35 @@ is free; loosening below a floor is honoured only for parameters named in
 the `ladder_measurements` config row by a recorded G-C measurement, else
 clamped with a warning. The decision (`verification_ladder.decide`) is a
 pure function; the contradiction veto is absolute — one non-echo
-contradiction beats any count, no config on its path — and its only
-instrument is the qualified `verification` judge, so **machine disputes
-are unreachable until a qualification record exists** (T2.54 → T2.41).
+contradiction beats any count, no config on its path. It has **two**
+instruments, and conflating them over-claims in the direction that matters
+(corrected 2026-08-08; this paragraph said machine disputes were
+"unreachable until a qualification record exists", and the G-C ledger row
+said they "flow only through" the judge — both false). The **deterministic
+scan** is judge-free: `adjudicate_contradiction_finding` runs
+`CONTRADICTION_DETECTORS` and the ladder reaches it on every recompute, so
+its `inverse_replacement` arm can dispute a fact with no qualification
+record anywhere. Whether it *fires* is a property of the corpus, not the
+code — it needs a stored REPLACES-family edge, and the measurement corpus
+had none, which is what T2.108's vacuity finding actually established. Its
+sibling `single_valued` arm is separately disarmed because
+`SINGLE_VALUED_RELATIONS` is empty. Only the **Tier-C LLM
+`contradiction_scan`** dead-ends on the unqualified judge (T2.54 → T2.41).
 Demotion carries hysteresis (`verification_demote_grace_cycles`; the
 `under-sourced` label is served, never withheld).
 
-**One journaller.** `KnowledgeTripleRepository.set_verification_status`
-is the sole writer of `verified` events (before/after status plus the
-full decision evidence — `outcome`, `origin_count`, `required_n`,
-`gate_fired`, `source_kinds`, the two blocked flags, T2.64's
-contradiction counterpart). Ordinary holds journal nothing;
-contradiction- and supersession-blocked holds journal.
+**One journaller for the machine's rungs.** `KnowledgeTripleRepository.set_verification_status`
+writes the `verified` events for every transition the ladder makes
+(before/after status plus the full decision evidence — `outcome`,
+`origin_count`, `required_n`, `gate_fired`, `source_kinds`, the two
+blocked flags, T2.64's contradiction counterpart). Ordinary holds journal
+nothing; contradiction- and supersession-blocked holds journal. It is
+**not** the sole writer of the stream, and this sentence said it was until
+2026-08-08: `ratify` is a second, deliberate writer and *cannot* route
+through the first, because `set_verification_status` refuses `confirmed` —
+the human-only rung is exactly what the machine's journaller must not be
+able to write. `promotion_metrics.py` already reads the stream with both
+writers in mind; a new consumer that assumes one will misread it.
 `_write_born_rung` — the deriver birth **and** the post-dispute restore —
 writes `corroborated` with no journal row on doc 10 §6's licence (*the
 parse is the verification*); G-C's metrics knowingly exclude those rows,
