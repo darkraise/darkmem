@@ -1,9 +1,9 @@
 # Promotion metrics — 2026-05-09 to 2026-08-07
 
 - database: `localhost:5433/darkmem_bench_cv` (read-only)
-- window: `2026-05-09T13:16:42.469826+00:00` .. `2026-08-07T13:16:42.469826+00:00`
+- window: `2026-05-09T13:51:28.443819+00:00` .. `2026-08-07T13:51:28.443819+00:00`
 - schema present: True
-- `verified` payloads validated (T2.60 / unknown-vocabulary guard): 31
+- `verified` payloads validated (T2.60 / unknown-vocabulary guard): 21
 - under-powered threshold: < 5 observations
 
 This is a measurement, not a verdict: no bar is stated or judged here (T2.40's role). Every rate below carries its denominator; a slice below the under-powered threshold is labelled, never read as a plain percentage.
@@ -16,7 +16,6 @@ This is a measurement, not a verdict: no bar is stated or judged here (T2.40's r
 |---|---|---|---|---|
 | diversity | 11 | 0 | 11 | 1.000 |
 | none | 10 | 0 | 10 | 1.000 |
-| time_gap | 10 | 0 | 10 | 1.000 |
 
 ## Promotion rate — by source-kind diversity
 
@@ -25,7 +24,7 @@ This is a measurement, not a verdict: no bar is stated or judged here (T2.40's r
 | bucket | promoted | blocked | eligible | rate |
 |---|---|---|---|---|
 | diverse | 11 | 0 | 11 | 1.000 |
-| homogeneous | 20 | 0 | 20 | 1.000 |
+| homogeneous | 10 | 0 | 10 | 1.000 |
 
 ## False-promotion audit
 
@@ -33,10 +32,13 @@ Count of DISTINCT corroborated facts later disputed or human-rejected (doc 17 §
 
 **The human-rejected half is live as of T2.63.** It reads the `human_verdict` journal, not `review_state` -- that column is pure queue-membership (T2.62: only `open` is writable, cleared to NULL on resolution), so it could never carry a verdict and this count read 0 forever while its own tripwire could not fire. A 0 here is now a measurement, not an absence -- but note the only human verb reachable today is rejection; ratify is T2.05's and re-ground/edit have no owner, so this counts rejections rather than all adjudication.
 
-- corroborations in window: 31
+- corroborations in window: 21
 - later disputed: 0
 - later human-rejected: 0
 - DISTINCT facts in either arm: 0
 - false-promotion rate: 0.0000
+- corroborated facts later expired (R2 companion): 0
+
+**The last line is `promotion_bars` ruling R2's companion, and the rate above must not be quoted without it.** An entity-merge fact fold keeps one row's id and retires the other, so a corroboration and a later dispute can land on two ids that the audit's join can never bring together — the audit then undercounts, the one direction it may not err in silently. A non-zero count here caps what a zero rate claims. It is an upper bound on folds by construction: human adjudication and provenance withdrawal expire facts too, and the journal carries no discriminator, so this counts every expiry after an in-window corroboration rather than narrowing the cap on a guess.
 
 The three counts above do not sum: a fact the human rejects is usually one the queue served them *because* it was disputed, so it appears in both arms. doc 17 §5.1 counts facts, so the rate divides the DISTINCT union — summing the arms reported 200% off a single fact.
