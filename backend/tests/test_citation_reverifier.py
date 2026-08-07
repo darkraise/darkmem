@@ -1001,28 +1001,66 @@ def test_the_reverifier_is_not_a_dream_job_family_member():
     assert "dream_jobs" not in source
 
 
+# Legitimate references: the module's own file, the runner factory that
+# wraps it for the job registry, and the registration call in `main.py`.
+# Mirrors `_ALLOWED_BLOCKER_FILES` in `test_supersession_blocker.py` -- a
+# full-tree scan against an explicit allowlist, rather than an enumerated
+# hot-path guess that silently misses a module added to a hot path later.
+_ALLOWED_REVERIFIER_FILES: set[str] = {
+    "app/services/citation_reverify.py",
+    "app/services/job_runners.py",
+    "app/main.py",
+}
+
+
 def test_no_capture_or_retrieval_module_reaches_the_reverifier():
     """Invariant 15 binds by proximity: reconciliation stays off the hot path.
 
     The re-verifier is what a re-index *enqueues into*, never something a
-    capture or a query may call to settle a badge sooner.
+    capture or a query may call to settle a badge sooner. Scans every file
+    under `app/` against an explicit allowlist of the wiring's legitimate
+    callers, rather than an enumerated hot-path list a later module could
+    join without this test ever noticing.
     """
-    hot_path = [
-        "pipeline.py", "extraction_clean.py", "memory_buffer.py", "wait_process.py",
-        "hybrid_search.py", "layer_composition.py", "chat.py", "code_query.py",
-        "facts_channel.py", "rank_fusion.py",
-    ]
-    offenders = []
-    for name in hot_path:
-        path = BACKEND / "app" / "services" / name
-        if path.exists() and "citation_reverify" in path.read_text():
-            offenders.append(name)
-    for path in (BACKEND / "app" / "api").rglob("*.py"):
-        if "citation_reverify" in path.read_text():
-            offenders.append(str(path.relative_to(BACKEND)))
-    assert not offenders, (
-        "a hot-path module reaches the Tier-C re-verifier: " + ", ".join(offenders)
+    paths = [p for p in (BACKEND / "app").rglob("*.py") if "__pycache__" not in str(p)]
+    assert len(paths) > 100, (
+        f"only found {len(paths)} files under app/ — the scan below would "
+        "pass vacuously; check BACKEND / the app/ glob path"
     )
+    offenders = []
+    for path in paths:
+        rel = str(path.relative_to(BACKEND))
+        if rel in _ALLOWED_REVERIFIER_FILES:
+            continue
+        if "citation_reverify" in path.read_text():
+            offenders.append(rel)
+    assert not offenders, (
+        "app code outside the registered wiring reaches the Tier-C "
+        "re-verifier: " + ", ".join(offenders)
+    )
+
+
+def test_the_reverifier_guard_rejects_a_forbidden_reference(tmp_path):
+    """In-suite negative control, proven every run rather than trusted by
+    inspection: a hot-path file naming the re-verifier must fail the scan
+    above, and a file in the allowlist naming it must not."""
+    fake_root = tmp_path / "app"
+    (fake_root / "services").mkdir(parents=True)
+    violation = fake_root / "services" / "hybrid_search.py"
+    violation.write_text("from app.services.citation_reverify import reverify_citations\n")
+    allowed = fake_root / "services" / "job_runners.py"
+    allowed.write_text("from app.services.citation_reverify import reverify_citations\n")
+
+    paths = [p for p in fake_root.rglob("*.py")]
+    offenders = []
+    for path in paths:
+        rel = str(path.relative_to(tmp_path))
+        if rel in _ALLOWED_REVERIFIER_FILES:
+            continue
+        if "citation_reverify" in path.read_text():
+            offenders.append(rel)
+
+    assert offenders == ["app/services/hybrid_search.py"]
 
 
 def test_the_event_type_landed_in_the_vocabulary_before_its_emitter():
