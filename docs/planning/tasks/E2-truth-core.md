@@ -555,7 +555,7 @@ memory stay two nodes where the memory path would have merged them at cosine
 shape as T2.16 shipping two of three signals: the mechanism is right and its
 reach is smaller than the doc claims. Logged rather than silently accepted.
 
-**The decision this task owns.** Two candidate shapes, and the choice is the
+**The decision this task owns.** Three candidate shapes, and the choice is the
 work:
 
 - **Embed at derive time.** Simplest, and it makes anchoring symmetric — but it
@@ -564,10 +564,31 @@ work:
 - **A Tier-C back-fill** over repo-asserted entities with no embedding, reusing
   the `entity_embedding_cache__<slug>` path. Keeps the deriver clean and pays
   the same fingerprint-partition rules everything else does (invariant 2).
+- **A scheduled arm on the back-fill that already exists.** `app/services/
+  reembed.py` is a missing-fingerprint back-fill: "obsolete" there means "has
+  no row in the active fingerprint's table", which is exactly what a
+  repo-minted entity is, and `list_obsolete_entities` / `reembed_entities`
+  already find and embed them. What it has no trigger for is a schedule. Least
+  new code — but it is a whole-corpus operator action with its own lock set and
+  broadcast surface, so turning it into a cron changes behaviour for every
+  entity, not only repo-minted ones.
 
 The second is the recommendation; the task may overturn it with a reason.
 **Note an embedder call is not an LLM extraction call** — T2.27's clause forbids
 the latter, and reading it as forbidding both is what left this gap.
+
+**Shipped 2026-08-07: the second, scoped to repo-asserted rows.** Shape 1 is
+not merely doctrinally awkward, it is blocked: T2.27's guard forbids the whole
+orchestrator surface, `embed_batch_chunked` included, so taking it means
+widening the guard until it permits an extraction too. Shape 3 was rejected on
+the behaviour change above. The job is `repo_entity_anchoring`
+(`app/services/entity_anchoring.py`), Tier C and not a dreaming-family member,
+selecting under a data-resolved fingerprint and writing under the one the
+embedder returned. **It closes only the order where the repo is indexed first**
+— Phase 4 dedups at write time, so a repo indexed after the memory already
+minted the near-named node still leaves two rows. Closing that needs a
+retroactive entity-merge pass, which is a different mechanism and is not owned
+by any task yet.
 
 **Done when:**
 - [ ] A repo-minted entity and a near-named memory-minted one resolve to one node,
@@ -2765,3 +2786,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-04 | T2.65 | 2 | **Decided: the memory-bridged proxy stands as an interim position, not a fact-keyed counter, and the measurement behind that decision found the gap is already live traffic, not a hypothetical one.** `layer_composition.LayerCompositionService.search` — wired unconditionally behind the `knowledge_search` MCP tool, no feature flag gating it — calls `FactsChannel.search_with_trace` for every invocation, and that channel serves `knowledge_triples` rows directly with no call anywhere analogous to `access_stats.spawn_record_access`. So "the facts channel has no consumer wired" does not hold as a defence; a fact served only through `knowledge_search` scores zero retrieval-frequency heat today, on live traffic, not on a hypothetical future one. The proxy is kept anyway because the honest fix — a fact-keyed analogue of `memory_access_stats`, keyed `fact_id REFERENCES knowledge_triples(id)` — needs a new table, and no lane holds baseline-schema clearance this round. `review_ranking.py`'s docstring and `FACT_KEYED_COUNTER_STATUS` now state this as an interim bound rather than the stale "reads exclusively through source memories" premise, and `facts_channel.py` carries a matching `RETRIEVAL_HEAT_STATUS` breadcrumb; `tests/test_queue_ranking.py::test_facts_channel_traffic_never_feeds_retrieval_frequency` pins the gap against fifty real `FactsChannel` searches and was watched to fail when the recording was mutated in | Recorded as a Tier-2 amendment because it is a newly discovered dependency the plan did not carry: the next schema window should mint a task for the `fact_access_stats` table (same shape and coalescing-buffer idiom as `access_stats.py`, fed from `FactsChannel`'s serving path) rather than assume this proxy is permanent. Nothing here builds that table — R6 of the T2.65 brief forbids a schema change this round, and this decision converts the task into exactly the "decision plus a ready-to-execute plan" outcome the brief names as legitimate |
 | 2026-08-05 | T2.16 | 1 | **Fix round 1 on the Fable task review: the derivation strip no longer retires edges whose signal no arm measured, and the cap-engaged bound finally has a test that can fail.** (I1) With the proximity arm skipped under an unresolvable fingerprint, `kept` cannot hold a proximity pair, so the strip retired every proximity edge in the seed window without re-measuring a single cosine — silently, because the strip journals nothing, and irreversibly, because the original write's undo CAS-refuses once its block is gone. On a deployment whose embedding purpose carries no `dimensions` the canary never recovers and the whole proximity graph is swept one seed slice at a time. `strip_stale_edges` now takes `unmeasured_signals` and spares any triple whose stored block rests on one, counted as `spared_unmeasured`. (I2) The truncation test named for the bound exercised the *unbounded* branch, so deleting the bound clause outright left all 24 tests green; `test_the_bound_spares_edges_past_the_decided_prefix` drives the engaged bound instead. Three minors fixed with them: the proximity fan-out becomes its own config row `derivation_neighbours` (it used to read the judge's `pair_candidates`, so tuning the judge silently moved which proximity edges could exist), the digest's `action_detail` renders `signal` (this pass has no verdict, so it was the only answer to "why is this edge here"), and §7a gains E10 recording that the cursor advances under a dead canary. Two declined with reasons in the fix report: row locks in `write_derived_edge` (Phase D commits once, so mirroring `apply_associate`'s `FOR UPDATE` would hold locks on up to 2x`derivation_batch` `memories` rows for the whole pass and block the capture path — a worse hazard than the self-healing one it closes) and the expired-memory filter asymmetry (`MemoryFilter` has no expiry predicate at all and is the shared retrieval scope class, so closing it here is a repo-wide retrieval change out of this lane) | Tier 1: both Important findings are task-local and neither reopens the design — the review's own disposition. Recorded rather than absorbed because I1 changes what D9 means (retire only what this run re-evaluated now binds the arms, not just the pairs) and F-M1 adds a row to D6's config list |
 | 2026-08-06 | T2.50 | 1 | **The Verify line is corrected to two invocations with the flag spellings the CLI validates.** The stated `--arm w_ppr,dual_level` exits 1 with `unknown --arm 'w_ppr,dual_level'; valid arms are [...]`: `run_retrieval_eval.py` takes one `--arm` per run, and `arm_ablation.resolve_ablatable` deliberately accepts only config-flag spellings (`w_ppr`, `w_dual`), never the short names — the same one-spelling discipline `resolve_arm` documents. Fixed to `--arm w_ppr && ... --arm w_dual` | Found by running the line verbatim during T2.50's execution (the judge's own definition of done requires running the stated Verify); the recorded ablations had already used the correct per-arm invocations, so the defect was in the task text alone |
+| 2026-08-07 | T2.97 | 1 | **A third candidate shape existed and the task text named only two: `reembed.py` is already a missing-fingerprint back-fill, and a repo-minted entity is exactly what it calls obsolete.** Added to the task text so the choice is made against the real option set, together with the shipped decision and its boundary. Shape 1 (embed at derive time) turns out to be blocked rather than merely awkward — T2.27's guard forbids the whole orchestrator surface, `embed_batch_chunked` included, and it is reached through the same handle a `chat_completion` is, so permitting the embed means permitting an extraction. Shape 3 was rejected because `reembed_entities` is a whole-corpus operator action with a lock set and a progress broadcast: scheduling it re-embeds every entity missing a vector, which after an embedder rotation is the entire corpus, on a cron nobody asked for. Shipped shape 2 narrowed to `repo_ids <> '{}'`, the one set with no other writer | Runbook §5 Tier 1: task-local, the brief instructed the amendment, and a reader meeting only two options would weigh the recommendation against a false alternative set. The boundary is recorded in the same row because it is the part a future reader is most likely to assume away: the job makes anchoring work when a repo is indexed before the memory arrives, and does nothing for the reverse order |
