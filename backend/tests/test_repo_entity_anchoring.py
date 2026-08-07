@@ -345,6 +345,66 @@ async def test_a_discriminating_token_still_refuses_the_anchor(
 
 
 @pytest.mark.asyncio
+async def test_a_type_mismatch_still_refuses_the_anchor(
+    setup_database, monkeypatch,
+):
+    """Cross-type refusal, repeated at this probe for a repo-minted row.
+
+    Phase 4's probe is type-constrained (CLAUDE.md: "same-named entities of
+    different types dedup separately") — one ANN probe per unique
+    ``(name, entity_type)`` pair, so a query scoped to ``concept`` never even
+    reads a ``tool`` row. ``test_dedup_discriminator.py
+    ::test_same_name_across_types_dedups_separately`` pins that for two
+    memory-minted entities; this repeats it with one side repo-minted, so the
+    boundary this suite otherwise only imports from elsewhere is asserted
+    here too.
+    """
+    fingerprint = "anchor-type|8"
+    lib, short = _pair(0, POSTGRES_POSTGRESQL_COSINE)
+    names = ["pandaslib", "pandas", "python", "anchor-type-repo"]
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    _flag_cache_reset()
+    memory_ids = await seed_memories(factory, ["we use pandas"])
+    repo_id = await seed_repo(factory, "anchor-type-repo", ["pandaslib"])
+
+    try:
+        embedder = AnchoringEmbedder(
+            fingerprint, {"pandaslib": lib, "pandas": short}
+        )
+        await register(factory, fingerprint)
+        await derive(factory, repo_id)
+        await anchor(factory, embedder)
+        assert "pandaslib" in await embedded_names(factory, fingerprint), (
+            "the repo-minted entity has no vector, so a None match below "
+            "would prove nothing about the type constraint"
+        )
+
+        pipe = make_pipeline(
+            factory, embedder,
+            [entities_of(("pandas", "concept"))],
+            monkeypatch,
+        )
+        probes = spy_probe(monkeypatch)
+        await pipe.process_batch(
+            [{"memory_id": memory_ids[0], "content": "we use pandas",
+              "source": "api"}]
+        )
+
+        assert [p["entity_type"] for p in probes] == ["concept"]
+        assert probes[0]["match"] is None, (
+            "the probe is scoped to 'concept'; a repo-minted 'pandaslib' "
+            "tool row must never surface here regardless of vector similarity"
+        )
+        assert await entity_rows(factory, ["pandaslib", "pandas"]) == [
+            ("pandas", "concept", 1),
+            ("pandaslib", "tool", 0),
+        ], "a type mismatch must survive anchoring as a discriminator too"
+    finally:
+        await cleanup(factory, memory_ids, [fingerprint], names)
+        await cleanup_repo(factory, repo_id)
+
+
+@pytest.mark.asyncio
 async def test_a_repo_indexed_after_the_memory_still_leaves_two_nodes(
     setup_database, monkeypatch,
 ):
