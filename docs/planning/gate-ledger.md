@@ -470,15 +470,32 @@ in turn and the corresponding tests observed failing before restoration.
 
 ## G-C — L2 → deriver; Phase 2 exit
 
-**Owning task:** T2.40. **Bar lives in:** `config` rows. **Metrics computed from the
-`events` journal by SQL** — an unjournaled transition is an unmeasurable one.
+**Owning task:** T2.40. **Bar lives in:** `config` rows over committed defaults —
+`backend/scripts/benchlib/promotion_bars.py` (`PROMOTION_BAR_DEFAULTS`, pinned by value in
+`scripts/benchlib/tests/test_promotion_bars.py` so a moved bar is a two-file diff, never a
+quiet constant tweak). **Metrics computed from the `events` journal by SQL** — an
+unjournaled transition is an unmeasurable one.
+
+**Bars stated 2026-08-07, before any gate run** (T2.40; the G-D rows are the precedent
+for this recording). The bar module also commits, ahead of any count, the two
+definitional rulings that decide what the audit counts: **R1** — a citation-driven
+downgrade (T2.48) is a `demote`, never a false promotion (the audit measures promotion
+precision, not repository churn; boundary case of promoted-on-already-stale-citation
+stated and bounded by one reverify tick); **R2** — the T2.101 fact fold can move a
+journaled corroboration's identity out from under a later dispute when the keeper's rung
+was unjournaled (born-corroborated), so the audit **undercounts** in exactly that shape —
+anti-conservative, therefore every measurement reports the in-window fold count beside
+the audit; **R3** — `_write_born_rung`'s two unjournaled writes (deriver birth, and the
+post-dispute restore, which IS a `candidate → corroborated` change that journals nothing
+on doc 10 §6's licence) are the completeness probe's one carve-out, counted and reported,
+never silently absorbed.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | — | — | — | — |
-| Promotion rate, sliced by which N fired | — | — | — | — |
-| False-promotion audit (corroborated later disputed or human-rejected) | Under stated bar | — | — | — |
-| Every ladder transition journaled | 100% | — | — | — |
+| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | Every powered bucket ≥ 0.5 (`promotion_rate_floor`); axis decidable only with ≥ 1 powered bucket (eligible ≥ 5, `promotion_rate_min_eligible` = the harness's own `UNDER_POWERED_THRESHOLD`) **and** ≥ 1 journaled `promote` in window (`promotion_rate_min_promotions`); stated 2026-08-07, before any gate run | — | — | — |
+| Promotion rate, sliced by which N fired | Same bar family, same keys, per bucket; under-powered buckets reported with denominators, never collapsed, and can neither clear nor fail; stated 2026-08-07, before any gate run | — | — | — |
+| False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | — | — | — |
+| Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | — | — | — |
 
 **Consequence of a miss:** the code-deriver lane (T2.27–T2.28) stays closed. The deriver
 mints facts born `corroborated`; shipping it over an unproven ladder would put unverified
