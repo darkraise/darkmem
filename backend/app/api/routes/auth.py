@@ -101,6 +101,16 @@ async def auth_login(
     if not verify_password(body.password, config.value["hash"]):
         login_rate_limiter.record_failure(ip)
         await _record_audit("auth_login_failed", {"ip": ip})
+        # The retry_after gate above already proved this IP was not locked
+        # when the request started, so a non-None retry_after here means
+        # this exact failure is the one that just crossed the threshold —
+        # the transition, not merely the locked state, is what gets audited.
+        retry_after_now = login_rate_limiter.retry_after(ip)
+        if retry_after_now is not None:
+            await _record_audit(
+                "auth_lockout",
+                {"ip": ip, "retry_after_seconds": retry_after_now},
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
 
     login_rate_limiter.record_success(ip)
