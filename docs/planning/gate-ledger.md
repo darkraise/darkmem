@@ -521,16 +521,33 @@ exactly that and nothing more.
 1. **Starvation is structural, not circumstantial.** No corpus with attributable,
    diverse origins exists; the bench corpus cannot be made to promote without authoring
    origin structure, and a corpus authored to promote measures its own design.
-2. **The false-promotion audit cannot produce a non-vacuous number until the
+2. **The false-promotion audit's only *systematic* detector is dark until the
    `verification` judge qualifies.** Machine disputes flow only through
    `contradiction_scan` → `VerificationJudge.judge()`, which refuses unconditionally
-   without a qualification record (T2.41, behind T2.54's gold); human rejections flow
-   only through a review queue that only disputes and blocked holds can fill. Both
-   numerator arms dead-end today. **G-C therefore has G-D's judge qualification on its
-   critical path** — a sequencing dependency stated nowhere before this run (T2.40's
-   Depends list does not carry it). Clearing G-C on a zero recorded while the dispute
-   machinery was unreachable would certify the ladder's precision using an audit that
-   could not have caught an imprecision.
+   without a qualification record (T2.41, behind T2.54's gold). **G-C therefore has G-D's
+   judge qualification on its critical path** — a sequencing dependency stated nowhere
+   before this run (T2.40's Depends list does not carry it), ratified into doc 20 §3 on
+   2026-08-07. The dependency binds to G-D **passing at the currently configured judge
+   identity**, not merely running: a G-D miss keeps this arm dark until a model or prompt
+   change re-qualifies. Clearing G-C on a zero recorded while the dispute machinery was
+   unreachable would certify the ladder's precision using an audit that could not have
+   caught an imprecision.
+
+   **Correction (2026-08-07, Tier-3 analysis `2026-08-07-gate-ordering.md`, ratified).**
+   This item originally read "human rejections flow only through a review queue that only
+   disputes and blocked holds can fill. Both numerator arms dead-end today." **Both halves
+   are contradicted by the shipped code, and the overstatement is corrected here so a
+   future reader planning a fallback is not misled.** `human_adjudication.reject_fact`
+   accepts *any* fact id — deliberately, since a corroborated fact has no opener firing on
+   it and is therefore not on the queue at all — and journals a `human_verdict` event with
+   `verdict='rejected'`, which is exactly what the audit's `rejected_after` CTE counts. No
+   judge appears anywhere on that path. Nor is the queue's fill predicate judge-exclusive:
+   `verification_ladder.REVIEW_OPENERS` also carries `_under_sourced_opens_review`, driven
+   by source changes, never by the judge. So the human arm is **live**, and a zero from it
+   is non-vacuous rather than dead — but its *sensitivity* is unknown and unmeasurable
+   (nothing states what fraction of false promotions an unprompted human catches), so it
+   cannot carry a "promotion precision ≥ 99%" claim on its own. The verdict below stands
+   unchanged; only this supporting claim narrows from "both arms" to the machine arm.
 3. **Once the record is minted, the badge outruns the measurement — say so here, where
    the number lives (T2.28's inherited consequence).** The promotion record this gate
    mints will light `corroborated` on born rows that the counting ladder never counted:

@@ -196,7 +196,18 @@ never built.
 
 #### T2.40 — G-C evidence run
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51, **T2.41 passing**` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+
+**The false-promotion audit probe requires T2.41 to have *passed*, not merely run —
+ratified into doc 20 §3 on 2026-08-07.** The audit's machine-dispute arm reaches
+`VerificationJudge.judge()`, which refuses unconditionally without a qualification record
+that only a cleared G-D mints, and the binding is to the *currently configured judge
+identity*, so a G-D miss keeps the arm dark until a model or prompt change re-qualifies.
+The dependency is narrow by design: it binds this one arm. The human-rejection arm is
+live with no judge on its path (`human_adjudication.reject_fact` accepts any fact id and
+journals `human_verdict`), and the other three probes need only a promotable corpus — so
+a run before T2.41 passes can measure everything except a systematic false-promotion
+number, and must not record a full G-C verdict on that basis.
 
 **Born-corroborated facts are invisible to this run, and that is by construction —
 inherit it knowingly (recorded 2026-08-06 from T2.28's review).** T2.28's lift mints

@@ -1,5 +1,12 @@
 # Tier-3 analysis — the G-C / G-D ordering (2026-08-07)
 
+**Status: RATIFIED 2026-08-07 — Option E adopted.** Applied: doc 20 §3 carries the
+cross-edge as a recorded precondition (step 1); the G-C ledger row's "both arms
+dead-end" overstatement is corrected in place (step 2); T2.40's `Depends` carries
+**T2.41 passing** with the narrowness of the binding spelled out (step 3). Step 4 — mint
+the measurement-corpus task — had already landed as T2.108 before this ratification.
+Both gates keep their full claims; no bar moved and no gate definition changed.
+
 **Question.** T2.40's evidence run found that G-C's false-promotion audit structurally
 requires G-D's qualified judge, while the roadmap orders G-C before G-D. Nothing recorded
 that dependency before 2026-08-07. What should the owner do about the ordering?
