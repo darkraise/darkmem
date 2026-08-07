@@ -165,7 +165,7 @@ def render_sheet(rows: list[dict], rulebook: str) -> str:
         "generation -- and name the rule you used. Use only the printed "
         "premise: no lookup of any recorded answer, no prior labelling "
         "run, no corpus or world knowledge outside this text. Fill in the "
-        "Verdict and Rule-cited line under each item, in place, and "
+        "Verdict and `Rule cited` line under each item, in place, and "
         "return this same file.",
         "",
         "---",

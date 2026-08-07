@@ -1,6 +1,6 @@
 # Entailment gold — Layer 3 resample sheet
 
-93 premise/hypothesis pairs, in the blind export's own shuffled order. Decide one verdict per item (entailed / contradicted / unsupported) against the rules below -- verbatim excerpts of the labelling rulebook, current as of this sheet's generation -- and name the rule you used. Use only the printed premise: no lookup of any recorded answer, no prior labelling run, no corpus or world knowledge outside this text. Fill in the Verdict and Rule-cited line under each item, in place, and return this same file.
+93 premise/hypothesis pairs, in the blind export's own shuffled order. Decide one verdict per item (entailed / contradicted / unsupported) against the rules below -- verbatim excerpts of the labelling rulebook, current as of this sheet's generation -- and name the rule you used. Use only the printed premise: no lookup of any recorded answer, no prior labelling run, no corpus or world knowledge outside this text. Fill in the Verdict and `Rule cited` line under each item, in place, and return this same file.
 
 ---
 
