@@ -167,10 +167,16 @@ export interface FactSourceRow {
 
 /** `fact_sources` pre-grouped by ``origin_key`` server-side (T2.36a) — the
  *  badge's ``origin_count`` audited. ``origin_key: null`` is the merged
- *  unknown-identity bucket; ``unknown_origin`` says so in-band. */
+ *  unknown-identity bucket; ``unknown_origin`` says so in-band.
+ *
+ *  The audited number is the count of groups where ``stale`` is false, not the
+ *  count of groups: a citation whose recorded code address stopped resolving
+ *  (doc 10 §6) is retained and served so a downgraded badge has a visible
+ *  cause, but it corroborates nothing. */
 export interface FactSourceGroup {
   origin_key: string | null
   unknown_origin: boolean
+  stale: boolean
   source_kinds: string[]
   first_seen: string
   last_seen: string
