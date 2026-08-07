@@ -500,13 +500,16 @@ current HEAD, marks a citation that no longer resolves stale, and **enqueues the
 citing fact for the verification recompute, which downgrades the badge — never
 expiring the fact**, because a deleted symbol may be a rename a human should
 confirm. It reads the code graph and writes the memory-side vault, one direction,
-no join. Note it does **not** scope by the run's changed-file set as doc 10 §6
-describes: that scoping key is `detail.symbol_key`, which for an import-basis
-citation is a module name (`httpx`), never a path, so the doc's literal predicate
-would match only language citations. The job scopes by comparing a citation's
-`detail.reverified_at_sha` against the repository's `last_indexed_commit`
-instead — self-healing where an event-payload design is not, since `record_event`
-never raises. The doc correction is owed and is tracked as a Tier-3 amendment.
+no join. Note it does **not** scope by the run's changed-file set at all. Doc 10 §6
+named `detail.symbol_key` as the scoping key, which is basis-dependent — a module
+name (`httpx`) for an import-basis citation, never a path — so its literal predicate
+would have matched only language citations and reported a clean pass; **that defect
+was corrected 2026-08-07 (Tier-3, ratified) and §6 now scopes on `detail.file_path`.**
+The job itself still scopes differently, and deliberately: it compares a citation's
+`detail.reverified_at_sha` against the repository's `last_indexed_commit` —
+self-healing where an event-payload design is not, since `record_event` never raises.
+The declared cost is that an unchanged file's citation is re-resolved once per HEAD
+move rather than never, bounded by citation count, not repository size.
 
 **`repo_entity_anchoring` is what makes the code bridge's anchoring
 reach past an exact name match** (T2.97): the deriver is LLM-free by

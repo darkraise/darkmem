@@ -1,8 +1,10 @@
 # Proposed correction — doc 10 §6's citation re-verifier scoping key
 
-**Status:** proposal awaiting the owner's ratification. **Doc 10 is unedited.**
-The divergence rule holds: the corpus doc wins until a human decides otherwise, so this
-document states the defect and the proposed wording rather than applying it.
+**Status: RATIFIED 2026-08-07 — Option A applied to doc 10 §6.** The owner ruled Option A
+(minimal fix); Option B's paragraph was not adopted, so §6 still states the changed-file
+set as its cost bound and `CLAUDE.md`'s code-indexing section remains the record of
+T2.48's shipped sha-comparison deviation. The proposal text below is retained as the
+reasoning behind the edit.
 
 **Raised:** 2026-08-07, from T2.48's execution. **Confirmed independently** by T2.48's
 Fable adversarial review, which traced it in the shipped code rather than accepting the
