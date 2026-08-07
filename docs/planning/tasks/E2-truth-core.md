@@ -667,6 +667,43 @@ answer has to say why that residue is acceptable or close it.
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
 
+#### T2.104 — A response model that silently drops what the builder writes
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 12 §2` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.86, which found the third instance of one shape in one
+file.** FastAPI + pydantic v2 default to `extra="ignore"`, so a key a `facts_read`
+builder writes and the response model does not declare is dropped **silently** — no
+error, no warning, no log line. The field simply is not on the wire.
+
+Three occurrences in `backend/app/schemas/facts.py` alone: `label_suppressed`,
+`unverified`, and now `stale` (T2.48's stale-citation flag, which the builder computed
+from T2.48's landing and which never reached a client until T2.86 declared it).
+
+**What makes this worth a task rather than a fourth fix is how the third one survived
+review.** T2.48's own report, its Fable adversarial review, and its rescope all
+described the flag as *served but unrendered* — "the visible-cause story currently ends
+at the API boundary". It ended one layer earlier. Three independent passes read the
+builder and the frontend type and agreed; none drove the door and diffed the payload,
+because the failure has no symptom to notice. The controller repeated the same wrong
+claim from the same evidence.
+
+**What.** A structural guard: every key a response-model builder writes is declared on
+the schema it is returned through. The natural shape is a test that introspects the
+builders in `app/services/facts_read.py` (and any sibling with the same pattern) against
+their declared response models — or, if introspection proves too brittle, a
+payload-level assertion that drives each route and compares the served key set against
+the builder's. Pick the shape that actually fails when a key is undeclared, and
+mutation-drill it by removing a declared field.
+
+**Done when:**
+- [ ] A key written by a builder and undeclared on its response model fails the build,
+      proven by drill on a real field
+- [ ] The guard covers `facts_read`'s builders at minimum; state what it does not cover
+- [ ] Existing served payloads are unchanged — this adds a guard, not fields
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_read_surface.py -q`
+
 #### T2.103 — The auth family is emitted outside the closed vocabulary
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 04 §8.1, 12 §6` · `Tag: target-new` · `Gate: standing`
@@ -2959,3 +2996,4 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-07 | T2.103 | 2 | **T2.103 minted: the auth family is emitted outside the closed `EVENT_TYPES` vocabulary.** Five live values (`auth_login_success`, `auth_login_failed`, `auth_logout`, `auth_password_change`, `auth_setup`) are absent from it, so `record_event` logs a vocabulary warning on every one; `auth_lockout` is in the vocabulary with no emitter. Surfaced by T2.102 as an adjacent finding and verified in the tree by the controller before minting | T2.102 correctly flagged rather than took it — its scope was the frontend map. The reason this outranks a cosmetic mismatch is `GET /auth/audit`: the security audit trail is served by filtering `auth_*` rows out of `events`, so the audit surface rests entirely on values the closed vocabulary refuses to admit. Taxonomy-first exists precisely to stop that, and it failed on the family where an unrecognised row costs the most |
 | 2026-08-07 | T2.62, T2.101 | 1 | **T2.62 gains a clause: an expired fact can sit in the review queue with nothing able to clear it.** `build_facts_query` has no liveness predicate and `verification_recompute` skips expired rows, so a `disputed`-then-expired fact stays queued indefinitely | Found by T2.101's rescope, which correctly routed it here rather than fixing it in a merge job — but routing is only real if the receiving task's clauses bind it, which is the lesson T2.86 taught earlier the same day (a disposition pointed at a task whose Done-when clauses did not oblige the work is an effective drop). The state is **pre-existing**: a stated expiry already produces it, so T2.101 added a second route rather than the defect itself |
 | 2026-08-07 | T2.86 | 2 | **T2.86 dispatched a second time (`claude/e2-lane-cn`) found five of its six Done-when clauses already satisfied by the merged `claude/e2-lane-az` work, and the task's `Size` corrected `M` → `S` for what genuinely remained: the stale-citation clause.** Its own text still described the pre-merge tree (`useDemoFact` called unconditionally, no live door caller, `FactDetailResponse` missing every field the page shows) though that state had not been true since `d7ce0dd8`. All six clauses are now checked, with each already-satisfied one naming what satisfied it. The stale-citation build turned out to be two bugs, not one: the frontend gap T2.48's rescope named (`fact-sources.tsx` read `FactSourceGroup.stale` nowhere) was real, but the field never reached the wire to begin with — `FactSourceGroup` in `app/schemas/facts.py` never declared `stale`, so FastAPI's `response_model` validation silently dropped the key `facts_read._source_group` had been computing since T2.48. Both fixed | Logged Tier 2 rather than Tier 1 because it corrects a scheduling-relevant field (`Size`) on a task another agent may still be triaging, and because the wire-level bug is the **third** instance of this exact schema shape in `app/schemas/facts.py` — `label_suppressed` and `unverified` were both silently dropped by an undeclared-field response model before being caught, per that file's own accumulated comments. A fourth occurrence would be worth a structural guard (e.g. a test asserting every key a `facts_read` builder function writes is declared on its response schema) rather than a fourth spot-fix; not built here because it is outside this task's named scope, but worth a future task's attention. Caught by writing the test against the live endpoint rather than against the service function in isolation — a unit test on `_source_group` alone would have passed while the wire silently lost the field, which is the same shape invariant 14 exists to catch one layer up |
+| 2026-08-07 | T2.104, T2.48, T2.86 | 2 | **T2.104 minted: a response model silently drops any key its builder writes but it does not declare — third instance in one schema file.** T2.86 found that `FactSourceGroup.stale` never reached the wire at all: the builder computed it from T2.48's landing, the frontend typed it, and the schema never declared it, so pydantic's `extra="ignore"` dropped it with no error. `label_suppressed` and `unverified` were the same shape earlier | **The instructive part is that three review passes agreed on the wrong claim.** T2.48's report, its Fable adversarial review and its rescope all recorded the flag as *served but unrendered* — the visible-cause story "ending at the API boundary". It ended one layer earlier. Each pass read the builder and the frontend type, which are both correct in isolation; none drove the door and diffed the payload, because a silently-dropped field has no symptom. The controller then repeated the claim from the same evidence. A defect class that survives an adversarial review and a rescope is a missing guard, not a missed inspection |
