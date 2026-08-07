@@ -1028,6 +1028,48 @@ def test_the_channel_list_weights_are_order_inert_at_any_magnitude():
         lc.CHANNEL_LIST_WEIGHTS.update(original)
 
 
+def test_score_authority_cannot_re_enter_an_equal_tier_cross_channel_cell():
+    """The blind spot the test above does not cover, and the reason it exists.
+
+    The sibling test varies a channel weight and asserts the order does not
+    move — but every pair it builds is a fact against a memory, and
+    :data:`MEMORY_TIER` is 0 while every verification status is 1-4, so no
+    pair it holds can ever tie on tier. The ``(band, -tier, key)`` sort
+    therefore decides all of them on ``tier`` and never reaches ``key``, which
+    left the tie-break itself unpinned: inserting ``-weighted_score`` ahead of
+    ``key`` passed the entire suite.
+
+    Only a fact and an article can share a tier, because only they draw from
+    the same verification vocabulary. This is that pair. The fact is given a
+    vastly larger weighted score and the article still sorts first, on
+    ``key`` alone — which is the cross-modality magnitude comparison doc 07 §3
+    rejects, asserted where it can actually fail.
+    """
+    fact = lc.fact_candidate(
+        _fact_row(uuid4(), verification_status="corroborated"), channel_rank=1
+    )
+    article = lc.article_candidate(
+        _article_row(uuid4(), verification_status="corroborated"), channel_rank=1
+    )
+
+    original = dict(lc.CHANNEL_LIST_WEIGHTS)
+    try:
+        lc.CHANNEL_LIST_WEIGHTS["fact"] = 1e6
+        rows = lc.compose([fact, article]).rows
+
+        # The premise: one (band, tier) cell, two channels, and the fact
+        # carries the larger magnitude. If any of these stops holding the
+        # assertion below is vacuous rather than passing.
+        assert {(r.band, r.tier) for r in rows} == {(1, 3)}
+        by_kind = {r.id_kind: r for r in rows}
+        assert by_kind["fact"].weighted_score > by_kind["article"].weighted_score
+
+        assert [r.id_kind for r in rows] == ["article", "fact"]
+    finally:
+        lc.CHANNEL_LIST_WEIGHTS.clear()
+        lc.CHANNEL_LIST_WEIGHTS.update(original)
+
+
 # ─────────── the answer budget, and one object per key ───────────
 
 
