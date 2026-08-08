@@ -177,6 +177,43 @@ def test_the_real_gold_is_now_eligible_on_every_condition():
     assert "deepseek-v4-pro" in resample["performed_by"]
 
 
+def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
+    """Rule B's never-contacted population is a claim about judge history that
+    no column in `gold.json` records — and deliberately cannot, since adding
+    one would move the sha the Layer-3 resample draw is pinned to. So the
+    boundary lives in the harness, and the only thing keeping it honest is this
+    test: LABELLING.md's History entry is the source of record, and a growth
+    round that extends the population without moving the constant would
+    otherwise silently shrink the population the gate verdict must hold on.
+    """
+    labelling = (
+        pathlib.Path(entailment_gold.ENTAILMENT_DIR) / "LABELLING.md"
+    ).read_text(encoding="utf-8")
+    doc = entailment_gold.load_entailment_gold()
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+    last_id = max(p["id"] for p in live)
+
+    # The range LABELLING.md states, both ends, verbatim.
+    assert f"{jq.NEVER_CONTACTED_FIRST_ID}..{last_id}" in labelling, (
+        "LABELLING.md's never-contacted range no longer matches the constant "
+        f"({jq.NEVER_CONTACTED_FIRST_ID}) and the gold's last id ({last_id})"
+    )
+
+    subset = jq.never_contacted_pairs(live)
+    assert 0 < len(subset) < len(live), (
+        "the subset must be a proper non-empty part of the gold: empty means "
+        "Rule B silently stops constraining, and equal means the boundary "
+        "stopped distinguishing contacted pairs at all"
+    )
+    assert all(p["id"] >= jq.NEVER_CONTACTED_FIRST_ID for p in subset)
+    # Every barred metric must be *computable* on the subset, or the rule's
+    # "report on both populations" cannot be satisfied at all.
+    verdict_classes = {p["verdict"] for p in subset}
+    assert verdict_classes == {"entailed", "contradicted", "unsupported"}, (
+        f"subset lacks a verdict class: {sorted(verdict_classes)}"
+    )
+
+
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
     eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
     assert eligibility.eligible is True

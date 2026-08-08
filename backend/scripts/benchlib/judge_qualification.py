@@ -294,6 +294,35 @@ def bar_results(score: QualificationScore, bars: dict[str, float]) -> dict[str, 
     return results
 
 
+# LABELLING.md's contacted-pairs rule (Rule B), stated before any number
+# existed: the grown pairs are "a set no judge identity has ever contacted",
+# and T2.41 "must report every barred metric on **both** populations — all live
+# pairs, and the never-contacted subset — with the gate verdict required to
+# hold on both".
+#
+# The boundary lives here rather than in `gold.json` because the gold's sha256
+# is what the Layer-3 resample draw is pinned to: adding a per-pair marker
+# would move the sha and void the certification the same file just received.
+# LABELLING.md's T2.110 History entry is the source ("Rule B's never-contacted
+# population now spans eg-0242..eg-0351"); a growth round that extends it must
+# move this constant, and the test suite pins the two together.
+NEVER_CONTACTED_FIRST_ID = "eg-0242"
+
+
+def never_contacted_pairs(live_pairs: list[dict]) -> list[dict]:
+    """Rule B's second population: pairs no judge identity has contacted.
+
+    Pooling matters here rather than being a formality. The 241 pairs below the
+    boundary were contacted three times across two judge identities, so a
+    single pooled number blends pairs a judge has already seen with pairs it
+    has not — which is the contamination the growth round existed to escape.
+    Scoring the subset costs nothing: the caller already holds every verdict
+    keyed by pair id, so this is a second call to ``score_judgments`` and not a
+    second gold contact.
+    """
+    return [p for p in live_pairs if p["id"] >= NEVER_CONTACTED_FIRST_ID]
+
+
 def _gold_class_count(score: QualificationScore, verdict: str) -> int:
     return sum(score.confusion.get(verdict, {}).values())
 
@@ -429,6 +458,45 @@ def render_report(
     lines.append("Granularity at this gold size:")
     lines.extend(_granularity_lines(score))
     lines.append("")
+
+    nc_score = meta.get("never_contacted_score")
+    if nc_score is not None:
+        lines.append(
+            "## Bars on the never-contacted population (Rule B)"
+        )
+        lines.append("")
+        lines.append(
+            "LABELLING.md's contacted-pairs rule requires every barred metric "
+            "on **both** populations, with the gate verdict required to hold on "
+            f"both. The pairs above are all {score.n_pairs} live ones, of which "
+            f"{score.n_pairs - nc_score.n_pairs} were contacted before; these "
+            f"are the {nc_score.n_pairs} pairs "
+            f"(`{NEVER_CONTACTED_FIRST_ID}`+) no judge identity had seen."
+        )
+        lines.append("")
+        for bar_key, result in bar_results(nc_score, meta["bars"]).items():
+            measured = result["measured"]
+            rendered = "undefined (no acceptances)" if measured is None else f"{measured:.4f}"
+            bar = result["bar"]
+            stated = "UNSTATED (owner has not set it)" if bar is None else f"{bar:.2f}"
+            verdict = "PASS" if result["passed"] else "FAIL"
+            lines.append(
+                f"- `{bar_key}` = {stated} on `{result['metric']}`: "
+                f"measured {rendered} → **{verdict}**"
+            )
+        lines.append("")
+        lines.append("Granularity on this subset — **read this before the numbers above**:")
+        lines.extend(_granularity_lines(nc_score))
+        lines.append(
+            "  A bar can only be met at a value the lattice contains. T2.110 "
+            "sized the *pooled* contradicted census at 80 so that 76/80 = 0.9500 "
+            "sits exactly on `contradiction_recall_bar`; that analysis was never "
+            "run for this subset, whose smaller census may place the bar between "
+            "two attainable values and so enforce a stricter number than the one "
+            "stated. Where it does, the subset verdict is evidence about the "
+            "census, not only about the judge."
+        )
+        lines.append("")
 
     lines.append("## Confusion (gold rows × predicted columns)")
     lines.append("")

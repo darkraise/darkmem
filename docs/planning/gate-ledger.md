@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open** (measured 2026-08-08, two vendors: NOT CLEARED — contradiction-precision 0.7937 deepseek / 0.8814 gpt-5.5, both vs 0.95; entailed P/R pass on both. Resolution spike 2026-08-08: the defect is the veto's architecture — verdict and redesign await owner ratification, this file, "G-D resolution") | — | T2.41 — this file, "G-D verdict" and "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba}.md` |
+| G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -615,6 +615,92 @@ and this run deliberately minted none.)*
 The veto consumer inherits the same qualification on the **contradiction** verdict
 (doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
 2026-07-31 before any gate run alongside the two above.
+
+### G-D re-measure under the redesign (2026-08-08): **NOT CLEARED — one bar, one slice**
+
+The first measurement of the redesigned gate, on the grown gold after its
+Layer-3 ruling and certification. Report:
+`docs/eval/2026-08-08-judge-qualification-fd39e7b2.md`.
+
+| Bar | Value | Pooled (351) | Never-contacted (110) |
+|---|---|---|---|
+| `groundedness_gate_precision_bar` | 0.95 | 0.9932 **PASS** | 1.0000 **PASS** |
+| `groundedness_gate_recall_bar` | 0.90 | 0.9932 **PASS** | 0.9778 **PASS** |
+| `contradiction_precision_bar` | 0.70 | 0.9012 **PASS** | 0.9200 **PASS** |
+| `contradiction_recall_bar` | 0.95 | **0.9125 FAIL** | **0.9200 FAIL** |
+
+**The redesign's own prediction held, and that is the first thing to say.**
+Precision — repriced from truth to review-load — came in at 0.90 against the
+0.70 floor, comfortably. The gate now fails on the metric the amendment made
+truth-critical, which is the gate working as redesigned rather than failing in
+a new place. Recall 0.9125 = 73/80; the bar needs 76/80. **Three pairs.**
+
+**The failure is one rule, not a diffuse weakness.** All **7** contradiction-recall
+misses are `value-swap`, every one judged `unsupported` — the slice whose
+verdict is fixed by the exclusive-slot rule. The judge is declining to treat a
+differing value in a single-valued slot as *exclusion*, falling back to
+"contradiction requires exclusion, not absence". The precision errors sit
+elsewhere entirely (6 `temporal`, 2 `direction`), so the two metrics are failing
+on disjoint material.
+
+**Two checks that close off the easy explanations, both pre-existing rather
+than constructed after the number:**
+
+1. *Is the gold wrong?* No, and this is the strongest evidence available. The
+   n = 93 Layer-3 resample draws a **full census of the contradicted class**, so
+   every one of the 42 `value-swap` pairs was independently re-labelled blind by
+   a non-Claude model days before this run. It returned **one** disagreement in
+   93, and that one was `temporal` (eg-0018), not `value-swap`. The six host-swap
+   pairs this file had flagged as "procedurally weak evidence... exactly the pairs
+   the resample's full contradicted census exists to test" were tested, and held.
+2. *Is the prompt missing the rule?* No. `SYSTEM_PROMPT` lists under
+   `contradicted`: "a different value in a slot the premise fills exclusively".
+   The judge was told the rule and did not apply it. So this is not a
+   prompt-coverage gap, and editing the prompt would be tuning against the set
+   that measured the failure — barred by doc 17 §6 and unnecessary on the facts.
+
+**Rule B was enforced for the first time here, and it was not previously
+implemented.** LABELLING.md's contacted-pairs rule requires every barred metric
+on both populations "with the gate verdict required to hold on both"; the runner
+scored the pool only. It now scores both from the verdicts already in hand — no
+extra model call, no extra gold contact. The subset agrees with the pool on every
+bar, including the miss, so pooling was not hiding anything **this time**. Note
+the 241 pairs below the boundary had been contacted three times, which is exactly
+the blend the rule exists to prevent being read as one number.
+
+**A granularity finding the subset exposes, recorded because it will matter
+before it bites.** The never-contacted subset holds 25 contradicted pairs, so its
+recall lattice is 1.00 / 0.96 / 0.92 — **0.95 is not on it**, and the subset
+therefore enforces ≥ 0.96 (at most one miss in 25) where the pooled census
+permits four in 80. T2.110 sized the pooled census at 80 precisely so 76/80 lands
+on 0.9500 exactly; that analysis was never run for the subset Rule B also gates.
+**It is not load-bearing for this verdict** — the subset scored 23/25, which
+fails against 0.95 and 0.96 alike — but a future run landing on 24/25 would be
+passed by the stated bar and failed by the lattice, and the owner should settle
+whether the subset gates or is reported-only before that happens.
+
+**Attempts and provenance, stated plainly.** `gold_touching_attempts` keys on
+`gold_sha256`, so this is attempt **1** on the grown gold; doc 17 §6's two-attempt
+budget has one left. The judge identity is `fd39e7b2c47fa375`
+(`gpt-5.5`, `params={"reasoning_effort":"high"}`), which is **not** attempt 2's
+`1bb9d9bae62eb9d8` even though the model and the prompt are the same — `params`
+is in `IDENTITY_FIELDS`, and attempt 2's params are unrecoverable (the resolution
+spike probed ~18k candidate configs and had to fall back to token-checksum
+attribution; an independent search here also found nothing). The prompt is
+byte-identical across both: `prompt_sha f99151e4add69b31`. Because the cache key
+folds in the identity, **nothing replayed warm** — all 351 pairs are fresh
+inference. Reports since 2026-08-08 record the full invocation, so this gap is
+closed forward and cannot be closed backward.
+
+**Deliberately not recorded here: the per-pair miss census.** Publishing the last
+one is part of what contaminated the 241-pair gold and forced T2.110's growth
+round. The slice-level attribution above is what a decision needs; the pair ids
+are what a future author must not be able to read.
+
+**No qualification record was minted**, and `verification_qualification.json`
+does not exist. G-D stays closed and the judge stays unqualified, so
+`VerificationJudge.judge()` still refuses and the Tier-C scan still produces
+nothing.
 
 ### G-D redesign: **RATIFIED by the owner, 2026-08-08**
 

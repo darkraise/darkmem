@@ -261,6 +261,12 @@ async def run_qualification(
         [(p["id"], p["premise"], p["hypothesis"]) for p in live_pairs],
     )
     score = jq.score_judgments(live_pairs, verdicts)
+    # Rule B's second population, from the verdicts already in hand: no extra
+    # model call and no extra gold contact. Scoring only the pool would blend
+    # pairs this judge's model has already been measured on with the pairs the
+    # growth round added precisely because it had.
+    nc_pairs = jq.never_contacted_pairs(live_pairs)
+    nc_score = jq.score_judgments(nc_pairs, verdicts) if nc_pairs else None
     _sanity_check(verdicts, "gold backstop")
 
     gold_touching_attempts = sum(
@@ -286,6 +292,7 @@ async def run_qualification(
         "n_fixtures": len(sanity_pairs),
         "fixture_tokens": fixture_tokens,
         "gold_tokens": gold_tokens,
+        "never_contacted_score": nc_score,
     }
 
     print("[3/4] rendering report + recording ledger row...")
@@ -320,6 +327,18 @@ async def run_qualification(
             print(f"  {bar_key}: measured={result['measured']} bar={result['bar']} "
                   f"-> {'PASS' if result['passed'] else 'FAIL'}")
         missed = [k for k, r in results.items() if not r["passed"]]
+        # Rule B: "the gate verdict required to hold on both". A bar cleared on
+        # the pool and missed on the never-contacted subset is a bar cleared on
+        # pairs the judge had already been measured against, which is the one
+        # reading the rule exists to forbid.
+        if nc_score is not None:
+            nc_results = jq.bar_results(nc_score, meta["bars"])
+            for bar_key, result in nc_results.items():
+                print(f"  [never-contacted, n={nc_score.n_pairs}] {bar_key}: "
+                      f"measured={result['measured']} bar={result['bar']} "
+                      f"-> {'PASS' if result['passed'] else 'FAIL'}")
+            missed += [f"{k} (never-contacted)"
+                       for k, r in nc_results.items() if not r["passed"]]
         if missed:
             # A failed gate leaves its report and its ledger rows, and nothing
             # else. Until 2026-08-08 it also wrote the qualification record --
