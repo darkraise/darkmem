@@ -28,6 +28,28 @@ class _Reply:
 
 
 @pytest.fixture(autouse=True)
+def _manifest_pinned_to_the_current_gold(monkeypatch):
+    """Re-pin the draw manifest to the gold as it stands now.
+
+    Recording the resample block *into* gold.json changes gold.json's sha, and
+    the manifest pins the sha the draw was made against -- so the scorer
+    correctly refuses to score the same draw afterwards. That guard has its own
+    test; these exercise the runner end to end, which needs a manifest that
+    agrees with the file on disk. Note what this implies for the real record:
+    the pin is one-way, and a recorded resample cannot be re-scored against its
+    own draw without a fresh one.
+    """
+    import hashlib
+    from benchlib import entailment_gold, resample_score
+
+    real = resample_score.load_manifest()
+    sha = hashlib.sha256(Path(entailment_gold.GOLD_PATH).read_bytes()).hexdigest()
+    monkeypatch.setattr(
+        resample_score, "load_manifest", lambda *a, **kw: {**real, "gold_sha256": sha}
+    )
+
+
+@pytest.fixture(autouse=True)
 def _mock_key(monkeypatch):
     """The runner refuses to start without its key env var, so the tests set
     one. Requiring the caller to export it made them pass by hand and fail

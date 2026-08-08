@@ -336,6 +336,21 @@ def render_report(
     lines.append(f"# Judge qualification — {meta['date']}")
     lines.append("")
 
+    if not meta.get("gate_run"):
+        # Keyed on the run mode, not on the gold. Until 2026-08-08 the only
+        # banner was the eligibility one below, and an ineligible gold made
+        # every interim run carry it -- so "no banner" and "gate run" were the
+        # same thing by accident. The moment the gold became eligible an
+        # interim report started rendering indistinguishably from a gate
+        # verdict, while minting no record and claiming nothing. A report is
+        # what a human reads; it has to say which kind it is on its own face.
+        lines.append(
+            "> **INTERIM — not a gate run.** No qualification record was "
+            "minted and G-D is not opened by this report. Re-run with "
+            "`--gate` for T2.41's evidence mode."
+        )
+        lines.append("")
+
     if not eligibility.eligible:
         lines.append(
             "> **INTERIM — this is not a qualification verdict and cannot open "

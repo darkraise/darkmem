@@ -473,6 +473,52 @@ exists.
 
 ## History
 
+- **2026-08-08 (T2.54 Step 6, resample — RUN, by model, owner-directed).**
+  n = 93, **0 disagreements**, bar ≤ 1. The gold is now lock-eligible.
+
+  **No human sat, and the record says so.** The owner directed on 2026-08-08
+  that a model perform the sitting rather than the owner. Two vendors ran it
+  independently through `resample_llm.py`, one request per pair: **gpt-5.5**
+  (OpenAI) and **deepseek-v4-pro** (DeepSeek). Each scored 0 disagreements
+  against the recorded labels, and 0 against each other on all 93. Raw replies
+  are committed under `entailment/resample_runs/`. Neither is Claude-family —
+  the runner refuses a Claude-family model id outright — so the correlated
+  error this entry's predecessor describes is not what produced the number.
+
+  **The standing objection, recorded because a passing number must not bury
+  it.** The entry below argues the resample must come from outside the family
+  that labelled the set. Two non-Claude vendors satisfy that literally. They do
+  not satisfy the deeper claim: several pairs are built so the hypothesis is
+  true in the corpus world but unsupported by the premise, and scoring
+  plausibility over entailment is a *generic* frontier-model failure rather
+  than a Claude-specific one — and the judge T2.41 qualifies on this gold is
+  itself an LLM entailment judge. This number therefore measures inter-model
+  agreement more than it measures label correctness. It is evidence, and it is
+  weaker evidence than this protocol assumed when it wrote "the owner".
+
+  **Two caveats on what the 0 covers.** (1) **52% of the draw is now decided by
+  a stated lookup rule** — 19 `direction` pairs by the reversal table, 29
+  `value-swap` pairs by the exclusive-slot list. The resample's power to detect
+  a *labelling* error lives in the other 45 pairs, where both vendors also
+  matched on every one. Read the 0 as "45 judgment-bearing pairs confirmed
+  twice", not "93 independent confirmations". (2) **The six host-swap pairs
+  Rule 1 governs are no longer independently tested.** The proposals section
+  above flags them as "exactly the pairs the resample's full `contradicted`
+  census exists to test", their prior agreement having been manufactured by the
+  shared fork. Ratified Rule 1 now reaches them mechanically, so their verdicts
+  rest on the owner's ratification and not on this resample.
+
+  **The first attempt failed 3-against-1, and was voided as an instrument
+  defect** (owner-ruled, not counted against blocker B4's two-failure stop).
+  Every disagreement — eg-0142, eg-0163, eg-0179 — traced to a rule the sheet
+  did not carry: the excerpt held 4,150 of this file's 34,914 characters and
+  omitted both the 16-relation reversal table and the three ratified
+  exclusive-slot extensions. This file had predicted exactly that ("a future
+  condensation that drops any of them is a fork to be fixed") and recorded the
+  precedent: on eg-0142 "both blind passes (lacking it) said `unsupported`".
+  Three labellers across two vendors, one omission, one identical error. The
+  sheet now carries both, no label changed, and the re-run scored 0.
+
 - **2026-08-06 (T2.54 Step 6, owner sitting — partial).** The owner ratified
   all three Step-5 rulebook extensions and accepted item 4's clarification, in
   the mandated rule-then-pairs order. Both escalations resolved without

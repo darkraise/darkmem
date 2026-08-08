@@ -235,6 +235,7 @@ async def run_qualification(
 
     run_date = (now or datetime.now()).date()
     meta = {
+        "gate_run": gate,
         "date": run_date.isoformat(),
         "run_id": run_id,
         "timestamp": timestamp,

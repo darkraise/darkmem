@@ -4018,5 +4018,12 @@
       "label_source": "adjudicated",
       "rationale": "Open-window rule: the pin holds since March 2026 with no closing event, so the fact entails the same state at the later reference date."
     }
-  ]
+  ],
+  "resample": {
+    "n": 93,
+    "disagreements": 0,
+    "seed": 4212978887,
+    "performed_by": "LLM passes, owner-directed 2026-08-08: gpt-5.5 (OpenAI) and deepseek-v4-pro (DeepSeek), independently, 0 disagreements each and 0 with each other. No human sat.",
+    "date": "2026-08-08"
+  }
 }

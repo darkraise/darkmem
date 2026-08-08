@@ -132,25 +132,33 @@ def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
     return doc
 
 
-def test_the_real_gold_is_refused_with_counts_surfaced():
-    """Post-Step-6 composition: size, the 50% floor and the author-label
-    condition all clear — the owner's 2026-08-06 sitting ratified the rulebook
-    fork and resolved both escalations to `label_source: "owner"`.
+def test_the_real_gold_is_eligible_with_counts_and_resample_surfaced():
+    """The resample ran on 2026-08-08 (two non-Claude vendors, 0 disagreements
+    each), which was the last outstanding condition. This pinned the *refusal*
+    until then; it now pins the eligibility, and the counts stay surfaced either
+    way so a future composition change is visible in the reasons rather than
+    only in a boolean.
 
-    **The remaining refusal ground is the resample**, and that is the point.
-    Clearing the author condition is what first made this gold reachable as
-    "eligible", and until 2026-08-06 the lock would have said so while its
-    label error was uncertified.
+    The conditions themselves are still exercised against synthetic golds
+    below -- an eligible real gold must not become the only thing this file
+    checks, or the lock would be untested the moment it matters.
     """
-    eligibility = jq.gate_eligibility(entailment_gold.load_entailment_gold())
-    assert eligibility.eligible is False
+    doc = entailment_gold.load_entailment_gold()
+    eligibility = jq.gate_eligibility(doc)
+    assert eligibility.eligible is True
     assert eligibility.live_pairs == 241
     assert eligibility.l2_fact_pairs == 153
     assert eligibility.author_labelled_pairs == 0
     joined = "\n".join(eligibility.reasons)
     assert "l2-fact: 153/241" in joined
     assert "author-labelled: 0/241" in joined
-    assert "resample: absent" in joined
+    assert "resample" not in joined
+
+    resample = doc["resample"]
+    assert resample["n"] == 93
+    assert resample["disagreements"] == 0
+    # No human sat, and the record must say so on its face.
+    assert "LLM" in resample["performed_by"]
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
@@ -280,17 +288,32 @@ def test_recorder_round_trips_through_the_ledger(tmp_path):
     assert "tokens_by_purpose" in row["twin"]
 
 
-def test_report_interim_banner_follows_eligibility():
+def test_report_interim_banner_follows_both_eligibility_and_run_mode():
+    """Two independent reasons a report is not a verdict, and each needs its own
+    banner. Until 2026-08-08 only the eligibility one existed, and because the
+    real gold was ineligible every interim run carried it -- so "unbannered"
+    and "gate run" coincided by accident. When the gold became eligible an
+    interim report rendered exactly like a gate verdict while minting nothing.
+    """
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     twin = _mini_twin()
-    ineligible = jq.gate_eligibility(entailment_gold.load_entailment_gold())
-    text = jq.render_report(score, ineligible, twin, _mini_meta())
-    assert "INTERIM" in text
+    eligible = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
+    ineligible = jq.gate_eligibility(_synthetic_gold(200, 100, 0, resample=None))
+
+    # Ineligible gold, interim run: both reasons stated, each with its cause.
+    text = jq.render_report(score, ineligible, twin, {**_mini_meta(), "gate_run": False})
+    assert "not a gate run" in text
     for reason in ineligible.reasons:
         assert reason in text
 
-    eligible = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
-    text = jq.render_report(score, eligible, twin, _mini_meta())
+    # Eligible gold, interim run: still not a verdict, and it says which reason.
+    text = jq.render_report(score, eligible, twin, {**_mini_meta(), "gate_run": False})
+    assert "INTERIM" in text
+    assert "not a gate run" in text
+    assert "composition rule" not in text
+
+    # Eligible gold, gate run: the only combination that carries no banner.
+    text = jq.render_report(score, eligible, twin, {**_mini_meta(), "gate_run": True})
     assert "INTERIM" not in text
 
 
@@ -657,19 +680,32 @@ def test_attempts_count_per_gold_across_identities(tmp_path):
     assert "gold_touching_attempts: 3" in result.report_path.read_text()
 
 
-def test_gate_mode_refuses_the_real_gold_before_any_call(tmp_path):
+def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
+    """The refusal must precede every model call, and it must be tested against
+    a gold that is *actually* ineligible.
+
+    This used the real gold and passed because the resample had not run. When it
+    landed on 2026-08-08 the gold became eligible, the refusal stopped firing,
+    and the test drove a stub orchestrator straight through gate mode into
+    writing the production qualification record with the stub's own metrics.
+    The protection was never the assertion -- it was a data condition that
+    expired. So the ineligible gold is now constructed here rather than
+    borrowed, and the record path is explicit rather than defaulted.
+    """
+    doc = entailment_gold.load_entailment_gold()
+    doc.pop("resample", None)          # the one condition, removed deliberately
+    gold_path = tmp_path / "no-resample-gold.json"
+    gold_path.write_text(json.dumps(doc), encoding="utf-8")
+
     stub_cls, seen = make_stub(cycling_script())
     with pytest.raises(RuntimeError) as excinfo:
-        _run(tmp_path, stub_cls, gate=True)
+        _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
+             record_path=tmp_path / "must-not-be-written.json")
     message = str(excinfo.value)
-    assert "l2-fact: 153/241" in message
-    # 0 since the owner's 2026-08-06 Step-6 sitting resolved both escalations.
-    # The refusal now rests on the resample, which is the condition that
-    # actually certifies label accuracy — and the one the lock did not carry
-    # until clearing the author condition made this gold reachable.
-    assert "author-labelled: 0/241" in message
-    assert "resample: absent" in message
+    assert "resample" in message
     assert seen == [], "eligibility refusal must precede any model call"
+    assert not (tmp_path / "must-not-be-written.json").exists()
+    assert not vj.QUALIFICATION_RECORD_PATH.exists()
 
 
 def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path):
