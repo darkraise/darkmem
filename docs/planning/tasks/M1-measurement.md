@@ -221,6 +221,90 @@ after the rewire, against the grown gold.
 
 ---
 
+#### T2.110 — Grow the entailment gold past its contacted census
+
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.54` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-08 because T2.109 requires it and nothing owned it** — the same shape as
+the measurement-corpus gap the gate-ordering analysis found in August: a precondition
+written into one task's done-when and owned by no task.
+
+**What.** Additional labelled pairs under T2.54's full discipline, so G-D's re-measure has
+an uncontaminated surface to run on.
+
+**Why growth, precisely.** Not for headroom — that reasoning is wrong and should not be
+repeated. Three runs failed on an FP *rate* (7–13 false positives), and a larger gold with
+the same rate fails identically; only the resolution improves. The reason is
+**contamination**: this gold carries three `gold_touching_attempts`, and its false-positive
+census is now public in the ledger, in T2.41's commits and in the resolution brief. A
+prompt or design change measured against pairs whose failure modes are written down is
+fitted to them, which is exactly the loop T2.26's plan review flagged as its one Critical.
+
+**The authoring constraint that makes it worth doing.** The new pairs must be authored
+**without reference to the recorded FP ids** (eg-0020, eg-0021, eg-0023, eg-0075, eg-0163,
+eg-0216, eg-0220) or to the slice-level failure profile. An author who knows the judge
+over-calls contradiction on non-exclusive reversals and writes more of them is building a
+targeted test, not a gold. Separate owner, adversarial review, blind adjudication — the
+T2.54 pattern, for the same reason it existed there.
+
+**Composition still binds** (doc 17 §11): ≥ 50% `l2-fact` premises anchored to committed
+manifest rows, verdict/slice lawfulness enforced by the loader, and the declared counts
+recomputed rather than hand-maintained.
+
+**If T2.109 lands first, the target composition changes.** Under the proposed redesign the
+metric pair inverts — recall becomes truth-critical — so the `contradicted` census is the
+population that needs growing most, not the `entailed` one. Read T2.109's ratified shape
+before fixing the targets.
+
+**Done when:**
+- [ ] Pairs authored blind to the recorded failure census, by an owner who has not read it
+- [ ] §11 composition holds on the grown set, recomputed not asserted
+- [ ] The blind resample is **re-drawn** — the draw is pinned to `gold_sha256`, and growth
+      moves it, so the recorded resample does not carry over
+- [ ] `gold_touching_attempts` resets with the gold file, and the report says so
+- [ ] The grown gold's own eligibility passes `judge_qualification.gate_eligibility`
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_judge_qualification.py -q`
+
+#### T2.111 — G-C re-measure under the veto's ratified shape
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.108, T2.109, T2.110` · `Doc: 20 §4, 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-08 because T2.40 is closed and nothing owns re-running it.** T2.40
+recorded the verdict *not evaluable* and carries three clauses binding "this re-measure" —
+but a `done` task cannot be the thing that re-runs, so those clauses had no owner.
+
+**What.** Re-run G-C's four probes and record a verdict, against T2.108's corpus and
+whatever arm structure T2.109 ratifies.
+
+**Rule on all three vacuity clauses before recording any verdict** (they are stated in
+full under T2.40, and they are cumulative, not alternatives):
+1. The false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is
+   structurally zero — `audit_clears` cannot distinguish precision from inoperability.
+2. Probes 1–2 carry a weaker form: `blocked ≡ 0` is data-precluded, so `slice_clears`
+   reads True with its failing direction unreachable.
+3. The substrate itself may be incomplete: `record_event` never raises and
+   `set_verification_status` never counts its rows back, so the ladder can move while the
+   journal records nothing — degrading the *denominator* without announcing under-power.
+
+**The redesign may change the audit's shape, not merely unblock it.** G-C's machine-dispute
+arm counts `disputed` transitions. If T2.109 moves the LLM scan from disputing to opening
+review, that arm's population changes at the source — the audit may need re-deriving rather
+than re-running, and the human-rejection arm's relative weight rises. Establish which
+before measuring; a probe carried over unexamined would be measuring the old architecture.
+
+**Done when:**
+- [ ] All three vacuity clauses ruled operable or vacuous, with the reasoning recorded
+- [ ] The audit's numerator arms re-derived against the ratified arm structure
+- [ ] Every metric from `events` by SQL; no hand-written journal rows
+- [ ] The verdict recorded whether or not it clears — a miss is the result, not a failure
+- [ ] `app/services/promotion_metrics_record.json` minted **only** on a cleared verdict,
+      deliberately, never as a side effect of measuring
+- [ ] The G-C→G-D cross-edge re-read and its ledger wording corrected if the redesign
+      changed what it binds
+
+**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
+
 #### T2.41 — G-D evidence run
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`
