@@ -1038,13 +1038,24 @@ async def _restore_born_rungs(session: AsyncSession, *, rows: list[dict]) -> int
     **The veto is consulted here, and it is the whole reason this pass composes
     two questions instead of one** (fix round 2). ``restore_born_rung``'s WHERE
     refuses a ``disputed`` row, which covers a dispute the recompute has already
-    *applied* — but the scan journals its verdict and the recompute is what
-    writes the status, so between the two a vetoed fact still reads
+    *applied* — but the verdict and the status write are two steps and the
+    recompute is the second one, so between them a vetoed fact still reads
     ``candidate``. Restoring inside that window is an upward move at the one
     moment the ladder itself would refuse one, undone by the next recompute. The
     consult runs only over rows already at the rung's precondition, and it can
     only decline a restore — never grant one — so the producer still does not
     grade its own output.
+
+    **Inert today, and kept for the day it is not** (T2.109). Doc 08 §4.2's
+    2026-08-08 amendment took the model scan off the veto, which was the only
+    detector that could have fired on this population: what is left reaches
+    ``REPLACES_FAMILY`` over an empty ``SINGLE_VALUED_RELATIONS``, and the
+    deriver mints only ``USES`` and ``DEPENDS_ON``. The consult is therefore a
+    guard nothing currently trips rather than a guard that does nothing —
+    admitting one single-valued relation makes it live again, and a suspected
+    contradiction deliberately does *not* trip it, because withholding a label
+    on a model's say-so is the same instrument the amendment removed, pointed
+    the other way.
     """
     restored = 0
     for row in rows:

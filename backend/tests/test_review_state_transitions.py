@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
@@ -318,7 +319,7 @@ class TestPrecedence:
     """The clause this task exists for.
 
     ``review_state`` is a bare nullable TEXT column indexed partially on the
-    literal ``'open'``, and doc 08 §6 gives it three independent openers. The
+    literal ``'open'``, and doc 08 §6 gives it four independent openers. The
     ruling in ``derive_review_state`` settles it by derivation: the clear fires
     only when *no* registered opener holds. These tests fail if that becomes an
     unconditional clear.
@@ -517,16 +518,83 @@ class TestTheDerivationItself:
             )
 
     def test_the_opener_set_is_a_registry_not_a_hard_coded_branch(self):
-        """T2.46 extended this tuple, and added no second writer.
+        """T2.46 and T2.109 each extended this tuple, and added no writer.
 
-        Two members now: the veto's and the hysteresis'. The count is pinned
-        rather than merely bounded so that an opener added *outside* the
-        registry — the failure this registry exists to prevent — cannot pass
-        by leaving the tuple untouched while a new condition writes the column
-        for itself.
+        Three members now: the veto's, the hysteresis', and the model scan's
+        contradiction-suspected flag. The count is pinned rather than merely
+        bounded so that an opener added *outside* the registry — the failure
+        this registry exists to prevent — cannot pass by leaving the tuple
+        untouched while a new condition writes the column for itself.
         """
         assert isinstance(verification_ladder.REVIEW_OPENERS, tuple)
-        assert len(verification_ladder.REVIEW_OPENERS) == 2
+        assert len(verification_ladder.REVIEW_OPENERS) == 3
+
+
+class TestTheSuspectedContradictionOpener:
+    """T2.109 — the model scan flags; it does not decide.
+
+    Doc 08 §4.2's 2026-08-08 amendment. The pure half only: the applier's own
+    end-to-end path is in ``test_contradiction_scan.py``, where the journalled
+    verdict that produces the flag lives.
+    """
+
+    def test_the_flag_opens_the_queue_on_an_unmoved_rung(self):
+        flagged = replace(
+            _decision(target="corroborated", current="corroborated"),
+            contradiction_suspected=True,
+        )
+        assert derive_review_state(flagged) == REVIEW_STATE_OPEN
+
+    def test_the_flag_changes_no_outcome_in_decide(self):
+        """The property the split exists for: the signal is inert in ``decide``.
+
+        Kills the shape this rewire removed — a model verdict reaching a branch
+        — by re-deciding every reachable current status both ways and requiring
+        byte-identical decisions apart from the flag itself.
+        """
+        profile = OriginProfile(fact_id="f", origins=())
+        for current in ("candidate", "corroborated", "disputed", "confirmed"):
+            plain = decide("f", current, profile, LadderConfig())
+            flagged = decide(
+                "f", current, profile, LadderConfig(), contradiction_suspected=True,
+            )
+            assert replace(flagged, contradiction_suspected=False) == plain, current
+
+    def test_a_ratified_fact_never_carries_the_flag(self):
+        """Doc 08 §4.4: a ratified fact is immune to the veto, so queueing it
+        for a contradiction review offers a human nothing they can act on."""
+        flagged = decide(
+            "f",
+            "confirmed",
+            OriginProfile(fact_id="f", origins=()),
+            LadderConfig(),
+            contradiction_suspected=True,
+        )
+        assert flagged.contradiction_suspected is False
+        assert derive_review_state(flagged) is None
+
+    def test_the_flag_survives_the_hysteresis_rewrite(self):
+        """``apply_demotion_hysteresis`` rewrites the decision, and a field it
+        dropped would silently unqueue a flagged fact on any demoting cycle."""
+        flagged = replace(
+            decide(
+                "f",
+                "corroborated",
+                OriginProfile(fact_id="f", origins=()),
+                LadderConfig(),
+                contradiction_suspected=True,
+            ),
+        )
+        assert flagged.outcome == "demote"
+        held = verification_ladder.apply_demotion_hysteresis(
+            flagged,
+            pending_since=None,
+            pending_cycles=0,
+            grace_cycles=1,
+            now=T0,
+        ).decision
+        assert held.contradiction_suspected is True
+        assert derive_review_state(held) == REVIEW_STATE_OPEN
 
 
 # ───────── D4 — the journal population and the memories axis ─────────

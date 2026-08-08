@@ -28,8 +28,10 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 
+from app.models.config import Config
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import contradiction_scan as scan_module
@@ -102,8 +104,8 @@ def _verdict(name: str, reason: str = "because") -> str:
     return json.dumps({"verdict": name, "reason": reason})
 
 
-@pytest.fixture
-def qualified_judge_record(tmp_path, monkeypatch):
+@pytest_asyncio.fixture
+async def qualified_judge_record(session, tmp_path, monkeypatch):
     """Mint a record that qualifies the judge for one test.
 
     **Opt-in, never autouse.** The judge refuses unconditionally while no
@@ -111,6 +113,11 @@ def qualified_judge_record(tmp_path, monkeypatch):
     job ship before the qualification run happens. A fixture that opened the
     gate for the module would leave the refusal path unexercised everywhere at
     once, which is exactly the trap this epic has already been bitten by.
+
+    It writes a ``contradiction_recall_bar`` config row because T2.109 barred
+    that metric with no default: the fixture has to state the bar for the same
+    reason a deployment does, and a test that qualified without one would be
+    exercising a gate no operator can reach.
     """
     identity = vj.judge_identity(_judge_config()["verification"])
     record = tmp_path / "verification_qualification.json"
@@ -123,11 +130,14 @@ def qualified_judge_record(tmp_path, monkeypatch):
             "entailed_precision": 1.0,
             "entailed_recall": 1.0,
             "contradiction_precision": 1.0,
+            "contradiction_recall": 1.0,
         },
         "gate_eligible": True,
         "recorded_at": "2026-08-06T00:00:00+00:00",
     }), encoding="utf-8")
     monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", record)
+    session.add(Config(key="contradiction_recall_bar", value={"value": 0.9}))
+    await session.commit()
     return record
 
 
@@ -186,6 +196,17 @@ async def _source(session, fact_id, origin_key, *, kind="memory") -> None:
         origin_key=origin_key,
     )
     await session.commit()
+
+
+async def _verification(session, fact_id) -> dict:
+    row = await session.execute(
+        text(
+            "SELECT verification_status, review_state FROM knowledge_triples "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": str(fact_id)},
+    )
+    return dict(row.mappings().one())
 
 
 async def _enqueue(session, fact_id) -> None:
@@ -712,8 +733,11 @@ class TestOnlyTheQualifiedJudgeAdjudicates:
 # guard that can be recomputed from live rows. So the single-door property
 # rests on nothing under `app/` but the scan being able to write that row, and
 # these scans are what make that structural rather than merely true today. One
-# bare `record_event` call from anywhere else would flip a fact to `disputed`
-# through the ladder with no judge in the story at all.
+# bare `record_event` call from anywhere else would put a fact on a human's
+# review queue with no judge in the story at all. That is a smaller harm than
+# the `disputed` this used to describe — the rewire (T2.109) is what shrank it
+# — and it is still a claim about truth arriving from nowhere, so the door
+# stays single.
 
 _VERDICT_EMITTER = "app/services/contradiction_scan.py"
 
@@ -1198,10 +1222,18 @@ async def _record_verdict(session, fact_id, *, counterpart, witness) -> None:
     await session.commit()
 
 
-class TestTheVerdictFeedsTheVeto:
-    async def test_a_journalled_contradiction_disputes_the_fact(self, session):
-        """End to end through the registry: the ladder is what writes the
-        status, on a verdict this module never applied itself."""
+class TestTheVerdictOpensReview:
+    async def test_a_journalled_contradiction_flags_the_fact_without_disputing(
+        self, session
+    ):
+        """Doc 08 §4.2 as amended 2026-08-08 (T2.109), end to end.
+
+        The verdict reaches the ladder, the ladder queues the fact for a human,
+        and the rung does not move. Both halves are asserted: a change that
+        routed this signal back into ``open_contradiction`` would keep the queue
+        assertion green while silently restoring the veto wiring three G-D runs
+        measured.
+        """
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
             fact="darkmem stores its vault in postgres",
@@ -1214,7 +1246,10 @@ class TestTheVerdictFeedsTheVeto:
         await _source(session, counter, "sess-b")
 
         decision = await recompute_fact(session, subject)
+        await session.commit()
         assert decision.contradiction_blocked is False
+        assert decision.contradiction_suspected is False
+        before = await _verification(session, subject)
 
         await _record_verdict(session, subject, counterpart=counter, witness="sess-b")
         finding = await detect_scanned_contradiction(session, subject)
@@ -1222,19 +1257,87 @@ class TestTheVerdictFeedsTheVeto:
         assert finding.counterpart_object == "mysql"
 
         decision = await recompute_fact(session, subject)
-        assert decision.target_status == "disputed"
+        await session.commit()
+        assert decision.contradiction_suspected is True
+        assert decision.contradiction_blocked is False
+        assert decision.target_status != "disputed"
+
+        after = await _verification(session, subject)
+        assert after["verification_status"] == before["verification_status"], (
+            "a suspected contradiction moves no rung"
+        )
+        assert after["review_state"] == "open"
+
+    async def test_a_clean_verdict_clears_the_flag_and_the_queue(self, session):
+        """The self-healing the rewire bought.
+
+        While the finding wrote ``disputed`` this was unreachable: the scan
+        skips already-disputed facts, so no second verdict was ever written and
+        a judge false positive stood until a guard lapsed or a human ruled. A
+        flagged fact keeps its rung, stays servable and stays in the scan's
+        working set, so the next clean pass supersedes the finding and the
+        derivation drops the queue entry.
+        """
+        subject = await _fact(
+            session, subject="darkmem", obj="postgres",
+            fact="darkmem stores its vault in postgres",
+        )
+        await _source(session, subject, "sess-a")
+        counter = await _fact(
+            session, subject="darkmem", obj="mysql",
+            fact="darkmem stores its vault in mysql",
+        )
+        await _source(session, counter, "sess-b")
+        await _record_verdict(session, subject, counterpart=counter, witness="sess-b")
+        await recompute_fact(session, subject)
+        await session.commit()
+        assert (await _verification(session, subject))["review_state"] == "open"
+
+        await record_event(
+            session,
+            event_type=CONTRADICTION_SCANNED,
+            object_type="fact",
+            object_id=subject,
+            project=PROJECT,
+            payload={"contradicted": False},
+        )
+        await session.commit()
+
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+        assert decision.contradiction_suspected is False
+        assert (await _verification(session, subject))["review_state"] is None
+
+    async def test_a_ratified_fact_is_never_flagged(self, session):
+        """Doc 08 §4.4: a ratified fact is immune, so it is not queued for an
+        adjudication that could change nothing."""
+        subject = await _fact(
+            session, subject="darkmem", obj="postgres",
+            fact="darkmem stores its vault in postgres",
+        )
+        await _source(session, subject, "sess-a")
+        counter = await _fact(
+            session, subject="darkmem", obj="mysql",
+            fact="darkmem stores its vault in mysql",
+        )
+        await _source(session, counter, "sess-b")
+        await _record_verdict(session, subject, counterpart=counter, witness="sess-b")
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET verification_status = 'confirmed' "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": str(subject)},
+        )
+        await session.commit()
+
+        decision = await recompute_fact(session, subject)
+        await session.commit()
+        assert decision.contradiction_suspected is False
+        assert (await _verification(session, subject))["review_state"] is None
 
     async def test_a_later_clean_verdict_supersedes_an_earlier_one(self, session):
-        """The newest row wins — and that is all it does.
-
-        It is worth naming what this does **not** show. The fact here was never
-        disputed, and once the ladder has applied a dispute the scan's own
-        servable predicate excludes the fact, so no later verdict is ever
-        written for it: this ordering rule only decides between two rows that
-        both arrived before the dispute was applied. The two exits from an
-        applied dispute are guard lapse and human ratification, and
-        `detect_scanned_contradiction`'s docstring is where they are stated.
-        """
+        """The newest row wins, read at the detector level."""
         subject = await _fact(
             session, subject="darkmem", obj="postgres",
             fact="darkmem stores its vault in postgres",

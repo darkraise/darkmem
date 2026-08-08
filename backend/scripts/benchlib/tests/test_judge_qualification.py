@@ -352,6 +352,84 @@ def test_report_records_the_whole_invocation_not_only_its_hash():
     assert "4000" in text
 
 
+# ── the near-mute judge (T2.109, doc 17 §6's 2026-08-08 amendment) ───────
+
+
+def _near_mute(n_contradicted=55, n_entailed=101):
+    """The judge the old gate qualified, reproduced through the shipped scorer.
+
+    ``contradicted`` on exactly one correct pair and ``unsupported`` on every
+    other contradiction; perfect on the entailed census. The censuses are the
+    real gold's (55 gold-contradicted, 101 gold-entailed), so the recall this
+    produces is the ledger's own 1/55 = 0.0182 rather than a number invented
+    to make a point.
+    """
+    pairs, verdicts = [], {}
+    for i in range(n_entailed):
+        pid = f"e-{i}"
+        pairs.append({"id": pid, "verdict": "entailed", "slice_tags": ["verbatim"]})
+        verdicts[pid] = _pv("entailed")
+    for i in range(n_contradicted):
+        pid = f"c-{i}"
+        pairs.append({"id": pid, "verdict": "contradicted", "slice_tags": ["value-swap"]})
+        verdicts[pid] = _pv("contradicted" if i == 0 else "unsupported")
+    return jq.score_judgments(pairs, verdicts)
+
+
+def test_the_near_mute_judge_scores_the_recorded_numbers():
+    """The premise the guard below rests on, measured rather than asserted."""
+    score = _near_mute()
+    assert score.contradiction_precision == pytest.approx(1.0)
+    assert score.contradiction_recall == pytest.approx(1 / 55)
+    assert round(score.contradiction_recall, 4) == 0.0182
+    assert score.entailed_precision == pytest.approx(1.0)
+    assert score.entailed_recall == pytest.approx(1.0)
+
+
+def test_the_gate_cannot_qualify_a_near_mute_judge():
+    """The incoherence that forced doc 08 §4.2's redesign, guarded.
+
+    A judge missing 54 of 55 contradictions passes all three of the bars this
+    gate carried before 2026-08-08 — that is asserted here, not assumed, so the
+    guard cannot pass by the judge failing for some unrelated reason. What must
+    refuse it is ``contradiction_recall_bar`` and nothing else. Dropping that
+    key from ``verification_judge.BAR_METRICS`` reddens this test.
+    """
+    score = _near_mute()
+    bars = {**vj.VERIFICATION_BAR_DEFAULTS, "contradiction_recall_bar": 0.90}
+    results = jq.bar_results(score, bars)
+
+    assert "contradiction_recall_bar" in results, (
+        "contradiction-recall is ungated: the gate qualifies a judge that "
+        "finds nothing"
+    )
+    assert results["contradiction_recall_bar"]["passed"] is False
+    assert [k for k, r in results.items() if not r["passed"]] == [
+        "contradiction_recall_bar"
+    ], "every previously-gated bar passes; only the new one refuses this judge"
+
+
+def test_an_unstated_bar_cannot_be_cleared_by_any_measurement():
+    """``bar_results`` over the shipped defaults, which state no recall bar.
+
+    Reporting it absent instead would make the unstated bar read as no bar at
+    all — the silence the redesign is about — so a perfect judge fails here too
+    until the owner writes the number down.
+    """
+    perfect = jq.QualificationScore(
+        n_pairs=1, invalid=0, confusion={},
+        entailed_precision=1.0, entailed_recall=1.0,
+        contradiction_precision=1.0, contradiction_recall=1.0,
+        per_slice={}, majority_class_floor=1.0,
+    )
+    result = jq.bar_results(perfect, dict(vj.VERIFICATION_BAR_DEFAULTS))[
+        "contradiction_recall_bar"
+    ]
+    assert result["bar"] is None
+    assert result["measured"] == 1.0
+    assert result["passed"] is False
+
+
 def test_report_carries_bars_verdicts_and_attempts():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))
@@ -447,7 +525,9 @@ def test_record_writer_schema_and_handshake(tmp_path, monkeypatch):
     assert record["judge_identity"]["identity_hash"] == vj.judge_identity_hash(identity)
 
     async def default_bars(_session):
-        return dict(vj.VERIFICATION_BAR_DEFAULTS)
+        # `contradiction_recall_bar` is barred with no default (T2.109), so a
+        # complete bar set has to state it — the resolver's own contract.
+        return {**vj.VERIFICATION_BAR_DEFAULTS, "contradiction_recall_bar": 0.90}
 
     monkeypatch.setattr(vj, "get_verification_bars", default_bars)
     import asyncio
@@ -794,11 +874,17 @@ def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
     assert not vj.QUALIFICATION_RECORD_PATH.exists()
 
 
-def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path):
+def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path, monkeypatch):
     gold_path = _write_eligible_gold(tmp_path)
     record_path = tmp_path / "rehearsal-record.json"
     # A clearing judge: since 2026-08-08 a gate run that misses a bar writes no
-    # record at all, so exercising the write path needs one that passes.
+    # record at all, so exercising the write path needs one that passes. The
+    # runner resolves bars from the code defaults alone, so the owner stating
+    # `contradiction_recall_bar` (T2.109) is a committed edit to that dict; it
+    # is stood in for here rather than chosen, since the number is theirs.
+    monkeypatch.setattr(vj, "VERIFICATION_BAR_DEFAULTS", {
+        **vj.VERIFICATION_BAR_DEFAULTS, "contradiction_recall_bar": 0.90,
+    })
     stub_cls, _seen = make_stub(perfect_script(gold_path))
     result = _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
                   record_path=record_path)

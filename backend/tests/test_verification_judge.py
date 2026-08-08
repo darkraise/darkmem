@@ -109,6 +109,16 @@ def test_verdict_vocabulary_is_the_gold_three():
 # ── bars: config rows over stated defaults ───────────────────────────────
 
 
+RECALL_BAR = "contradiction_recall_bar"
+
+
+def _state_the_recall_bar(session, value=0.90):
+    """T2.109 barred contradiction-recall with no default, so every test that
+    wants a resolvable bar set has to state it — the same act a deployment
+    performs, and the reason the gate is closed until one does."""
+    session.add(Config(key=RECALL_BAR, value={"value": value}))
+
+
 def test_bar_defaults_are_the_stated_values():
     assert vj.VERIFICATION_BAR_DEFAULTS == {
         "groundedness_gate_precision_bar": 0.95,
@@ -117,13 +127,33 @@ def test_bar_defaults_are_the_stated_values():
     }
 
 
+def test_contradiction_recall_is_gated_and_deliberately_undefaulted():
+    """Doc 17 §6's 2026-08-08 amendment, in the two lines that carry it.
+
+    The pairing is the whole point: the metric is barred (so it cannot be
+    ignored) and has no default (so nobody has chosen its number by shipping
+    one). Dropping either half restores a gate that qualifies a near-mute
+    judge, or picks a bar while looking at both measured judges' results.
+    """
+    assert vj.BAR_METRICS[RECALL_BAR] == "contradiction_recall"
+    assert RECALL_BAR not in vj.VERIFICATION_BAR_DEFAULTS
+
+
 async def test_bars_fall_back_to_defaults_on_an_empty_config_table(session):
+    _state_the_recall_bar(session)
+    await session.commit()
     bars = await vj.get_verification_bars(session)
-    assert bars == vj.VERIFICATION_BAR_DEFAULTS
+    assert bars == {**vj.VERIFICATION_BAR_DEFAULTS, RECALL_BAR: 0.90}
+
+
+async def test_an_unstated_bar_raises_rather_than_resolving(session):
+    with pytest.raises(ValueError, match=RECALL_BAR):
+        await vj.get_verification_bars(session)
 
 
 async def test_a_db_bar_row_wins_per_key(session):
     session.add(Config(key="groundedness_gate_recall_bar", value={"value": 0.8}))
+    _state_the_recall_bar(session)
     await session.commit()
     bars = await vj.get_verification_bars(session)
     assert bars["groundedness_gate_recall_bar"] == 0.8
@@ -133,15 +163,18 @@ async def test_a_db_bar_row_wins_per_key(session):
 
 async def test_a_bare_scalar_bar_row_is_also_read(session):
     session.add(Config(key="contradiction_precision_bar", value=0.97))
+    session.add(Config(key=RECALL_BAR, value=0.88))
     await session.commit()
     bars = await vj.get_verification_bars(session)
     assert bars["contradiction_precision_bar"] == 0.97
+    assert bars[RECALL_BAR] == 0.88
 
 
 async def test_a_malformed_bar_row_raises_not_silently_defaults(session):
     # Falling back to the default would ignore an operator's attempt to
     # move a bar — conservative relative to defaults, not to intent.
     session.add(Config(key="groundedness_gate_precision_bar", value={"value": "0.99"}))
+    _state_the_recall_bar(session)
     await session.commit()
     with pytest.raises(ValueError, match="groundedness_gate_precision_bar"):
         await vj.get_verification_bars(session)
@@ -171,6 +204,7 @@ def _record(llm_config, metrics=None, gate_eligible=True, **extra):
             "entailed_precision": 1.0,
             "entailed_recall": 1.0,
             "contradiction_precision": 1.0,
+            "contradiction_recall": 1.0,
         },
         "gate_eligible": gate_eligible,
         "gold_sha256": "0" * 64,
@@ -214,9 +248,52 @@ async def test_gate_ineligible_record_is_unqualified(session, tmp_path):
 async def test_a_matching_clearing_record_qualifies(session, tmp_path):
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg))
+    _state_the_recall_bar(session)
+    await session.commit()
     state = await vj.qualification_state(session, cfg, record_path=path)
     assert state.qualified is True
     assert state.reasons == ()
+
+
+async def test_an_unstated_recall_bar_fails_closed_naming_it(session, tmp_path):
+    """The posture the malformed-bar-row test already establishes, applied to
+    the bar T2.109 deliberately left unstated: the module fails loud rather
+    than defaulting, and the reason says which number is missing so an operator
+    is not left guessing at a gate that will not open."""
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg))
+    state = await vj.qualification_state(session, cfg, record_path=path)
+    assert state.qualified is False
+    assert any(RECALL_BAR in r and "failing closed" in r for r in state.reasons)
+
+
+async def test_the_gate_cannot_qualify_a_near_mute_judge(session, tmp_path):
+    """The incoherence that forced doc 08 §4.2's redesign, asserted here.
+
+    Measured against the shipped scorer on 2026-08-08: a judge emitting
+    ``contradicted`` on exactly one correct pair of the gold's 55 and
+    ``unsupported`` everywhere else scores contradiction-precision 1.0, leaves
+    entailed precision/recall untouched, and passed all three then-gated bars
+    at contradiction-recall 1/55 = 0.0182 — qualifying a judge that finds
+    nothing to hold an absolute veto.
+
+    Every metric below except the recall is the near-mute judge's *best* case,
+    so nothing but the new bar can be what refuses it. Removing
+    ``contradiction_recall_bar`` from ``BAR_METRICS`` reddens this test.
+    """
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg, metrics={
+        "entailed_precision": 1.0,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1 / 55,
+    }))
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(session, cfg, record_path=path)
+    assert state.qualified is False
+    assert any("contradiction_recall" in r for r in state.reasons)
 
 
 async def test_a_model_swap_is_detected_not_remembered(session, tmp_path):
@@ -233,7 +310,10 @@ async def test_metrics_below_the_default_bar_are_unqualified(session, tmp_path):
         "entailed_precision": 0.94,
         "entailed_recall": 1.0,
         "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
     }))
+    _state_the_recall_bar(session)
+    await session.commit()
     state = await vj.qualification_state(session, cfg, record_path=path)
     assert state.qualified is False
     assert any("groundedness_gate_precision_bar" in r for r in state.reasons)
@@ -245,7 +325,10 @@ async def test_raising_a_db_bar_flips_a_qualified_record_back(session, tmp_path)
         "entailed_precision": 1.0,
         "entailed_recall": 0.95,
         "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
     }))
+    _state_the_recall_bar(session)
+    await session.commit()
     state = await vj.qualification_state(session, cfg, record_path=path)
     assert state.qualified is True
 
@@ -256,13 +339,16 @@ async def test_raising_a_db_bar_flips_a_qualified_record_back(session, tmp_path)
 
 
 @pytest.mark.parametrize("metrics", [
-    {"entailed_recall": 1.0, "contradiction_precision": 1.0},              # absent
+    {"entailed_recall": 1.0, "contradiction_precision": 1.0,
+     "contradiction_recall": 1.0},                                         # absent
     {"entailed_precision": None, "entailed_recall": 1.0,
-     "contradiction_precision": 1.0},                                      # None
+     "contradiction_precision": 1.0, "contradiction_recall": 1.0},         # None
 ])
 async def test_missing_or_null_metrics_fail_closed(session, tmp_path, metrics):
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg, metrics=metrics))
+    _state_the_recall_bar(session)
+    await session.commit()
     state = await vj.qualification_state(session, cfg, record_path=path)
     assert state.qualified is False
     assert any("entailed_precision" in r for r in state.reasons)
@@ -296,6 +382,8 @@ async def test_judge_answers_when_qualified(session, tmp_path, monkeypatch):
     llm.config = _judge_config()
     path = _write_record(tmp_path, _record(llm.config))
     monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", path)
+    _state_the_recall_bar(session)
+    await session.commit()
     judge = vj.VerificationJudge(llm)
     result = await judge.judge(session, "p", "h")
     assert result.valid is True

@@ -821,17 +821,27 @@ class TestRecovery:
 
 
 class TestDetectorComposition:
-    def test_both_veto_inputs_are_wired(self):
-        """Doc 08 §4.2's two inputs, and only those two.
+    def test_the_veto_stands_on_the_deterministic_arm_alone(self):
+        """Doc 08 §4.2 as amended 2026-08-08: one input, and only that one.
 
         Recorded as an assertion rather than a comment so a hand-off cannot
         happen silently: a detector plumbed past the registry would keep its own
         disputes open while another's silence resolved them.
         """
-        assert CONTRADICTION_DETECTORS == (
-            detect_open_contradiction,
-            detect_scanned_contradiction,
-        )
+        assert CONTRADICTION_DETECTORS == (detect_open_contradiction,)
+
+    def test_the_model_scan_is_not_a_veto_input(self):
+        """The rewire's whole content, asserted where it can fail.
+
+        Re-registering ``detect_scanned_contradiction`` here restores the exact
+        wiring three G-D runs measured: a judge at 0.79-0.90 contradiction
+        precision behind an unappealable veto, each false positive a
+        near-permanent manufactured dispute. It is the one change to this
+        module that reads as a one-line revert and is a ratified design being
+        undone, so the tuple's membership is pinned by name rather than only by
+        length.
+        """
+        assert detect_scanned_contradiction not in CONTRADICTION_DETECTORS
 
     async def test_any_registered_detector_can_open_a_dispute(self, session, monkeypatch):
         """The registry is read, not decorative.

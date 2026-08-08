@@ -52,7 +52,11 @@ from app.repositories.fact_sources import (
 )
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services.code_deriver import assert_repo_graph
-from app.services.contradiction_veto import adjudicate_contradiction
+from app.services import contradiction_veto as veto_module
+from app.services.contradiction_veto import (
+    ContradictionFinding,
+    adjudicate_contradiction,
+)
 from app.services.events import CONTRADICTION_SCANNED, record_event
 from app.services.fact_lift import (
     CODE_FACT_PROJECT,
@@ -815,18 +819,82 @@ async def test_the_restore_reads_the_stored_kinds_not_a_callers_word(session):
     assert (await _row(session, fact_id))[0] == "candidate"
 
 
-async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(session):
+async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(
+    session, monkeypatch
+):
     """Fix round 2's finding N-1: the veto's precedence past the applied case.
 
-    ``contradiction_scan`` journals its verdict and the *recompute* is what
-    writes ``disputed``. Between the two the fact still reads ``candidate`` —
-    which is exactly the value the rung statement's WHERE consults — so the
-    statement's refusal covers applied disputes only. Without the consult the
-    restore raises the fact to ``corroborated`` inside that window and the next
-    recompute knocks it straight back to ``disputed``: an upward move at the one
-    moment the ladder itself would refuse one.
+    The veto's verdict and the status write are two steps — the recompute is
+    what writes ``disputed`` — so between them the fact still reads
+    ``candidate``, which is exactly the value the rung statement's WHERE
+    consults. Without the consult the restore raises the fact to
+    ``corroborated`` inside that window and the next recompute knocks it
+    straight back to ``disputed``: an upward move at the one moment the ladder
+    itself would refuse one.
+
+    **The verdict is stood in for by a registered detector, and that is now the
+    only way to drive this.** It used to be driven through the model scan's
+    journalled verdict, which T2.109 removed from ``CONTRADICTION_DETECTORS``
+    (doc 08 §4.2's amendment) — and no *shipped* detector can fire on this
+    population: the deterministic arm's reach is ``REPLACES_FAMILY`` plus an
+    empty ``SINGLE_VALUED_RELATIONS``, while the deriver mints only ``USES``
+    and ``DEPENDS_ON``. So the consult is inert today rather than wrong, and it
+    is stood in for here for the same reason a review opener is elsewhere: what
+    is under test is that the consult reads the registry and covers the
+    unapplied window, not which detectors happen to be in it. Deleting it on
+    reachability grounds would silently re-open the window the day
+    ``SINGLE_VALUED_RELATIONS`` gains a member.
     """
     fact_id = await _born_fact(session, name="Scan-Repo")
+
+    await recompute_fact(session, fact_id, open_contradiction=True)
+    await session.flush()
+    recovered = await recompute_fact(session, fact_id, open_contradiction=False)
+    await session.flush()
+    assert recovered.target_status == "candidate"
+
+    standing = {"verdict": True}
+
+    async def stub_detector(_session, target_id):
+        if not standing["verdict"] or str(target_id) != str(fact_id):
+            return None
+        return ContradictionFinding(
+            fact_id=str(target_id),
+            counterpart_id=str(uuid4()),
+            rule="stub",
+            witness_origin="stub-origin",
+        )
+
+    monkeypatch.setattr(veto_module, "CONTRADICTION_DETECTORS", (stub_detector,))
+
+    # The two halves of the window, asserted rather than assumed: the verdict
+    # stands right now, and nothing has applied it yet.
+    assert await adjudicate_contradiction(session, fact_id) is True
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+    outcome = await run_code_lift(session)
+
+    assert outcome.rungs_restored == 0
+    assert (await _row(session, fact_id))[0] == "candidate"
+
+    # And the refusal is the veto's, not the evidence rule's: the same fact
+    # with the verdict withdrawn is restored on the next tick.
+    standing["verdict"] = False
+    assert (await run_code_lift(session)).rungs_restored == 1
+    assert (await _row(session, fact_id))[0] == "corroborated"
+
+
+async def test_a_suspected_contradiction_does_not_withhold_the_born_rung(session):
+    """T2.109 — the model arm may flag; it may not withhold.
+
+    Doc 08 §4.2's amendment takes the model scan off the veto, and the consult
+    above is a veto consult. If the scan's journalled verdict still refused a
+    born rung, the arm would keep exercising veto-adjacent power through a side
+    door — withholding a label rather than removing one, which is the same
+    instrument aimed downward. It does not: the rung is restored, and the
+    suspicion reaches the human through the review queue instead.
+    """
+    fact_id = await _born_fact(session, name="Suspect-Repo")
 
     rival_repo = await _seed_repo(session, name="Rival-Repo", imports=["httpx"])
     await assert_repo_graph(session, rival_repo)
@@ -838,9 +906,9 @@ async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(sessio
 
     await recompute_fact(session, fact_id, open_contradiction=True)
     await session.flush()
-    recovered = await recompute_fact(session, fact_id, open_contradiction=False)
+    await recompute_fact(session, fact_id, open_contradiction=False)
     await session.flush()
-    assert recovered.target_status == "candidate"
+    assert (await _row(session, fact_id))[0] == "candidate"
 
     await record_event(
         session,
@@ -855,30 +923,25 @@ async def test_the_restore_refuses_a_standing_but_unapplied_contradiction(sessio
         },
     )
     await session.flush()
-
-    # The two halves of the window, asserted rather than assumed: the verdict
-    # stands right now, and nothing has applied it yet.
-    assert await adjudicate_contradiction(session, fact_id) is True
-    assert (await _row(session, fact_id))[0] == "candidate"
-
-    outcome = await run_code_lift(session)
-
-    assert outcome.rungs_restored == 0
-    assert (await _row(session, fact_id))[0] == "candidate"
-
-    # And the refusal is the veto's, not the evidence rule's: the same fact
-    # with the verdict withdrawn is restored on the next tick.
-    await record_event(
-        session,
-        event_type=CONTRADICTION_SCANNED,
-        object_type="fact",
-        object_id=UUID(fact_id),
-        project=CODE_FACT_PROJECT,
-        payload={"contradicted": False},
+    assert await adjudicate_contradiction(session, fact_id) is False, (
+        "the model arm is no longer a veto input"
     )
-    await session.flush()
+
     assert (await run_code_lift(session)).rungs_restored == 1
     assert (await _row(session, fact_id))[0] == "corroborated"
+
+    decision = await recompute_fact(session, fact_id)
+    await session.flush()
+    assert decision.contradiction_suspected is True
+    assert decision.target_status != "disputed"
+    review_state = (await session.execute(
+        text(
+            "SELECT review_state FROM knowledge_triples "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": fact_id},
+    )).scalar_one()
+    assert review_state == "open"
 
 
 async def test_the_restore_never_reopens_a_closed_belief_window(session):

@@ -891,7 +891,7 @@ class TestTheReviewStateDerivation:
         absence of every member, so an opener written as a direct column write
         would be cleared by the next recompute of any other opener.
         """
-        assert len(verification_ladder.REVIEW_OPENERS) == 2
+        assert len(verification_ladder.REVIEW_OPENERS) == 3
         pending = replace(
             _decision("hold", target="corroborated"), demotion_pending=True
         )

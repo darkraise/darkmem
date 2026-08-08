@@ -4,10 +4,16 @@ report/recorder plumbing for ``run_judge_qualification.py``.
 Scoring is pure arithmetic over the gold's three-way verdicts. The binary
 grounded/ungrounded numbers G-D bars on are derived through
 ``entailment_gold.GROUNDED_VERDICTS`` — never re-declared — and the
-contradiction verdict is scored separately because the veto consumer (doc 08
-§4.2) is qualified on it specifically: a judge that calls ``unsupported``
-pairs ``contradicted`` manufactures disputes, and no binary aggregate would
-show it.
+contradiction verdict is scored separately because its consumer (doc 08 §4.2)
+is qualified on it specifically, on **both** its precision and its recall: a
+judge that calls ``unsupported`` pairs ``contradicted`` loads a review queue
+with noise, one that calls ``contradicted`` pairs ``unsupported`` surfaces
+nothing at all, and no binary aggregate would show either. Both numbers were
+computed here from the start; until 2026-08-08 only precision carried a bar,
+and a judge scoring recall 0.0182 passed the gate. Which of the two is
+truth-critical follows from what the consumer does with the verdict, and doc
+17 §6's amendment records the inversion: the finding now opens review rather
+than disputing, so recall is the truth-critical one.
 
 ``gate_eligibility`` is the mechanical half of the doc 17 §11 composition
 rule: G-D's gate mode refuses a gold that is too small (< 200 live pairs),
@@ -268,11 +274,22 @@ def serving_invariant_tokens(tokens_by_purpose: dict) -> dict:
 
 
 def bar_results(score: QualificationScore, bars: dict[str, float]) -> dict[str, dict]:
+    """Every gated metric against its bar. A bar with no stated value is
+    reported ``bar=None, passed=False``: ``BAR_METRICS`` is what declares a
+    metric truth-critical, and a declared bar nobody has stated a number for
+    cannot be cleared by any measurement (doc 17 §6, T2.109). Skipping it
+    instead would let the unstated bar read as no bar at all, which is the
+    silence this gate's whole redesign is about."""
     results = {}
     for bar_key, metric_key in verification_judge.BAR_METRICS.items():
         value = getattr(score, metric_key)
-        passed = isinstance(value, (int, float)) and value >= bars[bar_key]
-        results[bar_key] = {"metric": metric_key, "bar": bars[bar_key],
+        bar = bars.get(bar_key)
+        passed = (
+            bar is not None
+            and isinstance(value, (int, float))
+            and value >= bar
+        )
+        results[bar_key] = {"metric": metric_key, "bar": bar,
                             "measured": value, "passed": bool(passed)}
     return results
 
@@ -401,9 +418,11 @@ def render_report(
     for bar_key, result in bar_results(score, meta["bars"]).items():
         measured = result["measured"]
         rendered = "undefined (no acceptances)" if measured is None else f"{measured:.4f}"
+        bar = result["bar"]
+        stated = "UNSTATED (owner has not set it)" if bar is None else f"{bar:.2f}"
         verdict = "PASS" if result["passed"] else "FAIL"
         lines.append(
-            f"- `{bar_key}` = {result['bar']:.2f} on `{result['metric']}`: "
+            f"- `{bar_key}` = {stated} on `{result['metric']}`: "
             f"measured {rendered} → **{verdict}**"
         )
     lines.append("")

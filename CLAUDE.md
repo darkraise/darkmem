@@ -404,7 +404,14 @@ until 2026-08-02; the `verification` half was stale, and a task reading it
 would wrongly believe activating that purpose was still an unmade decision.
 Note `verification` being dispatched is not the same as it being *usable*:
 `VerificationJudge.judge()` refuses unconditionally without a qualification
-record, which T2.41 mints and which is behind T2.54's gold. Each purpose is
+record, which T2.41 mints and which is behind T2.54's gold. Since T2.109 it is
+also behind a **bar the owner has not stated**: `BAR_METRICS` gates
+`contradiction_recall` and `VERIFICATION_BAR_DEFAULTS` deliberately carries no
+`contradiction_recall_bar`, so `get_verification_bars` raises and
+`qualification_state` fails closed naming it until a config row states the
+number. Do not "fix" that by adding a default — it would be a gate bar chosen
+while looking at both measured judges' public results, which is the fitting
+doc 17 §6 forbids. Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
@@ -696,22 +703,42 @@ is free; loosening below a floor is honoured only for parameters named in
 the `ladder_measurements` config row by a recorded G-C measurement, else
 clamped with a warning. The decision (`verification_ladder.decide`) is a
 pure function; the contradiction veto is absolute — one non-echo
-contradiction beats any count, no config on its path. It has **two**
-instruments, and conflating them over-claims in the direction that matters
-(corrected 2026-08-08; this paragraph said machine disputes were
-"unreachable until a qualification record exists", and the G-C ledger row
-said they "flow only through" the judge — both false). The **deterministic
-scan** is judge-free: `adjudicate_contradiction_finding` runs
-`CONTRADICTION_DETECTORS` and the ladder reaches it on every recompute, so
-its `inverse_replacement` arm can dispute a fact with no qualification
-record anywhere. Whether it *fires* is a property of the corpus, not the
-code — it needs a stored REPLACES-family edge, and the measurement corpus
-had none, which is what T2.108's vacuity finding actually established. Its
-sibling `single_valued` arm is separately disarmed because
-`SINGLE_VALUED_RELATIONS` is empty. Only the **Tier-C LLM
-`contradiction_scan`** dead-ends on the unqualified judge (T2.54 → T2.41).
-Demotion carries hysteresis (`verification_demote_grace_cycles`; the
-`under-sourced` label is served, never withheld).
+contradiction beats any count, no config on its path.
+
+**The veto stands on ONE instrument, and which one is a ratified design
+decision, not an accident of what happens to be wired** (T2.109, doc 08 §4.2
+amended 2026-08-08, owner-ratified). The **deterministic scan** is the veto,
+and it is judge-free: `adjudicate_contradiction_finding` runs
+`CONTRADICTION_DETECTORS` — now a one-member tuple — and the ladder reaches it
+on every recompute, so its `inverse_replacement` arm can dispute a fact with no
+qualification record anywhere. Whether it *fires* is a property of the corpus,
+not the code — it needs a stored REPLACES-family edge, and the measurement
+corpus had none, which is what T2.108's vacuity finding actually established.
+Its sibling `single_valued` arm is separately disarmed because
+`SINGLE_VALUED_RELATIONS` is empty. The **Tier-C LLM `contradiction_scan`** is
+**no longer a veto input**: three G-D runs across two vendors measured its
+contradiction-precision at 0.7937 / 0.8814 / 0.9020 against a 0.95 bar, so each
+false positive behind an unappealable veto was a near-permanent manufactured
+dispute. Its journalled verdict now reaches the ladder on a *separate*
+parameter (`recompute_fact(..., contradiction_suspected=...)`), lands on
+`LadderDecision.contradiction_suspected`, and is read by the fourth review
+opener — flagging the fact for a human while it keeps its rung, its badge and
+its place in retrieval. Routing that signal into `open_contradiction` restores
+the wiring the amendment removed; the two parameters are separate so that
+mistake has to be made on purpose. It still dead-ends on the unqualified judge
+(T2.54 → T2.41), so today it produces nothing at all. Demotion carries
+hysteresis (`verification_demote_grace_cycles`; the `under-sourced` label is
+served, never withheld).
+
+**`review_state` has four openers and one derivation.**
+`verification_ladder.REVIEW_OPENERS` is the registry — disputed, under-sourced
+(hysteresis), contradiction-suspected — plus doc 09's ungrounded articles in a
+different table. `derive_review_state` is total and the clear is the absence of
+**every** opener, never the negation of one; adding an opener is appending a
+predicate, never adding a writer. The queue's *reason* is derived from the
+fact's own columns, so a contradiction-suspected fact renders `unspecified`
+today: the flag is computed from the scan's journal at recompute time and
+persisted nowhere.
 
 **One journaller for the machine's rungs.** `KnowledgeTripleRepository.set_verification_status`
 writes the `verified` events for every transition the ladder makes
@@ -744,7 +771,12 @@ config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
 visible two-file diff), the metrics are SQL over `events` alone in
 `benchlib/promotion_metrics.py`, and the false-promotion audit cannot
 produce a non-vacuous number before the judge qualifies — both its arms
-(machine dispute, human rejection) dead-end on the unqualified judge.
+(machine dispute, human rejection) dead-end on the unqualified judge. **The
+machine-dispute arm's population also changed shape with T2.109**: the LLM scan
+now opens review instead of disputing, so that arm counts a strictly smaller
+set and the human-rejection arm's relative weight rises. T2.111 owns re-reading
+the G-C→G-D cross-edge under the new shape before G-C is re-attempted; a probe
+carried over unexamined measures the old architecture.
 
 ## MCP endpoint
 

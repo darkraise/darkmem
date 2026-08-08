@@ -196,10 +196,29 @@ def judge_identity_hash(identity: dict) -> str:
 QUALIFICATION_RECORD_PATH = Path(__file__).resolve().parent / "verification_qualification.json"
 
 # Bar config-row key -> the recorded metric it governs.
+#
+# **``contradiction_recall_bar`` has no entry in ``VERIFICATION_BAR_DEFAULTS``,
+# and the omission is the design** (doc 17 §6's 2026-08-08 amendment, T2.109).
+# Gating the contradiction verdict on precision alone was measured incoherent:
+# replayed through the shipped scorer, a judge emitting ``contradicted`` on
+# exactly one correct pair and ``unsupported`` everywhere else passes all three
+# previously-gated bars at contradiction-recall 0.0182 — a near-mute judge
+# qualified to hold a veto, while the measured 0.88-precision / 0.95-recall
+# judge scores as a failure. Doc 08 §4.2's amendment turns that consumer into a
+# surfacing instrument, which inverts the pair: recall is truth-critical (a
+# missed contradiction never reaches a reviewer) and precision becomes a
+# review-load floor.
+#
+# The bar's *value* is the owner's to state, and stating it now would be
+# choosing it while looking at both measured judges' public numbers. So it is
+# barred with no default: ``get_verification_bars`` refuses to resolve an
+# unstated bar and ``qualification_state`` fails closed on that refusal, which
+# means G-D cannot qualify anything until the owner writes the number down.
 BAR_METRICS = {
     "groundedness_gate_precision_bar": "entailed_precision",
     "groundedness_gate_recall_bar": "entailed_recall",
     "contradiction_precision_bar": "contradiction_precision",
+    "contradiction_recall_bar": "contradiction_recall",
 }
 
 
@@ -280,6 +299,10 @@ async def qualification_state(
 
 # ── the bars (doc 17 §6): config rows over stated defaults ───────────────
 
+# Deliberately a subset of BAR_METRICS: a barred metric with no entry here is
+# one whose number nobody has stated, and it fails closed rather than
+# defaulting. See the BAR_METRICS block for why contradiction_recall_bar is the
+# one such bar today.
 VERIFICATION_BAR_DEFAULTS: dict[str, float] = {
     "groundedness_gate_precision_bar": 0.95,
     "groundedness_gate_recall_bar": 0.90,
@@ -293,9 +316,16 @@ async def get_verification_bars(session: AsyncSession) -> dict[str, float]:
     unreadable row raises: silently falling back to the default would
     ignore an operator's attempt to move a bar — conservative relative to
     the defaults but not to operator intent — so the enforcement path
-    (``qualification_state``) catches this and fails closed instead."""
+    (``qualification_state``) catches this and fails closed instead.
+
+    A barred metric with neither a default nor a config row raises on the
+    same terms, and it is the same argument one step further: an unstated
+    bar is not a bar of zero, and resolving it to anything at all would let
+    a judge qualify against a number nobody chose. The rows are selected
+    over ``BAR_METRICS`` rather than over the defaults so that stating such
+    a bar is a config write and needs no code change."""
     rows = (await session.execute(
-        select(Config).where(Config.key.in_(VERIFICATION_BAR_DEFAULTS))
+        select(Config).where(Config.key.in_(BAR_METRICS))
     )).scalars().all()
 
     bars = dict(VERIFICATION_BAR_DEFAULTS)
@@ -310,4 +340,12 @@ async def get_verification_bars(session: AsyncSession) -> dict[str, float]:
                 f"config row {row.key} carries an unreadable bar value "
                 f"{row.value!r}; fix or delete the row"
             )
+
+    unstated = sorted(set(BAR_METRICS) - set(bars))
+    if unstated:
+        raise ValueError(
+            f"no bar stated for {', '.join(unstated)}: the metric is gated but "
+            "carries no default and no config row, so nothing can be qualified "
+            "against it. State the bar as a config row (doc 17 §6)"
+        )
     return bars

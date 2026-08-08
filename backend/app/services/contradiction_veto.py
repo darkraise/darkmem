@@ -1,18 +1,28 @@
-"""The deterministic same-endpoint contradiction scan — the veto's input today.
+"""The deterministic same-endpoint contradiction scan — the veto's one input.
 
-Doc 08 §4.2 names two inputs to the fact-level veto: this deterministic
-same-endpoint scan and the Tier-C LLM contradiction scan (§5.3). The
-deterministic half is adjudicated here in full; the model half is adjudicated on
-its own cadence by the Tier-C job and *read back* here from its journal row, so
-both verdicts compose in one registry without a model call ever sitting on this
-call path. A memory-level ``CONTRADICTS`` edge may *flag* a fact for scanning
-but is never itself the verdict, because truth is adjudicated at the fact layer
-where the provenance lives.
+**AMENDED 2026-08-08 (doc 08 §4.2, Tier-3, owner-ratified).** This module used
+to hold both of the veto's inputs: the deterministic same-endpoint scan and a
+read-back of the Tier-C LLM scan's journalled verdict. Three measured G-D runs
+across two vendors put the model arm's contradiction-precision at 0.7937 /
+0.8814 / 0.9020 against a 0.95 bar, and no ensemble of the judges measured can
+exceed 0.9483 at any recall — so wiring it into an unappealable veto converts
+each false positive into a near-permanent manufactured dispute, which is the
+one failure §5.3's asymmetry forbids. **The absolute veto now stands on the
+deterministic arm alone**, whose precision is by construction.
+
+The model arm's read-back (``detect_scanned_contradiction``) still lives here,
+because it re-applies this module's own guards against today's rows and there
+is nowhere else those guards are spelled. It is no longer a member of
+``CONTRADICTION_DETECTORS``: the ladder reads it as a *review* opener
+(§6, contradiction-suspected), leaving the fact its rung and its badge while a
+human confirms. A memory-level ``CONTRADICTS`` edge may *flag* a fact for
+scanning but is never itself the verdict, because truth is adjudicated at the
+fact layer where the provenance lives.
 
 **Precision first, and the direction of error is fixed.** A missed contradiction
 delays a dispute, which doc 08 §5.3 names the preferred failure; a manufactured
 one demotes a correctly-corroborated fact and buries a real dispute under noise.
-So this scan fires only on pairs whose incompatibility is decidable from the
+So the veto fires only on pairs whose incompatibility is decidable from the
 closed relation vocabulary alone, with no model and no judgment:
 
 1. ``single_valued`` — two live facts in one project sharing ``subject_name``
@@ -305,6 +315,10 @@ async def detect_open_contradiction(
 
 
 # ── the Tier-C model scan's verdict, read back from the journal ──────────
+#
+# Not a veto input since 2026-08-08 (doc 08 §4.2's amendment). What reads this
+# is the ladder's contradiction-suspected review opener, so a finding here
+# flags a fact for a human and moves no rung.
 
 RULE_SCANNED = "llm_scan"
 
@@ -336,29 +350,29 @@ async def detect_scanned_contradiction(
     synchronously — it costs a model call per pair — so its adjudication is
     journalled and read back here. The most recent row wins.
 
-    **A later clean pass is not an exit from a dispute this verdict opened**,
-    and reading "most recent row wins" as if it were would budget for a
-    self-healing this code does not have. The scan only checks facts that are
-    still servable and *not already disputed* (doc 08 §5.3), so the moment the
-    ladder applies this finding the fact leaves the scan's own working set:
-    its later ``sources_changed`` events are drained and discarded as
-    unservable, and no second verdict is ever written for it. A later clean row
-    can therefore only arrive in the window before the recompute applies the
-    first one. There are exactly two exits after that:
+    **A later clean pass really does clear the flag, and that is what the
+    rewire bought.** This paragraph used to argue the opposite, and the
+    argument was sound while the finding wrote ``disputed``: the scan skips
+    facts that are already disputed (doc 08 §5.3), so applying the verdict
+    removed the fact from the scan's own working set, no second verdict was
+    ever written for it, and a judge false positive stood until a guard lapsed
+    or a human ratified. Under doc 08 §4.2's amendment the finding opens review
+    instead, so the fact keeps its rung, stays servable, and stays in the
+    scan's working set — its next ``sources_changed`` pass writes a fresh
+    verdict, and a clean one supersedes this row by the same recency rule. The
+    review flag is therefore self-clearing on three independent grounds:
 
-    1. **Guard lapse** — the counterpart expires, a window closes, or the
+    1. **A later clean verdict**, now genuinely reachable.
+    2. **Guard lapse** — the counterpart expires, a window closes, or the
        witness origin joins the subject. Each is re-checked below on every
-       read, so a verdict whose grounds have gone stops disputing by itself.
-    2. **Human ratification** (doc 08 §4.4), which makes the fact immune to the
-       veto outright.
+       read, so a verdict whose grounds have gone stops flagging by itself.
+    3. **Human ratification** (doc 08 §4.4). A ratified fact is immune, and
+       the ladder is what refuses to carry the flag onto its decision.
 
-    So a judge false positive whose guards keep holding is a permanent dispute
-    until a person rules on it. That permanence is a consequence of doc 08
-    §5.3's exclusion, not an oversight here: the exclusion is what stops the
-    scan re-paying a model call on every fact it has already ruled on, and a
-    disputed fact is served labelled with both sides rather than dropped (doc
-    08 §6, invariant 14). It is the bounded false-positive cost the
-    precision-first asymmetry accepts behind the judge's 0.95 bar.
+    A judge false positive therefore costs a reviewer's glance rather than a
+    near-permanent manufactured dispute, which is the whole trade the
+    amendment makes: §5.3's sanctioned direction of error is a *delayed*
+    dispute, and a flag awaiting confirmation is exactly that.
 
     **Nothing is trusted from the payload except the pair it names.** A verdict
     can outlive the rows it was made about — the counterpart expires, a window
@@ -367,7 +381,7 @@ async def detect_scanned_contradiction(
     applies at selection time is therefore re-applied here at read time against
     the live rows, and the counterpart triple is re-read rather than replayed
     out of the payload. A verdict whose guards no longer hold is silence, not a
-    dispute.
+    finding.
     """
     result = await session.execute(
         text(
@@ -440,12 +454,15 @@ ContradictionDetector = Callable[
 # a dispute it cannot see. Registering is what makes a detector's finding both
 # able to open a dispute and required to keep it open.
 #
-# The deterministic arm is first because it is pure SQL over indexed columns
-# and the model arm costs a journal read; the veto is absolute, so the first
-# finding ends the walk and the order is a cost ordering, never a precedence.
+# **One member, and the count is the ratified design rather than an omission**
+# (doc 08 §4.2's 2026-08-08 amendment). `detect_scanned_contradiction` was the
+# second member until then. Registering a model-backed detector here again puts
+# a measured-0.88-precision instrument behind an unappealable veto, which is
+# what three G-D runs measured and what the amendment forbids; the lawful place
+# for such an arm is the ladder's contradiction-suspected review opener, where
+# a false positive costs a glance rather than a near-permanent dispute.
 CONTRADICTION_DETECTORS: tuple[ContradictionDetector, ...] = (
     detect_open_contradiction,
-    detect_scanned_contradiction,
 )
 
 
@@ -460,7 +477,8 @@ async def adjudicate_contradiction_finding(
     short-circuit is the veto's own shape — one contradiction is already
     absolute, so a second changes no outcome — and widening it would turn an
     O(1) adjudication into a full scan for a payload field. Callers that
-    journal this must say which of the two they are carrying; the ladder does.
+    journal this must say which detector's finding they are carrying; the
+    ladder does, through the finding's own ``rule``.
     """
     for detector in CONTRADICTION_DETECTORS:
         finding = await detector(session, fact_id)

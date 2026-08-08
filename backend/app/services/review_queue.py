@@ -33,15 +33,28 @@ hybrid-search fusion arm, no REST GET beyond this module's own queue list).
 
 **The "reason" a fact is queued is derived from the fact's own columns, never
 from the ``review_state`` value itself.** T2.62 settled how one
-``review_state`` column serves three independent openers plus a human clear —
+``review_state`` column serves several independent openers plus a human clear —
 it derives the flag from the decision instead of letting each opener assign it
-— so this module reads two columns and names two of those three reasons.
+— so this module reads two columns and names two of the four reasons.
 ``verification_status = 'disputed'`` renders as ``disputed``;
 ``demotion_pending_since IS NOT NULL`` renders as ``under-sourced``, the
 column T2.46 landed and the reason this docstring previously had to report as
-``unspecified``. ``unspecified`` survives for the third opener, doc 09's
-ungrounded articles, which live in a different table and still carry no
-distinguishing column.
+``unspecified``.
+
+``unspecified`` covers the other two, for the same reason in both cases — no
+distinguishing column exists. Doc 09's ungrounded articles live in a different
+table entirely. **T2.109's contradiction-suspected fact is the newer one and
+the sharper gap**: the flag is derived at recompute time from the model scan's
+standing journal verdict and is persisted nowhere, so a fact the scan flagged
+arrives here wearing ``unspecified`` while its rung reads healthy — which is
+correct (it *is* healthy; that is the whole point of the rewire) and unhelpful,
+because the reviewer is given no counterpart to adjudicate against. The
+evidence exists — the scan's own journal row carries the counterpart's triple,
+the witness origin and the judge's one-sentence reason — but reaching it means
+either a journal read on this query or a column on the fact row, and picking
+between those is a design call this module does not own. This module may not
+even name that event type: a tree-wide scan keeps the channel to the three
+modules that declare, write and read it.
 
 **"Both sides" — closed by T2.64 (2026-08-02).** T2.06's enriched ``verified``
 events journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
@@ -204,7 +217,9 @@ def _fact_reason(
     exist yet, so an under-sourced fact now names its own reason instead of
     falling through to ``unspecified``. ``unspecified`` survives for doc 09's
     ungrounded articles, which are a different table and still have no
-    distinguishing column of their own.
+    distinguishing column of their own, and for T2.109's contradiction-suspected
+    fact, which has no column at all — the module docstring says what closing
+    that would cost.
 
     ``disputed`` wins a tie on the graver condition, and the tie is
     unreachable today: the veto is adjudicated before every count, so a

@@ -39,6 +39,17 @@ not a score, not a threshold. The three thresholds below govern *promotion*
 only; none of them is on the veto's path, and
 ``tests/test_contradiction_veto.py`` fails the build if one becomes so.
 
+**Two contradiction signals, and only one of them is that veto** (doc 08 §4.2's
+2026-08-08 amendment, T2.109). ``open_contradiction`` carries the deterministic
+arm's verdict and moves the fact to ``disputed``. The Tier-C model scan's
+journalled verdict arrives on a *separate* parameter, ``contradiction_suspected``,
+and reaches ``decide`` only to be recorded on the decision and read by the
+contradiction-suspected review opener: it changes no rung, no badge and no
+outcome. Routing it into ``open_contradiction`` instead is the one mistake this
+split exists to make unavailable — it would put a measured-0.88-precision
+instrument behind an unappealable veto, which is the wiring three G-D runs
+measured and the amendment removed.
+
 **Tier-C only (invariant 15).** Nothing in capture or retrieval may reach this
 module. Reconciliation stays off the hot path, and the tempting failure is a
 caller invoking the recompute inline so a fact promotes immediately. A
@@ -84,6 +95,7 @@ from app.repositories.fact_sources import (
 from app.services.contradiction_veto import (
     ContradictionFinding,
     adjudicate_contradiction_finding,
+    detect_scanned_contradiction,
 )
 from app.services.supersession_hold import adjudicate_supersession_hold
 
@@ -392,6 +404,16 @@ class LadderDecision:
     # the marker is durable state the applier reads, and `decide` has no
     # session and no clock.
     demotion_pending: bool = False
+    # T2.109, defaulted for the same extensibility reason the two fields above
+    # are. It means exactly "the Tier-C model scan's standing verdict names a
+    # live contradiction against this fact", never "this fact is disputed": it
+    # opens review and moves nothing. It is deliberately NOT journalled — the
+    # scan already wrote its own `contradiction_scanned` row carrying the
+    # counterpart and the judge's reason, so a second copy on the `verified`
+    # stream would be redundant state in an append-only journal whose premise
+    # is "one row means one transition", and G-C's promotion metrics validate
+    # that payload against a closed key vocabulary.
+    contradiction_suspected: bool = False
 
 
 def compute_confidence(*, origin_count: int, required_n: int, gate_fired: str) -> float:
@@ -432,6 +454,7 @@ def decide(
     *,
     open_contradiction: ContradictionVerdict = NO_DETECTOR,
     supersession_blocked: bool = False,
+    contradiction_suspected: bool = False,
 ) -> LadderDecision:
     """Promotion, demotion, dispute, recovery or hold -- a pure function.
 
@@ -477,6 +500,17 @@ def decide(
     The restated eligibility equivalence and the denominator argument the
     metrics runner must implement are in ``supersession_hold``'s module
     docstring, beside the predicate they describe.
+
+    ``contradiction_suspected`` is the Tier-C model scan's finding (T2.109, doc
+    08 §4.2's 2026-08-08 amendment). **It is inert here by construction**: no
+    branch reads it, it appears in no condition, and every outcome this function
+    can return is identical with it set and unset. It exists only to ride the
+    returned record, where the contradiction-suspected review opener is what
+    acts on it. A judge of the measured precision may flag a fact for a human;
+    it may not move a rung, and the way to keep that true is for the signal
+    never to reach a branch. Its one interaction with the rest of the ladder is
+    the suppression below: doc 08 §4.4 makes a ratified fact immune, and an
+    immune fact must not be queued for an adjudication nothing can act on.
     """
     k = profile.origin_count
     n = profile.required_origin_count_for(
@@ -486,6 +520,7 @@ def decide(
     )
     gate = profile.gate_fired_for(time_gap_days=config.time_gap_days)
     confidence = compute_confidence(origin_count=k, required_n=n, gate_fired=gate)
+    suspected = contradiction_suspected and current_status != "confirmed"
 
     def settled(
         target: str,
@@ -506,6 +541,7 @@ def decide(
             contradiction_blocked=blocked,
             confidence=confidence,
             supersession_blocked=superseded,
+            contradiction_suspected=suspected,
         )
 
     # A human ratified this fact. The machine never moves it in either
@@ -729,22 +765,51 @@ def _under_sourced_opens_review(decision: LadderDecision) -> bool:
     return decision.demotion_pending
 
 
+def _suspected_contradiction_opens_review(decision: LadderDecision) -> bool:
+    """Doc 08 §6's fourth fact-side opener, ratified 2026-08-08 (T2.109).
+
+    The Tier-C model scan found a live contradiction against this fact and the
+    ladder is *not* acting on it: the fact keeps its rung, its badge and its
+    place in retrieval, and a human decides. That is the whole of the redesign
+    — a judge measured at 0.79–0.90 contradiction-precision may surface a
+    suspicion, and only the deterministic arm may spend an unappealable veto.
+
+    Keyed off the decision's own flag for the reason
+    ``_under_sourced_opens_review`` is: the decision is what this cycle just
+    adjudicated, and the verdict was re-validated against today's rows on this
+    pass. Reading the journal here instead would queue on a verdict whose
+    counterpart may since have expired.
+
+    This opener can fire together with either of the other two, and unlike
+    theirs the co-occurrence is reachable rather than theoretical: a fact the
+    deterministic arm disputes may also carry a standing model verdict, and an
+    under-sourced fact is not excluded from the scan's working set. That is
+    exactly the several-openers-one-bit case ``derive_review_state`` exists to
+    make safe, and it is why this is a predicate here rather than a writer
+    anywhere.
+    """
+    return decision.contradiction_suspected
+
+
 # Every condition that puts a fact on the review queue. Registering is what
 # makes an opener's condition both able to open the queue and *required* to
 # keep it open — ``derive_review_state`` clears only on the absence of every
 # member, so a condition plumbed past this tuple would be a queue entry the
 # next recompute silently drops. The same binding ``CONTRADICTION_DETECTORS``
-# has on T2.11.
+# has on the deterministic veto.
 #
-# The two members cannot both fire on one decision today: the veto is checked
-# before every count, so a contradicted fact leaves ``decide`` on a ``dispute``
-# or a disputed hold, which is not a ``demote`` and therefore cancels the
-# hysteresis. That is a property of today's branch order, not of the
-# derivation, and the derivation is written to survive its loss — which is the
-# whole reason it derives rather than assigns.
+# The first two members cannot both fire on one decision today: the veto is
+# checked before every count, so a contradicted fact leaves ``decide`` on a
+# ``dispute`` or a disputed hold, which is not a ``demote`` and therefore
+# cancels the hysteresis. That is a property of today's branch order, not of
+# the derivation, and the derivation is written to survive its loss — which is
+# the whole reason it derives rather than assigns. The third member has no such
+# exclusivity with either: T2.109's signal is orthogonal to both, and its
+# arrival is what turned that survival property from precaution into use.
 REVIEW_OPENERS: tuple[ReviewOpener, ...] = (
     _dispute_opens_review,
     _under_sourced_opens_review,
+    _suspected_contradiction_opens_review,
 )
 
 
@@ -754,10 +819,14 @@ def derive_review_state(decision: LadderDecision) -> str | None:
     **The ruling (T2.62, 2026-07-31): ``review_state`` is a value recomputed
     from the fact's current conditions at this one point, not a flag each
     opener sets and clears in whatever order it happens to run.** Doc 08 §6
-    gives the column three independent openers — a disputed fact (§4.2, this
-    one), an under-sourced fact held in hysteresis (§4.3, T2.46), and an
-    ungrounded article (doc 09, a *different table* and so not a member of
-    ``REVIEW_OPENERS``) — plus a human clearer. On disk it is a bare nullable
+    gives the column four independent openers — a disputed fact (§4.2, this
+    one), an under-sourced fact held in hysteresis (§4.3, T2.46), a fact the
+    Tier-C model scan suspects a contradiction against (§4.2's 2026-08-08
+    amendment, T2.109), and an ungrounded article (doc 09, a *different table*
+    and so not a member of ``REVIEW_OPENERS``) — plus a human clearer. The
+    fourth arrived after this ruling was written and needed no change to it,
+    which is the ruling working: it was appended as a predicate, with no writer
+    and no schema. On disk the column is a bare nullable
     TEXT column whose only index is partial on the literal ``'open'``, so it
     has no room to record *which* opener owns it. Several writers over one bit
     with no owner field is how a fact that is disputed **and** under-sourced
@@ -901,6 +970,7 @@ async def recompute_fact(
     *,
     open_contradiction: ContradictionVerdict = NO_DETECTOR,
     supersession_blocked: bool | None = None,
+    contradiction_suspected: bool | None = None,
     now: datetime | None = None,
 ) -> LadderDecision:
     """Recompute one fact's verification status, and return why.
@@ -922,6 +992,15 @@ async def recompute_fact(
     describe provenance the applier no longer holds. ``None`` means "scan
     here"; an explicit boolean overrides it, which is what lets a replay
     re-decide recorded inputs without a live graph.
+
+    T2.109's contradiction-suspected flag is adjudicated on the same terms and
+    with the same ``None``-means-scan override. It reads the model scan's
+    standing verdict through ``detect_scanned_contradiction``, which is
+    deliberately called *directly* rather than through the veto's registry:
+    that registry is the conjunction that decides whether a dispute may end, so
+    a signal that must never end one has no business in it. This is the only
+    call site of that function under ``backend/app``, which is what keeps the
+    two arms' consumers from being confusable.
 
     **This is the sole journaller of verification transitions**, which is the
     hand-off ``set_verification_status`` was written anticipating: the only
@@ -1005,6 +1084,10 @@ async def recompute_fact(
     if blocked is None:
         blocked = await adjudicate_supersession_hold(session, fact_id)
 
+    suspected = contradiction_suspected
+    if suspected is None:
+        suspected = await detect_scanned_contradiction(session, fact_id) is not None
+
     decision = decide(
         str(fact_id),
         current,
@@ -1012,6 +1095,7 @@ async def recompute_fact(
         config,
         open_contradiction=verdict,
         supersession_blocked=blocked,
+        contradiction_suspected=suspected,
     )
 
     hysteresis = apply_demotion_hysteresis(
