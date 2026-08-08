@@ -52,6 +52,114 @@ NEW_PAIR_SLICE_TARGETS: dict[str, int] = {
 BATCH_RANGES = ((0, 50), (50, 100), (100, 150), (150, 171))
 
 
+# ── T2.110 growth round (round 2) ────────────────────────────────────────
+#
+# Census sizing, stated before any pair existed: `contradiction_recall_bar`
+# is 0.95 = 19/20, and recall resolves in steps of 1/N over the
+# gold-contradicted census N. At the prior N = 55 the achievable values
+# bracket the bar at 52/55 ~= 0.9455 and 53/55 ~= 0.9636 -- 0.95 is not on
+# the lattice, so the operative bar was 0.9636. The bar sits on the lattice
+# only when N is a multiple of 20, and the resample protocol's full-census
+# stratification caps N at RESAMPLE_N = 93. The one multiple of 20 in
+# (55, 93] is 80, so the growth targets a contradicted census of exactly 80
+# and scales every slice proportionally (241 -> 351 by largest-remainder
+# rounding of the live slice counts).
+#
+# The seed is derived, never chosen: the first 8 hex digits of the
+# pre-growth gold.json's SHA-256 (commit 53989628, 241 live pairs). An
+# author cannot re-pick it without rewriting a committed file's history,
+# which is what makes the premise-to-slot assignment unaimable.
+ROUND2_BASE_GOLD_SHA256 = (
+    "e6d5647a8cbd070ea786fe03feaec3f5030816fc94c52dee986df749aa1e60df"
+)
+ROUND2_SEED = int(ROUND2_BASE_GOLD_SHA256[:8], 16)
+
+# Pairs whose premise usage predates round 2: everything up to the last
+# T2.54 id. Counted regardless of a later `retired` flag, so the assignment
+# re-derives identically forever (append-only makes the id range immutable).
+ROUND2_MAX_EXISTING_ID = "eg-0241"
+
+ROUND2_SLICE_TARGETS: dict[str, int] = {
+    "verbatim": 11,
+    "paraphrase": 16,
+    "weakening": 13,
+    "temporal": 16,
+    "direction": 14,
+    "overreach": 16,
+    "value-swap": 13,
+    "unrelated": 11,
+}
+
+
+def _round2_existing_usage(gold_doc: dict) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for pair in gold_doc["pairs"]:
+        if pair["id"] <= ROUND2_MAX_EXISTING_ID:
+            usage[pair["premise"]] = usage.get(pair["premise"], 0) + 1
+    return usage
+
+
+def build_round2_assignment(
+    manifest: dict | None = None, gold_doc: dict | None = None,
+) -> list[dict]:
+    """The round-2 seeded (premise x slice) assignment.
+
+    Unlike round 1, facts start with non-zero usage, so cycling alone would
+    push a thrice-used premise past the cap. The cycle therefore skips
+    exhausted facts: each slot takes the next fact in the seeded order with
+    remaining capacity, decrementing as it goes. Deterministic in the
+    manifest, the pre-growth usage and ROUND2_SEED alone.
+    """
+    manifest = manifest or load_l2_harvest()
+    if gold_doc is None:
+        import json
+
+        gold_path = HERE / "entailment" / "gold.json"
+        gold_doc = json.loads(gold_path.read_text(encoding="utf-8"))
+
+    facts = manifest["facts"]
+    cap = manifest["header"]["pairs_per_premise_cap"]
+    usage = _round2_existing_usage(gold_doc)
+    remaining = {row["triple_key"]: cap - usage.get(row["fact"], 0) for row in facts}
+
+    rng = random.Random(ROUND2_SEED)
+    slots = [
+        slice_name
+        for slice_name in sorted(ROUND2_SLICE_TARGETS)
+        if slice_name != "temporal"
+        for _ in range(ROUND2_SLICE_TARGETS[slice_name])
+    ]
+    shuffled_slots = rng.sample(slots, len(slots))
+    fact_order = rng.sample(range(len(facts)), len(facts))
+
+    if sum(max(r, 0) for r in remaining.values()) < len(slots):
+        raise RuntimeError(
+            f"{len(slots)} slots exceed the harvest's remaining capacity "
+            "under the pairs-per-premise cap -- the harvest is too small "
+            "for this growth (do not widen the cap)"
+        )
+
+    assignment = []
+    cursor = 0
+    for slot, slice_name in enumerate(shuffled_slots):
+        for _ in range(len(facts)):
+            row = facts[fact_order[cursor % len(facts)]]
+            cursor += 1
+            if remaining[row["triple_key"]] > 0:
+                break
+        else:
+            raise RuntimeError("no fact with remaining capacity")
+        remaining[row["triple_key"]] -= 1
+        assignment.append({
+            "slot": slot,
+            "slice": slice_name,
+            "triple_key": row["triple_key"],
+            "rel_type": row["rel_type"],
+            "fact": row["fact"],
+        })
+    return assignment
+
+
 def l2_eligible_slices() -> list[str]:
     return sorted(s for s in NEW_PAIR_SLICE_TARGETS if s != "temporal")
 
@@ -100,11 +208,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--batch", type=int, default=None,
-        help=f"print only authoring batch 1..{len(BATCH_RANGES)}",
+        help=f"print only authoring batch 1..{len(BATCH_RANGES)} (round 1)",
+    )
+    parser.add_argument(
+        "--round", type=int, default=1, choices=(1, 2),
+        help="1 = the T2.54 authoring round, 2 = the T2.110 growth round",
     )
     args = parser.parse_args(argv)
 
-    assignment = build_assignment()
+    assignment = build_assignment() if args.round == 1 else build_round2_assignment()
     if args.batch is not None:
         start, end = BATCH_RANGES[args.batch - 1]
         assignment = assignment[start:end]
