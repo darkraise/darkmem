@@ -27,6 +27,14 @@ class _Reply:
         return {"choices": [{"message": {"content": self._content}}]}
 
 
+@pytest.fixture(autouse=True)
+def _mock_key(monkeypatch):
+    """The runner refuses to start without its key env var, so the tests set
+    one. Requiring the caller to export it made them pass by hand and fail
+    under ./scripts/gate.sh, which exports no such thing."""
+    monkeypatch.setenv("MOCK_KEY", "not-a-real-key")
+
+
 @pytest.fixture
 def gold_by_id():
     gold = json.loads(Path(entailment_gold.GOLD_PATH).read_text(encoding="utf-8"))
