@@ -119,14 +119,14 @@ def parse_reply(text: str) -> dict:
     }
 
 
-async def label_one(client, base_url, model, api_key, rulebook, row, sem) -> tuple[str, dict]:
+async def label_one(client, base_url, model, api_key, rulebook, row, sem, params) -> tuple[str, dict]:
     async with sem:
         resp = await client.post(
             f"{base_url.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
                 "model": model,
-                "temperature": 0,
+                **params,
                 "messages": [
                     {"role": "system", "content": SYSTEM},
                     {"role": "user", "content": build_prompt(rulebook, row)},
@@ -140,7 +140,8 @@ async def label_one(client, base_url, model, api_key, rulebook, row, sem) -> tup
 
 
 async def run(
-    *, base_url: str, model: str, api_key: str, concurrency: int, timeout: float
+    *, base_url: str, model: str, api_key: str, concurrency: int, timeout: float,
+    params: dict,
 ) -> dict[str, dict]:
     blind = json.loads(Path(resample_sheet.BLIND_EXPORT_PATH).read_text(encoding="utf-8"))
     rulebook = resample_sheet.rulebook_excerpt(resample_sheet.LABELLING_PATH)
@@ -148,7 +149,7 @@ async def run(
     out: dict[str, dict] = {}
     async with httpx.AsyncClient(timeout=timeout) as client:
         tasks = [
-            label_one(client, base_url, model, api_key, rulebook, row, sem)
+            label_one(client, base_url, model, api_key, rulebook, row, sem, params)
             for row in blind
         ]
         for n, coro in enumerate(asyncio.as_completed(tasks), start=1):
@@ -165,6 +166,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", required=True)
     ap.add_argument("--api-key-env", default="AGENT_ROUTER_KEY")
     ap.add_argument("--concurrency", type=int, default=4)
+    # The GPT-5 line refuses temperature=0 ("only the default (1) is
+    # supported"), so temperature is omitted unless asked for. `seed` is what
+    # buys reproducibility on that line instead, and it is recorded beside the
+    # verdicts: a certifying run nobody can repeat certifies less.
+    ap.add_argument("--temperature", type=float, default=None)
+    ap.add_argument("--seed", type=int, default=20260808)
+    ap.add_argument("--reasoning-effort", default="high")
     ap.add_argument("--timeout", type=float, default=120.0)
     ap.add_argument("--date", default=date.today().isoformat())
     ap.add_argument(
@@ -178,17 +186,26 @@ def main(argv: list[str] | None = None) -> int:
     if not api_key:
         raise SystemExit(f"{args.api_key_env} is not set")
 
-    print(f"model: {args.model}  host: {urlsplit(args.base_url).netloc}")
+    params: dict = {}
+    if args.temperature is not None:
+        params["temperature"] = args.temperature
+    if args.seed is not None:
+        params["seed"] = args.seed
+    if args.reasoning_effort:
+        params["reasoning_effort"] = args.reasoning_effort
+
+    print(f"model: {args.model}  host: {urlsplit(args.base_url).netloc}  params: {params}")
     verdicts = asyncio.run(run(
         base_url=args.base_url, model=args.model, api_key=api_key,
-        concurrency=args.concurrency, timeout=args.timeout,
+        concurrency=args.concurrency, timeout=args.timeout, params=params,
     ))
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     raw_path = RAW_DIR / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}.json"
     raw_path.write_text(
         json.dumps({"model": args.model, "host": urlsplit(args.base_url).netloc,
-                    "date": args.date, "verdicts": verdicts}, indent=2, ensure_ascii=False) + "\n",
+                    "date": args.date, "params": params, "verdicts": verdicts},
+                   indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     print(f"raw replies: {raw_path}")
