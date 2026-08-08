@@ -85,17 +85,44 @@ SANITY_INVALID_RATE_MAX = 0.10
 DECLARED_CHANNELS = ("fixture_call", "judge_call")
 
 
-def judge_purpose_config(api_key: str) -> dict[str, LLMPurposeConfig]:
-    """The interim-run judge identity: the gate ledger fixes
-    ``deepseek-v4-flash`` (a ``-pro`` run is not comparable), thinking
-    disabled per the DeepSeek quirk, temperature 0 for a deterministic
-    structured verdict."""
+DEFAULT_JUDGE = {
+    "model": run_smoke.DEEPSEEK_MODEL,
+    "base_url": run_smoke.DEEPSEEK_BASE_URL,
+    "api_kind": "deepseek",
+    "params": {"temperature": 0, "max_tokens": 256, "thinking": {"type": "disabled"}},
+}
+
+
+def judge_purpose_config(
+    api_key: str,
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_kind: str | None = None,
+    params: dict | None = None,
+) -> dict[str, LLMPurposeConfig]:
+    """The judge identity for this run.
+
+    Defaults to the identity the ledger fixed for T2.26's interim measurement:
+    ``deepseek-v4-flash`` (a ``-pro`` run is not comparable), thinking disabled
+    per the DeepSeek quirk, temperature 0 for a deterministic structured
+    verdict.
+
+    Overridable because a missed bar has exactly two honest remedies and one of
+    them is a different judge model at the **same frozen prompt** (doc 17 §6;
+    the other is gold growth). Editing the prompt instead moves ``prompt_sha``,
+    hence the identity, and tunes against the set that measured the failure.
+    Every override lands in the identity hash, so a swap can never be mistaken
+    for a re-run of the same judge -- and ``gold_touching_attempts`` counts the
+    contacts either way, which is what makes model-shopping visible rather than
+    silent.
+    """
     return {"verification": LLMPurposeConfig(
-        model=run_smoke.DEEPSEEK_MODEL,
-        base_url=run_smoke.DEEPSEEK_BASE_URL,
+        model=model or DEFAULT_JUDGE["model"],
+        base_url=base_url or DEFAULT_JUDGE["base_url"],
         api_key=api_key,
-        api_kind="deepseek",
-        params={"temperature": 0, "max_tokens": 256, "thinking": {"type": "disabled"}},
+        api_kind=api_kind or DEFAULT_JUDGE["api_kind"],
+        params=dict(params if params is not None else DEFAULT_JUDGE["params"]),
     )}
 
 
@@ -160,6 +187,10 @@ async def run_qualification(
     ledger_path: str | Path = ledger.DEFAULT_PATH,
     record_path: str | Path | None = None,
     gate: bool = False,
+    judge_model: str | None = None,
+    judge_base_url: str | None = None,
+    judge_api_kind: str | None = None,
+    judge_params: dict | None = None,
     fixtures_only: bool = False,
     orchestrator_cls=TwinningOrchestrator,
     now: datetime | None = None,
@@ -177,7 +208,10 @@ async def run_qualification(
                 "T2.54):\n  " + "\n  ".join(eligibility.reasons)
             )
 
-    config = judge_purpose_config(api_key)
+    config = judge_purpose_config(
+        api_key, model=judge_model, base_url=judge_base_url,
+        api_kind=judge_api_kind, params=judge_params,
+    )
     llm = orchestrator_cls(config, cache_dir=str(cache_dir))
     judge = vj.VerificationJudge(llm)
     recorder = LatencyRecorder()
@@ -252,7 +286,16 @@ async def run_qualification(
 
     print("[3/4] rendering report + recording ledger row...")
     report_text = jq.render_report(score, eligibility, twin, meta)
-    report_path = Path(report_dir) / f"{run_date.isoformat()}-judge-qualification.md"
+    # Keyed on the judge identity, not the date alone. Two attempts on one day
+    # is the normal shape of a missed bar -- doc 17 §6's remedy is a different
+    # judge model at the frozen prompt -- and a date-only name means the second
+    # run silently overwrites the first's evidence. That happened on 2026-08-08:
+    # the gpt-5.5 attempt clobbered the deepseek-v4-flash report, which survived
+    # only because it had already been committed. A gate ledger cites these.
+    report_path = (
+        Path(report_dir)
+        / f"{run_date.isoformat()}-judge-qualification-{identity_hash[:8]}.md"
+    )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report_text, encoding="utf-8")
 
@@ -325,6 +368,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                         help="Gold file (default: the canonical claim/fact gold).")
     parser.add_argument("--cache-dir", default=None, metavar="PATH",
                         help="LLM disk cache directory (default: entailment/cache).")
+    parser.add_argument("--judge-model", default=None, metavar="NAME", help=(
+        "swap the judge model at the frozen prompt (doc 17 §6's sanctioned "
+        "remedy for a missed bar). Lands in the identity hash."
+    ))
+    parser.add_argument("--judge-base-url", default=None, metavar="URL")
+    parser.add_argument("--judge-api-kind", default=None, metavar="KIND")
+    parser.add_argument("--judge-params", default=None, metavar="JSON", help=(
+        "JSON object of per-call params for the judge purpose. Stated by the "
+        "caller rather than derived here: vendors differ on what they accept "
+        "(the GPT-5 line refuses temperature=0), and a runner that guessed "
+        "would be comparing api_kind to a vendor name, which this codebase "
+        "forbids at call sites."
+    ))
     parser.add_argument("--record-path", default=None, metavar="PATH", help=(
         "Where --gate writes the qualification record (default: the "
         "canonical app-side path; rehearsals must point elsewhere)."
@@ -339,6 +395,10 @@ async def main(argv: list[str] | None = None) -> int:
         cache_dir=args.cache_dir or CACHE_DIR,
         record_path=args.record_path,
         gate=args.gate,
+        judge_model=args.judge_model,
+        judge_base_url=args.judge_base_url,
+        judge_api_kind=args.judge_api_kind,
+        judge_params=json.loads(args.judge_params) if args.judge_params else None,
         fixtures_only=args.fixtures_only,
     )
     if result is not None:

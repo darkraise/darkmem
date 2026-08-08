@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open** (measured 2026-08-08: NOT CLEARED — contradiction-precision 0.7937 vs 0.95; entailed P/R pass) | — | T2.41 — this file, "G-D verdict"; `docs/eval/2026-08-08-judge-qualification.md` |
+| G-D | L2 → L3 | **open** (measured 2026-08-08, two vendors: NOT CLEARED — contradiction-precision 0.7937 deepseek / 0.8814 gpt-5.5, both vs 0.95; entailed P/R pass on both) | — | T2.41 — this file, "G-D verdict"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba}.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -608,15 +608,57 @@ and this run deliberately minted none.)*
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | **0.9895** | `docs/eval/2026-08-08-judge-qualification.md` | **PASS** |
-| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | **0.9307** | same | **PASS** |
-| `verification` judge precision on the **contradiction** verdict | ≥ 0.95 (`contradiction_precision_bar`, config default; stated 2026-07-31) | **0.7937** | same | **FAIL** |
+| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | **0.9895** (deepseek) / **0.9806** (gpt-5.5) | `docs/eval/2026-08-08-judge-qualification-4d886440.md`, `-1bb9d9ba.md` | **PASS** both |
+| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | **0.9307** (deepseek) / **1.0000** (gpt-5.5) | same | **PASS** both |
+| `verification` judge precision on the **contradiction** verdict | ≥ 0.95 (`contradiction_precision_bar`, config default; stated 2026-07-31) | **0.7937** (deepseek) / **0.8814** (gpt-5.5) | same | **FAIL** both |
 
 The veto consumer inherits the same qualification on the **contradiction** verdict
 (doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
 2026-07-31 before any gate run alongside the two above.
 
-### G-D verdict: **NOT CLEARED** (2026-08-08, T2.41)
+### G-D verdict: **NOT CLEARED** — two vendors, one bar (2026-08-08, T2.41)
+
+**Attempt 2: `gpt-5.5` at the same frozen prompt** (identity `1bb9d9bae62eb9d8`,
+`prompt_sha f99151e4add69b31` — unchanged from attempt 1, which is what makes the two
+comparable). Doc 17 §6's sanctioned remedy for a missed bar is a different judge model at
+a frozen prompt; this is that, and `gold_touching_attempts: 2` records it. Report:
+`docs/eval/2026-08-08-judge-qualification-1bb9d9ba.md`.
+
+- entailed-precision **0.9806** ≥ 0.95 — **PASS**
+- entailed-recall **1.0000** ≥ 0.90 — **PASS** (101/101, zero false rejects)
+- contradiction-precision **0.8814** vs 0.95 — **FAIL**
+
+**gpt-5.5 is markedly the better judge and still misses.** `direction` accuracy rises
+0.567 → **0.900**, entailed-recall 0.931 → **1.000**, and manufactured disputes fall from
+13 to **7**. The residual is 7 gold-`unsupported` pairs called `contradicted` against 52
+true positives. At 55 gold-contradicted pairs the 0.95 bar permits at most **two** false
+positives (52/54 = 0.963; 52/55 = 0.945), so the bar is effectively "at most two
+manufactured disputes in 241 pairs".
+
+**The finding is about the task, not the model.** Two frontier models from two vendors,
+same frozen prompt, fail the same bar in the same direction — over-calling contradiction
+on pairs the premise merely fails to assert. That is the exclusion-vs-absence distinction
+the rulebook's own "Contradiction requires exclusion, not absence" clause exists for, and
+it is the distinction the production veto depends on being right about, since one non-echo
+contradiction beats any corroboration count with no config on its path. A judge that
+manufactures 7 disputes per 241 claims would, unqualified, be a live source of false
+`disputed` transitions.
+
+**Stopping here rather than trying a third model.** Two attempts at a frozen prompt is the
+remedy; an open-ended sweep until one clears is tuning-against-gold by another route, and
+the harness counts contacts precisely so that is visible. The remaining honest moves are
+the owner's: grow the gold's contradicted census so the bar has headroom that is not
+single-error resolution; or re-examine whether 0.95 on contradiction-precision is the
+right bar, which is a bar change and needs its own recorded argument, not a quiet edit.
+
+**A same-day report collision was fixed here.** Attempt 2 overwrote attempt 1's report —
+the path was date-keyed only, and two attempts in a day is the *normal* shape of a missed
+bar. Attempt 1 survived solely because it had already been committed. Report paths now
+carry the judge identity hash, and both attempts are preserved:
+`-4d886440.md` (deepseek-v4-flash) and `-1bb9d9ba.md` (gpt-5.5).
+
+#### Attempt 1 — `deepseek-v4-flash` (2026-08-08)
+
 
 **Two bars of three cleared; the contradiction bar missed by a wide margin, and it is
 the one the veto consumer depends on.** Run against gold v1 at 241 live pairs
