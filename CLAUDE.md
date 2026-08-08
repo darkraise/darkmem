@@ -404,14 +404,23 @@ until 2026-08-02; the `verification` half was stale, and a task reading it
 would wrongly believe activating that purpose was still an unmade decision.
 Note `verification` being dispatched is not the same as it being *usable*:
 `VerificationJudge.judge()` refuses unconditionally without a qualification
-record, which T2.41 mints and which is behind T2.54's gold. Since T2.109 it is
-also behind a **bar the owner has not stated**: `BAR_METRICS` gates
-`contradiction_recall` and `VERIFICATION_BAR_DEFAULTS` deliberately carries no
-`contradiction_recall_bar`, so `get_verification_bars` raises and
-`qualification_state` fails closed naming it until a config row states the
-number. Do not "fix" that by adding a default — it would be a gate bar chosen
-while looking at both measured judges' public results, which is the fitting
-doc 17 §6 forbids. Each purpose is
+record, which T2.41 mints and which is behind T2.54's gold. T2.109 also put it behind a
+fourth bar: `BAR_METRICS` gates `contradiction_recall`, and that bar was
+deliberately left with no default so `get_verification_bars` would raise and
+`qualification_state` fail closed until someone wrote the number down —
+stating it alongside the amendment would have meant choosing it while looking
+at both measured judges' public results, which is the fitting doc 17 §6
+forbids. **The number has since been stated: `contradiction_recall_bar` = 0.95
+and `contradiction_precision_bar` = 0.95 → 0.70, both by derivation from doc 17
+§6's own rule, recorded in the gate ledger's "G-D redesign" section and in
+`VERIFICATION_BAR_DEFAULTS`** (corrected 2026-08-08 — this paragraph said the
+bar was unstated and the gate fails closed on it, which stopped being true when
+`bb522848` landed the value and left `BAR_METRICS`' own comment behind saying
+the same thing). The check that the 0.95 is a derivation and not a fit is that
+the measured judge does **not** clear it: gpt-5.5 scored 0.945, so a laundered
+bar would sit at 0.90, and a test pins it against exactly that. Both bars are
+the owner's to move with a recorded argument; neither may be moved to make a
+run pass. Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The

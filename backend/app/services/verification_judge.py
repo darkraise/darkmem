@@ -197,8 +197,8 @@ QUALIFICATION_RECORD_PATH = Path(__file__).resolve().parent / "verification_qual
 
 # Bar config-row key -> the recorded metric it governs.
 #
-# **``contradiction_recall_bar`` has no entry in ``VERIFICATION_BAR_DEFAULTS``,
-# and the omission is the design** (doc 17 §6's 2026-08-08 amendment, T2.109).
+# **``contradiction_recall_bar`` is why this mapping exists as a separate
+# thing from the defaults** (doc 17 §6's 2026-08-08 amendment, T2.109).
 # Gating the contradiction verdict on precision alone was measured incoherent:
 # replayed through the shipped scorer, a judge emitting ``contradicted`` on
 # exactly one correct pair and ``unsupported`` everywhere else passes all three
@@ -209,11 +209,16 @@ QUALIFICATION_RECORD_PATH = Path(__file__).resolve().parent / "verification_qual
 # missed contradiction never reaches a reviewer) and precision becomes a
 # review-load floor.
 #
-# The bar's *value* is the owner's to state, and stating it now would be
-# choosing it while looking at both measured judges' public numbers. So it is
-# barred with no default: ``get_verification_bars`` refuses to resolve an
-# unstated bar and ``qualification_state`` fails closed on that refusal, which
-# means G-D cannot qualify anything until the owner writes the number down.
+# The bar's value was withheld at first, because stating it in the same breath
+# as the amendment would have meant choosing it while looking at both measured
+# judges' public numbers. **It has since been stated — 0.95, by derivation, on
+# 2026-08-08** (see VERIFICATION_BAR_DEFAULTS below for the derivation and for
+# why a fit would have landed on 0.90 instead). The fail-closed machinery it
+# was withheld behind is not vestigial and must not be removed: selecting rows
+# over BAR_METRICS rather than over the defaults is what lets a *future* barred
+# metric be added here and refuse to resolve until someone writes its number
+# down. Deleting a key from the defaults still fails the gate closed; it no
+# longer silently qualifies against a number nobody chose.
 BAR_METRICS = {
     "groundedness_gate_precision_bar": "entailed_precision",
     "groundedness_gate_recall_bar": "entailed_recall",
