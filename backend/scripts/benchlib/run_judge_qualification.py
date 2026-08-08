@@ -246,6 +246,10 @@ async def run_qualification(
         "kind": ATTEMPT_KIND,
         "intent_row_id": intent_row_id,
         "identity_hash": identity_hash,
+        # The whole identity, not only its hash: a missed run mints no
+        # qualification record, so without this the ledger cannot say what was
+        # actually run (see the report's "judge invocation" line).
+        "judge_identity": {**identity, "identity_hash": identity_hash},
         "prompt_sha": identity["prompt_sha"],
         "gold_sha256": gold_sha256,
         "timestamp": timestamp,

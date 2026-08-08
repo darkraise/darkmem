@@ -318,6 +318,40 @@ def test_report_interim_banner_follows_both_eligibility_and_run_mode():
     assert "INTERIM" not in text
 
 
+def test_report_records_the_whole_invocation_not_only_its_hash():
+    """A reader must be able to reproduce the run from the report alone.
+
+    The identity hash is not invertible, and a run that MISSES a bar writes no
+    qualification record -- so before 2026-08-08 a failed run left the model
+    name and nothing else. The G-D spike had to probe ~18k candidate configs
+    and then attribute cached calls by token checksum to recover what had
+    actually been run. Evidence nobody can reproduce the invocation for is
+    weaker than it looks, and every G-D run so far has been a miss.
+    """
+    score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
+    meta = {**_mini_meta(), "gate_run": True}
+    meta["judge_identity"] = {
+        "identity_hash": "abc123",
+        "model": "gpt-5.5",
+        "base_url": "https://api.openai.com/v1",
+        "api_kind": "openai",
+        "params": {"max_completion_tokens": 4000, "reasoning_effort": "high"},
+        "dimensions": None,
+        "reasoning": None,
+        "prompt_version": 1,
+        "prompt_sha": "f99151e4add69b31",
+    }
+    text = jq.render_report(score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)),
+                            _mini_twin(), meta)
+
+    # Every field that shapes behaviour, not just the ones that are cheap to print.
+    assert "https://api.openai.com/v1" in text
+    assert "openai" in text
+    assert "max_completion_tokens" in text
+    assert "reasoning_effort" in text
+    assert "4000" in text
+
+
 def test_report_carries_bars_verdicts_and_attempts():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     eligibility = jq.gate_eligibility(_synthetic_gold(200, 100, 0))

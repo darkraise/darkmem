@@ -174,6 +174,53 @@ use synthetic pairs, never the real gold's verdicts.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_resample_draw.py scripts/benchlib/tests/test_judge_qualification.py -q`
 
+#### T2.109 — The veto's two arms: ratify and rewire (G-D redesign)
+
+`Model: Opus 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.41` · `Doc: 08 §4.2, 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D` · `OWNER-GATED`
+
+**What.** G-D was measured three times and does not clear; the resolution spike
+(2026-08-08, recorded under G-D in `gate-ledger.md`) found the defect is not the model
+and not the bar but **the veto's architecture** — the LLM judge is wired directly into
+the absolute dispute veto and gated on precision alone.
+
+**The coherence result that decides it, reproduced against the shipped scorer:** a judge
+that says `contradicted` on exactly one correct pair — missing 54 of 55 — **passes all
+three gated bars** (precision 1.0, recall 0.0182). Only total silence fails, and only via
+the precision-is-None rule. The gate as specified qualifies a near-mute judge to hold an
+absolute veto while failing the measured 0.88-precision / 0.95-recall one.
+
+**Why not the other resolutions.** Not clearable: the two vendors' false positives
+intersect on 3 pairs, so even a conjunctive two-vendor veto — the most precision-favouring
+composition of every judge measured, fitted post-hoc — ceilings at 55/58 = 0.9483 at any
+recall. Not the bar: 0.95 was *inherited* from the entailed bar (doc 17 §6's own words),
+never derived from the veto's cost function, which argues the disputing consumer's bar
+should be **higher**, since a scanned false dispute is near-permanent.
+
+**Proposed shape (the owner ratifies; this task does not decide it).**
+- The absolute veto stays on the **deterministic arm** — precise by construction, and no
+  migration burden since the LLM arm has never fired.
+- The LLM scan's finding **opens review instead of disputing**, which doc 08 §5.3's
+  delay-not-manufacture asymmetry already licenses.
+- The qualification metric pair **inverts**: recall becomes truth-critical, precision
+  becomes a review-load floor.
+
+**Done when:**
+- [ ] The owner has ratified the design as a Tier-3 amendment to doc 08 §4.2 and doc 17 §6
+- [ ] **New bars are stated by the owner before any measurement.** Both gpt-5.5 numbers
+      are already public, so a bar chosen now by anyone who has seen them is fitted —
+      this is why the spike deliberately proposed none
+- [ ] Measured on **T2.54-grown gold**, not this one: it carries 3 contacts and its
+      false-positive census is public
+- [ ] The `disputed` rung, the demotion hysteresis and doc 08 §4.2's veto semantics are
+      each shown to survive the rewire, or amended with it
+- [ ] The G-C→G-D cross-edge is re-read under the audit's new shape — the machine-dispute
+      arm's reachability changes if the LLM arm stops disputing
+
+**Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py --gate`
+after the rewire, against the grown gold.
+
+---
+
 #### T2.41 — G-D evidence run
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`

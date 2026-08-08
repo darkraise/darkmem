@@ -369,6 +369,19 @@ def render_report(
         f"(model `{identity.get('model')}`, prompt v{identity.get('prompt_version')}, "
         f"prompt_sha `{identity.get('prompt_sha')}`)"
     )
+    # The full invocation, not just the hash. The hash is not invertible, and
+    # on a MISS no qualification record is written -- so before 2026-08-08 a
+    # failed run recorded the model and nothing else. The G-D spike had to
+    # probe ~18k candidate configs trying to reconstruct one, then fall back to
+    # attributing cached calls by token checksum. Evidence a later reader
+    # cannot reproduce the invocation for is weaker evidence than it looks.
+    lines.append(
+        f"- judge invocation: `base_url={identity.get('base_url')}` "
+        f"`api_kind={identity.get('api_kind')}` "
+        f"`params={json.dumps(identity.get('params'), sort_keys=True)}` "
+        f"`dimensions={identity.get('dimensions')}` "
+        f"`reasoning={identity.get('reasoning')}`"
+    )
     lines.append(
         f"- gold: version {meta['gold_version']}, sha256 `{meta['gold_sha256']}`, "
         f"{score.n_pairs} pairs scored"
