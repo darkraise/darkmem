@@ -473,6 +473,109 @@ exists.
 
 ## History
 
+- **2026-08-08 (T2.110, growth round — 110 pairs appended, eg-0242..eg-0351).**
+  Grown because the 241-pair set was contaminated as a measurement surface —
+  three recorded `gold_touching_attempts` and a public failure census — so
+  G-D's re-measure needed pairs whose author could not aim. The author read
+  neither the gate ledger's G-D sections, the G-D resolution-spike brief, the
+  judge-qualification reports, nor `resample_runs/`; the residual (aggregate
+  rates named in M1's own task text and in `verification_judge.py`'s bar
+  comment) is recorded in the task report.
+
+  **Census sizing, the reason for the round's shape.** `contradiction_recall_bar`
+  = 0.95 = 19/20 resolves in steps of 1/N over the gold-contradicted census.
+  At N = 55 the lattice brackets the bar at 52/55 ≈ 0.9455 and 53/55 ≈ 0.9636:
+  0.95 is not achievable, so the operative bar was 0.9636 and one miss moved
+  recall 0.018. The bar sits on the lattice only at N ≡ 0 (mod 20), and the
+  Layer-3 resample's full-census stratum refuses N > 93, so the target census
+  is **80** — the one multiple of 20 in (55, 93]. At 80, recall 76/80 = 0.9500
+  exactly clears, 75/80 = 0.9375 misses, and a judge is permitted exactly 4
+  misses. Every other slice scaled proportionally: 241 → 351 by
+  largest-remainder rounding (verbatim 35, paraphrase 51, weakening 42,
+  temporal 51, direction 44, overreach 51, value-swap 42, unrelated 35).
+
+  **Premise assignment was mechanical** (Rule A, round 2): seed
+  `int(sha256(gold.json @ 241 pairs)[:8], 16)` = 3872744570 — derived from the
+  pre-growth file's own hash, so unchooseable — over a capacity-aware cycle
+  (`entailment_assignment.build_round2_assignment`; existing premises carried
+  prior usage, so the cycle skips facts at the ≤ 4-per-premise cap). Verdicts
+  fall out of construction: the five fixed-verdict slices by `SLICE_VERDICTS`,
+  `direction` by the reversal-exclusivity table (the draw yielded 6 exclusive
+  reversals + 1 symmetric skip → 7 contradicted, 7 non-exclusive →
+  unsupported), and the 16 hand-authored temporal pairs' mix (5 entailed /
+  5 contradicted / 6 unsupported) chosen after the draw to land the census at
+  exactly 80 = 13 (value-swap) + 7 (direction) + 5 (temporal) + 55 (prior).
+
+  **Blind adjudication (Layer 2) ran before this entry was written**, so the
+  passes could not read a skip log naming the new ids: two separately
+  dispatched Claude-family labellers (pass A: Opus; pass B: Sonnet), each
+  given only id/premise/hypothesis plus this file's rulebook sections (through
+  the reversal-exclusivity table — the full table and the three ratified
+  exclusive-slot extensions included, per the voided-resample lesson).
+  Agreement, recorded whatever it is: **pass A vs recorded 109/110 =
+  0.9909; pass B vs recorded 110/110 = 1.0000; pass A vs pass B 109/110 =
+  0.9909.** 109 pairs flipped to `adjudicated`; **1 escalated untouched** to
+  `entailment/escalation_queue.json` (eg-0308, `paraphrase`: recorded
+  `entailed`; pass A said `unsupported`, reading the cleft "is what causes"
+  as an exhaustivity upgrade — 'a cause' to 'the cause'; pass B agreed with
+  the recorded verdict). The pair stays `author` and the queue is the
+  owner's Layer-3 work list, so eligibility honestly reports 1/351
+  author-labelled until the ruling, alongside the missing fresh resample.
+  Unlike the Step-5 round, the two passes diverged from *each other* here —
+  a small but real independence signal the 2026-08-03 review's
+  correlated-error concern predicted would be absent.
+
+  **The recorded resample does not carry over, by design.** The 2026-08-08
+  n = 93 resample certified the 241-pair file — its draw is pinned to that
+  file's sha256 — so the grown gold carries **no** `resample` block (keeping
+  it would have satisfied the eligibility lock with a certification of a
+  different file), reports ineligible until a fresh draw is scored, and the
+  blind export, manifest and sheet were regenerated against the grown file's
+  hash. `gold_touching_attempts` is keyed on `gold_sha256` and therefore reads
+  0 for the grown file. The grown set has never been contacted by any judge
+  identity (Rule B's never-contacted population now spans eg-0242..eg-0351).
+
+### Skip log (T2.110 round)
+
+Every skipped (premise, slice) slot, per Rule A; the slot keeps its id and
+slice with a hand-authored premise.
+
+**Slots 0–93, eg-0242..eg-0335; 12 skips (11 `value-swap`, 1 `direction`):**
+
+- slot 6, `value-swap`, `2b8fd40f…` (`terraform uses tf-state`): generic USES
+  object, not single-valued. Authored as eg-0248, hand-authored state-bucket
+  premise.
+- slot 14, `value-swap`, `c2cff8f6…` (`ntfy related to sms`): RELATED_TO
+  multi-valued by nature. eg-0256, hand-authored polling-interval premise.
+- slot 23, `value-swap`, `505aabfc…` (`grafana uses infra`): generic USES
+  object. eg-0265, hand-authored port premise.
+- slot 26, `value-swap`, `e31a032d…` (`restic uses wiki volume`): generic
+  USES object. eg-0268, hand-authored retention premise.
+- slot 36, `value-swap`, `6c47ab46…` (`license-report depends on internal
+  package mirror`): generic dependency object admits many values. eg-0278,
+  hand-authored port premise.
+- slot 45, `value-swap`, `f5074b56…` (`ci runners uses docker-in-docker`):
+  generic USES object. eg-0287, hand-authored pinned-version premise.
+- slot 52, `value-swap`, `519cf15a…` (`terraform uses minio`): generic USES
+  object. eg-0294, hand-authored retention premise.
+- slot 56, `value-swap`, `cf0723ca…` (`unleash uses oidc`): generic USES
+  object. eg-0298, hand-authored version premise.
+- slot 60, `value-swap`, `60a400b1…` (`caddy improves on nginx`): IMPROVES_ON
+  not single-valued (round-1 slot-78 ground). eg-0302, hand-authored port
+  premise.
+- slot 73, `direction`, `702b3d82…` (`fleet-cfg related to booking
+  schedule`): RELATED_TO is symmetric and direction-ineligible per the
+  reversal-exclusivity table. eg-0315, hand-authored HAS_PART premise.
+- slot 92, `value-swap`, `c2cff8f6…` (`ntfy related to sms`): same ground as
+  slot 14. eg-0334, hand-authored token-lifetime premise.
+- slot 93, `value-swap`, `702b3d82…` (`fleet-cfg related to booking
+  schedule`): RELATED_TO multi-valued by nature. eg-0335, hand-authored
+  schedule premise.
+
+**Round closed 2026-08-08:** 351 live pairs, `l2-fact` 235/351 (66.9%,
+floor ≥ 50%), contradicted census exactly 80, slice counts exactly the
+largest-remainder targets, 12 skips all logged above.
+
 - **2026-08-08 (T2.54 Step 6, resample — RUN, by model, owner-directed).**
   n = 93, **0 disagreements**, bar ≤ 1. The gold is now lock-eligible.
 

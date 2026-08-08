@@ -133,33 +133,38 @@ def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
     return doc
 
 
-def test_the_real_gold_is_eligible_with_counts_and_resample_surfaced():
-    """The resample ran on 2026-08-08 (two non-Claude vendors, 0 disagreements
-    each), which was the last outstanding condition. This pinned the *refusal*
-    until then; it now pins the eligibility, and the counts stay surfaced either
-    way so a future composition change is visible in the reasons rather than
-    only in a boolean.
+def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
+    """T2.110 grew the gold, and the 2026-08-08 resample certified the
+    241-pair file — its draw was pinned to that file's sha256 — so the grown
+    gold carries NO resample block: keeping the old one would have satisfied
+    the lock with a certification of a different file. This pins the honest
+    state: size and the l2-fact floor hold, and exactly two conditions are
+    outstanding — eg-0308, the one growth pair the blind passes escalated
+    (still `author` until the owner's Layer-3 ruling), and the fresh
+    resample. As each resolves, this test moves with it, visibly.
 
     The conditions themselves are still exercised against synthetic golds
-    below -- an eligible real gold must not become the only thing this file
-    checks, or the lock would be untested the moment it matters.
+    below -- the real gold must not become the only thing this file checks,
+    or the lock would be untested the moment it matters.
     """
     doc = entailment_gold.load_entailment_gold()
     eligibility = jq.gate_eligibility(doc)
-    assert eligibility.eligible is True
-    assert eligibility.live_pairs == 241
-    assert eligibility.l2_fact_pairs == 153
-    assert eligibility.author_labelled_pairs == 0
+    assert eligibility.eligible is False
+    assert eligibility.live_pairs == 351
+    assert eligibility.l2_fact_pairs == 235
+    assert eligibility.author_labelled_pairs == 1
     joined = "\n".join(eligibility.reasons)
-    assert "l2-fact: 153/241" in joined
-    assert "author-labelled: 0/241" in joined
-    assert "resample" not in joined
+    assert "l2-fact: 235/351" in joined
+    assert "author-labelled: 1/351" in joined
+    # Exactly two blocking reasons: the escalated pair, then the resample.
+    assert len(eligibility.reasons) == 3
+    assert "await" in eligibility.reasons[1]
+    assert "resample: absent" in eligibility.reasons[2]
+    assert "resample" not in doc
 
-    resample = doc["resample"]
-    assert resample["n"] == 93
-    assert resample["disagreements"] == 0
-    # No human sat, and the record must say so on its face.
-    assert "LLM" in resample["performed_by"]
+    escalated = [p for p in doc["pairs"]
+                 if not p.get("retired") and p["label_source"] == "author"]
+    assert [p["id"] for p in escalated] == ["eg-0308"]
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():
@@ -923,7 +928,7 @@ def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
     fixture = result.twin.channels["fixture_call"]
     gold = result.twin.channels["judge_call"]
     assert fixture.live.n == len(SANITY_PREMISES)
-    assert gold.live.n == result.score.n_pairs == 241
+    assert gold.live.n == result.score.n_pairs == 351
 
 
 # ── the resample condition (T2.54 Step 6, 2026-08-06) ───────────────────

@@ -1,0 +1,552 @@
+[
+ {
+  "id": "eg-0242",
+  "premise": "redis deployed on cache-01",
+  "hypothesis": "Telegraf feeds metrics into InfluxDB."
+ },
+ {
+  "id": "eg-0243",
+  "premise": "ocr worker deployed on gpu-01",
+  "hypothesis": "The monthly payroll export goes through sftp-02."
+ },
+ {
+  "id": "eg-0244",
+  "premise": "sftp-02 uses dns",
+  "hypothesis": "DNS has at least one consumer."
+ },
+ {
+  "id": "eg-0245",
+  "premise": "postfix deployed on mail-01",
+  "hypothesis": "Postfix is deployed on ci-01."
+ },
+ {
+  "id": "eg-0246",
+  "premise": "apps/portal uses audit-log",
+  "hypothesis": "apps/portal writes every request to the audit-log synchronously."
+ },
+ {
+  "id": "eg-0247",
+  "premise": "config management agent causes lp-relay",
+  "hypothesis": "The lp-relay is brought about by the config management agent."
+ },
+ {
+  "id": "eg-0248",
+  "premise": "Terraform stores its state in the MinIO bucket tf-state.",
+  "hypothesis": "Terraform stores its state in the MinIO bucket artifacts-prod."
+ },
+ {
+  "id": "eg-0249",
+  "premise": "hv-27 has part scratch partition",
+  "hypothesis": "hv-27 has a 2 TB scratch partition."
+ },
+ {
+  "id": "eg-0250",
+  "premise": "customer-portal uses vault",
+  "hypothesis": "The customer-portal stores its session data in Vault."
+ },
+ {
+  "id": "eg-0251",
+  "premise": "github actions replaces jenkins",
+  "hypothesis": "GitHub Actions is replaced by Jenkins."
+ },
+ {
+  "id": "eg-0252",
+  "premise": "lp-relay uses office label printers",
+  "hypothesis": "lp-relay employs the office label printers."
+ },
+ {
+  "id": "eg-0253",
+  "premise": "vault related to .env files",
+  "hypothesis": "Vault replaced the .env files for secret storage."
+ },
+ {
+  "id": "eg-0254",
+  "premise": "team wiki deployed on lab-vm-3",
+  "hypothesis": "The team wiki is hosted on lab-vm-3."
+ },
+ {
+  "id": "eg-0255",
+  "premise": "nightly integration suite uses artifacts bucket",
+  "hypothesis": "The artifacts bucket has at least one consumer."
+ },
+ {
+  "id": "eg-0256",
+  "premise": "The door-badge reader polls the directory replica every 5 minutes.",
+  "hypothesis": "The door-badge reader polls the directory replica every 15 minutes."
+ },
+ {
+  "id": "eg-0257",
+  "premise": "prometheus uses node exporters",
+  "hypothesis": "The node exporters have at least one consumer."
+ },
+ {
+  "id": "eg-0258",
+  "premise": "analytics etl depends on orders database",
+  "hypothesis": "The analytics ETL cannot run at all when the orders database is down."
+ },
+ {
+  "id": "eg-0259",
+  "premise": "redis deployed on queue-01",
+  "hypothesis": "Restic backs up to the NAS."
+ },
+ {
+  "id": "eg-0260",
+  "premise": "memcached deployed on cache-02",
+  "hypothesis": "Memcached is deployed somewhere in the environment."
+ },
+ {
+  "id": "eg-0261",
+  "premise": "nightly integration suite uses junit",
+  "hypothesis": "JUnit is employed by the nightly integration suite."
+ },
+ {
+  "id": "eg-0262",
+  "premise": "iot-gw-1 uses firmware check",
+  "hypothesis": "The firmware check has at least one consumer."
+ },
+ {
+  "id": "eg-0263",
+  "premise": "wireguard deployed on udp",
+  "hypothesis": "WireGuard runs over UDP."
+ },
+ {
+  "id": "eg-0264",
+  "premise": "fleet-cfg related to booking schedule",
+  "hypothesis": "fleet-cfg generates the booking schedule."
+ },
+ {
+  "id": "eg-0265",
+  "premise": "Grafana serves its UI on port 3000.",
+  "hypothesis": "Grafana serves its UI on port 8080."
+ },
+ {
+  "id": "eg-0266",
+  "premise": "astro replaces mkdocs",
+  "hypothesis": "Astro replaces MkDocs."
+ },
+ {
+  "id": "eg-0267",
+  "premise": "jenkins deployed on ci-01",
+  "hypothesis": "ci-01 is deployed on Jenkins."
+ },
+ {
+  "id": "eg-0268",
+  "premise": "Restic keeps 14 nightly snapshots of the wiki volume.",
+  "hypothesis": "Restic keeps 30 nightly snapshots of the wiki volume."
+ },
+ {
+  "id": "eg-0269",
+  "premise": "monthly payroll export uses sftp-02",
+  "hypothesis": "sftp-02 uses the monthly payroll export."
+ },
+ {
+  "id": "eg-0270",
+  "premise": "nightly dump related to orders database",
+  "hypothesis": "The nightly dump is connected with the orders database."
+ },
+ {
+  "id": "eg-0271",
+  "premise": "restic uses nas",
+  "hypothesis": "Something in the environment uses the NAS."
+ },
+ {
+  "id": "eg-0272",
+  "premise": "vault uses apps/portal",
+  "hypothesis": "Something uses apps/portal."
+ },
+ {
+  "id": "eg-0273",
+  "premise": "acs-01 depends on ntp",
+  "hypothesis": "acs-01 depends on ntp and will refuse logins if time drifts."
+ },
+ {
+  "id": "eg-0274",
+  "premise": "expense uses ocr worker",
+  "hypothesis": "The OCR worker uses expense."
+ },
+ {
+  "id": "eg-0275",
+  "premise": "postgres deployed on stg-db-01",
+  "hypothesis": "Postgres is deployed on stg-db-01 with streaming replication to prod-db-01."
+ },
+ {
+  "id": "eg-0276",
+  "premise": "cleanup cron job causes scratch partition",
+  "hypothesis": "The cleanup cron job is the only thing affecting the scratch partition."
+ },
+ {
+  "id": "eg-0277",
+  "premise": "internal package mirror uses client",
+  "hypothesis": "The internal package mirror requires the client on every host."
+ },
+ {
+  "id": "eg-0278",
+  "premise": "The internal package mirror serves clients on port 8081.",
+  "hypothesis": "The internal package mirror serves clients on port 3128."
+ },
+ {
+  "id": "eg-0279",
+  "premise": "billing-sync deployed on apps-02",
+  "hypothesis": "On apps-02, billing-sync is deployed."
+ },
+ {
+  "id": "eg-0280",
+  "premise": "mobile app uses edge-cdn-4",
+  "hypothesis": "GlitchTip replaces Sentry."
+ },
+ {
+  "id": "eg-0281",
+  "premise": "redis replaces memcached",
+  "hypothesis": "Memcached has a replacement."
+ },
+ {
+  "id": "eg-0282",
+  "premise": "door-badge uses directory replica",
+  "hypothesis": "door-badge uses the directory replica."
+ },
+ {
+  "id": "eg-0283",
+  "premise": "compactor uses loki",
+  "hypothesis": "Loki uses the compactor."
+ },
+ {
+  "id": "eg-0284",
+  "premise": "vector related to telegraf",
+  "hypothesis": "Caddy improves on nginx."
+ },
+ {
+  "id": "eg-0285",
+  "premise": "rooftop weather station uses iot-gw-1",
+  "hypothesis": "The rooftop weather station uses iot-gw-1."
+ },
+ {
+  "id": "eg-0286",
+  "premise": "status dashboard uses vite",
+  "hypothesis": "Terraform keeps its state in tf-state."
+ },
+ {
+  "id": "eg-0287",
+  "premise": "The CI runner pool is pinned to Docker Engine 24.0.",
+  "hypothesis": "The CI runner pool is pinned to Docker Engine 20.10."
+ },
+ {
+  "id": "eg-0288",
+  "premise": "arc-store deployed on minio",
+  "hypothesis": "arc-store is hosted on MinIO."
+ },
+ {
+  "id": "eg-0289",
+  "premise": "glitchtip replaces sentry",
+  "hypothesis": "GlitchTip supersedes Sentry."
+ },
+ {
+  "id": "eg-0290",
+  "premise": "prod-db-01 deployed on postgres",
+  "hypothesis": "prod-db-01 is deployed on redis."
+ },
+ {
+  "id": "eg-0291",
+  "premise": "artifacts-prod deployed on minio",
+  "hypothesis": "MinIO is deployed on artifacts-prod."
+ },
+ {
+  "id": "eg-0292",
+  "premise": "typesense deployed on search-01",
+  "hypothesis": "Typesense is deployed on search-01."
+ },
+ {
+  "id": "eg-0293",
+  "premise": "grafana uses nginx",
+  "hypothesis": "Grafana uses nginx."
+ },
+ {
+  "id": "eg-0294",
+  "premise": "Loki retains logs for 30 days.",
+  "hypothesis": "Loki retains logs for 90 days."
+ },
+ {
+  "id": "eg-0295",
+  "premise": "kibana has part elk",
+  "hypothesis": "The thumbs queue runs on queue-01."
+ },
+ {
+  "id": "eg-0296",
+  "premise": "telegraf uses influxdb",
+  "hypothesis": "InfluxDB is utilised by Telegraf."
+ },
+ {
+  "id": "eg-0297",
+  "premise": "search-01 is a typesense",
+  "hypothesis": "search-01 is an instance of Typesense."
+ },
+ {
+  "id": "eg-0298",
+  "premise": "The Unleash instance runs version 5.7.",
+  "hypothesis": "The Unleash instance runs version 4.2."
+ },
+ {
+  "id": "eg-0299",
+  "premise": "nginx uses client certificates",
+  "hypothesis": "The client certificates use nginx."
+ },
+ {
+  "id": "eg-0300",
+  "premise": "directory replica deployed on acs-01",
+  "hypothesis": "The directory replica is deployed on acs-01."
+ },
+ {
+  "id": "eg-0301",
+  "premise": "thumbs queue deployed on queue-01",
+  "hypothesis": "queue-01 is deployed on the thumbs queue."
+ },
+ {
+  "id": "eg-0302",
+  "premise": "The office label printers accept jobs on port 631.",
+  "hypothesis": "The office label printers accept jobs on port 9100."
+ },
+ {
+  "id": "eg-0303",
+  "premise": "apps-02 deployed on rack ups",
+  "hypothesis": "Kibana has ELK as a component."
+ },
+ {
+  "id": "eg-0304",
+  "premise": "redis deployed on cache-01",
+  "hypothesis": "Redis runs on cache-01."
+ },
+ {
+  "id": "eg-0305",
+  "premise": "sftp-02 uses dns",
+  "hypothesis": "DNS uses sftp-02."
+ },
+ {
+  "id": "eg-0306",
+  "premise": "postfix deployed on mail-01",
+  "hypothesis": "Postfix is hosted on mail-01."
+ },
+ {
+  "id": "eg-0307",
+  "premise": "apps/portal uses audit-log",
+  "hypothesis": "The audit-log has at least one consumer."
+ },
+ {
+  "id": "eg-0308",
+  "premise": "config management agent causes lp-relay",
+  "hypothesis": "The config management agent is what causes the lp-relay."
+ },
+ {
+  "id": "eg-0309",
+  "premise": "hv-27 has part scratch partition",
+  "hypothesis": "The status dashboard is built with Vite."
+ },
+ {
+  "id": "eg-0310",
+  "premise": "customer-portal uses vault",
+  "hypothesis": "Vault makes use of the customer-portal."
+ },
+ {
+  "id": "eg-0311",
+  "premise": "vault related to .env files",
+  "hypothesis": "Vault syncs every .env file into its KV store hourly."
+ },
+ {
+  "id": "eg-0312",
+  "premise": "ntfy related to sms",
+  "hypothesis": "ntfy has some connection to SMS."
+ },
+ {
+  "id": "eg-0313",
+  "premise": "prometheus uses node exporters",
+  "hypothesis": "The node exporters use Prometheus."
+ },
+ {
+  "id": "eg-0314",
+  "premise": "redis deployed on queue-01",
+  "hypothesis": "Redis is deployed on queue-01 as the queue's dedicated broker."
+ },
+ {
+  "id": "eg-0315",
+  "premise": "The backup pipeline has the pruning stage as one of its parts.",
+  "hypothesis": "The pruning stage has the backup pipeline as one of its parts."
+ },
+ {
+  "id": "eg-0316",
+  "premise": "astro replaces mkdocs",
+  "hypothesis": "Astro replaced MkDocs in the June migration."
+ },
+ {
+  "id": "eg-0317",
+  "premise": "monthly payroll export uses sftp-02",
+  "hypothesis": "The monthly payroll export is done via sftp-02."
+ },
+ {
+  "id": "eg-0318",
+  "premise": "nightly dump related to orders database",
+  "hypothesis": "The nightly dump is related to at least one database."
+ },
+ {
+  "id": "eg-0319",
+  "premise": "vault uses apps/portal",
+  "hypothesis": "Vault uses apps/portal."
+ },
+ {
+  "id": "eg-0320",
+  "premise": "postgres deployed on stg-db-01",
+  "hypothesis": "stg-db-01 is deployed on Postgres."
+ },
+ {
+  "id": "eg-0321",
+  "premise": "cleanup cron job causes scratch partition",
+  "hypothesis": "The cleanup cron job empties the scratch partition every night at midnight."
+ },
+ {
+  "id": "eg-0322",
+  "premise": "license-report depends on internal package mirror",
+  "hypothesis": "The license-report depends on the internal package mirror."
+ },
+ {
+  "id": "eg-0323",
+  "premise": "billing-sync deployed on apps-02",
+  "hypothesis": "Billing-sync has been deployed on apps-02."
+ },
+ {
+  "id": "eg-0324",
+  "premise": "vector related to telegraf",
+  "hypothesis": "Vector is related to at least one other tool in the stack."
+ },
+ {
+  "id": "eg-0325",
+  "premise": "arc-store deployed on minio",
+  "hypothesis": "arc-store is hosted on some platform."
+ },
+ {
+  "id": "eg-0326",
+  "premise": "prod-db-01 deployed on postgres",
+  "hypothesis": "Something is deployed on postgres."
+ },
+ {
+  "id": "eg-0327",
+  "premise": "artifacts-prod deployed on minio",
+  "hypothesis": "The OCR worker runs on gpu-01."
+ },
+ {
+  "id": "eg-0328",
+  "premise": "grafana uses nginx",
+  "hypothesis": "Nginx is used by Grafana."
+ },
+ {
+  "id": "eg-0329",
+  "premise": "kibana has part elk",
+  "hypothesis": "Kibana bundles the full ELK stack including Logstash."
+ },
+ {
+  "id": "eg-0330",
+  "premise": "search-01 is a typesense",
+  "hypothesis": "Typesense is a search-01."
+ },
+ {
+  "id": "eg-0331",
+  "premise": "caddy improves on nginx",
+  "hypothesis": "Caddy improves on nginx by fully automating certificate renewal."
+ },
+ {
+  "id": "eg-0332",
+  "premise": "sftp-02 uses dns",
+  "hypothesis": "sftp-02 makes use of DNS."
+ },
+ {
+  "id": "eg-0333",
+  "premise": "vault related to .env files",
+  "hypothesis": "Redis is deployed on cache-01."
+ },
+ {
+  "id": "eg-0334",
+  "premise": "The mobile app's API refresh tokens expire after 30 days.",
+  "hypothesis": "The mobile app's API refresh tokens expire after 7 days."
+ },
+ {
+  "id": "eg-0335",
+  "premise": "The nightly dump of the orders database starts at 02:30.",
+  "hypothesis": "The nightly dump of the orders database starts at 04:30."
+ },
+ {
+  "id": "eg-0336",
+  "premise": "The CI runners ran Ubuntu 20.04 from May 2024 until the March 2026 rebuild on Ubuntu 24.04.",
+  "hypothesis": "The CI runners were on Ubuntu 20.04 in January 2026."
+ },
+ {
+  "id": "eg-0337",
+  "premise": "Since the April 2026 network rework, the office LAN uses VLAN 40 for IoT devices.",
+  "hypothesis": "As of July 2026, IoT devices sit on VLAN 40."
+ },
+ {
+  "id": "eg-0338",
+  "premise": "Backups went to the on-site NAS from 2023 until the switch to offsite MinIO in February 2026.",
+  "hypothesis": "In 2024, backups were stored on the on-site NAS."
+ },
+ {
+  "id": "eg-0339",
+  "premise": "The mail gateway has enforced DMARC rejection since 12 May 2026.",
+  "hypothesis": "DMARC rejection was in force on 1 June 2026."
+ },
+ {
+  "id": "eg-0340",
+  "premise": "The guest Wi-Fi portal was disabled for maintenance from 3 to 10 April 2026.",
+  "hypothesis": "The guest Wi-Fi portal was disabled on 7 April 2026."
+ },
+ {
+  "id": "eg-0341",
+  "premise": "The wiki ran on lab-vm-2 until the January 2026 move to lab-vm-3.",
+  "hypothesis": "The wiki currently runs on lab-vm-2."
+ },
+ {
+  "id": "eg-0342",
+  "premise": "Log shipping used rsyslog until Vector took over in October 2025.",
+  "hypothesis": "Log shipping still goes through rsyslog."
+ },
+ {
+  "id": "eg-0343",
+  "premise": "The standby database was promoted to primary on 14 June 2026, ending its standby role.",
+  "hypothesis": "The database is currently a standby."
+ },
+ {
+  "id": "eg-0344",
+  "premise": "TLS 1.0 support was removed from the edge proxy in the November 2025 hardening pass.",
+  "hypothesis": "The edge proxy still accepts TLS 1.0."
+ },
+ {
+  "id": "eg-0345",
+  "premise": "The legacy FTP endpoint was decommissioned in March 2026 when sftp-02 replaced it.",
+  "hypothesis": "The legacy FTP endpoint is still serving transfers."
+ },
+ {
+  "id": "eg-0346",
+  "premise": "The VPN gateway's API token issued on 5 April 2026 expires after 60 days.",
+  "hypothesis": "The VPN gateway's API token is currently valid."
+ },
+ {
+  "id": "eg-0347",
+  "premise": "Deploy freezes were in effect during the December 2025 audit.",
+  "hypothesis": "Deploy freezes have since been lifted."
+ },
+ {
+  "id": "eg-0348",
+  "premise": "The build cache lived on hv-27 until the June 2026 storage migration.",
+  "hypothesis": "The build cache now lives on the NAS."
+ },
+ {
+  "id": "eg-0349",
+  "premise": "The incident review meeting moved to Thursdays in February 2026.",
+  "hypothesis": "Before February 2026, the incident review meeting was on Mondays."
+ },
+ {
+  "id": "eg-0350",
+  "premise": "The quarantine VLAN rule added on 20 June 2026 auto-expires after 14 days.",
+  "hypothesis": "The quarantine VLAN rule is currently active."
+ },
+ {
+  "id": "eg-0351",
+  "premise": "hv-19 was drained of guest VMs ahead of the July 2026 firmware update.",
+  "hypothesis": "The guest VMs have been moved back onto hv-19."
+ }
+]

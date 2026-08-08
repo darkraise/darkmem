@@ -35,19 +35,24 @@ from benchlib.retrieval_gold import load_retrieval_corpus
 # contributor appending pairs updates all of these together -- a silent
 # re-tagging or a drifted count shows up as a failure here.
 DOCUMENTED_SLICE_COUNTS = {
-    "verbatim": 24,
-    "paraphrase": 35,
-    "weakening": 29,
-    "temporal": 35,
-    "direction": 30,
-    "overreach": 35,
-    "value-swap": 29,
-    "unrelated": 24,
+    "verbatim": 35,
+    "paraphrase": 51,
+    "weakening": 42,
+    "temporal": 51,
+    "direction": 44,
+    "overreach": 51,
+    "value-swap": 42,
+    "unrelated": 35,
 }
+# The contradicted census is 80 BY DESIGN, not by accident of authoring
+# (T2.110): contradiction_recall_bar = 0.95 = 19/20 resolves in steps of
+# 1/census, so the bar sits on the achievable lattice only when the census
+# is a multiple of 20 — and the resample protocol's full-census stratum
+# caps it at 93. 80 is the only multiple of 20 in (55, 93].
 DOCUMENTED_VERDICT_COUNTS = {
-    "entailed": 101,
-    "contradicted": 55,
-    "unsupported": 85,
+    "entailed": 146,
+    "contradicted": 80,
+    "unsupported": 125,
 }
 # synthesis-draft is PINNED AT ZERO: no producer exists (article_synthesis
 # is a PlaceholderJobRunner until T3.02). l2-fact moved off its zero pin
@@ -56,10 +61,10 @@ DOCUMENTED_VERDICT_COUNTS = {
 # the loader. Provenance honesty is what keeps G-D's numbers meaning what
 # they claim.
 DOCUMENTED_PROVENANCE_COUNTS = {
-    "hand-authored-synthetic-fact": 72,
+    "hand-authored-synthetic-fact": 100,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 153,
+    "l2-fact": 235,
 }
 
 
@@ -594,3 +599,28 @@ def test_no_premise_supports_more_than_four_live_pairs(gold):
         by_premise[pair["premise"]] = by_premise.get(pair["premise"], 0) + 1
     worst = max(by_premise.values())
     assert worst <= 4, f"a premise supports {worst} live pairs"
+
+
+# ---------------------------------------------------------------------------
+# Census granularity (T2.110): the contradicted census must keep the recall
+# bar measurable and the resample protocol honourable.
+# ---------------------------------------------------------------------------
+
+
+def test_the_contradicted_census_keeps_the_recall_bar_on_the_lattice(gold):
+    """Recall resolves in steps of 1/census, so contradiction_recall_bar can
+    only be exactly cleared or exactly missed when bar * census is integral.
+    0.95 = 19/20, so the census must be a multiple of 20; and the resample's
+    full-census stratification refuses a census above RESAMPLE_N, so growth
+    past 93 needs the protocol re-ratified first, not a bigger append."""
+    from app.services.verification_judge import VERIFICATION_BAR_DEFAULTS
+    from benchlib import resample_draw
+
+    bar = VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"]
+    assert bar == 0.95, "the modulus below is derived from 0.95 = 19/20"
+    census = sum(1 for p in _live(gold) if p["verdict"] == "contradicted")
+    assert census % 20 == 0, (
+        f"census {census}: 0.95 is not on the 1/{census} recall lattice, so "
+        "the bar cannot be exactly cleared or exactly missed"
+    )
+    assert census <= resample_draw.RESAMPLE_N
