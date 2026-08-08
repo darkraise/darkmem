@@ -25,7 +25,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 |---|---|---|---|---|
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
-| G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
+| G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
 | G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
@@ -496,6 +496,90 @@ never silently absorbed.
 | Promotion rate, sliced by which N fired | Same bar family, same keys, per bucket; under-powered buckets reported with denominators, never collapsed, and can neither clear nor fail; stated 2026-08-07, before any gate run | Same numbers, same window, same two targets: 0 eligible in every bucket on both axes (`gate_fired` buckets empty) | same | **UNDER-POWERED — not evaluable; gate stays open** |
 | False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
 | Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
+
+### G-C re-measure (2026-08-08, T2.111): **still NOT CLEARED**, and the audit was re-derived
+
+Report: `docs/eval/2026-08-08-promotion-metrics.md`. Every probe reports the same
+under-powered result as T2.40: 0 eligible transitions, 0 corroborations, 0 in
+either audit arm, R2's fold companion 0. **The numbers did not move and the
+verdict does not either.** What changed is what the numbers *mean*, and that is
+the work this task existed to do.
+
+**The audit's numerator arms, re-derived against T2.109's ratified shape.**
+`_FALSE_PROMOTION_AUDIT_SQL` has exactly two arms: `disputed_after` (a `verified`
+event whose `payload.after.verification_status = 'disputed'`) and
+`rejected_after` (a `human_verdict` event with `verdict = 'rejected'`).
+
+- The LLM `contradiction_scan` **no longer contributes to `disputed_after` at
+  all.** Its finding now arrives on `contradiction_suspected`, which `decide`
+  holds inert by construction — "no branch reads it, it appears in no
+  condition, and every outcome this function can return is identical with it set
+  and unset" — so it can produce no status transition and therefore no row this
+  arm can see.
+- `disputed_after` is consequently **judge-free**: its only remaining producer is
+  the deterministic `adjudicate_contradiction_finding`, whose `inverse_replacement`
+  arm needs a stored REPLACES-family edge and whose `single_valued` sibling is
+  disarmed by an empty `SINGLE_VALUED_RELATIONS`.
+
+**The G-C→G-D cross-edge, corrected.** The 2026-08-07 ruling — "G-C therefore has
+G-D's judge qualification on its critical path", ratified into doc 20 §3 — was
+true of the architecture it was written against and is **no longer true as
+written**. The machine-dispute arm cannot be blocked by an unqualified judge
+because the judge is not on it. The edge does not vanish, it lengthens and
+changes kind: the scan's findings can still reach the audit, but only through
+`rejected_after`, which requires a human to confirm a flag and reject the fact.
+That route is gated on G-D passing **and** on a reviewer who can actually see the
+suspicion.
+
+**A cross-edge nobody had recorded: T2.112 sits on G-C's path.** A
+contradiction-suspected fact currently reaches the review queue rendering
+`unspecified`, with no counterpart and nothing to adjudicate against —
+`review_queue._fact_reason` derives from the fact's own columns and the suspicion
+is persisted in none of them. So today the human route is not merely gated, it is
+**impassable**: even a qualified judge's findings could not reach `rejected_after`,
+because no reviewer can confirm what they cannot see. T2.112 is therefore a
+precondition for the audit's LLM-originated detection power, not a display
+nicety.
+
+**The honest cost of the redesign, stated where it will be read.** G-D's
+amendment bought veto precision by moving the scan off the veto. The same move
+**reduces the audit's reach**: a detection route that was automatic
+(scan → dispute → counted) is now human-gated (scan → review → human → reject →
+counted). The audit's precision claim is unaffected; its *power* is strictly
+lower, and the human-rejection arm's relative weight rises accordingly. Both
+follow from one ratified decision and neither is a defect.
+
+**The three vacuity clauses, ruled — they are cumulative and all three are now
+answered.**
+
+1. *The audit could read "decidable, clears" at 0.0000 with a structurally zero
+   numerator.* **Vacuous for this run, live in principle.** Decidability requires
+   ≥ 20 in-window corroborations (`false_promotion_min_corroborations`); there are
+   0, so the audit cannot report decidable at all and the failure mode is
+   unreachable. It stays live for any future run that reaches 20 corroborations
+   while the numerator's producers remain dark — and note the reason a zero would
+   be vacuous has *changed*: it is no longer "the judge is unqualified" but "the
+   corpus carries no REPLACES-family edge and no human has adjudicated."
+2. *Probes 1–2 read `slice_clears` True with `blocked ≡ 0` data-precluded.*
+   **Vacuous for this run, live in principle.** With 0 eligible transitions both
+   probes are under-powered and can neither clear nor fail, so the failing
+   direction being unreachable costs nothing here.
+3. *The substrate itself may be incomplete.* **OPERABLE AND UNRESOLVED — the one
+   clause that is not vacuous.** Verified in code: `set_verification_status`
+   ends with a bare `await record_event(...)`, no return inspected and no row
+   counted back, and `record_event` degrades loudly but never raises into its
+   caller. So a status UPDATE can commit while its journal row silently fails,
+   and every G-C metric reads `events` alone — the loss lands in the
+   **denominator**, which is the one direction that does not announce itself as
+   under-power. The remedy pattern already exists in this tree: `dream_undo`
+   counts its own `undone` rows back and raises when short ("an undo that could
+   not be journalled does not happen"). Nothing applies it here. **This clause
+   alone would prevent a future powered run from being trusted, and it has no
+   owner.**
+
+**No promotion record minted.** `app/services/promotion_metrics_record.json` stays
+absent, so every promoted or born badge continues to serve as `candidate` with the
+`verification_unmeasured` reason, scan-enforced.
 
 ### G-C verdict: **NOT CLEARED — the gate cannot yet be evaluated** (2026-08-07, T2.40)
 
