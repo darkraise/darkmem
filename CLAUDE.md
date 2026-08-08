@@ -633,7 +633,20 @@ rejected) and writes under that same lock
 dropped at the baseline's genesis and no such table, model or query
 exists. Every subsystem journals through one writer, `record_event`
 (`app/services/events.py`), which degrades loudly but never raises into
-its caller. `EVENT_TYPES` / `OBJECT_TYPES` are closed vocabularies living
+its caller — **and since T2.113 returns whether the row landed**, because
+that contract is right for most callers and wrong for a few. A capture must
+survive a journal failure; a *verification transition* must not, since doc 17
+§5.1's metrics are SQL over this table alone, so a status change whose row never
+landed is not a lost log line but a row that silently leaves the measurement's
+**denominator** — and under-power announces itself where that does not. The two
+callers for whom the journal is load-bearing (`set_verification_status`,
+`ratify`) raise `JournalWriteFailed` on a `False`, making the transition and its
+row atomic; every other caller ignores the return and behaves exactly as before.
+Making `record_event` itself raise would impose the strict contract on capture,
+extraction and auth, which is why it does not. The stated cost: a broken
+partition now fails recomputes instead of degrading past them, bounded by
+`events_ensure_partition`'s boot and maintenance arms.
+`EVENT_TYPES` / `OBJECT_TYPES` are closed vocabularies living
 beside the writer, deliberately NOT in `app.taxonomy`: event types are
 never LLM output, so an unknown value logs a warning instead of being
 rewritten to a fallback. Widening is taxonomy-first — land the value in
@@ -745,9 +758,24 @@ served, never withheld).
 different table. `derive_review_state` is total and the clear is the absence of
 **every** opener, never the negation of one; adding an opener is appending a
 predicate, never adding a writer. The queue's *reason* is derived from the
-fact's own columns, so a contradiction-suspected fact renders `unspecified`
-today: the flag is computed from the scan's journal at recompute time and
-persisted nowhere.
+fact's own columns, and **all four openers now have one** (corrected
+2026-08-09 — this said a contradiction-suspected fact renders `unspecified`
+because the flag was persisted nowhere, which T2.112 closed). The suspicion
+rides `contradiction_suspected_at` / `contradiction_counterpart_id`, written by
+the ladder in the **same UPDATE** as `verification_status`, exactly as
+`demotion_pending_since` does for the under-sourced opener. It is a cache the
+authority refreshes every recompute — `detect_scanned_contradiction` re-applies
+every guard against live rows each cycle — never a frozen verdict, which is what
+keeps the flag self-clearing. `since` is when the flag **opened**, not when it
+was last seen. Reading the finding from the queue instead was tried and is
+barred: it puts an `app.services.contradiction_veto` import on a read surface,
+which invariant 15's source scan fails the build on. A human dismissal journals
+`contradiction_dismissed` — its own event type, **not** a fifth
+`HUMAN_VERDICTS` value, because those four adjudicate the *fact* and a
+dismissal adjudicates the *finding*; recorded as a rejection it would
+manufacture a false promotion in doc 17 §5.1's human-rejection arm out of the
+scan's own false positive. Clearing the column alone would be undone by the next
+recompute, so the journalled dismissal is what makes it stick.
 
 **One journaller for the machine's rungs.** `KnowledgeTripleRepository.set_verification_status`
 writes the `verified` events for every transition the ladder makes
@@ -770,22 +798,32 @@ and the gate ledger says so where the number lives.
 T2.95/T2.100): a promoted fact status reaches a reader only while
 `app/services/promotion_metrics_record.json` exists with `gate_eligible`
 exactly `true` — minted only by a cleared G-C run, never by hand.
-**G-C was measured 2026-08-07 (T2.40) and is not evaluable: under-powered
-on every probe — no fact has ever exited `candidate` in any journal this
-machine can see — so the gate stays open, the record stays unminted, and
-every promoted or born badge serves as `candidate` with the
+**G-C was re-measured 2026-08-08 (T2.111) and is still not evaluable:
+under-powered on every probe — no fact has ever exited `candidate` in any
+journal this machine can see — so the gate stays open, the record stays
+unminted, and every promoted or born badge serves as `candidate` with the
 `verification_unmeasured` reason, scan-enforced.** The bars are stated as
 config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
 (committed before the first measurement; the pin test makes moving one a
-visible two-file diff), the metrics are SQL over `events` alone in
-`benchlib/promotion_metrics.py`, and the false-promotion audit cannot
-produce a non-vacuous number before the judge qualifies — both its arms
-(machine dispute, human rejection) dead-end on the unqualified judge. **The
-machine-dispute arm's population also changed shape with T2.109**: the LLM scan
-now opens review instead of disputing, so that arm counts a strictly smaller
-set and the human-rejection arm's relative weight rises. T2.111 owns re-reading
-the G-C→G-D cross-edge under the new shape before G-C is re-attempted; a probe
-carried over unexamined measures the old architecture.
+visible two-file diff), and the metrics are SQL over `events` alone in
+`benchlib/promotion_metrics.py`.
+
+**The audit's arms were re-derived, not merely re-run, and the G-C→G-D
+cross-edge changed** (T2.111; this paragraph said both arms "dead-end on the
+unqualified judge", which stopped being true when T2.109 landed). The audit has
+exactly two arms — `disputed_after` and `rejected_after` — and the LLM
+`contradiction_scan` **no longer feeds the first at all**: its finding rides
+`contradiction_suspected`, which `decide` holds inert by construction, so it can
+produce no status transition. That arm is therefore **judge-free**, its only
+producer being the deterministic detector, and the 2026-08-07 ruling that
+"G-C has G-D's judge qualification on its critical path" (doc 20 §3) no longer
+holds as written. The edge does not vanish, it lengthens: the scan reaches the
+audit only through `rejected_after`, which needs a human to confirm a flag — so
+it is gated on G-D passing *and* on the reviewer surface T2.112 shipped. **The
+honest cost, recorded where it will be read:** the amendment bought veto
+precision by moving the scan off the veto, and the same move strictly *lowers*
+the audit's reach, converting an automatic detection route into a human-gated
+one. The audit's precision claim is unaffected; its power is not.
 
 ## MCP endpoint
 
