@@ -53,6 +53,19 @@ this same file — collapsing it to a binary would throw that away.
   refutable *by* the fact. When a slot is genuinely multi-valued
   (a host running several services, a person holding several roles), the
   rule does not apply and a differing value is `unsupported`.
+  **Three further slots are single-valued, ratified by the owner
+  2026-08-06** and stated here as rules rather than only as rulings on
+  particular pairs, because a rule that lives only in its own precedent is
+  not one a later labeller can apply:
+  - **the host or platform a single named instance runs on** — a differing
+    host for the same named instance is `contradicted`;
+  - **the kind a named instance is** (`IS_A`) — a differing kind for the
+    same named instance is `contradicted`;
+  - **the object of a named replacement or migration** (`REPLACES`) — the
+    one thing a named replacement retired. A hypothesis naming a *different*
+    replaced object, with the sentence shape otherwise preserved, is
+    `contradicted`, not unsupported. This is an object swap, not a reversal,
+    so the reversal rule below does not reach it.
 - **Window rule.** A temporal fact renders its validity window in text. A
   claim time-scoped inside the window is `entailed`; a
   present-tense claim over a window the fact *explicitly closes* — named
@@ -76,6 +89,41 @@ this same file — collapsing it to a binary would throw that away.
   premise negates the reverse explicitly. It is `unsupported`
   when the reverse is merely unasserted and not excluded: dependency,
   load-balancing roles.
+
+## Reversal-exclusivity, pre-classified for every relation
+
+Decided per relation from its **semantics alone** — before any pair
+existed — so a `direction` pair's verdict falls out mechanically from
+which relation the seeded assignment handed its author, never from a
+per-pair judgment call. **Exclusive** means one pair of endpoints cannot
+carry both directions at once, so the reversed claim is `contradicted`
+(reversal rule, exclusive case); **non-exclusive** means the reverse is
+possible alongside the fact, so the reversed claim is `unsupported` —
+unless the premise itself negates the reverse explicitly, which
+always contradicts. **Symmetric** relations are ineligible for `direction`
+pairs: the reversal is entailed, and the slice admits no such verdict.
+
+| relation | class | reversed-claim verdict | why |
+|---|---|---|---|
+| `USES` | non-exclusive | unsupported | mutual use is coherent (two services calling each other) |
+| `DEPENDS_ON` | non-exclusive | unsupported | circular dependency is not excluded by meaning |
+| `HAS_PART` | exclusive | contradicted | proper parthood is antisymmetric: a part cannot contain its whole |
+| `IMPLEMENTS` | exclusive | contradicted | spec and implementation are incompatible roles for one ordered pair |
+| `EXTENDS` | exclusive | contradicted | extension is a strict order; mutual extension is incoherent |
+| `REPLACES` | exclusive | contradicted | one replacement event cannot run both ways |
+| `IMPROVES_ON` | exclusive | contradicted | an improvement ordering over one comparison cannot be mutual |
+| `IS_A` | exclusive | contradicted | instance/kind (and proper subkind) is antisymmetric for distinct terms |
+| `DEPLOYED_ON` | exclusive | contradicted | host and guest cannot swap for the same pair: a platform is not deployed on its own workload |
+| `CAUSES` | non-exclusive | unsupported | feedback between phenomena is coherent (stress causes insomnia causes stress) |
+| `AUTHORED_BY` | exclusive | contradicted | a work's author cannot be authored by that work; holds under the legacy folds (WORKS_AT, PUBLISHED_IN) too |
+| `HAPPENED_ON` | exclusive | contradicted | the occurrent and its date/place cannot swap roles; holds under the legacy folds (VISITED, LIVES_IN) |
+| `MENTIONS` | non-exclusive | unsupported | two documents can mention each other |
+| `CITES` | non-exclusive | unsupported | mutual citation is coherent (companion papers) |
+| `INSPIRED_BY` | non-exclusive | unsupported | mutual inspiration between ongoing works/projects is not excluded |
+| `RELATED_TO` | symmetric | — (direction-ineligible) | the reversal is entailed by symmetry; a direction slot landing here is a mandatory logged skip |
+
+This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
+(16 relations, checked against the source on 2026-08-03).
 
 ---
 

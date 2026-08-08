@@ -83,6 +83,19 @@ this same file — collapsing it to a binary would throw that away.
   refutable *by* the fact. When a slot is genuinely multi-valued
   (a host running several services, a person holding several roles), the
   rule does not apply and a differing value is `unsupported`.
+  **Three further slots are single-valued, ratified by the owner
+  2026-08-06** and stated here as rules rather than only as rulings on
+  particular pairs, because a rule that lives only in its own precedent is
+  not one a later labeller can apply:
+  - **the host or platform a single named instance runs on** — a differing
+    host for the same named instance is `contradicted`;
+  - **the kind a named instance is** (`IS_A`) — a differing kind for the
+    same named instance is `contradicted`;
+  - **the object of a named replacement or migration** (`REPLACES`) — the
+    one thing a named replacement retired. A hypothesis naming a *different*
+    replaced object, with the sentence shape otherwise preserved, is
+    `contradicted`, not unsupported. This is an object swap, not a reversal,
+    so the reversal rule below does not reach it.
 - **Window rule.** A temporal fact renders its validity window in text. A
   claim time-scoped inside the window is `entailed` (eg-0016); a
   present-tense claim over a window the fact *explicitly closes* — named

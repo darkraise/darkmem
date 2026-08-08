@@ -1,0 +1,476 @@
+{
+  "model": "gpt-5",
+  "host": "mock",
+  "date": "2026-08-08",
+  "params": {
+    "seed": 20260808,
+    "reasoning_effort": "high"
+  },
+  "verdicts": {
+    "eg-0197": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0142": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0111": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0172": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0232": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0110": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0005": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0061": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0057": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0055": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0157": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0228": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0160": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0079": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0194": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0218": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0010": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0181": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0093": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0176": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0019": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0087": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0155": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0164": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0051": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0035": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0062": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0193": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0058": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0175": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0091": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0086": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0052": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0003": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0150": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0161": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0119": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0128": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0084": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0048": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0022": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0144": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0205": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0202": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0059": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0239": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0120": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0162": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0149": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0136": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0146": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0083": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0024": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0163": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0154": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0187": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0090": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0034": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0177": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0013": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0017": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0109": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0208": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0201": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0225": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0026": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0147": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0170": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0036": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0216": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0214": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0066": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0016": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0123": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0098": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0117": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0217": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0236": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0188": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0132": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0033": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0179": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0237": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0088": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0158": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0037": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0145": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0053": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0189": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0077": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0222": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0139": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    },
+    "eg-0018": {
+      "verdict": "",
+      "rule": "",
+      "raw": "I cannot help with that."
+    }
+  }
+}

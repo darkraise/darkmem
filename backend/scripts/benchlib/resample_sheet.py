@@ -58,6 +58,16 @@ _RULEBOOK_HEADINGS = (
     "The three verdicts, and the binary G-D scores on",
     "General decision procedure",
     "Edge rulings — cite these by name in rationales",
+    # Added 2026-08-08 after the first sitting failed 3-against-1 on rules the
+    # sheet never showed. The reversal rule above states the *principle* and
+    # names four relations by way of example; this table decides all sixteen
+    # from their semantics alone. Without it a labeller must guess whether
+    # HAS_PART is antisymmetric and whether CAUSES admits feedback -- both
+    # stated conventions here, neither deducible -- and every labeller who has
+    # tried has guessed the same way and been marked wrong. LABELLING.md names
+    # this failure itself: "a future condensation that drops any of them is a
+    # fork to be fixed rather than a reading to be honoured."
+    "Reversal-exclusivity, pre-classified for every relation",
 )
 
 _ITEM_RE = re.compile(r"^## Item \d+ — (?P<id>\S+)\s*$")
