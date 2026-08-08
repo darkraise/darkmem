@@ -616,6 +616,27 @@ The veto consumer inherits the same qualification on the **contradiction** verdi
 (doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
 2026-07-31 before any gate run alongside the two above.
 
+### G-D redesign: **RATIFIED by the owner, 2026-08-08**
+
+The recommendation below is adopted. Tier-3 amendments applied to
+`docs/design/08-temporal-lifecycle-consolidation.md` §4.2 (the LLM scan leaves the veto's
+inputs and becomes a review opener) and `docs/design/17-test-and-eval-harness.md` §6 (the
+contradiction metric pair inverts with its consumer). Implementation is T2.109; the
+follow-on preconditions are T2.110 (grown gold) and T2.111 (G-C re-measure under the new
+shape).
+
+**What ratification does not do: it does not supply the bars.** `contradiction_recall_bar`
+is the truth-critical bar under the new shape and **has no default and no value** — the
+gate fails closed until the owner states one. That is deliberate and structural rather
+than conventional: both measured judges' numbers are public in this file, so a default
+chosen now would be a bar chosen while looking at them, which is the one thing that would
+make the re-qualification worthless. `contradiction_precision_bar` is retained as a
+review-load floor and its value is equally the owner's to restate, since 0.95 was derived
+for a deciding consumer that no longer exists on that arm.
+
+**G-D stays open.** Nothing about this ratification clears it; it changes what clearing
+would mean, and the measurement runs on T2.110's gold, not this one.
+
 ### G-D resolution (2026-08-08, resolution spike): the defect is the veto's architecture, not the judge
 
 **Verdict — of the four possible resolutions (clearable / bar wrong / veto architecture
