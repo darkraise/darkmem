@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -205,19 +206,28 @@ def main(argv: list[str] | None = None) -> int:
         concurrency=args.concurrency, timeout=args.timeout, params=params,
     ))
 
+    gold_path = Path(entailment_gold.GOLD_PATH)
+    gold_bytes = gold_path.read_bytes()
+    gold_sha = hashlib.sha256(gold_bytes).hexdigest()
+
     raw_dir = Path(args.raw_dir) if args.raw_dir else RAW_DIR
     raw_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = raw_dir / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}.json"
+    # The gold sha is part of the filename, not merely of the payload: a
+    # resample means nothing except relative to the file it certifies, and
+    # {date}-{model} alone collides whenever the same model re-sits a re-drawn
+    # gold on the same day — which silently destroyed the previous round's
+    # record once. Runs predating this carry the bare name.
+    raw_path = (raw_dir / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}"
+                          f"-{gold_sha[:8]}.json")
     raw_path.write_text(
         json.dumps({"model": args.model, "host": urlsplit(args.base_url).netloc,
-                    "date": args.date, "params": params, "verdicts": verdicts},
+                    "date": args.date, "params": params,
+                    "gold_sha256": gold_sha, "verdicts": verdicts},
                    indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     print(f"raw replies: {raw_path}")
 
-    gold_path = Path(entailment_gold.GOLD_PATH)
-    gold_bytes = gold_path.read_bytes()
     block, disagreements = resample_score.score(
         {k: {"verdict": v["verdict"], "rule": v["rule"]} for k, v in verdicts.items()},
         gold_bytes=gold_bytes,

@@ -5912,5 +5912,12 @@
       "label_source": "adjudicated",
       "rationale": "Draining ahead of an update implicates a later return but does not assert one; the move back is unasserted content (implicature-is-not-contradiction rule; absence is not exclusion, general procedure 4): unsupported."
     }
-  ]
+  ],
+  "resample": {
+    "n": 93,
+    "disagreements": 1,
+    "seed": 75283823,
+    "performed_by": "LLM pass: deepseek-v4-pro (non-Claude, owner-directed 2026-08-08)",
+    "date": "2026-08-08"
+  }
 }

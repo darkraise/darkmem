@@ -133,17 +133,19 @@ def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
     return doc
 
 
-def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
-    """T2.110 grew the gold, and the 2026-08-08 resample certified the
-    241-pair file — its draw was pinned to that file's sha256 — so the grown
-    gold carries NO resample block: keeping the old one would have satisfied
-    the lock with a certification of a different file. This pins the honest
-    state: size, the l2-fact floor and adjudication now hold, and the fresh
-    resample is the **one** remaining condition. As each resolves, this test
-    moves with it, visibly — eg-0308, the round's one escalation, was ruled
-    by the owner on 2026-08-08 (rule-then-pairs; the recorded `entailed`
-    stands under the new exhaustivity rule), which is why the author-labelled
-    count is 0 here and was 1 before.
+def test_the_real_gold_is_now_eligible_on_every_condition():
+    """The grown gold cleared its last two conditions on 2026-08-08: the owner
+    ruled eg-0308 (rule-then-pairs; the recorded `entailed` stands under the
+    new exhaustivity rule), which emptied the escalation queue, and the fresh
+    n = 93 draw against the ruled file was sat by deepseek-v4-pro at 1
+    disagreement against a bar of 1.
+
+    This test has moved with each resolution rather than being deleted, so the
+    honest state stays pinned: it asserted 1 author-labelled pair and an absent
+    resample before, and asserts 0 and a certified block now. **It deliberately
+    asserts the disagreement count exactly**, not merely that the bar holds —
+    the sitting passed *on* the bar, not under it, and a later change that
+    quietly relaxed the file to 2 disagreements would otherwise stay invisible.
 
     The conditions themselves are still exercised against synthetic golds
     below -- the real gold must not become the only thing this file checks,
@@ -151,18 +153,15 @@ def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
     """
     doc = entailment_gold.load_entailment_gold()
     eligibility = jq.gate_eligibility(doc)
-    assert eligibility.eligible is False
+    assert eligibility.eligible is True
     assert eligibility.live_pairs == 351
     assert eligibility.l2_fact_pairs == 235
     assert eligibility.author_labelled_pairs == 0
-    joined = "\n".join(eligibility.reasons)
+    # Eligible means exactly one reason: the composition line, no blockers.
+    assert len(eligibility.reasons) == 1
+    joined = eligibility.reasons[0]
     assert "l2-fact: 235/351" in joined
     assert "author-labelled: 0/351" in joined
-    # Exactly one blocking reason left: the fresh resample.
-    assert len(eligibility.reasons) == 2
-    assert "await" not in joined
-    assert "resample: absent" in eligibility.reasons[1]
-    assert "resample" not in doc
 
     # The ruling closed the queue: no live pair is author-labelled, and
     # eg-0308 carries the owner's provenance rather than the author's.
@@ -170,6 +169,12 @@ def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
     assert [p["id"] for p in live if p["label_source"] == "author"] == []
     eg0308 = next(p for p in live if p["id"] == "eg-0308")
     assert (eg0308["verdict"], eg0308["label_source"]) == ("entailed", "owner")
+
+    # The certifying sitting, pinned: a non-Claude labeller, on the bar.
+    resample = doc["resample"]
+    assert resample["n"] == jq.RESAMPLE_N == 93
+    assert resample["disagreements"] == 1
+    assert "deepseek-v4-pro" in resample["performed_by"]
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():

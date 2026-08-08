@@ -493,6 +493,45 @@ exists.
 
 ## History
 
+- **2026-08-08 (T2.110 Layer-3 resample — n = 93, 1 disagreement, PASS at the
+  bar's edge).** The fresh seeded draw against the ruled gold (sha256
+  `047cbd6f…`, seed 75283823, strata 80 census + 6 + 7) was sat by
+  **deepseek-v4-pro**, non-Claude and owner-directed, via `resample_llm.py`.
+  Raw replies: `entailment/resample_runs/2026-08-08-deepseek-v4-pro-047cbd6f.json`.
+  **n = 93, disagreements = 1, bar ≤ 1 — the gold certifies**, and it is now
+  gate-eligible on every condition. That the result sits *on* the bar rather
+  than under it is recorded plainly: the previous round's two models each
+  scored 0 against the 241-pair file, so this is the weakest passing sitting
+  the set has had.
+
+  **The one disagreement, classified: model error, gold stands.** eg-0018
+  (gold `contradicted`, resample `unsupported`, rule cited "evaluation-time
+  rule"). The premise — "Postgres 15 was the production database from March
+  2025 **until the January 2026 upgrade to Postgres 16**" — closes its window
+  explicitly *and* names the successor, which is the window rule's
+  `contradicted` case and the very pair the window rule cites. The
+  evaluation-time rule's own precondition is that the premise **fails** to fix
+  the state "at an open or explicitly closed window"; here it fixes it at an
+  explicitly closed one, so the rule the model cited excludes itself. No
+  rulebook gap, so no rule-then-pairs: this is not the eg-0308 shape, where
+  two competent readers split because the rulebook had not decided. eg-0018 is
+  additionally `adjudicated` and one of the 41 T2.25 pairs carrying the
+  set's only human-scale double cross-check.
+
+  **The standing objection in `resample_llm.py`'s docstring applies to this
+  number too** and is not weakened by the pass: an LLM sitting measures
+  inter-model agreement more than label correctness, and the judge T2.41
+  qualifies is itself an LLM entailment judge. It is evidence, and weaker
+  evidence than the protocol assumed when it named the owner.
+
+  **A collision was found and fixed here.** Run artifacts were named
+  `{date}-{model}.json`, so this sitting silently overwrote the previous
+  round's deepseek-v4-pro record — same model, same day, different gold. The
+  prior file was restored from git and `resample_llm.py` now writes
+  `{date}-{model}-{gold_sha8}.json` with `gold_sha256` in the payload, since a
+  resample means nothing except relative to the file it certifies. Runs
+  predating the fix keep their bare names.
+
 - **2026-08-08 (T2.110 Layer-3 sitting — eg-0308 ruled, rule-then-pairs).**
   The one escalation of the growth round was ruled an **ambiguous rule, not a
   mislabel**, so the fix landed in this file first and the slice was
