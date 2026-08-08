@@ -34,7 +34,11 @@ import pytest
 from sqlalchemy import text
 
 from app.repositories.fact_sources import FactSourceRepository as _FSR
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.knowledge_triples import (
+    JournalWriteFailed,
+    KnowledgeTripleRepository,
+)
+from app.services.events import record_event
 from app.services.review_queue import list_open_facts
 from app.services.verification_ladder import (
     CONTRADICTION_EVIDENCE_KEY,
@@ -813,3 +817,90 @@ class TestTheVerifiedPopulationIsUnchanged:
             assert changed or payload["contradiction_blocked"] or (
                 payload["supersession_blocked"]
             )
+
+
+# ───────── D2 — a transition that could not be journalled does not stand ─────────
+
+
+class TestAnUnjournalledTransitionIsRefused:
+    """T2.113, from T2.111's third vacuity clause.
+
+    ``record_event`` never raises, by a design that is right for capture and
+    wrong here: every G-C metric is SQL over ``events`` alone, so a status
+    change whose row never landed does not read as a gap — it leaves the
+    *denominator*, and the completeness probe scores the row consistent because
+    its column state has nothing left to contradict. Under-power announces
+    itself; this does not.
+
+    **The failure below is real, not mocked.** Dropping the month's partition
+    makes the INSERT fail the way a genuinely missing partition would, inside
+    ``record_event``'s own SAVEPOINT, so what is exercised is the actual
+    degradation path rather than a patched return value. A mock would prove the
+    branch and not the property. The fixture's outer transaction rolls the DDL
+    back with everything else.
+    """
+
+    async def test_a_failed_journal_raises_instead_of_committing_silently(self, session):
+        fact_id = await _make_fact(session, key="journal-fail-1")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        child = (await session.execute(
+            text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+        )).scalar_one()
+        await session.execute(text(f"DROP TABLE {child}"))
+
+        with pytest.raises(JournalWriteFailed):
+            await recompute_fact(session, fact_id)
+
+    async def test_the_refusal_leaves_no_half_written_journal(self, session):
+        fact_id = await _make_fact(session, key="journal-fail-2")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        child = (await session.execute(
+            text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+        )).scalar_one()
+        await session.execute(text(f"DROP TABLE {child}"))
+
+        with pytest.raises(JournalWriteFailed):
+            await recompute_fact(session, fact_id)
+
+        # Queried on the parent, which still exists — only the month's child is
+        # gone. Nothing was written, so there is no half-record for a reader to
+        # mistake for a transition. The status change is undone by the caller's
+        # own rollback, which is what the raise is for: this asserts the journal
+        # side, and the fixture's outer transaction is the caller here.
+        assert await _events_for(session, fact_id) == []
+
+    async def test_record_event_still_never_raises_for_its_other_callers(self, session):
+        """The contract the fix must not break. Capture, extraction and auth all
+        depend on a journal failure being survivable; only the callers that read
+        the signal changed behaviour."""
+        child = (await session.execute(
+            text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+        )).scalar_one()
+        await session.execute(text(f"DROP TABLE {child}"))
+
+        landed = await record_event(
+            session,
+            event_type="created",
+            object_type="memory",
+            object_id=uuid4(),
+            project="t2113",
+            payload={},
+        )
+        assert landed is False
+
+    async def test_a_healthy_journal_reports_success(self, session):
+        """The other half of the signal: False has to mean something, so True
+        must be the ordinary case rather than a value nothing ever returns."""
+        landed = await record_event(
+            session,
+            event_type="created",
+            object_type="memory",
+            object_id=uuid4(),
+            project="t2113",
+            payload={},
+        )
+        assert landed is True

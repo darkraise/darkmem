@@ -259,6 +259,51 @@ T2.109 deliberately did not guess; it documented the gap at both sites.
 
 **Verify.** `cd backend && python -m pytest tests/test_review_queue.py tests/test_verification_ladder.py -q`
 
+#### T2.113 — Make an unjournalled ladder transition impossible
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.111` · `Doc: 17 §5.1, 08 §6` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-09 from T2.111's third vacuity clause, which it ruled OPERABLE AND
+UNRESOLVED and which had no owner.** T2.40 stated the clause; T2.111 verified it in code and
+found the remedy pattern already in the tree. Nothing owned closing it.
+
+**The defect, verified rather than suspected.** `KnowledgeTripleRepository.set_verification_status`
+ends with a bare `await record_event(...)` — return value not inspected, rows not counted
+back — and `record_event` degrades loudly but **never raises into its caller**, by design, so
+that a journal failure cannot take down a capture. The consequence here is different from the
+one that design serves: the status UPDATE commits while the journal row silently does not, and
+**every G-C metric reads `events` alone**. `ratify` has the same shape on the human-only rung.
+
+**Why it is the one clause that matters.** An unjournalled transition does not show up as a
+gap. It lands in the **denominator** — the completeness probe compares column state against
+journal rows and would score a fact that never journalled as consistent, and the promotion rate
+would divide by an eligible count that silently shrank. Under-power announces itself; this does
+not. A future G-C run that *is* powered would therefore be untrustworthy for a reason no probe
+in the suite can surface, which is why this blocks trusting the gate rather than merely
+annoying it.
+
+**The remedy already exists in this tree and should be copied, not invented.** `dream_undo`
+counts its own `undone` rows back and raises when short, on the stated principle that "an undo
+that could not be journalled does not happen". The same principle applies exactly: a ladder
+transition that could not be journalled must not stand.
+
+**Do not make `record_event` raise.** Its never-raising contract is load-bearing for capture,
+extraction and auth, which must survive a journal failure. The asymmetry is the point — some
+callers can lose a journal row and some cannot — so the signal has to be available to the
+callers that care without changing what happens to the callers that do not.
+
+**Done when:**
+- [ ] A journal failure on a verification transition fails the transition, atomically — the
+      status change and its `verified` row live or die together
+- [ ] `record_event`'s never-raises contract is unchanged for every existing caller
+- [ ] `ratify` carries the same guarantee as the machine journaller, or its exemption is argued
+- [ ] The guarantee is pinned by a test that induces a real journal failure, not a mocked one —
+      a mock proves the branch, not the property
+- [ ] The operational cost is stated: a broken `events` partition now fails recomputes instead
+      of degrading, and `events_ensure_partition`'s boot and maintenance arms are what bound it
+
+**Verify.** `cd backend && python -m pytest tests/test_ladder_journaling.py tests/test_verification_ladder.py tests/test_events.py -q`
+
 #### T2.110 — Grow the entailment gold past its contacted census
 
 `Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.54` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`

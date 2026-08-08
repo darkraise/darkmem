@@ -239,6 +239,18 @@ def _row_to_dict(row: Any) -> dict:
     return out
 
 
+class JournalWriteFailed(RuntimeError):
+    """A verification transition could not be written to the events journal.
+
+    Raised rather than logged because doc 17 §5.1's metrics are SQL over
+    ``events`` alone: a transition missing from the journal is not a missing log
+    line, it is a row that silently left the measurement's denominator. The
+    caller's transaction unwinds, so the status change and its journal row are
+    atomic — the property ``promotion_bars.JOURNAL_COMPLETENESS_SQL`` asserts
+    and, before T2.113, could not actually rely on.
+    """
+
+
 class HumanSourceRequired(RuntimeError):
     """``ratify`` was called on a fact no ``human``-kind source row asserts.
 
@@ -1039,7 +1051,7 @@ class KnowledgeTripleRepository:
                 payload["confidence"] = confidence
             if contradiction is not None:
                 payload["contradiction"] = dict(contradiction)
-            await record_event(
+            journalled = await record_event(
                 self.session,
                 event_type="verified",
                 object_type="fact",
@@ -1047,6 +1059,26 @@ class KnowledgeTripleRepository:
                 project=prior_row["project"],
                 payload=payload,
             )
+            if not journalled:
+                # T2.113. `record_event` never raises, so without this the
+                # UPDATE above commits and the transition simply is not in the
+                # journal. Every G-C metric is SQL over `events` alone, so the
+                # loss lands in the *denominator*: the completeness probe scores
+                # the row consistent because its column state has nothing to
+                # contradict, and the promotion rate divides by an eligible
+                # count that silently shrank. Under-power announces itself;
+                # this does not, which is what makes it the one failure a
+                # powered gate run could not be trusted through.
+                #
+                # Raising unwinds the caller's transaction, so the status change
+                # and its journal row live or die together. `dream_undo` states
+                # the same principle for the same reason: an undo that could not
+                # be journalled does not happen.
+                raise JournalWriteFailed(
+                    f"verification transition on fact {triple_id} could not be "
+                    "journalled; refusing to leave an unrecorded transition on "
+                    "a substrate the promotion metrics read as complete"
+                )
 
     async def ratify(self, triple_id: UUID | str) -> dict | None:
         """Write ``confirmed``. The only method in the tree that can (doc 08 §4.4).
@@ -1137,7 +1169,7 @@ class KnowledgeTripleRepository:
             )
 
         if prior_row["verification_status"] != CONFIRMED:
-            await record_event(
+            journalled = await record_event(
                 self.session,
                 event_type="verified",
                 object_type="fact",
@@ -1153,6 +1185,18 @@ class KnowledgeTripleRepository:
                     "outcome": RATIFY_OUTCOME,
                 },
             )
+            if not journalled:
+                # T2.113, and this rung needs the guarantee *more* than the
+                # machine's, not less: `confirmed` is human-only and this method
+                # is its one writer, so an unjournalled ratification is the only
+                # transition in the system with no other trace of a human ever
+                # having acted. It is also the rung the promotion audit treats
+                # as ground truth.
+                raise JournalWriteFailed(
+                    f"ratification of fact {triple_id} could not be journalled; "
+                    "refusing to confirm a fact with no record of the human "
+                    "transition that confirmed it"
+                )
         return _row_to_dict(row)
 
     async def as_of(

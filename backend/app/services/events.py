@@ -158,8 +158,8 @@ async def record_event(
     api_key_id: uuid.UUID | None = None,
     source: str | None = None,
     payload: dict | None = None,
-) -> None:
-    """Append one row to the durable events journal.
+) -> bool:
+    """Append one row to the durable events journal. Returns whether it landed.
 
     Never raises. Journaling is a side-channel to the operation it records —
     a capture, an extraction pass, a supersession flip — so a broken
@@ -169,6 +169,20 @@ async def record_event(
     missing partition) rolls back only the journal write, leaving the
     caller's own transaction exactly as usable as if this call had never
     happened.
+
+    **The return value exists because that contract is right for most callers
+    and wrong for a few** (T2.113). A capture must survive a journal failure;
+    a *verification transition* must not, because doc 17 §5.1's metrics are SQL
+    over this table alone, so a status change whose row never landed is not a
+    lost log line — it is a transition that silently leaves the denominator,
+    and under-power announces itself where this does not. Raising here instead
+    would impose the strict contract on every caller and take down capture with
+    the journal; returning the signal lets each caller answer for itself, and
+    the callers that ignore it behave exactly as before.
+
+    ``False`` means the row is not there: the SAVEPOINT rolled it back, so a
+    caller that treats this as fatal is refusing an operation that genuinely
+    has no audit record, not one that might.
     """
     if event_type not in _EVENT_TYPE_SET:
         logger.warning(
@@ -204,6 +218,8 @@ async def record_event(
             event_type, object_type, object_id,
             exc_info=True,
         )
+        return False
+    return True
 
 
 async def record_maintenance_run(
