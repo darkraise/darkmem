@@ -165,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--base-url", required=True, help="OpenAI-compatible root, e.g. https://host/v1")
     ap.add_argument("--model", required=True)
     ap.add_argument("--api-key-env", default="AGENT_ROUTER_KEY")
+    ap.add_argument("--raw-dir", default=None, metavar="PATH", help=(
+        "where to write the run's raw replies (default: the committed "
+        "entailment/resample_runs/). A test must pass its own -- the default "
+        "is a corpus directory, and test output landed in it once already."
+    ))
     ap.add_argument("--concurrency", type=int, default=4)
     # The GPT-5 line refuses temperature=0 ("only the default (1) is
     # supported"), so temperature is omitted unless asked for. `seed` is what
@@ -200,8 +205,9 @@ def main(argv: list[str] | None = None) -> int:
         concurrency=args.concurrency, timeout=args.timeout, params=params,
     ))
 
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    raw_path = RAW_DIR / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}.json"
+    raw_dir = Path(args.raw_dir) if args.raw_dir else RAW_DIR
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = raw_dir / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}.json"
     raw_path.write_text(
         json.dumps({"model": args.model, "host": urlsplit(args.base_url).netloc,
                     "date": args.date, "params": params, "verdicts": verdicts},

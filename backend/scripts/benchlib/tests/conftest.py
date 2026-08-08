@@ -49,3 +49,33 @@ def _no_test_may_mint_the_qualification_record():
             "pass an explicit record_path; only a real cleared gate run may "
             "write the canonical one."
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_test_may_write_into_the_committed_corpus():
+    """Fail any test that leaves a file in the entailment corpus directory.
+
+    The resample runner defaults its raw-reply output to
+    `entailment/resample_runs/`, which is committed corpus. A test driving the
+    runner without `--raw-dir` therefore wrote a fabricated run into it, and
+    one got committed alongside two real ones -- three files, two of them
+    evidence and one of them stub output, distinguishable only by reading them.
+
+    Same family as the qualification-record leak above: a production default is
+    the wrong default under test, and nothing said so until the artifact
+    appeared.
+    """
+    from benchlib import resample_llm
+
+    before = set(resample_llm.RAW_DIR.glob("*")) if resample_llm.RAW_DIR.exists() else set()
+    yield
+    after = set(resample_llm.RAW_DIR.glob("*")) if resample_llm.RAW_DIR.exists() else set()
+    leaked = after - before
+    for path in leaked:
+        path.unlink()
+    if leaked:
+        raise AssertionError(
+            f"this test wrote {sorted(p.name for p in leaked)} into the committed "
+            f"corpus at {resample_llm.RAW_DIR} -- removed. Pass --raw-dir "
+            "(or an explicit output path) so test output lands in tmp_path."
+        )

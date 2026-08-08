@@ -127,7 +127,7 @@ class TestParseReply:
 
 
 class TestFullPass:
-    def test_a_perfect_pass_scores_zero_and_names_the_model(self, monkeypatch, gold_by_id, capsys):
+    def test_a_perfect_pass_scores_zero_and_names_the_model(self, monkeypatch, gold_by_id, capsys, tmp_path):
         import httpx
 
         by_pair = {
@@ -144,7 +144,8 @@ class TestFullPass:
 
         rc = resample_llm.main(
             ["--base-url", "https://mock/v1", "--model", "gpt-5",
-             "--api-key-env", "MOCK_KEY", "--date", "2026-08-08"]
+             "--api-key-env", "MOCK_KEY", "--date", "2026-08-08",
+             "--raw-dir", str(tmp_path)]
         )
         out = capsys.readouterr().out
         assert rc == 0
@@ -153,7 +154,7 @@ class TestFullPass:
         assert Path(entailment_gold.GOLD_PATH).read_bytes() == before
         assert "measure-only" in out
 
-    def test_the_recorded_block_names_the_model_not_a_person(self, monkeypatch, gold_by_id):
+    def test_the_recorded_block_names_the_model_not_a_person(self, monkeypatch, gold_by_id, tmp_path):
         import httpx
 
         by_pair = {
@@ -176,13 +177,14 @@ class TestFullPass:
         monkeypatch.setattr(resample_llm.resample_score, "score", spy)
         resample_llm.main(
             ["--base-url", "https://mock/v1", "--model", "gpt-5",
-             "--api-key-env", "MOCK_KEY", "--date", "2026-08-08"]
+             "--api-key-env", "MOCK_KEY", "--date", "2026-08-08",
+             "--raw-dir", str(tmp_path)]
         )
         # The gold must never claim a human sat when no human sat.
         assert "LLM pass" in captured["performed_by"]
         assert "gpt-5" in captured["performed_by"]
 
-    def test_a_model_that_declines_fails_loudly_rather_than_scoring(self, monkeypatch):
+    def test_a_model_that_declines_fails_loudly_rather_than_scoring(self, monkeypatch, tmp_path):
         import httpx
 
         monkeypatch.setattr(
@@ -191,5 +193,6 @@ class TestFullPass:
         with pytest.raises(ValueError, match="is not one of"):
             resample_llm.main(
                 ["--base-url", "https://mock/v1", "--model", "gpt-5",
-                 "--api-key-env", "MOCK_KEY", "--date", "2026-08-08"]
+                 "--api-key-env", "MOCK_KEY", "--date", "2026-08-08",
+                 "--raw-dir", str(tmp_path)]
             )
