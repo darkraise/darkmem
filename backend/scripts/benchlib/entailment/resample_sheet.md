@@ -127,667 +127,7 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 1 — eg-0136
-
-**Premise:** compactor uses loki
-
-**Hypothesis:** Loki keeps logs for 30 days.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 2 — eg-0033
-
-**Premise:** Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.
-
-**Hypothesis:** Grafana on the monitoring host listens on port 3300 behind the nginx reverse proxy.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 3 — eg-0189
-
-**Premise:** mobile app uses edge-cdn-4
-
-**Hypothesis:** edge-cdn-4 uses the mobile app.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 4 — eg-0158
-
-**Premise:** artifacts-prod deployed on minio
-
-**Hypothesis:** The CI runners use Docker-in-Docker.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 5 — eg-0217
-
-**Premise:** The NAS ran in degraded mode during the disk rebuild in May 2026.
-
-**Hypothesis:** The NAS is no longer in degraded mode.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 6 — eg-0022
-
-**Premise:** After the bake-off, Vector replaced Telegraf for metrics collection.
-
-**Hypothesis:** After the bake-off, Telegraf replaced Vector for metrics collection.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 7 — eg-0016
-
-**Premise:** Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.
-
-**Hypothesis:** Production was still on Postgres 15 in December 2025.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 8 — eg-0163
-
-**Premise:** cleanup cron job causes scratch partition
-
-**Hypothesis:** The scratch partition causes the cleanup cron job.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 9 — eg-0034
-
-**Premise:** The production Postgres runs version 16.2 on host prod-db-01.
-
-**Hypothesis:** The production Postgres runs version 15.6 on host prod-db-01.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 10 — eg-0061
-
-**Premise:** sftp-02 ships its syslog stream to the log collector on port 5514.
-
-**Hypothesis:** sftp-02 ships its syslog stream to the log collector on port 6514.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 11 — eg-0239
-
-**Premise:** Nightly backups ran at 01:00 from 2024 until the schedule moved to 02:30 in April 2026.
-
-**Hypothesis:** Nightly backups currently run at 01:00.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 12 — eg-0214
-
-**Premise:** Pi-hole handled DNS for the lab from June 2024 until it was replaced by AdGuard Home in April 2026.
-
-**Hypothesis:** Pi-hole currently handles DNS for the lab.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 13 — eg-0205
-
-**Premise:** memcached deployed on cache-02
-
-**Hypothesis:** The analytics ETL depends on the orders database.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 14 — eg-0111
-
-**Premise:** Prometheus retains metrics for 15 days.
-
-**Hypothesis:** Prometheus retains metrics for 45 days.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 15 — eg-0150
-
-**Premise:** directory replica deployed on acs-01
-
-**Hypothesis:** acs-01 is deployed on the directory replica.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 16 — eg-0128
-
-**Premise:** Nightly wiki backups land in the MinIO bucket wiki-backups.
-
-**Hypothesis:** Nightly wiki backups land in the MinIO bucket tf-state.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 17 — eg-0225
-
-**Premise:** The temporary port-forward for the game server was opened on 3 May 2026 and closed on 10 May 2026.
-
-**Hypothesis:** The port-forward for the game server is still open.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 18 — eg-0197
-
-**Premise:** expense uses ocr worker
-
-**Hypothesis:** The OCR worker has at least one consumer.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 19 — eg-0110
-
-**Premise:** wireguard deployed on udp
-
-**Hypothesis:** UDP is deployed on WireGuard.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 20 — eg-0157
-
-**Premise:** nightly dump related to orders database
-
-**Hypothesis:** The nightly dump is associated with the orders database.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 21 — eg-0194
-
-**Premise:** github actions replaces jenkins
-
-**Hypothesis:** Jenkins replaces GitHub Actions.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 22 — eg-0093
-
-**Premise:** hv-27 has part scratch partition
-
-**Hypothesis:** The scratch partition has hv-27 as a part.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 23 — eg-0155
-
-**Premise:** hv-27 has part scratch partition
-
-**Hypothesis:** hv-27 is a part of the scratch partition.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 24 — eg-0062
-
-**Premise:** apps-02 deployed on rack ups
-
-**Hypothesis:** The rack UPS is deployed on apps-02.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 25 — eg-0175
-
-**Premise:** The license-report job runs on the first of every month.
-
-**Hypothesis:** The license-report job runs on the fifteenth of every month.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 26 — eg-0052
-
-**Premise:** The monitoring stack has the alert router as one of its parts.
-
-**Hypothesis:** The alert router has the monitoring stack as one of its parts.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 27 — eg-0084
-
-**Premise:** fleet-cfg related to booking schedule
-
-**Hypothesis:** There is a connection between fleet-cfg and the booking schedule.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 28 — eg-0202
-
-**Premise:** apps/portal keeps audit-log entries for 180 days.
-
-**Hypothesis:** apps/portal keeps audit-log entries for 90 days.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 29 — eg-0162
-
-**Premise:** astro replaces mkdocs
-
-**Hypothesis:** MkDocs replaces Astro.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 30 — eg-0083
-
-**Premise:** config management agent causes lp-relay
-
-**Hypothesis:** lp-relay is brought about by the config management agent.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 31 — eg-0187
-
-**Premise:** jenkins deployed on ci-01
-
-**Hypothesis:** Jenkins is deployed on ci-01 and capped at four concurrent jobs.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 32 — eg-0013
-
-**Premise:** The rate limiter allows 100 requests per minute per API key and returns 429 beyond that.
-
-**Hypothesis:** API requests are rate-limited per key.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 33 — eg-0208
-
-**Premise:** The booking schedule sync runs at 04:15 every morning.
-
-**Hypothesis:** The booking schedule sync runs at 05:45 every morning.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 34 — eg-0147
-
-**Premise:** restic uses nas
-
-**Hypothesis:** The NAS has at least one consumer.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 35 — eg-0216
-
-**Premise:** The guest Wi-Fi password was rotated on 1 May 2026 and is scheduled to rotate again after 60 days.
-
-**Hypothesis:** The guest Wi-Fi password set on 1 May 2026 is still the active one.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 36 — eg-0098
-
-**Premise:** arc-store deployed on minio
-
-**Hypothesis:** arc-store is deployed on Postgres.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 37 — eg-0188
-
-**Premise:** restic uses wiki volume
-
-**Hypothesis:** Restic snapshots the wiki volume nightly at 02:30.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 38 — eg-0237
-
-**Premise:** The spare node was lent to the robotics club on 15 July 2026 for about a month.
-
-**Hypothesis:** The spare node is currently in the lab.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 39 — eg-0145
-
-**Premise:** The config management agent applies its catalog every 30 minutes.
-
-**Hypothesis:** The config management agent applies its catalog every 60 minutes.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 40 — eg-0222
-
-**Premise:** The lab's metrics were stored in InfluxDB 1.8 from mid-2023 until the February 2026 cutover to VictoriaMetrics.
-
-**Hypothesis:** Lab metrics are stored in InfluxDB 1.8 today.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 41 — eg-0018
-
-**Premise:** Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.
-
-**Hypothesis:** Production currently runs Postgres 15.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 42 — eg-0172
-
-**Premise:** wireguard deployed on udp
-
-**Hypothesis:** WireGuard is the platform UDP is deployed on.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 43 — eg-0057
-
-**Premise:** redis deployed on cache-01
-
-**Hypothesis:** Redis is deployed on cache-01 as the only service on that host.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 44 — eg-0160
-
-**Premise:** arc-store deployed on minio
-
-**Hypothesis:** Astro replaces MkDocs.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 45 — eg-0010
-
-**Premise:** The metrics database is sharded by tenant, with one schema per customer.
-
-**Hypothesis:** Each customer gets its own schema; tenant is the sharding key for the metrics database.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 46 — eg-0019
-
-**Premise:** The ELK stack was retired in 2025, and Kibana no longer runs anywhere in the lab.
-
-**Hypothesis:** Kibana is still serving dashboards in the lab.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 47 — eg-0051
-
-**Premise:** license-report depends on internal package mirror
-
-**Hypothesis:** license-report depends on the internal package mirror.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 48 — eg-0058
-
-**Premise:** caddy improves on nginx
-
-**Hypothesis:** Nginx improves on Caddy.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 49 — eg-0086
-
-**Premise:** lp-relay uses office label printers
-
-**Hypothesis:** lp-relay makes use of printers.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 50 — eg-0161
-
-**Premise:** customer-portal uses vault
-
-**Hypothesis:** The customer-portal fetches all of its database credentials from Vault at startup.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 51 — eg-0144
-
-**Premise:** grafana uses infra
-
-**Hypothesis:** Grafana uses infra to provision every one of its dashboards.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 52 — eg-0120
-
-**Premise:** The rack UPS in the server closet is an APC Smart-UPS 1500.
-
-**Hypothesis:** The rack UPS in the server closet is an Eaton 5P 1500.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 53 — eg-0146
-
-**Premise:** fleet-cfg pins the vehicle gateways to firmware 4.2.1.
-
-**Hypothesis:** fleet-cfg pins the vehicle gateways to firmware 4.3.0.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 54 — eg-0154
-
-**Premise:** prod-db-01 deployed on postgres
-
-**Hypothesis:** prod-db-01 is deployed on MinIO.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 55 — eg-0177
-
-**Premise:** unleash uses oidc
-
-**Hypothesis:** OIDC uses Unleash.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 56 — eg-0109
+## Item 1 — eg-0109
 
 **Premise:** team wiki deployed on lab-vm-3
 
@@ -799,67 +139,7 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 57 — eg-0026
-
-**Premise:** DNS queries from the guest VLAN are forwarded to Unbound; Unbound never forwards queries to the guest VLAN.
-
-**Hypothesis:** Unbound forwards DNS queries to the guest VLAN.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 58 — eg-0036
-
-**Premise:** Terraform state lives in the MinIO bucket tf-state with locking enabled.
-
-**Hypothesis:** Terraform state lives in the MinIO bucket artifacts-prod with locking enabled.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 59 — eg-0123
-
-**Premise:** sftp-02 accepts SFTP connections on port 2222.
-
-**Hypothesis:** sftp-02 accepts SFTP connections on port 22.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 60 — eg-0236
-
-**Premise:** The mosquitto broker listened on 1883 without TLS until the May 2026 hardening, when plaintext was disabled.
-
-**Hypothesis:** Since June 2026, the mosquitto broker has accepted plaintext connections on 1883.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 61 — eg-0179
-
-**Premise:** kibana has part elk
-
-**Hypothesis:** ELK has Kibana as one of its parts.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 62 — eg-0037
+## Item 2 — eg-0037
 
 **Premise:** The JWT access-token lifetime is 15 minutes, and refresh tokens last 30 days.
 
@@ -871,23 +151,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 63 — eg-0077
+## Item 3 — eg-0225
 
-**Premise:** thumbs queue deployed on queue-01
+**Premise:** The temporary port-forward for the game server was opened on 3 May 2026 and closed on 10 May 2026.
 
-**Hypothesis:** The thumbs queue is deployed on queue-01.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 64 — eg-0142
-
-**Premise:** glitchtip replaces sentry
-
-**Hypothesis:** GlitchTip replaces MkDocs.
+**Hypothesis:** The port-forward for the game server is still open.
 
 **Verdict:** 
 
@@ -895,175 +163,7 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 65 — eg-0005
-
-**Premise:** Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.
-
-**Hypothesis:** On the monitoring box, the Grafana service is reachable on port 3000, proxied by nginx.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 66 — eg-0228
-
-**Premise:** Home Assistant ran in a VM on hv-27 from its installation in 2022 until it moved to a dedicated NUC in March 2026.
-
-**Hypothesis:** Home Assistant currently runs in a VM on hv-27.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 67 — eg-0218
-
-**Premise:** Docker Swarm orchestrated the lab's containers from 2023 until the January 2026 migration to k3s.
-
-**Hypothesis:** In March 2026, the lab's containers were orchestrated by Docker Swarm.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 68 — eg-0176
-
-**Premise:** Vector's on-disk buffer is capped at 512 MB.
-
-**Hypothesis:** Vector's on-disk buffer is capped at 256 MB.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 69 — eg-0164
-
-**Premise:** The ntfy server listens on port 8093.
-
-**Hypothesis:** The ntfy server listens on port 8080.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 70 — eg-0193
-
-**Premise:** The staging Postgres instance on stg-db-01 listens on port 5433.
-
-**Hypothesis:** The staging Postgres instance on stg-db-01 listens on port 5432.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 71 — eg-0091
-
-**Premise:** redis deployed on queue-01
-
-**Hypothesis:** queue-01 is deployed on Redis.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 72 — eg-0003
-
-**Premise:** The reverse proxy terminates TLS with certificates issued by Let's Encrypt.
-
-**Hypothesis:** TLS is terminated at the reverse proxy using Let's Encrypt certificates.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 73 — eg-0048
-
-**Premise:** wireguard deployed on udp
-
-**Hypothesis:** WireGuard is deployed on TCP.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 74 — eg-0059
-
-**Premise:** rooftop weather station uses iot-gw-1
-
-**Hypothesis:** The weather station on the roof makes use of iot-gw-1.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 75 — eg-0149
-
-**Premise:** Grafana's admin session lifetime is 8 hours.
-
-**Hypothesis:** Grafana's admin session lifetime is 24 hours.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 76 — eg-0024
-
-**Premise:** The January migration moved the job queue from Redis to Postgres.
-
-**Hypothesis:** The January migration moved the job queue from Postgres to Redis.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 77 — eg-0090
-
-**Premise:** search-01 is a typesense
-
-**Hypothesis:** search-01 is a typesense node running version 0.25.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 78 — eg-0017
-
-**Premise:** Since the February 2026 migration, object storage is served by MinIO; the old Ceph cluster was decommissioned.
-
-**Hypothesis:** As of June 2026, MinIO serves object storage.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 79 — eg-0201
+## Item 4 — eg-0201
 
 **Premise:** thumbs queue deployed on queue-01
 
@@ -1075,23 +175,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 80 — eg-0170
+## Item 5 — eg-0341
 
-**Premise:** nginx uses client certificates
+**Premise:** The wiki ran on lab-vm-2 until the January 2026 move to lab-vm-3.
 
-**Hypothesis:** Nginx employs client certificates.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 81 — eg-0066
-
-**Premise:** Vault issues CI job tokens with a TTL of 60 minutes.
-
-**Hypothesis:** Vault issues CI job tokens with a TTL of 90 minutes.
+**Hypothesis:** The wiki currently runs on lab-vm-2.
 
 **Verdict:** 
 
@@ -1099,23 +187,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 82 — eg-0117
+## Item 6 — eg-0301
 
-**Premise:** The Thanos sidecar uploads blocks to the archive bucket every 2 hours.
+**Premise:** thumbs queue deployed on queue-01
 
-**Hypothesis:** The Thanos sidecar uploads blocks to the archive bucket every 6 hours.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 83 — eg-0132
-
-**Premise:** github actions replaces jenkins
-
-**Hypothesis:** Jenkins has been superseded.
+**Hypothesis:** queue-01 is deployed on the thumbs queue.
 
 **Verdict:** 
 
@@ -1123,7 +199,55 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 84 — eg-0088
+## Item 7 — eg-0169
+
+**Premise:** analytics etl depends on orders database
+
+**Hypothesis:** The analytics ETL depends on at least one database.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 8 — eg-0245
+
+**Premise:** postfix deployed on mail-01
+
+**Hypothesis:** Postfix is deployed on ci-01.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 9 — eg-0101
+
+**Premise:** cleanup cron job causes scratch partition
+
+**Hypothesis:** The scratch partition has a cause.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 10 — eg-0162
+
+**Premise:** astro replaces mkdocs
+
+**Hypothesis:** MkDocs replaces Astro.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 11 — eg-0088
 
 **Premise:** directory replica deployed on acs-01
 
@@ -1135,23 +259,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 85 — eg-0053
+## Item 12 — eg-0335
 
-**Premise:** unleash uses oidc
+**Premise:** The nightly dump of the orders database starts at 02:30.
 
-**Hypothesis:** Grafana is fronted by nginx.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 86 — eg-0139
-
-**Premise:** thumbs queue deployed on queue-01
-
-**Hypothesis:** The thumbs queue is deployed.
+**Hypothesis:** The nightly dump of the orders database starts at 04:30.
 
 **Verdict:** 
 
@@ -1159,11 +271,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 87 — eg-0119
+## Item 13 — eg-0270
 
-**Premise:** redis deployed on cache-01
+**Premise:** nightly dump related to orders database
 
-**Hypothesis:** cache-01 is deployed on Redis.
+**Hypothesis:** The nightly dump is connected with the orders database.
 
 **Verdict:** 
 
@@ -1171,7 +283,571 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 88 — eg-0232
+## Item 14 — eg-0149
+
+**Premise:** Grafana's admin session lifetime is 8 hours.
+
+**Hypothesis:** Grafana's admin session lifetime is 24 hours.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 15 — eg-0110
+
+**Premise:** wireguard deployed on udp
+
+**Hypothesis:** UDP is deployed on WireGuard.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 16 — eg-0150
+
+**Premise:** directory replica deployed on acs-01
+
+**Hypothesis:** acs-01 is deployed on the directory replica.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 17 — eg-0120
+
+**Premise:** The rack UPS in the server closet is an APC Smart-UPS 1500.
+
+**Hypothesis:** The rack UPS in the server closet is an Eaton 5P 1500.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 18 — eg-0278
+
+**Premise:** The internal package mirror serves clients on port 8081.
+
+**Hypothesis:** The internal package mirror serves clients on port 3128.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 19 — eg-0266
+
+**Premise:** astro replaces mkdocs
+
+**Hypothesis:** Astro replaces MkDocs.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 20 — eg-0208
+
+**Premise:** The booking schedule sync runs at 04:15 every morning.
+
+**Hypothesis:** The booking schedule sync runs at 05:45 every morning.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 21 — eg-0022
+
+**Premise:** After the bake-off, Vector replaced Telegraf for metrics collection.
+
+**Hypothesis:** After the bake-off, Telegraf replaced Vector for metrics collection.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 22 — eg-0248
+
+**Premise:** Terraform stores its state in the MinIO bucket tf-state.
+
+**Hypothesis:** Terraform stores its state in the MinIO bucket artifacts-prod.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 23 — eg-0142
+
+**Premise:** glitchtip replaces sentry
+
+**Hypothesis:** GlitchTip replaces MkDocs.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 24 — eg-0044
+
+**Premise:** acs-01 depends on ntp
+
+**Hypothesis:** acs-01 relies on NTP.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 25 — eg-0290
+
+**Premise:** prod-db-01 deployed on postgres
+
+**Hypothesis:** prod-db-01 is deployed on redis.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 26 — eg-0259
+
+**Premise:** redis deployed on queue-01
+
+**Hypothesis:** Restic backs up to the NAS.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 27 — eg-0175
+
+**Premise:** The license-report job runs on the first of every month.
+
+**Hypothesis:** The license-report job runs on the fifteenth of every month.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 28 — eg-0330
+
+**Premise:** search-01 is a typesense
+
+**Hypothesis:** Typesense is a search-01.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 29 — eg-0230
+
+**Premise:** The orders database has been in read-only mode since the 28 July 2026 incident; the incident review has not yet cleared a return to writes.
+
+**Hypothesis:** As of 3 August 2026, the orders database is in read-only mode.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 30 — eg-0062
+
+**Premise:** apps-02 deployed on rack ups
+
+**Hypothesis:** The rack UPS is deployed on apps-02.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 31 — eg-0034
+
+**Premise:** The production Postgres runs version 16.2 on host prod-db-01.
+
+**Hypothesis:** The production Postgres runs version 15.6 on host prod-db-01.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 32 — eg-0349
+
+**Premise:** The incident review meeting moved to Thursdays in February 2026.
+
+**Hypothesis:** Before February 2026, the incident review meeting was on Mondays.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 33 — eg-0069
+
+**Premise:** postgres deployed on stg-db-01
+
+**Hypothesis:** Postgres 15.6 is deployed on stg-db-01.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 34 — eg-0141
+
+**Premise:** status dashboard uses vite
+
+**Hypothesis:** Vite uses the status dashboard.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 35 — eg-0048
+
+**Premise:** wireguard deployed on udp
+
+**Hypothesis:** WireGuard is deployed on TCP.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 36 — eg-0117
+
+**Premise:** The Thanos sidecar uploads blocks to the archive bucket every 2 hours.
+
+**Hypothesis:** The Thanos sidecar uploads blocks to the archive bucket every 6 hours.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 37 — eg-0342
+
+**Premise:** Log shipping used rsyslog until Vector took over in October 2025.
+
+**Hypothesis:** Log shipping still goes through rsyslog.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 38 — eg-0058
+
+**Premise:** caddy improves on nginx
+
+**Hypothesis:** Nginx improves on Caddy.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 39 — eg-0345
+
+**Premise:** The legacy FTP endpoint was decommissioned in March 2026 when sftp-02 replaced it.
+
+**Hypothesis:** The legacy FTP endpoint is still serving transfers.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 40 — eg-0202
+
+**Premise:** apps/portal keeps audit-log entries for 180 days.
+
+**Hypothesis:** apps/portal keeps audit-log entries for 90 days.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 41 — eg-0253
+
+**Premise:** vault related to .env files
+
+**Hypothesis:** Vault replaced the .env files for secret storage.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 42 — eg-0155
+
+**Premise:** hv-27 has part scratch partition
+
+**Hypothesis:** hv-27 is a part of the scratch partition.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 43 — eg-0172
+
+**Premise:** wireguard deployed on udp
+
+**Hypothesis:** WireGuard is the platform UDP is deployed on.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 44 — eg-0193
+
+**Premise:** The staging Postgres instance on stg-db-01 listens on port 5433.
+
+**Hypothesis:** The staging Postgres instance on stg-db-01 listens on port 5432.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 45 — eg-0320
+
+**Premise:** postgres deployed on stg-db-01
+
+**Hypothesis:** stg-db-01 is deployed on Postgres.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 46 — eg-0146
+
+**Premise:** fleet-cfg pins the vehicle gateways to firmware 4.2.1.
+
+**Hypothesis:** fleet-cfg pins the vehicle gateways to firmware 4.3.0.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 47 — eg-0256
+
+**Premise:** The door-badge reader polls the directory replica every 5 minutes.
+
+**Hypothesis:** The door-badge reader polls the directory replica every 15 minutes.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 48 — eg-0066
+
+**Premise:** Vault issues CI job tokens with a TTL of 60 minutes.
+
+**Hypothesis:** Vault issues CI job tokens with a TTL of 90 minutes.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 49 — eg-0228
+
+**Premise:** Home Assistant ran in a VM on hv-27 from its installation in 2022 until it moved to a dedicated NUC in March 2026.
+
+**Hypothesis:** Home Assistant currently runs in a VM on hv-27.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 50 — eg-0128
+
+**Premise:** Nightly wiki backups land in the MinIO bucket wiki-backups.
+
+**Hypothesis:** Nightly wiki backups land in the MinIO bucket tf-state.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 51 — eg-0176
+
+**Premise:** Vector's on-disk buffer is capped at 512 MB.
+
+**Hypothesis:** Vector's on-disk buffer is capped at 256 MB.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 52 — eg-0035
+
+**Premise:** Prometheus scrapes the node exporters every 15 seconds, double the default interval.
+
+**Hypothesis:** Prometheus scrapes the node exporters every 30 seconds.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 53 — eg-0018
+
+**Premise:** Postgres 15 was the production database from March 2025 until the January 2026 upgrade to Postgres 16.
+
+**Hypothesis:** Production currently runs Postgres 15.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 54 — eg-0194
+
+**Premise:** github actions replaces jenkins
+
+**Hypothesis:** Jenkins replaces GitHub Actions.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 55 — eg-0019
+
+**Premise:** The ELK stack was retired in 2025, and Kibana no longer runs anywhere in the lab.
+
+**Hypothesis:** Kibana is still serving dashboards in the lab.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 56 — eg-0111
+
+**Premise:** Prometheus retains metrics for 15 days.
+
+**Hypothesis:** Prometheus retains metrics for 45 days.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 57 — eg-0294
+
+**Premise:** Loki retains logs for 30 days.
+
+**Hypothesis:** Loki retains logs for 90 days.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 58 — eg-0298
+
+**Premise:** The Unleash instance runs version 5.7.
+
+**Hypothesis:** The Unleash instance runs version 4.2.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 59 — eg-0145
+
+**Premise:** The config management agent applies its catalog every 30 minutes.
+
+**Hypothesis:** The config management agent applies its catalog every 60 minutes.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 60 — eg-0052
+
+**Premise:** The monitoring stack has the alert router as one of its parts.
+
+**Hypothesis:** The alert router has the monitoring stack as one of its parts.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 61 — eg-0232
 
 **Premise:** Gitea hosted the lab's repositories until the November 2025 migration to Forgejo.
 
@@ -1183,23 +859,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 89 — eg-0055
+## Item 62 — eg-0334
 
-**Premise:** kibana has part elk
+**Premise:** The mobile app's API refresh tokens expire after 30 days.
 
-**Hypothesis:** Kibana has at least one component.
-
-**Verdict:** 
-
-**Rule cited:** 
-
----
-
-## Item 90 — eg-0079
-
-**Premise:** status dashboard uses vite
-
-**Hypothesis:** The status dashboard uses Vite.
+**Hypothesis:** The mobile app's API refresh tokens expire after 7 days.
 
 **Verdict:** 
 
@@ -1207,7 +871,19 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 91 — eg-0181
+## Item 63 — eg-0093
+
+**Premise:** hv-27 has part scratch partition
+
+**Hypothesis:** The scratch partition has hv-27 as a part.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 64 — eg-0181
 
 **Premise:** The Redis instance on cache-01 runs version 7.2.
 
@@ -1219,11 +895,11 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 92 — eg-0087
+## Item 65 — eg-0179
 
-**Premise:** grafana uses nginx
+**Premise:** kibana has part elk
 
-**Hypothesis:** There is at least one consumer of nginx.
+**Hypothesis:** ELK has Kibana as one of its parts.
 
 **Verdict:** 
 
@@ -1231,11 +907,335 @@ This table covers `RELATIONSHIP_TYPES` in `app/taxonomy.py` exhaustively
 
 ---
 
-## Item 93 — eg-0035
+## Item 66 — eg-0091
 
-**Premise:** Prometheus scrapes the node exporters every 15 seconds, double the default interval.
+**Premise:** redis deployed on queue-01
 
-**Hypothesis:** Prometheus scrapes the node exporters every 30 seconds.
+**Hypothesis:** queue-01 is deployed on Redis.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 67 — eg-0265
+
+**Premise:** Grafana serves its UI on port 3000.
+
+**Hypothesis:** Grafana serves its UI on port 8080.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 68 — eg-0036
+
+**Premise:** Terraform state lives in the MinIO bucket tf-state with locking enabled.
+
+**Hypothesis:** Terraform state lives in the MinIO bucket artifacts-prod with locking enabled.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 69 — eg-0239
+
+**Premise:** Nightly backups ran at 01:00 from 2024 until the schedule moved to 02:30 in April 2026.
+
+**Hypothesis:** Nightly backups currently run at 01:00.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 70 — eg-0267
+
+**Premise:** jenkins deployed on ci-01
+
+**Hypothesis:** ci-01 is deployed on Jenkins.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 71 — eg-0098
+
+**Premise:** arc-store deployed on minio
+
+**Hypothesis:** arc-store is deployed on Postgres.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 72 — eg-0033
+
+**Premise:** Grafana on the monitoring host listens on port 3000 behind the nginx reverse proxy.
+
+**Hypothesis:** Grafana on the monitoring host listens on port 3300 behind the nginx reverse proxy.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 73 — eg-0343
+
+**Premise:** The standby database was promoted to primary on 14 June 2026, ending its standby role.
+
+**Hypothesis:** The database is currently a standby.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 74 — eg-0026
+
+**Premise:** DNS queries from the guest VLAN are forwarded to Unbound; Unbound never forwards queries to the guest VLAN.
+
+**Hypothesis:** Unbound forwards DNS queries to the guest VLAN.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 75 — eg-0214
+
+**Premise:** Pi-hole handled DNS for the lab from June 2024 until it was replaced by AdGuard Home in April 2026.
+
+**Hypothesis:** Pi-hole currently handles DNS for the lab.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 76 — eg-0268
+
+**Premise:** Restic keeps 14 nightly snapshots of the wiki volume.
+
+**Hypothesis:** Restic keeps 30 nightly snapshots of the wiki volume.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 77 — eg-0287
+
+**Premise:** The CI runner pool is pinned to Docker Engine 24.0.
+
+**Hypothesis:** The CI runner pool is pinned to Docker Engine 20.10.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 78 — eg-0154
+
+**Premise:** prod-db-01 deployed on postgres
+
+**Hypothesis:** prod-db-01 is deployed on MinIO.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 79 — eg-0198
+
+**Premise:** compactor uses loki
+
+**Hypothesis:** The compactor uses Loki and deletes chunks older than 30 days.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 80 — eg-0236
+
+**Premise:** The mosquitto broker listened on 1883 without TLS until the May 2026 hardening, when plaintext was disabled.
+
+**Hypothesis:** Since June 2026, the mosquitto broker has accepted plaintext connections on 1883.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 81 — eg-0251
+
+**Premise:** github actions replaces jenkins
+
+**Hypothesis:** GitHub Actions is replaced by Jenkins.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 82 — eg-0344
+
+**Premise:** TLS 1.0 support was removed from the edge proxy in the November 2025 hardening pass.
+
+**Hypothesis:** The edge proxy still accepts TLS 1.0.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 83 — eg-0061
+
+**Premise:** sftp-02 ships its syslog stream to the log collector on port 5514.
+
+**Hypothesis:** sftp-02 ships its syslog stream to the log collector on port 6514.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 84 — eg-0218
+
+**Premise:** Docker Swarm orchestrated the lab's containers from 2023 until the January 2026 migration to k3s.
+
+**Hypothesis:** In March 2026, the lab's containers were orchestrated by Docker Swarm.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 85 — eg-0222
+
+**Premise:** The lab's metrics were stored in InfluxDB 1.8 from mid-2023 until the February 2026 cutover to VictoriaMetrics.
+
+**Hypothesis:** Lab metrics are stored in InfluxDB 1.8 today.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 86 — eg-0024
+
+**Premise:** The January migration moved the job queue from Redis to Postgres.
+
+**Hypothesis:** The January migration moved the job queue from Postgres to Redis.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 87 — eg-0123
+
+**Premise:** sftp-02 accepts SFTP connections on port 2222.
+
+**Hypothesis:** sftp-02 accepts SFTP connections on port 22.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 88 — eg-0072
+
+**Premise:** redis replaces memcached
+
+**Hypothesis:** Memcached has been supplanted by Redis.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 89 — eg-0315
+
+**Premise:** The backup pipeline has the pruning stage as one of its parts.
+
+**Hypothesis:** The pruning stage has the backup pipeline as one of its parts.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 90 — eg-0164
+
+**Premise:** The ntfy server listens on port 8093.
+
+**Hypothesis:** The ntfy server listens on port 8080.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 91 — eg-0119
+
+**Premise:** redis deployed on cache-01
+
+**Hypothesis:** cache-01 is deployed on Redis.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 92 — eg-0291
+
+**Premise:** artifacts-prod deployed on minio
+
+**Hypothesis:** MinIO is deployed on artifacts-prod.
+
+**Verdict:** 
+
+**Rule cited:** 
+
+---
+
+## Item 93 — eg-0302
+
+**Premise:** The office label printers accept jobs on port 631.
+
+**Hypothesis:** The office label printers accept jobs on port 9100.
 
 **Verdict:** 
 
