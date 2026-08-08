@@ -279,11 +279,22 @@ prompt or design change measured against pairs whose failure modes are written d
 fitted to them, which is exactly the loop T2.26's plan review flagged as its one Critical.
 
 **The authoring constraint that makes it worth doing.** The new pairs must be authored
-**without reference to the recorded FP ids** (eg-0020, eg-0021, eg-0023, eg-0075, eg-0163,
-eg-0216, eg-0220) or to the slice-level failure profile. An author who knows the judge
+**without reading the judge's recorded failure census.** That census lives in
+`gate-ledger.md`'s G-D sections and in `briefs/2026-08-08-gd-resolution-spike.md`; it names
+the failing pair ids and the slice-level profile, and this task deliberately **does not
+reproduce them here** — the first version of this paragraph did, which made a document
+stating a blindness requirement the fastest way to destroy it. An author who knows the judge
 over-calls contradiction on non-exclusive reversals and writes more of them is building a
 targeted test, not a gold. Separate owner, adversarial review, blind adjudication — the
 T2.54 pattern, for the same reason it existed there.
+
+**Blindness here is partial, and saying so is part of the task.** A gold author must read
+`LABELLING.md` to author anything, and that file necessarily cites pair ids as worked
+examples of its rules — one of which is also in the judge's failure set. So the achievable
+property is not "the author has seen no failing pair" but **"the author has not seen the
+judge's failure *profile*"**: which verdict it over-calls, on which relation classes, at
+what rate. That is what makes targeted authoring possible, and that is what must stay
+unread. Record the residual rather than claiming a blindness the task does not have.
 
 **Composition still binds** (doc 17 §11): ≥ 50% `l2-fact` premises anchored to committed
 manifest rows, verdict/slice lawfulness enforced by the loader, and the declared counts
