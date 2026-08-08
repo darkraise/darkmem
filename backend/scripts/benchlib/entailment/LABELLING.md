@@ -65,7 +65,8 @@ this same file — collapsing it to a binary would throw that away.
 3. **Entailment tolerates rewording, never strengthening.** Synonyms,
    voice, clause order, dropping content (weakening) preserve entailment.
    Adding content, tightening a quantifier, upgrading "a factor" to "the
-   cause" break it.
+   cause" break it. Whether *exhaustivity* counts as strengthening depends
+   on how the hypothesis carries it — see the **exhaustivity rule** below.
 4. **Contradiction requires exclusion, not absence.** If the premise merely
    fails to mention what the hypothesis asserts, that is `unsupported`. It
    is `contradicted` only when the premise (with the named rules below)
@@ -96,6 +97,25 @@ this same file — collapsing it to a binary would throw that away.
     replaced object, with the sentence shape otherwise preserved, is
     `contradicted`, not unsupported. This is an object swap, not a reversal,
     so the reversal rule below does not reach it.
+- **Exhaustivity rule** (ruled by the owner 2026-08-08, rule-then-pairs on
+  eg-0308). Procedure 3 breaks entailment on strengthening, and exhaustivity
+  is strengthening only when the hypothesis **asserts** it.
+  - Exhaustivity carried by **information structure** — a cleft or
+    pseudo-cleft ("X is what causes Y", "X is why Y"), focus, or a definite
+    predicate nominal ("X is the replacement for Y") — is presupposed and
+    defeasible, not asserted. It does **not** break entailment
+    (eg-0006, eg-0196, eg-0308).
+  - Exhaustivity carried **lexically** — "only", "sole", "alone", "every",
+    "all" — is asserted content and does (eg-0057, eg-0081, eg-0276).
+  - Independently of how it is carried, exhaustivity that clashes with a
+    premise **explicitly marking** non-exhaustivity ("one contributing
+    factor", "some hosts") strengthens (eg-0031, eg-0032). This is the case
+    procedure 3's own "a factor" → "the cause" example is calibrated on.
+
+  A bare relation rendering (`X causes Y`) marks exhaustivity neither way,
+  so it neither licenses nor blocks on its own. This is the entailment-side
+  counterpart of the implicature-is-not-contradiction rule below:
+  non-asserted content does not move a verdict in **either** direction.
 - **Window rule.** A temporal fact renders its validity window in text. A
   claim time-scoped inside the window is `entailed` (eg-0016); a
   present-tense claim over a window the fact *explicitly closes* — named
@@ -472,6 +492,53 @@ exists.
   blocker B4).
 
 ## History
+
+- **2026-08-08 (T2.110 Layer-3 sitting — eg-0308 ruled, rule-then-pairs).**
+  The one escalation of the growth round was ruled an **ambiguous rule, not a
+  mislabel**, so the fix landed in this file first and the slice was
+  re-adjudicated against it. Pass A read the cleft "is what causes" as an
+  exhaustivity upgrade ('a cause' → 'the cause'); pass B read it as pure
+  rewording. Both were reading a rulebook that **did not decide the question**:
+  the implicature-is-not-contradiction rule already distinguished asserted from
+  non-asserted content, but was scoped only to the `unsupported → contradicted`
+  step and said nothing about the `entailed → unsupported` one. The new
+  **exhaustivity rule** states the missing half.
+
+  **eg-0308's recorded `entailed` stands**, `label_source: "owner"`. No
+  retire-and-replace; the gold's composition is unchanged at 351.
+
+  **What the substance turned on.** The gold already settles that adding
+  exhaustivity to a bare `CAUSES` triple strengthens — eg-0276 (`overreach`,
+  `unsupported`) does exactly that with "the only thing affecting", off the
+  same premise shape. What it had never ruled is whether a *cleft* conveys
+  exhaustivity the way *"only"* does. It does not: cleft exhaustivity is
+  presupposed and defeasible where "only" is asserted. Note also that
+  procedure 3's "a factor" → "the cause" example is calibrated against a
+  premise that **explicitly marks** plurality of causes (eg-0032, "one
+  contributing factor"), which a bare triple does not.
+
+  **Slice re-adjudication (mandated by rule-then-pairs): no label changed**,
+  and the ruling is confirmed by pairs that were already `adjudicated` rather
+  than only by the pair under dispute.
+  - `paraphrase` (51): two pairs besides eg-0308 carry an exhaustivity
+    construction, and **both are already `adjudicated` `entailed` — two blind
+    passes each, unanimous**: eg-0006 ("Automatic certificate renewal **is
+    why** Caddy was picked...", a pseudo-cleft of the identical shape) and
+    eg-0196 ("Redis **is the replacement** for Memcached", definite predicate
+    nominal). The rule ratifies standing practice; the alternative ruling
+    would have put eg-0308 at odds with two unanimous adjudications.
+  - `overreach` (51): every exhaustivity-bearing hypothesis carries it
+    **lexically** — "only" (eg-0057, eg-0081, eg-0159, eg-0276),
+    "every"/"all" (eg-0031, eg-0073, eg-0115, eg-0137, eg-0144, eg-0161,
+    eg-0165, eg-0195, eg-0206, eg-0209, eg-0246, eg-0311), "in every respect"
+    (eg-0182) — or adds content outright. **None rests on information
+    structure alone**, so the rule makes no overreach pair unlawfully
+    `entailed`. This slice was checked though the escalation did not sit in
+    it, because the new rule's second clause governs its boundary.
+
+  The escalation queue is empty; `gold.json` carries 348 `adjudicated` +
+  3 `owner` + **0** `author`. The eligibility lock's remaining condition is
+  the fresh resample alone, whose draw is pinned to the new sha256.
 
 - **2026-08-08 (T2.110, growth round — 110 pairs appended, eg-0242..eg-0351).**
   Grown because the 241-pair set was contaminated as a measurement surface —

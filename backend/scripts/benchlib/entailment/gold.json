@@ -5218,8 +5218,8 @@
         "paraphrase"
       ],
       "provenance": "l2-fact",
-      "label_source": "author",
-      "rationale": "Full rewording: the causal assertion restated as a cleft construction, same two endpoints, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "label_source": "owner",
+      "rationale": "Full rewording: the causal assertion restated as a cleft construction, same two endpoints, nothing strengthened or weakened. The cleft's exhaustivity is presupposed, not asserted, so it does not strengthen (exhaustivity rule, information-structure case; cf. eg-0006, eg-0196). Owner-ruled 2026-08-08 under rule-then-pairs.",
       "fact_key": {
         "triple_key": "ad6f7451-228c-5bfc-80c6-df1f9bb16702",
         "subject_name": "config management agent",

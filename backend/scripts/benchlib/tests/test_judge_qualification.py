@@ -138,10 +138,12 @@ def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
     241-pair file — its draw was pinned to that file's sha256 — so the grown
     gold carries NO resample block: keeping the old one would have satisfied
     the lock with a certification of a different file. This pins the honest
-    state: size and the l2-fact floor hold, and exactly two conditions are
-    outstanding — eg-0308, the one growth pair the blind passes escalated
-    (still `author` until the owner's Layer-3 ruling), and the fresh
-    resample. As each resolves, this test moves with it, visibly.
+    state: size, the l2-fact floor and adjudication now hold, and the fresh
+    resample is the **one** remaining condition. As each resolves, this test
+    moves with it, visibly — eg-0308, the round's one escalation, was ruled
+    by the owner on 2026-08-08 (rule-then-pairs; the recorded `entailed`
+    stands under the new exhaustivity rule), which is why the author-labelled
+    count is 0 here and was 1 before.
 
     The conditions themselves are still exercised against synthetic golds
     below -- the real gold must not become the only thing this file checks,
@@ -152,19 +154,22 @@ def test_the_real_gold_is_ineligible_pending_ruling_and_fresh_resample():
     assert eligibility.eligible is False
     assert eligibility.live_pairs == 351
     assert eligibility.l2_fact_pairs == 235
-    assert eligibility.author_labelled_pairs == 1
+    assert eligibility.author_labelled_pairs == 0
     joined = "\n".join(eligibility.reasons)
     assert "l2-fact: 235/351" in joined
-    assert "author-labelled: 1/351" in joined
-    # Exactly two blocking reasons: the escalated pair, then the resample.
-    assert len(eligibility.reasons) == 3
-    assert "await" in eligibility.reasons[1]
-    assert "resample: absent" in eligibility.reasons[2]
+    assert "author-labelled: 0/351" in joined
+    # Exactly one blocking reason left: the fresh resample.
+    assert len(eligibility.reasons) == 2
+    assert "await" not in joined
+    assert "resample: absent" in eligibility.reasons[1]
     assert "resample" not in doc
 
-    escalated = [p for p in doc["pairs"]
-                 if not p.get("retired") and p["label_source"] == "author"]
-    assert [p["id"] for p in escalated] == ["eg-0308"]
+    # The ruling closed the queue: no live pair is author-labelled, and
+    # eg-0308 carries the owner's provenance rather than the author's.
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+    assert [p["id"] for p in live if p["label_source"] == "author"] == []
+    eg0308 = next(p for p in live if p["id"] == "eg-0308")
+    assert (eg0308["verdict"], eg0308["label_source"]) == ("entailed", "owner")
 
 
 def test_a_grown_real_adjudicated_gold_is_eligible_with_counts_visible():

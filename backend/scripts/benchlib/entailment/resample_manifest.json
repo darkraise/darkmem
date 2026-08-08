@@ -2,8 +2,8 @@
   "protocol": "LABELLING.md Layer 3 seeded blind resample",
   "n": 93,
   "bar_max_disagreements": 1,
-  "gold_sha256": "1c93ab044cd3cc9a15dc14ed71cdf7908425df7363be59d06d9cb9cb9e47814f",
-  "seed": 479439620,
+  "gold_sha256": "047cbd6ff31e595822b9b2cb945ae619af88f94e909ed75dc10aefc35a450b88",
+  "seed": 75283823,
   "seed_derivation": "int(sha256(gold.json)[:8], 16)",
   "strata": {
     "contradicted": {
