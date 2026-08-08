@@ -38,7 +38,30 @@ session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def _reset_schema(target_engine=None) -> None:
-    async with (target_engine or engine).begin() as conn:
+    """Drop and recreate ``public`` on a pool with nothing else in it.
+
+    **The dispose before the drop is load-bearing and is not the one the
+    callers do afterwards.** ``DROP SCHEMA ... CASCADE`` needs an
+    AccessExclusiveLock on every object it removes, and a pooled connection
+    left idle-in-transaction from an earlier test still holds AccessShareLock
+    on those same relations. Postgres then has the drop waiting on the reader
+    and the reader waiting on the drop, and resolves it by killing one —
+    surfacing as ``DeadlockDetectedError`` on ``DROP SCHEMA IF EXISTS public
+    CASCADE`` rather than as anything resembling its cause.
+
+    It is timing-dependent, so it fails only under load: twice on 2026-08-09,
+    both times with the machine busy, and never in a quiet run of the same
+    suite. That profile is the hazard, not a mitigation of it — an
+    intermittently red gate teaches its readers to re-run until green, which
+    is exactly how a real regression gets waved through.
+
+    The callers' own ``dispose()`` *after* the drop stays where it is and is a
+    different concern: asyncpg caches prepared-statement plans against object
+    OIDs, which the drop invalidates.
+    """
+    target = target_engine or engine
+    await target.dispose()
+    async with target.begin() as conn:
         await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
         await conn.execute(text("CREATE SCHEMA public"))
 
