@@ -644,6 +644,40 @@ contradiction beats any corroboration count with no config on its path. A judge 
 manufactures 7 disputes per 241 claims would, unqualified, be a live source of false
 `disputed` transitions.
 
+**A prompt fix was tried, measured, and reverted — record it so it is not redone.**
+The prompt referenced "a reversed relation when the relation is exclusive in direction"
+without ever saying which relations qualify; the gold decides that from a 16-row table
+the judge has never seen. That gap was real: enumerating both classes from the taxonomy's
+own semantics took `direction` from 0.900 to a perfect **30/30**. But the same edit made
+the judge broadly reluctant to call contradiction at all, and `value-swap` collapsed
+**0.897 → 0.690**. Net (`docs/eval/2026-08-08-judge-qualification-7779f3dd.md`, run as a
+diagnostic against a non-canonical record path so it could not mint):
+
+| | v1 | v2 |
+|---|---|---|
+| contradiction-precision | 0.8814 | 0.9020 |
+| contradiction-**recall** | 0.945 (52/55) | **0.836 (46/55)** |
+| `direction` | 0.900 | 1.000 |
+| `value-swap` | 0.897 | 0.690 |
+
+Precision improved **only because the judge predicted contradiction less often** — false
+positives 7 → 5 while true positives fell 52 → 46. Reverted to v1, so the identity the two
+recorded attempts measured is the shipped one.
+
+**The gate rewarded that trade, and that is a gate-design finding.** Contradiction
+*recall* is computed on every run and carries **no bar**; only precision is gated. So a
+change that trades recall for precision reads as progress on the one number the gate
+watches while making the judge worse at its job — missing 9 contradictions of 55 instead
+of 3. One unplanned edit walked straight into it. Before the next attempt, the owner
+should decide whether contradiction-recall gets a bar of its own (or the pair is gated on
+an F-measure); optimising an absolute veto on precision alone selects for a judge that
+stays quiet.
+
+**Local prompt edits have non-local effects.** The direction enumeration was defensible in
+isolation, sourced from the taxonomy rather than from the observed errors, and it still
+broke an unrelated slice. Any future prompt work needs the whole slice table read before
+and after, not just the metric being chased.
+
 **Stopping here rather than trying a third model.** Two attempts at a frozen prompt is the
 remedy; an open-ended sweep until one clears is tuning-against-gold by another route, and
 the harness counts contacts precisely so that is visible. The remaining honest moves are

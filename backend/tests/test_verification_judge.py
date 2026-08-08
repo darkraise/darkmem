@@ -325,7 +325,10 @@ def test_api_key_never_affects_the_identity():
 
 def test_prompt_version_moves_the_identity(monkeypatch):
     before = vj.judge_identity_hash(vj.judge_identity(_judge_config()["verification"]))
-    monkeypatch.setattr(vj, "JUDGE_PROMPT_VERSION", 2)
+    # Relative to whatever the current version is, not a literal: pinning "2"
+    # here made this test pass only while the shipped version was 1, and it
+    # went red the first time the prompt was legitimately revised.
+    monkeypatch.setattr(vj, "JUDGE_PROMPT_VERSION", vj.JUDGE_PROMPT_VERSION + 1)
     after = vj.judge_identity_hash(vj.judge_identity(_judge_config()["verification"]))
     assert before != after
 
