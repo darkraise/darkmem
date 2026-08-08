@@ -268,16 +268,33 @@ async def run_qualification(
     }, path=ledger_path)
 
     if gate:
-        target = Path(record_path) if record_path is not None else vj.QUALIFICATION_RECORD_PATH
-        jq.write_qualification_record(
-            target, gold_path=gold_path, identity=identity, score=score,
-            gold_doc=gold_doc, ledger_run_id=run_id, bars=meta["bars"],
-            git_sha=meta["git_sha"], timestamp=timestamp,
-        )
-        print(f"[4/4] gate run: qualification record written to {target}")
-        for bar_key, result in jq.bar_results(score, meta["bars"]).items():
+        results = jq.bar_results(score, meta["bars"])
+        for bar_key, result in results.items():
             print(f"  {bar_key}: measured={result['measured']} bar={result['bar']} "
                   f"-> {'PASS' if result['passed'] else 'FAIL'}")
+        missed = [k for k, r in results.items() if not r["passed"]]
+        if missed:
+            # A failed gate leaves its report and its ledger rows, and nothing
+            # else. Until 2026-08-08 it also wrote the qualification record --
+            # the very artifact that opens G-D -- carrying its own failing
+            # numbers. `qualification_state` re-checks every metric at read
+            # time, so nothing was qualified by it; but it left a key in the
+            # door that turns the moment a bar is loosened, and a bar is a
+            # config row. The G-C driver states the opposite rule for its own
+            # record ("written only by a run whose verdict cleared, and only by
+            # the gate owner deliberately, never as a side effect of
+            # measuring"); the two gates now agree.
+            print(f"[4/4] gate run MISSED {len(missed)} bar(s): "
+                  f"{', '.join(missed)} — no qualification record written. "
+                  f"G-D stays closed.")
+        else:
+            target = Path(record_path) if record_path is not None else vj.QUALIFICATION_RECORD_PATH
+            jq.write_qualification_record(
+                target, gold_path=gold_path, identity=identity, score=score,
+                gold_doc=gold_doc, ledger_run_id=run_id, bars=meta["bars"],
+                git_sha=meta["git_sha"], timestamp=timestamp,
+            )
+            print(f"[4/4] gate run CLEARED every bar: record written to {target}")
     else:
         print("[4/4] interim run complete — not a qualification verdict; "
               "no app-side record written.")

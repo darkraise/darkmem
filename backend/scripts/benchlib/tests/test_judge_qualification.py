@@ -1,6 +1,7 @@
 """T2.26 — judge qualification: scoring arithmetic, the G-D eligibility lock,
 recorder/report/record plumbing, and the runner (no bench DB, no live LLM)."""
 import json
+import pathlib
 
 import pytest
 
@@ -505,6 +506,41 @@ def cycling_script():
     return script
 
 
+def perfect_script(gold_path):
+    """A stub that answers every pair with the gold's own verdict.
+
+    Needed since 2026-08-08: a gate run that misses a bar no longer writes a
+    qualification record, so a test exercising the *write* path needs a judge
+    that clears. `cycling_script` cannot -- it answers round-robin.
+
+    Keyed on premise **and** hypothesis. The gold reuses one hypothesis against
+    several premises with different verdicts, so a hypothesis-keyed stub answers
+    the wrong pair and the run fails a bar for a reason the code does not have.
+    """
+    doc = json.loads(pathlib.Path(gold_path).read_text(encoding="utf-8"))
+    by_pair = {
+        (p["premise"].strip(), p["hypothesis"].strip()): p["verdict"]
+        for p in doc["pairs"] if not p.get("retired")
+    }
+    # The plumbing fixtures live outside the gold and carry their expected
+    # verdict in a `note` prefix. They are answered too, because the runner
+    # sanity-checks the fixture stage before it will touch the gold at all --
+    # and that check fails a judge that emits only one verdict class.
+    sanity = json.loads(pathlib.Path(jq.SANITY_PAIRS_PATH).read_text(encoding="utf-8"))
+    for row in (sanity["pairs"] if isinstance(sanity, dict) else sanity):
+        by_pair[(row["premise"].strip(), row["hypothesis"].strip())] = (
+            row["note"].split("—", 1)[0].strip()
+        )
+
+    def script(user):
+        premise = _premise_of(user)
+        hypothesis = user.split("HYPOTHESIS:\n", 1)[1].split("\n", 1)[0]
+        verdict = by_pair.get((premise.strip(), hypothesis.strip()))
+        return json.dumps({"verdict": verdict or "unsupported", "reason": "stub"})
+
+    return script
+
+
 def _premise_of(user_content):
     return user_content.split("PREMISE:\n", 1)[1].split("\n\nHYPOTHESIS:", 1)[0]
 
@@ -546,12 +582,26 @@ def _write_eligible_gold(tmp_path):
                 },
             })
             continue
+        # The synthetic half carries all three verdict classes. An all-entailed
+        # gold made a *correct* judge emit one class, which the runner's gold
+        # backstop rejects outright -- so this fixture could only ever be driven
+        # by a judge that was wrong somewhere.
+        verdict = ("entailed", "contradicted", "unsupported")[i % 3]
+        # Each verdict needs a slice that admits it -- the loader refuses a
+        # `verbatim` contradiction outright.
+        slice_tag = {"entailed": "verbatim", "contradicted": "value-swap",
+                     "unsupported": "unrelated"}[verdict]
+        hypothesis = {
+            "entailed": f"Value {i} is held by synthetic fact {i}.",
+            "contradicted": f"Synthetic fact {i} holds value {i + 1000}.",
+            "unsupported": f"Synthetic fact {i} was reviewed in March.",
+        }[verdict]
         pairs.append({
             "id": f"eg-{i:04d}",
             "premise": f"Synthetic fact {i} holds value {i}.",
-            "hypothesis": f"Value {i} is held by synthetic fact {i}.",
-            "verdict": "entailed",
-            "slice_tags": ["verbatim"],
+            "hypothesis": hypothesis,
+            "verdict": verdict,
+            "slice_tags": [slice_tag],
             "provenance": "hand-authored-synthetic-fact",
             "label_source": "adjudicated",
             "rationale": "synthetic eligibility fixture",
@@ -559,9 +609,11 @@ def _write_eligible_gold(tmp_path):
     doc = {
         "version": 99,
         "variant": "claim-fact",
-        "declared_slice_counts": {s: (n if s == "verbatim" else 0)
-                                  for s in entailment_gold.SLICES},
-        "declared_verdict_counts": {v: (n if v == "entailed" else 0)
+        "declared_slice_counts": {
+            sl: sum(1 for p in pairs if sl in p["slice_tags"])
+            for sl in entailment_gold.SLICES
+        },
+        "declared_verdict_counts": {v: sum(1 for p in pairs if p["verdict"] == v)
                                     for v in entailment_gold.VERDICTS},
         "declared_provenance_counts": {
             "l2-fact": n_l2,
@@ -711,7 +763,9 @@ def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
 def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path):
     gold_path = _write_eligible_gold(tmp_path)
     record_path = tmp_path / "rehearsal-record.json"
-    stub_cls, _seen = make_stub(cycling_script())
+    # A clearing judge: since 2026-08-08 a gate run that misses a bar writes no
+    # record at all, so exercising the write path needs one that passes.
+    stub_cls, _seen = make_stub(perfect_script(gold_path))
     result = _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
                   record_path=record_path)
 
@@ -722,7 +776,7 @@ def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path):
 
     # The same rehearsal aimed at the real canonical record path refuses —
     # the minting lock, exercised through the runner surface.
-    stub_cls2, _ = make_stub(cycling_script())
+    stub_cls2, _ = make_stub(perfect_script(gold_path))
     with pytest.raises(ValueError):
         _run(tmp_path / "second", stub_cls2, gate=True, gold_path=gold_path,
              record_path=vj.QUALIFICATION_RECORD_PATH)

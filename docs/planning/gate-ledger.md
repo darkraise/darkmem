@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open** | — | — |
+| G-D | L2 → L3 | **open** (measured 2026-08-08: NOT CLEARED — contradiction-precision 0.7937 vs 0.95; entailed P/R pass) | — | T2.41 — this file, "G-D verdict"; `docs/eval/2026-08-08-judge-qualification.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -608,12 +608,55 @@ and this run deliberately minted none.)*
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | — | — | — |
-| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | — | — | — |
+| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | **0.9895** | `docs/eval/2026-08-08-judge-qualification.md` | **PASS** |
+| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | **0.9307** | same | **PASS** |
+| `verification` judge precision on the **contradiction** verdict | ≥ 0.95 (`contradiction_precision_bar`, config default; stated 2026-07-31) | **0.7937** | same | **FAIL** |
 
 The veto consumer inherits the same qualification on the **contradiction** verdict
 (doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
 2026-07-31 before any gate run alongside the two above.
+
+### G-D verdict: **NOT CLEARED** (2026-08-08, T2.41)
+
+**Two bars of three cleared; the contradiction bar missed by a wide margin, and it is
+the one the veto consumer depends on.** Run against gold v1 at 241 live pairs
+(`sha256 e6d5647a…`), judge identity `4d886440a646f176` (`deepseek-v4-flash`, prompt v1),
+`gold_touching_attempts: 1`, invalid responses 0/241. Full report:
+`docs/eval/2026-08-08-judge-qualification.md`.
+
+- entailed-precision **0.9895** ≥ 0.95 — **PASS**
+- entailed-recall **0.9307** ≥ 0.90 — **PASS**
+- contradiction-precision **0.7937** vs 0.95 — **FAIL**
+
+**The failure is the one T2.26 predicted, at scale.** 13 gold-`unsupported` pairs were
+judged `contradicted` — manufactured disputes — against 50 true positives. The interim
+run's 0.818 on 41 pairs was dismissed as unresolvable at that size (one error moved it
+0.09); at 241 pairs the granularity objection is gone, and the number went *down*. The
+`direction` slice carries it: **0.567 accuracy (17/30)**, against 0.97+ on `overreach`,
+`paraphrase`, `verbatim` and `unrelated`. The judge reads an unasserted reversal as an
+excluded one.
+
+**What this closes.** G-D stays open, so Phase 3 (L3 articles) stays closed and no
+qualification record exists — the runner wrote none, by the rule below.
+`VerificationJudge.judge()` therefore continues to refuse unconditionally, which keeps the
+machine's contradiction arm dark and, through the G-C→G-D cross-edge ratified 2026-08-07,
+leaves G-C's false-promotion audit unable to produce a systematic number. **E2 cannot
+close on this run.**
+
+**A failed gate run no longer mints the record it would have opened (fixed 2026-08-08).**
+This run wrote `app/services/verification_qualification.json` carrying its own failing
+metrics and `gate_eligible: true`. Nothing was qualified by it — `qualification_state`
+re-checks every metric against its bar at read time and refused — but the artifact sat at
+the canonical path, and a bar is a `config` row: loosen one and the key turns. The G-C
+driver had always stated the opposite rule for its own record ("written only by a run
+whose verdict cleared … never as a side effect of measuring"); the two gates now agree.
+The record was deleted and the runner will not write one on a miss.
+
+**Do not fix this by tuning the prompt against this gold.** A prompt edit moves
+`prompt_sha`, hence the judge identity, hence de-qualifies mechanically — and tuning
+against the set that measured the failure is the contaminating loop T2.26's plan review
+flagged as its one Critical. A re-attempt needs either a different judge model at the same
+frozen prompt, or gold growth authored independently of these 13 errors.
 
 **Interim measurement (T2.26, 2026-07-31) — not a gate verdict.** One counted run of the
 qualified-judge candidate (`app/services/verification_judge.py`; model
