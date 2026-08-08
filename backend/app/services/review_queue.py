@@ -178,6 +178,13 @@ _FACT_COLUMN_NAMES = (
     "confidence",
     "review_state",
     "demotion_pending_since",
+    # Doc 08 §6's third opener (T2.112). Read as columns, not by asking the
+    # veto: an `app.services.contradiction_veto` import on a read surface is
+    # what invariant 15's source scan fails the build on. The ladder
+    # re-derives the finding every recompute and lands it here, so this surface
+    # reads a marker the authority refreshes rather than re-adjudicating.
+    "contradiction_suspected_at",
+    "contradiction_counterpart_id",
     "created_at",
 )
 
@@ -209,7 +216,9 @@ def _served_labels(verification_status: str | None) -> dict[str, Any]:
 
 
 def _fact_reason(
-    verification_status: str | None, demotion_pending_since: Any = None
+    verification_status: str | None,
+    demotion_pending_since: Any = None,
+    contradiction_suspected_at: Any = None,
 ) -> str:
     """Derived from the fact's own columns, never from ``review_state``.
 
@@ -232,7 +241,57 @@ def _fact_reason(
         return "disputed"
     if demotion_pending_since is not None:
         return "under-sourced"
+    if contradiction_suspected_at is not None:
+        return "contradiction-suspected"
     return "unspecified"
+
+
+async def _counterpart_triples(session: AsyncSession, ids: list) -> dict[str, dict]:
+    """The suspected counterparts' own triples, one query for the page.
+
+    Expired counterparts are deliberately included. Facts are
+    invalidate-not-delete, and a flag raised against a fact that has since been
+    retired is exactly the case a reviewer most needs to see rendered — the
+    alternative is a flag whose other side silently reads as missing.
+    """
+    wanted = {str(i) for i in ids if i is not None}
+    if not wanted:
+        return {}
+    result = await session.execute(
+        text(
+            "SELECT id, subject_name, rel_type, object_name, expired_at "
+            "FROM knowledge_triples WHERE id = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": list(wanted)},
+    )
+    # Projected field by field rather than copied wholesale: a bare mapping
+    # copy is the shape `claim_gates` fails the build on, because a widened
+    # projection could start carrying a `verification_status` past the one
+    # producer allowed to build a served label. This block serves no rung.
+    return {
+        str(r["id"]): {
+            "subject_name": r["subject_name"],
+            "rel_type": r["rel_type"],
+            "object_name": r["object_name"],
+            "expired_at": r["expired_at"],
+        }
+        for r in result.mappings().all()
+    }
+
+
+def _suspicion_block(row: dict, counterparts: dict[str, dict]) -> dict | None:
+    if row["contradiction_suspected_at"] is None:
+        return None
+    counterpart_id = row["contradiction_counterpart_id"]
+    triple = counterparts.get(str(counterpart_id)) if counterpart_id else None
+    return {
+        "counterpart_id": str(counterpart_id) if counterpart_id else None,
+        "counterpart_subject": triple["subject_name"] if triple else None,
+        "counterpart_rel_type": triple["rel_type"] if triple else None,
+        "counterpart_object": triple["object_name"] if triple else None,
+        "counterpart_expired_at": triple["expired_at"] if triple else None,
+        "suspected_at": row["contradiction_suspected_at"],
+    }
 
 
 def _article_reason(status: str | None) -> str:
@@ -363,6 +422,13 @@ async def list_open_facts(
         await _latest_verified_evidence(session, fact_ids), id_kind=FACT_ID_KIND
     )
 
+    # One query for the page, like the evidence block above: the counterpart
+    # id is on the row already, but an id alone sends every reader back to
+    # `knowledge_triples` for the sentence they are being asked to judge.
+    counterpart_triples = await _counterpart_triples(
+        session, [row["contradiction_counterpart_id"] for row in rows]
+    )
+
     items = []
     for row in rows:
         fid = str(row["id"])
@@ -389,7 +455,16 @@ async def list_open_facts(
                 # Derived from the raw rung, which is what a reason is for: it
                 # answers why the row is queued, and `disputed` is ungated.
                 "reason": _fact_reason(
-                    row["verification_status"], row["demotion_pending_since"]
+                    row["verification_status"],
+                    row["demotion_pending_since"],
+                    row["contradiction_suspected_at"],
+                ),
+                # Doc 08 §6's "labelled with both sides", for the one opener
+                # that had neither a side nor a label. Absent rather than empty
+                # when unflagged, so "no suspicion" and "a suspicion naming
+                # nothing" stay distinguishable.
+                "suspected_contradiction": _suspicion_block(
+                    row, counterpart_triples
                 ),
                 "evidence": evidence_by_id.get(fid),
                 "consequence": consequence_explanation(row, ranking) if ranked else None,

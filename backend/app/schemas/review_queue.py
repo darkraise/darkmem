@@ -87,6 +87,10 @@ class ReviewQueueFactItem(BaseModel):
     # needs to judge whether the grace window is about to close.
     demotion_pending_since: datetime | None = None
     reason: str
+    # Doc 08 §6's "labelled with both sides", for the contradiction-suspected
+    # opener. Absent rather than empty when there is no suspicion, so "no
+    # flag" and "a flag naming nothing" stay distinguishable to a client.
+    suspected_contradiction: dict[str, Any] | None = None
     evidence: dict[str, Any] | None
     # None only when a caller pins ARRIVAL_DESC, which computes no ranking.
     consequence: ConsequenceExplanation | None = None

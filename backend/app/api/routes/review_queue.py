@@ -5,6 +5,7 @@ Provides:
   - GET /api/v1/review-queue/articles — list open (ungrounded) articles
   - GET /api/v1/review-queue/counts   — cheap totals for both arms
   - POST /api/v1/review-queue/facts/{fact_id}/reject — the one action door
+  - POST /api/v1/review-queue/facts/{fact_id}/dismiss-suspicion — clears one opener
 
 ``review_state`` still has no writer on this surface (T2.62 owns its sole,
 derived one). See ``app/services/review_queue.py`` for why, and for the
@@ -98,4 +99,41 @@ async def reject_fact(
         )
     except human_adjudication.FactNotFound:
         raise HTTPException(status_code=404, detail="Fact not found")
+    await session.commit()
+
+
+@router.post(
+    "/facts/{fact_id}/dismiss-suspicion", status_code=status.HTTP_204_NO_CONTENT
+)
+async def dismiss_suspicion(
+    fact_id: UUID,
+    body: ReviewQueueRejectRequest | None = None,
+    user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Dismiss the model scan's contradiction flag on a fact (T2.112).
+
+    **Not the confirming door.** A reviewer who agrees with the flag rejects the
+    fact through ``/reject`` — the existing adjudication verb — so there is no
+    second write path into dispute, which is the point of routing the scan
+    through a human rather than around one. This door only says the flag was
+    wrong, and moves no verification column.
+
+    204 for ``/reject``'s reason and a sharper one: the dismissal changes no
+    served state, so there is no post-state worth echoing. 404 distinguishes an
+    unknown fact from one carrying no live flag, which is a 409-shaped
+    condition rather than a missing resource — a flag whose guards lapsed
+    between the reviewer's page load and their click is the ordinary race, not
+    an error worth alarming them about.
+    """
+    try:
+        dismissed = await human_adjudication.dismiss_contradiction_suspicion(
+            session, fact_id, actor=user.sub, note=body.note if body else None
+        )
+    except human_adjudication.FactNotFound:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    if not dismissed:
+        raise HTTPException(
+            status_code=409, detail="No live contradiction suspicion on this fact"
+        )
     await session.commit()

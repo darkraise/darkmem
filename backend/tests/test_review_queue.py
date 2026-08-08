@@ -33,8 +33,11 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
-from app.services import review_queue as review_queue_service
+from app.repositories.knowledge_triples import (
+    ContradictionSuspicion,
+    KnowledgeTripleRepository,
+)
+from app.services import human_adjudication, review_queue as review_queue_service
 from app.services.events import record_event
 from app.services.review_queue import build_articles_query, build_facts_query
 
@@ -569,3 +572,128 @@ async def test_counts_route_accepts_project_and_matches_list_route_totals(
         "articles": articles_resp.json()["total"],
     }
     assert counts_resp.json() == {"facts": 1, "articles": 1}
+
+
+# ───────────────── contradiction-suspected opener (T2.112) ─────────────────
+
+
+async def _suspected(session, *, status: str | None = None) -> tuple[str, str]:
+    """Seed a flagged fact and the counterpart it is flagged against.
+
+    Writes the marker through the repository rather than raw SQL, so the test
+    exercises the same one-statement path the ladder uses — a fixture that
+    UPDATEd the columns directly would pass even if the pair could drift apart.
+    """
+    counterpart = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-02")
+    subject = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-01",
+                          status=status, review_state="open")
+    await KnowledgeTripleRepository(session).set_verification_status(
+        subject, None,
+        suspicion=ContradictionSuspicion(since=T0, counterpart_id=counterpart),
+    )
+    await session.commit()
+    return subject, counterpart
+
+
+async def test_suspected_fact_names_its_reason_instead_of_unspecified(session):
+    """The defect T2.112 closes: this row used to arrive reading `unspecified`
+    — healthy-looking, with nothing for the reviewer to act on."""
+    subject, _ = await _suspected(session)
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    row = next(i for i in items if i["id"] == subject)
+    assert row["reason"] == "contradiction-suspected"
+
+
+async def test_suspected_fact_carries_the_counterpart_triple(session):
+    """Doc 08 §6's "labelled with both sides". An id alone sends the reader back
+    to the table for the sentence they are being asked to judge."""
+    subject, counterpart = await _suspected(session)
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    shown = next(i for i in items if i["id"] == subject)["suspected_contradiction"]
+    assert shown["counterpart_id"] == counterpart
+    assert (shown["counterpart_subject"], shown["counterpart_rel_type"],
+            shown["counterpart_object"]) == ("pg", "DEPLOYED_ON", "db-02")
+
+
+async def test_an_unflagged_fact_carries_no_suspicion_block(session):
+    await _fact(session, subject="a", obj="b", review_state="open")
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    assert items[0]["suspected_contradiction"] is None
+
+
+async def test_the_flag_never_outranks_a_dispute(session):
+    """Graver-first, mirroring REVIEW_OPENERS. The flag is the only opener that
+    has not moved the fact's rung, so it ranks last."""
+    subject, _ = await _suspected(session, status="disputed")
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    assert next(i for i in items if i["id"] == subject)["reason"] == "disputed"
+
+
+async def test_the_flag_moves_no_rung(session):
+    """The amendment's whole trade: a measured-0.88-precision instrument may
+    summon a human and may not move a rung."""
+    subject, _ = await _suspected(session)
+    held = (await session.execute(
+        text("SELECT verification_status FROM knowledge_triples WHERE id = CAST(:i AS uuid)"),
+        {"i": subject},
+    )).scalar_one()
+    assert held == "candidate"
+
+
+async def test_dismissal_clears_the_flag_and_journals_it(session):
+    subject, _ = await _suspected(session)
+    assert await human_adjudication.dismiss_contradiction_suspicion(
+        session, subject, actor="alice") is True
+    await session.commit()
+
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    row = next(i for i in items if i["id"] == subject)
+    assert row["reason"] == "unspecified"
+    assert row["suspected_contradiction"] is None
+    journalled = (await session.execute(
+        text("SELECT count(*) FROM events WHERE event_type = 'contradiction_dismissed' "
+             "AND object_id = CAST(:i AS uuid)"),
+        {"i": subject},
+    )).scalar_one()
+    assert journalled == 1
+
+
+async def test_dismissal_clears_only_this_opener(session):
+    """The done-when clause with teeth: the clear is the absence of EVERY
+    opener, so a fact held open by another condition must not leave the queue
+    because this one was dismissed."""
+    subject, _ = await _suspected(session, status="disputed")
+    await human_adjudication.dismiss_contradiction_suspicion(session, subject, actor="alice")
+    await session.commit()
+    items, _ = await review_queue_service.list_open_facts(session, project=PROJECT)
+    row = next(i for i in items if i["id"] == subject)
+    assert row["review_state"] == "open"
+    assert row["reason"] == "disputed"
+
+
+async def test_dismissing_an_unflagged_fact_is_refused_not_journalled(session):
+    fact_id = await _fact(session, subject="a", obj="b", review_state="open")
+    assert await human_adjudication.dismiss_contradiction_suspicion(
+        session, fact_id, actor="alice") is False
+    journalled = (await session.execute(
+        text("SELECT count(*) FROM events WHERE event_type = 'contradiction_dismissed'")
+    )).scalar_one()
+    assert journalled == 0
+
+
+async def test_dismissal_is_not_a_human_verdict_on_the_fact(session):
+    """It must not reach doc 17 §5.1's human-rejection arm: counting a cleared
+    flag as a rejection would manufacture a false promotion out of the scan's
+    own false positive."""
+    from app.services.human_adjudication import HUMAN_VERDICTS
+
+    assert "dismissed" not in HUMAN_VERDICTS
+    subject, _ = await _suspected(session)
+    await human_adjudication.dismiss_contradiction_suspicion(session, subject, actor="alice")
+    await session.commit()
+    verdicts = (await session.execute(
+        text("SELECT count(*) FROM events WHERE event_type = 'human_verdict' "
+             "AND object_id = CAST(:i AS uuid)"),
+        {"i": subject},
+    )).scalar_one()
+    assert verdicts == 0

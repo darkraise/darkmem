@@ -507,6 +507,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("GET", f"{V1}/review-queue/articles"),
             ("GET", f"{V1}/review-queue/counts"),
             ("POST", f"{V1}/review-queue/facts/{{fact_id}}/reject"),
+            ("POST", f"{V1}/review-queue/facts/{{fact_id}}/dismiss-suspicion"),
         ),
         reason=(
             "Doc 12 section 1 names the review queue as one of the reshape's "

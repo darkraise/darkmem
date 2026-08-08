@@ -169,6 +169,9 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/review-queue/counts"): 200,
     ("GET", "/api/v1/review-queue/facts"): 200,
     ("POST", "/api/v1/review-queue/facts/{fact_id}/reject"): 204,
+    # 204 for `/reject`'s reason: the dismissal moves no served state, so
+    # there is no post-state worth echoing (T2.112).
+    ("POST", "/api/v1/review-queue/facts/{fact_id}/dismiss-suspicion"): 204,
     # T2.23. Bulk actions are 200-with-a-body for the same reason the T2.13
     # undo doors are: every item's own outcome (including a refusal) is the
     # point of the response, and a 204 would give the caller nothing to act on.

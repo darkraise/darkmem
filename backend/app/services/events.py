@@ -51,6 +51,21 @@ logger = logging.getLogger(__name__)
 # they share.
 CONTRADICTION_SCANNED = "contradiction_scanned"
 
+# A human's dismissal of the model scan's flag (T2.112). **Deliberately its own
+# type rather than a `human_verdict` carrying a fifth verdict value**, which is
+# the shape `human_adjudication` argues for and is right for its own case.
+# `HUMAN_VERDICTS` is doc 08 §6's four verbs and all four adjudicate *the fact*
+# — its truth, its grounding, its rung. A dismissal adjudicates the **finding**;
+# the fact is left exactly as it was. Adding `dismissed` there would make it a
+# legal verdict to record against any fact, which means nothing, and that set is
+# closed and raise-guarded precisely so unmeaning verdicts cannot exist.
+#
+# It also creates a signal rather than destroying one: a dismissal is a measured
+# false positive of the LLM contradiction scan on live data — the evidence a
+# later re-qualification of that arm would want, and the only such evidence this
+# system produces outside a gold set.
+CONTRADICTION_DISMISSED = "contradiction_dismissed"
+
 # Doc 10 §6's re-verify outcome. Named rather than spelled twice for the reason
 # above: the re-verifier writes it and a human reading a downgraded badge is
 # what reads it back, and the two only meet through this vocabulary. It is
@@ -79,6 +94,7 @@ EVENT_TYPES: list[str] = [
     "sources_changed",
     CITATION_STALE,
     CONTRADICTION_SCANNED,
+    CONTRADICTION_DISMISSED,
     "document_filed",
     "repo_registered",
     "repo_synced",

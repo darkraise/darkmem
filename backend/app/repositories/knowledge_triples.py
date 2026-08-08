@@ -161,12 +161,67 @@ class _UnsetDemotionPending:
 
 UNSET_DEMOTION_PENDING = _UnsetDemotionPending()
 
+
+@dataclass(frozen=True)
+class ContradictionSuspicion:
+    """Doc 08 §6's third review opener, as one value (T2.112).
+
+    ``since`` is the marker — ``IS NOT NULL`` is what the queue derives
+    ``contradiction-suspected`` from — and ``counterpart_id`` is the fact it is
+    suspected against, which doc 08 §6 requires because a reviewer asked to
+    confirm a contradiction they cannot see is not reviewing.
+
+    The two travel as one value for ``DemotionPending``'s reason: a timestamp
+    without a counterpart is a flag nobody can act on, and a counterpart
+    without a timestamp is evidence for a flag that was never raised. Neither
+    is reachable by passing one argument and forgetting the other.
+
+    **This is not a rung and carries no confidence.** The flagged fact keeps
+    its ``verification_status``, its badge and its place in retrieval; the
+    2026-08-08 amendment's whole trade is that a measured-0.88-precision
+    instrument may summon a human and may not move a rung.
+    """
+
+    since: datetime
+    counterpart_id: UUID | str
+
+    def __post_init__(self) -> None:
+        if self.since is None:
+            raise ValueError(
+                "an open suspicion carries its timestamp; pass None as the "
+                "whole value to clear the marker instead"
+            )
+        if not self.counterpart_id:
+            raise ValueError(
+                "an open suspicion names the fact it is suspected against — "
+                "doc 08 §6 labels both sides, and a flag with no counterpart "
+                "is one no reviewer can confirm or dismiss"
+            )
+
+
+class _UnsetSuspicion:
+    """Sentinel: this caller has no opinion about the suspicion columns.
+
+    ``UNSET_DEMOTION_PENDING``'s distinction, for the identical reason —
+    ``None`` is not available as "no opinion" here, because *clearing* the
+    marker is a real write the ladder makes every time a finding lapses.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "UNSET_SUSPICION"
+
+
+UNSET_SUSPICION = _UnsetSuspicion()
+
 _COLUMNS = """
     id, subject_id, object_id, subject_name, object_name, rel_type,
     valid_at, invalid_at, expired_at, reference_time, fact, project,
     triple_key, verification_status, confidence, applies_when,
     learned_in, review_state, source_file, demotion_pending_since,
-    demotion_pending_cycles, created_at, stated_expiry
+    demotion_pending_cycles, created_at, stated_expiry,
+    contradiction_suspected_at, contradiction_counterpart_id
 """
 
 
@@ -674,6 +729,7 @@ class KnowledgeTripleRepository:
         contradiction: dict[str, Any] | None = None,
         review_state: str | None | _UnsetReviewState = UNSET_REVIEW_STATE,
         demotion_pending: DemotionPending | _UnsetDemotionPending = UNSET_DEMOTION_PENDING,
+        suspicion: ContradictionSuspicion | None | _UnsetSuspicion = UNSET_SUSPICION,
     ) -> None:
         """Write the verification axis only. Belief columns are untouched.
 
@@ -877,6 +933,7 @@ class KnowledgeTripleRepository:
             and confidence is None
             and isinstance(review_state, _UnsetReviewState)
             and isinstance(demotion_pending, _UnsetDemotionPending)
+            and isinstance(suspicion, _UnsetSuspicion)
         ):
             return
 
@@ -927,6 +984,21 @@ class KnowledgeTripleRepository:
                 "demotion_pending_cycles = CAST(:demotion_pending_cycles AS integer)"
             )
             params["demotion_pending_cycles"] = demotion_pending.cycles
+        if not isinstance(suspicion, _UnsetSuspicion):
+            # Both columns move together or neither does: a timestamp without
+            # a counterpart is a flag the reviewer cannot act on, and a
+            # counterpart without a timestamp is evidence for a flag that is
+            # not raised. One statement is what makes both unrepresentable.
+            assignments.append(
+                "contradiction_suspected_at = CAST(:suspected_at AS timestamptz)"
+            )
+            params["suspected_at"] = None if suspicion is None else suspicion.since
+            assignments.append(
+                "contradiction_counterpart_id = CAST(:suspected_counterpart AS uuid)"
+            )
+            params["suspected_counterpart"] = (
+                None if suspicion is None else str(suspicion.counterpart_id)
+            )
         if assignments:
             await self.session.execute(
                 text(

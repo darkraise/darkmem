@@ -74,7 +74,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository
-from app.services.events import CONTRADICTION_SCANNED
+from app.services.events import CONTRADICTION_DISMISSED, CONTRADICTION_SCANNED
 from app.services.relations import REPLACES_FAMILY
 
 logger = logging.getLogger(__name__)
@@ -323,7 +323,26 @@ async def detect_open_contradiction(
 RULE_SCANNED = "llm_scan"
 
 _LATEST_SCAN_SQL = """
-    SELECT payload
+    SELECT payload, created_at, id
+    FROM events
+    WHERE object_type = 'fact'
+      AND event_type = CAST(:kind AS text)
+      AND object_id = CAST(:id AS uuid)
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+"""
+
+# A human dismissal landing after the finding silences it (T2.112), compared on
+# the same ``(created_at, id)`` tuple the recency rule above uses so a dismissal
+# and a re-scan in one instant order deterministically rather than by which
+# query ran first.
+#
+# **Read-time, like every other guard here, and that placement is the design.**
+# Dismissal joins the three clearing grounds in this function's docstring rather
+# than short-circuiting them, so a *later* scan legitimately re-flags: the human
+# dismissed the finding they were shown, not every finding this pair can produce.
+_LATEST_DISMISSAL_SQL = """
+    SELECT created_at, id
     FROM events
     WHERE object_type = 'fact'
       AND event_type = CAST(:kind AS text)
@@ -404,6 +423,15 @@ async def detect_scanned_contradiction(
         return None
     payload = row[0] or {}
     if payload.get("contradicted") is not True:
+        return None
+
+    dismissal = (
+        await session.execute(
+            text(_LATEST_DISMISSAL_SQL),
+            {"id": str(subject["id"]), "kind": CONTRADICTION_DISMISSED},
+        )
+    ).first()
+    if dismissal is not None and (dismissal[0], dismissal[1]) > (row[1], row[2]):
         return None
 
     counterpart_id = payload.get("counterpart_id")

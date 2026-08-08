@@ -104,9 +104,27 @@ export interface ReviewQueueFactItem {
   review_state: string | null
   demotion_pending_since: string | null
   reason: string
+  /** T2.112: doc 08 section 6's "labelled with both sides" for the
+   *  contradiction-suspected opener. Null when the fact carries no flag, so
+   *  "no suspicion" and "a suspicion naming nothing" stay distinguishable.
+   *  The fact keeps its rung while flagged -- this is a prompt to look, not a
+   *  demotion. */
+  suspected_contradiction: SuspectedContradiction | null
   evidence: VerifiedEvidence | null
   consequence: ConsequenceExplanation | null
   created_at: string
+}
+
+export interface SuspectedContradiction {
+  counterpart_id: string | null
+  counterpart_subject: string | null
+  counterpart_rel_type: string | null
+  counterpart_object: string | null
+  /** Non-null when the counterpart has since been retired. Facts are
+   *  invalidate-not-delete, so a flag can outlive its other side, and that is
+   *  exactly the case a reviewer most needs rendered rather than hidden. */
+  counterpart_expired_at: string | null
+  suspected_at: string
 }
 
 export interface ReviewQueueFactListResponse {

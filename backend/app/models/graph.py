@@ -91,6 +91,31 @@ class KnowledgeTriple(Base):
     # the window is fixed in consecutive recompute cycles rather than in time.
     demotion_pending_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     demotion_pending_cycles: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # Doc 08 §6's third review opener (T2.112), shaped after the pair above
+    # rather than invented: the marker is what the reviewer's queue derives
+    # `contradiction-suspected` from, and it is emphatically **not** a rung —
+    # a flagged fact keeps its `verification_status`, its badge and its place
+    # in retrieval while a human looks.
+    #
+    # **Why a column and not a read of the scan's journal.** The finding is
+    # re-derived, guards and all, by `detect_scanned_contradiction` on every
+    # recompute; the ladder writes the result here in the *same* UPDATE as
+    # `verification_status`, exactly as `demotion_pending_since` rides it. So
+    # this is a cache the authority refreshes each cycle, not a frozen verdict
+    # — the same staleness contract the sibling marker already has. The
+    # alternative (the queue reading the journal itself) would put an
+    # `app.services.contradiction_veto` import on a read surface, which
+    # invariant 15's source scan fails the build on, and rightly: adjudication
+    # stays reachable from the ladder alone.
+    #
+    # The counterpart id rides beside the timestamp because doc 08 §6 wants
+    # both sides labelled, and a reviewer asked to confirm a contradiction
+    # against a counterpart they cannot see is not reviewing. It carries no FK
+    # on purpose: facts are invalidate-not-delete, so the counterpart outlives
+    # its own retirement, and a cascade here would blank the evidence for the
+    # flag at exactly the moment it mattered.
+    contradiction_suspected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contradiction_counterpart_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # T2.85: the expiry the fact's own text states, recorded at lift time and
     # spent by the recompute arm, which writes `invalid_at := stated_expiry`
     # once the date passes. Not written to `invalid_at` at lift time (that

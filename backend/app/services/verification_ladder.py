@@ -82,6 +82,8 @@ from app.models.config import Config
 from app.repositories.knowledge_triples import (
     REVIEW_STATE_OPEN,
     UNSET_DEMOTION_PENDING,
+    UNSET_SUSPICION,
+    ContradictionSuspicion,
     DemotionPending,
     KnowledgeTripleRepository,
 )
@@ -964,6 +966,29 @@ def contradiction_evidence(finding: ContradictionFinding) -> dict[str, str | Non
 # ─────────────────────────── the applier ───────────────────────────
 
 
+
+def _suspicion_marker(finding, *, opened_at, now):
+    """The suspicion columns' value for this cycle, or ``None`` to clear them.
+
+    **``since`` is when the flag opened, not when it was last seen.** A finding
+    that keeps firing keeps its original timestamp, because the number a
+    reviewer needs is how long this has been waiting on them — the same reading
+    ``demotion_pending_since`` carries for the sibling opener. Refreshing it
+    every cycle would make an old, ignored flag look new on every recompute.
+
+    Returns ``None`` rather than ``UNSET_SUSPICION`` when there is no finding:
+    clearing is a real write the ladder owes on every cycle whose guards have
+    lapsed, and it is what makes the flag self-clearing on the three grounds
+    the 2026-08-08 amendment's cost argument rests on.
+    """
+    if finding is None:
+        return None
+    return ContradictionSuspicion(
+        since=opened_at or now,
+        counterpart_id=finding.counterpart_id,
+    )
+
+
 async def recompute_fact(
     session: AsyncSession,
     fact_id: UUID | str,
@@ -1052,7 +1077,8 @@ async def recompute_fact(
     row = await session.execute(
         text(
             "SELECT verification_status, demotion_pending_since, "
-            "demotion_pending_cycles FROM knowledge_triples "
+            "demotion_pending_cycles, contradiction_suspected_at "
+            "FROM knowledge_triples "
             "WHERE id = CAST(:id AS uuid) FOR UPDATE"
         ),
         {"id": str(fact_id)},
@@ -1084,9 +1110,13 @@ async def recompute_fact(
     if blocked is None:
         blocked = await adjudicate_supersession_hold(session, fact_id)
 
+    # The finding, not merely whether there is one: doc 08 §6 labels both
+    # sides, so the counterpart has to survive as far as the marker write.
+    suspicion_finding = None
     suspected = contradiction_suspected
     if suspected is None:
-        suspected = await detect_scanned_contradiction(session, fact_id) is not None
+        suspicion_finding = await detect_scanned_contradiction(session, fact_id)
+        suspected = suspicion_finding is not None
 
     decision = decide(
         str(fact_id),
@@ -1136,6 +1166,18 @@ async def recompute_fact(
         contradiction_blocked=decision.contradiction_blocked,
         supersession_blocked=decision.supersession_blocked,
         contradiction=contradiction_evidence(finding) if finding is not None else None,
+        # UNSET when the caller overrode the signal: a replay re-deciding
+        # recorded inputs has no live finding, so it is not the authority on
+        # this marker and must not clear one a real scan raised.
+        suspicion=(
+            UNSET_SUSPICION
+            if contradiction_suspected is not None
+            else _suspicion_marker(
+                suspicion_finding,
+                opened_at=locked["contradiction_suspected_at"],
+                now=now or datetime.now(timezone.utc),
+            )
+        ),
         demotion_pending=(
             hysteresis.marker if hysteresis.marker is not None else UNSET_DEMOTION_PENDING
         ),

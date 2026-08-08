@@ -519,6 +519,23 @@ def _pass_two() -> None:
             source_file         TEXT,
             demotion_pending_since  TIMESTAMPTZ,
             demotion_pending_cycles INTEGER NOT NULL DEFAULT 0,
+            -- T2.112 (doc 08 §6, ruled 2026-08-08). Doc 08 §6's third review
+            -- opener, shaped after demotion_pending_since above rather than
+            -- invented. The ladder re-derives the model scan's finding on
+            -- every recompute (guards re-applied against live rows) and
+            -- writes the result here in the SAME UPDATE as
+            -- verification_status, so this is a cache the authority refreshes
+            -- each cycle, not a frozen verdict. It is not a rung: a flagged
+            -- fact keeps its status, its badge and its place in retrieval
+            -- while a human looks.
+            --
+            -- No FK on the counterpart, deliberately. Facts are
+            -- invalidate-not-delete, so a counterpart outlives its own
+            -- retirement; a cascade would blank the evidence for the flag at
+            -- exactly the moment a reviewer needed it. Same reasoning as
+            -- knowledge_triples.subject_id/object_id carrying no FK.
+            contradiction_suspected_at    TIMESTAMPTZ,
+            contradiction_counterpart_id  UUID,
             -- T2.85 (doc 08 §3.1/§9, ruled 2026-08-06). The expiry a fact's
             -- own text STATES, recorded at lift time and spent later by the
             -- recompute arm, which writes invalid_at := stated_expiry once

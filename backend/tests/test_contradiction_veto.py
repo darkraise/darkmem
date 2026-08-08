@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -47,6 +48,11 @@ from app.services.contradiction_veto import (
     detect_open_contradiction,
     detect_scanned_contradiction,
     windows_overlap,
+)
+from app.services.events import (
+    CONTRADICTION_DISMISSED,
+    CONTRADICTION_SCANNED,
+    record_event,
 )
 from app.services.relations import REPLACES_FAMILY
 from app.taxonomy import LEGACY_RELATION_TYPE_MAP, normalize_relation_type
@@ -1352,3 +1358,86 @@ def test_the_veto_guard_rejects_a_forbidden_reference(tmp_path):
         "the real guard failed to flag a synthesised violation; the tree-wide "
         "scan above would be reporting success while blind"
     )
+
+
+# ─────────────── dismissal survives the next recompute (T2.112) ───────────────
+
+
+async def _scan_row(session, subject, counterpart, witness="witness-1"):
+    await record_event(
+        session,
+        event_type=CONTRADICTION_SCANNED,
+        object_type="fact",
+        object_id=uuid.UUID(subject),
+        project=PROJECT,
+        payload={"contradicted": True, "counterpart_id": counterpart,
+                 "witness_origin": witness},
+    )
+    await session.commit()
+
+
+async def _flagged_pair(session):
+    subject = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-01")
+    counterpart = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-02")
+    await _source(session, counterpart, "witness-1")
+    await _source(session, subject, "subject-1")
+    await _scan_row(session, subject, counterpart)
+    return subject, counterpart
+
+
+async def test_a_dismissal_silences_a_standing_scan_verdict(session):
+    subject, _ = await _flagged_pair(session)
+    assert await detect_scanned_contradiction(session, subject) is not None
+
+    await record_event(
+        session,
+        event_type=CONTRADICTION_DISMISSED,
+        object_type="fact",
+        object_id=uuid.UUID(subject),
+        project=PROJECT,
+        payload={"note": None},
+    )
+    await session.commit()
+
+    assert await detect_scanned_contradiction(session, subject) is None
+
+
+async def test_a_later_scan_re_flags_after_a_dismissal(session):
+    """Intended, and the reason dismissal is read-time rather than a latch: the
+    human dismissed the finding they were shown, not every finding this pair
+    can ever produce. A fresh verdict is new information."""
+    subject, counterpart = await _flagged_pair(session)
+    await record_event(
+        session,
+        event_type=CONTRADICTION_DISMISSED,
+        object_type="fact",
+        object_id=uuid.UUID(subject),
+        project=PROJECT,
+        payload={"note": None},
+    )
+    await session.commit()
+    assert await detect_scanned_contradiction(session, subject) is None
+
+    await _scan_row(session, subject, counterpart)
+    assert await detect_scanned_contradiction(session, subject) is not None
+
+
+async def test_a_dismissal_predating_the_verdict_does_not_silence_it(session):
+    """Ordering is compared, not mere existence — otherwise one old dismissal
+    would deafen the scan on that fact permanently."""
+    subject = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-01")
+    counterpart = await _fact(session, subject="pg", rel="DEPLOYED_ON", obj="db-02")
+    await _source(session, counterpart, "witness-1")
+    await _source(session, subject, "subject-1")
+    await record_event(
+        session,
+        event_type=CONTRADICTION_DISMISSED,
+        object_type="fact",
+        object_id=uuid.UUID(subject),
+        project=PROJECT,
+        payload={"note": None},
+    )
+    await session.commit()
+    await _scan_row(session, subject, counterpart)
+
+    assert await detect_scanned_contradiction(session, subject) is not None

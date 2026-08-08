@@ -81,7 +81,7 @@ from app.repositories.knowledge_triples import (
     KnowledgeTripleRepository,
 )
 from app.services.claim_gates import journalled_status, unserved_status
-from app.services.events import record_event
+from app.services.events import CONTRADICTION_DISMISSED, record_event
 
 logger = logging.getLogger(__name__)
 
@@ -297,3 +297,78 @@ async def ratify_fact(
         note=note,
     )
     return fact
+
+
+async def dismiss_contradiction_suspicion(
+    session: AsyncSession,
+    fact_id: UUID | str,
+    *,
+    actor: str | None,
+    note: str | None = None,
+) -> bool:
+    """A human says the model scan's flag on this fact was wrong (T2.112).
+
+    Returns whether a live flag was dismissed. Does not commit, for
+    ``reject_fact``'s reason: the caller's transaction owns both writes.
+
+    **Not a ``human_verdict``, and it must not become one.** The four verbs in
+    ``HUMAN_VERDICTS`` adjudicate the fact; this adjudicates the *finding*, and
+    leaves the fact's rung, badge and retrieval position exactly as they were.
+    If it journalled as ``rejected`` it would land in doc 17 §5.1's
+    human-rejection arm and manufacture a false promotion out of a cleared
+    flag — the audit would count the scan's own false positive as the ladder's
+    error. It gets its own event type for that reason, and because a dismissal
+    is the only live-data evidence of an LLM-scan false positive this system
+    can produce.
+
+    **It clears one opener, and only by clearing one condition.**
+    ``derive_review_state`` stays total and the clear stays the absence of
+    *every* opener, so a fact also disputed or under-sourced stays queued on
+    those. The marker is cleared here so the reviewer sees the flag go at once;
+    the durable reason it stays gone is the journalled dismissal, which
+    ``detect_scanned_contradiction`` honours on every later recompute. Clearing
+    the column alone would be undone by the next cycle — the failure T2.62
+    named for a bare ``review_state`` clear, in a different column.
+
+    **Reads the marker rather than re-adjudicating.** The suspicion columns are
+    the ladder's own re-derived output, so this door needs no contradiction
+    machinery of its own — which is also what keeps invariant 15's source scan
+    green: adjudication stays reachable from the ladder alone, and no
+    human-facing surface imports the veto module.
+    """
+    row = (
+        await session.execute(
+            text(
+                "SELECT id, project, contradiction_suspected_at, "
+                "contradiction_counterpart_id FROM knowledge_triples "
+                "WHERE id = CAST(:id AS uuid) FOR UPDATE"
+            ),
+            {"id": str(fact_id)},
+        )
+    ).mappings().first()
+    if row is None:
+        raise FactNotFound(str(fact_id))
+    if row["contradiction_suspected_at"] is None:
+        return False
+
+    await record_event(
+        session,
+        event_type=CONTRADICTION_DISMISSED,
+        object_type="fact",
+        object_id=row["id"],
+        project=row["project"],
+        actor=actor,
+        payload={
+            # The flag as it was shown, so the record answers "what did the
+            # human actually dismiss" without re-deriving it against rows that
+            # may since have moved.
+            "counterpart_id": str(row["contradiction_counterpart_id"])
+            if row["contradiction_counterpart_id"] else None,
+            "suspected_at": row["contradiction_suspected_at"],
+            "note": note,
+        },
+    )
+    await KnowledgeTripleRepository(session).set_verification_status(
+        fact_id, None, suspicion=None
+    )
+    return True

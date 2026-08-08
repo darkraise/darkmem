@@ -596,6 +596,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # An adjudication verb, not a read: it withdraws belief and journals the
     # human's verdict, and returns 204, so no memory-derived row crosses it.
     "POST /api/v1/review-queue/facts/{fact_id}/reject",
+    # T2.112. 204 and no memory-derived content: the dismissal carries an
+    # optional operator note in and returns nothing, the same shape the
+    # reject door above already has.
+    "POST /api/v1/review-queue/facts/{fact_id}/dismiss-suspicion",
     # Reject's counterpart, and 204 for the same reason (T2.05). An earlier
     # draft answered the ratified fact so the human could see the claim their
     # own act produced; it was withdrawn because a verb that serves content
