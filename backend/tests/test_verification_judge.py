@@ -121,22 +121,41 @@ def _state_the_recall_bar(session, value=0.90):
 
 def test_bar_defaults_are_the_stated_values():
     assert vj.VERIFICATION_BAR_DEFAULTS == {
+        # Truth-critical metrics at 0.95, the other at 0.90 — doc 17 §6's rule,
+        # which predates every judge run. The amendment moved which
+        # contradiction metric is truth-critical; it did not move the rule.
         "groundedness_gate_precision_bar": 0.95,
         "groundedness_gate_recall_bar": 0.90,
-        "contradiction_precision_bar": 0.95,
+        "contradiction_recall_bar": 0.95,
+        # Not a truth number since 2026-08-08: a review-load floor.
+        "contradiction_precision_bar": 0.70,
     }
 
 
-def test_contradiction_recall_is_gated_and_deliberately_undefaulted():
-    """Doc 17 §6's 2026-08-08 amendment, in the two lines that carry it.
+def test_contradiction_recall_is_gated_and_barred_by_derivation():
+    """Doc 17 §6's 2026-08-08 amendment plus the bars stated under it.
 
-    The pairing is the whole point: the metric is barred (so it cannot be
-    ignored) and has no default (so nobody has chosen its number by shipping
-    one). Dropping either half restores a gate that qualifies a near-mute
-    judge, or picks a bar while looking at both measured judges' results.
+    Recall is barred (so it cannot be ignored) at **0.95**, the value the
+    section's own rule gives the truth-critical metric — the rule predates
+    every judge run, and the amendment is what made recall truth-critical.
+
+    The second assertion is the one that matters. 0.90 is where a bar chosen
+    to clear the measured judge would sit: gpt-5.5 scored contradiction-recall
+    0.945, so 0.90 passes it and 0.95 does not. Pinning *against* that value
+    is how this file records that the bar was derived rather than fitted.
     """
     assert vj.BAR_METRICS[RECALL_BAR] == "contradiction_recall"
-    assert RECALL_BAR not in vj.VERIFICATION_BAR_DEFAULTS
+    assert vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR] == 0.95
+    assert vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR] != 0.90
+
+
+def test_contradiction_precision_is_a_review_load_floor_not_a_truth_bar():
+    """It moved 0.95 -> 0.70 because its consumer changed, not because it was
+    missed. A false flag now costs a reviewer a minute rather than a wrong
+    belief, so the bar only has to keep the queue workable — noise a clear
+    minority. Left at 0.95 it would price precision as truth after §6 stopped
+    doing so, and block the gate for a reason unrelated to being right."""
+    assert vj.VERIFICATION_BAR_DEFAULTS["contradiction_precision_bar"] == 0.70
 
 
 async def test_bars_fall_back_to_defaults_on_an_empty_config_table(session):
@@ -146,8 +165,16 @@ async def test_bars_fall_back_to_defaults_on_an_empty_config_table(session):
     assert bars == {**vj.VERIFICATION_BAR_DEFAULTS, RECALL_BAR: 0.90}
 
 
-async def test_an_unstated_bar_raises_rather_than_resolving(session):
-    with pytest.raises(ValueError, match=RECALL_BAR):
+async def test_an_unstated_bar_raises_rather_than_resolving(session, monkeypatch):
+    """The mechanism, exercised on a barred key that genuinely has no default.
+
+    It used to be exercised on `contradiction_recall_bar`, which was unstated
+    by design until 2026-08-08. Stating that bar would have retired this guard
+    silently — the mechanism is for *any* future barred metric, not for that
+    one, so it is tested against a synthetic key instead.
+    """
+    monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "some_metric")
+    with pytest.raises(ValueError, match="a_future_bar"):
         await vj.get_verification_bars(session)
 
 
@@ -158,7 +185,7 @@ async def test_a_db_bar_row_wins_per_key(session):
     bars = await vj.get_verification_bars(session)
     assert bars["groundedness_gate_recall_bar"] == 0.8
     assert bars["groundedness_gate_precision_bar"] == 0.95
-    assert bars["contradiction_precision_bar"] == 0.95
+    assert bars["contradiction_precision_bar"] == 0.70
 
 
 async def test_a_bare_scalar_bar_row_is_also_read(session):
@@ -255,16 +282,17 @@ async def test_a_matching_clearing_record_qualifies(session, tmp_path):
     assert state.reasons == ()
 
 
-async def test_an_unstated_recall_bar_fails_closed_naming_it(session, tmp_path):
+async def test_an_unstated_bar_fails_closed_naming_it(session, tmp_path, monkeypatch):
     """The posture the malformed-bar-row test already establishes, applied to
-    the bar T2.109 deliberately left unstated: the module fails loud rather
+    any barred metric with no value: the module fails loud rather
     than defaulting, and the reason says which number is missing so an operator
     is not left guessing at a gate that will not open."""
+    monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "some_metric")
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg))
     state = await vj.qualification_state(session, cfg, record_path=path)
     assert state.qualified is False
-    assert any(RECALL_BAR in r and "failing closed" in r for r in state.reasons)
+    assert any("a_future_bar" in r and "failing closed" in r for r in state.reasons)
 
 
 async def test_the_gate_cannot_qualify_a_near_mute_judge(session, tmp_path):

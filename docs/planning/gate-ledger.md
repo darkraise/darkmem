@@ -625,7 +625,25 @@ contradiction metric pair inverts with its consumer). Implementation is T2.109; 
 follow-on preconditions are T2.110 (grown gold) and T2.111 (G-C re-measure under the new
 shape).
 
-**What ratification does not do: it does not supply the bars.** `contradiction_recall_bar`
+**The bars, stated 2026-08-08 by the controller under delegated authority.**
+`contradiction_recall_bar` = **0.95**, `contradiction_precision_bar` = 0.95 → **0.70**.
+Derived, not measured: doc 17 §6's rule — truth-critical metric at 0.95, the other at 0.90
+— predates every judge run, and the amendment is what made recall truth-critical, so recall
+takes 0.95 by that rule. **The check that this is a derivation and not a fit is that the
+measured judge does not clear it**: gpt-5.5 scored contradiction-recall 0.945, so a bar
+chosen to launder that number would sit at 0.90, and `test_contradiction_recall_is_gated_and_barred_by_derivation`
+pins the bar *against* 0.90 for exactly that reason. Precision drops because its consumer
+changed and not because it was missed — a false flag now costs a reviewer a minute rather
+than a wrong belief, so the bar need only keep the queue workable (noise under one flag in
+three); left at 0.95 it would price precision as truth after §6 stopped doing so.
+**Granularity binds:** at the retired gold's 55 contradicted pairs recall resolves in steps
+of 0.018, so 0.95 and 0.945 are one measurement — T2.110's census must make 0.95
+distinguishable or the bar is stated but not measurable. Disclosed plainly because it
+matters: the controller had already seen both judges' results when deriving these, which is
+why the derivation is written out rather than asserted, and why both remain the owner's to
+move with a recorded argument. Neither may be moved to make a run pass.
+
+**What ratification did not do on its own: supply the bars.** `contradiction_recall_bar`
 is the truth-critical bar under the new shape and **has no default and no value** — the
 gate fails closed until the owner states one. That is deliberate and structural rather
 than conventional: both measured judges' numbers are public in this file, so a default

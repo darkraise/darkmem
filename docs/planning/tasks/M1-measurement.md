@@ -221,6 +221,44 @@ after the rewire, against the grown gold.
 
 ---
 
+#### T2.112 — Show the reviewer what was suspected
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.109` · `Doc: 08 §4.2, §6` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-08 from T2.109's own review.** The redesign moved the LLM contradiction
+scan from disputing to opening review — but `review_queue._fact_reason` derives the
+queue's reason from the fact's own columns (`verification_status`,
+`demotion_pending_since`), and the suspicion is computed at recompute time from the scan's
+journal and persisted nowhere. So a contradiction-suspected fact arrives in the queue
+rendering `unspecified`: a healthy-looking row, no counterpart, nothing to adjudicate
+against.
+
+**Why this is not cosmetic.** The whole argument for the redesign is that a flag awaiting
+human confirmation is a *delayed* dispute rather than a manufactured one — doc 08 §5.3's
+sanctioned direction of error. That argument holds only if a human can actually confirm
+it. A reviewer who cannot see which fact contradicts, or why, cannot confirm or dismiss,
+so the flag is neither a dispute nor a delay — it is a fact stuck in a queue. The
+half-shipped state is worse than either end: it consumes review attention and resolves
+nothing.
+
+**The evidence already exists**; only the path to the reader is missing. The scan writes
+its counterpart and reason on its own journal row. Surfacing it costs either a journal
+read on the queue query or a column on the fact row — a real trade (query cost against
+schema, and the schema is still pre-freeze so a column is cheap *now* and not later).
+T2.109 deliberately did not guess; it documented the gap at both sites.
+
+**Done when:**
+- [ ] A contradiction-suspected fact renders a reason naming the suspicion, not `unspecified`
+- [ ] The counterpart fact is reachable from the queue entry, so the reviewer can compare
+- [ ] The chosen path (journal read vs persisted column) is argued in the commit, including
+      the pre-freeze schema consideration
+- [ ] Confirming from the queue disputes through the existing `human_adjudication.reject_fact`
+      door — no second write path
+- [ ] Dismissing clears only this opener; `derive_review_state` stays total and the clear
+      remains the absence of every opener
+
+**Verify.** `cd backend && python -m pytest tests/test_review_queue.py tests/test_verification_ladder.py -q`
+
 #### T2.110 — Grow the entailment gold past its contacted census
 
 `Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.54` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`

@@ -303,10 +303,35 @@ async def qualification_state(
 # one whose number nobody has stated, and it fails closed rather than
 # defaulting. See the BAR_METRICS block for why contradiction_recall_bar is the
 # one such bar today.
+# ``contradiction_recall_bar`` is stated here as of 2026-08-08, by derivation
+# rather than by measurement, which is what makes it lawful to state at all.
+#
+# Doc 17 §6's rule predates every judge run: the **truth-critical** metric of
+# this judge is barred at 0.95, the other at 0.90. The 2026-08-08 amendment
+# moved the LLM arm from deciding to surfacing, and for a surfacing instrument
+# recall is the truth-critical metric — a contradiction it misses reaches no
+# reviewer, and the fact stays corroborated and citable. So recall takes 0.95
+# by the same rule that gave entailed-precision 0.95, not by anything observed.
+#
+# The check that this is a derivation and not a fit: **the measured judge does
+# not clear it.** gpt-5.5 scored contradiction-recall 0.945 on the retired
+# gold. A bar chosen to launder that result would sit at 0.90.
+#
+# Precision moves 0.95 -> 0.70 because its consumer changed, not because it was
+# missed. It is now a review-load floor: a false flag costs a reviewer a
+# minute, not a wrong belief, so the only thing it must guarantee is a queue a
+# human will actually work - noise a clear minority, under one flag in three.
+# Holding it at 0.95 would keep pricing precision as truth after the amendment
+# said it is not, and would block the gate for a reason unrelated to being
+# right. A *lower* bar here is the honest consequence of the redesign.
+#
+# Both are the owner's to move with a recorded argument. Neither may be moved
+# to make a run pass.
 VERIFICATION_BAR_DEFAULTS: dict[str, float] = {
+    "contradiction_recall_bar": 0.95,
     "groundedness_gate_precision_bar": 0.95,
     "groundedness_gate_recall_bar": 0.90,
-    "contradiction_precision_bar": 0.95,
+    "contradiction_precision_bar": 0.70,
 }
 
 

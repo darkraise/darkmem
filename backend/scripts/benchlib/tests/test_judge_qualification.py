@@ -409,22 +409,27 @@ def test_the_gate_cannot_qualify_a_near_mute_judge():
     ], "every previously-gated bar passes; only the new one refuses this judge"
 
 
-def test_an_unstated_bar_cannot_be_cleared_by_any_measurement():
-    """``bar_results`` over the shipped defaults, which state no recall bar.
+def test_an_unstated_bar_cannot_be_cleared_by_any_measurement(monkeypatch):
+    """A barred metric with no value fails even a perfect judge.
 
-    Reporting it absent instead would make the unstated bar read as no bar at
-    all — the silence the redesign is about — so a perfect judge fails here too
-    until the owner writes the number down.
+    Reporting it absent instead would make an unstated bar read as no bar at
+    all — the silence the redesign is about — so nothing clears until the
+    number is written down.
+
+    Exercised on a synthetic key. This used to run against
+    `contradiction_recall_bar`, which carried no default until the owner stated
+    it on 2026-08-08; leaving it there would have retired the guard the moment
+    the bar was set, which is exactly when the mechanism starts mattering for
+    the *next* barred metric.
     """
+    monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "contradiction_recall")
     perfect = jq.QualificationScore(
         n_pairs=1, invalid=0, confusion={},
         entailed_precision=1.0, entailed_recall=1.0,
         contradiction_precision=1.0, contradiction_recall=1.0,
         per_slice={}, majority_class_floor=1.0,
     )
-    result = jq.bar_results(perfect, dict(vj.VERIFICATION_BAR_DEFAULTS))[
-        "contradiction_recall_bar"
-    ]
+    result = jq.bar_results(perfect, dict(vj.VERIFICATION_BAR_DEFAULTS))["a_future_bar"]
     assert result["bar"] is None
     assert result["measured"] == 1.0
     assert result["passed"] is False
