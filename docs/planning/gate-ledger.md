@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (measured 2026-08-07: not evaluable — under-powered on every probe; no promotion record minted) | — | T2.40 — this file, "G-C verdict"; `docs/eval/2026-08-07-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open** (measured 2026-08-08, two vendors: NOT CLEARED — contradiction-precision 0.7937 deepseek / 0.8814 gpt-5.5, both vs 0.95; entailed P/R pass on both) | — | T2.41 — this file, "G-D verdict"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba}.md` |
+| G-D | L2 → L3 | **open** (measured 2026-08-08, two vendors: NOT CLEARED — contradiction-precision 0.7937 deepseek / 0.8814 gpt-5.5, both vs 0.95; entailed P/R pass on both. Resolution spike 2026-08-08: the defect is the veto's architecture — verdict and redesign await owner ratification, this file, "G-D resolution") | — | T2.41 — this file, "G-D verdict" and "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba}.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -615,6 +615,126 @@ and this run deliberately minted none.)*
 The veto consumer inherits the same qualification on the **contradiction** verdict
 (doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
 2026-07-31 before any gate run alongside the two above.
+
+### G-D resolution (2026-08-08, resolution spike): the defect is the veto's architecture, not the judge
+
+**Verdict — of the four possible resolutions (clearable / bar wrong / veto architecture
+wrong / not resolvable now): the veto's architecture is wrong.** Specifically: wiring the
+LLM judge's verdict directly into the absolute dispute veto, and gating that wiring on a
+single precision metric, jointly demand a judge no measured configuration provides and
+reward a judge that goes quiet. The gate stays open; nothing was minted; this run made
+**zero live model calls** — every number below is an offline replay of the cache at
+`backend/scripts/benchlib/entailment/cache` (both qualifying runs' calls are cached), no
+`--gate` invocation, no new gold contact through the runner.
+
+**New measured evidence (cache replay, live_calls == 0).**
+
+- **Per-pair verdicts of both counted attempts were recovered from the cache.**
+  deepseek-v4-flash by exact cache-key reconstruction (241/241 pairs resolved, recomputed
+  contradiction-precision 0.7937 — equal to the report). gpt-5.5 by token-checksum
+  attribution (the cache stores no request text, so files were attributed to pairs via
+  o200k tokenization: expected prompt-tokens = 309 + user-message tokens for prompt v1,
+  +162 for v2). The attribution is over-determined: all four serving-invariant token
+  totals reproduce exactly (v1 gold 82150/37202, fixture 3041/966; v2 gold 121192/34449,
+  fixture 4499/994), the v1 confusion table reproduces the published report cell-for-cell
+  (52/3 · 101 · 7/2/76), and the recovered v1 false-positive set independently reproduces
+  the 7 ids the T2.41 follow-up had already identified.
+- **The two vendors' false positives overlap on exactly three pairs, and they are the
+  same failure.** deepseek: 13 FPs (11 `direction`, 1 `overreach`, 1 `temporal`).
+  gpt-5.5: 7 FPs (4 `temporal`, 3 `direction`). Intersection: eg-0023 (load-balancing
+  roles), eg-0075 (`USES`), eg-0163 (`CAUSES`) — all three are reversals of
+  **non-exclusive** relations, gold-`unsupported` under the reversal rule's non-exclusive
+  case, all `adjudicated`/owner-ruled labels. On eg-0023 the blind resample record shows
+  **both independent human passes made the same `contradicted` error the models make**
+  (the owner ruling corrected them). The exclusion-vs-absence distinction on reversed
+  non-exclusive relations sits at or past the blind human ceiling, not just the model one.
+- **The most precision-favouring composition available from every judge this project has
+  measured still fails, and cannot pass.** A conjunctive two-vendor veto — dispute only
+  where *both* judges say `contradicted`, assembled post-hoc with full knowledge of both
+  error sets, i.e. the best case any ensemble of these judges could reach — measures
+  precision 48/51 = **0.9412**, recall 48/55 = 0.8727. With the 3 shared FPs its
+  precision ceiling is 55/58 = **0.9483 at any recall**: no true-positive count that
+  exists can clear 0.95 over those three errors. (Diagnostic only: as a qualification
+  this arrangement would be contaminated by construction — it was fitted on a
+  three-times-contacted gold.)
+- **The single-metric gate is incoherent for a veto consumer, measured, not argued.**
+  Replayed through the shipped scorer (`judge_qualification.score_judgments` +
+  `bar_results`): a judge that emits `contradicted` on exactly one correct pair and
+  `unsupported` elsewhere scores contradiction-precision 1.0, leaves entailed P/R
+  untouched, and **passes all three gated bars at contradiction-recall 0.0182**. Only
+  total silence fails (precision over zero acceptances is None → fail).
+  `BAR_METRICS` carries no recall key, so the gate as specified qualifies a near-mute
+  judge to hold an absolute veto while scoring the measured 0.88-precision /
+  0.95-recall judge as a failure. Run 3 walked this gradient by accident; the scorer
+  replay shows the end of the gradient is a pass.
+
+**Why the other three resolutions are not it.**
+
+1. *"G-D is clearable as specified"* — no. Three counted runs, two vendors, one frozen
+   prompt: 0.7937 / 0.8814 / 0.9020. The one principled prompt fix was measured and
+   reverted (+0.02 precision bought by −0.11 recall). The two-vendor conjunction sits at
+   0.9412 with a 0.9483 ceiling. Model-shopping past two attempts is barred (doc 17 §6),
+   and the failure is task-shaped — both vendors, and the blind human passes, err the
+   same way on the same distinction.
+2. *"The bar is wrong — lower it"* — no. The 0.95 was **inherited**, not derived: doc 17
+   §6 derives 0.95 for *entailed* precision (a hallucination shipping under a badge) and
+   then says "the veto consumer inherits the same qualification". Derived from the veto
+   consumer's own cost function, the bar should be *higher*, not lower: a scanned FP
+   dispute is near-permanent (`detect_scanned_contradiction` — the scan never re-checks
+   a disputed fact; the exits are guard-lapse or human ratification), demotes a
+   correctly-corroborated fact, and serves it `disputed` to every consumer. Lowering the
+   bar to the measured 0.88 would license ~7 manufactured near-permanent disputes per
+   241 checked pairs into an instrument that beats any corroboration count. The bar
+   number is not the defect; the consumer that demands it is.
+3. *"Not resolvable now"* — no. The evidence above is sufficient to resolve the design
+   question; what remains is ratification (below), not measurement.
+
+**The recommended design — owner's to ratify, Tier-3 (it amends doc 08 §4.2 and
+doc 17 §6).** The architecture already contains two arms with opposite precision
+profiles, and the fix is to pair each arm with the consumer its profile supports:
+
+- **The absolute veto stays absolute — on the deterministic arm only.**
+  `detect_open_contradiction` decides from the closed vocabulary with no judgment;
+  its precision is by construction, which is what an unappealable instrument requires.
+  No migration burden exists: the LLM arm has never fired in production (dark behind the
+  unqualified judge), so no scanned dispute anywhere needs re-adjudication.
+- **The LLM scan's finding opens review instead of disputing.**
+  `detect_scanned_contradiction` leaves `CONTRADICTION_DETECTORS`; the scan's journalled
+  verdict drives a new review opener (doc 08 §6 gains a fourth opener,
+  contradiction-suspected). The fact keeps its rung and its badge while flagged; a human
+  confirming the flag disputes it through the already-live human door
+  (`human_adjudication.reject_fact`). Doc 08 §5.3's own asymmetry licenses this: a flag
+  awaiting confirmation is a *delayed* dispute — the sanctioned direction of error —
+  where the current wiring converts every judge FP into the failure the asymmetry
+  forbids. Relative to the shipped state (an arm that finds nothing) review-opening is
+  strictly more detection; relative to the aspirational state it trades automatic
+  demotion for human latency, bounded by review cadence.
+- **The qualification metric pair inverts with the consumer.** For a surfacing
+  instrument, contradiction-**recall** is the truth-critical bar (a missed contradiction
+  never reaches a reviewer — and recall is precisely what the current gate lets go to
+  0.018) and precision becomes a review-load floor (at the measured 0.88, ~1 in 8
+  flags is noise — a queue-economics number, not a truth number). The new bars are the
+  owner's to state **in advance** of the next gate run; this spike deliberately states
+  none, because both measured gpt-5.5 numbers are known and a bar chosen now would be
+  chosen looking at them. The re-qualification must run on T2.54-grown gold — this gold
+  has 3 recorded contacts and its FP census is now fully public in this file.
+- **What stands unchanged:** the `disputed` rung, the conjunctive recovery, the
+  hysteresis, `_write_born_rung`, human-only `confirmed`, and the G-C false-promotion
+  audit. The audit's machine arm changes shape (review-confirmed human rejections
+  instead of raw machine disputes — better-attributed evidence), so the G-C→G-D
+  cross-edge analysis must be re-read under the new shape before G-C is re-attempted.
+- **Costs, stated:** a review queue nobody works is a dispute deferred forever — the
+  precision floor is what keeps the queue workable, and the queue consumer becomes
+  load-bearing for contradiction handling; and doc 08 §4.2's sentence naming the LLM
+  scan a veto input is amended, with §4.3's flowchart keeping its dispute node for the
+  deterministic arm only.
+
+**If the owner rejects the redesign and keeps the current specification:** then the
+honest answer to this gate is that nothing this project can lawfully do clears it — no
+measured judge, no lawful prompt change, and no ensemble of the judges measured reaches
+0.95 on this census, and the two lawful remedies (a third model, more gold) are
+respectively barred and unable to remove the shared-error class the blind human passes
+also fell into. That is a result, and this file records it as one.
 
 ### G-D verdict: **NOT CLEARED** — two vendors, one bar (2026-08-08, T2.41)
 
