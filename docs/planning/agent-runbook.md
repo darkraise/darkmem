@@ -273,6 +273,16 @@ regardless of whether it passes. The one sanctioned exception is a **read-only**
 probe measuring production behaviour (G-E's coverage distribution); it may read `darkmem`
 and may never write to it.
 
+**A fourth name is lawful and is not a leak: `darkmem_bench_t<sha10>`.**
+`scripts/benchlib/tests/test_harvest_l2_facts.py` derives one per checkout from the
+backend directory's hash, so the harvest reproducibility test's in-process double run
+cannot collide with a sibling checkout or with the shared `darkmem_bench` under
+`./scripts/gate.sh`. It is created on demand and **deliberately never dropped** —
+re-migrating it every run would cost more than it saves. So it reappears after every
+benchlib run, and dropping it is pointless rather than tidy: an agent chasing the
+three-names rule literally will delete it repeatedly and report each deletion as
+hygiene. (One did, three times, on 2026-08-08.) Leave it.
+
 **`DATABASE_URL` does not point where you expect.** `conftest.py` unconditionally
 overwrites it with `TEST_DATABASE_URL` — so setting `DATABASE_URL` in front of `pytest`
 silently tests the wrong database. Set `TEST_DATABASE_URL` instead. And the derived
