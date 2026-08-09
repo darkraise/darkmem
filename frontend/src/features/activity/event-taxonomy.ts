@@ -5,18 +5,17 @@ import type { FeedCategory } from "@/features/activity/types"
  * (`app/services/events.py` EVENT_TYPES) into the feed's five filter tabs.
  * This is a UI convenience, not a taxonomy the backend enforces — an
  * event_type absent from every bucket below still shows under "all", it
- * just has no dedicated tab (inject/inject_curbed today: none of
- * capture/pipeline/verification/consolidation/code fits them cleanly, and
- * inventing a sixth tab is a design call this task does not own).
+ * just has no dedicated tab. (This once cited inject/inject_curbed as the
+ * open example; T3.12 landed their emitter and recorded them in
+ * EVENT_TYPES_WITHOUT_TAB below, resolving that deferral.)
  *
  * T2.102 (2026-08-07) closed the gap that let three straight rounds each
  * find one value missing here and fix only that one (`contradiction_scanned`
  * T2.11, `citation_stale` T2.48): every EVENT_TYPES value with a live
  * `record_event` call site is now covered, either by a tab below or by an
  * explicit entry in `EVENT_TYPES_WITHOUT_TAB`. A value with no emitter yet
- * (landed taxonomy-first, ahead of its feature — inject/inject_curbed
- * today) owes neither, since punishing that discipline is worse than the
- * gap it closes.
+ * (landed taxonomy-first, ahead of its feature) owes neither, since
+ * punishing that discipline is worse than the gap it closes.
  * `backend/tests/test_event_taxonomy_map.py` scans `backend/app` for live
  * emitters and fails the build the moment a value has one but lands in
  * neither list — that test, not this comment, is what keeps this true.
@@ -58,6 +57,16 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  * it lacks an emitter — all four below are emitted for real.
  */
 const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
+  // Inject records (T3.12). Doc 13 section 6.5 puts them in the
+  // timeline/calendar and the Settings -> Distribution log, not in the feed's
+  // five tabs: an inject is neither a capture nor a lifecycle step, it is
+  // this installation telling a tool what it already knows. The docstring
+  // above deferred this decision as one "this task does not own" -- T3.12,
+  // which made both types live, is the task that owns it, and it resolves to
+  // an exclusion rather than a sixth tab because the surface doc 13 names
+  // already exists.
+  "inject",
+  "inject_curbed",
   // A session checkpoint is operational, not vault knowledge (T3.16): it is
   // an agent's note about its own run, so it is not a memory, fact or repo
   // lifecycle step and none of the five tabs models it. Its own surface --
