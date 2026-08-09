@@ -7,3 +7,11 @@ dependencies = ["httpx>=0.27"]
 
 [tool.setuptools.packages.find]
 include = ["darkmem_sdk*"]
+
+# The package is not installed to run its own tests — `cd sdks/python &&
+# python -m pytest -q` is the task's Verify and must hold on a bare checkout.
+# This block also fixes the rootdir here rather than at the repo root, so the
+# backend's `testpaths` cannot pull this run into `backend/tests`.
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

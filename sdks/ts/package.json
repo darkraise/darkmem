@@ -6,6 +6,7 @@
   "description": "Minimal darkmem client — three verbs, generated from the doc 12 contract",
   "main": "src/client.ts",
   "scripts": {
-    "build": "make -C .. build"
+    "build": "make -C .. build",
+    "test": "../../frontend/node_modules/.bin/vitest run"
   }
 }

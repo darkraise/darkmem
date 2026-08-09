@@ -18,6 +18,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BACKEND="$REPO_ROOT/backend"
 FRONTEND="$REPO_ROOT/frontend"
 EXTENSION="$REPO_ROOT/extension"
+SDKS="$REPO_ROOT/sdks"
 
 # Resolve Python interpreter: allow env override, prefer local .venv, fall back to main checkout
 if [ -z "${PY:-}" ]; then
@@ -193,6 +194,18 @@ run_gate "frontend build" 900 "$FRONTEND" \
 # gate runs is a suite that breaks while the floor stays green.
 run_gate "extension tests" 300 "$EXTENSION" \
     env -C "$EXTENSION" npm test
+
+# The generated clients (T3.14). Same reasoning as the arm above: the backend
+# suite checks the *generator* and that the committed files are what it emits,
+# but nothing there exercises the emitted clients, so their tests would rot
+# unwatched. The TypeScript arm borrows the frontend's vitest exactly as the
+# build target borrows its tsc — the frontend preflight above already covers
+# the install.
+run_gate "sdk python tests" 300 "$SDKS/python" \
+    env -C "$SDKS/python" "$PY" -m pytest -q
+
+run_gate "sdk typescript tests" 300 "$SDKS/ts" \
+    env -C "$SDKS/ts" npm test
 
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
