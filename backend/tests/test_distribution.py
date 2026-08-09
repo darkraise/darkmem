@@ -13,6 +13,7 @@ import json
 import pytest
 from sqlalchemy import text
 
+from app.models.config import Config
 from app.api.routes.distribution import DISTRIBUTION_CONFIG_KEY
 from app.services import inject_adapters as ia
 
@@ -129,3 +130,124 @@ class TestThePolicyAndTheCurb:
         assert (await client.put(
             "/api/v1/distribution/policy", json={"token_budget": 1, "curbed": True}
         )).status_code in (401, 403)
+
+
+class TestTheCurbIsJournalled:
+    """Doc 15 §7: "the **curb** … journals the curb as an ``inject_curbed``
+    ``events`` row", and its mermaid draws the edge.
+
+    ``record_inject_curbed`` shipped with the event type already in the closed
+    vocabulary and **no caller anywhere in the tree**, so the one curb act the
+    system can observe today — a human flipping the flag — left no trace. Found
+    by the Fable review of 2026-08-10 (I-9); the writer was there, the edge had
+    no producer.
+    """
+
+    async def _curbed_rows(self, session):
+        return (await session.execute(text(
+            "SELECT payload FROM events WHERE event_type = 'inject_curbed'"
+        ))).scalars().all()
+
+    async def test_turning_the_curb_on_journals_it(
+        self, client, auth_headers, session
+    ):
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 2000, "curbed": True},
+            headers=auth_headers,
+        )
+
+        rows = await self._curbed_rows(session)
+        assert len(rows) == 1
+        # One row for a global control. Per-target rows would describe
+        # per-target curbs, which do not exist.
+        assert rows[0]["tool"] == "*"
+        assert "human" in rows[0]["reason"]
+
+    async def test_leaving_the_curb_on_journals_nothing_further(
+        self, client, auth_headers, session
+    ):
+        """The transition is the event, not the state. A screen that re-saves
+        an unchanged policy would otherwise manufacture a curb history nobody
+        performed."""
+        for _ in range(3):
+            await client.put(
+                "/api/v1/distribution/policy",
+                json={"token_budget": 2000, "curbed": True},
+                headers=auth_headers,
+            )
+
+        assert len(await self._curbed_rows(session)) == 1
+
+    async def test_releasing_the_curb_journals_nothing(
+        self, client, auth_headers, session
+    ):
+        """Deliberate asymmetry, pinned so it reads as a decision rather than
+        an omission: ``EVENT_TYPES`` is closed and holds no release event, and
+        inventing one at a call site is exactly what the taxonomy-first rule
+        forbids. Closing it means editing doc 04 §8.1 first."""
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 2000, "curbed": True},
+            headers=auth_headers,
+        )
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 2000, "curbed": False},
+            headers=auth_headers,
+        )
+
+        assert len(await self._curbed_rows(session)) == 1
+
+    async def test_a_budget_edit_alone_is_not_a_curb(
+        self, client, auth_headers, session
+    ):
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 500, "curbed": False},
+            headers=auth_headers,
+        )
+
+        assert await self._curbed_rows(session) == []
+
+
+class TestARefusedTargetIsNamedOnTheWire:
+    """A registry that drops a configured row silently is the same defect as a
+    retrieval that drops a match silently (invariant 14). The reason reached
+    the server log only, so an operator editing ``inject_adapters`` watched
+    their row vanish from the screen with no explanation — found by the Fable
+    review of 2026-08-10 (M-11)."""
+
+    async def test_an_absolute_path_is_served_as_refused_not_dropped(
+        self, client, auth_headers, session
+    ):
+        session.add(Config(
+            key=ia.INJECT_ADAPTERS_CONFIG_KEY,
+            value={"rogue": {"context_file": "/etc/passwd"}},
+        ))
+        await session.flush()
+
+        state = (await client.get(
+            "/api/v1/distribution", headers=auth_headers
+        )).json()
+
+        assert "rogue" not in [t["tool"] for t in state["targets"]]
+        assert [r["tool"] for r in state["rejected"]] == ["rogue"]
+        assert "project-relative" in state["rejected"][0]["reason"]
+
+    async def test_a_healthy_registry_refuses_nothing(self, client, auth_headers):
+        state = (await client.get(
+            "/api/v1/distribution", headers=auth_headers
+        )).json()
+
+        assert state["rejected"] == []
+        assert state["targets"]
+
+    async def test_the_reason_comes_from_the_registry_not_a_second_copy(self):
+        """One predicate, two readers. A second copy of these rules is what
+        would let the screen say a row was kept while the writer dropped it."""
+        assert ia.reject_reason("CLAUDE.md") is None
+        assert "project-relative" in (ia.reject_reason("/etc/passwd") or "")
+        assert "project-relative" in (ia.reject_reason("~/notes.md") or "")
+        assert "project-relative" in (ia.reject_reason("../escape.md") or "")
+        assert "no context_file" in (ia.reject_reason("") or "")

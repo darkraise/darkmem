@@ -16,9 +16,18 @@ export interface DistributionPolicy {
   curbed: boolean
 }
 
+/** A configured tool the registry refused, and why. Served rather than
+ *  logged-only: an operator whose row vanishes from the screen with the reason
+ *  on the server cannot tell a rejection from a typo. */
+export interface RejectedTarget {
+  tool: string
+  reason: string
+}
+
 export interface DistributionState {
   targets: DistributionTarget[]
   policy: DistributionPolicy
+  rejected: RejectedTarget[]
 }
 
 export function useDistribution(options: { enabled?: boolean } = {}) {

@@ -51,7 +51,9 @@ __all__ = [
     "Adapter",
     "UnknownTool",
     "UnsupportedCadence",
+    "get_adapter_rejections",
     "get_adapters",
+    "reject_reason",
     "resolve_adapter",
 ]
 
@@ -126,14 +128,37 @@ class UnsupportedCadence(ValueError):
     """A refresh cadence v1 does not implement (doc 15 §3.3; T4.06 owns watch)."""
 
 
-async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
-    """The effective registry: the ``config`` row merged over the defaults.
+def reject_reason(context_file: str | None) -> str | None:
+    """Why this ``context_file`` cannot be an adapter target, or ``None``.
 
-    A row may override a shipped tool's path or add one this build never heard
-    of — that is the point of it being configuration. Malformed entries degrade
-    loudly and are dropped rather than raising: one bad row must not take the
-    whole registry down, and a dropped entry surfaces as ``UnknownTool`` at the
-    door, which names what *is* known.
+    One predicate with two readers — the registry below and
+    :func:`get_adapter_rejections`, which the distribution surface renders. A
+    second copy of these rules would be the drift that lets the screen say a
+    row was kept while the writer dropped it.
+    """
+    if not context_file:
+        return "no context_file — an adapter with no file cannot say where the block goes"
+    if (
+        context_file.startswith("/")
+        or context_file.startswith("~")
+        or ".." in Path(context_file).parts
+        or (len(context_file) > 1 and context_file[1] == ":")
+    ):
+        return (
+            f"{context_file!r} is not a project-relative path — it is resolved "
+            "against the client's workspace and an absolute one escapes it"
+        )
+    return None
+
+
+async def _resolve(
+    session: AsyncSession,
+) -> tuple[dict[str, Adapter], dict[str, str]]:
+    """The registry and the rows it refused, from one pass.
+
+    Split out so ``get_adapters`` keeps its shape for every existing caller
+    while the surface can still ask what was dropped. Re-deriving the
+    rejections from a second pass would mean a second copy of the merge.
     """
     result = await session.execute(
         select(Config).where(Config.key == INJECT_ADAPTERS_CONFIG_KEY)
@@ -174,18 +199,16 @@ async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
         merged.setdefault(tool, {}).update(usable)
 
     adapters: dict[str, Adapter] = {}
+    rejected: dict[str, str] = {}
     for tool, entry in merged.items():
         context_file = entry.get("context_file")
         # The invariants the docstring states, enforced at the door a config
         # row comes through rather than only over the committed defaults.
         # `Path(workspace) / "/etc/passwd"` **is** `/etc/passwd`, so an
         # absolute path is not a cosmetic violation.
-        if context_file and (
-            context_file.startswith("/")
-            or context_file.startswith("~")
-            or ".." in Path(context_file).parts
-            or (len(context_file) > 1 and context_file[1] == ":")
-        ):
+        rejection = reject_reason(context_file)
+        if rejection is not None and context_file:
+            rejected[tool] = rejection
             logger.warning(
                 "%s: entry for %r has context_file %r, which is not a "
                 "project-relative path; dropping it — this path is resolved "
@@ -210,6 +233,7 @@ async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
                 INJECT_ADAPTERS_CONFIG_KEY, tool, context_file,
             )
         if not context_file:
+            rejected[tool] = reject_reason(context_file) or ""
             logger.warning(
                 "%s: entry for %r has no context_file; dropping it — an adapter "
                 "with no file cannot say where the block goes",
@@ -222,7 +246,32 @@ async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
             mcp_config=entry.get("mcp_config", ""),
             refresh=entry.get("refresh", REFRESH_SESSION_START),
         )
+    return adapters, rejected
+
+
+async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
+    """The effective registry: the ``config`` row merged over the defaults.
+
+    A row may override a shipped tool's path or add one this build never heard
+    of — that is the point of it being configuration. Malformed entries degrade
+    loudly and are dropped rather than raising: one bad row must not take the
+    whole registry down, and a dropped entry surfaces as ``UnknownTool`` at the
+    door, which names what *is* known.
+    """
+    adapters, _ = await _resolve(session)
     return adapters
+
+
+async def get_adapter_rejections(session: AsyncSession) -> dict[str, str]:
+    """Which configured tools were dropped, and why.
+
+    The log was the only place this went, so an operator editing
+    ``inject_adapters`` watched their row vanish from the screen with the reason
+    on the server. A registry that drops a row silently is the same defect as a
+    retrieval that drops a match silently (invariant 14).
+    """
+    _, rejected = await _resolve(session)
+    return rejected
 
 
 async def resolve_adapter(

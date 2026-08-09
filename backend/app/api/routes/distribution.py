@@ -10,7 +10,11 @@ server-side.** Doc 01's F10 promise is context before the first prompt; the
 obligation is that a human can always stop it. A curb honoured only by the
 client would be a setting that appears to work and does not — the client is the
 thing being curbed. So the flag lives in a ``config`` row that the inject
-selection reads, and this door is what writes it.
+selection **will read**, and this door is what writes it. Present tense would
+be a claim, not a description: the inject writer is T3.10's and is held by G-D,
+so today this row has exactly one reader — the GET below. The flag is inert and
+correct, which is the repo's standing inert-implementation pattern; describing
+it as enforced is the thing invariant 23 guards against.
 
 **Single-door (REST only), and that is a stated exception rather than an
 oversight.** Invariant 17's parity applies to surfaces an agent uses; this one
@@ -28,11 +32,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.database import get_session
 from app.models.config import Config
-from app.services.inject_adapters import get_adapters
+from app.services.inject_adapters import get_adapter_rejections, get_adapters
+from app.services.inject_journal import record_inject_curbed
 
 router = APIRouter(prefix="/api/v1/distribution", tags=["distribution"])
 
 DISTRIBUTION_CONFIG_KEY = "distribution_policy"
+
+# The curb is global, and the journal says so rather than naming a target it
+# did not single out.
+CURB_ALL_TARGETS = "*"
 
 DEFAULT_POLICY = {
     # The token budget doc 15 §3.4 spends truth-first. Conservative: an
@@ -56,9 +65,19 @@ class DistributionTarget(BaseModel):
     refresh: str
 
 
+class RejectedTarget(BaseModel):
+    tool: str
+    reason: str
+
+
 class DistributionState(BaseModel):
     targets: list[DistributionTarget]
     policy: DistributionPolicy
+    # Configured tools the registry refused. Served rather than logged-only:
+    # an operator editing `inject_adapters` watched their row vanish from the
+    # screen with the reason on the server, which is the same silent drop
+    # invariant 14 forbids of retrieval.
+    rejected: list[RejectedTarget] = []
 
 
 async def _policy(session: AsyncSession) -> DistributionPolicy:
@@ -92,6 +111,10 @@ async def get_distribution(
             for adapter in sorted(adapters.values(), key=lambda a: a.tool)
         ],
         policy=await _policy(session),
+        rejected=[
+            RejectedTarget(tool=tool, reason=reason)
+            for tool, reason in sorted((await get_adapter_rejections(session)).items())
+        ],
     )
 
 
@@ -106,13 +129,39 @@ async def put_policy(
     The curb is the reason: a human turning push off needs to see the state
     that is now in force, and an empty response would leave the screen
     asserting what it hopes rather than what it was told.
+
+    **Turning the curb on journals it** (doc 15 §7: "the curb … journals the
+    curb as an ``inject_curbed`` ``events`` row"). Until T3.10 ships the block
+    writer, a human flipping this flag is the only curb act the system can
+    observe, so it is the only one there is to record — and an unrecorded one
+    would leave doc 15 §7's own mermaid edge with no producer at all.
+
+    One row, not one per target: the control is global ("every target stops at
+    once"), and per-target rows would describe per-target curbs that do not
+    exist. **Releasing the curb journals nothing**, deliberately —
+    ``EVENT_TYPES`` is a closed vocabulary and there is no release event in it;
+    adding one is taxonomy-first work in doc 04 §8.1, not a value invented at a
+    call site. The asymmetry is stated rather than quietly closed.
+
+    A failed journal does not fail the curb. Stopping push is the safety act
+    and the one thing a human reaching for this control must get; the strict
+    ``JournalWriteFailed`` contract belongs to the verification transitions
+    whose metrics are SQL over that table.
     """
     row = (await session.execute(
         select(Config).where(Config.key == DISTRIBUTION_CONFIG_KEY)
     )).scalar_one_or_none()
+    was_curbed = (await _policy(session)).curbed
     if row is None:
         session.add(Config(key=DISTRIBUTION_CONFIG_KEY, value=body.model_dump()))
     else:
         row.value = body.model_dump()
+    if body.curbed and not was_curbed:
+        await record_inject_curbed(
+            session,
+            tool=CURB_ALL_TARGETS,
+            context_file=CURB_ALL_TARGETS,
+            reason="push curbed by a human on the distribution surface",
+        )
     await session.commit()
     return body

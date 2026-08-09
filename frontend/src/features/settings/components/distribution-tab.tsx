@@ -9,6 +9,7 @@ import {
   Tags,
   Zap,
 } from "lucide-react"
+import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
@@ -114,6 +115,59 @@ function ClientRow({ client }: { client: DemoDistClient }) {
   )
 }
 
+/** The token-budget input, controlled and re-seeded from the server's value.
+ *
+ *  Its own component so the state hook mounts only once the policy has been
+ *  read — a conditional return in `LiveDistribution` still runs every hook
+ *  above it, so a hook there would have to sit above the loading and error
+ *  returns and hold a value that does not exist yet.
+ *
+ *  Uncontrolled with `defaultValue` was the bug: `<input type="number">`
+ *  reports `""` for text it cannot parse, `Number("")` is 0 and 0 is finite,
+ *  so blurring a typo wrote a budget of zero while the field went on showing
+ *  the typo — the screen asserting something other than what is in force,
+ *  which is the exact failure this route's 200-not-204 response exists to
+ *  prevent.
+ */
+function TokenBudgetField({
+  budget,
+  onCommit,
+}: {
+  budget: number
+  onCommit: (next: number) => void
+}) {
+  const [draft, setDraft] = useState(String(budget))
+  const [seed, setSeed] = useState(budget)
+  if (seed !== budget) {
+    // The server's value moved (a write landed, or a refetch): take it.
+    setSeed(budget)
+    setDraft(String(budget))
+  }
+
+  return (
+    <input
+      type="number"
+      min={0}
+      max={100000}
+      value={draft}
+      aria-label="Token budget"
+      className="border-border w-32 rounded-md border px-2 py-1 font-mono text-sm"
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={() => {
+        const raw = draft.trim()
+        const next = Number(raw)
+        if (raw === "" || !Number.isFinite(next)) {
+          setDraft(String(budget))
+          return
+        }
+        if (next !== budget) {
+          onCommit(next)
+        }
+      }}
+    />
+  )
+}
+
 /** The live half: the registry's targets, the policy, and the one curb.
  *
  *  Separate from the demo panel below rather than merged, matching the split
@@ -138,10 +192,20 @@ function LiveDistribution() {
     return <p className="text-muted-foreground text-sm">loading…</p>
   }
 
-  const { targets, policy } = data
+  const { targets, policy, rejected } = data
 
   return (
     <div className="space-y-3">
+      {setPolicy.isError && (
+        // The switch snaps back to server truth on the next render, so without
+        // this a human who believes they stopped push has no signal that they
+        // did not — on the one control whose whole purpose is "you can always
+        // stop it".
+        <p className="border-destructive/55 text-destructive rounded-md border border-dashed px-2.5 py-1.5 text-sm">
+          the change was not saved — push is still whatever the server last
+          accepted, shown below
+        </p>
+      )}
       <div className="border-border flex flex-wrap items-center gap-3 rounded-md border p-3">
         <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
         <div className="flex-1">
@@ -190,23 +254,30 @@ function LiveDistribution() {
         )}
       </div>
 
+      {rejected.length > 0 && (
+        <div className="border-warning/55 bg-warning/10 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
+          <b className="font-semibold">
+            {rejected.length} configured target
+            {rejected.length === 1 ? "" : "s"} refused — no block is written for
+            {rejected.length === 1 ? " it" : " them"}
+          </b>
+          {rejected.map((row) => (
+            <span key={row.tool} className="text-muted-foreground">
+              <code className="font-mono">{row.tool}</code>: {row.reason}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         <SectionHead icon={Gauge}>Inject content policy</SectionHead>
         <label className="flex flex-wrap items-center gap-2 text-sm">
           <span>Token budget</span>
-          <input
-            type="number"
-            min={0}
-            max={100000}
-            defaultValue={policy.token_budget}
-            aria-label="Token budget"
-            className="border-border w-32 rounded-md border px-2 py-1 font-mono text-sm"
-            onBlur={(event) => {
-              const next = Number(event.currentTarget.value)
-              if (Number.isFinite(next) && next !== policy.token_budget) {
-                setPolicy.mutate({ ...policy, token_budget: next })
-              }
-            }}
+          <TokenBudgetField
+            budget={policy.token_budget}
+            onCommit={(token_budget) =>
+              setPolicy.mutate({ ...policy, token_budget })
+            }
           />
           <span className="text-muted-foreground">
             spent truth-first: facts, then articles, then memory summaries
@@ -217,11 +288,55 @@ function LiveDistribution() {
   )
 }
 
+/** What the fixture panel below claims, on an install that has no live source
+ *  for any of it (doc 13 §6.5's stated empty state).
+ *
+ *  Connect status, the inject log and the watermark were rendered from
+ *  `CURATED_DISTRIBUTION` on every install, not only in demo — four clients
+ *  reporting "handshake ok", an inject log of deliveries that never happened,
+ *  and watermark rows for a writer that does not exist. They stayed on screen
+ *  while the live read was *failing*. Doc 15 §7's whole stance is that push
+ *  must be visible; a fabricated log is the inverse of visible, and doc 13
+ *  §6.5 states the honest alternative outright: "empty is 'no clients
+ *  connected'".
+ */
+function NoLiveDistributionSignal() {
+  return (
+    <div className="flex flex-col gap-2 pt-2">
+      <SectionHead icon={Plug}>Connect status per client</SectionHead>
+      <p className="text-muted-foreground text-sm">
+        no clients connected — nothing has completed the handshake against this
+        instance. Connect one with <code className="font-mono">darkmem
+        connect &lt;tool&gt;</code>, which verifies over{" "}
+        <code className="font-mono">/mcp</code> and writes the client&apos;s own
+        config.
+      </p>
+      <SectionHead icon={Clock}>Inject log — which inject happened where</SectionHead>
+      <p className="text-muted-foreground text-sm">
+        no inject has happened. The selection and the managed-block writer are
+        T3.10&apos;s and are held by G-D, so there is no delivery to journal
+        yet; a curb you set here is recorded even so.
+      </p>
+      <SectionHead icon={Bookmark}>Render watermark</SectionHead>
+      <p className="text-muted-foreground text-sm">
+        no watermark — one <code className="font-mono">config</code> row per
+        target is written by the first inject cycle, and none has run.
+      </p>
+    </div>
+  )
+}
+
 export function DistributionTab() {
   const d = useDemoDistribution()
   const connected = d.clients.filter((c) => c.status !== "disconnected").length
   const curbed = d.clients.filter((c) => c.status === "curbed").length
   const disconnected = d.clients.length - connected
+  // Counting the fixture clients on a live install would put a fabricated
+  // tally in the surface header, which is the same claim the panel below was
+  // making in longer form.
+  const meta = DEMO
+    ? `${connected} connected · ${curbed} curbed · ${disconnected} not connected`
+    : "no clients connected · push not yet implemented"
 
   return (
     <div className="space-y-4">
@@ -241,16 +356,15 @@ export function DistributionTab() {
           target work — shown staged, not implied shipped.
         </HelpTip>
       </div>
-      <ModuleSurface
-        title="Distribution"
-        state="staged"
-        meta={`${connected} connected · ${curbed} curbed · ${disconnected} not connected`}
-      >
+      <ModuleSurface title="Distribution" state="staged" meta={meta}>
         {/* Mounted only outside demo: a conditional *return* would still run
             the query hook, which is what put a QueryClient requirement on the
             demo path that never had one. */}
         {!DEMO && <LiveDistribution />}
+        {!DEMO && <NoLiveDistributionSignal />}
 
+        {DEMO && (
+        <>
         <div className="flex flex-col gap-2">
           <SectionHead icon={Plug}>Connect status per client</SectionHead>
           {d.clients.map((client) => (
@@ -387,6 +501,8 @@ export function DistributionTab() {
             ))}
           </dl>
         </div>
+        </>
+        )}
       </ModuleSurface>
     </div>
   )
