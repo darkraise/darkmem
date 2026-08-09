@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>darkmem capture — settings</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 1.5rem; max-width: 32rem; }
+  label { display: block; margin: 0.75rem 0 0.25rem; font-weight: 600; }
+  input { width: 100%; padding: 0.4rem; box-sizing: border-box; }
+  p.note { color: #555; }
+  code { background: #eee; padding: 0 0.2rem; }
+</style>
+<h1>darkmem capture</h1>
+<label for="base">Server</label>
+<input id="base" placeholder="http://localhost:8000" />
+<label for="token">API token</label>
+<input id="token" type="password" />
+<label for="project">Project</label>
+<input id="project" placeholder="default" />
+<p><button id="save">Save</button> <span id="status"></span></p>
+<p class="note">
+  This install's <code>origin_key</code> is
+  <code id="origin">…</code>. It is minted once and never changes: darkmem
+  counts distinct origins to decide whether a claim is corroborated, so a key
+  that changed per session would let this browser agree with itself.
+</p>
+<script type="module" src="options.js"></script>

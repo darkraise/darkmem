@@ -1,0 +1,10 @@
+{
+  "name": "darkmem-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "darkmem browser capture shell (T3.26) — plain-selection fallback, no site adapter",
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.js'"
+  }
+}

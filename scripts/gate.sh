@@ -17,6 +17,7 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BACKEND="$REPO_ROOT/backend"
 FRONTEND="$REPO_ROOT/frontend"
+EXTENSION="$REPO_ROOT/extension"
 
 # Resolve Python interpreter: allow env override, prefer local .venv, fall back to main checkout
 if [ -z "${PY:-}" ]; then
@@ -185,6 +186,13 @@ run_gate "frontend test" 900 "$FRONTEND" \
 
 run_gate "frontend build" 900 "$FRONTEND" \
     env -C "$FRONTEND" npm run build
+
+# The browser-capture shell (T3.26). Node's built-in runner, no dependency
+# tree, so this arm needs no install step and cannot go stale against one.
+# It is a gate arm for the reason the benchlib note below gives: a suite no
+# gate runs is a suite that breaks while the floor stays green.
+run_gate "extension tests" 300 "$EXTENSION" \
+    env -C "$EXTENSION" npm test
 
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
