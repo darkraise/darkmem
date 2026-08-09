@@ -119,19 +119,39 @@ def render_block(
     edits.
     """
     for item in items:
-        if MARKER_BEGIN in item or MARKER_END in item:
-            raise ManagedBlockCorrupted(
-                "an injected item contains a darkmem marker; refusing to "
-                "render. Embedding it would split the managed block in two "
-                "and the next refresh would refuse on a file darkmem broke."
-            )
+        _refuse_embedded_marker(item, "an injected item")
 
     header = (
         f"generated {generated_at}, project {project}, "
         f"{len(items)} item{'' if len(items) == 1 else 's'}, "
         f"{token_budget} tokens"
     )
-    return "\n".join([header, *items])
+    # The header interpolates `project` and `generated_at`, both free-form,
+    # so the composed block is checked as a whole rather than only its items.
+    composed = "\n".join([header, *items])
+    _refuse_embedded_marker(composed, "the rendered block")
+    return composed
+
+
+def _refuse_embedded_marker(candidate: str, what: str) -> None:
+    """Refuse any text that would put a second sentinel inside the block.
+
+    Checked at the *write* boundary rather than only in :func:`render_block`,
+    because that is where the damage would actually be done. The item check
+    below was not enough: ``render_block`` also interpolates ``project`` and
+    ``generated_at`` into its header, both free-form strings, and a caller may
+    hand :func:`apply_block` a block this module never rendered at all (a
+    per-tool adapter, T3.11). A marker reaching the file this way writes a
+    second pair, and the *next* refresh and uninstall both refuse — locking
+    the human out of their own file on damage darkmem itself caused, which is
+    the exact failure the item check exists to prevent.
+    """
+    if MARKER_BEGIN in candidate or MARKER_END in candidate:
+        raise ManagedBlockCorrupted(
+            f"{what} contains a darkmem marker; refusing to write. Embedding "
+            f"it would split the managed block in two and the next refresh "
+            f"would refuse on a file darkmem broke."
+        )
 
 
 def apply_block(text: str, block: str) -> str:
@@ -143,6 +163,7 @@ def apply_block(text: str, block: str) -> str:
     stripping. A writer that tidied a user's file has still edited it, and the
     diff would land in their commit rather than in ours.
     """
+    _refuse_embedded_marker(block, "the block being written")
     bounds = _locate(text)
     body = f"{MARKER_BEGIN}\n{block}\n{MARKER_END}" if block else f"{MARKER_BEGIN}\n{MARKER_END}"
 

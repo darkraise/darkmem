@@ -224,6 +224,34 @@ class TestTheRenderedBlock:
         assert "only item" in written
         assert apply_block(written, block) == written
 
+    def test_a_marker_in_the_project_name_is_refused_too(self):
+        """The header interpolates `project` and `generated_at`, both free-form,
+        so checking only the items left the header as a way in. Found by the
+        2026-08-09 task review (I-1): a project so named wrote a two-END file,
+        and the next refresh *and* uninstall then both refused — locking the
+        human out of their own file on damage darkmem itself caused.
+        """
+        with pytest.raises(ManagedBlockCorrupted):
+            render_block(
+                ["fine"], project=f"proj {ib.MARKER_END}",
+                generated_at="2026-08-09T10:00:00Z", token_budget=100,
+            )
+
+    def test_apply_refuses_a_block_carrying_a_marker_whoever_rendered_it(self):
+        """The check belongs at the write boundary, not only at rendering: a
+        per-tool adapter (T3.11) may compose its own block, and `apply_block`
+        is where the bytes actually land.
+        """
+        with pytest.raises(ManagedBlockCorrupted):
+            apply_block("# rules\n", f"body {ib.MARKER_BEGIN} more")
+
+    def test_the_refusal_leaves_the_file_untouched(self):
+        """A refusal that had already written is not a refusal."""
+        original = _wrap("old")
+        with pytest.raises(ManagedBlockCorrupted):
+            apply_block(original, f"bad {ib.MARKER_END}")
+        assert "old" in original and original.count(ib.MARKER_END) == 1
+
     def test_an_item_containing_a_marker_is_refused_not_embedded(self):
         """The one way rendering could corrupt the file it is written into:
         an item carrying a sentinel would create a second pair, and the next
@@ -250,6 +278,15 @@ def test_the_module_performs_no_filesystem_write_at_all():
     source = Path(inspect.getfile(ib)).read_text()
     tree = ast.parse(source)
 
+    # An allowlist, not only a denylist. The 2026-08-09 task review measured
+    # this scan's reach: `import os` + `os.replace` reddens it, but
+    # `__import__("os").replace(...)` slips the call check (the `str.replace`
+    # carve-out exempts exactly that name), and a write hidden behind any
+    # `app.*` helper passes entirely. This module needs two imports and will
+    # never need a third, so pinning the set closes the realistic drift shape
+    # — a later author reaching for a filesystem helper trips here first.
+    allowed_imports = {"__future__", "dataclasses"}
+
     forbidden_calls = {
         "open", "write_text", "write_bytes", "writelines", "remove", "unlink",
         "rename", "replace", "mkdir", "makedirs", "rmtree", "copy", "copyfile",
@@ -268,12 +305,16 @@ def test_the_module_performs_no_filesystem_write_at_all():
             # `os.replace` is, and that is caught by the import ban below.
             if name in forbidden_calls and name != "replace":
                 offenders.append(f"{node.lineno}: calls {name}()")
+            if name == "__import__":
+                offenders.append(f"{node.lineno}: calls __import__()")
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[0] in forbidden_modules:
+                root = alias.name.split(".")[0]
+                if root in forbidden_modules or root not in allowed_imports:
                     offenders.append(f"{node.lineno}: imports {alias.name}")
         if isinstance(node, ast.ImportFrom) and node.module:
-            if node.module.split(".")[0] in forbidden_modules:
+            root = node.module.split(".")[0]
+            if root in forbidden_modules or root not in allowed_imports:
                 offenders.append(f"{node.lineno}: imports from {node.module}")
 
     assert not offenders, (
