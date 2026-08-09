@@ -58,6 +58,12 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  * it lacks an emitter — all four below are emitted for real.
  */
 const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
+  // A session checkpoint is operational, not vault knowledge (T3.16): it is
+  // an agent's note about its own run, so it is not a memory, fact or repo
+  // lifecycle step and none of the five tabs models it. Its own surface --
+  // the session-checkpoints / resume view in the Activity shell -- is
+  // T3.21's, which is where this will be rendered rather than in the feed.
+  "checkpoint_saved",
   // Generic system housekeeping (re-embed sweeps, maintenance jobs) —
   // not a memory/fact/repo lifecycle step any of the five tabs models.
   "maintenance_run",

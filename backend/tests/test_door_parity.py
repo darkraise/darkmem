@@ -62,6 +62,18 @@ V1 = "/api/v1"
 PARITY_TABLE: tuple[Surface, ...] = (
     # ── Both doors ──────────────────────────────────────────────────
     Surface(
+        name="checkpoint.save",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/checkpoints"),),
+        mcp=("checkpoint_save",),
+    ),
+    Surface(
+        name="checkpoint.latest",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/checkpoints/latest"),),
+        mcp=("checkpoint_latest",),
+    ),
+    Surface(
         name="memory.capture",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/memories"),),

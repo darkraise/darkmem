@@ -411,6 +411,79 @@ async def memory_tags() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Session checkpoints (T3.16) — the second door onto app.services.checkpoints
+#
+# Both verbs go through the same service the REST route calls. Invariant 17
+# asks for two-door parity, and the only version of parity that survives a
+# later change is the one where there is a single behaviour to change.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(
+    description=(
+        "Save a session checkpoint: a compact summary and structured next "
+        "steps for this agent run, keyed on origin_key. Operational notes, "
+        "not vault knowledge — a checkpoint carries no verification badge."
+    )
+)
+async def checkpoint_save(
+    origin_key: str,
+    summary: str,
+    next_steps: list[str] | None = None,
+    project: str = "default",
+) -> str:
+    from app.schemas.checkpoint import CheckpointCreate
+    from app.services import checkpoints as checkpoint_service
+
+    # Validated through the same schema the REST door uses, so a payload one
+    # door refuses is not a payload the other accepts — the bound is a
+    # property of a checkpoint, not of a transport.
+    body = CheckpointCreate(
+        origin_key=origin_key,
+        summary=summary,
+        next_steps=list(next_steps or []),
+        project=project,
+    )
+    async with async_session_factory() as session:
+        try:
+            row = await checkpoint_service.save_checkpoint(
+                session,
+                origin_key=body.origin_key,
+                summary=body.summary,
+                next_steps=body.bounded_steps(),
+                project=body.project,
+                actor="mcp",
+            )
+            payload = checkpoint_service.serialize(row)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+    return json.dumps(payload)
+
+
+@mcp.tool(
+    description=(
+        "Get the latest session checkpoint for an origin_key, or null when "
+        "that run saved none."
+    )
+)
+async def checkpoint_latest(origin_key: str, project: str = "default") -> str:
+    from app.services import checkpoints as checkpoint_service
+
+    async with async_session_factory() as session:
+        row = await checkpoint_service.latest_checkpoint(
+            session, origin_key=origin_key, project=project
+        )
+        # `null` rather than an empty object, matching REST's 404: "saved
+        # nothing" and "saved an empty note" are different answers and the
+        # resume path branches on which one it got.
+        return json.dumps(
+            checkpoint_service.serialize(row) if row is not None else None
+        )
+
+
+# ---------------------------------------------------------------------------
 # Code knowledge tools
 # ---------------------------------------------------------------------------
 

@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**53 surfaces: 17 two-door, 36 single-door with a stated reason (30 REST-only, 6 MCP-only), 0 divergent.**
+**55 surfaces: 19 two-door, 36 single-door with a stated reason (30 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -46,6 +46,8 @@ the test rather than quietly joining the surface.
 <!-- BEGIN GENERATED PARITY TABLE -->
 | Surface | REST | MCP | Status | Reason / note |
 |---|---|---|---|---|
+| `checkpoint.save` | `POST /api/v1/checkpoints` | `checkpoint_save` | two-door | — |
+| `checkpoint.latest` | `GET /api/v1/checkpoints/latest` | `checkpoint_latest` | two-door | — |
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |
 | `memory.capture_batch` | `POST /api/v1/memories/batch` | `memory_batch_add` | two-door | Both doors resolve identity on the raw entry dicts before MemoryCreate validation, and both mirror the 1-100 cap. |
 | `memory.search` | `POST /api/v1/memories/search`<br>`POST /api/v1/memories/search/paginated` | `memory_search` | two-door | Stated wire asymmetry, settled by T1.42a and T1.42c: the tool answers a bare JSON array, which has nowhere to carry the envelope's ContextEcho or excluded counts. Giving it one is a breaking change that doc 12 section 3 says ships as a new tool name, never as a silent mutation of this one. The ranking, the filters and the SQL pushdown are the same service call. |

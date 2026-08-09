@@ -122,6 +122,11 @@ EVENT_TYPES: list[str] = [
     "human_verdict",
     "pin_decision",
     "undone",
+    # T3.16. `resumed` is T3.17's and is deliberately not landed here yet:
+    # taxonomy-first means the value lands before its emitter ships, not
+    # before its emitter is designed, and an unemitted value in this list is
+    # indistinguishable from one whose writer was deleted.
+    "checkpoint_saved",
 ]
 
 OBJECT_TYPES: list[str] = [
@@ -133,6 +138,7 @@ OBJECT_TYPES: list[str] = [
     "topic",
     "document",
     "repository",
+    "checkpoint",
     "system",
 ]
 

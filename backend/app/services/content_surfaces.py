@@ -534,6 +534,13 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
 
 
 ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
+    # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
+    # the agent's own note about its run, written by the agent and never
+    # derived from a `memories` row — this surface reads that table and no
+    # other. It is project-scoped in its own right, so the scoping question
+    # these surfaces exist to answer does not arise here.
+    "POST /api/v1/checkpoints",
+    "GET /api/v1/checkpoints/latest",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",
@@ -653,6 +660,10 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
 
 
 MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
+    # T3.16, for the reason its REST twins carry above: an agent's note about
+    # its own run is not memory content.
+    "mcp:checkpoint_save",
+    "mcp:checkpoint_latest",
     "mcp:code_blast_radius",
     "mcp:code_changes",
     "mcp:code_communities",

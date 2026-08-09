@@ -2,6 +2,7 @@ from .api_key import ApiKey
 from .token_blocklist import TokenBlocklist
 from .base import Base
 from app.models.chat import Conversation, Message  # noqa: F401
+from .checkpoint import SessionCheckpoint
 from .code import CodeEdge, CodeFile, CodeGraphNode, CodeSymbol, Repository
 from .config import Config
 from .embedding import Embedder
@@ -21,6 +22,7 @@ __all__ = [
     "ApiKey",
     "TokenBlocklist",
     "Config",
+    "SessionCheckpoint",
     "Conversation",
     "Message",
     "Repository",
