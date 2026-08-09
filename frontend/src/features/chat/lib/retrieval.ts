@@ -65,6 +65,12 @@ export interface ChatContextFact {
   text: string
   layer?: string
   verification_status?: VerificationStatus | null
+  /** Why the served rung is not the stored one, or null when nothing was
+   *  withheld. `chat.py` has served this since the claim gate landed; the
+   *  type had no slot for it, so the panel showed a gated rung with no sign
+   *  that it was gated — the same screen-level gap the review queue carried
+   *  (I-1, 2026-08-08). */
+  label_suppressed?: string | null
   /** Doc 12 §4's badge. `claim` is shown verbatim or not at all. */
   badge?: { claim: string } | null
   score?: number

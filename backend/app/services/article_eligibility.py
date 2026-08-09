@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from math import isfinite, log1p
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -200,6 +201,17 @@ async def get_synthesis_config(session: AsyncSession) -> SynthesisConfig:
             )
             values[name] = default
             continue
+        if not isfinite(parsed):
+            # `min`/`max` propagate NaN rather than clamping it, so the clamp
+            # below "succeeded" and then `int(nan)` raised -- taking the job
+            # down, which is the one thing this loader exists not to do. In a
+            # weight it was worse: no raise, and every priority silently NaN.
+            logger.warning(
+                "%s.%s is %r, which is not a finite number; falling back to %r",
+                ARTICLE_SELECTION_CONFIG_KEY, name, raw[name], default,
+            )
+            values[name] = default
+            continue
         low, high = PARAM_BOUNDS[name]
         if not low <= parsed <= high:
             clamped = min(max(parsed, low), high)
@@ -245,15 +257,22 @@ _CANDIDATES_SQL = text(
           AND t.expired_at IS NULL
     ),
     subjects AS (
+        -- Grouped on the whole soft key, never the name alone. Uniqueness on
+        -- `entities` is `(name, entity_type)`, so one name can be two
+        -- subjects; pooling them summed two floors into one a neither had
+        -- earned, keyed the result by the lexicographically smallest type,
+        -- and left centrality reading whichever id that group happened to
+        -- pick. Type-constrained dedup (Phase 4) makes the same distinction
+        -- upstream for the same reason.
         SELECT v.name_lower,
-               COALESCE(MIN(e.entity_type), 'concept') AS entity_type,
+               COALESCE(e.entity_type, 'concept') AS entity_type,
                MIN(CAST(v.subject_id AS text)) AS entity_id,
                COUNT(*) AS verified_fact_count,
                COALESCE(SUM(a.access_count), 0) AS read_heat
         FROM verified v
         LEFT JOIN entities e ON e.id = v.subject_id
         LEFT JOIN fact_access_stats a ON a.fact_id = v.id
-        GROUP BY v.name_lower
+        GROUP BY v.name_lower, COALESCE(e.entity_type, 'concept')
     )
     SELECT s.name_lower,
            s.entity_type,
@@ -316,8 +335,6 @@ def _priority(candidate_signals: tuple[int, float, int], config: SynthesisConfig
     neighbours must not be able to swamp the weights by arithmetic alone. The
     weights then decide the trade, which is what a weight is for.
     """
-    from math import log1p
-
     facts, heat, centrality = candidate_signals
     return (
         config.w_facts * log1p(facts)
@@ -449,5 +466,17 @@ def order_for_budget(
     directly, so the guard can actually fail when the tie-break is removed —
     a stable sort would otherwise preserve the arrival order and look correct.
     """
+    ineligible = [c.subject_key for c in eligible if not c.eligible]
+    if ineligible:
+        # `-(priority or 0.0)` used to adopt 0.0 here, so handing this the
+        # output of `candidate_subjects` -- which deliberately includes
+        # ineligibles -- filled spare budget with subjects that cleared no
+        # floor. Raising rather than filtering: a caller passing one in has
+        # made a mistake, and silently dropping it would hide the mistake at
+        # exactly the seam T3.02 consumes.
+        raise ValueError(
+            "ineligible subjects cannot be ordered: doc 09 §4.1 gates before "
+            f"it scores, and these carry no priority to rank by: {ineligible[:5]}"
+        )
     ordered = sorted(eligible, key=lambda c: (-(c.priority or 0.0), c.subject_key))
     return ordered[: config.synthesis_budget]

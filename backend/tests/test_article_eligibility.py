@@ -227,6 +227,29 @@ class TestWhatTheFloorCounts:
         assert ratified.verified_fact_count == ae.DEFAULT_MIN_VERIFIED_FACTS
         assert ratified.eligible is True
 
+    async def test_two_types_sharing_one_name_are_two_subjects(self, session):
+        """Task review, Important 2. Uniqueness on `entities` is
+        `(name, entity_type)`, so one name can be two subjects. Grouping on
+        the name alone summed their counts into one floor neither had earned,
+        and keyed the result by the lexicographically smallest type.
+        """
+        name = "mercury"
+        floor = ae.DEFAULT_MIN_VERIFIED_FACTS
+        planet = await _entity(session, name, entity_type="concept")
+        tool = await _entity(session, name, entity_type="tool")
+        for _ in range(floor - 1):
+            await _fact(session, subject_name=name, subject_id=planet)
+        await _fact(session, subject_name=name, subject_id=tool)
+
+        candidates = await ae.candidate_subjects(session, project=PROJECT)
+        mine = {c.subject_key: c for c in candidates if c.subject_key.startswith(f"{name}::")}
+
+        assert set(mine) == {f"{name}::concept", f"{name}::tool"}
+        assert mine[f"{name}::concept"].verified_fact_count == floor - 1
+        assert mine[f"{name}::tool"].verified_fact_count == 1
+        # Neither earned the floor, so pooling them would have invented one.
+        assert not any(c.eligible for c in mine.values())
+
     async def test_another_project_s_facts_do_not_count(self, session):
         name = "shared-name"
         entity_id = await _entity(session, name)
@@ -331,6 +354,24 @@ class TestTheConfigRows:
 
         assert config.min_verified_facts == ae.DEFAULT_MIN_VERIFIED_FACTS
         assert "nonsense" in caplog.text
+
+    async def test_a_non_finite_value_falls_back_instead_of_crashing(self, session):
+        """Task review, Important 3. `min`/`max` propagate NaN rather than
+        clamping it, so the clamp "succeeded" and `int(nan)` then raised --
+        taking the job down, which is the one thing this loader exists not to
+        do. In a weight there was no raise at all: every priority silently NaN.
+        """
+        # The *strings* are the reachable vector, and that is the finding's
+        # own shape: jsonb refuses a bare NaN token outright, so a float NaN
+        # can never reach this row -- but "nan" is valid JSON and `float()`
+        # parses it happily. A first draft of this test used the float and
+        # proved nothing but Postgres's own validation.
+        await _config(session, {"min_verified_facts": "nan", "w_heat": "inf"})
+
+        config = await ae.get_synthesis_config(session)
+
+        assert config.min_verified_facts == ae.DEFAULT_MIN_VERIFIED_FACTS
+        assert config.w_heat == ae.DEFAULT_W_HEAT
 
     async def test_an_out_of_range_value_is_clamped(self, session):
         await _config(session, {"synthesis_budget": 10_000_000})
@@ -456,6 +497,26 @@ class TestPriorityOrdering:
         assert [c.subject_key for c in ordered] == [
             "tie-a::concept", "tie-b::concept", "tie-c::concept",
         ]
+
+    def test_ordering_refuses_an_ineligible_subject(self):
+        """Task review, Important 1. `-(priority or 0.0)` adopted 0.0 for the
+        one object doc 09 forbids ranking, so handing this the output of
+        `candidate_subjects` -- which deliberately includes ineligibles --
+        filled spare budget with subjects that cleared no floor.
+        """
+        mixed = [
+            ae.SubjectCandidate(
+                subject_key="ok::concept", project=PROJECT, verified_fact_count=3,
+                read_heat=0.0, centrality=0, pinned=False, eligible=True, priority=1.0,
+            ),
+            ae.SubjectCandidate(
+                subject_key="under::concept", project=PROJECT, verified_fact_count=1,
+                read_heat=0.0, centrality=0, pinned=False, eligible=False, priority=None,
+            ),
+        ]
+
+        with pytest.raises(ValueError, match="ineligible"):
+            ae.order_for_budget(mixed, ae.SynthesisConfig())
 
     def test_the_budget_cuts_the_head_of_the_order_not_the_tail(self):
         """The cut keeps the highest-priority subjects. Slicing the wrong end

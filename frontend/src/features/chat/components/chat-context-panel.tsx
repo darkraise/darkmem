@@ -7,6 +7,7 @@ import {
   WhyRetrievedTrace,
 } from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
+import { SuppressedBadge } from "@/features/knowledge/components/fact-parts"
 import {
   CHAT_EXCLUSION_CAVEAT,
   channelStates,
@@ -136,6 +137,9 @@ export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProp
                     status={fact.verification_status}
                     detail={fact.badge?.claim}
                   />
+                )}
+                {fact.label_suppressed && (
+                  <SuppressedBadge reason={fact.label_suppressed} />
                 )}
               </div>
               <p className="text-sm">{fact.text}</p>

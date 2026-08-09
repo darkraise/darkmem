@@ -58,8 +58,10 @@ read surface, and invariant 15's tree-wide scan fails the build on that — as i
 does on this paragraph naming the module, which is why it does not. The ladder
 writes both columns in the **same** UPDATE as ``verification_status``, so they
 are a cache the authority refreshes every recompute and not a frozen verdict.
-The same scan keeps the finding's own channel to the three modules that declare,
-write and read it — which is exactly why the reason arrives here as columns.
+A second, separate scan keeps the finding's own event channel to the three
+modules that declare, write and read it — which is exactly why the reason
+arrives here as columns. (Two scans, not one: invariant 15's guards the veto's
+*import*, that one guards the event type.)
 
 **"Both sides" — closed by T2.64 (2026-08-02).** T2.06's enriched ``verified``
 events journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
@@ -229,11 +231,12 @@ def _fact_reason(
 
     T2.46 supplied the distinguishing column the module docstring said did not
     exist yet, so an under-sourced fact now names its own reason instead of
-    falling through to ``unspecified``. ``unspecified`` survives for doc 09's
-    ungrounded articles, which are a different table and still have no
-    distinguishing column of their own, and for T2.109's contradiction-suspected
-    fact, which has no column at all — the module docstring says what closing
-    that would cost.
+    falling through to ``unspecified``. T2.112 did the same for the
+    contradiction-suspected fact, which this function reads two columns for
+    below — the sentence here saying it "has no column at all" survived that
+    landing and was corrected 2026-08-09. ``unspecified`` now covers exactly
+    one opener: doc 09's ungrounded articles, a different table that still has
+    no distinguishing column of its own.
 
     ``disputed`` wins a tie on the graver condition, and the tie is
     unreachable today: the veto is adjudicated before every count, so a

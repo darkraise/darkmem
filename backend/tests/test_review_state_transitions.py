@@ -580,20 +580,33 @@ class TestTheSuspectedContradictionOpener:
                 for i, kind in enumerate(("memory", "code", "human"))
             ),
         )
+        # `open_contradiction` is swept too (added 2026-08-09 after the fix
+        # round's re-review). The first version varied profiles and the
+        # blocker but not this, and the disputed branch reads it: a mutation
+        # conditioning *recovery* on the flag -- the scan blocking a fact's
+        # return from disputed, which is production-reachable -- passed 411
+        # tests across eight suites. No other test in the tree passes the flag
+        # at all, so this loop is the whole guard.
         for profile in (below_bar, at_bar):
             for blocked in (False, True):
-                for current in ("candidate", "corroborated", "disputed", "confirmed"):
-                    plain = decide(
-                        "f", current, profile, LadderConfig(),
-                        supersession_blocked=blocked,
-                    )
-                    flagged = decide(
-                        "f", current, profile, LadderConfig(),
-                        supersession_blocked=blocked,
-                        contradiction_suspected=True,
-                    )
-                    where = (current, profile.origin_count, blocked)
-                    assert replace(flagged, contradiction_suspected=False) == plain, where
+                # The domain is `bool | None`, and `NO_DETECTOR` *is* `None` --
+                # a first version swept `(NO_DETECTOR, None)`, which is one
+                # value written twice and left the recovery door untested.
+                for verdict in (True, False, NO_DETECTOR):
+                    for current in ("candidate", "corroborated", "disputed", "confirmed"):
+                        plain = decide(
+                            "f", current, profile, LadderConfig(),
+                            open_contradiction=verdict,
+                            supersession_blocked=blocked,
+                        )
+                        flagged = decide(
+                            "f", current, profile, LadderConfig(),
+                            open_contradiction=verdict,
+                            supersession_blocked=blocked,
+                            contradiction_suspected=True,
+                        )
+                        where = (current, profile.origin_count, blocked, verdict)
+                        assert replace(flagged, contradiction_suspected=False) == plain, where
 
         # The premise: at least one swept cell actually promotes. Without this
         # the sweep could quietly return to being all-holds — the state that
