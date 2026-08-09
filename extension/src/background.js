@@ -9,6 +9,8 @@
 
 import { getOriginKey } from "./origin.js";
 import { CaptureRefused, buildCapture, postCapture } from "./capture.js";
+import { packageExchange } from "./adapters.js";
+import { alreadyCaptured, fingerprint, remember } from "./dedupe.js";
 
 const MENU_ID = "darkmem-capture-selection";
 const SETTINGS_KEYS = ["darkmem.base_url", "darkmem.token", "darkmem.project"];
@@ -36,14 +38,36 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const { baseUrl, token, project } = await settings();
   try {
     const originKey = await getOriginKey(chrome.storage.local);
-    const body = buildCapture({
+    const packaged = packageExchange({
       selection: info.selectionText,
+      pageUrl: info.pageUrl ?? tab?.url,
+      pageTitle: tab?.title,
+    });
+    const body = buildCapture({
+      selection: packaged.content,
       pageUrl: info.pageUrl ?? tab?.url,
       pageTitle: tab?.title,
       originKey,
       project,
     });
+    // The adapter's attribution rides alongside the shell's page metadata
+    // rather than replacing it: the shell's two fields are what a plain
+    // capture carries, and an adapter only ever adds.
+    body.metadata = { ...body.metadata, ...packaged.metadata };
+
+    const digest = await fingerprint(body.content);
+    if (await alreadyCaptured(chrome.storage.local, originKey, digest)) {
+      // Reported, not silent. A human who selects the same passage twice
+      // deserves to know why the second click did nothing -- otherwise the
+      // feature looks broken exactly when it is working.
+      await notify("Already captured — this passage is in darkmem");
+      return;
+    }
+
     await postCapture(fetch, baseUrl, body, { token });
+    // Recorded only after the door accepted: remembering first would let a
+    // failed post suppress the retry.
+    await remember(chrome.storage.local, originKey, digest);
     await notify("Captured to darkmem");
   } catch (error) {
     // Surfaced, never swallowed: a capture that silently did not happen is
