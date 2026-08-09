@@ -35,26 +35,31 @@ hybrid-search fusion arm, no REST GET beyond this module's own queue list).
 from the ``review_state`` value itself.** T2.62 settled how one
 ``review_state`` column serves several independent openers plus a human clear —
 it derives the flag from the decision instead of letting each opener assign it
-— so this module reads two columns and names two of the four reasons.
+— so this module reads four columns and names three of the four reasons.
 ``verification_status = 'disputed'`` renders as ``disputed``;
 ``demotion_pending_since IS NOT NULL`` renders as ``under-sourced``, the
 column T2.46 landed and the reason this docstring previously had to report as
-``unspecified``.
+``unspecified``; ``contradiction_suspected_at IS NOT NULL`` renders as
+``contradiction-suspected``, with ``contradiction_counterpart_id`` serving the
+counterpart beside it.
 
-``unspecified`` covers the other two, for the same reason in both cases — no
-distinguishing column exists. Doc 09's ungrounded articles live in a different
-table entirely. **T2.109's contradiction-suspected fact is the newer one and
-the sharper gap**: the flag is derived at recompute time from the model scan's
-standing journal verdict and is persisted nowhere, so a fact the scan flagged
-arrives here wearing ``unspecified`` while its rung reads healthy — which is
-correct (it *is* healthy; that is the whole point of the rewire) and unhelpful,
-because the reviewer is given no counterpart to adjudicate against. The
-evidence exists — the scan's own journal row carries the counterpart's triple,
-the witness origin and the judge's one-sentence reason — but reaching it means
-either a journal read on this query or a column on the fact row, and picking
-between those is a design call this module does not own. This module may not
-even name that event type: a tree-wide scan keeps the channel to the three
-modules that declare, write and read it.
+``unspecified`` covers the fourth — doc 09's ungrounded articles, which live in
+a different table entirely — for the same reason as before: no distinguishing
+column exists here.
+
+**The contradiction-suspected reason was that gap, and T2.112 closed it
+(corrected 2026-08-09).** This paragraph used to say the flag "is persisted
+nowhere", that a flagged fact "arrives here wearing ``unspecified``", and that
+choosing between a journal read and a fact-row column was "a design call this
+module does not own" — all three were true of T2.109's shape and none survives
+T2.112. The column won, and for an invariant rather than a preference: reading
+the finding from the queue would mean importing the adjudication module onto a
+read surface, and invariant 15's tree-wide scan fails the build on that — as it
+does on this paragraph naming the module, which is why it does not. The ladder
+writes both columns in the **same** UPDATE as ``verification_status``, so they
+are a cache the authority refreshes every recompute and not a frozen verdict.
+The same scan keeps the finding's own channel to the three modules that declare,
+write and read it — which is exactly why the reason arrives here as columns.
 
 **"Both sides" — closed by T2.64 (2026-08-02).** T2.06's enriched ``verified``
 events journal decision evidence (``outcome``, ``origin_count``, ``required_n``,
