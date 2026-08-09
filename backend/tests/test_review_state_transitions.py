@@ -35,7 +35,11 @@ import pytest
 from sqlalchemy import event, text
 from sqlalchemy.engine import Engine
 
-from app.repositories.fact_sources import FactSourceRepository, OriginProfile
+from app.repositories.fact_sources import (
+    FactSourceRepository,
+    OriginObservation,
+    OriginProfile,
+)
 from app.repositories.knowledge_triples import (
     REVIEW_STATE_OPEN,
     KnowledgeTripleRepository,
@@ -551,14 +555,52 @@ class TestTheSuspectedContradictionOpener:
         Kills the shape this rewire removed — a model verdict reaching a branch
         — by re-deciding every reachable current status both ways and requiring
         byte-identical decisions apart from the flag itself.
+
+        **The sweep is over profiles as well as statuses (2026-08-09), and that
+        is what gives it teeth.** With only ``origins=()`` every fact sits below
+        its bar, so every decision is the same hold whatever the flag does:
+        inserting ``if suspected and k >= n: dispute`` — the model scan
+        re-acquiring the veto, exactly the reversal this split forbids — passed
+        410 tests across eight suites. A guard on a safety property that cannot
+        fail on the reversal it names is the defect shape this epic keeps
+        finding, so the profiles below reach the branches: at-bar diverse
+        origins that would otherwise promote, and the two blocked paths.
         """
-        profile = OriginProfile(fact_id="f", origins=())
-        for current in ("candidate", "corroborated", "disputed", "confirmed"):
-            plain = decide("f", current, profile, LadderConfig())
-            flagged = decide(
-                "f", current, profile, LadderConfig(), contradiction_suspected=True,
-            )
-            assert replace(flagged, contradiction_suspected=False) == plain, current
+        below_bar = OriginProfile(fact_id="f", origins=())
+        at_bar = OriginProfile(
+            fact_id="f",
+            origins=tuple(
+                OriginObservation(
+                    origin_key=f"o{i}",
+                    source_kinds=(kind,),
+                    first_seen=T0,
+                    last_seen=T0,
+                    row_count=1,
+                )
+                for i, kind in enumerate(("memory", "code", "human"))
+            ),
+        )
+        for profile in (below_bar, at_bar):
+            for blocked in (False, True):
+                for current in ("candidate", "corroborated", "disputed", "confirmed"):
+                    plain = decide(
+                        "f", current, profile, LadderConfig(),
+                        supersession_blocked=blocked,
+                    )
+                    flagged = decide(
+                        "f", current, profile, LadderConfig(),
+                        supersession_blocked=blocked,
+                        contradiction_suspected=True,
+                    )
+                    where = (current, profile.origin_count, blocked)
+                    assert replace(flagged, contradiction_suspected=False) == plain, where
+
+        # The premise: at least one swept cell actually promotes. Without this
+        # the sweep could quietly return to being all-holds — the state that
+        # made the original guard unfailable — and still pass.
+        assert decide(
+            "f", "candidate", at_bar, LadderConfig(),
+        ).target_status == "corroborated"
 
     def test_a_ratified_fact_never_carries_the_flag(self):
         """Doc 08 §4.4: a ratified fact is immune to the veto, so queueing it
