@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ os.environ["DATABASE_URL"] = os.environ.get(
     "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test",
 )
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
@@ -208,3 +210,35 @@ async def mcp_http_client(session, monkeypatch, mcp_streamable_app):
         headers={"Accept": "application/json"},
     ) as c:
         yield c
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "expect_refusals: this test deliberately provokes a supersede refusal "
+        "the tree-wide collector in tests/test_memory_dream.py otherwise "
+        "asserts never happens",
+    )
+
+
+@pytest.fixture
+def cleared_promotion_record(tmp_path, monkeypatch):
+    """Open T2.95's corroboration gate for a test that is not about the gate.
+
+    Since T2.95 a promoted fact status is withheld at the serving boundary
+    unless G-C's promotion-metrics record exists, so a test asserting a
+    `corroborated` badge is, by default, asserting a label the product
+    deliberately suppresses. Tests about badge *shape*, source grouping or
+    composition want the gate open so they measure what they are about; tests
+    about the gate itself must NOT use this fixture.
+
+    Deliberately opt-in rather than autouse: an autouse version would open the
+    gate for the whole suite and the suppression would go untested everywhere
+    at once, which is the failure mode a default-open gate has.
+    """
+    from app.services import claim_gates
+
+    record = tmp_path / "promotion_metrics_record.json"
+    record.write_text(json.dumps({"gate_eligible": True, "source": "test fixture"}))
+    monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", record)
+    return record

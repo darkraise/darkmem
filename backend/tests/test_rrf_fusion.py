@@ -321,13 +321,16 @@ class _SingleSessionFactory:
         return False
 
 
-async def _seed_memory(session, *, content: str, confidence: float) -> uuid.UUID:
+async def _seed_memory(
+    session, *, content: str, confidence: float, importance: float = 0.5,
+) -> uuid.UUID:
     mem = Memory(
         id=uuid.uuid4(),
         content=content,
         source="test",
         project="rrf-fusion-test",
         confidence=confidence,
+        importance=importance,
     )
     session.add(mem)
     await session.flush()
@@ -377,6 +380,80 @@ async def test_weighting_preserves_a_reranked_order_while_rescaling(session):
     assert out[1]["rrf_score"] == pytest.approx(0.009 * 1.3)
 
 
+# ── the importance signal is wired, and inert at weight zero (T2.30) ──
+
+
+@pytest.mark.asyncio
+async def test_importance_signal_reorders_when_w_importance_is_on(session):
+    """``memories.importance`` must actually reach ``rank_fusion_factor``.
+
+    With the signal unwired the importance arm reads no signal and returns
+    exactly 1.0 at any weight, so this reorder is the wiring's existence
+    proof, not a formula check (the formula is test_rrf_fusion's arm tests).
+    """
+    from app.services.pipeline import ProcessingPipeline
+
+    dull = await _seed_memory(
+        session, content="dull row", confidence=0.75, importance=0.2,
+    )
+    vital = await _seed_memory(
+        session, content="vital row", confidence=0.75, importance=0.9,
+    )
+
+    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+    rows = [
+        {"memory_id": str(dull), "rrf_score": 0.010},
+        {"memory_id": str(vital), "rrf_score": 0.009},
+    ]
+    out = await pipe._apply_rank_fusion_factor(
+        session, rows, {"w_importance": 1.0}, preserve_order=False,
+    )
+
+    # 0.010 * (1 + 1.0*(0.2-0.5)) = 0.0070 vs 0.009 * (1 + 1.0*(0.9-0.5))
+    # = 0.0126 — the important row overtakes.
+    assert [r["memory_id"] for r in out] == [str(vital), str(dull)]
+    assert out[0]["rrf_score"] == pytest.approx(0.009 * 1.4)
+    assert out[1]["rrf_score"] == pytest.approx(0.010 * 0.7)
+
+
+@pytest.mark.asyncio
+async def test_importance_wiring_is_bit_identical_at_weight_zero(session):
+    """Feeding the signal must change nothing while ``w_importance`` is 0.
+
+    Varied importance on disk, confidence arm active: the scores must be
+    the literal IEEE-754 values the confidence-only computation produces —
+    ``.hex()``, not approx, per T1.31's bit-identity ruling.
+    """
+    from app.services.pipeline import ProcessingPipeline
+
+    dull = await _seed_memory(
+        session, content="dull row", confidence=0.5, importance=0.1,
+    )
+    vital = await _seed_memory(
+        session, content="vital row", confidence=0.9, importance=0.9,
+    )
+
+    pipe = ProcessingPipeline(_StubLLM(), _SingleSessionFactory(session))
+
+    def rows():
+        return [
+            {"memory_id": str(dull), "rrf_score": 0.010},
+            {"memory_id": str(vital), "rrf_score": 0.009},
+        ]
+
+    weighted = await pipe._apply_rank_fusion_factor(
+        session, rows(), {"confidence_rank_gamma": 2.0, "w_importance": 0.0},
+    )
+    confidence_only = await pipe._apply_rank_fusion_factor(
+        session, rows(), {"confidence_rank_gamma": 2.0},
+    )
+
+    by_id_weighted = {r["memory_id"]: r["rrf_score"] for r in weighted}
+    by_id_conf = {r["memory_id"]: r["rrf_score"] for r in confidence_only}
+    for mid in by_id_conf:
+        assert by_id_weighted[mid].hex() == by_id_conf[mid].hex()
+
+
 @pytest.mark.asyncio
 async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch):
     """The wiring, not just the helper.
@@ -399,7 +476,10 @@ async def test_semantic_search_preserves_the_rerank_verdict(session, monkeypatch
         def __init__(self, llm, sess):
             pass
 
-        async def search(self, query, limit=20, semantic_weight=0.7, filters=None):
+        async def search(
+                self, query, limit=20, semantic_weight=0.7, filters=None,
+                ppr_weight=0.0, dual_weight=0.0, access_signals=False,
+            ):
             return [dict(r) for r in fused]
 
     class _StubReranker:

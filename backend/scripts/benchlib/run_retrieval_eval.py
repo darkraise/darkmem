@@ -7,8 +7,15 @@ gold pairs, score them under the same protocol, and emit two artifacts from
 a single composed run -- a dated human-readable report under ``docs/eval/``
 and one ledger row -- never a hand-rolled dict fed straight to
 ``ledger.record`` (brief ruling 1: that call boundary is the only place the
-no-twin-no-accuracy guard actually bites, so this module never reaches past
-``full_context.record_comparison``).
+no-twin-no-accuracy guard actually bites). The default (no ``--arm``) path
+below reaches the ledger through exactly one sanctioned recorder,
+``full_context.record_comparison``; T2.44's ``--arm`` path is a second,
+independent command reaching the ledger through its own sanctioned
+recorder, ``arm_ablation.record_arm_comparison`` (see that module's
+docstring for why it is a parallel recorder rather than a caller of this
+one) -- benchlib also had a third, ``twin.record_eval_run``, before either
+of these two existed. "One boundary" was never a benchlib-wide rule; it is
+a per-path guarantee each sanctioned recorder holds on its own.
 
 Corpus size, gold version, live-pair count and the full-corpus fetch depth
 are all read from the gold files at run time, never hardcoded: this corpus
@@ -30,6 +37,7 @@ without the first's expected jitter drowning out a real regression.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -76,6 +84,7 @@ FULL_CONTEXT_LIMIT = 10
 
 CACHE_DIR = retrieval_gold.RETRIEVAL_DIR / "cache"
 REPORT_DIR = REPO_ROOT / "docs" / "eval"
+GATE_LEDGER_PATH = REPO_ROOT / "docs" / "planning" / "gate-ledger.md"
 
 
 def report_path(run_date, report_dir: Path = REPORT_DIR) -> Path:
@@ -83,9 +92,70 @@ def report_path(run_date, report_dir: Path = REPORT_DIR) -> Path:
 
     Overwriting an existing same-date report (rather than minting a variant)
     is the caller's job -- ``Path.write_text`` already does that, and ruling
-    4 says a same-day re-run is a correction, not a second artifact.
+    4 says a same-day re-run is a correction, not a second artifact. That
+    ruling is about UNCITED reports, i.e. still-working files. Once
+    ``gate-ledger.md`` cites a report as a cleared gate's evidence it is no
+    longer scratch output, and ``run_eval`` (below) refuses to overwrite it
+    via ``_refuse_if_cited`` -- a check this function deliberately does not
+    make itself, since it has no caller/ledger context, only a date.
     """
     return Path(report_dir) / f"{run_date.isoformat()}-retrieval-eval.md"
+
+
+def find_ledger_citations(rel_path: str, ledger_path: Path = GATE_LEDGER_PATH) -> list[str]:
+    """Lines in ``gate-ledger.md`` that mention ``rel_path`` verbatim.
+
+    A literal-substring search over the raw text, not a markdown parser: it
+    matches the path however the ledger happens to write it -- backticked,
+    bare, mid-sentence, inside a table cell -- at the cost of being blind to
+    any citation form that does not contain this exact string (a glob, a
+    renamed variable, a path written relative to a different root). A
+    citation that dodges this search reads as UNCITED, which is the unsafe
+    direction for a refusal check: prefer keeping the ledger's citation
+    style literal (as it is today, exclusively ``docs/eval/...`` paths) over
+    trusting this function's silence as proof nothing points at a file.
+    """
+    if not Path(ledger_path).exists():
+        return []
+    hits = []
+    text = Path(ledger_path).read_text(encoding="utf-8")
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        if rel_path in line:
+            hits.append(f"{Path(ledger_path).name}:{lineno}: {line.strip()}")
+    return hits
+
+
+def _refuse_if_cited(out_path: Path, ledger_path: Path = GATE_LEDGER_PATH) -> None:
+    """Refuse to overwrite ``out_path`` if ``gate-ledger.md`` cites it.
+
+    Only fires when ``out_path`` already exists (nothing to protect on a
+    file's first write) and sits inside the repo (a scratch ``report_dir``
+    outside ``REPO_ROOT`` -- e.g. a test's ``tmp_path`` -- cannot be named
+    by a ledger that cites repo-relative paths, so it is out of scope for
+    this check by construction, not by accident). This is what keeps ruling
+    4 intact: a same-day re-run of an UNCITED report still overwrites freely,
+    since it never matches any line here.
+    """
+    if not out_path.exists():
+        return
+    try:
+        rel_path = out_path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return
+    hits = find_ledger_citations(rel_path, ledger_path)
+    if hits:
+        raise RuntimeError(
+            f"refusing to overwrite {out_path} -- gate-ledger.md cites it as "
+            "gate evidence:\n" + "\n".join(hits) + "\n"
+            "This file is no longer scratch output; a same-day re-run "
+            "correcting an UNCITED report is still fine (ruling 4), but this "
+            "one backs a ratified gate verdict and overwriting it would "
+            "silently detach that verdict from the artifact it names. If "
+            "the eval genuinely needs re-running, mint a differently-named "
+            "report by hand (pass a distinct report_dir or rename after "
+            "writing) and update the ledger's citation to it in the same "
+            "commit -- never overwrite the cited file."
+        )
 
 
 def _score_summary(score: ScoreReport) -> dict:
@@ -372,6 +442,7 @@ async def run_eval(
     full_context_limit: int = FULL_CONTEXT_LIMIT,
     report_dir: str | Path = REPORT_DIR,
     ledger_path: str | Path = ledger.DEFAULT_PATH,
+    gate_ledger_path: str | Path = GATE_LEDGER_PATH,
     now: datetime | None = None,
 ) -> EvalRunResult:
     """Run the full eval end to end and emit the report + one ledger row.
@@ -490,6 +561,10 @@ async def run_eval(
     print(f"[6/6] comparing, writing report, recording ledger... (total live calls: {total_live_calls})")
     report_text = render_report(comparison, meta)
     out_path = report_path(run_date, report_dir)
+    # T0.18: refuse before writing or appending to the JSONL ledger below, so
+    # a refusal leaves no partial artifact either -- same discipline as the
+    # F1 caveat-kind guard above.
+    _refuse_if_cited(out_path, gate_ledger_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(report_text, encoding="utf-8")
 
@@ -507,8 +582,56 @@ async def run_eval(
     )
 
 
-async def main() -> int:
-    result = await run_eval()
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """No flags at all until T2.44: this file's whole entry chain used to be
+    ``_run() -> main() -> run_eval(...)`` with nothing to parse. ``--arm``
+    is genuinely new plumbing, not a flag added to an existing parser.
+    """
+    parser = argparse.ArgumentParser(
+        description=(
+            "Drive the retrieval eval: the T0.09 full-context comparison by "
+            "default, or (with --arm) the T2.44 on/off ablation of one "
+            "rank_fusion_factor arm."
+        ),
+    )
+    parser.add_argument(
+        "--arm", default=None, metavar="FLAG",
+        help=(
+            "Run the on/off ablation for one ranking arm instead of the "
+            "full-context comparison. Takes the arm's config FLAG spelling "
+            "(e.g. w_importance). All three signal classes are accepted: the "
+            "rank_fusion_factor arms (RANK_ARMS), the RRF list weights "
+            "(w_ppr, w_dual) and the applies_when boost (w_context_boost); "
+            "arm_ablation.resolve_ablatable() validates against all of them "
+            "at run time. An arm whose signal cannot be present on this "
+            "harness refuses with the reason rather than reporting a zero "
+            "delta that reads like a measured 'no win'."
+        ),
+    )
+    parser.add_argument(
+        "--weight", type=float, default=None,
+        help=(
+            "The arm's 'on' weight, only meaningful with --arm. Defaults to "
+            "arm_ablation.DEFAULT_PROBE_WEIGHT when omitted; must be nonzero "
+            "(weight 0.0 is the off leg, not an ablation)."
+        ),
+    )
+    return parser
+
+
+async def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    if args.arm is not None:
+        # Imported lazily (not at module top): arm_ablation.py deliberately
+        # does not import from this module (see its own docstring on why its
+        # ingest preamble is a separate copy, not a shared helper), but a
+        # top-level import here would still be the first thing this file
+        # does on every invocation, including the default (no --arm) path
+        # that never touches arm ablation at all.
+        from benchlib import arm_ablation
+        result = await arm_ablation.run_arm_ablation(arm_flag=args.arm, weight=args.weight)
+    else:
+        result = await run_eval()
     print(result.report_text)
     print(f"report written to {result.report_path}")
     print(f"ledger appended: {result.ledger_path}")
@@ -517,11 +640,13 @@ async def main() -> int:
 
 def _run() -> int:
     """Thin wrapper so a pre-flight RuntimeError (missing key, alembic
-    failure, ...) prints as one readable line instead of a Python
-    traceback -- main() itself still raises, so a test can assert on it."""
+    failure, ...) or a ValueError (an unknown --arm, a zero --weight, a
+    cross-fingerprint refusal) prints as one readable line instead of a
+    Python traceback -- main() itself still raises, so a test can assert on
+    it."""
     try:
         return asyncio.run(main())
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"run_retrieval_eval.py: {exc}", file=sys.stderr)
         return 1
 

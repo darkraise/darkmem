@@ -88,7 +88,11 @@ describe("no-restricted-imports: src/demo/*", () => {
     // recorded in the task's report — genuinely demo-fixture-only types,
     // plus a handful of real, non-demo-exclusive files that legitimately
     // still need a demo-shaped type for their `if (DEMO)` branch, e.g.
-    // use-feed.ts's DemoFeedEvent).
-    expect(countByRule(results, "no-restricted-imports")).toBe(116)
+    // use-feed.ts's DemoFeedEvent). Re-measured 2026-08-04 (T2.86):
+    // `belief-window.tsx`'s prop type widened to a structural
+    // `BeliefWindowLike` so the live fact detail page could reuse the
+    // component without importing `@/demo/types`' `BeliefWindow`, dropping
+    // the count to 115.
+    expect(countByRule(results, "no-restricted-imports")).toBe(115)
   })
 })

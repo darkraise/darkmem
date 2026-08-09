@@ -66,12 +66,15 @@ async def test_run_retrieval_actually_invokes_pipeline_semantic_search(monkeypat
     from app.services.pipeline import ProcessingPipeline
 
     llm, ids = await _ingest_three(tmp_path)
-    calls: list[tuple[str, int]] = []
+    calls: list[tuple[str, int, object]] = []
     original = ProcessingPipeline.semantic_search
 
-    async def spy(self, query, limit=20, semantic_weight=0.7):
-        calls.append((query, limit))
-        return await original(self, query, limit=limit, semantic_weight=semantic_weight)
+    async def spy(self, query, limit=20, semantic_weight=0.7, filters=None):
+        calls.append((query, limit, filters))
+        return await original(
+            self, query, limit=limit, semantic_weight=semantic_weight,
+            filters=filters,
+        )
 
     monkeypatch.setattr(ProcessingPipeline, "semantic_search", spy)
 
@@ -83,7 +86,11 @@ async def test_run_retrieval_actually_invokes_pipeline_semantic_search(monkeypat
         llm, bench_db.session_factory, gold_pairs, limit=3,
     )
 
-    assert calls == [("alpha", 3)]
+    # `filters=None` is the unscoped read every baseline row in the ledger was
+    # measured under. Pinning it here is what stops a future caller from
+    # quietly giving the default path a scope and invalidating those rows
+    # (ruling 3); the arm-ablation path passes a scope explicitly instead.
+    assert calls == [("alpha", 3, None)]
     assert ranked["t-1"]  # the spy delegated to the real method, which returned real hits
 
 

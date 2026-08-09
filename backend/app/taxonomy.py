@@ -329,6 +329,37 @@ def normalize_memory_relation_type(raw_type: str | None) -> str:
     return "RELATES_TO"
 
 
+# ── Exclusive entity-relation families (doc 08 §5.5, T2.16 D4) ──────
+# The families over which two memories asserting *different* targets from the
+# same source entity is a genuine conflict rather than a plural fact, and
+# therefore the only families that may produce a derived `CONTRADICTS` memory
+# relation. Nothing outside this set can reach that edge.
+#
+# **It is empty, and the emptiness is a ruling rather than a stub.** Every
+# `RELATIONSHIP_TYPES` member that reads as single-valued in isolation is also
+# the normalisation target of a plural historical name, so a stored row's
+# `rel_type` does not determine single-valuedness:
+#
+# - `DEPLOYED_ON` absorbs `RUNS_ON` and `LOCATED_IN` through
+#   `LEGACY_RELATION_TYPE_MAP`, and the rescue layer routes seven connector
+#   phrases into it including a bare "on" at 0.6 confidence. "postgres
+#   DEPLOYED_ON linux" and "postgres DEPLOYED_ON docker" are both true.
+# - `HAPPENED_ON` absorbs `VISITED` and `LIVES_IN`. One person visiting two
+#   cities is two targets and no conflict.
+# - `USES` / `DEPENDS_ON` / `HAS_PART` / `IMPLEMENTS` / `EXTENDS` / `CAUSES` /
+#   `AUTHORED_BY` / `MENTIONS` / `CITES` / `INSPIRED_BY` / `IS_A` are plural by
+#   construction; `REPLACES` and `IMPROVES_ON` are plural too (one successor
+#   may retire several predecessors); `RELATED_TO` is the normaliser's own
+#   fallback and would collect every unrecognised emission.
+#
+# The consequence is deliberate: with no family here the derivation pass ships
+# two signals rather than three. Widening this set is a design decision with a
+# false-dispute cost — a derived `CONTRADICTS` suppresses the weaker
+# `RELATES_TO` edge and feeds the fact-level dispute surface — so it is
+# ratified, never inferred.
+EXCLUSIVE_RELATION_FAMILIES: frozenset[str] = frozenset()
+
+
 def is_projected_memory_relation_type(raw_type: str | None) -> bool:
     """True for a memory-relation type that is derived at read time rather than
     stored. A writer that reaches one of these is asking for a row that must not

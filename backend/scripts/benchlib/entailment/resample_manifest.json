@@ -1,0 +1,27 @@
+{
+  "protocol": "LABELLING.md Layer 3 seeded blind resample",
+  "n": 93,
+  "bar_max_disagreements": 1,
+  "gold_sha256": "047cbd6ff31e595822b9b2cb945ae619af88f94e909ed75dc10aefc35a450b88",
+  "seed": 75283823,
+  "seed_derivation": "int(sha256(gold.json)[:8], 16)",
+  "strata": {
+    "contradicted": {
+      "mode": "full census",
+      "drawn": 80,
+      "live": 80
+    },
+    "unsupported": {
+      "mode": "proportional",
+      "drawn": 6,
+      "live": 125
+    },
+    "entailed": {
+      "mode": "proportional",
+      "drawn": 7,
+      "live": 146
+    }
+  },
+  "ids_recorded": false,
+  "labels_recorded": false
+}

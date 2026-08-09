@@ -3,6 +3,7 @@ import logging
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -16,7 +17,19 @@ from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
-from app.services.rank_fusion import any_arm_active, rank_fusion_factor
+from app.services.stated_expiry import derive_stated_expiry
+from app.services.fact_provenance import (
+    reconcile_memory_sources,
+    withdraw_memory_sources,
+)
+from app.services.rank_fusion import (
+    IMPORTANCE_DEFAULT,
+    access_arms_active,
+    any_arm_active,
+    dual_list_weight,
+    ppr_list_weight,
+    rank_fusion_factor,
+)
 from app.services.relations import names_distinct
 from app.services.supersession import detect_supersessions, is_supersession_trigger
 from app.services import prompt
@@ -618,6 +631,23 @@ class ProcessingPipeline:
                                 except (TypeError, ValueError):
                                     pass
                             mem_record.confidence = estimate_confidence(content, resolved_memory_type)
+
+                            # Doc 08 §2.3's activation (T2.34): a memory that
+                            # states its own retention self-expires without the
+                            # caller setting a TTL. Only ever fills a NULL — an
+                            # explicit `expires_at` is the caller's instruction
+                            # and a derivation that overrode it would be the
+                            # same defect as a wrong parse, in the other
+                            # direction. `created_at` is the anchor, so a
+                            # reprocess derives the same instant it did at
+                            # capture rather than sliding with wall time.
+                            if mem_record.expires_at is None:
+                                stated = derive_stated_expiry(
+                                    content,
+                                    reference_time=mem_created_at or datetime.now(timezone.utc),
+                                )
+                                if stated is not None:
+                                    mem_record.expires_at = stated
                 except Exception as e:
                     status["vector"] = "error"
                     status["graph"] = "skipped"
@@ -737,6 +767,25 @@ class ProcessingPipeline:
                                         project=mem_project,
                                         new_relations=extraction.get("relationships", []),
                                     )
+
+                            # The vault enqueue hook (doc 05 §8.4). Inside
+                            # savepoint B, not after the commit: the withdrawal
+                            # and the inline expiry are justified *by* the graph
+                            # replace, so they have to share its atomicity: a B
+                            # failure unwinds the withdrawal, the expiry and the
+                            # append-only event together, never a half-applied
+                            # subset. Post-commit would open the opposite
+                            # window — a crash between the commit and the
+                            # reconcile leaves a new graph with stale
+                            # provenance, no event, and nothing to notice it.
+                            # (It would *not* strand an expiry for a write that
+                            # never landed, as an earlier draft of this comment
+                            # claimed: the reconcile reads the asserted set back
+                            # from disk, so after a B rollback it would see the
+                            # prior graph and no-op.)
+                            # Phase 5 only enqueues; it never recomputes a
+                            # verification status (invariant 15).
+                            await reconcile_memory_sources(session, memory_id=memory_id)
 
                         status["graph"] = "ok"
                     except Exception as e:
@@ -1202,6 +1251,10 @@ class ProcessingPipeline:
                 graph_repo = PostgresGraphRepository(session)
                 await vector_repo.delete(memory_id)
                 await graph_repo.delete_by_memory_id(memory_id)
+                # A deleted memory sources nothing, so the whole set goes
+                # (doc 05 §8.4). Same transaction as the graph strip for the
+                # same reason Phase 5's hook sits inside savepoint B.
+                await withdraw_memory_sources(session, memory_id=memory_id)
                 await session.commit()
             if broadcast and self._broadcast:
                 try:
@@ -1226,6 +1279,9 @@ class ProcessingPipeline:
                     hybrid = HybridSearchService(self.llm, session)
                     results = await hybrid.search(
                         query, limit=limit, semantic_weight=semantic_weight, filters=filters,
+                        ppr_weight=ppr_list_weight(flags),
+                        dual_weight=dual_list_weight(flags),
+                        access_signals=access_arms_active(flags),
                     )
 
                     reranked = bool(flags["reranker_enabled"])
@@ -1260,10 +1316,14 @@ class ProcessingPipeline:
     ) -> list[dict]:
         """Apply the deterministic post-fusion multiplier to retrieval scores.
 
-        ``final = base * rank_fusion_factor(signals, flags)``. Confidence is
-        the only arm spent today; the importance/heat/recency arms sit at
-        weight zero and contribute exactly 1.0, so the composed factor is
-        bit-identical to the confidence-only one until an arm is turned on.
+        ``final = base * rank_fusion_factor(signals, flags)``. Confidence and
+        importance are read off the memory row in the same query; heat and
+        recency ride **on the row**, stamped by the shared channel
+        (`HybridSearchService._attach_access_signals`) rather than re-derived
+        here, so this door and the chat door spend one set of numbers instead
+        of two. An arm whose signal is absent contributes exactly 1.0, as does
+        any arm at weight zero, so the composed factor stays bit-identical to
+        the spent arms' one.
 
         When ``preserve_order`` is set (the reranker has already imposed a
         ranking), scores are still rescaled but the input order is kept — the
@@ -1289,17 +1349,27 @@ class ProcessingPipeline:
 
         from sqlalchemy import text as sa_text
         row_result = await session.execute(
-            sa_text("SELECT id, confidence FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            sa_text(
+                "SELECT id, confidence, importance FROM memories "
+                "WHERE id = ANY(CAST(:ids AS uuid[]))"
+            ),
             {"ids": memory_ids},
         )
-        conf_map: dict[str, float] = {str(row[0]): float(row[1]) for row in row_result}
+        signal_map: dict[str, tuple[float, float]] = {
+            str(row[0]): (float(row[1]), float(row[2])) for row in row_result
+        }
 
         score_key = "rrf_score" if results and "rrf_score" in results[0] else "score"
         for r in results:
             mid = str(r.get("memory_id") or r.get("id") or "")
-            conf = conf_map.get(mid, CONFIDENCE_DEFAULT)
+            conf, imp = signal_map.get(mid, (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
+            signals: dict[str, float] = {"confidence": conf, "importance": imp}
+            for name in ("heat", "recency"):
+                value = r.get(name)
+                if value is not None:
+                    signals[name] = float(value)
             base = float(r.get(score_key, 0.0) or 0.0)
-            r[score_key] = base * rank_fusion_factor({"confidence": conf}, flags)
+            r[score_key] = base * rank_fusion_factor(signals, flags)
 
         if preserve_order:
             return results

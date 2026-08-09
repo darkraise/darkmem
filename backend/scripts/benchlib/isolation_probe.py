@@ -17,8 +17,11 @@ Fixtures are the hostile cases, not the passing ones: a superseded row with a
 live successor, an entity asserted by memories in two projects, archived
 rows, rows embedded only under an inactive fingerprint, rows missing from the
 active partition (the backfill-queue state), a ghost fingerprint whose
-partition does not exist (the degraded-anti-join state), and content persisted
-into append-only stores past its memory's deletion. Every memory content
+partition does not exist (the degraded-anti-join state), content persisted
+into append-only stores past its memory's deletion, a candidate-duplicate pair
+in each project, a fact whose provenance points at a memory in the other one,
+and rows long enough that a declared preview and the whole content can be told
+apart on the wire. Every memory content
 string leads with a per-fixture sentinel so an 80-char preview still carries
 it, and every raw response body is sentinel-scanned after row enumeration —
 a crossing through a field no driver modelled is a forced V1, not a pass.
@@ -34,6 +37,9 @@ import json
 import math
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from typing import Iterable
+from urllib.parse import quote
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override must run first)
 from benchlib.isolation_rules import (
@@ -42,6 +48,8 @@ from benchlib.isolation_rules import (
     scan_sentinels,
     sentinel,
 )
+
+from app.services.hygiene_queue import HYGIENE_PREVIEW_CHARS
 
 DIMS = 8
 ACTIVE_MODEL = "probe-embedder"
@@ -55,6 +63,19 @@ ALPHA_REPO = "repo-alpha"
 BETA_REPO = "repo-beta"
 
 ACTIVE_STATUSES = ("active",)
+
+# Declared content_preview truncation lengths, read off each surface's own
+# query. content_surfaces.py's ``crosses=("content_preview",)`` is a
+# qualitative classification, not the exact bound -- the per-surface preview
+# length is an input to _preview_boundary(), not a shared constant across
+# surfaces (T2.74). ``HYGIENE_PREVIEW_CHARS`` is imported above rather than
+# redeclared here: within one surface the app-side truncation and this
+# probe's boundary check must be the same number by construction, the same
+# discipline `code_query.py` adopted for `RRF_K` (T2.58) after the two
+# copies drifted apart silently.
+REEMBED_PREVIEW_CHARS = 120          # app/services/reembed.py
+PIPELINE_FAILURE_PREVIEW_CHARS = 80  # app/services/pipeline_failures.py
+CAPTURE_BUFFER_PREVIEW_CHARS = 500   # app/services/buffer_monitor.py
 
 
 def _code_key(repo_name: str) -> str:
@@ -83,28 +104,70 @@ class MemoryFixture:
     embed: str = "active"  # "active" | "old" | "none"
     dup: bool = False
     superseded_by: str | None = None
+    confidence: float = 0.75
+    ttl_days: int | None = None
+    long: bool = False
+    # How far past a surface's preview boundary the tail marker must land.
+    # 260 clears every boundary below it (200, 120, 80); capture_buffer_triage
+    # declares 500, so its own long fixtures need a taller pad (T2.74) — the
+    # per-surface preview length is the input, reusing one padded length for
+    # every surface would false-positive wherever a fixture is shorter than
+    # the boundary it is meant to prove crosses.
+    pad_to: int = 260
+
+    @property
+    def tail_marker(self) -> str:
+        """The part of ``content`` that lies past ``pad_to`` preview chars.
+
+        Same role as ``ArticleFixture.tail_marker``: the sentinel deliberately
+        leads the content, so it crosses whether or not a preview truncated,
+        and ``scan_sentinels`` therefore cannot tell the two apart. This
+        marker is the only thing that can, and the drivers over surfaces
+        declaring ``content_preview`` force a V1 when it reaches the wire.
+        """
+        return f"-TAIL-{self.key}"
 
     @property
     def content(self) -> str:
-        return (
+        body = (
             f"{sentinel(self.key)} postgres tuning note about "
             f"{self.key.replace('_', ' ')}"
         )
+        if not self.long:
+            return body
+        padding = "x" * max(0, self.pad_to - len(body))
+        return f"{body} {padding}{self.tail_marker}"
+
+    @property
+    def expires_at(self) -> datetime | None:
+        if self.ttl_days is None:
+            return None
+        return datetime.now(timezone.utc) + timedelta(days=self.ttl_days)
 
 
 # Insertion order satisfies the superseded_by FK: successors first.
+#
+# `confidence`, `ttl_days` and `long` exist for the hygiene queue's three
+# memory arms: its membership predicates are `confidence < threshold`,
+# `expires_at` approaching and `status = 'superseded'`, and a fixture set with
+# no low-confidence row and no TTL would leave two of the three arms served an
+# empty page — a driver that observed nothing while reporting a clean zero.
+# `long` puts the rows those arms return past the LEFT(content, 200) boundary
+# the surface declares it crosses.
 MEMORY_FIXTURES: tuple[MemoryFixture, ...] = (
     MemoryFixture("a_succ", OBSERVER),
-    MemoryFixture("b_succ", FOREIGN),
-    MemoryFixture("a_active", OBSERVER, dup=True),
-    MemoryFixture("a_twin", OBSERVER, dup=True),
-    MemoryFixture("a_super", OBSERVER, status="superseded", superseded_by="a_succ", dup=True),
+    MemoryFixture("b_succ", FOREIGN, ttl_days=3, long=True),
+    MemoryFixture("a_active", OBSERVER, dup=True, confidence=0.2, long=True),
+    MemoryFixture("a_twin", OBSERVER, dup=True, ttl_days=3, long=True),
+    MemoryFixture("a_super", OBSERVER, status="superseded", superseded_by="a_succ", dup=True,
+                  long=True),
     MemoryFixture("a_arch", OBSERVER, archived=True, dup=True),
     MemoryFixture("a_depr", OBSERVER, status="deprecated"),
-    MemoryFixture("b_active", FOREIGN, dup=True),
-    MemoryFixture("b_super", FOREIGN, status="superseded", superseded_by="b_succ"),
+    MemoryFixture("b_active", FOREIGN, dup=True, confidence=0.2, long=True),
+    MemoryFixture("b_super", FOREIGN, status="superseded", superseded_by="b_succ", long=True),
     MemoryFixture("a_oldfp", OBSERVER, embed="old"),
-    MemoryFixture("a_super_nofp", OBSERVER, status="superseded", superseded_by="a_succ", embed="none"),
+    MemoryFixture("a_super_nofp", OBSERVER, status="superseded", superseded_by="a_succ",
+                  embed="none", long=True),
     MemoryFixture("b_nofp", FOREIGN, embed="none"),
     # Created, journaled, cited — then deleted: the retention fixture.
     MemoryFixture("a_del", OBSERVER, embed="none"),
@@ -128,11 +191,145 @@ ECHO_FIXTURES: dict[str, MemoryFixture] = {
     )
 }
 
+# capture_buffer_triage declares a 500-char content_preview (buffer_monitor.py's
+# CONTENT_PREVIEW_CHARS) — buf_alpha/buf_beta's plain "... buffered capture"
+# bodies are ~40 chars, nowhere near that boundary, so they cannot prove
+# truncation either way (T2.74's finding: dropping the hygiene-queue helper in
+# unmodified over these would false-positive rather than pass). These two are
+# padded past 500 specifically for that surface.
+BUFFER_LONG_FIXTURES: tuple[MemoryFixture, ...] = (
+    MemoryFixture("buf_alpha_long", OBSERVER, long=True, pad_to=600),
+    MemoryFixture("buf_beta_long", FOREIGN, long=True, pad_to=600),
+)
+
 BUFFER_KEYS: dict[str, str] = {
     "buf_alpha": OBSERVER,
     "buf_beta": FOREIGN,
+    **{fx.key: fx.project for fx in BUFFER_LONG_FIXTURES},
     **{key: fx.project for key, fx in ECHO_FIXTURES.items()},
 }
+
+
+@dataclass(frozen=True)
+class FactFixture:
+    key: str
+    project: str
+
+    @property
+    def fact_text(self) -> str:
+        return f"{sentinel(self.key)} disputed fact about {self.key.replace('_', ' ')}"
+
+
+# One per project, review_state='open' on both — the review queue is
+# operator-wide by ratified decision (doc 08 §6), so the probe's job is to
+# confirm the foreign-project row still crosses labelled, not to confirm it
+# is excluded.
+FACT_FIXTURES: tuple[FactFixture, ...] = (
+    FactFixture("fact_a_open", OBSERVER),
+    FactFixture("fact_b_open", FOREIGN),
+)
+FACT_FIXTURES_BY_KEY = {f.key: f for f in FACT_FIXTURES}
+
+# `(fact key, memory key)` — the provenance rows the fact detail door groups by
+# origin. The middle row is the hostile one: an observer-project fact whose
+# second origin is a memory in the foreign project, so the detail door reveals
+# a foreign memory id to a caller who addressed a local fact. That is id-only
+# exposure by the rules module's reading, and it is what makes the door's
+# provenance block something the probe has observed rather than assumed.
+FACT_PROVENANCE: tuple[tuple[str, str], ...] = (
+    ("fact_a_open", "a_active"),
+    ("fact_a_open", "b_active"),
+    ("fact_b_open", "b_active"),
+)
+
+# `(source key, target key, project)` — candidate-duplicate pairs for the
+# hygiene queue's duplicates arm. Both endpoints of each pair must be `active`
+# or `build_duplicates_query` excludes the pair by design, and the pair's
+# `project` is the newer endpoint's, which is what `memory_dream`'s associate
+# arm writes. One pair per project: the foreign one is what a deployment-wide
+# queue must still serve, and what the caller's project filter must exclude.
+DUPLICATE_PAIRS: tuple[tuple[str, str, str], ...] = (
+    ("a_active", "a_twin", OBSERVER),
+    ("b_active", "b_succ", FOREIGN),
+)
+
+
+@dataclass(frozen=True)
+class CommunityFixture:
+    """One `memory_communities` row, for the `memory_overview` map-reduce.
+
+    ``report_of`` is the member memory whose sentinel is planted inside the
+    community's ``report_string``. A real report is prose the summarization
+    purpose wrote *about* those memories, so a community's report is
+    memory-derived content even though no `memories` row crosses the door —
+    planting a member's sentinel in it is what lets the sentinel machinery
+    see that content the way it sees a preview. ``report_of=None`` is the
+    pending community: it must render as a topic with no report. What the
+    probe adds there is an *observation* that no completion was spent on it,
+    reported as a note — the guarantee itself is enforced by
+    `backend/tests/test_memory_overview.py`, not by this probe's bar.
+    """
+
+    label: str
+    project: str
+    member_keys: tuple[str, ...]
+    report_of: str | None
+
+    @property
+    def report_string(self) -> str | None:
+        if self.report_of is None:
+            return None
+        return (
+            f"{sentinel(self.report_of)} topic report about postgres tuning "
+            f"in {self.project}"
+        )
+
+
+COMMUNITY_FIXTURES: tuple[CommunityFixture, ...] = (
+    CommunityFixture("alpha tuning", OBSERVER, ("a_active", "a_twin", "a_super"), "a_active"),
+    CommunityFixture("alpha pending", OBSERVER, ("a_succ", "a_oldfp"), None),
+    CommunityFixture("beta tuning", FOREIGN, ("b_active", "b_super"), "b_active"),
+)
+COMMUNITY_FIXTURES_BY_LABEL = {c.label: c for c in COMMUNITY_FIXTURES}
+
+
+@dataclass(frozen=True)
+class ArticleFixture:
+    key: str
+    project: str
+
+    @property
+    def tail_marker(self) -> str:
+        """The part of ``content_text`` that lies past the preview boundary.
+
+        The driver forces a V1 when this reaches the wire, which is what
+        makes the over-length fixture load-bearing rather than decorative.
+        The sentinel deliberately sits *inside* the first 200 characters --
+        it must cross, since the preview is a declared content field -- so
+        `scan_sentinels` can never distinguish a truncated preview from an
+        untruncated one. This marker is the only thing that can.
+        """
+        return f"-TAIL-{self.key}"
+
+    @property
+    def content_text(self) -> str:
+        # Deliberately past review_queue.py's LEFT(content, 200) boundary,
+        # with a distinct tail past it: a fixture short enough that preview
+        # and full content coincide would leave the probe's article driver
+        # blind to the exact truncation regression
+        # tests/test_review_queue.py's own over-length fixture exists to
+        # catch (M2) -- this keeps the two closures in sync rather than
+        # only unit-testing the field the classification is about.
+        body = f"{sentinel(self.key)} ungrounded article about {self.key.replace('_', ' ')}"
+        padding = "x" * (260 - len(body))
+        return f"{body} {padding}{self.tail_marker}"
+
+
+ARTICLE_FIXTURES: tuple[ArticleFixture, ...] = (
+    ArticleFixture("article_a_open", OBSERVER),
+    ArticleFixture("article_b_open", FOREIGN),
+)
+ARTICLE_FIXTURES_BY_KEY = {f.key: f for f in ARTICLE_FIXTURES}
 
 
 def _all_content_fixtures() -> dict[str, MemoryFixture]:
@@ -151,6 +348,8 @@ class ProbeContext:
     repo_ids: dict[str, uuid.UUID]
     redis_entity_id: str
     failure_id: str
+    fact_ids: dict[str, uuid.UUID]
+    article_ids: dict[str, uuid.UUID]
     retention_conversation_id: str
     scoped_conversation_id: str | None = None
     wide_conversation_id: str | None = None
@@ -266,10 +465,20 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
     from app.config import FEATURE_FLAGS_DEFAULTS
     from app.models.config import Config
     from app.models.memory import Memory
+    from app.repositories.fact_sources import FactSourceRepository
+    from app.repositories.memory_communities import (
+        CommunityDraft,
+        replace_project_communities,
+    )
+    from app.repositories.memory_communities import set_report as set_community_report
+    from app.repositories.memory_relations import upsert_edge
+    from app.services.dream_journal import NEAR_DUPLICATE_PASS
     from app.services.embedder_registry import EmbedderInfo, child_table, embedder_registry
     from app.services.events import record_event
+    from app.services.fact_provenance import MEMORY_SOURCE_KIND, memory_source_ref
     from app.services.feature_flags import FEATURE_FLAGS_KEY
     from app.services.memory_buffer import enqueue
+    from app.services.memory_dream import near_duplicate_block
     from app.services.pipeline_failures import PipelineFailureService
 
     active_fp = stub.llm_fingerprint()
@@ -295,7 +504,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                 memory_type="fact", importance=0.5, metadata_={},
                 project=fx.project, status=fx.status,
                 superseded_by=memory_ids[fx.superseded_by] if fx.superseded_by else None,
-                is_archived=fx.archived,
+                is_archived=fx.archived, expires_at=fx.expires_at,
+                confidence=fx.confidence,
             )
             session.add(memory)
             memory_ids[fx.key] = memory.id
@@ -367,6 +577,38 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
             {"a": str(memory_ids["a_super"]), "b": str(memory_ids["b_active"])},
         )
 
+        for source_key, target_key, project in DUPLICATE_PAIRS:
+            await upsert_edge(
+                session,
+                source_memory_id=memory_ids[source_key],
+                target_memory_id=memory_ids[target_key],
+                rel_type="RELATES_TO",
+                project=project,
+                pass_key=NEAR_DUPLICATE_PASS,
+                block=near_duplicate_block(
+                    score=0.93, verdict="duplicate", existing=None,
+                    detected_at="2026-07-28T00:00:00+00:00",
+                ),
+            )
+
+        for project in (OBSERVER, FOREIGN):
+            drafts = [
+                CommunityDraft(
+                    label=cf.label,
+                    memory_ids=tuple(memory_ids[k] for k in cf.member_keys),
+                    properties={"size": len(cf.member_keys), "dominant_entities": []},
+                )
+                for cf in COMMUNITY_FIXTURES
+                if cf.project == project
+            ]
+            written = await replace_project_communities(session, project, drafts)
+            for community_id, draft in zip(written, drafts):
+                report = COMMUNITY_FIXTURES_BY_LABEL[draft.label].report_string
+                if report is not None:
+                    await set_community_report(
+                        session, community_id, report_string=report,
+                    )
+
         for repo_name in (ALPHA_REPO, BETA_REPO):
             rid = uuid.uuid4()
             repo_ids[repo_name] = rid
@@ -435,6 +677,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
                       project=OBSERVER, source="probe")
         await enqueue(session, content=f"{sentinel('buf_beta')} buffered capture",
                       project=FOREIGN, source="probe")
+        for fx in BUFFER_LONG_FIXTURES:
+            await enqueue(session, content=fx.content, project=fx.project, source="probe")
 
         failure_service = PipelineFailureService(session)
         for key in ("a_active", "b_active", "a_super"):
@@ -446,6 +690,54 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         failure_id = (await session.execute(
             text("SELECT id FROM pipeline_failures LIMIT 1")
         )).scalar_one()
+
+        from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+        fact_ids: dict[str, uuid.UUID] = {}
+        kt_repo = KnowledgeTripleRepository(session)
+        for fx in FACT_FIXTURES:
+            row = await kt_repo.insert_open(
+                triple_key=f"probe-{fx.key}",
+                subject_name=f"probe-subject-{fx.key}",
+                object_name=f"probe-object-{fx.key}",
+                rel_type="RELATED_TO",
+                fact=fx.fact_text,
+                reference_time=datetime.now(timezone.utc),
+                project=fx.project,
+                review_state="open",
+            )
+            fact_ids[fx.key] = uuid.UUID(row["id"])
+
+        source_repo = FactSourceRepository(session)
+        for fact_key, memory_key in FACT_PROVENANCE:
+            await source_repo.add_source(
+                fact_id=fact_ids[fact_key],
+                source_kind=MEMORY_SOURCE_KIND,
+                source_ref=memory_source_ref(memory_ids[memory_key]),
+                origin_key=f"probe-origin-{memory_key}",
+            )
+
+        article_ids: dict[str, uuid.UUID] = {}
+        for fx in ARTICLE_FIXTURES:
+            article_id = uuid.uuid4()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO knowledge_articles (
+                        id, subject_key, project, content, status, review_state
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), :subject_key, :project, :content,
+                        'candidate', 'open'
+                    )
+                    """
+                ),
+                {
+                    "id": str(article_id), "subject_key": f"probe-{fx.key}",
+                    "project": fx.project, "content": fx.content_text,
+                },
+            )
+            article_ids[fx.key] = article_id
 
         for key in ("a_active", "b_active"):
             await record_event(
@@ -499,6 +791,8 @@ async def _seed(session_factory, stub: StubOrchestrator, old: StubOrchestrator) 
         "repo_ids": repo_ids,
         "redis_entity_id": redis_entity_id,
         "failure_id": str(failure_id),
+        "fact_ids": fact_ids,
+        "article_ids": article_ids,
         "retention_conversation_id": retention_conversation_id,
     }
 
@@ -942,6 +1236,132 @@ async def _drive_code_search(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+async def _drive_memory_overview(ctx: ProbeContext) -> list[Sighting]:
+    """The project-scoped map-reduce, driven on both doors and both projects.
+
+    Two things are observed here that no other driver observes, because this
+    is the only probed surface whose declared crossing is a *derived* report
+    rather than a memory row:
+
+    * **The wire.** Every topic the door returns is enumerated against the
+      seeded community set, so a foreign community arriving under a scoped
+      request is a V1 on the ordinary axis, and the raw-body net catches a
+      report crossing through any field the enumeration missed.
+    * **The prompt.** The reduce is the one place this surface hands
+      memory-derived content to a model, and the prompt never reaches the
+      wire — a foreign report folded into it would leak into *this* project's
+      overview text on a real model while the response body stayed clean.
+      The stub records every completion, so the new calls a case makes are
+      scanned for sentinels belonging to another project's fixtures and a
+      match is a forced V1. A driver that only read the response would report
+      that leak as a clean zero.
+
+    The MCP case runs after the REST case on the same project deliberately:
+    the community set is unchanged, so it must be served from the
+    `overview:<project>` config row with no completion at all, which is the
+    same enumeration through a second door plus evidence the cache is real.
+
+    **What the completion counts below are, and are not.** They are notes, not
+    violations, and deliberately so: `isolation_rules.py` defines the bar as
+    V1 (scope breach) plus V2 (unlabelled escape), so counting a cost
+    regression there would report "this surface leaked across projects" for
+    something that is not a crossing, and would make the ledger's number mean
+    something other than what the metric says. So this driver's "0 violations"
+    covers isolation only — it is not a statement that the single-reduce and
+    cache guarantees held. Those are hard-failed by
+    `backend/tests/test_memory_overview.py` in the repo floor, which is where
+    they belong; the notes here are a second pair of eyes on the same
+    properties from an end-to-end run, not their guard.
+    """
+    surface = "memory_overview"
+    out: list[Sighting] = []
+
+    def foreign_sentinels(project: str) -> set[str]:
+        return {
+            cf.report_of
+            for cf in COMMUNITY_FIXTURES
+            if cf.project != project and cf.report_of is not None
+        }
+
+    async def one_case(door: str, case: str, body_text: str, payload: dict, req_p: str,
+                       prompts: list[str]):
+        accounted: set[str] = set()
+        for topic in payload.get("topics", []):
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(topic.get("label"))
+            if cf is None:
+                continue
+            if cf.report_of is not None:
+                accounted.add(cf.report_of)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None,
+                requested_project=req_p,
+                label_project=topic.get("project") == cf.project,
+            ))
+        for prompt in prompts:
+            for key in sorted(scan_sentinels(prompt) & foreign_sentinels(req_p)):
+                out.append(Sighting(
+                    surface=surface, door=door, case=f"{case} [reduce prompt]",
+                    row=key, kind="content",
+                    true_project=FIXTURES_BY_KEY[key].project,
+                    forced_v1_reason="another project's community report reached "
+                                     "this project's reduce prompt",
+                ))
+        out.extend(_account_body(surface, door, case, body_text, accounted))
+
+    async def rest_case(project: str, case: str):
+        door = "GET /api/v1/knowledge/overview"
+        before = len(ctx.stub.chat_calls)
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/overview?project={project}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        prompts = [
+            m["content"]
+            for _, messages in ctx.stub.chat_calls[before:]
+            for m in messages
+        ]
+        await one_case(door, case, response.text, payload, project, prompts)
+        return payload, len(ctx.stub.chat_calls) - before
+
+    payload, calls = await rest_case(OBSERVER, "scoped to the observer project")
+    if calls != 1:
+        ctx.notes.append(
+            f"memory_overview: cold observer overview spent {calls} completions, "
+            "expected 1 — NOT counted by the isolation bar (V1+V2 is scope "
+            "breaches only); the guard for this is "
+            "tests/test_memory_overview.py in the repo floor"
+        )
+    payload_beta, _ = await rest_case(FOREIGN, "scoped to the foreign project")
+
+    door = "mcp:memory_overview"
+    before = len(ctx.stub.chat_calls)
+    body = await _call_mcp("memory_overview", {"project": OBSERVER})
+    tool_payload = json.loads(body)
+    prompts = [
+        m["content"] for _, messages in ctx.stub.chat_calls[before:] for m in messages
+    ]
+    await one_case(
+        door, "MCP door, same project (must serve the cached reduce)",
+        body, tool_payload, OBSERVER, prompts,
+    )
+    if len(ctx.stub.chat_calls) != before:
+        ctx.notes.append(
+            "memory_overview: the MCP door re-ran the reduce over an unchanged "
+            "community set instead of reading the cache — NOT counted by the "
+            "isolation bar (V1+V2 is scope breaches only); the guard for this "
+            "is tests/test_memory_overview.py in the repo floor"
+        )
+    ctx.notes.append(
+        "memory_overview: reduce input "
+        f"{payload.get('reduce_input_chars')}/{payload.get('reduce_input_bound')} chars "
+        f"over {payload.get('reports_used')} reports "
+        f"(foreign project served {payload_beta.get('reports_used')} separately)"
+    )
+    return out
+
+
 async def _drive_memory_by_id(ctx: ProbeContext) -> list[Sighting]:
     surface = "memory_by_id"
     out: list[Sighting] = []
@@ -1072,6 +1492,10 @@ async def _drive_reembed_backfill_queue(ctx: ProbeContext) -> list[Sighting]:
             lp="project" in item, ls="status" in item,
         ))
     out.extend(_account_body(surface, door, case, response.text, accounted))
+    out.extend(_preview_boundary(
+        surface, door, case, response.text,
+        [fx for fx in MEMORY_FIXTURES if fx.long], REEMBED_PREVIEW_CHARS,
+    ))
     if payload.get("partition_missing"):
         ctx.notes.append("reembed queue reported partition_missing with the partition present")
 
@@ -1127,6 +1551,751 @@ async def _drive_pipeline_failure_triage(ctx: ProbeContext) -> list[Sighting]:
             ls=row.get("entity_status") == fx.status,
         ))
     out.extend(_account_body(surface, door, case, response.text, accounted))
+    out.extend(_preview_boundary(
+        surface, door, case, response.text,
+        [FIXTURES_BY_KEY[k] for k in ("a_active", "b_active", "a_super")],
+        PIPELINE_FAILURE_PREVIEW_CHARS,
+    ))
+    return out
+
+
+async def _drive_dream_cycle_digest(ctx: ProbeContext) -> list[Sighting]:
+    """The dream digest's cycle detail, driven through a real refine action.
+
+    A refine journals the summary it replaced and the one it wrote, which is
+    exactly what makes the action undoable — so memory-derived content crosses
+    this surface by construction. The actions are produced by the pass's own
+    applier rather than by a hand-written payload, so the probe sees the shape
+    the producer really writes.
+
+    Operator-wide by ratification: a cycle is one night's consolidation across
+    the deployment, so serving both projects is correct and what is asserted is
+    that each action carries its own project label. No `memories.status`-shaped
+    lifecycle applies to a journal row, so `true_status` stays None — the same
+    reading `review_queue_facts` gives a fact row.
+    """
+    from sqlalchemy import text
+
+    from app.database import async_session_factory
+    from app.services import memory_dream as dream
+
+    surface = "dream_cycle_digest"
+    door = "GET /api/v1/dream-digest/cycles/{cycle_id}"
+    case = "one night's consolidation across the deployment (ratified operator-wide)"
+
+    cycle = str(uuid.uuid4())
+    refined: dict[str, MemoryFixture] = {}
+    async with async_session_factory() as session:
+        for key in ("a_active", "b_active"):
+            fx = FIXTURES_BY_KEY.get(key)
+            if fx is None:
+                continue
+            memory_id = ctx.memory_ids.get(key)
+            if memory_id is None:
+                continue
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT content, summary, project FROM memories "
+                        "WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(memory_id)},
+                )
+            ).mappings().first()
+            if row is None:
+                continue
+            applied = await dream.apply_refine(
+                session,
+                dream.RefineAction(
+                    memory=dream.MemoryRow(
+                        memory_id=str(memory_id), project=row["project"],
+                        created_at=datetime.now(timezone.utc),
+                        content=row["content"], summary=row["summary"],
+                        metadata={}, tags=(),
+                    ),
+                    verdict=dream.RefineVerdict(
+                        summary=f"{sentinel(fx.key)} refined note", tags=None
+                    ),
+                ),
+                cycle_id=cycle,
+                outcome=dream.DreamOutcome(),
+            )
+            if applied:
+                refined[str(memory_id)] = fx
+        await session.commit()
+
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    if not refined:
+        ctx.notes.append(
+            "dream_cycle_digest: no refine action landed, so the surface was "
+            "not exercised"
+        )
+        return out
+
+    response = await ctx.client.get(
+        f"/api/v1/dream-digest/cycles/{cycle}", headers=ctx.headers
+    )
+    response.raise_for_status()
+    for group in response.json()["objects"]:
+        fx = refined.get(str(group.get("object_id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        for action in group["actions"]:
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=fx.key,
+                kind="content", true_project=fx.project, true_status=None,
+                label_project=action.get("project") == fx.project,
+            ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
+async def _drive_review_queue_facts(ctx: ProbeContext) -> list[Sighting]:
+    surface = "review_queue_facts"
+    door = "GET /api/v1/review-queue/facts"
+    case = "deployment-wide truth-adjudication triage (ratified operator-wide)"
+    response = await ctx.client.get("/api/v1/review-queue/facts", headers=ctx.headers)
+    response.raise_for_status()
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    ids_to_fx = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+    for row in response.json()["items"]:
+        fx = ids_to_fx.get(str(row.get("id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        # No memories.status-shaped lifecycle applies to a fact row, so
+        # true_status stays None (classify() reads that as "not breachable
+        # on this axis") and only project labelling is asserted — the same
+        # reading pipeline_failure_triage gives entity rows with no status
+        # concept of their own.
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="content",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
+async def _drive_review_queue_articles(ctx: ProbeContext) -> list[Sighting]:
+    surface = "review_queue_articles"
+    door = "GET /api/v1/review-queue/articles"
+    case = "deployment-wide truth-adjudication triage (ratified operator-wide)"
+    response = await ctx.client.get("/api/v1/review-queue/articles", headers=ctx.headers)
+    response.raise_for_status()
+    out: list[Sighting] = []
+    accounted: set[str] = set()
+    ids_to_fx = {str(aid): ARTICLE_FIXTURES_BY_KEY[key] for key, aid in ctx.article_ids.items()}
+    for row in response.json()["items"]:
+        fx = ids_to_fx.get(str(row.get("id")))
+        if fx is None:
+            continue
+        accounted.add(fx.key)
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="preview",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
+    # The declared crossing is `content_preview`, not `content`. Every fixture
+    # runs past the LEFT(content, 200) boundary, so a tail marker on the wire
+    # means the surface widened beyond what content_surfaces declares -- and
+    # `_account_body` cannot catch it, because the sentinel sits inside the
+    # first 200 characters and crosses legitimately either way.
+    for fx in ARTICLE_FIXTURES:
+        if fx.tail_marker in response.text:
+            out.append(Sighting(
+                surface=surface, door=door, case=f"{case} [past preview boundary]",
+                row=fx.key, true_project=fx.project, true_status=None,
+                forced_v1_reason="article content crossed past its declared preview",
+            ))
+    return out
+
+
+def _preview_boundary(
+    surface: str, door: str, case: str, body: str,
+    fixtures: Iterable[MemoryFixture], boundary_chars: int,
+) -> list[Sighting]:
+    """Long fixtures whose tail reached a surface declaring ``content_preview``.
+
+    The same assertion ``_drive_review_queue_articles`` makes over articles,
+    and it is needed for the same reason: ``_account_body`` cannot make it,
+    because the sentinel sits inside the first ``boundary_chars`` characters
+    and crosses legitimately whether or not the preview truncated. Without
+    this, a surface that quietly started returning whole ``content`` would
+    keep reporting a clean zero.
+
+    ``boundary_chars`` is the surface's own declared truncation length, read
+    off its query rather than shared: hygiene_queue_memories truncates at
+    200, reembed_backfill_queue at 120, pipeline_failure_triage at 80,
+    capture_buffer_triage at 500 (T2.74). Reusing one fixture set and one
+    boundary across all of them would false-positive wherever a fixture is
+    shorter than the boundary it is meant to prove crosses -- exactly what
+    naively dropping this helper into capture_buffer_triage did, since its
+    500-char boundary sits past every existing long fixture's ~273-char
+    content. The assertion below is what keeps that from happening silently
+    a second time: a future fixture that shrinks under its surface's own
+    boundary fails the build here rather than disarming the check.
+    """
+    fixtures = list(fixtures)
+    for fx in fixtures:
+        assert len(fx.content) > boundary_chars, (
+            f"{surface}: fixture {fx.key!r} is {len(fx.content)} chars, not "
+            f"past the declared {boundary_chars}-char boundary -- this check "
+            "needs a fixture whose tail actually crosses it"
+        )
+    return [
+        Sighting(
+            surface=surface, door=door, case=f"{case} [past preview boundary]",
+            row=fx.key, true_project=fx.project, true_status=fx.status,
+            forced_v1_reason="memory content crossed past its declared preview",
+        )
+        for fx in fixtures
+        if fx.tail_marker in body
+    ]
+
+
+async def _drive_knowledge_composed_search(ctx: ProbeContext) -> list[Sighting]:
+    """Doc 12 §3's composed four-layer read, over both layers at once.
+
+    Two queries rather than one because ``plainto_tsquery`` ANDs its terms:
+    a single phrase carrying both a memory's wording and a fact's matches
+    neither, and the driver would report a clean zero over a surface it never
+    reached. So the memory-flavoured and fact-flavoured phrases are asked
+    separately, and each is asked once per project — the foreign pass is what
+    proves the scope *moves* rather than merely being spelled, since a door
+    hard-wired to one project passes an observer-only driver forever.
+
+    ``project`` is required by the composition and pushed down by both
+    channels, so a foreign row arriving here is a V1 on the project axis.
+    The status axis is deliberately wide (``MemoryFilter`` carries no status
+    predicate here), which is why every memory row is checked for its own
+    ``labels.status`` — that label is the whole of what makes the width
+    honest. A fact has no memory lifecycle, so its ``true_status`` is None.
+
+    Supporting memories arrive **nested** under the fact they source, and the
+    walk below descends into them: an enumeration that read only the top level
+    would leave every grouped memory to the raw-body net, which reports a
+    modelled row as an unmodelled crossing.
+
+    **Both doors are driven** (T2.80). The route and the tool spend one
+    composition call, so a scope breach on one would be a breach on the other —
+    but that is an argument about today's code, and the probe's job is to
+    observe rather than to reason. A door left undriven is a door the bar's
+    number does not cover.
+    """
+    surface = "knowledge_composed_search"
+    out: list[Sighting] = []
+    ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+    ids_to_fact = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+
+    def walk(rows: list[dict], case: str, req_p: str, door: str) -> set[str]:
+        accounted: set[str] = set()
+        for row in rows:
+            labels = row.get("labels") or {}
+            if row.get("id_kind") == "memory":
+                fx = ids_to_mem.get(str(row.get("id")))
+                if fx is not None:
+                    accounted.add(fx.key)
+                    out.append(_mem(
+                        surface, door, case, fx, req_p=req_p, req_s=None,
+                        lp=labels.get("project") == fx.project,
+                        ls=labels.get("status") == fx.status,
+                    ))
+            else:
+                fact = ids_to_fact.get(str(row.get("id")))
+                if fact is not None:
+                    accounted.add(fact.key)
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=fact.key,
+                        kind="content", true_project=fact.project, true_status=None,
+                        requested_project=req_p,
+                        label_project=labels.get("project") == fact.project,
+                    ))
+            accounted |= walk(
+                row.get("supported_by") or [], f"{case}: nested", req_p, door,
+            )
+        return accounted
+
+    def unreachable(door: str, case: str) -> None:
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row="(no rows)",
+            forced_v1_reason=(
+                "the composed read reported every channel down; the "
+                "probe cannot observe a surface it never reached"
+            ),
+        ))
+
+    def composed_rows(payload: dict) -> list[dict]:
+        """The row list, whichever of doc 07 §5's two shapes was served.
+
+        No ``fuse`` key rides the request below, so this is the sectioned
+        shape a real caller receives by default (T2.56 fix round 2) — flattened
+        back to one list so ``walk`` need not know which shape it is looking
+        at, same as `_account_body`'s raw-body net covers either.
+        """
+        sections = payload.get("sections")
+        if sections is not None:
+            return sections["memory"] + sections["facts"] + sections["articles"]
+        return payload["rows"]
+
+    for req_p in (OBSERVER, FOREIGN):
+        for query, flavour in (
+            ("postgres tuning note", "memory-flavoured query"),
+            ("disputed fact", "fact-flavoured query"),
+        ):
+            case = f"{flavour}, composed read scoped to {req_p}"
+
+            door = "mcp:knowledge_search"
+            body = await _call_mcp(
+                "knowledge_search",
+                {"query": query, "project": req_p, "limit": 50},
+            )
+            payload = json.loads(body)
+            if payload.get("status") == "unavailable":
+                unreachable(door, case)
+            else:
+                accounted = walk(composed_rows(payload), case, req_p, door)
+                out.extend(_account_body(surface, door, case, body, accounted))
+
+            door = "POST /api/v1/knowledge/search"
+            response = await ctx.client.post(
+                "/api/v1/knowledge/search",
+                json={"query": query, "project": req_p, "limit": 50},
+                headers=ctx.headers,
+            )
+            # 503 is the route's outage, not a probe failure: the same
+            # unreachable-surface sighting the tool's typed status produces.
+            if response.status_code == 503:
+                unreachable(door, case)
+                continue
+            response.raise_for_status()
+            accounted = walk(composed_rows(response.json()), case, req_p, door)
+            out.extend(_account_body(surface, door, case, response.text, accounted))
+    return out
+
+
+async def _drive_knowledge_facts_browsing(ctx: ProbeContext) -> list[Sighting]:
+    """Doc 13 §5.1's Facts tab — the vault the deployment holds, browsed.
+
+    ``project`` is a filter the caller applies rather than a scope the door
+    imposes, so the two cases assert different things: on the wide read, that
+    the foreign-project fact still arrives naming its project; on the filtered
+    read, that the project the caller named rode the SQL. No
+    ``memories.status``-shaped lifecycle applies to a fact row, so
+    ``true_status`` stays None — the reading ``review_queue_facts`` gives the
+    same rows, and the verification axis is deliberately not a lifecycle
+    (doc 08 §6's never-a-gate rule).
+    """
+    surface = "knowledge_facts_browsing"
+    door = "GET /api/v1/knowledge/facts"
+    out: list[Sighting] = []
+    ids_to_fx = {str(fid): FACT_FIXTURES_BY_KEY[key] for key, fid in ctx.fact_ids.items()}
+
+    async def one_case(params: str, case: str, req_p: str | None):
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/facts{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            fx = ids_to_fx.get(str(row.get("id")))
+            if fx is None:
+                continue
+            accounted.add(fx.key)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=fx.key, kind="content",
+                true_project=fx.project, true_status=None, requested_project=req_p,
+                label_project=row.get("project") == fx.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+
+    await one_case("", "the whole vault (ratified operator-wide browse)", None)
+    await one_case(
+        f"?project={OBSERVER}", "project filter applied by the caller", OBSERVER,
+    )
+    return out
+
+
+async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
+    """One fact by id, with the provenance groups the badge's count audits.
+
+    Id-addressed, so no scope is requested and nothing here can be a V1 on the
+    project axis: what the surface owes instead is a label, and the foreign
+    fixture is what proves it pays. The provenance groups are the half of this
+    response the list door does not have — they name the memories that assert
+    the fact, one of them in the other project, which is id-only exposure by
+    the rules module's reading and reported as such rather than counted.
+    """
+    surface = "knowledge_fact_detail"
+    out: list[Sighting] = []
+    ids_to_mem = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+
+    def one_body(door: str, case: str, body: str) -> None:
+        row = json.loads(body)
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="content",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+        for group in row.get("sources", []):
+            for source in group.get("sources", []):
+                memory = ids_to_mem.get(str(source.get("source_ref")))
+                if memory is not None and (
+                    memory.project != OBSERVER or memory.status != "active"
+                ):
+                    out.append(_mem(
+                        surface, door, f"{case}: provenance origin", memory, kind="id",
+                    ))
+        out.extend(_account_body(surface, door, case, body, {fx.key}))
+
+    for fx in FACT_FIXTURES:
+        case = f"fact addressed by id, seeded in {fx.project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/facts/{ctx.fact_ids[fx.key]}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        one_body("GET /api/v1/knowledge/facts/{fact_id}", case, response.text)
+        # Both doors, because the declaration names both: the tool is
+        # unauthenticated where the route is not, so a scope this surface
+        # imposed only in the route's dependency would be reachable here.
+        one_body("mcp:fact_get", case, await _call_mcp(
+            "fact_get", {"fact_id": str(ctx.fact_ids[fx.key])},
+        ))
+    return out
+
+
+async def _drive_knowledge_topics_browsing(ctx: ProbeContext) -> list[Sighting]:
+    """T2.39a's browsing door over the same `memory_communities` rows
+    `memory_overview` reads (T2.21) -- a required `project` bind parameter
+    with no wide mode, so every list case here is a scope case rather than
+    a label case. The list door is driven scoped to each project in turn;
+    the detail door is driven addressed by (project, label) for every
+    seeded community, plus a same-label cross-project read that must 404
+    rather than answer with the other project's topic.
+    """
+    surface = "knowledge_topics_browsing"
+    out: list[Sighting] = []
+
+    def foreign_labels(project: str) -> list[str]:
+        return [cf.label for cf in COMMUNITY_FIXTURES if cf.project != project]
+
+    async def list_case(project: str):
+        door = "GET /api/v1/knowledge/topics"
+        case = f"list scoped to {project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics?project={project}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        accounted: set[str] = set()
+        seen_labels: set[str] = set()
+        for item in payload["items"]:
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(item.get("label"))
+            if cf is None:
+                continue
+            seen_labels.add(cf.label)
+            if cf.report_of is not None:
+                accounted.add(cf.report_of)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None, requested_project=project,
+                label_project=item.get("project") == cf.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        for other in foreign_labels(project):
+            if other in seen_labels:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=other, kind="content",
+                    true_project=COMMUNITY_FIXTURES_BY_LABEL[other].project,
+                    forced_v1_reason="a foreign project's topic label reached a "
+                                     "scoped list",
+                ))
+
+    await list_case(OBSERVER)
+    await list_case(FOREIGN)
+
+    door = "GET /api/v1/knowledge/topics/{label}"
+    for cf in COMMUNITY_FIXTURES:
+        case = f"detail addressed by label, seeded in {cf.project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/{quote(cf.label, safe='')}?project={cf.project}",
+            headers=ctx.headers,
+        )
+        response.raise_for_status()
+        row = response.json()
+        accounted = {cf.report_of} if cf.report_of is not None else set()
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=cf.label, kind="content",
+            true_project=cf.project, true_status=None, requested_project=cf.project,
+            label_project=row.get("project") == cf.project,
+        ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+
+        foreign_project = FOREIGN if cf.project == OBSERVER else OBSERVER
+        cross_response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/{quote(cf.label, safe='')}?project={foreign_project}",
+            headers=ctx.headers,
+        )
+        if cross_response.status_code != 404:
+            out.append(Sighting(
+                surface=surface, door=door,
+                case=f"{case}: cross-project read must 404", row=cf.label,
+                kind="content", true_project=cf.project,
+                forced_v1_reason="a label seeded in one project answered under "
+                                 "another project's request instead of 404ing",
+            ))
+        out.extend(_account_body(
+            surface, door, f"{case}: cross-project read", cross_response.text, set(),
+        ))
+    return out
+
+
+async def _drive_knowledge_pin_suggestions(ctx: ProbeContext) -> list[Sighting]:
+    """The diff/suggestion door over the same rows, scoped the same way.
+
+    `COMMUNITY_FIXTURES` seed no `dominant_entities` (T2.21's fixture never
+    needed one), so `compute_pin_suggestions` never nominates anything from
+    these rows -- this driver exercises the diff's project scope, not the
+    fact-floor/article gate, which `tests/test_pin_suggestions.py` and
+    `tests/test_topics_read_surface.py` already cover offline / against a
+    real app instance respectively.
+    """
+    surface = "knowledge_pin_suggestions"
+    door = "GET /api/v1/knowledge/topics/pin-suggestions"
+    out: list[Sighting] = []
+
+    def foreign_labels(project: str) -> list[str]:
+        return [cf.label for cf in COMMUNITY_FIXTURES if cf.project != project]
+
+    async def one_case(project: str):
+        case = f"diff scoped to {project}"
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/topics/pin-suggestions?project={project}",
+            headers=ctx.headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        seen_labels: set[str] = set()
+        for entry in payload.get("diff", []):
+            cf = COMMUNITY_FIXTURES_BY_LABEL.get(entry.get("label"))
+            if cf is None:
+                continue
+            seen_labels.add(cf.label)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=cf.label, kind="content",
+                true_project=cf.project, true_status=None, requested_project=project,
+                label_project=entry.get("project") == cf.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, set()))
+        for other in foreign_labels(project):
+            if other in seen_labels:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=other, kind="content",
+                    true_project=COMMUNITY_FIXTURES_BY_LABEL[other].project,
+                    forced_v1_reason="a foreign project's topic reached a scoped diff",
+                ))
+
+    await one_case(OBSERVER)
+    await one_case(FOREIGN)
+    return out
+
+
+_DUPLICATE_ENDPOINT_KEYS = tuple(
+    dict.fromkeys(key for src, tgt, _ in DUPLICATE_PAIRS for key in (src, tgt))
+)
+
+
+async def _drive_hygiene_queue_duplicates(ctx: ProbeContext) -> list[Sighting]:
+    """The candidate-duplicate arm — endpoint ids plus, since T2.87, each
+    endpoint's own content preview and created_at.
+
+    ``content_surfaces`` now declares two crossings here: the endpoint ids
+    (still id-only, ``I1``) and ``content_preview`` (real content, judged on
+    the same axes as ``hygiene_queue_memories``). A supersede direction needs
+    to know which endpoint is older, and ids-plus-score alone cannot say that
+    — the previews are what closes the gap, so this driver has to prove they
+    behave like every other declared preview rather than assume the id-only
+    reasoning still covers them.
+
+    * a pair outside a project the caller named. ``classify`` short-circuits
+      on ``kind='id'`` before it reaches the scope axis, so a scope breach on
+      an id-only row is a breach the axis model cannot express — that is what
+      ``forced_v1_reason`` is for. **The comparison is against
+      ``DUPLICATE_PAIRS``, never against the row's own ``project``.** This is
+      the probe's one hand-rolled scope check, and a check that asks the
+      surface under test to declare its own scope passes a serializer that
+      stamps the label from the request parameter while serving every
+      project — a leak reported as clean, which is worse than no driver.
+    * a pair whose declared project disagrees with the project its endpoints
+      were seeded in. The label is the only thing an operator reads off a
+      deployment-wide queue, so a label that lies is a defect even when the
+      rows themselves are in scope.
+    * each endpoint's preview, checked against the row's own ``project``
+      label the same way ``hygiene_queue_memories`` checks a memory row —
+      a foreign-project pair must still name its project, or it is a V2.
+    * a preview that ran past its declared 200-char boundary
+      (``_preview_boundary``, reused unchanged) — sentinel-inside-boundary
+      content cannot tell a truncated preview from a leaked whole content, so
+      this is the only check that can.
+    * any memory sentinel at all in the body outside the two previews the
+      driver just accounted for (``_account_body``) — the raw-body net, now
+      scoped to what legitimately crosses instead of an empty set.
+
+    Every endpoint of every observed pair is enumerated, in or out of scope —
+    unlike ``entity_browser``, which filters to keep a large ``memory_ids``
+    array readable. Here there are two pairs and the ids are still the whole
+    id-only payload, so enumerating them all is what makes "this case reached
+    the arm" a fact in the report rather than an inference from silence.
+
+    The fourth forced V1 — a pair outside ``DUPLICATE_PAIRS`` — is a
+    **probe-integrity signal, not a leak claim**, and the two must not be read
+    as the same thing. It can only fire on a database ``run_probe`` reset and
+    seeded itself, so an unseeded pair means the fixture table and the seeding
+    disagree and the scope check above has nothing to compare against. It is
+    reported as V1 because a scope check that silently skips the rows it
+    cannot ground-truth is the failure this whole task exists to remove; it is
+    not a statement about the surface. The probe never runs against a
+    deployment's own data.
+    """
+    surface = "hygiene_queue_duplicates"
+    door = "GET /api/v1/hygiene-queue/duplicates"
+    out: list[Sighting] = []
+    ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+    seeded_projects = {(src, tgt): project for src, tgt, project in DUPLICATE_PAIRS}
+    long_endpoint_fixtures = [
+        FIXTURES_BY_KEY[key] for key in _DUPLICATE_ENDPOINT_KEYS
+        if FIXTURES_BY_KEY[key].long
+    ]
+
+    async def one_case(params: str, case: str, req_p: str | None):
+        response = await ctx.client.get(
+            f"/api/v1/hygiene-queue/duplicates{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            endpoints = [
+                ids_to_fx.get(str(row.get("source_memory_id"))),
+                ids_to_fx.get(str(row.get("target_memory_id"))),
+            ]
+            if not any(endpoints):
+                continue
+            # Named by fixture keys, never by the relation's id: the bench
+            # database is rebuilt per run, so an id in a row or case name
+            # would make two runs render differently.
+            keys = tuple(fx.key if fx else "unknown" for fx in endpoints)
+            pair = "+".join(keys)
+            true_project = seeded_projects.get(keys)
+            if true_project is None:
+                out.append(Sighting(
+                    surface=surface, door=door, case=case, row=pair, kind="id",
+                    requested_project=req_p,
+                    forced_v1_reason="candidate pair the probe did not seed, so the "
+                                     "scope check has no ground truth (probe "
+                                     "integrity, not a surface leak)",
+                ))
+            else:
+                if req_p is not None and true_project != req_p:
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=pair, kind="id",
+                        true_project=true_project, true_status=None,
+                        requested_project=req_p,
+                        forced_v1_reason="pair outside the requested project",
+                    ))
+                if row.get("project") != true_project:
+                    out.append(Sighting(
+                        surface=surface, door=door, case=case, row=pair, kind="id",
+                        true_project=true_project, true_status=None,
+                        requested_project=req_p,
+                        forced_v1_reason="pair labelled with a project its "
+                                         "endpoints were not seeded in",
+                    ))
+            for fx in endpoints:
+                if fx is not None:
+                    out.append(_mem(
+                        surface, door, f"{case}: pair {pair}", fx, kind="id",
+                    ))
+                    # The preview crossing: judged like a memory row in
+                    # hygiene_queue_memories, labelled off the row's one
+                    # `project` field (both endpoints of every seeded pair
+                    # share a project — see DUPLICATE_PAIRS).
+                    accounted.add(fx.key)
+                    out.append(_mem(
+                        surface, door, f"{case}: pair {pair}", fx, kind="preview",
+                        req_p=req_p, lp=row.get("project") == fx.project,
+                    ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text, long_endpoint_fixtures,
+            HYGIENE_PREVIEW_CHARS,
+        ))
+
+    await one_case("", "every open candidate pair (ratified operator-wide)", None)
+    await one_case(
+        f"?project={OBSERVER}", "project filter applied by the caller", OBSERVER,
+    )
+    return out
+
+
+async def _drive_hygiene_queue_memories(ctx: ProbeContext) -> list[Sighting]:
+    """The three memory-shaped hygiene arms, each a deployment-wide backlog.
+
+    Unlike a fact or a journal row, every row here *is* a memory, so its
+    lifecycle is the ``memories.status`` one and ``true_status`` carries it —
+    which is what makes the superseded arm load-bearing: it serves superseded
+    rows on a read that requested no status at all, so each one must name the
+    state it came from or it is a V2.
+
+    The declared crossing is ``content_preview``, so every fixture the three
+    arms return runs past the ``[:200]`` boundary and ``_preview_boundary``
+    fails the surface if a tail reaches the wire.
+    """
+    surface = "hygiene_queue_memories"
+    out: list[Sighting] = []
+    ids_to_fx = {str(mid): FIXTURES_BY_KEY[key] for key, mid in ctx.memory_ids.items()}
+
+    async def one_case(arm: str, params: str, case: str, req_p: str | None):
+        door = f"GET /api/v1/hygiene-queue/{arm}"
+        response = await ctx.client.get(
+            f"/api/v1/hygiene-queue/{arm}{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            fx = ids_to_fx.get(str(row.get("id")))
+            if fx is None:
+                key = _row_key(row.get("content_preview", ""))
+                fx = _all_content_fixtures().get(key or "")
+            if fx is None:
+                continue
+            accounted.add(fx.key)
+            out.append(_mem(
+                surface, door, case, fx, kind="preview", req_p=req_p,
+                lp=row.get("project") == fx.project,
+                ls=row.get("status") == fx.status,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text,
+            [fx for fx in MEMORY_FIXTURES if fx.long], HYGIENE_PREVIEW_CHARS,
+        ))
+
+    for arm, backlog in (
+        ("low-confidence", "low-confidence captures"),
+        ("expiring-soon", "rows approaching their TTL"),
+        ("superseded", "superseded lineage"),
+    ):
+        await one_case(
+            arm, "", f"{backlog}, deployment-wide (ratified operator-wide)", None,
+        )
+        await one_case(
+            arm, f"?project={OBSERVER}",
+            f"{backlog}, project filter applied by the caller", OBSERVER,
+        )
     return out
 
 
@@ -1178,6 +2347,10 @@ async def _drive_capture_buffer_triage(ctx: ProbeContext) -> list[Sighting]:
                 label_project=row.get("project") == buffer_keys[key],
             ))
         out.extend(_account_body(surface, door, case, response.text, accounted))
+        out.extend(_preview_boundary(
+            surface, door, case, response.text,
+            BUFFER_LONG_FIXTURES, CAPTURE_BUFFER_PREVIEW_CHARS,
+        ))
 
     await one_case("", "wide (every project, ratified default)", None)
     await one_case(f"?project={OBSERVER}", "scoped project", OBSERVER)
@@ -1211,6 +2384,15 @@ async def _drive_event_journal(ctx: ProbeContext) -> list[Sighting]:
             payload = event.get("payload") or {}
             preview = payload.get("content_preview", "")
             key = _row_key(preview) if preview else None
+            if key is None:
+                # The consolidation stream carries memory-derived content in
+                # `before`/`after` rather than in a `content_preview` field —
+                # a refine journals the summary it replaced and the one it
+                # wrote. Modelled here so it is enumerated against the event's
+                # own project label instead of landing in the raw-body net as
+                # an unmodelled crossing.
+                elsewhere = scan_sentinels(json.dumps(payload, default=str))
+                key = sorted(elsewhere)[0] if elsewhere else None
             fx = ids_to_fx.get(str(event.get("object_id")))
             row_name = key or (fx.key if fx else event.get("event_type", "event"))
             if key:
@@ -1227,12 +2409,24 @@ async def _drive_event_journal(ctx: ProbeContext) -> list[Sighting]:
     await list_case(f"?project={OBSERVER}", "scoped project", OBSERVER)
 
     door = "GET /api/v1/events/timeline"
+    case = "timeline of one memory"
     response = await ctx.client.get(
         f"/api/v1/events/timeline?object_type=memory&object_id={ctx.memory_ids['a_active']}",
         headers=ctx.headers,
     )
     response.raise_for_status()
-    out.extend(_account_body(surface, door, "timeline of one memory", response.text, set()))
+    payload = response.json()
+    timeline = payload["items"] if isinstance(payload, dict) else payload
+    accounted = set()
+    for event in timeline:
+        # Every row here is this one memory's own history, so a sentinel in a
+        # payload is that memory's content coming back through its journal —
+        # a consolidation action's before/after summary, for instance.
+        found = scan_sentinels(json.dumps(event.get("payload") or {}, default=str))
+        for key in sorted(found):
+            accounted.add(key)
+            out.append(event_sighting(door, case, key, event, None))
+    out.extend(_account_body(surface, door, case, response.text, accounted))
 
     door = "GET /api/v1/analytics/pipeline-logs"
     response = await ctx.client.get("/api/v1/analytics/pipeline-logs", headers=ctx.headers)
@@ -1333,17 +2527,28 @@ async def _drive_entity_browser(ctx: ProbeContext) -> list[Sighting]:
 
 
 DRIVERS = {
+    "dream_cycle_digest": _drive_dream_cycle_digest,
     "memory_search": _drive_memory_search,
     "memory_reason": _drive_memory_reason,
     "chat_retrieval": _drive_chat_retrieval,
     "graph_memory_context": _drive_graph_memory_context,
     "bulk_partition_read": _drive_bulk_partition_read,
     "duplicates_probe": _drive_duplicates_probe,
+    "memory_overview": _drive_memory_overview,
+    "knowledge_composed_search": _drive_knowledge_composed_search,
     "code_search": _drive_code_search,
     "memory_by_id": _drive_memory_by_id,
     "memory_write_echo": _drive_memory_write_echo,
     "reembed_backfill_queue": _drive_reembed_backfill_queue,
     "pipeline_failure_triage": _drive_pipeline_failure_triage,
+    "review_queue_facts": _drive_review_queue_facts,
+    "review_queue_articles": _drive_review_queue_articles,
+    "knowledge_facts_browsing": _drive_knowledge_facts_browsing,
+    "knowledge_fact_detail": _drive_knowledge_fact_detail,
+    "knowledge_topics_browsing": _drive_knowledge_topics_browsing,
+    "knowledge_pin_suggestions": _drive_knowledge_pin_suggestions,
+    "hygiene_queue_duplicates": _drive_hygiene_queue_duplicates,
+    "hygiene_queue_memories": _drive_hygiene_queue_memories,
     "analytics_recents": _drive_analytics_recents,
     "capture_buffer_triage": _drive_capture_buffer_triage,
     "event_journal": _drive_event_journal,
@@ -1446,6 +2651,7 @@ async def run_probe() -> ProbeReport:
             memory_ids=seeded["memory_ids"], repo_ids=seeded["repo_ids"],
             redis_entity_id=seeded["redis_entity_id"],
             failure_id=seeded["failure_id"],
+            fact_ids=seeded["fact_ids"], article_ids=seeded["article_ids"],
             retention_conversation_id=seeded["retention_conversation_id"],
         )
         for key in registry_keys:

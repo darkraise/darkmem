@@ -8,11 +8,16 @@ from sqlalchemy.orm import aliased
 from app.models.code import CodeFile, CodeSymbol
 from app.repositories.vector import PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
+from app.services.rank_fusion import RRF_K
 from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
+# Code search fuses its two arms on a composite ``file_path:line_start`` key
+# rather than on a row id, so it keeps its own accumulation loop; the constant
+# is imported because a second declaration of it can drift from the one the
+# memory path ranks by while both files still read as if they agreed.
+__all__ = ["RRF_K", "CodeQueryService"]
 
 
 class CodeQueryService:

@@ -1,0 +1,78 @@
+{
+  "_notes": "Blind-pass escalation queue (LABELLING.md Layer 2 merge rule). 'open' holds pairs awaiting the owner's Layer-3 ruling, label_source 'author' until resolved; 'resolved' retains prior rounds' records verbatim, with the ruling noted (full record in LABELLING.md).",
+  "open": [],
+  "resolved": [
+    {
+      "_notes": "T2.54 Step-5 escalation queue: every live pair on which the two blind passes and the recorded label did not all agree. Owner adjudicates per LABELLING.md (retire-and-replace for wrong labels, rule-then-pairs for ambiguous rules). label_source stays 'author' for queued pairs until resolved.",
+      "merged_at": "2026-08-03",
+      "n_live": 241,
+      "adjudicated": 239,
+      "agreement": {
+        "pass_a_vs_recorded": 0.991701244813278,
+        "pass_b_vs_recorded": 0.991701244813278,
+        "pass_a_vs_pass_b": 1.0
+      },
+      "escalations": [
+        {
+          "id": "eg-0023",
+          "premise": "haproxy load-balances incoming requests across the three app nodes.",
+          "hypothesis": "The three app nodes load-balance requests across haproxy instances.",
+          "slice": "direction",
+          "recorded_verdict": "unsupported",
+          "recorded_rationale": "Reversed functional role. The premise does not assert the reverse arrangement, but nothing in it excludes a separate one either, so this is unsupported, not contradicted (reversal rule, non-exclusive case).",
+          "pass_a": {
+            "verdict": "contradicted",
+            "rule": "reversal rule (balancer/backend roles cannot swap for one flow)"
+          },
+          "pass_b": {
+            "verdict": "contradicted",
+            "rule": "reversal rule (balancer/backend roles for one traffic flow cannot carry both directions)"
+          }
+        },
+        {
+          "id": "eg-0142",
+          "premise": "glitchtip replaces sentry",
+          "hypothesis": "GlitchTip replaces MkDocs.",
+          "slice": "value-swap",
+          "recorded_verdict": "contradicted",
+          "recorded_rationale": "Replaced-object swap (sentry -> mkdocs) with the sentence shape preserved; the one thing a named replacement retired is a single-valued slot (the exclusive-slot rule's 'one thing a named migration replaced' shape), so the differing value contradicts under the exclusive-slot rule. mkdocs is corpus-plausible as a replaced tool - it is genuinely replaced (by astro) in the harvest world.",
+          "pass_a": {
+            "verdict": "unsupported",
+            "rule": "general step 4 (absence, not exclusion)"
+          },
+          "pass_b": {
+            "verdict": "unsupported",
+            "rule": "general step 4 (absence)"
+          }
+        }
+      ],
+      "resolution": "Both ruled at the 2026-08-06 owner sitting (rule-then-pairs): eg-0023's recorded verdict stands under the load-balancing precedent; eg-0142's stands under ratified exclusive-slot rule 3. Both carry label_source 'owner'."
+    },
+    {
+      "round": "T2.110 growth (eg-0242..eg-0351)",
+      "merged_at": "2026-08-08",
+      "n_live": 110,
+      "adjudicated": 109,
+      "agreement": {
+        "pass_a_vs_recorded": 0.990909090909091,
+        "pass_b_vs_recorded": 1.0,
+        "pass_a_vs_pass_b": 0.990909090909091
+      },
+      "id": "eg-0308",
+      "premise": "config management agent causes lp-relay",
+      "hypothesis": "The config management agent is what causes the lp-relay.",
+      "slice": "paraphrase",
+      "recorded_verdict": "entailed",
+      "recorded_rationale": "Full rewording: the causal assertion restated as a cleft construction, same two endpoints, nothing strengthened or weakened. Entailed under the rewording-tolerance rule (general procedure 3).",
+      "pass_a": {
+        "verdict": "unsupported",
+        "rule": "general procedure 3 (cleft upgrades 'causes' to 'the cause') + general procedure 4"
+      },
+      "pass_b": {
+        "verdict": "entailed",
+        "rule": "paraphrase (general procedure 3)"
+      },
+      "resolution": "Owner-ruled at the 2026-08-08 T2.110 Layer-3 sitting (rule-then-pairs): an ambiguous rule, not a mislabel. The rulebook's implicature-is-not-contradiction rule distinguished asserted from non-asserted content but was scoped only to the unsupported->contradicted step; the new exhaustivity rule states the missing entailed->unsupported half. Cleft exhaustivity is presupposed and defeasible, unlike lexical 'only' (eg-0276), so it does not strengthen. eg-0308's recorded 'entailed' stands, label_source 'owner'; no retire-and-replace. The mandated re-adjudication of the paraphrase slice (and of overreach, whose boundary the rule's second clause governs) changed no label. Full record in LABELLING.md."
+    }
+  ]
+}

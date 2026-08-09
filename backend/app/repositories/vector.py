@@ -17,6 +17,37 @@ _COMMUNITY_SAMPLE_CAP = 10_000
 SEMANTIC_FETCH_MULTIPLIER = 3
 
 
+class EmbedderFingerprintUnresolved(RuntimeError):
+    """A bulk-partition read would key on a fingerprint no embed ever produced.
+
+    ``LLMOrchestrator.llm_fingerprint()`` is built from static config, never
+    from an actual embed, so it can name a partition nothing real ever wrote
+    to. Two shapes of that (T2.68, T2.83): ``dimensions`` unset, which yields
+    the ``model|0`` sentinel and which boot-time registration refuses to
+    create a table for; and ``dimensions`` set to the WRONG positive value,
+    which boot registration does NOT refuse — it eagerly creates an empty,
+    syntactically valid partition that no real embed will ever populate,
+    because ``LLMOrchestrator._check_dims`` rejects any embed whose actual
+    length disagrees with the configured one. Both shapes read as an
+    apparently-successful, permanently-empty query with no error and no
+    symptom unless a read path refuses to trust an unconfirmed fingerprint —
+    see :meth:`PostgresVectorRepository.resolve_read_fingerprint`, which
+    raises this when the model has no fingerprint, confirmed or not, to fall
+    back to.
+    """
+
+    def __init__(self, model_id: str):
+        self.model_id = model_id
+        super().__init__(
+            f"No embedding partition holds data for model {model_id!r}: the "
+            "embedding purpose's 'dimensions' config may be unset or wrong, "
+            "and no real embed call has produced data under any fingerprint "
+            "for this model yet. Verify 'dimensions' on the embedding "
+            "purpose, or perform an embed "
+            "first so the true fingerprint registers."
+        )
+
+
 @dataclass(frozen=True)
 class MemoryFilter:
     """Project / status / archived scope for the semantic retrieval channel.
@@ -395,6 +426,93 @@ class PostgresVectorRepository:
         g.es["weight"] = weights
         partition = g.community_multilevel(weights="weight")
         return partition.membership
+
+    async def resolve_read_fingerprint(self, llm) -> str:
+        """Resolve the fingerprint a bulk-partition read (projection, clustering)
+        may safely key on.
+
+        ``llm.llm_fingerprint()`` is a pure, session-less formatter built from
+        static config, never from an actual embed (T2.68, widened by T2.83): a
+        read must never trust it blindly, because it can name a partition no
+        real embed ever wrote to. That happens in more than one shape — an
+        unset ``dimensions`` (the ``|0`` sentinel, which boot-time
+        registration refuses to create a table for at all) and a WRONG
+        positive ``dimensions`` (768 configured, 1024 real — which boot
+        registration does NOT refuse: it happily creates an empty,
+        syntactically valid partition, because ``dims > 0`` passes the only
+        check registration runs. No real embed will ever populate it, since
+        ``LLMOrchestrator._check_dims`` refuses any embed whose actual length
+        disagrees with the configured one — but nothing stops a read from
+        finding the empty table and returning zero rows forever, with no
+        error at all). Both shapes are one class: "the configured fingerprint
+        might not be the one an embed would produce", so this resolves by
+        data, not by shape:
+
+        1. If the configured fingerprint's own partition already holds data,
+           use it — the fast, overwhelmingly common path.
+        2. Otherwise, if a different live fingerprint for the same model
+           holds data (dims drifted after real embeds already ran under the
+           true one), resolve to that instead, preferring the most recently
+           registered.
+        3. Otherwise, if the configured fingerprint is at least a live
+           registered partition, pass it through: a fresh, correctly
+           configured deployment with nothing embedded yet looks identical to
+           a wrong one with nothing embedded yet, and only an actual embed
+           call could tell them apart — an honestly empty result is not the
+           bug this guards against (invariant 14).
+        4. Otherwise — the configured fingerprint is not registered at all
+           and nothing else for this model holds data either — there is no
+           partition to read, and this raises
+           :class:`EmbedderFingerprintUnresolved` rather than let the caller
+           proceed on a key nothing was ever written under.
+
+        Never used by retrieval — ``hybrid_search`` derives its fingerprint
+        from ``embed()``'s return value (an actual vector's length), which
+        structurally cannot be wrong, so it has no need of this lookup.
+        """
+        fingerprint = llm.llm_fingerprint()
+        model_id, _, _ = fingerprint.rpartition("|")
+
+        live = (
+            await self.session.execute(
+                text(
+                    "SELECT fingerprint FROM embedders "
+                    "WHERE model_id = :model_id AND retired_at IS NULL "
+                    "ORDER BY registered_at DESC"
+                ),
+                {"model_id": model_id},
+            )
+        ).scalars().all()
+        if not live:
+            raise EmbedderFingerprintUnresolved(model_id)
+
+        is_registered = fingerprint in live
+        # Check the configured fingerprint first (the common case resolves in
+        # one query), then every other live sibling, newest first.
+        candidates = ([fingerprint] if is_registered else []) + [
+            fp for fp in live if fp != fingerprint
+        ]
+        for candidate in candidates:
+            if await self._partition_has_data(candidate):
+                return candidate
+
+        if is_registered:
+            return fingerprint
+        raise EmbedderFingerprintUnresolved(model_id)
+
+    async def _partition_has_data(self, fingerprint: str) -> bool:
+        """Whether a live fingerprint's memory partition holds any row.
+
+        ``fingerprint`` must already be a live row in ``embedders`` — its
+        registration is what created the table, so no ``to_regclass``
+        existence probe is needed here.
+        """
+        table = child_table("memory_embeddings", fingerprint)
+        return bool(
+            (
+                await self.session.execute(text(f"SELECT EXISTS(SELECT 1 FROM {table} LIMIT 1)"))
+            ).scalar_one()
+        )
 
     async def find_fingerprint_for_memory(self, memory_id: UUID) -> str | None:
         """Return a registered fingerprint whose child table holds this memory.

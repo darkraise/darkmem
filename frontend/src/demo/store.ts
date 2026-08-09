@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { buildAssertedByClaim } from "./badge-grammar"
 import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
@@ -41,7 +42,7 @@ import {
 } from "./data/settings-curated"
 import { enrichBulkMemories, type RawBulkMemory } from "./memories"
 import { buildReindexPhases } from "./explore"
-import { liveArticles } from "./knowledge"
+import { distinctOriginCount, liveArticles } from "./knowledge"
 import {
   buildActivityFeed,
   buildContributions,
@@ -88,14 +89,8 @@ const initialStats = {
   ).length,
 }
 
-const ratifyFact = (fact: DemoFact, by: string, on: string): DemoFact => ({
-  ...fact,
-  verification_status: "confirmed",
-  claim: `human-ratified by ${by} on ${on}; the pre-ratification record remains below`,
-  meta: `ratified by ${by}, ${on}`,
-  review_state: null,
-  ratified: { by, on },
-  sources: [
+const ratifyFact = (fact: DemoFact, by: string, on: string): DemoFact => {
+  const sources = [
     ...fact.sources,
     {
       origin_key: `human:${by}`,
@@ -105,22 +100,52 @@ const ratifyFact = (fact: DemoFact, by: string, on: string): DemoFact => ({
         "ratified via the Review queue — the ratification wrote this human-kind fact_source (who / when / what-was-shown)",
       at: `ratified ${on}`,
     },
-  ],
-  ladder: [
-    ...fact.ladder,
-    {
-      at: on,
-      description: `ratified by ${by} — the human origin was written as a fact_source`,
-      transition: { from: fact.verification_status, to: "confirmed" },
-      note: "only a human ratify reaches confirmed; the machine ceiling is corroborated",
-    },
-  ],
-})
+  ]
+  return {
+    ...fact,
+    verification_status: "confirmed",
+    // T2.75: the badge claim is doc 12's producer output, never hand
+    // interpolated — this used to say "human-ratified by {by} on {on}",
+    // a shape fact_badge.build_claim can never emit.
+    claim: buildAssertedByClaim({
+      originCount: distinctOriginCount(sources),
+      kinds: sources.map((s) => s.kind),
+      asOf: on,
+      humanRatified: true,
+    }),
+    meta: `ratified by ${by}, ${on}`,
+    review_state: null,
+    ratified: { by, on },
+    sources,
+    ladder: [
+      ...fact.ladder,
+      {
+        at: on,
+        description: `ratified by ${by} — the human origin was written as a fact_source`,
+        transition: { from: fact.verification_status, to: "confirmed" },
+        note: "only a human ratify reaches confirmed; the machine ceiling is corroborated",
+      },
+    ],
+  }
+}
 
-const ratifyArticle = (article: DemoArticle, by: string, on: string): DemoArticle => ({
+// Articles carry no per-origin `sources`/kinds (doc 12 §4's article badge
+// is unshipped — see badge-grammar.ts's module docstring), so `[code,
+// memory]` is this demo's own established convention: every corroborated
+// or confirmed CURATED_ARTICLES fixture already cites only those two kinds.
+const ARTICLE_ORIGIN_KINDS = ["code", "memory"] as const
+
+const ratifyArticle = (article: DemoArticle, _by: string, on: string): DemoArticle => ({
   ...article,
   verification_status: "confirmed",
-  claim: `human-ratified by ${by} on ${on}`,
+  // T2.75: same fix as ratifyFact — was "human-ratified by {by} on {on}",
+  // a shape the producer never emits.
+  claim: buildAssertedByClaim({
+    originCount: article.coverage.entailed,
+    kinds: ARTICLE_ORIGIN_KINDS,
+    asOf: on,
+    humanRatified: true,
+  }),
   meta: `ratified ${on}`,
   review_state: null,
   ungrounded_note: undefined,

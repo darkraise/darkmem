@@ -97,6 +97,11 @@ export interface FactSource {
   detail: string
   /** Display timestamp line, e.g. "captured 2026-06-01 09:00". */
   at: string
+  /** Doc 10 §6 (T2.48/T2.86): true when the live door's origin group this row
+   *  came from is stale — a code citation the re-verifier could no longer
+   *  resolve. Absent in every demo fixture, which has no re-verifier; the
+   *  live adapter broadcasts the group's `stale` onto each of its rows. */
+  stale?: boolean
 }
 
 export interface BeliefWindow {
@@ -399,7 +404,12 @@ export interface ChatContextRow {
   layer: KnowledgeLayer
   /** null = the row carries no rung badge (L0 lifecycle, not the ladder). */
   verification: VerificationStatus | null
-  claim: string
+  /** What the row is about — a fact's plain-English statement (L2/L3) or a
+   *  quoted memory's content (L0). NOT the badge; renamed from `claim`
+   *  (T2.75 fix round 2026-08-04a, F4) because it never was one and the
+   *  shared name kept `frontend/src/demo/badge-grammar.ts` from walking
+   *  `claim` fields generically without false-failing on every row here. */
+  subject_text: string
   /** The verbatim honest badge line (or the badge:null explanation). */
   badge_line: string
   channel?: string
@@ -546,7 +556,22 @@ export interface DemoDreamAction {
   layer: KnowledgeLayer
   title: string
   meta: string
-  claim?: string
+  /**
+   * Narrative subtitle for a dream action that is NOT a verification-ladder
+   * transition — refine's before/after, a demotion's reason, invalidation's
+   * closure sentence — prose describing the event, never a badge string.
+   * Named `note`, not `claim` (T2.75 fix round 2026-08-04a, F4): it used to
+   * share the `claim` key with the real badge below, which is also the key
+   * `knowledge-curated.ts`'s facts and articles use for their genuine
+   * badges, so a generic walk over every `claim` field would have had to
+   * either false-fail on this narrative prose or skip this file. Renaming
+   * it frees `claim` to mean exactly one thing everywhere it appears.
+   */
+  note?: string
+  /** The real badge `fact_badge.build_claim` would render for this row after
+   *  the transition — set only on `promote_demote` (promotion) and `ratify`
+   *  actions. Walked by `badge-grammar.ts`; `note` above is not. */
+  badge_claim?: string
   /** Amber per-row emphasis (demoted rung / touched a disputed object). */
   caution_tag?: string
   transition?: DreamTransition
@@ -584,7 +609,13 @@ export interface DemoDreamCycle {
   }
   groups: DemoDreamGroup[]
   disputed: {
-    claim: string
+    /** A verbatim quote of `build_claim`'s own doc-comment example
+     *  ("disputed: 2 origins assert X, 1 origin asserts not-X, as of T"),
+     *  teaching the shape rather than instantiating it for this cycle's
+     *  actual dispute (`sides` below carries that). Named `legend`, not
+     *  `claim`, so `badge-grammar.ts`'s walk does not mistake a doc
+     *  placeholder for a real claim (T2.75 fix round 2026-08-04a, F4). */
+    legend: string
     sides: [
       { assertion: string; origins: string },
       { assertion: string; origins: string },

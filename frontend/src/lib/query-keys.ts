@@ -47,6 +47,26 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "PaginatedSearchParams.project is caller-supplied (the Memories page's own project filter), not yet the global switcher",
   },
+  knowledge: {
+    kind: "manual",
+    reason:
+      "GET /knowledge/facts takes an explicit `project` the Facts tab supplies from its own filter (doc 13 §5.1), not yet the global switcher",
+  },
+  dreamDigest: {
+    kind: "manual",
+    reason:
+      "GET /dream-digest/cycles takes an explicit `project` filter (doc 13 §6.3); the single-cycle read is addressed by cycle_id and carries no project param at all",
+  },
+  reviewQueue: {
+    kind: "manual",
+    reason:
+      "GET /review-queue/{facts,articles,counts} all take an explicit `project` the Review queue supplies from its own filter (doc 13 §6.2), not yet the global switcher. The counts door gained that parameter in T2.88; until then it had none and the surface rendered its number with an explicit unscoped qualifier",
+  },
+  hygieneQueue: {
+    kind: "manual",
+    reason:
+      "GET /hygiene-queue/* take an explicit `project` the Hygiene queue supplies from its own filter (doc 13 §6.2), not yet the global switcher",
+  },
   events: {
     kind: "manual",
     reason: "EventListParams.project is caller-supplied, not yet the global switcher",

@@ -555,7 +555,7 @@ memory stay two nodes where the memory path would have merged them at cosine
 shape as T2.16 shipping two of three signals: the mechanism is right and its
 reach is smaller than the doc claims. Logged rather than silently accepted.
 
-**The decision this task owns.** Two candidate shapes, and the choice is the
+**The decision this task owns.** Three candidate shapes, and the choice is the
 work:
 
 - **Embed at derive time.** Simplest, and it makes anchoring symmetric — but it
@@ -564,10 +564,31 @@ work:
 - **A Tier-C back-fill** over repo-asserted entities with no embedding, reusing
   the `entity_embedding_cache__<slug>` path. Keeps the deriver clean and pays
   the same fingerprint-partition rules everything else does (invariant 2).
+- **A scheduled arm on the back-fill that already exists.** `app/services/
+  reembed.py` is a missing-fingerprint back-fill: "obsolete" there means "has
+  no row in the active fingerprint's table", which is exactly what a
+  repo-minted entity is, and `list_obsolete_entities` / `reembed_entities`
+  already find and embed them. What it has no trigger for is a schedule. Least
+  new code — but it is a whole-corpus operator action with its own lock set and
+  broadcast surface, so turning it into a cron changes behaviour for every
+  entity, not only repo-minted ones.
 
 The second is the recommendation; the task may overturn it with a reason.
 **Note an embedder call is not an LLM extraction call** — T2.27's clause forbids
 the latter, and reading it as forbidding both is what left this gap.
+
+**Shipped 2026-08-07: the second, scoped to repo-asserted rows.** Shape 1 is
+not merely doctrinally awkward, it is blocked: T2.27's guard forbids the whole
+orchestrator surface, `embed_batch_chunked` included, so taking it means
+widening the guard until it permits an extraction too. Shape 3 was rejected on
+the behaviour change above. The job is `repo_entity_anchoring`
+(`app/services/entity_anchoring.py`), Tier C and not a dreaming-family member,
+selecting under a data-resolved fingerprint and writing under the one the
+embedder returned. **It closes only the order where the repo is indexed first**
+— Phase 4 dedups at write time, so a repo indexed after the memory already
+minted the near-named node still leaves two rows. Closing that needs a
+retroactive entity-merge pass, which is a different mechanism and is not owned
+by any task yet.
 
 **Done when:**
 - [ ] A repo-minted entity and a near-named memory-minted one resolve to one node,
@@ -645,6 +666,242 @@ answer has to say why that residue is acceptable or close it.
 - [ ] A sweep shows no other served aggregate over the raw rung
 
 **Verify.** `cd backend && python -m pytest tests/test_claim_serving_gates.py tests/test_pin_suggestions.py -q`
+
+#### T2.106 — `/config/llm` can now be read for eight purposes and written for six
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.104` · `Doc: 11 §6, 12 §2` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.104, which fixed the read half and deliberately left the
+write half as a separate decision.** `LLMConfigResponse` now declares all eight purposes,
+so an operator can finally *see* `synthesis` and `verification`. `LLMConfigUpdate`
+(`backend/app/schemas/config.py:60`) still declares six, so neither can be *changed*
+through the route that shows them.
+
+That half-state is an improvement over the silent drop and it is not a resting place:
+a settings surface that displays a value it cannot edit invites the reasonable
+assumption that the value is not editable at all, when in fact it is simply unreachable
+from this door.
+
+**The decision this task owns is whether the write should exist, per purpose, and it is
+not symmetric.** `synthesis` is seeded inert with no consumer until T3.02 — widening the
+write for it is cheap and low-consequence. `verification` is **live**:
+`app/services/verification_judge.py` dispatches on it, and `VerificationJudge.judge()`
+already refuses without a qualification record. Letting an operator repoint a live judge's
+model through a settings form is a real capability with a real failure mode, and it
+interacts with G-D: a judge qualified on one model and then silently repointed to another
+has a qualification record that no longer describes what runs. **Decide it deliberately,
+per purpose, and record the reasoning** — an answer of "read-only for `verification`, and
+here is why" is a complete answer.
+
+**Done when:**
+- [ ] The read/write asymmetry is resolved deliberately per purpose, with the reasoning
+      recorded — not closed by symmetry alone
+- [ ] If `verification` becomes writable, the interaction with its qualification record is
+      stated and guarded; if it stays read-only, the UI says so rather than appearing broken
+- [ ] T2.104's guard still passes, and any new asymmetry it would catch is caught
+
+**Verify.** `cd backend && python -m pytest tests/test_llm_config.py -q`
+
+#### T2.105 — A task with no `progress.md` row is invisible to scheduling
+
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: runbook §6` · `Tag: target-new` · `Gate: none (planning integrity)`
+
+**Minted 2026-08-07, after the gap occurred twice in one day.** The runbook makes
+`progress.md` canonical for scheduling. A task that exists in an epic file with complete
+text but has no row there **cannot be picked up**, however finished its specification is,
+and nothing announces the absence.
+
+It has now happened twice, and the second time is the more damning:
+
+- **T2.86** sat rowless from 2026-08-04. Adjacent work built five of its six clauses
+  while it was invisible, nobody could close it, and it surfaced only because T2.48 tried
+  to route work to it. Its own correction then cited an artifact that does not exist,
+  because the earlier dispatch was equally unrecorded.
+- **T2.104** was minted 2026-08-07 by the controller — *in the same session that fixed
+  T2.86's missing row* — and immediately had none itself. It was caught only because the
+  controller happened to re-run the ad-hoc sweep it had written hours earlier.
+
+That is the signature of a missing guard rather than carelessness: the check exists, it
+works, and nothing runs it.
+
+**What.** A test that fails when the two files disagree in either direction — a
+`#### T<id>` heading in any `docs/planning/tasks/*.md` with no `| T<id> |` row in
+`progress.md`, or a row naming a task no epic file defines. Both directions matter: the
+second catches a row surviving a task's deletion or renumbering.
+
+Keep it cheap and dependency-free — this is a text comparison over two globs, not a
+planning-document parser. It belongs wherever the repo's other planning-hygiene checks
+run, and it must name the offending ids in its failure message, since "the files
+disagree" without the ids just relocates the search.
+
+**Done when:**
+- [ ] A task heading with no row fails the build, naming the id — mutation-drilled
+- [ ] A row with no task heading fails the same way, also drilled
+- [ ] The check passes on the tree as it stands today, or names exactly what it found
+
+**Verify.** `cd backend && python -m pytest tests/test_planning_docs.py -q`
+
+#### T2.104 — A response model that silently drops what the builder writes
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 12 §2` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.86, which found the third instance of one shape in one
+file.** FastAPI + pydantic v2 default to `extra="ignore"`, so a key a `facts_read`
+builder writes and the response model does not declare is dropped **silently** — no
+error, no warning, no log line. The field simply is not on the wire.
+
+**Four** occurrences in `backend/app/schemas/facts.py` alone (this count was minted as
+"three" and corrected 2026-08-07 by T2.86's review, which found the earliest one — the
+miscount had already propagated into three documents, which is its own small instance of
+the same problem): `demotion_pending_since` (T2.46, fixed at `99a47930`),
+`label_suppressed`, `unverified`, and now `stale` — T2.48's stale-citation flag, which
+the builder computed from T2.48's landing and which never reached a client until T2.86
+declared it.
+
+**And it is not confined to one file.** T2.86's reviewer swept further and found
+`GET /config/llm`: the route builds all **eight** LLM purposes, `LLMConfigResponse`
+(`backend/app/schemas/config.py:45`) declares **six**, so `synthesis` and `verification`
+are dropped — proven empirically. `verification` is not inert: it is a live, dispatched
+purpose (`app/services/verification_judge.py`), so its real configuration is invisible to
+the settings surface, and the frontend covers the hole with a hardcoded seed mirror whose
+"nothing dispatches on these" premise is itself stale. That makes the guard's scope wider
+than `facts_read`, and it makes the failure mode concrete: an operator cannot see the
+config of a purpose the system is actively using.
+
+**What makes this worth a task rather than a fourth fix is how the third one survived
+review.** T2.48's own report, its Fable adversarial review, and its rescope all
+described the flag as *served but unrendered* — "the visible-cause story currently ends
+at the API boundary". It ended one layer earlier. Three independent passes read the
+builder and the frontend type and agreed; none drove the door and diffed the payload,
+because the failure has no symptom to notice. The controller repeated the same wrong
+claim from the same evidence.
+
+**What.** A structural guard: every key a response-model builder writes is declared on
+the schema it is returned through. The natural shape is a test that introspects the
+builders in `app/services/facts_read.py` (and any sibling with the same pattern) against
+their declared response models — or, if introspection proves too brittle, a
+payload-level assertion that drives each route and compares the served key set against
+the builder's. Pick the shape that actually fails when a key is undeclared, and
+mutation-drill it by removing a declared field.
+
+**Done when:**
+- [ ] A key written by a builder and undeclared on its response model fails the build,
+      proven by drill on a real field
+- [ ] The guard covers `facts_read`'s builders **and the `/config/llm` purpose set** at
+      minimum; state what it does not cover
+- [ ] `synthesis` and `verification` reach the `/config/llm` payload, and the frontend's
+      hardcoded seed mirror is retired or its stale premise corrected
+- [ ] Existing served payloads are unchanged — this adds a guard, not fields
+
+**Verify.** `cd backend && python -m pytest tests/test_facts_read_surface.py -q`
+
+#### T2.103 — The auth family is emitted outside the closed vocabulary
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 04 §8.1, 12 §6` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.102's adjacent findings, controller-verified in the tree.**
+`EVENT_TYPES` is a closed vocabulary and `record_event` logs a warning for any value
+outside it — deliberately, because event types are never LLM output, so an unknown
+value must surface rather than be rewritten to a fallback. The auth family is inverted
+against that rule in both directions:
+
+- **Emitted but absent from the vocabulary:** `auth_login_success`, `auth_login_failed`,
+  `auth_logout`, `auth_password_change` (`app/api/routes/auth.py:103,108,124,163`) and
+  `auth_setup` (`app/api/routes/setup.py:342`).
+- **In the vocabulary with no emitter:** `auth_lockout`.
+
+So every login, logout, password change and setup writes
+`events: event_type ... is outside the doc 04 §8.1 closed vocabulary` to the log — five
+values, on the hottest security-relevant path — while the one auth value the vocabulary
+does acknowledge is never written.
+
+**This is not cosmetic.** `GET /auth/audit` (`app/api/routes/auth.py:250`) serves the
+security audit trail by filtering `auth_*`/`setup_*` rows out of `events`. The audit
+surface is therefore built entirely on values the closed vocabulary does not admit,
+which is exactly the taxonomy-first rule ("land the value in the vocabulary before its
+emitter ships") failing on the one family where an unrecognised row is most consequential.
+
+**What.** Land the emitted values in `EVENT_TYPES`, and settle `auth_lockout` — either
+it gains its emitter or it leaves the vocabulary; an entry with no writer is the
+scaffolding-not-substrate shape invariant 23 exists to catch. Check the
+`setup_completed` / `setup_complete` spelling drift T2.102 also recorded while you are
+in here.
+
+**Done when:**
+- [ ] No `record_event` call in `backend/app` emits a value outside `EVENT_TYPES` —
+      proven by a scan that fails the build, not by grep at review time
+- [ ] `auth_lockout` either has an emitter or is gone, and the report says which and why
+- [ ] `GET /auth/audit` returns the same rows before and after, proven at the door
+- [ ] T2.102's frontend map guard still passes — these values become newly *live-emitted*
+      in its eyes, so each needs a tab or a recorded exclusion
+
+**Verify.** `cd backend && python -m pytest tests/test_events.py tests/test_event_taxonomy_map.py -q`
+
+#### T2.101 — Retroactive entity merge: the anchoring order that never heals
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.97` · `Doc: 10 §6, 06 §5` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-07 from T2.97's completion report and confirmed by its adversarial
+review.** T2.97 gave repo-minted entities embeddings, so Phase 4's ANN probe can see
+them — but it closes **one order only**. Repo indexed → anchoring tick → memory
+ingested merges into one node. Memory ingested first, repo indexed later, **never**
+merges: `assert_from_repo` is an exact-key `ON CONFLICT (name, entity_type)` upsert
+with no ANN probe, and Phase 4 dedups only at memory-write time, so nothing re-runs
+the comparison. Re-derivation cannot heal it either — the strip-and-rewrite is keyed
+the same way.
+
+That is the order **an existing install produces the first time it indexes a repo**,
+which makes it the common case rather than the corner. The limitation is pinned by
+`test_a_repo_indexed_after_the_memory_still_leaves_two_nodes`, so this task turns a
+red test into a decision rather than discovering the problem fresh.
+
+**What.** A retroactive merge pass over entities that a repo asserted and a
+near-named memory-minted node already exists for. The hard part is not finding the
+pairs — it is that merging two live entities means rewriting `memory_ids`,
+`repo_ids[]`, every relation endpoint, and the `technologies` denorm, atomically,
+without breaking the `(name, entity_type)` uniqueness the whole graph rests on.
+
+**Done when:**
+- [ ] A memory-first-then-repo pair resolves to one node, at the same 0.85 threshold
+      and under the same `names_distinct` guard the write path uses
+- [ ] `test_a_repo_indexed_after_the_memory_still_leaves_two_nodes` is replaced by its
+      inverse, not deleted
+- [ ] Merging is idempotent and never merges across `entity_type`
+- [ ] Tier C, off capture and retrieval (invariant 15)
+
+**Verify.** `cd backend && python -m pytest tests/test_repo_entity_anchoring.py -q`
+
+#### T2.102 — One deliberate pass over the frontend event-taxonomy map
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 13 §4` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-07 from T2.48's rescope, which called the gap systemic rather than
+incidental — correctly.** `frontend/src/features/activity/event-taxonomy.ts` maps
+`EVENT_TYPES` values onto activity tabs, and a value missing from the map surfaces
+only under "all", never on its own tab. Three consecutive rounds have each found one
+missing and fixed exactly that one: `contradiction_scanned` (T2.11), `citation_stale`
+(T2.48). The rescope then swept the whole vocabulary and found **seven** unmapped
+values with live emitters, of which `invalidated`, `human_verdict` and `undone` fit
+existing tabs cleanly.
+
+**Three one-line fixes in three rounds is the signal.** Each was correct in isolation
+and none was the fix, because the map is maintained reactively — a value lands in the
+closed vocabulary, its emitter ships, and nothing fails when the map does not learn
+about it. The taxonomy-first rule already governs the vocabulary; it does not reach
+this map.
+
+**What.** One pass mapping every emitting `EVENT_TYPES` value deliberately, plus the
+guard that makes the next miss impossible: a test that fails when a value with a live
+emitter has no entry. A value that genuinely belongs only under "all" is a decision to
+record in the map, not an absence to infer.
+
+**Done when:**
+- [ ] Every `EVENT_TYPES` value with a live emitter is classified deliberately, and the
+      report says which got which tab and why
+- [ ] A new vocabulary value with an emitter and no map entry fails the build
+- [ ] Values that belong only under "all" say so explicitly rather than by omission
+
+**Verify.** `cd frontend && npm test -- event-taxonomy`
 
 #### T2.98 — The same-endpoint arm has an index for half of itself
 
@@ -1280,10 +1537,24 @@ and say which arm.
 
 #### T2.86 — The fact detail route on live data
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.36a, T2.36` · `Doc: 13 §5.1, 12 §2` · `Tag: rebuild` · `Gate: G-C`
 
-**What.** Minted 2026-08-04 from T2.36's fix round, which fixed the dead link by
-removing it and said plainly that wiring the page is a task rather than a fix.
+**What (corrected 2026-08-07 — see Amendment log).** Minted 2026-08-04 from
+T2.36's fix round. **The "What" below described the tree as it stood before
+any of this task's own work started; that work landed and merged
+(`claude/e2-lane-az`, commits `d5af8d4f..83a8e261`, fix round `d7ce0dd8`) while
+this row had no `progress.md` entry, so a later scheduling pass re-minted the
+same text as if none of it existed.** `useDemoFact` is no longer called
+unconditionally: `FactDetail` (`features/knowledge/components/fact-detail.tsx`)
+branches `DEMO ? <DemoFactDetail/> : <LiveFactDetail/>`, and `LiveFactDetail`
+calls `GET /knowledge/facts/{id}` through `useFactDetail`. `FactDetailResponse`
+now carries `sources`, `ladder` (+`ladder_total`), `dispute`, `triple_key`,
+`learned_in`, `source_file`, `reference_time` and `belief_window`.
+`detail_available` is retired — the only surviving reference is a test comment
+recording that fact. Failed/not-found/invalid/loading are four distinguishable
+states. Below is preserved as the historical record of what the task looked
+like when minted; do not read it as the tree's current state.
+
 `src/routes/_authenticated/knowledge_.facts_.$factId.tsx:64` calls `useDemoFact`
 **unconditionally**, so with `DEMO` off — the default since T1.58 — any real fact
 id renders "This fact does not exist in the demo store." T2.36a shipped
@@ -1303,18 +1574,58 @@ also a surface hiding a capability the system is supposed to have. Removing the
 flag is part of done, not a follow-up.
 
 **Done when:**
-- [ ] The route reads live data and a real fact id renders that fact
-- [ ] Every field the page displays is one the door actually serves; anything it
-      cannot serve is removed from the page rather than rendered empty or faked
-- [ ] A disputed fact renders **both sides** here, with the backend's two-sided
-      claim string verbatim
-- [ ] `detail_available` is retired and the Facts tab links to the detail route
-      unconditionally
-- [ ] A failed read renders as a failed read, distinct from a missing fact
+- [x] The route reads live data and a real fact id renders that fact —
+      already satisfied by `claude/e2-lane-az`'s merge (`d5af8d4f`..`d7ce0dd8`),
+      proven by `fact-detail.test.tsx`'s "renders the fact on a successful
+      read" and the visiting Playwright spec (`83a8e261`)
+- [x] Every field the page displays is one the door actually serves; anything it
+      cannot serve is removed from the page rather than rendered empty or faked —
+      already satisfied by the same merge, which grew the door rather than
+      shrinking the page and delivered a 17-row per-field audit table,
+      reviewed clause-by-clause. **Correction (fix round 1, 2026-08-07):**
+      that table was never committed — `reviews/2026-08-05-t2.86-*` exists on
+      no branch and in no worktree. Its surviving record is
+      `progress.md` row 238's prose (spec **PASS** on all six clauses); the
+      task review (`reviews/2026-08-07-t2.86-task-review.md`) independently
+      re-walked every field `LiveFactDetailBody` renders against
+      `FactDetailResponse` and confirmed the claim holds. The one field
+      neither audit could have caught, because it did not exist yet, is the
+      next clause below
+- [x] A disputed fact renders **both sides** here, with the backend's two-sided
+      claim string verbatim — already satisfied (`LiveDisputePanel`,
+      `dispute.claim` rendered verbatim, proven by
+      `test_facts_read_surface.py` and `fact-detail.test.tsx`)
+- [x] `detail_available` is retired and the Facts tab links to the detail route
+      unconditionally — already satisfied by the same merge
+- [x] **A stale code citation renders as stale** (added 2026-08-07 from T2.48's
+      rescope). T2.48 serves `FactSourceGroup.stale` and types it on the
+      frontend, and `fact-sources.tsx` reads it nowhere — so a human auditing a
+      downgraded badge sees the broken citation looking identical to a live one,
+      which is the visible-cause story ending at the API boundary. T2.48 routed
+      this here and the routing was correct in principle, but every clause above
+      binds only the *removal* direction ("anything it cannot serve is removed"),
+      so nothing obliged rendering a field the door already serves. Naming it
+      makes the disposition real rather than nominal. **Built 2026-08-07
+      (`claude/e2-lane-cn`).** The frontend gap named here was real, but it was
+      the smaller of two: `FactSourceGroup` in `app/schemas/facts.py` never
+      declared `stale` either, so FastAPI's `response_model` validation
+      silently dropped the key `facts_read._source_group` had been computing
+      since T2.48 — the field never reached the wire at all, the same
+      undeclared-field shape `label_suppressed` and `unverified` hit earlier in
+      this same schema family. Fixed both: the schema now declares `stale`
+      (proven by a test reverted-and-restored to show it catches the drop), and
+      `fact-sources.tsx` renders the existing `StaleBadge` per stale origin
+      group, with the sources caption's own "badge's K" corrected to exclude
+      stale origins so it keeps agreeing with `badge.origin_count`, which
+      already excludes them server-side
+- [x] A failed read renders as a failed read, distinct from a missing fact
       (invariant 14) — and a 404 for a fact that genuinely does not exist is a
-      third, distinguishable state
-- [ ] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
-      coverage rather than only in the task's own file
+      third, distinguishable state — already satisfied by the same merge (four
+      states: `loading`, `not_found`, `invalid`, `failed`)
+- [x] Simple/Advanced honoured, inside `detail-level-invariants.test.tsx`'s
+      coverage rather than only in the task's own file — already satisfied by
+      the same merge ("the fact detail page's honesty labels render in both
+      modes" block); extended 2026-08-07 to cover the stale-source label too
 
 **Verify.** `cd frontend && npm test -- fact-detail && npm run test:e2e -- knowledge`
 
@@ -1818,6 +2129,15 @@ cross-cutting shape that got T2.60 minted.
 - [ ] The clear does not stomp a value T2.46's `under-sourced` label or a human owns — the
       three writers' precedence is stated and tested, not left to write order
 - [ ] `chk_superseded_has_pointer` and the sole-journaller property both still hold
+- [ ] **An expired fact does not sit in the queue forever** (added 2026-08-07 from
+      T2.101's rescope). `build_facts_query` carries no liveness predicate and
+      `verification_recompute` never revisits expired rows, so a `disputed` fact that is
+      later expired stays queued with nothing able to clear it but a human. The state is
+      **already reachable today** via a stated expiry — T2.101 only added a second route
+      to it (a fold whose retiree is `disputed`), which is why it is recorded here rather
+      than fixed there. Either the queue gains a liveness predicate or whatever expires a
+      fact clears its `review_state`; this task owns the choice because it owns the
+      column's writers and their precedence.
 
 **Verify.** `cd backend && python -m pytest tests/test_review_state_transitions.py -q`
 
@@ -2645,6 +2965,7 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-09 | T2.43, T2.13 | 1 | **The 2026-08-03 deferred-minor cluster is closed on its three actionable entries — (a), (e) and (g) now have guards that can fail, and (d) is amended in the plan rather than in a brief.** (a) landed in the branch-review fix wave (`a8313578`): the order-inertness guard held no equal-tier cross-channel pair, so `-weighted_score` could re-enter the sort as a tie-break with the **whole** 4684-test suite green — not the 46 the minor estimated. (e) and (g) are that same shape and were left open through the review: the `limit` test pinned the cut's length and not its head, so `ordered[-limit:]` passed; `BLOCKING_REASONS` pinned the reasons' declared order and not the runtime position of the comparator lookup, so hoisting it above the three older checks passed all 88. Both now redden under exactly those mutations while their length-only and tuple-only siblings stay green. (d): plan §2.3 named a `with_trace` parameter the seam never grew; there is no T2.58 brief in the tree, so the amendment is the closing side, and `statuses` / `weights` are listed with it | The reviewer's disposition for (e) and (g) was "bundle with (a)", and only (a) shipped — leaving two guards that read as coverage and could not fail, on properties M1's triage will trust. Recorded here rather than only in the commits because the cluster was recorded here: a reader who finds the 2026-08-03 row needs to see which entries are still live, and (b), (c) and (f) are |
 | 2026-08-06 | T2.28, T2.04 | 2 | **The veto's admissible-consumer rule widens from "the ladder" to "the modules that decide a verification-axis write", and `fact_lift.py` is admitted as the second and only other.** T2.28's N-1 fix — a controller-ruled `adjudicate_contradiction` consult before restoring a born rung — made `fact_lift` the second module to reach the veto, and T2.04's one-entry allowlist failed the floor over it. The executor did not widen it quietly: it flagged the entry for re-ruling and wrote the warrant into the allowlist, which now states the *rule* rather than an exception. **Accepted** | The consult can only **refuse** a restore — never grant a rung, never open a dispute, never write — and it reads a verdict already journalled by the scan rather than adjudicating afresh, so no judge call and no model call enter the path. Invariant 15 is untouched rather than traded: `fact_lift` is a dream-job body already out of capture's and retrieval's reach. Tier 2 rather than Tier 3 because **no design doc says only the ladder may consult the veto** — doc 08 §4.2 fixes that adjudication happens at the fact layer through the qualified judge, which this consult does not do; it reads that judge's recorded output to decline a write. The generalisation is also the honest one: the property worth protecting was never "one module" but "no module that could dispute inline", and the rewritten comment says so. Drilled three ways, including removing the new entry (fails, so it is load-bearing) and planting the import in a third real app file (fails, naming it). Recorded because a rule's *scope* changed, which reaches past the task that changed it |
 | 2026-08-06 | T2.100 | 2 | **Ruling narrowed the same day it was made: a journal payload embedded in a claim surface inherits the claim surface's contract, not the journal's.** T2.100's review measured the `verified` payloads served inside `GET /knowledge/facts/{id}`'s `ladder` array and `GET /review-queue/facts`'s `evidence` array — each body carrying `after.verification_status: "corroborated"` beside a **suppressed label on the same row**. The earlier ruling accepted that exposure on `/events` and named only `/events`, because that is the door AF1 presented. **It does not extend to these two**, and the fix round closes them | The distinction is the whole basis of the original ruling and I stated it there: a journal row records what the ladder computed, a claim surface asserts what is true, and a reader of `/events` is reading a computation log *by construction of which door they opened*. That argument is about the **door**, not about the payload — so it evaporates the moment the same bytes are embedded in a response whose purpose is to state a fact's status. A fact-detail body that suppresses the rung in `verification_status` and hands it back two keys later in `ladder` has not gated anything; it has moved the answer. Worth recording as the shape rather than the instance: **an accepted residue is scoped to the surface it was accepted on**, and every later surface that embeds it re-opens the question rather than inheriting the answer. Also recorded: the ruling's own test is weaker than the ruling on the "authenticated operator" qualifier (auth is unasserted) and narrower than reality on the reader set — it pinned one door of three |
 | 2026-08-06 | T2.95, T2.99, T2.100 | 2 | **Ruled: the audit journal keeps serving the rung, and the M1 safety sentence narrows to say so.** `GET /api/v1/events?object_type=fact&event_type=verified` serves `payload` verbatim under the same `require_auth` as the facts door, and every ladder transition journals `before`/`after` `verification_status` — so for any fact that has ever transitioned, the withheld rung is **directly readable, without the subtraction** the two closed oracles needed. Accepted rather than closed. What does not stand is the *declaration*: `claim_gates.ungated_status` defines wrapping as a claim that the value "reaches no reader", and the journal sites hand it to an authenticated one. **T2.100** splits the marker so the audit substrate declares itself as such | Accepted for three reasons, and the first is decisive: **G-C's own false-promotion audit reads this journal.** Narrowing the substrate to protect the gate would degrade the evidence the gate is measured with, which is self-defeating. Second, T2.59 settled the analogous content-residue question the same way six hours earlier — accept and document, never an in-app journal-rewriting path, because "make this never have happened" one bug away from the audit substrate is the worse failure. Third, a journal row and a claim surface are different speech acts: one records what the ladder computed, the other asserts what is true, and a reader of `/events` is reading a computation log by construction. **The correction that matters more than the ruling**: the M1 split's sentence has been stated all day as *no serving path can reach a label whose evidence does not exist*, and that is false as written. The honest form is *no **claim surface** serves an unbacked label; the audit journal records the ladder's own transitions and an authenticated operator can read them.* A false declaration is worse than an undeclared site — the scan trusts it and so does the next reader — which is why the marker is a fix and the exposure is a ruling |
@@ -2765,3 +3086,14 @@ shipped "currently open" predicate that assumes `invalid_at` is only ever set in
 | 2026-08-04 | T2.65 | 2 | **Decided: the memory-bridged proxy stands as an interim position, not a fact-keyed counter, and the measurement behind that decision found the gap is already live traffic, not a hypothetical one.** `layer_composition.LayerCompositionService.search` — wired unconditionally behind the `knowledge_search` MCP tool, no feature flag gating it — calls `FactsChannel.search_with_trace` for every invocation, and that channel serves `knowledge_triples` rows directly with no call anywhere analogous to `access_stats.spawn_record_access`. So "the facts channel has no consumer wired" does not hold as a defence; a fact served only through `knowledge_search` scores zero retrieval-frequency heat today, on live traffic, not on a hypothetical future one. The proxy is kept anyway because the honest fix — a fact-keyed analogue of `memory_access_stats`, keyed `fact_id REFERENCES knowledge_triples(id)` — needs a new table, and no lane holds baseline-schema clearance this round. `review_ranking.py`'s docstring and `FACT_KEYED_COUNTER_STATUS` now state this as an interim bound rather than the stale "reads exclusively through source memories" premise, and `facts_channel.py` carries a matching `RETRIEVAL_HEAT_STATUS` breadcrumb; `tests/test_queue_ranking.py::test_facts_channel_traffic_never_feeds_retrieval_frequency` pins the gap against fifty real `FactsChannel` searches and was watched to fail when the recording was mutated in | Recorded as a Tier-2 amendment because it is a newly discovered dependency the plan did not carry: the next schema window should mint a task for the `fact_access_stats` table (same shape and coalescing-buffer idiom as `access_stats.py`, fed from `FactsChannel`'s serving path) rather than assume this proxy is permanent. Nothing here builds that table — R6 of the T2.65 brief forbids a schema change this round, and this decision converts the task into exactly the "decision plus a ready-to-execute plan" outcome the brief names as legitimate |
 | 2026-08-05 | T2.16 | 1 | **Fix round 1 on the Fable task review: the derivation strip no longer retires edges whose signal no arm measured, and the cap-engaged bound finally has a test that can fail.** (I1) With the proximity arm skipped under an unresolvable fingerprint, `kept` cannot hold a proximity pair, so the strip retired every proximity edge in the seed window without re-measuring a single cosine — silently, because the strip journals nothing, and irreversibly, because the original write's undo CAS-refuses once its block is gone. On a deployment whose embedding purpose carries no `dimensions` the canary never recovers and the whole proximity graph is swept one seed slice at a time. `strip_stale_edges` now takes `unmeasured_signals` and spares any triple whose stored block rests on one, counted as `spared_unmeasured`. (I2) The truncation test named for the bound exercised the *unbounded* branch, so deleting the bound clause outright left all 24 tests green; `test_the_bound_spares_edges_past_the_decided_prefix` drives the engaged bound instead. Three minors fixed with them: the proximity fan-out becomes its own config row `derivation_neighbours` (it used to read the judge's `pair_candidates`, so tuning the judge silently moved which proximity edges could exist), the digest's `action_detail` renders `signal` (this pass has no verdict, so it was the only answer to "why is this edge here"), and §7a gains E10 recording that the cursor advances under a dead canary. Two declined with reasons in the fix report: row locks in `write_derived_edge` (Phase D commits once, so mirroring `apply_associate`'s `FOR UPDATE` would hold locks on up to 2x`derivation_batch` `memories` rows for the whole pass and block the capture path — a worse hazard than the self-healing one it closes) and the expired-memory filter asymmetry (`MemoryFilter` has no expiry predicate at all and is the shared retrieval scope class, so closing it here is a repo-wide retrieval change out of this lane) | Tier 1: both Important findings are task-local and neither reopens the design — the review's own disposition. Recorded rather than absorbed because I1 changes what D9 means (retire only what this run re-evaluated now binds the arms, not just the pairs) and F-M1 adds a row to D6's config list |
 | 2026-08-06 | T2.50 | 1 | **The Verify line is corrected to two invocations with the flag spellings the CLI validates.** The stated `--arm w_ppr,dual_level` exits 1 with `unknown --arm 'w_ppr,dual_level'; valid arms are [...]`: `run_retrieval_eval.py` takes one `--arm` per run, and `arm_ablation.resolve_ablatable` deliberately accepts only config-flag spellings (`w_ppr`, `w_dual`), never the short names — the same one-spelling discipline `resolve_arm` documents. Fixed to `--arm w_ppr && ... --arm w_dual` | Found by running the line verbatim during T2.50's execution (the judge's own definition of done requires running the stated Verify); the recorded ablations had already used the correct per-arm invocations, so the defect was in the task text alone |
+| 2026-08-07 | T2.97 | 1 | **A third candidate shape existed and the task text named only two: `reembed.py` is already a missing-fingerprint back-fill, and a repo-minted entity is exactly what it calls obsolete.** Added to the task text so the choice is made against the real option set, together with the shipped decision and its boundary. Shape 1 (embed at derive time) turns out to be blocked rather than merely awkward — T2.27's guard forbids the whole orchestrator surface, `embed_batch_chunked` included, and it is reached through the same handle a `chat_completion` is, so permitting the embed means permitting an extraction. Shape 3 was rejected because `reembed_entities` is a whole-corpus operator action with a lock set and a progress broadcast: scheduling it re-embeds every entity missing a vector, which after an embedder rotation is the entire corpus, on a cron nobody asked for. Shipped shape 2 narrowed to `repo_ids <> '{}'`, the one set with no other writer | Runbook §5 Tier 1: task-local, the brief instructed the amendment, and a reader meeting only two options would weigh the recommendation against a false alternative set. The boundary is recorded in the same row because it is the part a future reader is most likely to assume away: the job makes anchoring work when a repo is indexed before the memory arrives, and does nothing for the reverse order |
+| 2026-08-07 | T2.97, T2.101 | 2 | **T2.101 minted: the anchoring order that never heals has no owner.** T2.97 gave repo-minted entities embeddings so Phase 4's ANN probe can see them, and its adversarial review confirmed independently that this closes **one order only** — `assert_from_repo` is an exact-key upsert with no probe and Phase 4 dedups at memory-write time, so memory-first-then-repo forks permanently and re-derivation cannot heal it. That is the order an existing install produces the first time it indexes a repo | The executor disclosed it, pinned it with a named failing-direction test, and said plainly that no task owned closing it. Same shape as T2.16 shipping two of three signals and T2.27's two gaps: a stated deliverable is narrower than the doc claims and **no row owns the gap**, which is the Tier-2 definition. Worth recording that the disclosure is what made this cheap — a limitation pinned by a test becomes a decision for the next task rather than a discovery |
+| 2026-08-07 | T2.48, T2.86 | 2 | **T2.86 gains a clause naming the `stale` field, and its missing `progress.md` row is restored.** T2.48's rescope judged M-5 NOT ADDRESSED as a self-sufficient disposition: routing "render the stale flag" to T2.86 was right in principle, but every T2.86 clause binds only the *removal* direction, so nothing obliged rendering a field the door already serves — and T2.86 had **zero rows in `progress.md`**, making it invisible to scheduling | The routing was an effective drop, not a handoff, and neither half was visible from inside the lane. The `progress.md` gap is the more alarming of the two: the runbook makes that file canonical for scheduling, so a task absent from it cannot be picked up however complete its text is. Worth a sweep for other task ids present in an epic file and absent from `progress.md` |
+| 2026-08-07 | T2.102 | 2 | **T2.102 minted: three consecutive rounds each found one missing entry in the frontend event-taxonomy map and fixed exactly that one.** `contradiction_scanned` (T2.11), then `citation_stale` (T2.48). T2.48's rescope swept the whole vocabulary and found seven unmapped values with live emitters | Each one-line fix was correct in isolation and none was the fix. The map is maintained reactively and nothing fails when it does not learn a new value — the taxonomy-first rule governs the vocabulary but does not reach this map. A defect found three times the same way is a missing guard, not three oversights |
+| 2026-08-07 | T2.96, T2.97, T2.48 | 1 | **`CLAUDE.md`'s job count reconciled centrally at merge to nineteen registered / thirteen live.** Three lanes each found the sentence already stale (T2.49's `relation_embedding_refresh` was never counted) and each corrected it for its own addition alone, so all three were locally right and collectively wrong | The keys that escaped the count all register via **constants rather than string literals**, which is exactly how a grep-based check undercounts — now stated in the sentence itself. T2.48's contribution is the durable one: `test_code_deriver.py` derives the roster from `app/main.py`'s AST, so the next job cannot silently desynchronise the baseline. Recorded because the same sentence going stale through four landings, then being independently rediscovered by three concurrent lanes, is a maintenance-shape signal rather than a typo |
+| 2026-08-07 | T2.103 | 2 | **T2.103 minted: the auth family is emitted outside the closed `EVENT_TYPES` vocabulary.** Five live values (`auth_login_success`, `auth_login_failed`, `auth_logout`, `auth_password_change`, `auth_setup`) are absent from it, so `record_event` logs a vocabulary warning on every one; `auth_lockout` is in the vocabulary with no emitter. Surfaced by T2.102 as an adjacent finding and verified in the tree by the controller before minting | T2.102 correctly flagged rather than took it — its scope was the frontend map. The reason this outranks a cosmetic mismatch is `GET /auth/audit`: the security audit trail is served by filtering `auth_*` rows out of `events`, so the audit surface rests entirely on values the closed vocabulary refuses to admit. Taxonomy-first exists precisely to stop that, and it failed on the family where an unrecognised row costs the most |
+| 2026-08-07 | T2.62, T2.101 | 1 | **T2.62 gains a clause: an expired fact can sit in the review queue with nothing able to clear it.** `build_facts_query` has no liveness predicate and `verification_recompute` skips expired rows, so a `disputed`-then-expired fact stays queued indefinitely | Found by T2.101's rescope, which correctly routed it here rather than fixing it in a merge job — but routing is only real if the receiving task's clauses bind it, which is the lesson T2.86 taught earlier the same day (a disposition pointed at a task whose Done-when clauses did not oblige the work is an effective drop). The state is **pre-existing**: a stated expiry already produces it, so T2.101 added a second route rather than the defect itself |
+| 2026-08-07 | T2.86 | 2 | **T2.86 dispatched a second time (`claude/e2-lane-cn`) found five of its six Done-when clauses already satisfied by the merged `claude/e2-lane-az` work, and the task's `Size` corrected `M` → `S` for what genuinely remained: the stale-citation clause.** Its own text still described the pre-merge tree (`useDemoFact` called unconditionally, no live door caller, `FactDetailResponse` missing every field the page shows) though that state had not been true since `d7ce0dd8`. All six clauses are now checked, with each already-satisfied one naming what satisfied it. The stale-citation build turned out to be two bugs, not one: the frontend gap T2.48's rescope named (`fact-sources.tsx` read `FactSourceGroup.stale` nowhere) was real, but the field never reached the wire to begin with — `FactSourceGroup` in `app/schemas/facts.py` never declared `stale`, so FastAPI's `response_model` validation silently dropped the key `facts_read._source_group` had been computing since T2.48. Both fixed | Logged Tier 2 rather than Tier 1 because it corrects a scheduling-relevant field (`Size`) on a task another agent may still be triaging, and because the wire-level bug is the **fourth** instance of this exact schema shape in `app/schemas/facts.py`, not the third as first logged here — `demotion_pending_since` (T2.46, `99a47930`) was the first, `label_suppressed` and `unverified` the second and third, all three silently dropped by an undeclared-field response model before being caught, per that file's own accumulated comments (corrected 2026-08-07 by this task's own adversarial review, which found the earlier instance the original count missed). The fourth occurrence is worth the structural guard (a test asserting every key a `facts_read` builder function writes is declared on its response schema); not built here because it is outside this task's named scope, and minted as T2.104. Caught by writing the test against the live endpoint rather than against the service function in isolation — a unit test on `_source_group` alone would have passed while the wire silently lost the field, which is the same shape invariant 14 exists to catch one layer up |
+| 2026-08-07 | T2.104, T2.48, T2.86 | 2 | **T2.104 minted: a response model silently drops any key its builder writes but it does not declare — third instance in one schema file.** T2.86 found that `FactSourceGroup.stale` never reached the wire at all: the builder computed it from T2.48's landing, the frontend typed it, and the schema never declared it, so pydantic's `extra="ignore"` dropped it with no error. `label_suppressed` and `unverified` were the same shape earlier | **The instructive part is that three review passes agreed on the wrong claim.** T2.48's report, its Fable adversarial review and its rescope all recorded the flag as *served but unrendered* — the visible-cause story "ending at the API boundary". It ended one layer earlier. Each pass read the builder and the frontend type, which are both correct in isolation; none drove the door and diffed the payload, because a silently-dropped field has no symptom. The controller then repeated the claim from the same evidence. A defect class that survives an adversarial review and a rescope is a missing guard, not a missed inspection |
+| 2026-08-07 | T2.105, T2.86, T2.104 | 2 | **T2.105 minted: a task with no `progress.md` row is invisible to scheduling, and the gap occurred twice in one day.** T2.86 sat rowless from 2026-08-04 while adjacent work built five of its six clauses; T2.104 was minted rowless by the controller in the very session that fixed T2.86's row | The second occurrence is what makes this a guard rather than a lapse. The controller had already written the detecting sweep, run it, used its output to restore T2.86 — and then reproduced the defect within hours, catching it only by chance re-running the same sweep. A check that exists, works, and is not wired to anything is indistinguishable from no check at all. Same reasoning as T2.104's own mint: a defect that survives the people who just fixed its twin is a missing guard |
+| 2026-08-07 | T2.106, T2.104 | 2 | **T2.106 minted: `/config/llm` now reads eight purposes and writes six.** T2.104 fixed the response model's silent drop of `synthesis` and `verification` and deliberately did not widen `LLMConfigUpdate`, reporting the write path as a separate wire-contract decision | The restraint was right — the brief told it to report rather than fix extra findings, and widening a write for a **live** purpose is not a bookkeeping change. `verification` dispatches a judge whose qualification record describes a specific model, so an operator repointing it through a settings form would leave a qualification that no longer describes what runs, which reaches into G-D. The asymmetry needs a per-purpose decision, and "read-only for `verification`, with the reason" is a complete answer |

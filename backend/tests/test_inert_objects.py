@@ -24,15 +24,30 @@ BACKEND = Path(__file__).resolve().parent.parent
 INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
 # repositories.index_debt is no longer here: T1.39, its declared first writer
 # (schema inventory §7), landed the re-trace drain that writes it.
-INERT_COLUMNS = {
-    ("entities", "repo_ids"): "T2.27",
-    ("entity_relations", "repo_ids"): "T2.27",
-}
+# entities.repo_ids and entity_relations.repo_ids are no longer here: T2.27,
+# their declared first writer (schema inventory §7), landed
+# `app/services/code_deriver.py` and the `assert_from_repo` /
+# `strip_repo_assertions` primitives. Both arrays now have a real writer, and
+# the amended sweeps' `NOT EXISTS (live repo)` predicates are exercised
+# against non-empty arrays by `tests/test_code_deriver.py` — of the test
+# database; the deriver has no scheduled caller until T2.96, so in production
+# the arrays are still empty.
+#
+# The set is now EMPTY, and every test below that loops over it therefore
+# quantifies over nothing. That is intended — this is the scaffold the next
+# inert column plugs into, not a live assertion — so each of those tests
+# skips with a reason rather than passing silently, because a green tick on a
+# vacuous loop reads exactly like a green tick on a real one.
+INERT_COLUMNS: dict[tuple[str, str], str] = {}
+# triple_embeddings is no longer here: T2.33, its declared first writer (schema
+# inventory §7), landed on T2.52's measured 41.7% shortlist miss rate, so the
+# conditional branch that would have kept the template inert forever is closed.
+# relation_embeddings is no longer here: T2.49, its declared first writer
+# (schema inventory §7), landed `app/services/relation_embeddings.py` and the
+# Tier-C refresh job that keeps the partition current.
 INERT_TEMPLATES = {
     "block_embeddings": "TH1.05",
-    "relation_embeddings": "T2.49",
     "article_embeddings": "T3.23",
-    "triple_embeddings": "T2.33",
 }
 
 
@@ -49,6 +64,8 @@ async def test_inert_tables_exist(session):
 
 @pytest.mark.asyncio
 async def test_inert_columns_exist(session):
+    if not INERT_COLUMNS:
+        pytest.skip("no inert column remains — see INERT_COLUMNS")
     for (table, column) in INERT_COLUMNS:
         found = (await session.execute(
             text("SELECT 1 FROM information_schema.columns "
@@ -73,16 +90,11 @@ async def test_inert_tables_are_empty(session):
         assert count == 0, f"{table} is not empty — something wrote to an inert table"
 
 
-@pytest.mark.asyncio
-async def test_inert_columns_hold_only_their_empty_default(session):
-    # repo_ids must be empty everywhere: that is what makes the amended sweeps
-    # vacuously true and therefore byte-identical to their pre-amendment form.
-    for table in ("entities", "entity_relations"):
-        non_empty = (await session.execute(
-            text(f"SELECT count(*) FROM {table} "
-                 "WHERE repo_ids IS NOT NULL AND cardinality(repo_ids) > 0")
-        )).scalar()
-        assert non_empty == 0, f"{table}.repo_ids has a writer — it must stay inert"
+# The emptiness assertion over `repo_ids` retired with T2.27: the deriver is
+# its writer, so a populated array is now the expected state and asserting
+# otherwise would forbid the feature. What replaced it is stronger — the
+# sweeps are asserted against non-empty arrays in `tests/test_code_deriver.py`
+# rather than merely asserted to be vacuous here.
 
 
 # ── no code path writes to them ──────────────────────────────────────────
@@ -98,13 +110,16 @@ def test_no_app_code_writes_the_inert_columns():
     ``NOT EXISTS`` predicates, which is exactly the frozen-but-inert shape
     doc 19 §3 asks for.
     """
+    if not INERT_COLUMNS:
+        pytest.skip("no inert column remains — see INERT_COLUMNS")
+    columns = tuple(sorted({column for _table, column in INERT_COLUMNS}))
     offenders: list[str] = []
     for path in _app_sources():
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for column in ("repo_ids",):
+            for column in columns:
                 writes = (
                     f".{column} =" in line
                     or f"{column}=" in line.replace("==", "")
@@ -141,7 +156,7 @@ def test_no_app_code_writes_the_inert_partitions():
     """The templates are registered but nothing may embed into them.
 
     ``child_table(parent, fingerprint)`` is the only sanctioned namer, so a
-    writer shows up as that call with one of the four inert parents.
+    writer shows up as that call with one of the still-inert parents.
     """
     offenders: list[str] = []
     for path in _app_sources():
@@ -157,26 +172,20 @@ def test_no_app_code_writes_the_inert_partitions():
 
 # ── the amendment is behaviour-preserving ────────────────────────────────
 
-@pytest.mark.asyncio
-async def test_amended_sweeps_carry_the_live_repo_predicate(session):
-    """The predicate is present *and* vacuous.
+def test_amended_sweeps_carry_the_live_repo_predicate():
+    """The predicate is present in every statement that can delete a graph row.
 
-    Doc 04 §4.2: both sweeps gain one ``NOT EXISTS (live repo)`` clause each,
-    and with every ``repo_ids`` empty they are always true — so the deletion
-    logic is reviewed and frozen while it is riskless. The existing graph
-    tests passing unchanged is the other half of this proof.
+    Doc 04 §4.2 gave each of the four original sweep statements one
+    ``NOT EXISTS (live repo)`` clause; T2.27's ``strip_repo_assertions`` adds
+    the two code-side ones, which need it for the same reason and for a second
+    one besides — a repo stripping its own assertion must not delete a row a
+    *different* live repo still asserts. Six statements, one clause each. The
+    predicate is no longer vacuous: see ``tests/test_code_deriver.py``.
     """
     src = (BACKEND / "app" / "repositories" / "graph.py").read_text()
-    assert src.count("FROM repositories rp") == 4, (
-        "expected one live-repo predicate in each of the four sweep statements"
+    assert src.count("FROM repositories rp") == 6, (
+        "expected one live-repo predicate in each of the six delete statements"
     )
-
-    # Vacuous today: no row anywhere carries a repo assertion.
-    for table in ("entities", "entity_relations"):
-        asserted = (await session.execute(
-            text(f"SELECT count(*) FROM {table} WHERE cardinality(repo_ids) > 0")
-        )).scalar()
-        assert asserted == 0
 
 
 @pytest.mark.asyncio
@@ -186,8 +195,9 @@ async def test_live_repo_predicate_spares_a_repo_asserted_row(session):
     Doc 19 §3's rationale for landing this inert is that the deletion-logic
     change gets reviewed and tested **while it is riskless**. That is only true
     if the predicate is exercised in its non-vacuous form, so this test writes
-    ``repo_ids`` directly — the deriver that will do so for real is T2.27 —
-    and proves the sweep spares a row a live repo still asserts.
+    ``repo_ids`` directly and proves the sweep spares a row a live repo still
+    asserts. T2.27 landed the deriver that writes them for real; this stays as
+    the writer-independent proof of the sweep itself.
     """
     from uuid import uuid4
 
@@ -264,8 +274,14 @@ async def test_inert_purposes_resolve_without_a_row(session):
 
 
 def test_no_app_code_dispatches_the_inert_purposes():
-    """The inertness itself. Their first writers are T2.26 (`verification`) and
-    T3.02 (`synthesis`); until then no call site may name either purpose."""
+    """The inertness itself. `synthesis` awaits its first writer (T3.02);
+    until then no call site may name it. `verification` left this guard on
+    2026-07-31 when its declared first writer landed (T2.26): the judge in
+    `app/services/verification_judge.py` dispatches on it, and the
+    single-door discipline is now owned by the STRICTER scan in
+    `tests/test_verification_judge.py` — the quoted purpose token is lawful
+    only in the judge module beyond the same three files allowed here, and
+    every consumer must enter through the qualification-gated `judge()`."""
     allowed = {
         "app/config.py",              # the Settings defaults
         "app/services/config.py",     # PURPOSES + the defaults map
@@ -280,11 +296,54 @@ def test_no_app_code_dispatches_the_inert_purposes():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for purpose in ("synthesis", "verification"):
+            for purpose in ("synthesis",):
                 if f'"{purpose}"' in line or f"'{purpose}'" in line:
                     offenders.append(f"{rel}:{lineno}: {stripped}")
     assert not offenders, (
         "an inert LLM purpose gained a dispatcher:\n" + "\n".join(offenders)
-        + "\nIf this is the intended first writer (T2.26 / T3.02), remove the "
-          "purpose from this test and update the schema inventory."
+        + "\nIf this is the intended first writer (T3.02), remove the "
+          "purpose from this test and update the planning record, as T2.26 "
+          "did for verification."
+    )
+
+
+# ── The Tier-C dream-job family inert members (T2.08, T2.14) ─────────
+
+
+def test_article_synthesis_job_is_inert():
+    """T2.14: article_synthesis lands as an inert placeholder.
+
+    Its productive runs ship in T3.02 (doc 08 §5.6), behind gate G-D.
+    The PlaceholderJobRunner marker (not a comment or convention) ensures
+    a shipped runner cannot silently keep wearing the placeholder type.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services.dream_jobs import (
+        ARTICLE_SYNTHESIS_JOB_KEY,
+        DREAM_JOB_OWNERS,
+        PlaceholderJobRunner,
+        register_dream_jobs,
+    )
+    from app.services.job_registry import JobRegistry
+
+    from .conftest import test_engine
+
+    # Registration never touches the database, so this reuses conftest's
+    # engine rather than opening one this test would have to dispose.
+    registry = JobRegistry(async_sessionmaker(test_engine, expire_on_commit=False))
+    register_dream_jobs(registry)
+
+    job = registry.get(ARTICLE_SYNTHESIS_JOB_KEY)
+    assert job is not None, f"{ARTICLE_SYNTHESIS_JOB_KEY} not registered"
+    assert isinstance(job.runner, PlaceholderJobRunner), (
+        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s runner must remain a PlaceholderJobRunner "
+        f"until {DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]} lands the productive run"
+    )
+    assert job.runner.owner_task == "T3.02", (
+        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s first productive owner must be T3.02, "
+        f"not {job.runner.owner_task}"
+    )
+    assert DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY] == "T3.02", (
+        f"DREAM_JOB_OWNERS[{ARTICLE_SYNTHESIS_JOB_KEY}] must name T3.02"
     )

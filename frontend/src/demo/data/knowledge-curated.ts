@@ -49,7 +49,7 @@ export const CURATED_FACTS: DemoFact[] = [
       "darkmem's production stack is deployed on docker-compose with host networking.",
     verification_status: "confirmed",
     claim:
-      "human-ratified by q.tran on 2026-07-21; previously asserted by 2 distinct origins of kinds [human, memory]",
+      "asserted by 2 distinct origins of kinds [human, memory], no known contradiction, as of 2026-07-21, human-ratified",
     meta: "ratified by q.tran, 2026-07-21",
     review_state: null,
     as_of: "2026-07-21",
@@ -560,7 +560,7 @@ export const CURATED_FACTS: DemoFact[] = [
       "the darkmem_test database lives on the dev-compose Postgres at 127.0.0.1:5433.",
     verification_status: "corroborated",
     claim:
-      "asserted by 1 distinct origin of kind [memory], no known contradiction, as of 2026-07-23",
+      "asserted by 1 distinct origin of kinds [memory], no known contradiction, as of 2026-07-23",
     meta: "under-sourced — 1 origin remains",
     review_state: "open",
     as_of: "2026-07-23",
@@ -888,7 +888,8 @@ export const CURATED_FACTS: DemoFact[] = [
     object_name: "cross-encoder model",
     fact_text: "considering moving the reranker to a cross-encoder model.",
     verification_status: "candidate",
-    claim: "extracted signal, not yet corroborated — 1 origin, as of 2026-07-18",
+    claim:
+      "asserted by 1 distinct origin of kinds [memory], no known contradiction, as of 2026-07-18",
     meta: "as of 2026-07-18",
     review_state: null,
     as_of: "2026-07-18",
@@ -982,7 +983,8 @@ export const CURATED_ARTICLES: DemoArticle[] = [
     excerpt:
       "cookie_secure defaults to Secure only when environment=production; an explicit COOKIE_SECURE=false permits plain-HTTP LAN deploys without weakening the production default…",
     verification_status: "confirmed",
-    claim: "human-ratified on 2026-07-10; grounded in 2 verified facts",
+    claim:
+      "asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-10, human-ratified",
     review_state: null,
     coverage: { ratio: 1, entailed: 2, total: 2 },
     stale: null,

@@ -1,0 +1,453 @@
+"""Self-expiring dated memories (doc 08 §2.3, T2.34).
+
+A memory that states its own retention gets `memories.expires_at` populated at
+capture, so T1.37's sweep spends it without the caller setting a TTL.
+
+The tests are weighted the way the risk is. The sweep **deletes** — embeddings
+cascade, provenance is withdrawn, nothing brings the row back — so the
+false-positive cases below are the load-bearing ones, and each is a phrasing
+that a date-proximity parser would have got wrong. The recall cases are here to
+prove the feature does something at all; the refusal cases are here to prove it
+cannot destroy anything.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.services.stated_expiry import derive_stated_expiry
+
+NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def derive(content: str, *, reference_time: datetime = NOW):
+    return derive_stated_expiry(content, reference_time=reference_time)
+
+
+# ───────────────────────── it detects a real one ─────────────────────────
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        ("This note is valid until 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+        ("this memory is good through 2026-06-30",
+         datetime(2026, 7, 1, tzinfo=timezone.utc)),
+        ("This reminder expires on 2026-03-01.",
+         datetime(2026, 3, 2, tzinfo=timezone.utc)),
+        ("Delete this after 2026-09-15.",
+         datetime(2026, 9, 16, tzinfo=timezone.utc)),
+        ("Remember this until 2026-11-30",
+         datetime(2026, 12, 1, tzinfo=timezone.utc)),
+        ("Keep this note until end of Q3 2026.",
+         datetime(2026, 10, 1, tzinfo=timezone.utc)),
+        ("This note remains accurate until the end of Q3 2026.",
+         datetime(2026, 10, 1, tzinfo=timezone.utc)),
+        ("This memory is valid until end of March 2027",
+         datetime(2027, 4, 1, tzinfo=timezone.utc)),
+        ("This note is valid until December 2026",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+        ("This memory is valid until March 5, 2026",
+         datetime(2026, 3, 6, tzinfo=timezone.utc)),
+    ],
+)
+def test_a_stated_self_referential_expiry_is_derived(content, expected):
+    assert derive(content) == expected
+
+
+def test_the_stated_day_is_covered_in_full():
+    """End-exclusive. "Valid until the 31st" means good *through* the 31st, so
+    the instant is the end of that day. Reading it as the day's midnight start
+    would delete the memory a day early — and immediately, for a same-day TTL."""
+    assert derive("This note is valid until 2026-12-31.") == datetime(
+        2027, 1, 1, tzinfo=timezone.utc
+    )
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        # Two balanced smart-quoted regions used to generate a span across the
+        # *unquoted* middle, swallowing the instruction between them — a
+        # recall regression introduced by the odd-count union, since these
+        # inputs are balanced and unambiguous.
+        ("The doc says “foo” today. Keep this note until 2026-09-30. Then “bar” applies.",
+         datetime(2026, 10, 1, tzinfo=timezone.utc)),
+        # A memory with no negation in it derives normally however many
+        # sentences precede the instruction — the ruling below scopes only
+        # *negation*, and nothing else changed about multi-sentence content.
+        ("The cert rotates next quarter. Delete this note after 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+        ("Old plan dropped! Delete this note after 2026-12-31.",
+         datetime(2027, 1, 1, tzinfo=timezone.utc)),
+    ],
+)
+def test_the_guards_do_not_swallow_a_genuine_instruction(content, expected):
+    assert derive(content) == expected
+
+
+def test_the_earliest_future_expiry_wins():
+    """Two stated retentions are two promises, and only the tighter one can be
+    kept."""
+    content = (
+        "This note is valid until 2027-01-31. "
+        "Actually, delete this after 2026-06-30."
+    )
+    assert derive(content) == datetime(2026, 7, 1, tzinfo=timezone.utc)
+
+
+# ─────────────── it refuses the ones that would destroy data ───────────────
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # The canonical false positive: a date about some other subject.
+        "The TLS certificate is valid until 2026-12-31, so renew it before then.",
+        "The licence expires on 2026-09-01 and we should budget for the renewal.",
+        "Postgres 14 reaches end of life on 2026-11-12.",
+        "The contract with the vendor is good through March 2027.",
+        "Our AWS reserved instances expire on 2026-08-01.",
+        # A bare date with no retention claim at all.
+        "We shipped the migration on 2026-01-10.",
+        "Deadline: 2026-12-31.",
+        # An expiry word and a date in the same memory, but unconnected.
+        "This note covers the outage. The incident started 2026-12-31.",
+        # A pronoun whose referent is the previous clause, not the memory.
+        # `it` shipped in `_SELF_SUBJECTS` briefly and made all three of these
+        # resolve to the memory's own TTL — the exact data-loss shape this
+        # suite exists to refuse, missed by every other case here because they
+        # all name their subject.
+        "The TLS cert expires soon. It is valid until 2026-12-31.",
+        "We renewed the licence. It expires on 2026-09-01.",
+        "The vendor contract is fine for now. It is good through March 2027.",
+        # ── Fable review, Critical 1: an imperative with no object at all.
+        # The pattern's self-anchor was optional, so these degenerated to
+        # verb + until + date and armed the TTL of the note recording a
+        # retention policy or a trade.
+        "Compliance says raw logs: keep until 2026-12-31, then purge.",
+        "Broker recommendation for AAPL: hold until March 2026.",
+        "Retention for the audit bundle: retain until end of Q3 2027.",
+        # ── Fable review, Critical 2: anaphoric nouns. Same class as the
+        # bare `it` above, but the anaphor is a definite noun phrase — and
+        # `record`, `entry` and `item` are dominated by their world meanings
+        # in exactly the infrastructure content this system stores.
+        "I created a TXT record for domain verification. This record expires on 2026-06-01.",
+        "Warmed the CDN. This entry expires on 2026-06-01.",
+        "Triaged the backlog. This item is valid until 2026-06-01.",
+        "Logged the claim in the vault. This fact is valid until 2026-06-01.",
+        # ── Fable review, Important 3: `the above` refers to pasted content,
+        # whose validity is the pasted thing's, not the memory's.
+        "API key for staging: sk-abc123. The above is valid until 2026-03-31.",
+        "Cert chain pasted below the fold. The above is good through March 2027.",
+        # ── Fable review, Important 4: a reported instruction, not an issued
+        # one. Arming these deletes the documentation of the TODO.
+        'config.py has a comment: "remove this by 2026-06-30" next to the legacy flag.',
+        'The runbook says "keep this note until 2026-09-30" but that is stale advice.',
+        # ── Re-review: a stray inch mark used to shift every later quote pair,
+        # un-quoting a reported instruction the guard promises to suppress.
+        'Mounted the 19" switch. The runbook says "keep this note until 2026-09-30" but ignore it.',
+        # ── Re-review, Critical direction: a NEGATED instruction means the
+        # opposite of what it matches. The person writing these is trying to
+        # protect the memory, and matching the substring turns their protection
+        # into its deletion date.
+        "Do not delete this note after 2026-12-31.",
+        "Do not remove this memory after 2026-06-30; it is the only copy.",
+        "Don't purge this note by 2026-09-30 — we need it for the audit.",
+        "Please never delete this note after 2026-12-31.",
+        "This memory must not be deleted after 2026-12-31.",
+        # ── Re-review: the trailing-digit boundary was fixed on the ISO
+        # alternation only, leaving the four year groups open.
+        "This note is valid until March 5, 20261",
+        "This note is valid until December 20269",
+        "This memory is valid until end of March 20270",
+        "This note remains accurate until the end of Q3 20271",
+        # ── Round-2 re-review: the negation guard's 40-char window lost the
+        # finding's own reported shape once a clause intervened, and three
+        # negation forms were missing from the token list entirely.
+        "Do not, whatever the compliance team says on Friday about the "
+        "retention ladder, delete this note after 2026-12-31.",
+        "Under no circumstances delete this note after 2026-12-31.",
+        "Under no circumstances should you delete this note after 2026-12-31.",
+        "We should archive rather than delete this note after 2026-12-31.",
+        "Archive instead of deleting this note by 2026-12-31.",
+        # ── Round-2 re-review: two stray inch marks preserve parity, so the
+        # odd-count union could not see the misphasing. An inch mark is
+        # digit-preceded and is no longer an opener.
+        'Rack has 19" rails. The runbook says "keep this note until 2026-09-30 '
+        '(the 42" one)" but ignore it.',
+        # ── Round-3 re-review: the opener-only skip removed the parity signal
+        # that had protected these. The real opener pairs with the interior
+        # inch mark, and the real closer is digit-preceded (the quoted text
+        # ends in a date), so it was skipped as an opener candidate and the
+        # whole quoted tail went bare. A skip is now itself an ambiguity.
+        'The runbook says "the 42" rack: keep this note until 2026-09-30" but ignore it.',
+        'Order text: "ship the 19" units, keep this note until 2026-09-30" per vendor.',
+        'Note 5"keep this note until 2026-09-30" is the vendor label.',
+        "Tag is v3`keep this note until 2026-09-30` in the registry.",
+        # ── Round-3 re-review: a dot inside a token severed the negation
+        # lookback, in the deletion direction. Both the sentence-terminator
+        # test and the pattern's own tail were treating "v1.2" and "e.g." as
+        # sentence ends.
+        "Do not (per policy v1.2) delete this note after 2026-12-31.",
+        "Do not, e.g. during the quarterly cleanup, delete this note after 2026-12-31.",
+        # ── Round-4 re-review: the round-4 tests covered `v1.2` and `e.g.` but
+        # not an ellipsis run or a multi-letter abbreviation, so those two
+        # shapes kept severing the negation. A lookbehind cannot separate them
+        # from a real sentence end, hence the capital-letter lookahead plus a
+        # closed abbreviation list.
+        "Do not wait... delete this note after 2026-12-31.",
+        "Do not ... delete this note after 2026-12-31.",
+        "Do not — repeat! — delete this note after 2026-12-31.",
+        "Do not, cf. Fig. 3 and etc. notes, delete this note after 2026-12-31.",
+        "Do not, vs. approx. 5 others, delete this note after 2026-12-31.",
+        # ── Round-5 re-review: the shapes that ended the heuristic. A dotted
+        # proper noun off any closed list, a semicolon before the always-capital
+        # "I", and a mid-sentence "?" each severed the lookback. Suppression is
+        # now scoped to the whole preceding text, so the class is closed by a
+        # ruling rather than by a sixth pattern.
+        "Do not, per Acme Corp. Policy, delete this note after 2026-12-31.",
+        "Do not, per Gen. Smith's order, delete this note after 2026-12-31.",
+        "Do not; I repeat; delete this note after 2026-12-31.",
+        "Do not — OK? I mean it — delete this note after 2026-12-31.",
+        # The endpos hole: a lowercase continuation after a single dot. The
+        # capital-letter lookahead was inert here because `$` matched at the
+        # truncation point of the lookback scan.
+        "Do not wait. delete this note after 2026-12-31.",
+        "Do not run the cleanup. delete this note after 2026-12-31.",
+        # And the ruling's own headline case, now a refusal rather than a pin.
+        "Never mind the old plan. Delete this note after 2026-12-31.",
+        # ── Round-6 re-review, the terminating edit. The register gaps it
+        # found arming, and — the one that mattered — a retraction *after* the
+        # instruction. Scanning only the prefix applied the doctrine in one
+        # direction; "any negation anywhere" has to mean anywhere.
+        "On no account delete this note after 2026-12-31.",
+        "At no point should anyone delete this note after 2026-12-31.",
+        "Nobody should delete this note after 2026-12-31.",
+        "It is forbidden to delete this note after 2026-12-31.",
+        "Avoid the temptation to delete this note after 2026-12-31.",
+        "Refrain from any step that would delete this note after 2026-12-31.",
+        "Delete this note after 2026-12-31. Actually, don't — we still need it.",
+        "Keep this note until 2026-09-30. On reflection, never mind.",
+    ],
+)
+def test_a_date_about_something_else_is_not_the_memorys_own_ttl(content):
+    """The sweep deletes, so this is the direction that must never be wrong.
+    Every string here would be a false positive for a parser keyed on a date
+    near an expiry word."""
+    assert derive(content) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "This note is valid until 2020-01-01.",
+        "Delete this after 2026-01-14.",
+        "This note is valid until December 2025",
+    ],
+)
+def test_a_past_expiry_is_refused(content):
+    """Capture must not be able to arm a sweep that deletes the memory it just
+    wrote — a lapsed date in the text is a typo or a quotation, never a TTL."""
+    assert derive(content, reference_time=NOW) is None
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [
+        datetime(2026, 1, 15, 0, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc),
+        datetime(2026, 1, 15, 23, 59, 59, tzinfo=timezone.utc),
+    ],
+)
+def test_a_same_day_expiry_lives_out_the_day_it_claims(reference):
+    """The boundary, from inside the stated day. "Expires on the 15th" captured
+    *during* the 15th is not a lapsed date — end-exclusive, the memory is good
+    until the day ends, so it is derived rather than refused. Refusing it would
+    silently drop a same-day TTL, which is the one case a caller is most
+    likely to mean literally."""
+    assert derive("This memory expires on 2026-01-15.", reference_time=reference) == (
+        datetime(2026, 1, 16, tzinfo=timezone.utc)
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        # No year: which Q3? A guess here deletes a memory.
+        "This note is valid until the end of Q3.",
+        "This memory is valid until next spring.",
+        "Keep this for six months.",
+        "This note is valid until further notice.",
+    ],
+)
+def test_an_ambiguous_or_relative_expiry_is_refused(content):
+    assert derive(content) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "This note is valid until 2026-02-30.",  # impossible day
+        "This note is valid until 2026-13-01.",  # impossible month
+        "This note is valid until 2026-12-315.",  # a longer token, not a date
+    ],
+)
+def test_an_impossible_date_is_refused_rather_than_clamped(content):
+    """Clamping 2026-02-30 to the 28th would invent a retention the memory
+    never stated. The third case is the missing digit boundary: `\\b` does not
+    fire between two digits, so without `(?!\\d)` a typo parses as a real date."""
+    assert derive(content) is None
+
+
+def test_the_never_expires_idiom_is_refused_and_does_not_raise():
+    """Fable review, Important 5. `datetime(9999, 12, 31)` constructs fine and
+    only the end-exclusive +1 day overflows. The `OverflowError` escaped into
+    Phase 5 savepoint A, rolled back the vector upsert with it, lost every
+    enrichment for that memory, was misattributed as "Vector write failed", and
+    — being deterministic — failed identically on every retry. The memory
+    asking to be kept forever was the one made permanently unsearchable."""
+    assert derive("This note is valid until 9999-12-31.") is None
+
+
+def test_no_pattern_makes_its_self_anchor_optional():
+    """Fable review, Critical 1, as a structural guard rather than a case list.
+
+    The defect was one `?` wide: `(?:this|the above)?` let an imperative match
+    with no object, so "keep until 2026-12-31" armed the TTL of a note about a
+    retention policy. Case-by-case tests would not have caught the next such
+    edit, so this asserts behaviour over the whole vocabulary instead.
+
+    The probe has to cover **every** verb and preposition, not one pattern's.
+    The first version probed only "keep until <date>" — so making *pattern 3*'s
+    object optional passed the entire suite green while "Ops policy: remove
+    after 2026-06-30." armed a TTL. A guard advertised as structural was
+    protecting one of the two imperative patterns. The probes below are
+    generated from the vocabularies themselves, so a verb cannot be added
+    without the probe reaching it, and the earlier brittle string-matching on
+    the pattern text is gone: some optional groups are legitimate (the "5th"
+    day suffix), so "contains a `?`" was never the property worth asserting.
+    """
+    from app.services.stated_expiry import _PATTERNS
+
+    dates = ("2026-12-31", "March 2027", "end of Q3 2026", "March 5, 2027")
+    unanchored = [
+        f"{verb} {preposition} {date}"
+        for verb in (
+            "delete", "discard", "drop", "forget", "remove", "purge",
+            "remember", "keep", "retain", "hold",
+        )
+        for preposition in ("after", "on", "at", "by", "until", "through", "till")
+        for date in dates
+    ]
+    # The declarative patterns' subjects too, so making *those* optional is
+    # caught by this guard rather than only by the case list.
+    unanchored += [
+        f"{verb} {preposition} {date}"
+        for verb in ("is valid", "is good", "remains accurate", "is current")
+        for preposition in ("until", "through", "till")
+        for date in dates
+    ]
+    unanchored += [f"expires on {date}" for date in dates]
+    unanchored += [f"expires {date}" for date in dates]
+    for pattern in _PATTERNS:
+        for probe in unanchored:
+            assert not pattern.search(probe), (
+                f"pattern matches an unanchored retention imperative "
+                f"{probe!r}: {pattern.pattern}"
+            )
+
+
+def test_empty_and_non_string_content_is_refused():
+    assert derive("") is None
+    assert derive_stated_expiry(None, reference_time=NOW) is None  # type: ignore[arg-type]
+
+
+def test_a_naive_reference_time_is_read_as_utc():
+    """`created_at` arrives tz-aware from the database, but an in-process caller
+    can pass a naive one; comparing naive to aware raises rather than refusing."""
+    naive = NOW.replace(tzinfo=None)
+    assert derive("This note is valid until 2026-12-31.", reference_time=naive) == (
+        datetime(2027, 1, 1, tzinfo=timezone.utc)
+    )
+
+
+# ──────────────────────── the pipeline write path ────────────────────────
+
+
+EXTRACTION = {
+    "entities": [{"name": "ExpiryTool", "type": "tool"}],
+    "relationships": [],
+    "memory_type": "fact",
+    "summary": "",
+    "emotions": [],
+    "flags": [],
+}
+
+
+async def _expires_at(factory, memory_id):
+    from sqlalchemy import text
+
+    async with factory() as s:
+        return (await s.execute(
+            text("SELECT expires_at FROM memories WHERE id = CAST(:id AS uuid)"),
+            {"id": str(memory_id)},
+        )).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_process_batch_fills_and_respects_expires_at(setup_database, monkeypatch):
+    """The real Phase 5 savepoint A, against the real database.
+
+    Three memories in one batch: one stating its own retention, one whose date
+    is about something else, and one the caller already gave a TTL. The batch
+    shape is the point — the derivation is per-memory, so a bug that read the
+    batch's first content for every row would pass a single-memory test.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services.pipeline import _flag_cache_reset
+    from tests.conftest import test_engine
+    from tests.test_pipeline_phase1 import FakeEmbedder, cleanup, make_pipeline, seed_memories
+
+    fingerprint = "stated-expiry|4"
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    _flag_cache_reset()
+
+    contents = [
+        "This note is valid until 2026-12-31.",
+        "The TLS certificate is valid until 2026-12-31, so renew it.",
+        "This note is valid until 2026-12-31.",
+    ]
+    memory_ids = await seed_memories(factory, contents)
+
+    chosen = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    async with factory() as s:
+        await s.execute(
+            text("UPDATE memories SET expires_at = CAST(:at AS timestamptz) "
+                 "WHERE id = CAST(:id AS uuid)"),
+            {"at": chosen, "id": str(memory_ids[2])},
+        )
+        await s.commit()
+
+    try:
+        pipe = make_pipeline(factory, FakeEmbedder([fingerprint]), EXTRACTION, monkeypatch)
+        await pipe.process_batch([
+            {"memory_id": mid, "content": c, "source": "api"}
+            for mid, c in zip(memory_ids, contents)
+        ])
+
+        # Stated its own retention: derived, end-exclusive.
+        assert await _expires_at(factory, memory_ids[0]) == datetime(
+            2027, 1, 1, tzinfo=timezone.utc
+        )
+        # Same date, but about a certificate: left alone, so the sweep never
+        # deletes the note that recorded it.
+        assert await _expires_at(factory, memory_ids[1]) is None
+        # Caller's own TTL: untouched, not narrowed to the parsed one.
+        assert await _expires_at(factory, memory_ids[2]) == chosen
+    finally:
+        await cleanup(factory, memory_ids, [fingerprint], ["ExpiryTool"])

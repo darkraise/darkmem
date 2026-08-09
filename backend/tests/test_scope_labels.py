@@ -321,10 +321,7 @@ async def test_mcp_reason_labels_its_sources_like_the_rest_door(
 
 async def test_chat_sources_event_labels_every_retrieved_row(session):
     rows = await _wide_corpus(session)
-    svc = ChatService(
-        session, _FakeLLM(),
-        PostgresVectorRepository(session), PostgresGraphRepository(session),
-    )
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
 
     retrieval = await svc._retrieve("which pooler", None)
 
@@ -338,10 +335,7 @@ async def test_chat_persists_a_label_on_every_citation(session):
     """The stored snippet is re-served on every conversation read, so an
     unlabelled citation keeps leaking long after the answer was produced."""
     rows = await _wide_corpus(session)
-    svc = ChatService(
-        session, _FakeLLM(),
-        PostgresVectorRepository(session), PostgresGraphRepository(session),
-    )
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
 
     message_id = None
     async for event in svc.send_message(None, "which pooler", None):

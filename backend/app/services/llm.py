@@ -109,6 +109,49 @@ class LLMOrchestrator:
         know the real dimension without embedding, so we surface the same
         ``0`` sentinel the empty-batch paths use; a real embed call then
         registers the true-dimension fingerprint on demand.
+
+        **Who may call this directly, and who may not (T2.68, T2.82).** This
+        method is pure and session-less, so it cannot check whether the
+        sentinel it may return actually has a partition behind it. Callers
+        that only need a *name* to write under — the empty-batch paths above,
+        and boot-time registration, which registers whatever this returns and
+        is a no-op under the sentinel because ``dims <= 0`` fails validation
+        before any table is created — may call it bare.
+
+        ``ReembedService`` as a whole is **not** safe calling it bare, and
+        this docstring claimed it was until T2.82. Its counting and listing
+        paths are: they probe partition existence with ``to_regclass`` and
+        treat a missing table as "everything missing" rather than running a
+        ``SELECT`` against an unchecked name. Its cache prune is not, because
+        it never reads the partition — it keeps the one
+        ``entity_embedding_cache`` child the fingerprint names and DROPs every
+        other one, so a fingerprint nothing registered keeps nothing and takes
+        every live cache in the deployment. That path now asks the question
+        itself (``ReembedService._assert_prunable``: a live ``embedders`` row
+        plus the child table it implies) and raises
+        ``CachePruneFingerprintUnresolved`` rather than dropping on a key
+        nothing was ever written under.
+
+        Any other caller about to *read* a per-fingerprint partition without
+        such a check (a bulk vector scan, a clustering view — anything that
+        will run ``SELECT ... FROM <parent>__<slug>`` unconditionally) must
+        NOT call this bare: a ``|0`` result names a partition nothing ever
+        wrote to, so the read either raises ``UndefinedTable`` or, worse,
+        silently returns empty forever if something else happens to have
+        registered that slug. The same is true, more insidiously, of a wrong
+        *non-zero* ``dimensions`` (768 configured, 1024 real, T2.83): boot
+        registration does not reject a positive dims value, so it happily
+        creates an empty, syntactically valid partition nothing will ever
+        embed into (``_check_dims`` below refuses every real embed attempt
+        under the mismatch) — a bare read against that fingerprint never even
+        raises, it just reads zero rows forever. Those read paths go through
+        ``PostgresVectorRepository.resolve_read_fingerprint``, which resolves
+        to whichever live fingerprint for the same model actually holds data,
+        or raises ``EmbedderFingerprintUnresolved`` when none does — never
+        proceeds keyed on an unconfirmed fingerprint, sentinel or not.
+        Retrieval (``hybrid_search``) never calls this method at all: it
+        takes its fingerprint from ``embed()``'s return value, an actual
+        vector's length, so it structurally cannot receive a wrong one.
         """
         cfg = self.config["embedding"]
         return self._fingerprint(cfg.model, cfg.dimensions or 0)

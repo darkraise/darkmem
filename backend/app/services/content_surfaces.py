@@ -117,7 +117,13 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         labels=("project", "status"),
         decided_by="T1.29c",
         reason="Everything retrieved here lands in the chat model's context "
-               "verbatim, so an unscoped row becomes a user-visible answer.",
+               "verbatim, so an unscoped row becomes a user-visible answer. "
+               "Since T2.58 it retrieves through `LayerCompositionService."
+               "search`, which pushes the same project and status scope down "
+               "into every channel it asks; the project axis stays wide by "
+               "ratified default and each row still names its own project and "
+               "status, and a wide request does not ask the facts channel, "
+               "which has no wide arm.",
     ),
     ContentSurface(
         key="graph_memory_context",
@@ -153,6 +159,55 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         decided_by="T1.29d",
         reason="The scope is derived from the source memory rather than accepted "
                "from the caller, so neither door can widen it.",
+    ),
+    ContentSurface(
+        key="memory_overview",
+        kind=_R,
+        front_doors=("GET /api/v1/knowledge/overview", "mcp:memory_overview"),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.21",
+        reason="A community's report_string is prose the summarization purpose "
+               "wrote about that community's member memories, so memory-derived "
+               "content crosses here even though no memories row does. The door "
+               "has no wide mode at all: `project` is a single bind parameter on "
+               "`list_with_members`, so both doors read one project's "
+               "memory_communities and there is no request that spans two. Every "
+               "topic still names its project, and the reduce sees only the "
+               "reports of the project asked for — a foreign community's report "
+               "reaching the prompt would put another project's content into "
+               "this project's overview text, where no label could recover it. "
+               "No status axis exists: a community is not a memory and carries "
+               "no lifecycle.",
+    ),
+    ContentSurface(
+        key="knowledge_composed_search",
+        kind=_R,
+        front_doors=("POST /api/v1/knowledge/search", "mcp:knowledge_search"),
+        crosses=("content", "fact_content"),
+        scoping=Scoping.SCOPED,
+        labels=("project", "status"),
+        decided_by="T2.72 (MCP), T2.80 (REST)",
+        reason="Doc 12 §3's composed four-layer read. `project` is a required "
+               "keyword on `LayerCompositionService.search` and is pushed down "
+               "by both channels it fans out to — `MemoryFilter(project=…)` on "
+               "the memory hybrid and the facts channel's own bind parameter — "
+               "so there is no wide mode to request and no arm that could "
+               "answer one. T2.58 widened the *service* parameter to accept a "
+               "`None` project for the chat door's ratified wide default, and "
+               "that changed nothing here: this door binds a required string "
+               "with its own default, and a `None` project does not ask the "
+               "facts channel at all rather than asking it wide. It is a "
+               "retrieval channel rather than an "
+               "operational surface for the ordinary reason: the caller names "
+               "a query, not rows, so which rows come back is the answer. Each "
+               "memory row keeps the hybrid's `status` label and each fact its "
+               "project, and a fact's supporting memories arrive nested inside "
+               "it carrying their own labels rather than flattened into the "
+               "parent's. T2.80 added the REST twin doc 12 §2 assigns; it "
+               "spends the same composition call with the same required "
+               "`project`, so the scope is one pushdown and not two.",
     ),
     ContentSurface(
         key="code_search",
@@ -229,6 +284,134 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "would blank the preview for exactly the rows needing triage.",
     ),
     ContentSurface(
+        key="dream_cycle_digest",
+        kind=_S,
+        front_doors=("GET /api/v1/dream-digest/cycles/{cycle_id}",),
+        crosses=("summary",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.13",
+        reason="A refine action journals the summary it replaced and the one "
+               "it wrote, so the digest's before/after carries memory-derived "
+               "content by construction — that is what makes the action "
+               "undoable at all, and withholding it would leave a curator "
+               "approving a reversal they cannot see. Operator-wide for the "
+               "same reason pipeline_failure_triage is: a cycle is one "
+               "night's consolidation across the deployment, and a digest "
+               "that hid another project's actions would misreport what the "
+               "pass did. Each action still carries its own project label. "
+               "Note the journal is append-only, so a preview here outlives "
+               "deletion of its memory — the retention question that spans "
+               "events and chat citations is escalated and unresolved, not "
+               "this surface's to settle.",
+    ),
+    ContentSurface(
+        key="review_queue_facts",
+        kind=_S,
+        front_doors=("GET /api/v1/review-queue/facts",),
+        crosses=("fact_content",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.22",
+        reason="The review queue's job (doc 08 §6) is every disputed or "
+               "under-sourced fact the deployment holds, ranked by consequence "
+               "not arrival order; a screen that hid another project's disputes "
+               "would misreport the system's truth backlog the same way "
+               "pipeline_failure_triage's would misreport its health backlog. "
+               "review_state='open' is the sole membership predicate — see "
+               "app/services/review_queue.py for why it is never a bind "
+               "parameter.",
+    ),
+    ContentSurface(
+        key="review_queue_articles",
+        kind=_S,
+        front_doors=("GET /api/v1/review-queue/articles",),
+        crosses=("content_preview",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.22",
+        reason="Same triage-queue reasoning as review_queue_facts, over "
+               "knowledge_articles instead of knowledge_triples. No producer "
+               "writes this table yet (article_synthesis is a placeholder "
+               "until T3.02), so the arm is exercised in tests against seeded "
+               "rows only — the decision is about the surface's scope, not "
+               "about live volume.",
+    ),
+    ContentSurface(
+        key="knowledge_facts_browsing",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/facts",),
+        crosses=("fact_content",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.36a",
+        reason="Doc 13 §5.1's Facts tab lists the vault the deployment holds, "
+               "and `project` is a filter the caller applies rather than a "
+               "scope the door imposes: a browsing surface that silently "
+               "showed one project would make the other projects' facts look "
+               "absent, which on a truth surface reads as 'we know nothing "
+               "about that' rather than 'you are looking elsewhere'. Every "
+               "item carries its own project. Nothing is filtered by "
+               "verification status by default either — doc 08 §6's "
+               "never-a-gate rule — so a candidate and a disputed fact are "
+               "listed alongside a corroborated one, each labelled.",
+    ),
+    ContentSurface(
+        key="knowledge_fact_detail",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/facts/{fact_id}", "mcp:fact_get"),
+        crosses=("fact_content",),
+        scoping=Scoping.ID_ADDRESSED,
+        labels=("project",),
+        decided_by="T2.36a, T2.72",
+        reason="One fact by id, with its provenance rows grouped under the "
+               "origin that wrote them so the badge's distinct-origin count "
+               "can be counted back. The caller already names the row, so a "
+               "project predicate would only decide whether a known id "
+               "answers or 404s. It serves a belief-withdrawn row too: "
+               "retained history that cannot be read answers nothing, and "
+               "the belief window on the response says which it is.",
+    ),
+    ContentSurface(
+        key="hygiene_queue_duplicates",
+        kind=_S,
+        front_doors=("GET /api/v1/hygiene-queue/duplicates",),
+        crosses=("memory_ids", "content_preview"),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T2.23, T2.87",
+        reason="The hygiene queue's job (doc 08 §6) is every open "
+               "candidate-duplicate pair the deployment holds; hiding "
+               "another project's would misreport the housekeeping backlog "
+               "the same way review_queue_facts' scoping argument does. "
+               "T2.23 shipped only the two endpoint ids, score and verdict — "
+               "no content crossed. T2.87 added each endpoint's own "
+               "content_preview and created_at, truncated at the same 200 "
+               "chars hygiene_queue_memories declares: a supersede direction "
+               "cannot be told from ids and a score alone, and building a "
+               "direction picker without them would be the UI inventing an "
+               "adjudication. The endpoint ids stay id-only exposure; the "
+               "previews are the new content crossing.",
+    ),
+    ContentSurface(
+        key="hygiene_queue_memories",
+        kind=_S,
+        front_doors=(
+            "GET /api/v1/hygiene-queue/low-confidence",
+            "GET /api/v1/hygiene-queue/expiring-soon",
+            "GET /api/v1/hygiene-queue/superseded",
+        ),
+        crosses=("content_preview",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project", "status"),
+        decided_by="T2.23",
+        reason="Same triage-queue reasoning as review_queue_facts/articles, "
+               "over memories instead of knowledge_triples/knowledge_articles "
+               "— low-confidence, expiring-soon and superseded-lineage "
+               "housekeeping, each an operator-wide backlog a project filter "
+               "would misreport the same way pipeline_failure_triage's would.",
+    ),
+    ContentSurface(
         key="analytics_recents",
         kind=_S,
         front_doors=("GET /api/v1/analytics/overview",),
@@ -261,7 +444,7 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
         kind=_S,
         front_doors=("GET /api/v1/events", "GET /api/v1/events/timeline",
                      "GET /api/v1/analytics/pipeline-logs"),
-        crosses=("content_preview",),
+        crosses=("content_preview", "summary"),
         scoping=Scoping.ESCALATED,
         labels=("project",),
         decided_by="T1.29e",
@@ -270,7 +453,15 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "a buffer_discarded row carries a 500-char content_preview in its "
                "payload, events is append-only by design, so deleting a memory "
                "does not remove its content from the journal. Escalated to the "
-               "human; no redaction scheme may be invented here.",
+               "human; no redaction scheme may be invented here. "
+               "T2.13 added `summary` to the crossing list: the consolidation "
+               "stream's refine action journals the summary it replaced and the "
+               "one it wrote, which is what makes the action undoable at all, "
+               "and this door serves those payloads. The crossing predates "
+               "T2.13 — T2.12 shipped the writer — but no probe fixture "
+               "produced one until the dream digest's driver did, so it went "
+               "undeclared. It falls under exactly the same escalated retention "
+               "question and widens it by no new principle.",
     ),
     ContentSurface(
         key="chat_history_citations",
@@ -289,6 +480,40 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "event journal, in a second store — escalated with it.",
     ),
 
+    ContentSurface(
+        key="knowledge_topics_browsing",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/topics", "GET /api/v1/knowledge/topics/{label}"),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.39a",
+        reason="browse_topics/get_topic (T2.20) read straight off memory_communities, "
+               "scoped by a required `project` bind parameter with no wide mode -- the "
+               "same shape memory_overview (T2.21) already carries for the same "
+               "underlying rows. A community's report_string is prose the "
+               "summarization purpose wrote about that community's member memories, "
+               "so memory-derived content crosses even though no memories row does. "
+               "get_topic resolves by (project, label), so a cross-project read for a "
+               "label seeded in another project answers 404, never that project's "
+               "topic.",
+    ),
+    ContentSurface(
+        key="knowledge_pin_suggestions",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/topics/pin-suggestions",),
+        crosses=("community_report", "topic_label"),
+        scoping=Scoping.SCOPED,
+        labels=("project",),
+        decided_by="T2.39a",
+        reason="diff_topics/compute_pin_suggestions (T2.20) read the same "
+               "project-scoped memory_communities rows as topic browsing, plus "
+               "knowledge_triples/knowledge_articles gates keyed on the same project. "
+               "Accept and dismiss (POST .../accept, .../dismiss) return no "
+               "memory-derived content -- 204, listed in "
+               "ROUTES_WITHOUT_MEMORY_CONTENT, the same shape T2.05's ratify/reject "
+               "doors use.",
+    ),
     # -- memory identity without content -----------------------------------
     ContentSurface(
         key="entity_browser",
@@ -360,6 +585,44 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "DELETE /api/v1/pipeline-failures/{failure_id}",
     "POST /api/v1/pipeline-failures/retry-all",
     "POST /api/v1/pipeline-failures/{failure_id}/retry",
+    # Aggregate counts per cycle: timestamps, action tallies and project
+    # names, never a payload's before/after. The cycle detail that does carry
+    # content is classified above.
+    "GET /api/v1/dream-digest/cycles",
+    # Reversal verbs. The response names the fields each inverse restored and
+    # the state it deliberately did not, never a field's value.
+    "POST /api/v1/dream-digest/actions/{event_id}/undo",
+    "POST /api/v1/dream-digest/cycles/{cycle_id}/undo",
+    # An adjudication verb, not a read: it withdraws belief and journals the
+    # human's verdict, and returns 204, so no memory-derived row crosses it.
+    "POST /api/v1/review-queue/facts/{fact_id}/reject",
+    # T2.112. 204 and no memory-derived content: the dismissal carries an
+    # optional operator note in and returns nothing, the same shape the
+    # reject door above already has.
+    "POST /api/v1/review-queue/facts/{fact_id}/dismiss-suspicion",
+    # Reject's counterpart, and 204 for the same reason (T2.05). An earlier
+    # draft answered the ratified fact so the human could see the claim their
+    # own act produced; it was withdrawn because a verb that serves content
+    # inherits the whole scoping question, and the isolation probe drives every
+    # *declared door* of a content surface — driving a mutating door inside a
+    # read-isolation probe would change the state its later drivers observe and
+    # cost the probe its determinism. The caller re-reads the fact instead,
+    # which is one request and the shape reject already established.
+    "POST /api/v1/knowledge/facts/{fact_id}/ratify",
+    # Accept/dismiss a pin suggestion: 204, same adjudication-verb shape as
+    # ratify/reject. The body carries a subject_key and an optional label
+    # the caller already had; the response echoes neither, so no
+    # memory-derived row crosses either door.
+    "POST /api/v1/knowledge/topics/pin-suggestions/accept",
+    "POST /api/v1/knowledge/topics/pin-suggestions/dismiss",
+    # Aggregate totals across the four hygiene arms, never a row.
+    "GET /api/v1/hygiene-queue/counts",
+    # Bulk-action doors. The response names each item's id, whether it
+    # applied, its event id and its refusal reason — never a memory field's
+    # value (the same shape review-queue's reject door carries).
+    "POST /api/v1/hygiene-queue/bulk/supersede",
+    "POST /api/v1/hygiene-queue/bulk/prune",
+    "POST /api/v1/hygiene-queue/bulk/confirm-dedup",
     "GET /api/v1/reembed/obsolete-counts",
     "GET /api/v1/reembed/obsolete/code-chunks",
     "GET /api/v1/reembed/obsolete/entities",
@@ -377,6 +640,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "POST /api/v1/repos",
     "POST /api/v1/repos/{repo_id}/reindex",
     "PUT /api/v1/repos/{repo_id}",
+    "GET /api/v1/review-queue/counts",
     "GET /api/v1/setup/fs/list",
     "GET /api/v1/setup/fs/roots",
     "GET /api/v1/setup/status",

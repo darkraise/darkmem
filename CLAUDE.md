@@ -271,9 +271,13 @@ switch, and do not reintroduce a classification on/off flag.
 Triggered inside Phase 5 when the new memory carries a relation in the
 **`REPLACES` family** — `REPLACES`, `IMPROVES_ON`, or the legacy
 `BUILDS_ON` — not the literal `REPLACES` alone (T1.36, 2026-07-28). The
-predicate lives in both `pipeline.py` and `supersession.py` and they must
-change together; narrowing one is a silent behaviour change, not a
-cleanup. A candidate is flipped to `superseded` only if **all** hold:
+predicate is **one shared function**, `supersession.is_supersession_trigger`,
+which `pipeline.py` imports (corrected 2026-08-08 — this said the predicate
+lived in both files and had to change together, which was true when written
+and describes a drift hazard that has since been engineered out). Narrowing
+it is still a silent behaviour change rather than a cleanup; there is now
+just one place to narrow. A candidate is flipped to `superseded` only if
+**all** hold:
 
 1. Same `project` as the new memory.
 2. Candidate `status = 'active'`.
@@ -341,12 +345,28 @@ what this file said until 2026-07-28: a vector arm over
 `code_chunk_embeddings__<slug>` and an `ILIKE` arm over `CodeSymbol.name`
 / `source_code`, combined under RRF. What it has no FTS column for is a
 `ts_rank` arm — the partitions carry none — so the keyword side is
-`ILIKE`, not Postgres full-text. `code_query.py` declares its **own**
-`RRF_K = 60` rather than using `app/services/rank_fusion.py`; the two
-constants can drift and **no task owns closing that**. MCP's
+`ILIKE`, not Postgres full-text. `code_query.py` **imports** `RRF_K` from
+`app/services/rank_fusion.py` since T2.58 (2026-08-04) — it used to
+declare its own copy, and this file used to say no task owned closing
+that. Two AST scans now fail the build on a second RRF constant
+*declared* anywhere outside `rank_fusion.py`; they check the binding, not
+the literal 60, so renaming the value does not evade them. MCP's
 `code_search` and `code_blast_radius` route through this service
 (T1.42c); before that they held parallel implementations and had already
 diverged.
+
+**Chat retrieval is the same path, not a third one.** `ChatService` used
+to call `vector_repo.search` directly — semantic-only, no keyword arm, no
+RRF, no trace — so a chat answer and the search surface could rank one
+corpus differently. Since T2.58 it goes through
+`LayerCompositionService.search`, whose memory channel is
+`HybridSearchService.search_with_trace`, and `ChatService` holds no vector
+repository at all. **Ranking parity between the two doors is asserted on
+order, not on shape** (`tests/test_chat_retrieval_parity.py`): a
+shape-comparison test passes while orders diverge, which is why the
+assertion is written the way it is. Note parity is only proven while every
+rank arm sits at weight 0 — the doors weight `confidence_rank_gamma` on
+different bases, so activating an arm obliges re-measuring both.
 
 ## Feature flags
 
@@ -360,7 +380,13 @@ share one task. `_flag_cache_reset` is a test hook only.
 
 Current behavioral flags (the rest govern concurrency or thresholds):
 `hybrid_search_enabled`, `reranker_enabled`, `relation_rescue`,
-`confidence_rank_gamma`. The ranking arms `w_importance` / `w_heat` /
+`confidence_rank_gamma`. The graph arms landed inert with T2.32 —
+`ppr_enabled` / `dual_level_enabled` / `community_injection_enabled` off,
+`w_ppr` / `w_dual` at 0. `w_ppr` and `w_dual` are RRF **list** weights
+(`rank_fusion.LIST_WEIGHT_KEYS`), never `RankArm` multipliers, and both
+doors derive the PPR weight through `rank_fusion.ppr_list_weight` so a
+half-flipped config cannot mean one thing to chat and another to search.
+The dual-level channel itself is T2.49's; only its flag exists today. The ranking arms `w_importance` / `w_heat` /
 `w_recency` / `w_context_boost` exist at weight 0 and are provably inert
 there (`rank_fusion.RANK_ARMS`); each flips only on a measured retrieval
 win reported with its latency/cost twin, recorded in the gate ledger's
@@ -368,11 +394,34 @@ arm activation log — never by intuition.
 
 ## LLM configuration
 
-Eight purposes: six live — `embedding`, `extraction`, `classification`,
-`reasoning`, `summarization`, `reranker` — plus two Tier-C rows seeded
-**inert** (`synthesis`, first consumer T3.02; `verification`, T2.26):
-resolvable from day one per doc 11 §6, but nothing dispatches on them
-yet. Each is **one inline `llm_purpose_configs`
+Eight purposes. **Seven are live**: `embedding`, `extraction`,
+`classification`, `reasoning`, `summarization`, `reranker`, and —
+since T2.26 landed — `verification`, which `app/services/verification_judge.py`
+resolves and dispatches on. Only **`synthesis`** is still seeded inert
+(first consumer T3.02): resolvable from day one per doc 11 §6, but nothing
+dispatches on it yet. This paragraph described both Tier-C rows as inert
+until 2026-08-02; the `verification` half was stale, and a task reading it
+would wrongly believe activating that purpose was still an unmade decision.
+Note `verification` being dispatched is not the same as it being *usable*:
+`VerificationJudge.judge()` refuses unconditionally without a qualification
+record, which T2.41 mints and which is behind T2.54's gold. T2.109 also put it behind a
+fourth bar: `BAR_METRICS` gates `contradiction_recall`, and that bar was
+deliberately left with no default so `get_verification_bars` would raise and
+`qualification_state` fail closed until someone wrote the number down —
+stating it alongside the amendment would have meant choosing it while looking
+at both measured judges' public results, which is the fitting doc 17 §6
+forbids. **The number has since been stated: `contradiction_recall_bar` = 0.95
+and `contradiction_precision_bar` = 0.95 → 0.70, both by derivation from doc 17
+§6's own rule, recorded in the gate ledger's "G-D redesign" section and in
+`VERIFICATION_BAR_DEFAULTS`** (corrected 2026-08-08 — this paragraph said the
+bar was unstated and the gate fails closed on it, which stopped being true when
+`bb522848` landed the value and left `BAR_METRICS`' own comment behind saying
+the same thing). The check that the 0.95 is a derivation and not a fit is that
+the measured judge does **not** clear it: gpt-5.5 scored 0.945, so a laundered
+bar would sit at 0.90, and a test pins it against exactly that. Both bars are
+the owner's to move with a recorded argument; neither may be moved to make a
+run pass. Each purpose is
+**one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
 `llm_providers` / `llm_profiles` / `ml_profiles` indirection tables and
@@ -420,14 +469,151 @@ flaky.
 ## Jobs (`JobRegistry`)
 
 Periodic work is unified under `JobRegistry` and dispatched by cron
-expressions. **Nine** registered jobs (`app/main.py`): `repo_sync`,
-`buffer_flush`, `code_enrichment`, `code_reconcile`,
+expressions. **Twenty-one** registered jobs (`app/main.py`) in two groups
+(count corrected 2026-08-07: it had read "Sixteen" / "ten live ones" since
+T2.49 landed `relation_embedding_refresh` without updating it, and four
+concurrent lanes each found it stale independently — a stale count on a
+"here is the full list" sentence is exactly invariant 23's concern.
+`tests/test_code_deriver.py` now derives the roster from `app/main.py`'s
+AST, so the next job added cannot silently desynchronise this list).
+The fifteen live ones: `repo_sync`,
+`buffer_flush`, `code_enrichment`, `code_reconcile`, `code_deriver`,
 `token_blocklist_cleanup`, `pipeline_failure_cleanup`,
 `graph_orphan_cleanup`, `tag_orphan_cleanup`,
-`expired_memory_cleanup`. Note `buffer_flush` and `code_reconcile`
-register via the constants `BUFFER_FLUSH_JOB_KEY` and
-`CODE_RECONCILE_JOB_KEY` rather than string literals, so a grep for
-quoted keys undercounts the list. Five-field
+`expired_memory_cleanup`, `ppr_snapshot`,
+`relation_embedding_refresh`, `repo_entity_anchoring`,
+`repo_entity_merge`, `citation_reverify`. Note
+`buffer_flush`, `code_reconcile`, `code_deriver`, `ppr_snapshot`,
+`relation_embedding_refresh`, `repo_entity_anchoring`,
+`repo_entity_merge` and `citation_reverify` register via
+the constants `BUFFER_FLUSH_JOB_KEY`, `CODE_RECONCILE_JOB_KEY`,
+`CODE_DERIVER_JOB_KEY`, `PPR_SNAPSHOT_JOB_KEY`,
+`RELATION_EMBEDDING_JOB_KEY`, `REPO_ENTITY_ANCHORING_JOB_KEY`,
+`REPO_ENTITY_MERGE_JOB_KEY` and `CITATION_REVERIFY_JOB_KEY` rather
+than string literals, so a grep for quoted keys undercounts the list —
+which is precisely how this sentence went stale for four landings.
+**`ppr_snapshot`, `relation_embedding_refresh`, `repo_entity_anchoring`,
+`repo_entity_merge`, `code_deriver` and `citation_reverify` are Tier C but
+are deliberately not dream-job family members** (T2.32, T2.49, T2.97,
+T2.101, T2.96, T2.48): contract 6 fixes that family as
+the consolidation passes, while doc 07 §4 and doc 10 §6 own their
+artefact refreshes separately. Invariant 15 is unaffected either way —
+retrieval reads the cached snapshot and Phase 4 reads the entity
+partition, never the job.
+
+**`code_deriver` is the production trigger for
+`code_deriver.assert_repo_graph`** (doc 10 §6, T2.96) — T2.27 shipped
+that primitive with no caller anywhere in `backend/app`. The job sweeps
+every repo with a non-null `last_indexed_commit` on its own hourly cron
+and journals a derivation failure under `pipeline_failures` with
+`pipeline_name="code_deriver"`, distinct from `"code_index"`, so a
+derivation failure never fails an index run. The withdrawal half lives
+in `RepoManager.delete`, which calls
+`PostgresGraphRepository.strip_repo_assertions` before removing the
+repository row — `entities.repo_ids[]` / `entity_relations.repo_ids[]`
+carry no foreign key to `repositories`, so without it an entity's
+`repo_ids` keeps a dangling id after the repo is gone.
+
+**`citation_reverify` is doc 10 §6's second sanctioned crossing** (T2.48): it
+re-resolves each code citation's recorded `symbol_key` against its repository's
+current HEAD, marks a citation that no longer resolves stale, and **enqueues the
+citing fact for the verification recompute, which downgrades the badge — never
+expiring the fact**, because a deleted symbol may be a rename a human should
+confirm. It reads the code graph and writes the memory-side vault, one direction,
+no join. Note it does **not** scope by the run's changed-file set at all. Doc 10 §6
+named `detail.symbol_key` as the scoping key, which is basis-dependent — a module
+name (`httpx`) for an import-basis citation, never a path — so its literal predicate
+would have matched only language citations and reported a clean pass; **that defect
+was corrected 2026-08-07 (Tier-3, ratified) and §6 now scopes on `detail.file_path`.**
+The job itself still scopes differently, and deliberately: it compares a citation's
+`detail.reverified_at_sha` against the repository's `last_indexed_commit` —
+self-healing where an event-payload design is not, since `record_event` never raises.
+The declared cost is that an unchanged file's citation is re-resolved once per HEAD
+move rather than never, bounded by citation count, not repository size.
+
+**`repo_entity_anchoring` is what makes the code bridge's anchoring
+reach past an exact name match** (T2.97): the deriver is LLM-free by
+structural guard, so the embed that lets Phase 4's ANN probe see a
+repo-minted entity happens in this job, one tick behind derivation. That
+closes **one order only** — repo indexed, anchored, then the memory
+ingested.
+
+**`repo_entity_merge` closes the other order, which is the common one**
+(T2.101). A repo indexed *after* a memory already minted the near-named
+node used to leave two rows forever: Phase 4 dedups at write time,
+`assert_from_repo` is an exact-key `ON CONFLICT (name, entity_type)`
+upsert with no probe, and the strip-and-rewrite is keyed the same way, so
+re-derivation reproduces them. That is what every existing install
+produces the first time it indexes a repo. The job re-runs Phase 4's own
+comparison after the fact — `find_similar_entity` at the same 0.85 under
+the same `names_distinct` gate, with the query vector read out of the
+partition rather than re-embedded, so both sides of every cosine come
+from one child table and the pass needs no embedder call. **The survivor
+is the repo-asserted row**, older `created_at` with an id tie-break when
+both are, so the two indexing orders converge on the same node rather
+than trading an order-dependent node count for an order-dependent node
+name. A merge moves, in one savepoint per pair: the `memory_ids` /
+`repo_ids[]` unions, **every** relation endpoint in both directions
+(a repointed endpoint colliding with the `(source, target, rel_type)`
+uniqueness is a relation merge of its own — union, keep the greater
+weight, drop the duplicate — never an error left for the constraint), the
+fact layer's identity, and the lowercase `technologies` denorm for
+every memory whose entity set changed. The losing row's vectors go with
+it through the `entity_embeddings__<slug>` cascade, in every partition.
+A relation the repointing missed **fails the savepoint** rather than
+being swallowed by that same cascade.
+
+**The fact layer moves by name, not only by id** (T2.101 fix round 1).
+`knowledge_triples.subject_id` / `object_id` are entity ids carrying **no**
+foreign key, which `review_ranking`'s salience arm reads as zero neighbours
+when they dangle — but repointing them is only half the move, because fact
+*identity* is name-keyed: the table denormalises both endpoint names and
+derives `triple_key` from them, and `compute_triple_key`'s canonicalisation
+is lexical, so `postgres` and `postgresql` are two identities. `fact_lift`
+groups the graph by live entity name and matches open facts on that name, so
+an id-only repoint re-qualifies every already-lifted group as pending and
+mints a **second** open triple for one assertion set on the next tick —
+corroboration and verification split across two rows. So the names and the
+key move with the ids. Recomputing the key can collide with an already-open
+row on `ux_knowledge_triples_open`, and **that collision is a fact merge**:
+the higher `verification_status` rung keeps the id (`confirmed` >
+`disputed` > `corroborated` > `candidate`, ties to the older `created_at`
+then the smaller id), which is what lets the fold write **no** verification
+column at all — the surviving rung is the one the sanctioned door already
+wrote, so no promotion escapes the ladder and no `verified` row appears for
+a transition no evidence explains. `fact_sources` is **moved** onto the
+keeper (copied, one memory would corroborate one claim twice), serving heat
+is summed, the belief window takes the earlier `reference_time` / `valid_at`
+and the earlier `stated_expiry`, and the duplicate is **expired, never
+deleted** — `article_citations` takes a hard FK on the premise that facts
+are invalidate-not-delete, and `expired_at` rather than `invalid_at` is what
+keeps the contradiction scan from pairing a fact against itself under its
+other name. A fact row whose endpoint id is NULL or already dangling keeps
+its name: nothing ties it to the losing row, and the group it came from no
+longer exists under the vanished name, so nothing re-lifts it.
+
+The candidate scan **rotates** through the repo-asserted population on a
+`(created_at, id)` keyset cursor in the `config` row
+`repo_entity_merge_state`, wrapping when a window comes back short —
+`candidate_batch` bounds one run's cost, never the coverage. A merge
+journals one `merged` `events` row against the surviving entity. The six added by T2.08 are the
+**Tier-C dream-job family** (`app/services/dream_jobs.py`, wired at boot
+by `register_dream_jobs`): `verification_recompute`, `fact_lift`,
+`contradiction_scan`, `memory_dream`, `article_synthesis`,
+`topic_detection`. Each is scheduled, locked and configurable for real,
+and a member's body is a `PlaceholderJobRunner` until its owning task
+lands (T2.09, T2.10, T2.11, T2.12, T3.02, T2.53 respectively) — the
+marker is a type a test asserts, not a comment, so a placeholder can
+never be mistaken for a shipped job. **Five of the six now have real
+runners** (corrected 2026-08-06, when this paragraph's "its body is a
+`PlaceholderJobRunner`" had been stale through four landings and read as
+a claim that the whole family was inert): `fact_lift`,
+`verification_recompute`, `contradiction_scan`, `memory_dream` and
+`topic_detection` are live bodies. **`article_synthesis` is the one
+remaining placeholder** — its productive run is a Phase-3 task behind
+G-D, and T2.14 landed only its inert registration. **Invariant 15 binds the family: none of the
+six may be reached from capture or retrieval** to "accelerate" a gate,
+and a source scan over `backend/app` fails the build if one is. Five-field
 expressions are minute-precision; six-field expressions put the seconds
 field first, Quartz-style. `min_interval_seconds` is a per-job floor
 that protects against runaway expressions; the loop will not fire more
@@ -447,7 +633,28 @@ rejected) and writes under that same lock
 dropped at the baseline's genesis and no such table, model or query
 exists. Every subsystem journals through one writer, `record_event`
 (`app/services/events.py`), which degrades loudly but never raises into
-its caller. `EVENT_TYPES` / `OBJECT_TYPES` are closed vocabularies living
+its caller — **and since T2.113 returns whether the row landed**, because
+that contract is right for most callers and wrong for a few. A capture must
+survive a journal failure; a *verification transition* must not, since doc 17
+§5.1's metrics are SQL over this table alone, so a status change whose row never
+landed is not a lost log line but a row that silently leaves the measurement's
+**denominator** — and under-power announces itself where that does not. **Four**
+callers raise `JournalWriteFailed` on a `False`, making the write and its row
+atomic (corrected 2026-08-09 — this said "the two callers", which undercounted
+from the day T2.113 landed): `set_verification_status` and `ratify` for the
+machine's and the human's rungs, and `record_human_verdict` and
+`dismiss_contradiction_suspicion` for the adjudication stream. **The human
+verdict is the one with no second trace at all.** No column records that a human
+rejected a fact, so that event row *is* the audit's `rejected_after` arm — and
+since T2.109 moved the LLM scan off the veto, that arm is the scan's only route
+into the audit. A loss there does not shrink a denominator, it deletes a
+numerator: the gate reads cleaner than the system is. Every other caller ignores
+the return and behaves exactly as before.
+Making `record_event` itself raise would impose the strict contract on capture,
+extraction and auth, which is why it does not. The stated cost: a broken
+partition now fails recomputes instead of degrading past them, bounded by
+`events_ensure_partition`'s boot and maintenance arms.
+`EVENT_TYPES` / `OBJECT_TYPES` are closed vocabularies living
 beside the writer, deliberately NOT in `app.taxonomy`: event types are
 never LLM output, so an unknown value logs a warning instead of being
 rewritten to a fallback. Widening is taxonomy-first — land the value in
@@ -463,9 +670,168 @@ children. Readers: `GET /events`, `/events/timeline`, `/events/calendar`
 UTC expression verbatim), and `GET /auth/audit`, which filters
 `auth_*`/`setup_*` rows from the same table. Journal payloads may carry
 content previews that **outlive deletion of their memory** — append-only
-by design; the retention policy is an escalated, unresolved Tier-3
-question (it spans `events` and chat's `messages.context` citation
-snapshots), not an oversight to fix silently.
+by design. **The retention policy is settled (T2.59, ruled 2026-08-06):
+accept the residue and document it.** Deleting a memory is not a content
+purge and the DELETE route says so. The residue is wider than two stores —
+full refine summaries in `consolidated`/`undone`, contradiction counterparts
+in `verified`, `knowledge_triples.fact` by design, 24h of raw content in
+`memory_buffer` done rows, and `messages.context` keeping cited fact rows
+untrimmed. The pasted-secret case is answered by an operator break-glass
+procedure (`docs/runbook-content-purge.md`), **never an in-app
+journal-rewriting path**: that would put "make this never have happened" one
+bug away from the audit substrate. The ruling's load-bearing argument is
+measured, not aesthetic — the assistant's own unbounded `messages.content`
+prose and the storage substrate sit *below* every option considered, so the
+alternatives pay permanent costs to narrow a gap none of them closes.
+**Write-time minimization is the standing rule**: a new event payload copies
+content only when a feature demonstrably needs it, and says so at the writer.
+
+`undone` joined the vocabulary with T2.13, and it is the **first by-id
+consumer of `events`** — the composite `PRIMARY KEY (id, created_at)`
+means a bare `WHERE id = :id` scans every monthly child, so every undo
+lookup carries a `created_at` bound and prunes to one or two of them.
+The **dream digest** (`app/services/dream_digest.py`) reads the
+`consolidated` stream grouped by `payload.cycle_id`, and within a cycle
+by object, in `(created_at, id)` order — journal order is application
+order, and regrouping by action kind would describe a cycle that did not
+occur. **Undo is all-or-nothing per request and has no per-action code
+path**: a single-action undo is a batch of one through
+`dream_undo.undo`, whose result types have no field that could carry a
+per-item outcome and whose module owns no savepoint, no commit and no
+`try` — an AST scan fails the build on all five shapes. That makes the
+module unable to self-heal, so it has **three** outcomes, not two: only
+`UndoRefused` guarantees nothing was written, and **any other raise
+leaves restores in the caller's session for the caller to roll back**.
+The HTTP door gets that from the request-scoped session dependency; an
+in-process caller does not. **An undo that could not be journalled does
+not happen** — `record_event` never raises, so the batch counts its own
+`undone` rows back and raises when short. An undone subsumption leaves a
+suppression tombstone at
+`memories.metadata.dream.undone_subsume.<counterpart_id>`, keyed on both
+memories' `content_sha` so it lapses when either text changes; it is
+read at **nomination** time by `generate_pairs`, which is not a
+lifecycle change — `supersede()` still retires that exact pair for any
+caller that asks.
+
+## Verified facts (L2)
+
+`knowledge_triples` is the fact vault, on two independent axes. The
+**belief** axis is the validity window (`reference_time` / `valid_at` /
+`invalid_at` / `expired_at`) and is invalidate-not-delete —
+`article_citations` takes a hard FK on that premise. The **verification**
+axis is the ladder `candidate → corroborated → confirmed`, with
+`disputed` sideways: `confirmed` is human-only (`ratify` is the one
+writer in the tree); the machine's ceiling is `corroborated`.
+Corroboration counts `COUNT(DISTINCT origin_key)` over `fact_sources`,
+never rows: N = 3, or 2 when two **attributable** origins differ in
+source-kind or lie ≥ 7 days apart. Anonymous origins (NULL, blank,
+`unknown:*`) fold into one reserved bucket per fact that counts once and
+never fires a gate, and a citation `citation_reverify` marked stale is
+retained but corroborates nothing (`LIVE_SOURCE_PREDICATE`). The three
+thresholds are **floors** (`verification_ladder` config row): tightening
+is free; loosening below a floor is honoured only for parameters named in
+the `ladder_measurements` config row by a recorded G-C measurement, else
+clamped with a warning. The decision (`verification_ladder.decide`) is a
+pure function; the contradiction veto is absolute — one non-echo
+contradiction beats any count, no config on its path.
+
+**The veto stands on ONE instrument, and which one is a ratified design
+decision, not an accident of what happens to be wired** (T2.109, doc 08 §4.2
+amended 2026-08-08, owner-ratified). The **deterministic scan** is the veto,
+and it is judge-free: `adjudicate_contradiction_finding` runs
+`CONTRADICTION_DETECTORS` — now a one-member tuple — and the ladder reaches it
+on every recompute, so its `inverse_replacement` arm can dispute a fact with no
+qualification record anywhere. Whether it *fires* is a property of the corpus,
+not the code — it needs a stored REPLACES-family edge, and the measurement
+corpus had none, which is what T2.108's vacuity finding actually established.
+Its sibling `single_valued` arm is separately disarmed because
+`SINGLE_VALUED_RELATIONS` is empty. The **Tier-C LLM `contradiction_scan`** is
+**no longer a veto input**: three G-D runs across two vendors measured its
+contradiction-precision at 0.7937 / 0.8814 / 0.9020 against a 0.95 bar, so each
+false positive behind an unappealable veto was a near-permanent manufactured
+dispute. Its journalled verdict now reaches the ladder on a *separate*
+parameter (`recompute_fact(..., contradiction_suspected=...)`), lands on
+`LadderDecision.contradiction_suspected`, and is read by the fourth review
+opener — flagging the fact for a human while it keeps its rung, its badge and
+its place in retrieval. Routing that signal into `open_contradiction` restores
+the wiring the amendment removed; the two parameters are separate so that
+mistake has to be made on purpose. It still dead-ends on the unqualified judge
+(T2.54 → T2.41), so today it produces nothing at all. Demotion carries
+hysteresis (`verification_demote_grace_cycles`; the `under-sourced` label is
+served, never withheld).
+
+**`review_state` has four openers and one derivation.**
+`verification_ladder.REVIEW_OPENERS` is the registry — disputed, under-sourced
+(hysteresis), contradiction-suspected — plus doc 09's ungrounded articles in a
+different table. `derive_review_state` is total and the clear is the absence of
+**every** opener, never the negation of one; adding an opener is appending a
+predicate, never adding a writer. The queue's *reason* is derived from the
+fact's own columns, and **all four openers now have one** (corrected
+2026-08-09 — this said a contradiction-suspected fact renders `unspecified`
+because the flag was persisted nowhere, which T2.112 closed). The suspicion
+rides `contradiction_suspected_at` / `contradiction_counterpart_id`, written by
+the ladder in the **same UPDATE** as `verification_status`, exactly as
+`demotion_pending_since` does for the under-sourced opener. It is a cache the
+authority refreshes every recompute — `detect_scanned_contradiction` re-applies
+every guard against live rows each cycle — never a frozen verdict, which is what
+keeps the flag self-clearing. `since` is when the flag **opened**, not when it
+was last seen. Reading the finding from the queue instead was tried and is
+barred: it puts an `app.services.contradiction_veto` import on a read surface,
+which invariant 15's source scan fails the build on. A human dismissal journals
+`contradiction_dismissed` — its own event type, **not** a fifth
+`HUMAN_VERDICTS` value, because those four adjudicate the *fact* and a
+dismissal adjudicates the *finding*; recorded as a rejection it would
+manufacture a false promotion in doc 17 §5.1's human-rejection arm out of the
+scan's own false positive. Clearing the column alone would be undone by the next
+recompute, so the journalled dismissal is what makes it stick.
+
+**One journaller for the machine's rungs.** `KnowledgeTripleRepository.set_verification_status`
+writes the `verified` events for every transition the ladder makes
+(before/after status plus the full decision evidence — `outcome`,
+`origin_count`, `required_n`, `gate_fired`, `source_kinds`, the two
+blocked flags, T2.64's contradiction counterpart). Ordinary holds journal
+nothing; contradiction- and supersession-blocked holds journal. It is
+**not** the sole writer of the stream, and this sentence said it was until
+2026-08-08: `ratify` is a second, deliberate writer and *cannot* route
+through the first, because `set_verification_status` refuses `confirmed` —
+the human-only rung is exactly what the machine's journaller must not be
+able to write. `promotion_metrics.py` already reads the stream with both
+writers in mind; a new consumer that assumes one will misread it.
+`_write_born_rung` — the deriver birth **and** the post-dispute restore —
+writes `corroborated` with no journal row on doc 10 §6's licence (*the
+parse is the verification*); G-C's metrics knowingly exclude those rows,
+and the gate ledger says so where the number lives.
+
+**An evidence record gates the label, never the code** (`claim_gates`,
+T2.95/T2.100): a promoted fact status reaches a reader only while
+`app/services/promotion_metrics_record.json` exists with `gate_eligible`
+exactly `true` — minted only by a cleared G-C run, never by hand.
+**G-C was re-measured 2026-08-08 (T2.111) and is still not evaluable:
+under-powered on every probe — no fact has ever exited `candidate` in any
+journal this machine can see — so the gate stays open, the record stays
+unminted, and every promoted or born badge serves as `candidate` with the
+`verification_unmeasured` reason, scan-enforced.** The bars are stated as
+config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
+(committed before the first measurement; the pin test makes moving one a
+visible two-file diff), and the metrics are SQL over `events` alone in
+`benchlib/promotion_metrics.py`.
+
+**The audit's arms were re-derived, not merely re-run, and the G-C→G-D
+cross-edge changed** (T2.111; this paragraph said both arms "dead-end on the
+unqualified judge", which stopped being true when T2.109 landed). The audit has
+exactly two arms — `disputed_after` and `rejected_after` — and the LLM
+`contradiction_scan` **no longer feeds the first at all**: its finding rides
+`contradiction_suspected`, which `decide` holds inert by construction, so it can
+produce no status transition. That arm is therefore **judge-free**, its only
+producer being the deterministic detector, and the 2026-08-07 ruling that
+"G-C has G-D's judge qualification on its critical path" (doc 20 §3) no longer
+holds as written. The edge does not vanish, it lengthens: the scan reaches the
+audit only through `rejected_after`, which needs a human to confirm a flag — so
+it is gated on G-D passing *and* on the reviewer surface T2.112 shipped. **The
+honest cost, recorded where it will be read:** the amendment bought veto
+precision by moving the scan off the veto, and the same move strictly *lowers*
+the audit's reach, converting an automatic detection route into a human-gated
+one. The audit's precision claim is unaffected; its power is not.
 
 ## MCP endpoint
 

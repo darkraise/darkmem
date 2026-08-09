@@ -13,6 +13,7 @@ import { EmptyState } from "darkraise-ui/components/empty-state"
 import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
+import { DEMO } from "@/lib/demo-flag"
 import {
   LayerChip,
   useDetailLevel,
@@ -129,7 +130,10 @@ function MetaRow({
 
 function ArticleDetailPage() {
   const { articleId } = Route.useParams()
-  const article = useDemoArticle(articleId)
+  const demoArticle = useDemoArticle(articleId)
+  // See articles-tab.tsx: L3 has no live channel, so outside DEMO this page has
+  // nothing lawful to render and falls through to the not-found branch below.
+  const article = DEMO ? demoArticle : undefined
   const facts = useDemoFacts()
   const level = useDetailLevel((s) => s.level)
   // Citations start disclosed so every #cite-K anchor resolves; a cite-pill
@@ -150,7 +154,11 @@ function ArticleDetailPage() {
         <EmptyState
           icon={<FileQuestion aria-hidden className="h-6 w-6" />}
           title="Article not found"
-          description="This article does not exist in the demo store."
+          description={
+            DEMO
+              ? "This article does not exist in the demo store."
+              : "Article synthesis is not shipped yet — it ships behind the groundedness gate, which is still open. There is no article channel to read."
+          }
           action={
             <Button variant="outline" asChild>
               <Link to="/knowledge/articles">

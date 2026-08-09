@@ -180,6 +180,73 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.overview",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/knowledge/overview"),),
+        mcp=("memory_overview",),
+        note=(
+            "Doc 12 section 3's tool table pairs the tool with this route, and "
+            "both doors call memory_overview.get_overview -- the map "
+            "selection, the single summarization reduce, the community-set "
+            "cache and the declared drops are the service's, so neither door "
+            "can answer a partial overview the other reports as complete. The "
+            "REST door is auth-gated and the tool is not, the same posture "
+            "every two-door read on this table carries."
+        ),
+    ),
+    Surface(
+        name="knowledge.fact_detail",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/knowledge/facts/{{fact_id}}"),),
+        mcp=("fact_get",),
+        note=(
+            "Doc 12 section 2's route table assigns fact_get a REST twin at "
+            "exactly this path and section 3 puts the agent-facing single-"
+            "object vault read on the tool, so T2.72 built the tool rather "
+            "than leaving the route filed single-door on a posture argument. "
+            "Both doors call facts_read.get_fact and both serialise through "
+            "FactDetailResponse -- the tool does not reshape the dict, so a "
+            "field the model does not declare is dropped on both doors and "
+            "the badge's claim sentence crosses byte for byte "
+            "(test_fact_detail_doors_serve_the_same_row). The REST door is "
+            "auth-gated and the tool is not, the same posture every two-door "
+            "read on this table carries."
+        ),
+    ),
+    Surface(
+        name="knowledge.composed_search",
+        status=TWO_DOOR,
+        rest=(("POST", f"{V1}/knowledge/search"),),
+        mcp=("knowledge_search",),
+        note=(
+            "Doc 12 section 3's composed four-layer read: one ranked list "
+            "drawn from L0 memories and L2 facts at once, every row labelled "
+            "and every fact badged, the memories that source a fact nested "
+            "under it, and an envelope naming which channels ran and how many "
+            "rows a context conflict excluded. T2.72 shipped the tool and "
+            "filed the surface MCP-single-door as an agent-shaped projection, "
+            "recording rather than resolving the fact that doc 12 section 2 "
+            "assigns the twin; T2.80 built it. The filing was honest and it "
+            "was wrong: memory.search and code.search are both two-door, so a "
+            "cross-layer ranked answer is a capability by this table's own "
+            "precedent, and this was the only ranked retrieval in the system "
+            "with one door. Both ends call LayerCompositionService.search and "
+            "both serialise through knowledge_search_response, the function "
+            "T2.72 placed outside the tool for exactly this; the degraded "
+            "payload has one producer too "
+            "(knowledge_search_unavailable). Ranking parity is asserted on "
+            "the order and not the shape "
+            "(tests/test_knowledge_search.py), because a row-shape test stays "
+            "green while two doors order one corpus differently. Two stated "
+            "wire asymmetries, neither of them a capability: the tool clamps "
+            "an out-of-range limit to the shared cap while the route 422s on "
+            "it, and unavailability is a 503 whose body is the shared model "
+            "against a tool payload that adds the MCP envelope's "
+            "schema_version. The route is auth-gated and the tool is not, the "
+            "same posture every two-door read on this table carries."
+        ),
+    ),
+    Surface(
         name="memory.stats",
         status=TWO_DOOR,
         rest=(("GET", f"{V1}/analytics/stats"),),
@@ -405,6 +472,155 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "health view for the human. An agent learns its own capture's "
             "fate from the pipeline websocket and its ack, not from another "
             "caller's failure queue."
+        ),
+    ),
+    Surface(
+        name="dream_digest.undo",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/dream-digest/cycles"),
+            ("GET", f"{V1}/dream-digest/cycles/{{cycle_id}}"),
+            ("POST", f"{V1}/dream-digest/actions/{{event_id}}/undo"),
+            ("POST", f"{V1}/dream-digest/cycles/{{cycle_id}}/undo"),
+        ),
+        reason=(
+            "Curation, not an agent capability, and the same "
+            "conflict-of-interest reasoning doc 12 section 1 applies to the "
+            "review queue applies here more sharply. Doc 08 section 7 makes "
+            "undo an authenticated human act over what consolidation did "
+            "overnight; an agent reversing the consolidation of its own "
+            "memories is the agent editing the record it is measured "
+            "against. The read half is the same human-observability shape as "
+            "pipeline_failures.triage -- a digest a person reviews -- and an "
+            "agent has no use for another actor's nightly cycle report. "
+            "Invariant 15 is the second, independent reason: the dream job "
+            "family may not be reachable from capture or retrieval, and an "
+            "MCP twin would put a door onto that stream inside the agent "
+            "surface."
+        ),
+    ),
+    Surface(
+        name="review_queue.triage",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/review-queue/facts"),
+            ("GET", f"{V1}/review-queue/articles"),
+            ("GET", f"{V1}/review-queue/counts"),
+            ("POST", f"{V1}/review-queue/facts/{{fact_id}}/reject"),
+            ("POST", f"{V1}/review-queue/facts/{{fact_id}}/dismiss-suspicion"),
+        ),
+        reason=(
+            "Doc 12 section 1 names the review queue as one of the reshape's "
+            "two deliberate single-door kinds -- a human-observability read, "
+            "not a confirmed-power write -- and section 3 assigns the "
+            "agent-facing capability to a separate tool family, "
+            "dispute_inspect (both-sides detail on one disputed fact or "
+            "article), never to this backlog view: 'the review-queue read is "
+            "a curation surface, not an agent capability ... an agent "
+            "triaging its own truth backlog is a conflict of interest the "
+            "design declines.' This surface is the pipeline_failures.triage "
+            "shape (doc 08 section 6) over facts and articles. review_state "
+            "still has no writer here (T2.62 owns its sole derived one). "
+            "T2.63 added the one action door: reject withdraws belief and "
+            "journals a human_verdict event so doc 17 section 5.1's "
+            "false-promotion audit has a human-rejected half at all. It stays "
+            "REST-only for the same conflict-of-interest reason the reads do, "
+            "and more sharply -- an agent rejecting the facts it is measured "
+            "against is the adjudication analogue of grading its own work."
+        ),
+    ),
+    Surface(
+        name="knowledge.facts_list",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/knowledge/facts"),),
+        reason=(
+            "Doc 12 section 3 assigns the agent one list-shaped vault read "
+            "and it is knowledge_search, not a fact list: a composed, ranked, "
+            "badged answer to a query, with the memories that source each "
+            "fact nested under it and an envelope naming what was excluded. "
+            "This route answers a different question -- doc 13 section 5.1's "
+            "Facts tab, the vault's own bookkeeping in arrival order: the "
+            "bi-temporal belief window including window-closed rows that are "
+            "retained history, and exact-match filters on subject, relation, "
+            "object and verification_status. There is no query for an agent "
+            "to aim at it, and an agent that paged the vault would be reading "
+            "the corpus rather than retrieving from it. T2.72 replaced the "
+            "trust-posture argument this row used to carry, which was weak "
+            "for the reason its reviewer gave: every two-door read on this "
+            "table already pairs an unauthenticated tool with an "
+            "authenticated route, so posture does not decide door count. The "
+            "detail half of this surface is no longer here -- it is "
+            "knowledge.fact_detail, two-door with fact_get."
+        ),
+    ),
+    Surface(
+        name="knowledge.ratify",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/knowledge/facts/{{fact_id}}/ratify"),),
+        reason=(
+            "The confirmed-power write, and doc 12 section 3 names it as the "
+            "first of the reshape's two sanctioned single-door kinds in so "
+            "many words: 'the unauthenticated LAN MCP surface must never carry "
+            "confirmed power'. Unlike knowledge.facts_list, this row's reason "
+            "IS the trust posture and the posture argument holds here where it "
+            "did not there -- the two-door reads pair an unauthenticated tool "
+            "with an authenticated route because reading the vault is a "
+            "capability an agent should have, whereas confirmed is by "
+            "construction the one rung the machine cannot reach on its own "
+            "(doc 08 section 4.4). A twin would let any LAN peer forge the "
+            "human's imprimatur, which is the forged-ratification threat doc "
+            "18 section 2 tables. Recorded here so nobody completes the "
+            "symmetry later."
+        ),
+    ),
+    Surface(
+        name="knowledge.topics",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/knowledge/topics"),
+            ("GET", f"{V1}/knowledge/topics/{{label}}"),
+            ("GET", f"{V1}/knowledge/topics/pin-suggestions"),
+            ("POST", f"{V1}/knowledge/topics/pin-suggestions/accept"),
+            ("POST", f"{V1}/knowledge/topics/pin-suggestions/dismiss"),
+        ),
+        reason=(
+            "T2.39a's door onto T2.20's topic_browsing.py / pin_suggestions.py, "
+            "both shipped with zero callers anywhere in app/ until this task. "
+            "Doc 12 section 3's tool table names exactly one MCP-exposed topic "
+            "capability -- memory_overview, the project-wide map-reduce "
+            "(already two-door, knowledge.overview above) -- and assigns no "
+            "tool to per-topic browsing or to the pin-suggestion diff/accept/"
+            "dismiss flow doc 09 section 3.4 describes. Accept/dismiss are "
+            "also a human curation decision about what feeds article "
+            "synthesis, the same review-a-suggestion shape "
+            "hygiene_queue.triage and review_queue.reject keep off the "
+            "unauthenticated MCP surface rather than a query an agent has a "
+            "reason to aim at. If a later doc revision names an agent-facing "
+            "tool here the way T2.72 added fact_get for knowledge.facts_list, "
+            "this row moves to two-door then, not before."
+        ),
+    ),
+    Surface(
+        name="hygiene_queue.triage",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/hygiene-queue/duplicates"),
+            ("GET", f"{V1}/hygiene-queue/low-confidence"),
+            ("GET", f"{V1}/hygiene-queue/expiring-soon"),
+            ("GET", f"{V1}/hygiene-queue/superseded"),
+            ("GET", f"{V1}/hygiene-queue/counts"),
+            ("POST", f"{V1}/hygiene-queue/bulk/supersede"),
+            ("POST", f"{V1}/hygiene-queue/bulk/prune"),
+            ("POST", f"{V1}/hygiene-queue/bulk/confirm-dedup"),
+        ),
+        reason=(
+            "The same review_queue.triage shape (doc 08 section 6) over "
+            "memories/memory_relations instead of facts/articles: a human "
+            "curation surface for housekeeping, not an agent capability. The "
+            "bulk actions are a human deciding what to retire or triage in "
+            "its own store, the same conflict-of-interest review_queue's "
+            "reject door declines to hand an agent; there is no dispute_inspect-"
+            "shaped agent need for a housekeeping backlog either."
         ),
     ),
     Surface(
@@ -1016,6 +1232,142 @@ async def test_get_stats_survives_a_failing_graph_count(session):
     # PendingRollbackError by SQLAlchemy) on the next query instead.
     still_usable = (await session.execute(select(func.count()).select_from(Memory))).scalar()
     assert still_usable is not None
+
+
+# ---------------------------------------------------------------------------
+# knowledge.fact_detail: the vault's detail read, on both doors (T2.72)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_badged_fact(session) -> str:
+    """One corroborated fact with two distinct origins and a verified event.
+
+    Two origins rather than one because the badge's ``origin_count`` is a
+    ``DISTINCT origin_key`` count: a single-origin fixture agrees with a row
+    count and would pass against a door that published either number.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+
+    from app.repositories.fact_sources import FactSourceRepository
+    from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+    project = "t272-parity"
+    at = datetime(2026, 7, 20, 9, 14, 0, tzinfo=timezone.utc)
+    repo = KnowledgeTripleRepository(session)
+    row = await repo.insert_open(
+        triple_key=f"t272-{uuid.uuid4()}",
+        subject_name="darkmem",
+        object_name="postgres",
+        rel_type="USES",
+        fact="darkmem USES postgres",
+        reference_time=at,
+        project=project,
+        valid_at=at,
+    )
+    await session.execute(
+        text(
+            "UPDATE knowledge_triples SET verification_status = 'corroborated' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": row["id"]},
+    )
+    sources = FactSourceRepository(session)
+    for origin in ("origin-a", "origin-b"):
+        await sources.add_source(
+            fact_id=row["id"],
+            source_kind="memory",
+            source_ref=str(uuid.uuid4()),
+            origin_key=origin,
+        )
+    await session.execute(
+        text("SELECT events_ensure_partition(CAST(:at AS timestamptz)::date)"),
+        {"at": at},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO events (created_at, event_type, object_type, object_id, "
+            "project, payload) VALUES (CAST(:at AS timestamptz), 'verified', "
+            "'fact', CAST(:fid AS uuid), CAST(:project AS text), "
+            "CAST(:payload AS jsonb))"
+        ),
+        {
+            "at": at,
+            "fid": str(row["id"]),
+            "project": project,
+            "payload": json.dumps(
+                {
+                    "before": {"verification_status": "candidate"},
+                    "after": {"verification_status": "corroborated"},
+                }
+            ),
+        },
+    )
+    await session.flush()
+    return str(row["id"])
+
+
+async def test_fact_detail_doors_serve_the_same_row(
+    client, auth_headers, session, monkeypatch
+):
+    """A row shape that diverges between the doors fails here (T2.72).
+
+    The whole document is compared, not a field list: a key-presence check
+    passes a door that dropped a value, and a field list passes a door that
+    grew a key nobody enumerated. Both doors serialise through
+    ``FactDetailResponse``, so the assertion below holds structurally rather
+    than by agreement -- which is the point. The failure this catches is the
+    realistic one: a tool that reshapes the service's dict itself, exactly as
+    ``code_search`` and ``code_blast_radius`` did before T1.42c consolidated
+    them.
+    """
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+    fact_id = await _seed_badged_fact(session)
+
+    response = await client.get(f"{V1}/knowledge/facts/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200
+    tool_text = await mcp_server.fact_get(fact_id=fact_id)
+
+    rest_row = json.loads(response.content)
+    tool_row = json.loads(tool_text)
+    assert tool_row == rest_row, (
+        "GET /knowledge/facts/{fact_id} and fact_get answered different "
+        "shapes for one fact; both doors must serialise through "
+        "FactDetailResponse rather than reshaping the service's dict"
+    )
+
+
+async def test_the_badge_crosses_both_doors_byte_for_byte(
+    client, auth_headers, session, monkeypatch, cleared_promotion_record):
+    """Doc 12 §4's claim is shown verbatim or not at all, so the two doors
+    must publish the same bytes and not merely the same meaning.
+
+    Asserted against the raw payloads rather than the parsed ones: a door
+    that rebuilt the sentence with different punctuation, a different origin
+    count or a softened verb would still parse into a plausible dict, and
+    the raw-bytes check is what makes the second producer T2.71's guard
+    forbids visible here too.
+    """
+    monkeypatch.setattr(mcp_server, "async_session_factory", _stats_fake_ctx(session))
+    fact_id = await _seed_badged_fact(session)
+
+    response = await client.get(f"{V1}/knowledge/facts/{fact_id}", headers=auth_headers)
+    assert response.status_code == 200
+    tool_text = await mcp_server.fact_get(fact_id=fact_id)
+
+    rest_badge = json.loads(response.content)["badge"]
+    tool_badge = json.loads(tool_text)["badge"]
+    assert rest_badge is not None, "the fixture produced no badge to compare"
+    assert tool_badge == rest_badge
+
+    claim = rest_badge["claim"]
+    assert claim, "the badge carries no claim sentence"
+    assert claim.encode("utf-8") in response.content
+    assert claim in tool_text
+    assert json.dumps(rest_badge, sort_keys=True) == json.dumps(
+        tool_badge, sort_keys=True
+    )
 
 
 # ---------------------------------------------------------------------------

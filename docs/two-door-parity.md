@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**44 surfaces: 14 two-door, 30 single-door with a stated reason (24 REST-only, 6 MCP-only), 0 divergent.**
+**53 surfaces: 17 two-door, 36 single-door with a stated reason (30 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -59,6 +59,9 @@ the test rather than quietly joining the surface.
 | `code.search` | `POST /api/v1/code/search` | `code_search` | two-door | Both doors fuse through CodeQueryService.search_code and publish the same rrf_score under the same score key (T1.42c). With no embedder configured the doors answer differently on purpose: the tool returns doc 12 section 3's typed degradation envelope, the route degrades to the keyword arm. |
 | `code.blast_radius` | `POST /api/v1/code/blast-radius` | `code_blast_radius` | two-door | Only the name-to-id resolution is the tool's; the recursive traversal is the service's (T1.42c). |
 | `code.symbols` | `GET /api/v1/code/symbols`<br>`GET /api/v1/code/symbols/lookup`<br>`GET /api/v1/code/symbols/{symbol_id}` | `code_symbol`<br>`code_file_symbols` | two-door | Two doors, two implementations: both tools build their own SQLAlchemy query instead of spending CodeQueryService.list_symbols. Not yet observably divergent -- the tools emit a subset of the service's keys and no row differs -- but it is the same latent drift T1.42c found already realised on code_search and code_blast_radius. Delegating is not a no-behaviour-change edit (the service caps at limit=50 and the tools are uncapped), so it needs an owner, not a one-liner. |
+| `knowledge.overview` | `GET /api/v1/knowledge/overview` | `memory_overview` | two-door | Doc 12 section 3's tool table pairs the tool with this route, and both doors call memory_overview.get_overview -- the map selection, the single summarization reduce, the community-set cache and the declared drops are the service's, so neither door can answer a partial overview the other reports as complete. The REST door is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
+| `knowledge.fact_detail` | `GET /api/v1/knowledge/facts/{fact_id}` | `fact_get` | two-door | Doc 12 section 2's route table assigns fact_get a REST twin at exactly this path and section 3 puts the agent-facing single-object vault read on the tool, so T2.72 built the tool rather than leaving the route filed single-door on a posture argument. Both doors call facts_read.get_fact and both serialise through FactDetailResponse -- the tool does not reshape the dict, so a field the model does not declare is dropped on both doors and the badge's claim sentence crosses byte for byte (test_fact_detail_doors_serve_the_same_row). The REST door is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
+| `knowledge.composed_search` | `POST /api/v1/knowledge/search` | `knowledge_search` | two-door | Doc 12 section 3's composed four-layer read: one ranked list drawn from L0 memories and L2 facts at once, every row labelled and every fact badged, the memories that source a fact nested under it, and an envelope naming which channels ran and how many rows a context conflict excluded. T2.72 shipped the tool and filed the surface MCP-single-door as an agent-shaped projection, recording rather than resolving the fact that doc 12 section 2 assigns the twin; T2.80 built it. The filing was honest and it was wrong: memory.search and code.search are both two-door, so a cross-layer ranked answer is a capability by this table's own precedent, and this was the only ranked retrieval in the system with one door. Both ends call LayerCompositionService.search and both serialise through knowledge_search_response, the function T2.72 placed outside the tool for exactly this; the degraded payload has one producer too (knowledge_search_unavailable). Ranking parity is asserted on the order and not the shape (tests/test_knowledge_search.py), because a row-shape test stays green while two doors order one corpus differently. Two stated wire asymmetries, neither of them a capability: the tool clamps an out-of-range limit to the shared cap while the route 422s on it, and unavailability is a 503 whose body is the shared model against a tool payload that adds the MCP envelope's schema_version. The route is auth-gated and the tool is not, the same posture every two-door read on this table carries. |
 | `memory.stats` | `GET /api/v1/analytics/stats` | `memory_stats` | two-door | T1.42f closed the audit's one recorded divergence: neither door called a service before, so the shared counts (plus the entities and relationships pair from PostgresGraphRepository.get_stats(), with its SQLAlchemyError rollback guard intact) were lifted into AnalyticsService.get_stats() and both doors now call it. |
 | `auth.session` | `POST /api/v1/auth/login`<br>`POST /api/v1/auth/logout`<br>`POST /api/v1/auth/refresh`<br>`POST /api/v1/auth/change-password`<br>`GET /api/v1/auth/me` | — | REST single-door | The MCP door is unauthenticated by design (invariant 20, doc 12 section 6), so a session surface on it is a contradiction in terms: there is no session to establish, and a change-password twin would let any LAN peer seize the admin account. |
 | `auth.audit` | `GET /api/v1/auth/audit` | — | REST single-door | A human security-review read of the doc 12 section 7 observability class: it enumerates login attempts and token events, which is precisely the material an unauthenticated caller must not be able to page through. |
@@ -73,6 +76,12 @@ the test rather than quietly joining the surface.
 | `jobs.control` | `GET /api/v1/jobs`<br>`PUT /api/v1/jobs/{key}`<br>`PUT /api/v1/jobs/{key}/config`<br>`POST /api/v1/jobs/{key}/trigger` | — | REST single-door | Scheduler control. Triggering or reconfiguring a job is remote control of the box's background work -- expired_memory_cleanup deletes rows and graph_orphan_cleanup prunes the graph -- so it stays behind the authenticated door. |
 | `pipeline.observability` | `GET /api/v1/pipeline`<br>`GET /api/v1/pipeline/metrics` | — | REST single-door | Human-observability read behind the pipeline dashboard: configuration echo and per-phase metrics, an operator's view of the box's health rather than knowledge an agent retrieves. |
 | `pipeline_failures.triage` | `GET /api/v1/pipeline-failures`<br>`GET /api/v1/pipeline-failures/counts`<br>`GET /api/v1/pipeline-failures/{failure_id}`<br>`DELETE /api/v1/pipeline-failures/{failure_id}`<br>`POST /api/v1/pipeline-failures/{failure_id}/retry`<br>`POST /api/v1/pipeline-failures/retry-all` | — | REST single-door | Operator triage and remediation: the retry doors re-run extraction and spend the provider budget, and the listing is a health view for the human. An agent learns its own capture's fate from the pipeline websocket and its ack, not from another caller's failure queue. |
+| `dream_digest.undo` | `GET /api/v1/dream-digest/cycles`<br>`GET /api/v1/dream-digest/cycles/{cycle_id}`<br>`POST /api/v1/dream-digest/actions/{event_id}/undo`<br>`POST /api/v1/dream-digest/cycles/{cycle_id}/undo` | — | REST single-door | Curation, not an agent capability, and the same conflict-of-interest reasoning doc 12 section 1 applies to the review queue applies here more sharply. Doc 08 section 7 makes undo an authenticated human act over what consolidation did overnight; an agent reversing the consolidation of its own memories is the agent editing the record it is measured against. The read half is the same human-observability shape as pipeline_failures.triage -- a digest a person reviews -- and an agent has no use for another actor's nightly cycle report. Invariant 15 is the second, independent reason: the dream job family may not be reachable from capture or retrieval, and an MCP twin would put a door onto that stream inside the agent surface. |
+| `review_queue.triage` | `GET /api/v1/review-queue/facts`<br>`GET /api/v1/review-queue/articles`<br>`GET /api/v1/review-queue/counts`<br>`POST /api/v1/review-queue/facts/{fact_id}/reject`<br>`POST /api/v1/review-queue/facts/{fact_id}/dismiss-suspicion` | — | REST single-door | Doc 12 section 1 names the review queue as one of the reshape's two deliberate single-door kinds -- a human-observability read, not a confirmed-power write -- and section 3 assigns the agent-facing capability to a separate tool family, dispute_inspect (both-sides detail on one disputed fact or article), never to this backlog view: 'the review-queue read is a curation surface, not an agent capability ... an agent triaging its own truth backlog is a conflict of interest the design declines.' This surface is the pipeline_failures.triage shape (doc 08 section 6) over facts and articles. review_state still has no writer here (T2.62 owns its sole derived one). T2.63 added the one action door: reject withdraws belief and journals a human_verdict event so doc 17 section 5.1's false-promotion audit has a human-rejected half at all. It stays REST-only for the same conflict-of-interest reason the reads do, and more sharply -- an agent rejecting the facts it is measured against is the adjudication analogue of grading its own work. |
+| `knowledge.facts_list` | `GET /api/v1/knowledge/facts` | — | REST single-door | Doc 12 section 3 assigns the agent one list-shaped vault read and it is knowledge_search, not a fact list: a composed, ranked, badged answer to a query, with the memories that source each fact nested under it and an envelope naming what was excluded. This route answers a different question -- doc 13 section 5.1's Facts tab, the vault's own bookkeeping in arrival order: the bi-temporal belief window including window-closed rows that are retained history, and exact-match filters on subject, relation, object and verification_status. There is no query for an agent to aim at it, and an agent that paged the vault would be reading the corpus rather than retrieving from it. T2.72 replaced the trust-posture argument this row used to carry, which was weak for the reason its reviewer gave: every two-door read on this table already pairs an unauthenticated tool with an authenticated route, so posture does not decide door count. The detail half of this surface is no longer here -- it is knowledge.fact_detail, two-door with fact_get. |
+| `knowledge.ratify` | `POST /api/v1/knowledge/facts/{fact_id}/ratify` | — | REST single-door | The confirmed-power write, and doc 12 section 3 names it as the first of the reshape's two sanctioned single-door kinds in so many words: 'the unauthenticated LAN MCP surface must never carry confirmed power'. Unlike knowledge.facts_list, this row's reason IS the trust posture and the posture argument holds here where it did not there -- the two-door reads pair an unauthenticated tool with an authenticated route because reading the vault is a capability an agent should have, whereas confirmed is by construction the one rung the machine cannot reach on its own (doc 08 section 4.4). A twin would let any LAN peer forge the human's imprimatur, which is the forged-ratification threat doc 18 section 2 tables. Recorded here so nobody completes the symmetry later. |
+| `knowledge.topics` | `GET /api/v1/knowledge/topics`<br>`GET /api/v1/knowledge/topics/{label}`<br>`GET /api/v1/knowledge/topics/pin-suggestions`<br>`POST /api/v1/knowledge/topics/pin-suggestions/accept`<br>`POST /api/v1/knowledge/topics/pin-suggestions/dismiss` | — | REST single-door | T2.39a's door onto T2.20's topic_browsing.py / pin_suggestions.py, both shipped with zero callers anywhere in app/ until this task. Doc 12 section 3's tool table names exactly one MCP-exposed topic capability -- memory_overview, the project-wide map-reduce (already two-door, knowledge.overview above) -- and assigns no tool to per-topic browsing or to the pin-suggestion diff/accept/dismiss flow doc 09 section 3.4 describes. Accept/dismiss are also a human curation decision about what feeds article synthesis, the same review-a-suggestion shape hygiene_queue.triage and review_queue.reject keep off the unauthenticated MCP surface rather than a query an agent has a reason to aim at. If a later doc revision names an agent-facing tool here the way T2.72 added fact_get for knowledge.facts_list, this row moves to two-door then, not before. |
+| `hygiene_queue.triage` | `GET /api/v1/hygiene-queue/duplicates`<br>`GET /api/v1/hygiene-queue/low-confidence`<br>`GET /api/v1/hygiene-queue/expiring-soon`<br>`GET /api/v1/hygiene-queue/superseded`<br>`GET /api/v1/hygiene-queue/counts`<br>`POST /api/v1/hygiene-queue/bulk/supersede`<br>`POST /api/v1/hygiene-queue/bulk/prune`<br>`POST /api/v1/hygiene-queue/bulk/confirm-dedup` | — | REST single-door | The same review_queue.triage shape (doc 08 section 6) over memories/memory_relations instead of facts/articles: a human curation surface for housekeeping, not an agent capability. The bulk actions are a human deciding what to retire or triage in its own store, the same conflict-of-interest review_queue's reject door declines to hand an agent; there is no dispute_inspect-shaped agent need for a housekeeping backlog either. |
 | `buffer.triage` | `GET /api/v1/memory-buffer`<br>`GET /api/v1/memory-buffer/stats`<br>`DELETE /api/v1/memory-buffer/{buffer_id}`<br>`POST /api/v1/memory-buffer/{buffer_id}/requeue` | — | REST single-door | The operator's view of the Tier-A capture buffer plus poison-row remediation. An agent already learns its own capture's fate from memory_add's ack (doc 05 section 2); another caller's buffered rows, and the power to drop or requeue them, are not its business. |
 | `reembed.maintenance` | `POST /api/v1/reembed/all`<br>`POST /api/v1/reembed/memories`<br>`POST /api/v1/reembed/entities`<br>`POST /api/v1/reembed/code-chunks`<br>`POST /api/v1/reembed/prune-cache`<br>`GET /api/v1/reembed/obsolete-counts`<br>`GET /api/v1/reembed/obsolete/memories`<br>`GET /api/v1/reembed/obsolete/entities`<br>`GET /api/v1/reembed/obsolete/code-chunks` | — | REST single-door | Expensive, destructive maintenance around an embedder rotation: it re-embeds the whole corpus into a new fingerprint partition and prunes the entity cache. Operator power, authenticated door only; the obsolete-listings exist to let the human decide whether to pay for it. |
 | `vectors.projection` | `GET /api/v1/vectors/projection` | — | REST single-door | A 2-D projection computed purely for the UI's scatter plot. It is a rendering aid over embeddings an agent already reaches as ranked results through memory_search, so a twin would ship coordinates no agent has a use for. |
@@ -143,6 +152,62 @@ single-door for a trust, curation, operator-power or rendering reason, not
 because the tool has not been written yet. The asymmetries that do exist run
 the other way: six code tools ahead of their routes.
 
+**T2.72 (2026-08-03) found the one instance where it nearly did, and closed
+it.** `GET /api/v1/knowledge/facts/{fact_id}` shipped with T2.36a filed
+REST-only on a trust-posture argument, while doc 12 §2 assigns that exact path
+as `fact_get`'s twin and doc 12 §3 puts the agent-facing vault reads on
+`fact_get` and `knowledge_search`. Nothing in the corpus owned either tool, so
+the row was one task away from being the shape this finding says did not
+appear. It was not a live breach — parity is not violated by a surface absent
+on both doors' agent side — but the *reason* was wrong rather than merely
+thin: every two-door read on this table already pairs an unauthenticated tool
+with an authenticated route, so posture does not decide door count. The detail
+half is now `knowledge.fact_detail`, two-door, both ends serialising through
+one `FactDetailResponse`; the list half stays REST-only for doc 12's reason,
+which is that the agent's list-shaped vault read is `knowledge_search`.
+
+### 5. `knowledge_search` was a seventh MCP-ahead-of-REST row — T2.80 closed it
+
+T2.72 shipped `knowledge_search`, doc 12 §3's composed four-layer read, and
+filed it MCP-single-door for the same agent-shaped-projection reason the six
+code tools carry: the rows are REST-reachable in their own key spaces (L0
+through `POST /api/v1/memories/search`, L2 through `GET
+/api/v1/knowledge/facts`) and what is single-door is the cross-layer ranked
+question. It recorded, rather than resolved, that doc 12 §2 assigns a twin at
+`POST /knowledge/search` which no epic file owned.
+
+**That filing was honest and it was wrong, and T2.80 (2026-08-04) built the
+route.** The projection argument does not survive contact with this table's own
+precedent: `memory.search` and `code.search` are both two-door, so a ranked
+answer over a key space is a capability here and not a projection of one. Filed
+as it was, the composed read was the only ranked retrieval in the system with a
+single door.
+
+The route spends the serialiser T2.72 placed outside the tool for exactly this
+(`knowledge_search_response`), and the degraded payload got the same treatment
+(`knowledge_search_unavailable`), so neither the served shape nor the outage
+shape has a second producer. Two settlements the route forced rather than
+inherited:
+
+- **A composition defect is no longer served as an outage.** Both doors caught
+  `RuntimeError`, and the composition raises that base for its own bugs — the
+  grouping fixpoint that stopped decreasing, a reranker returning a window of
+  the wrong length. Every door now catches only `CompositionUnavailable`, so a
+  bug over a healthy vault surfaces as an error rather than as "the vault is
+  down". The third door, chat, was narrowed with them.
+- **Ranking parity is asserted on the order.** `envelope.reranked` is
+  permanently false because the reranker is a door-side constructor argument,
+  and the moment one door passed one the two would rank differently while every
+  row-shape parity test stayed green. `tests/test_knowledge_search.py` compares
+  the id sequences both doors produce over one corpus deep enough that fusion
+  depth is load-bearing, and an AST scan fails the build on any door that
+  constructs the composition with a reranker of its own.
+
+Note the harmful direction is guarded rather than merely absent, on both vault
+surfaces: `test_fact_detail_doors_serve_the_same_row` compares the whole
+document from both doors, and the composed read compares the whole document
+*and* its order.
+
 ## The two kinds of sanctioned single door, and a third this audit names
 
 Doc 12 §1 names two sanctioned kinds: the **confirmed-power writes** (ratify,
@@ -166,5 +231,9 @@ reasoning applied to a different noun:
    rather than to secrets, and it is why these are called out separately here.
 
 The mirrored kind — **agent-shaped projections** of rows the REST door serves
-whole — covers the six MCP-single-door code tools, and it is the kind doc 12 §3
-does not currently name.
+whole — covers the six MCP-single-door code tools. It is the kind doc 12 §3
+does not currently name. `knowledge_search` was filed under it by T2.72 and
+does not belong there: a projection re-presents rows another door already
+serves, and a ranked cross-layer answer is a row set neither other door
+produces. T2.80 moved it to two-door rather than widening this kind to cover
+it.

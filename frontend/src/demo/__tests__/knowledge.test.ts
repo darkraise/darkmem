@@ -33,6 +33,28 @@ describe("origin grouping", () => {
     expect(groups[0]?.origin_key).toBe("session:9f21b7c4")
     expect(groups[0]?.rows).toHaveLength(2)
   })
+
+  // T2.86: doc 10 §6's `stale` overlay, mirrored from the live door's
+  // `FactSourceGroup.stale` — a group is stale only when every one of its
+  // rows is, matching the backend's `OriginGroup.is_stale`.
+  it("a group is stale only when every one of its rows is", () => {
+    const allStale = groupSourcesByOrigin([
+      { origin_key: "repo-a", kind: "code", ref: "r1", detail: "", at: "", stale: true },
+      { origin_key: "repo-a", kind: "code", ref: "r2", detail: "", at: "", stale: true },
+    ])
+    expect(allStale[0]?.stale).toBe(true)
+
+    const mixed = groupSourcesByOrigin([
+      { origin_key: "repo-b", kind: "code", ref: "r3", detail: "", at: "", stale: true },
+      { origin_key: "repo-b", kind: "code", ref: "r4", detail: "", at: "", stale: false },
+    ])
+    expect(mixed[0]?.stale).toBe(false)
+
+    const none = groupSourcesByOrigin([
+      { origin_key: "repo-c", kind: "code", ref: "r5", detail: "", at: "" },
+    ])
+    expect(none[0]?.stale).toBe(false)
+  })
 })
 
 describe("filterFacts", () => {

@@ -32,6 +32,15 @@ class RetrievalEnvelope(ResponseEnvelope):
     channels: dict[str, ChannelStatus] = Field(default_factory=dict)
     reranked: bool = False
     weights: dict[str, float] = Field(default_factory=dict)
+    # Doc 07 §5's channel-topology flag (T2.56): which of the two output
+    # shapes was served — sectioned-by-layer (``False``) or one fused list
+    # (``True``). Only ``knowledge_search_response`` stamps a meaningful
+    # value; every other envelope construction leaves the default. ``None``,
+    # not ``False`` — a door with no shape choice at all (memory search,
+    # chat) did not serve "sectioned", so a bare ``False`` would misdescribe
+    # what it served. ``None`` reads honestly as "no shape choice was on
+    # offer here" instead.
+    fused: bool | None = None
 
     @computed_field
     @property

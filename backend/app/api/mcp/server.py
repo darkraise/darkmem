@@ -130,12 +130,15 @@ def _degraded(reason: str, **extra) -> dict:
     }
 
 
-def _clamp_limit(limit: int, default: int) -> int:
+def _clamp_limit(limit: int, default: int, maximum: int = _MAX_LIMIT) -> int:
+    """The tool-side bound. ``maximum`` lets a surface whose REST twin declares
+    its own cap clamp to that one constant instead of to a second copy of it.
+    """
     try:
         limit = int(limit)
     except (TypeError, ValueError):
         return default
-    return max(1, min(limit, _MAX_LIMIT))
+    return max(1, min(limit, maximum))
 
 
 @mcp.tool(
@@ -361,6 +364,25 @@ async def memory_find_duplicates(memory_id: str, threshold: float = 0.9) -> str:
     async with _memory_service_context() as service:
         results = await service.find_duplicates(mid, threshold)
         return json.dumps(results, default=str)
+
+
+@mcp.tool(
+    description="Get a project-wide organizational overview of what the memory store contains, organized by topic. This is a map-reduce over precomputed topic reports, not a ranked search: use memory_search when you want the memories most relevant to a query, and this when you want to know what is in here at all. Carries no verification badge — it describes what is stored, it does not assert it is true. The per-topic reports are precomputed off the hot path, so the answer costs at most one model call and is cached until the topic set changes."
+)
+async def memory_overview(project: str = "default") -> str:
+    """
+    Args:
+        project: The project to summarize (default "default"). The overview is always scoped to one project.
+    """
+    from app.services.memory_overview import OverviewUnavailable, get_overview
+
+    async with _code_service_context() as session:
+        llm = _pipeline.llm if _pipeline is not None else None
+        try:
+            result = await get_overview(session, llm, project)
+        except OverviewUnavailable as exc:
+            return json.dumps(_degraded(str(exc), project=project))
+        return json.dumps(result.to_dict())
 
 
 @mcp.tool(
@@ -1045,3 +1067,90 @@ async def code_rename(
         "total_references": len(references),
         "references": references,
     })
+
+
+# ---------------------------------------------------------------------------
+# Vault tools — the agent's side of L2/L3 (doc 12 §3)
+# ---------------------------------------------------------------------------
+#
+# Both tools spend the service the REST door spends and reshape nothing:
+# ``fact_get`` serialises through ``FactDetailResponse``, the very model
+# ``GET /api/v1/knowledge/facts/{fact_id}`` declares as its response, so the
+# two doors cannot answer different shapes for one fact. Neither tool spells
+# any part of the verification claim — ``fact_badge`` is its sole producer and
+# the badge rides through whole.
+
+
+@mcp.tool(
+    description="Read one fact from the knowledge vault by its UUID: the subject/relation/object triple, its verification status and honest claim badge, the provenance groups behind that badge's distinct-origin count, the applies_when context labels, the bi-temporal belief window and the review state. Use this after knowledge_search or memory_search surfaces a fact id and you need the evidence behind it. The badge's claim is shown verbatim or not at all — never paraphrase it."
+)
+async def fact_get(fact_id: str) -> str:
+    """
+    Args:
+        fact_id: The UUID of the fact to retrieve.
+    """
+    from app.schemas.facts import FactDetailResponse
+    from app.services import facts_read
+
+    fid = _validate_uuid(fact_id)
+    async with _code_service_context() as session:
+        item = await facts_read.get_fact(session, fid)
+        if item is None:
+            raise ValueError(f"Fact not found: {fact_id}")
+        return FactDetailResponse.model_validate(item).model_dump_json()
+
+
+@mcp.tool(
+    description="Search the knowledge vault across epistemic layers at once: stored memories (L0) and lifted facts (L2), merged into one ranked list where every fact carries its verification badge and the memories that source it are nested under it. Use this instead of memory_search when you want what is believed rather than what was said, and read the envelope: it names which channels ran, which failed, and how many rows were excluded by a context conflict, so a degraded answer is never mistaken for an empty vault."
+)
+async def knowledge_search(
+    query: str,
+    project: str = "default",
+    limit: int = 20,
+    fuse: bool = False,
+) -> str:
+    """
+    Args:
+        query: Natural language query. Both layers are searched with it.
+        project: The project to search (default "default"). Every channel scopes to it.
+        limit: Maximum number of composed rows to return (default: 20). A fact and the memories nested under it count as one.
+        fuse: Output shape (default false). False returns "sections" split by layer (memory / facts / articles), each internally ranked — doc 07 §5's stated default. True returns one ranked "rows" list instead. Both carry every row's layer and verification labels; only the presentation differs.
+    """
+    from app.schemas.knowledge import (
+        KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+        KNOWLEDGE_SEARCH_MAX_LIMIT,
+        knowledge_search_response,
+        knowledge_search_unavailable,
+    )
+    from app.services.layer_composition import (
+        CompositionUnavailable,
+        LayerCompositionService,
+    )
+
+    limit = _clamp_limit(
+        limit,
+        default=KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
+        maximum=KNOWLEDGE_SEARCH_MAX_LIMIT,
+    )
+    async with _code_service_context() as session:
+        llm = _pipeline.llm if _pipeline is not None else None
+        service = LayerCompositionService(llm, session)
+        try:
+            result = await service.search(query, project=project, limit=limit)
+        except CompositionUnavailable as exc:
+            # Every channel down is recoverable unavailability, not a caller
+            # error: doc 12 §3 says say so in a typed envelope rather than
+            # returning rows a client cannot tell from a genuine no-match.
+            #
+            # The typed class and not its ``RuntimeError`` base (T2.80). The
+            # composition raises the base for its own defects — the grouping
+            # fixpoint that stopped decreasing, a reranker that returned a
+            # window of the wrong length — and catching those here served a
+            # bug over a healthy vault as an outage, which is the
+            # failed-versus-empty conflation this envelope exists to prevent,
+            # pointed at the operator instead of at the code.
+            return json.dumps({
+                **_degraded(str(exc), project=project),
+                **knowledge_search_unavailable(exc).model_dump(mode="json"),
+            })
+        return knowledge_search_response(result, fuse=fuse).model_dump_json()

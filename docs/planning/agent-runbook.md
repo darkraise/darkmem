@@ -273,19 +273,71 @@ regardless of whether it passes. The one sanctioned exception is a **read-only**
 probe measuring production behaviour (G-E's coverage distribution); it may read `darkmem`
 and may never write to it.
 
+**A fourth name is lawful and is not a leak: `darkmem_bench_t<sha10>`.**
+`scripts/benchlib/tests/test_harvest_l2_facts.py` derives one per checkout from the
+backend directory's hash, so the harvest reproducibility test's in-process double run
+cannot collide with a sibling checkout or with the shared `darkmem_bench` under
+`./scripts/gate.sh`. It is created on demand and **deliberately never dropped** —
+re-migrating it every run would cost more than it saves. So it reappears after every
+benchlib run, and dropping it is pointless rather than tidy: an agent chasing the
+three-names rule literally will delete it repeatedly and report each deletion as
+hygiene. (One did, three times, on 2026-08-08.) Leave it.
+
 **`DATABASE_URL` does not point where you expect.** `conftest.py` unconditionally
 overwrites it with `TEST_DATABASE_URL` — so setting `DATABASE_URL` in front of `pytest`
 silently tests the wrong database. Set `TEST_DATABASE_URL` instead. And the derived
 default resolves to port **5432** while the dev Postgres runs on **5433**, so any bare
 shell command that reaches the database needs an explicit URL.
 
+**The bench database has no per-lane isolation unless you ask for it.** `darkmem_test_N` is assigned per lane, but
+`darkmem_bench` is one shared name — so two lanes running `scripts/benchlib/tests` concurrently collide and produce
+failures that look exactly like a code regression (unrelated tests, moving between runs, in the one suite `pytest -q`
+does not collect). **Set `BENCH_DATABASE_URL` to a per-lane database** (`darkmem_bench_<lane>`) whenever you run harness
+work while other lanes are live. This cost three agents time in a single round on 2026-07-31.
+
+**Commit before you drill, and never revert with a path-wide `git checkout --`.** A mutation
+drill is edit → run → revert, and the revert is where work disappears. Two lanes lost
+uncommitted source this way on 2026-08-02 — once a test fix, once an entire round of
+review fixes — because a `git checkout -- <path>` written to undo the *mutation* also
+undid every uncommitted change under that path. It is silent: the drill output looks
+right, the follow-up run goes red for reasons that read like a real regression, and the
+completion report describes code the tree does not contain. One lane caught it only
+because a commit reported a test-file-only diff. So: **commit the work first, then drill**,
+and revert by restoring a copy you made of the single mutated file rather than by asking
+git to reset a path. Cheap discipline, and it is the difference between a green report and
+a green report over missing code.
+
+**Run tests in the foreground, one at a time, wrapped in an explicit `timeout`.** A lane
+backgrounded its floor run and handed control back twice in one round, leaving two
+concurrent runs against its own database; conftest drops the schema at session start, so a
+collision produces failures indistinguishable from a real regression. If a command needs to
+outlive a step, say so in the report rather than detaching and stopping — handing control
+back mid-verification leaves nothing driving the work.
+
+**The root cause was found on 2026-08-07 and it is mechanical, not a discipline problem.**
+Six lanes stalled this way in one day, every one of them having read the paragraph above.
+A shell command that runs past the tool's default limit is **auto-backgrounded**, and the
+agent then stops with its work unverified and often uncommitted. Wrapping the command in
+a `timeout` binary does not prevent this — the backgrounding is the *tool's* decision, not
+the shell's. **Pass the Bash tool's own `timeout` parameter, set longer than the run needs
+(the backend floor takes ~4–5 minutes, so 600000 ms is a safe floor for it).** Both are
+worth doing: the tool parameter stops the auto-backgrounding, the `timeout` binary stops a
+genuinely hung run from lingering. A lane that only does the second still stalls.
+
+**Commit before every long run, not only before a mutation drill.** The stall itself is
+recoverable — every one of the six was resumed with its work intact — but a lane that
+stalls with nine modified files and no commits is one bad revert away from losing a whole
+task, and that has happened twice for other reasons.
+
 **A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
-does not populate it and there is no interpreter at the path every **Verify** field names.
-Run the main checkout's interpreter by absolute path
-(`/root/repositories/darkmem/backend/.venv/bin/python`) *from* your worktree's `backend/`
-directory, so imports resolve against your code rather than the main checkout's. The same
-applies to the bench cache below, for the same reason — both are gitignored, and both fail
-in ways that look like a code problem rather than a missing file.
+does not populate it. The merge gate (`./scripts/gate.sh`) automatically resolves this:
+it detects when running in a worktree, falls back to the main checkout's interpreter
+(`/root/repositories/darkmem/backend/.venv/bin/python`), and prints which interpreter
+it resolved so you cannot silently gate against the wrong tree's code. The same
+fallback applies when you manually run the main checkout's interpreter by absolute path
+*from* your worktree's `backend/` directory, so imports resolve against your code rather
+than the main checkout's. The bench cache below has no such automation — both are gitignored,
+and both fail in ways that look like a code problem rather than a missing file.
 
 **The extraction bench does not work cold.** `scripts/extraction_bench/.cache/` is
 gitignored and machine-local, and `--algo-only` exits non-zero on any uncached content.

@@ -10,6 +10,7 @@ replaced -- so the reproducibility guarantee under test is the one the real
 composition produces, not a lookalike.
 """
 import json
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -105,6 +106,113 @@ def _meta(**overrides) -> dict:
 def test_report_path_is_the_dated_docs_eval_filename():
     p = run_retrieval_eval.report_path(date(2026, 3, 4), report_dir=Path("/tmp/x"))
     assert p == Path("/tmp/x/2026-03-04-retrieval-eval.md")
+
+
+# ── T0.18: refusing to overwrite a ledger-cited report ────────────────────
+
+
+def test_find_ledger_citations_returns_the_matching_line_and_number(tmp_path):
+    ledger_path = tmp_path / "gate-ledger.md"
+    ledger_path.write_text(
+        "line one\n"
+        "cited: `docs/eval/2026-08-07-retrieval-eval.md` (run abc)\n"
+        "line three\n"
+    )
+    hits = run_retrieval_eval.find_ledger_citations(
+        "docs/eval/2026-08-07-retrieval-eval.md", ledger_path,
+    )
+    assert len(hits) == 1
+    assert "gate-ledger.md:2:" in hits[0]
+    assert "2026-08-07-retrieval-eval.md" in hits[0]
+
+
+def test_find_ledger_citations_returns_every_matching_line_not_just_the_first(tmp_path):
+    ledger_path = tmp_path / "gate-ledger.md"
+    ledger_path.write_text(
+        "row A cites `docs/eval/2026-08-07-retrieval-eval.md`\n"
+        "row B ALSO cites `docs/eval/2026-08-07-retrieval-eval.md`\n"
+    )
+    hits = run_retrieval_eval.find_ledger_citations(
+        "docs/eval/2026-08-07-retrieval-eval.md", ledger_path,
+    )
+    assert len(hits) == 2
+
+
+def test_find_ledger_citations_is_empty_when_the_ledger_file_is_missing(tmp_path):
+    assert run_retrieval_eval.find_ledger_citations("x", tmp_path / "nope.md") == []
+
+
+def test_find_ledger_citations_is_empty_for_an_uncited_path(tmp_path):
+    ledger_path = tmp_path / "gate-ledger.md"
+    ledger_path.write_text("cited: `docs/eval/2026-08-06-retrieval-eval.md`\n")
+    assert run_retrieval_eval.find_ledger_citations(
+        "docs/eval/2026-08-07-retrieval-eval.md", ledger_path,
+    ) == []
+
+
+def test_refuse_if_cited_is_a_noop_when_the_report_does_not_exist_yet(tmp_path):
+    """Nothing to protect on a file's first write of the day -- this is the
+    case that must stay cheap, not the one T0.18 targets."""
+    out_path = tmp_path / "docs" / "eval" / "2026-08-07-retrieval-eval.md"
+    ledger_path = tmp_path / "gate-ledger.md"
+    ledger_path.write_text("cited: `docs/eval/2026-08-07-retrieval-eval.md`\n")
+    run_retrieval_eval._refuse_if_cited(out_path, ledger_path)  # must not raise
+
+
+def test_refuse_if_cited_is_out_of_scope_for_a_path_outside_the_repo(tmp_path, monkeypatch):
+    """A scratch report_dir outside REPO_ROOT (a test's tmp_path, in
+    production terms anything not under the checkout) cannot be named by a
+    ledger that cites repo-relative paths -- even a literal string match
+    must not fire, because relative_to() itself refuses first."""
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    monkeypatch.setattr(run_retrieval_eval, "REPO_ROOT", fake_repo)
+
+    outside = tmp_path / "elsewhere" / "2026-08-07-retrieval-eval.md"
+    outside.parent.mkdir(parents=True)
+    outside.write_text("x")
+
+    ledger_path = fake_repo / "docs" / "planning" / "gate-ledger.md"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(str(outside))
+
+    run_retrieval_eval._refuse_if_cited(outside, ledger_path)  # must not raise
+
+
+def test_refuse_if_cited_allows_overwriting_an_uncited_same_date_report(tmp_path, monkeypatch):
+    """Ruling 4 stays intact: a same-day re-run correcting an UNCITED report
+    is untouched by this guard."""
+    monkeypatch.setattr(run_retrieval_eval, "REPO_ROOT", tmp_path)
+    out_path = tmp_path / "docs" / "eval" / "2026-08-07-retrieval-eval.md"
+    out_path.parent.mkdir(parents=True)
+    out_path.write_text("first run")
+
+    ledger_path = tmp_path / "docs" / "planning" / "gate-ledger.md"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text("no citations in this ledger\n")
+
+    run_retrieval_eval._refuse_if_cited(out_path, ledger_path)  # must not raise
+    out_path.write_text("second run")  # the caller's real overwrite
+    assert out_path.read_text() == "second run"
+
+
+def test_refuse_if_cited_raises_and_names_the_ledger_line_for_a_cited_report(tmp_path, monkeypatch):
+    monkeypatch.setattr(run_retrieval_eval, "REPO_ROOT", tmp_path)
+    out_path = tmp_path / "docs" / "eval" / "2026-08-07-retrieval-eval.md"
+    out_path.parent.mkdir(parents=True)
+    out_path.write_text("cleared gate evidence")
+
+    ledger_path = tmp_path / "docs" / "planning" / "gate-ledger.md"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        "| G-Z | CLEARED | `docs/eval/2026-08-07-retrieval-eval.md` |\n"
+    )
+
+    with pytest.raises(RuntimeError, match="gate-ledger.md cites it as"):
+        run_retrieval_eval._refuse_if_cited(out_path, ledger_path)
+
+    # The whole point: the cited file survives untouched.
+    assert out_path.read_text() == "cleared gate evidence"
 
 
 def test_score_summary_excludes_pair_level_detail_but_keeps_every_slice():
@@ -425,6 +533,85 @@ async def test_the_runner_refuses_when_ingest_calls_equal_the_live_pair_count(tm
 
 
 @pytest.mark.asyncio
+async def test_run_eval_refuses_a_cited_report_through_the_real_composition(tmp_path, monkeypatch):
+    """The wiring test, not just the helper: drives run_eval() end to end
+    (stubbed LLM, real DB) against a fake repo whose gate-ledger.md cites
+    today's report path, and proves the refusal happens before either
+    artifact is touched -- the pre-existing report survives byte-for-byte
+    and no JSONL ledger row is appended, same "no partial artifact"
+    guarantee the F1 caveat-kind guard above already gives."""
+    monkeypatch.setattr(run_retrieval_eval, "REPO_ROOT", tmp_path)
+
+    corpus_path, gold_path, entries, pairs = _write_corpus_and_gold(tmp_path / "gold")
+    responder = _answer_fn(pairs)
+
+    def make_orchestrator(config, cache_dir):
+        return _StubTwinLLM(config, cache_dir, answer_fn=responder)
+
+    monkeypatch.setattr(run_retrieval_eval, "TwinningOrchestrator", make_orchestrator)
+
+    report_dir = tmp_path / "docs" / "eval"
+    report_dir.mkdir(parents=True)
+    out_path = report_dir / "2026-01-02-retrieval-eval.md"
+    out_path.write_text("PRE-EXISTING CITED CONTENT")
+
+    gate_ledger_path = tmp_path / "docs" / "planning" / "gate-ledger.md"
+    gate_ledger_path.parent.mkdir(parents=True)
+    gate_ledger_path.write_text(
+        "| G-Z | Phase X -> Y | CLEARED | 2026-01-02 | "
+        "`docs/eval/2026-01-02-retrieval-eval.md` |\n"
+    )
+
+    eval_ledger_path = tmp_path / "eval-ledger.jsonl"
+
+    with pytest.raises(RuntimeError, match="gate-ledger.md cites it"):
+        await run_retrieval_eval.run_eval(
+            deepseek_api_key="sk-not-used-in-test",
+            cache_dir=tmp_path / "cache", corpus_path=corpus_path, gold_path=gold_path,
+            k=1, min_pairs=1, full_context_limit=3,
+            report_dir=report_dir, ledger_path=eval_ledger_path,
+            gate_ledger_path=gate_ledger_path, now=FIXED_DATE,
+        )
+
+    assert out_path.read_text() == "PRE-EXISTING CITED CONTENT"
+    assert not eval_ledger_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_run_eval_still_overwrites_an_uncited_same_date_report(tmp_path, monkeypatch):
+    """The companion positive case: an empty (or non-matching) gate-ledger.md
+    must not block the ordinary same-day correction ruling 4 protects."""
+    monkeypatch.setattr(run_retrieval_eval, "REPO_ROOT", tmp_path)
+
+    corpus_path, gold_path, entries, pairs = _write_corpus_and_gold(tmp_path / "gold")
+    responder = _answer_fn(pairs)
+
+    def make_orchestrator(config, cache_dir):
+        return _StubTwinLLM(config, cache_dir, answer_fn=responder)
+
+    monkeypatch.setattr(run_retrieval_eval, "TwinningOrchestrator", make_orchestrator)
+
+    report_dir = tmp_path / "docs" / "eval"
+    gate_ledger_path = tmp_path / "docs" / "planning" / "gate-ledger.md"
+    gate_ledger_path.parent.mkdir(parents=True)
+    gate_ledger_path.write_text("no citations in this ledger\n")
+    eval_ledger_path = tmp_path / "eval-ledger.jsonl"
+
+    kwargs = dict(
+        deepseek_api_key="sk-not-used-in-test",
+        cache_dir=tmp_path / "cache", corpus_path=corpus_path, gold_path=gold_path,
+        k=1, min_pairs=1, full_context_limit=3,
+        report_dir=report_dir, ledger_path=eval_ledger_path,
+        gate_ledger_path=gate_ledger_path, now=FIXED_DATE,
+    )
+    first = await run_retrieval_eval.run_eval(**kwargs)
+    second = await run_retrieval_eval.run_eval(**kwargs)
+
+    assert first.report_path == second.report_path
+    assert second.report_path.read_text() == second.report_text
+
+
+@pytest.mark.asyncio
 async def test_the_first_run_actually_pays_live_calls(tmp_path, monkeypatch):
     cold, _, _ = await _three_runs(tmp_path, monkeypatch)
     assert cold.meta["total_live_calls"] > 0
@@ -522,3 +709,76 @@ async def test_the_ledger_gains_one_row_per_run_via_the_sanctioned_call(tmp_path
         assert row["timestamp"] == result.meta["timestamp"]
         assert row["git_sha"] == result.meta["git_sha"]
         assert row["fingerprint"] == result.meta["fingerprint"]
+
+
+# ── T2.44: --arm CLI wiring ────────────────────────────────────────────
+
+
+def test_arg_parser_default_has_no_arm():
+    args = run_retrieval_eval._build_arg_parser().parse_args([])
+    assert args.arm is None
+    assert args.weight is None
+
+
+def test_arg_parser_reads_arm_and_weight():
+    args = run_retrieval_eval._build_arg_parser().parse_args(
+        ["--arm", "w_importance", "--weight", "0.3"]
+    )
+    assert args.arm == "w_importance"
+    assert args.weight == 0.3
+
+
+@pytest.mark.asyncio
+async def test_main_dispatches_to_arm_ablation_when_arm_is_given(monkeypatch):
+    from types import SimpleNamespace
+    from benchlib import arm_ablation
+
+    calls = {}
+
+    async def fake_run_arm_ablation(*, arm_flag, weight):
+        calls["arm_flag"] = arm_flag
+        calls["weight"] = weight
+        return SimpleNamespace(
+            report_text="stub report", report_path=Path("/tmp/r.md"),
+            ledger_path=Path("/tmp/l.jsonl"),
+        )
+
+    monkeypatch.setattr(arm_ablation, "run_arm_ablation", fake_run_arm_ablation)
+
+    async def fail_run_eval(*args, **kwargs):
+        raise AssertionError("run_eval() must not run when --arm is given")
+
+    monkeypatch.setattr(run_retrieval_eval, "run_eval", fail_run_eval)
+
+    rc = await run_retrieval_eval.main(["--arm", "w_importance", "--weight", "0.3"])
+    assert rc == 0
+    assert calls == {"arm_flag": "w_importance", "weight": 0.3}
+
+
+@pytest.mark.asyncio
+async def test_main_runs_the_default_full_context_comparison_when_arm_is_absent(monkeypatch):
+    from types import SimpleNamespace
+
+    called = {}
+
+    async def fake_run_eval():
+        called["ran"] = True
+        return SimpleNamespace(
+            report_text="stub report", report_path=Path("/tmp/r.md"),
+            ledger_path=Path("/tmp/l.jsonl"),
+        )
+
+    monkeypatch.setattr(run_retrieval_eval, "run_eval", fake_run_eval)
+
+    rc = await run_retrieval_eval.main([])
+    assert rc == 0
+    assert called == {"ran": True}
+
+
+def test_run_rejects_an_unknown_arm_as_one_readable_line(capsys, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["run_retrieval_eval.py", "--arm", "not-a-real-arm"])
+    rc = run_retrieval_eval._run()
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "run_retrieval_eval.py:" in captured.err
+    assert "unknown --arm" in captured.err

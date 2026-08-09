@@ -17,7 +17,7 @@ from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, events as events_routes, graph, jobs, memories, pipeline as pipeline_routes, pipeline_failures, reembed, repos, setup, system, tags, vectors
+from app.api.routes import analytics, auth, buffer as buffer_routes, chat, code, config, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -25,6 +25,7 @@ from app.services.events import reconcile_event_partitions
 from app.services.llm import LLMOrchestrator
 from app.services.llm_quirks import models_probe
 from app.services.pipeline import ProcessingPipeline
+from app.services.project_registry import backfill as backfill_projects
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,20 @@ async def lifespan(app: FastAPI):
             logger.info("events partitions reconciled: %s", ", ".join(children))
         except Exception:
             logger.exception("Boot-time events partition reconciliation failed")
+
+        # Backfill every DISTINCT memories.project into the registry on every
+        # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
+        # restart with nothing new to backfill inserts zero rows; this is a
+        # reconciliation pass, not a migration, and lazy registration on
+        # capture (project_registry.register) is what keeps it caught up
+        # between boots.
+        try:
+            async with async_session_factory() as session:
+                inserted = await backfill_projects(session)
+                await session.commit()
+            logger.info("projects registry backfilled: %d row(s)", inserted)
+        except Exception:
+            logger.exception("Boot-time projects registry backfill failed")
 
         llm_fp = llm.llm_fingerprint()
         try:
@@ -205,6 +220,35 @@ async def lifespan(app: FastAPI):
         make_graph_orphan_cleanup_runner,
         make_tag_orphan_cleanup_runner,
         make_expired_memory_cleanup_runner,
+        make_ppr_snapshot_runner,
+        make_relation_embedding_runner,
+        make_repo_entity_anchoring_runner,
+        make_repo_entity_merge_runner,
+        make_code_deriver_runner,
+        make_citation_reverify_runner,
+    )
+    from app.services.entity_anchoring import (
+        REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
+        REPO_ENTITY_ANCHORING_JOB_KEY,
+    )
+    from app.services.entity_merge import (
+        REPO_ENTITY_MERGE_CONFIG_SCHEMA,
+        REPO_ENTITY_MERGE_JOB_KEY,
+    )
+    from app.services.citation_reverify import (
+        CITATION_REVERIFY_CONFIG_SCHEMA,
+        CITATION_REVERIFY_CRON,
+        CITATION_REVERIFY_JOB_KEY,
+        CITATION_REVERIFY_MAX_RUN_SECONDS,
+        CITATION_REVERIFY_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.ppr_snapshot import (
+        PPR_SNAPSHOT_CONFIG_SCHEMA,
+        PPR_SNAPSHOT_JOB_KEY,
+    )
+    from app.services.relation_embeddings import (
+        RELATION_EMBEDDING_CONFIG_SCHEMA,
+        RELATION_EMBEDDING_JOB_KEY,
     )
     from app.services.code_reconcile import (
         CODE_RECONCILE_CRON,
@@ -212,6 +256,13 @@ async def lifespan(app: FastAPI):
         CODE_RECONCILE_MAX_RUN_SECONDS,
         CODE_RECONCILE_MIN_INTERVAL_SECONDS,
     )
+    from app.services.code_deriver_job import (
+        CODE_DERIVER_CRON,
+        CODE_DERIVER_JOB_KEY,
+        CODE_DERIVER_MAX_RUN_SECONDS,
+        CODE_DERIVER_MIN_INTERVAL_SECONDS,
+    )
+    from app.services.dream_jobs import register_dream_jobs
 
     job_registry = JobRegistry(async_session_factory)
     job_registry.register(Job(
@@ -271,6 +322,22 @@ async def lifespan(app: FastAPI):
         min_interval_seconds=CODE_RECONCILE_MIN_INTERVAL_SECONDS,
         runner=make_code_reconcile_runner(app, async_session_factory),
         max_run_seconds=CODE_RECONCILE_MAX_RUN_SECONDS,
+    ))
+    job_registry.register(Job(
+        key=CODE_DERIVER_JOB_KEY,
+        display_name="Code Graph Deriver",
+        description=(
+            "Derives each indexed repository's Layer-1 graph assertions from "
+            "its import edges (doc 10 §6) — the repo itself, its external "
+            "dependencies and languages — into entities.repo_ids[] / "
+            "entity_relations.repo_ids[]. Off the reindex path by design: a "
+            "derivation failure here is journaled under its own "
+            "pipeline_name and never fails an index run."
+        ),
+        default_cron=CODE_DERIVER_CRON,
+        min_interval_seconds=CODE_DERIVER_MIN_INTERVAL_SECONDS,
+        runner=make_code_deriver_runner(async_session_factory),
+        max_run_seconds=CODE_DERIVER_MAX_RUN_SECONDS,
     ))
     job_registry.register(Job(
         key="token_blocklist_cleanup",
@@ -339,6 +406,99 @@ async def lifespan(app: FastAPI):
         runner=make_expired_memory_cleanup_runner(async_session_factory),
         max_run_seconds=300,
     ))
+    job_registry.register(Job(
+        key=PPR_SNAPSHOT_JOB_KEY,
+        display_name="PPR Graph Snapshot",
+        description=(
+            "Rebuilds the cached in-process entity-graph snapshot the PPR "
+            "retrieval arm ranks against (doc 07 §4), one rotating batch of "
+            "projects per run. Off the hot path by design: retrieval reads "
+            "the snapshot and can never trigger a build. Leaving this off "
+            "costs nothing while ppr_enabled is off, and starves the arm of "
+            "a snapshot once it is on."
+        ),
+        default_cron="30 * * * *",
+        min_interval_seconds=300,
+        runner=make_ppr_snapshot_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=PPR_SNAPSHOT_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=RELATION_EMBEDDING_JOB_KEY,
+        display_name="Relation Embedding Refresh",
+        description=(
+            "Keeps the relation_embeddings partition current for the "
+            "dual-level retrieval channel (doc 07 §4): embeds relations that "
+            "have no vector under the active embedder, then rotates the "
+            "oldest embedded slice so a renamed entity's stale vector is "
+            "corrected. Off the hot path — never inside capture. Each run "
+            "spends embedding calls, so 0 on either batch disables that arm."
+        ),
+        default_cron="15 * * * *",
+        min_interval_seconds=300,
+        runner=make_relation_embedding_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=RELATION_EMBEDDING_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=REPO_ENTITY_ANCHORING_JOB_KEY,
+        display_name="Repo Entity Anchoring",
+        description=(
+            "Embeds entities a repository asserts but no memory does, so the "
+            "code bridge's dedup probe can see them (doc 10 §6). Without it a "
+            "code-minted 'postgres' and a memory-minted 'postgresql' stay two "
+            "nodes: they only merge on an exact name match. Off the hot path — "
+            "the deriver that mints these rows is LLM-free by design, so the "
+            "embed happens here instead."
+        ),
+        default_cron="45 * * * *",
+        min_interval_seconds=300,
+        runner=make_repo_entity_anchoring_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=REPO_ENTITY_MERGE_JOB_KEY,
+        display_name="Repo Entity Merge",
+        description=(
+            "Fuses a repository-asserted entity with the near-named node a "
+            "memory already minted, at the same 0.85 threshold and under the "
+            "same discriminator Phase 4 uses (doc 10 §6). Anchoring only "
+            "closes the order where the repo is indexed first; a repo indexed "
+            "after its memories — what every existing install produces — "
+            "leaves 'postgres' and 'postgresql' as two nodes forever, because "
+            "the deriver's write is an exact-key upsert with no probe. Off "
+            "the hot path: it merges after the fact, never during capture."
+        ),
+        default_cron="50 * * * *",
+        min_interval_seconds=300,
+        runner=make_repo_entity_merge_runner(app, async_session_factory),
+        max_run_seconds=900,
+        config_schema=REPO_ENTITY_MERGE_CONFIG_SCHEMA,
+    ))
+    job_registry.register(Job(
+        key=CITATION_REVERIFY_JOB_KEY,
+        display_name="Citation Re-verify",
+        description=(
+            "Re-resolves every code citation's recorded symbol_key against "
+            "its repository's current HEAD (doc 10 §6). A citation that no "
+            "longer resolves is marked stale and its fact is queued for the "
+            "verification recompute, which downgrades the badge — never "
+            "expiring the fact, because a deleted symbol may be a rename a "
+            "human should confirm. Leaving this off lets a badge keep "
+            "claiming evidence that no longer exists."
+        ),
+        default_cron=CITATION_REVERIFY_CRON,
+        min_interval_seconds=CITATION_REVERIFY_MIN_INTERVAL_SECONDS,
+        runner=make_citation_reverify_runner(app, async_session_factory),
+        max_run_seconds=CITATION_REVERIFY_MAX_RUN_SECONDS,
+        config_schema=CITATION_REVERIFY_CONFIG_SCHEMA,
+    ))
+
+    # The Tier-C consolidation ("dreaming") family — doc 08 §5. Every member
+    # is a placeholder until its owning task (T2.09-T2.14, T2.53) lands the
+    # real runner; see app/services/dream_jobs.py.
+    register_dream_jobs(job_registry, lambda: getattr(app.state, "llm", None))
 
     # Expose the repo_sync wakeup so PUT /repos/{id} can nudge the loop
     # immediately when a repo's auto_sync flips. The registry owns the
@@ -568,6 +728,14 @@ app.include_router(chat.router)
 app.include_router(repos.router)
 app.include_router(code.router)
 app.include_router(pipeline_failures.router)
+app.include_router(review_queue.router)
+app.include_router(facts_routes.router)
+app.include_router(knowledge_search_routes.router)
+app.include_router(ratification_routes.router)
+app.include_router(overview_routes.router)
+app.include_router(topics_routes.router)
+app.include_router(hygiene_queue.router)
+app.include_router(dream_digest_routes.router)
 app.include_router(events_routes.router)
 app.include_router(buffer_routes.router)
 app.include_router(reembed.router)

@@ -45,6 +45,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
+# Named rather than spelled twice, because two modules that may not import each
+# other both depend on it meaning the same thing: the Tier-C contradiction scan
+# writes it and the veto reads it back. The vocabulary is the neutral ground
+# they share.
+CONTRADICTION_SCANNED = "contradiction_scanned"
+
+# A human's dismissal of the model scan's flag (T2.112). **Deliberately its own
+# type rather than a `human_verdict` carrying a fifth verdict value**, which is
+# the shape `human_adjudication` argues for and is right for its own case.
+# `HUMAN_VERDICTS` is doc 08 §6's four verbs and all four adjudicate *the fact*
+# — its truth, its grounding, its rung. A dismissal adjudicates the **finding**;
+# the fact is left exactly as it was. Adding `dismissed` there would make it a
+# legal verdict to record against any fact, which means nothing, and that set is
+# closed and raise-guarded precisely so unmeaning verdicts cannot exist.
+#
+# It also creates a signal rather than destroying one: a dismissal is a measured
+# false positive of the LLM contradiction scan on live data — the evidence a
+# later re-qualification of that arm would want, and the only such evidence this
+# system produces outside a gold set.
+CONTRADICTION_DISMISSED = "contradiction_dismissed"
+
+# Doc 10 §6's re-verify outcome. Named rather than spelled twice for the reason
+# above: the re-verifier writes it and a human reading a downgraded badge is
+# what reads it back, and the two only meet through this vocabulary. It is
+# deliberately its own type rather than a second `sources_changed`: that one
+# says a fact's evidence moved and is the recompute's queue, while this one says
+# *why* a particular citation stopped resolving — the address, the sha it broke
+# at — which is the record invariant 14 requires a silent-looking demotion to
+# leave behind.
+CITATION_STALE = "citation_stale"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -55,22 +86,42 @@ EVENT_TYPES: list[str] = [
     "superseded",
     "deprecated",
     "expired",
+    "invalidated",
     "extracted",
     "consolidated",
+    "merged",
     "verified",
     "sources_changed",
+    CITATION_STALE,
+    CONTRADICTION_SCANNED,
+    CONTRADICTION_DISMISSED,
     "document_filed",
     "repo_registered",
     "repo_synced",
     "repo_indexed",
     "inject",
     "inject_curbed",
-    "setup_completed",
+    # "setup_completed" carried a spelling drift against the literal
+    # `setup.py` actually journals ("setup_complete", no trailing "d") —
+    # found by T2.102, fixed by T2.103. The vocabulary is corrected to
+    # match the emitted value rather than the other way around: changing
+    # the emitted literal would be a behaviour change to what the audit
+    # trail records, and existing rows already carry the "setup_complete"
+    # spelling.
+    "setup_complete",
+    "auth_setup",
+    "auth_login_success",
+    "auth_login_failed",
+    "auth_logout",
+    "auth_password_change",
     "auth_lockout",
     "repo_hint_rejected",
     "buffer_requeued",
     "buffer_discarded",
     "maintenance_run",
+    "human_verdict",
+    "pin_decision",
+    "undone",
 ]
 
 OBJECT_TYPES: list[str] = [
@@ -107,8 +158,8 @@ async def record_event(
     api_key_id: uuid.UUID | None = None,
     source: str | None = None,
     payload: dict | None = None,
-) -> None:
-    """Append one row to the durable events journal.
+) -> bool:
+    """Append one row to the durable events journal. Returns whether it landed.
 
     Never raises. Journaling is a side-channel to the operation it records —
     a capture, an extraction pass, a supersession flip — so a broken
@@ -118,6 +169,20 @@ async def record_event(
     missing partition) rolls back only the journal write, leaving the
     caller's own transaction exactly as usable as if this call had never
     happened.
+
+    **The return value exists because that contract is right for most callers
+    and wrong for a few** (T2.113). A capture must survive a journal failure;
+    a *verification transition* must not, because doc 17 §5.1's metrics are SQL
+    over this table alone, so a status change whose row never landed is not a
+    lost log line — it is a transition that silently leaves the denominator,
+    and under-power announces itself where this does not. Raising here instead
+    would impose the strict contract on every caller and take down capture with
+    the journal; returning the signal lets each caller answer for itself, and
+    the callers that ignore it behave exactly as before.
+
+    ``False`` means the row is not there: the SAVEPOINT rolled it back, so a
+    caller that treats this as fatal is refusing an operation that genuinely
+    has no audit record, not one that might.
     """
     if event_type not in _EVENT_TYPE_SET:
         logger.warning(
@@ -153,6 +218,8 @@ async def record_event(
             event_type, object_type, object_id,
             exc_info=True,
         )
+        return False
+    return True
 
 
 async def record_maintenance_run(
@@ -337,12 +404,23 @@ async def object_timeline(
     project: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    newest_first: bool = False,
 ) -> tuple[list[dict], int]:
-    """One object's full history, oldest-to-newest.
+    """One object's history, `limit`+`offset` bounded.
 
     `object_type = ... AND object_id = ...` are the two leading columns of
-    `ix_events_object`, and the ASC order matches the index's own
-    `created_at` order exactly, so the planner needs no extra sort.
+    `ix_events_object`; both orderings below sort by the index's own
+    `created_at` column (ascending or the same index scanned backward), so
+    the planner needs no extra sort either way.
+
+    Default is oldest-to-newest, the shape `GET /events/timeline` pages
+    forward through with `offset` — flipping that default would change what
+    every existing offset means for that door. `newest_first=True` orders
+    `created_at DESC, id DESC` instead, for a caller that wants the most
+    recent slice of a capped, unpaginated history (the fact detail ladder,
+    T2.86 fix round) without disturbing the ascending contract above — the
+    returned slice is in descending order and it is the caller's job to
+    reverse it if a chronological display is wanted.
 
     Accepted limitation (doc 04 §8.1): bigint-keyed code-graph objects carry
     their key in `payload`, not `object_id`, so their timelines are not
@@ -360,10 +438,11 @@ async def object_timeline(
         params["project"] = project
     where_sql = " AND ".join(where_parts)
 
+    order_dir = "DESC" if newest_first else "ASC"
     items_sql = (
         f"SELECT {_EVENT_COLUMNS} FROM events "
         f"WHERE {where_sql} "
-        "ORDER BY created_at ASC, id ASC "
+        f"ORDER BY created_at {order_dir}, id {order_dir} "
         "LIMIT :limit OFFSET :offset"
     )
     result = await session.execute(text(items_sql), params)

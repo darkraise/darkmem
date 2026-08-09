@@ -68,34 +68,48 @@ class SuffixIndex:
         logger.debug("Ambiguous suffix matches: %s", unique)
         return None
 
+    def _candidates(self, import_source: str) -> list[str]:
+        source = import_source.replace("\\", "/")
+
+        # Try exact match first
+        if source in self._exact:
+            return self._exact[source]
+
+        # Try with extensions
+        for ext in self._EXTENSIONS:
+            candidate = source + ext
+            if candidate in self._exact:
+                return self._exact[candidate]
+
+        # Case-insensitive fallback
+        lower = source.lower()
+        if lower in self._lower:
+            return self._lower[lower]
+        for ext in self._EXTENSIONS:
+            candidate = lower + ext
+            if candidate in self._lower:
+                return self._lower[candidate]
+
+        return []
+
     def lookup(self, import_source: str) -> str | None:
         """Resolve an import source to a file path.
 
         Returns None if not found or if the suffix is ambiguous (multiple files
         share the same suffix — callers should fall back to full-path resolution).
         """
-        source = import_source.replace("\\", "/")
+        candidates = self._candidates(import_source)
+        return self._resolve_list(candidates) if candidates else None
 
-        # Try exact match first
-        if source in self._exact:
-            return self._resolve_list(self._exact[source])
+    def matches(self, import_source: str) -> bool:
+        """Whether any indexed file could be this import's target.
 
-        # Try with extensions
-        for ext in self._EXTENSIONS:
-            candidate = source + ext
-            if candidate in self._exact:
-                return self._resolve_list(self._exact[candidate])
-
-        # Case-insensitive fallback
-        lower = source.lower()
-        if lower in self._lower:
-            return self._resolve_list(self._lower[lower])
-        for ext in self._EXTENSIONS:
-            candidate = lower + ext
-            if candidate in self._lower:
-                return self._resolve_list(self._lower[candidate])
-
-        return None
+        Unlike :meth:`lookup`, an ambiguous suffix still counts. A caller
+        asking "is this import internal to the repository?" needs only the
+        existence of a candidate, and treating an ambiguous match as "not
+        found" would misread a repo-local module as a third-party one.
+        """
+        return bool(self._candidates(import_source))
 
     def list_dir(self, dir_source: str) -> list[str]:
         """List files in a directory matching the suffix."""

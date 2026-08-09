@@ -24,10 +24,11 @@ LLM_CONFIG_KEY = "llm_config"
 LLM_PROVIDERS_KEY = "llm_providers"
 LLM_PROFILES_KEY = "llm_profiles"
 
-# The six live purposes plus the two Tier-C purposes seeded inert by T1.05.
-# Resolvable, but no consumer dispatches on synthesis (T3.02) or
-# verification (T2.26) yet — doc 11 §6 requires the rows and this sweep to
-# land before any consumer reaches them.
+# The six live purposes plus the two Tier-C purposes seeded by T1.05.
+# `verification`'s first writer landed in T2.26: the qualification-gated
+# judge service is the only lawful dispatcher, scan-pinned by the judge's
+# own test suite; `synthesis` stays inert until T3.02. Doc 11 §6 requires
+# the rows and this sweep to land before any consumer reaches them.
 PURPOSES = [
     "embedding", "extraction", "classification", "reasoning",
     "summarization", "reranker", "synthesis", "verification",

@@ -1,0 +1,476 @@
+{
+  "model": "gpt-5.5",
+  "host": "api.openai.com",
+  "date": "2026-08-08",
+  "params": {
+    "seed": 20260808,
+    "reasoning_effort": "high"
+  },
+  "verdicts": {
+    "eg-0062": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0035": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0136": {
+      "verdict": "unsupported",
+      "rule": "Use only the premise",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Use only the premise\"}"
+    },
+    "eg-0091": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (DEPLOYED_ON exclusive case)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (DEPLOYED_ON exclusive case)\"}"
+    },
+    "eg-0051": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0033": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0052": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule\"}"
+    },
+    "eg-0058": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (exclusive IMPROVES_ON)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (exclusive IMPROVES_ON)\"}"
+    },
+    "eg-0003": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0189": {
+      "verdict": "unsupported",
+      "rule": "Reversal rule (USES non-exclusive)",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Reversal rule (USES non-exclusive)\"}"
+    },
+    "eg-0158": {
+      "verdict": "unsupported",
+      "rule": "Contradiction requires exclusion, not absence",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Contradiction requires exclusion, not absence\"}"
+    },
+    "eg-0161": {
+      "verdict": "unsupported",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0084": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0175": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0048": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0202": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0059": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0144": {
+      "verdict": "unsupported",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0162": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (REPLACES exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (REPLACES exclusive)\"}"
+    },
+    "eg-0149": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0022": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule\"}"
+    },
+    "eg-0086": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording and weakening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording and weakening\"}"
+    },
+    "eg-0024": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule\"}"
+    },
+    "eg-0083": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0016": {
+      "verdict": "entailed",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0146": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0187": {
+      "verdict": "unsupported",
+      "rule": "Score the whole hypothesis",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Score the whole hypothesis\"}"
+    },
+    "eg-0120": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0090": {
+      "verdict": "unsupported",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0017": {
+      "verdict": "entailed",
+      "rule": "Open-window rule",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Open-window rule\"}"
+    },
+    "eg-0163": {
+      "verdict": "unsupported",
+      "rule": "Reversal rule (CAUSES non-exclusive)",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Reversal rule (CAUSES non-exclusive)\"}"
+    },
+    "eg-0013": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0154": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0034": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0177": {
+      "verdict": "unsupported",
+      "rule": "Reversal rule (USES non-exclusive)",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Reversal rule (USES non-exclusive)\"}"
+    },
+    "eg-0201": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0061": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0109": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0170": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0147": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0239": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0208": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0026": {
+      "verdict": "contradicted",
+      "rule": "Contradiction requires exclusion, not absence",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Contradiction requires exclusion, not absence\"}"
+    },
+    "eg-0066": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0217": {
+      "verdict": "unsupported",
+      "rule": "Implicature-is-not-contradiction rule",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Implicature-is-not-contradiction rule\"}"
+    },
+    "eg-0036": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0214": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0098": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0205": {
+      "verdict": "unsupported",
+      "rule": "Contradiction requires exclusion, not absence",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Contradiction requires exclusion, not absence\"}"
+    },
+    "eg-0123": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0117": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0216": {
+      "verdict": "unsupported",
+      "rule": "Evaluation-time rule",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Evaluation-time rule\"}"
+    },
+    "eg-0188": {
+      "verdict": "unsupported",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0132": {
+      "verdict": "entailed",
+      "rule": "entailed by REPLACES semantics",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"entailed by REPLACES semantics\"}"
+    },
+    "eg-0236": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0111": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0150": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule\"}"
+    },
+    "eg-0088": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0179": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (exclusive HAS_PART)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (exclusive HAS_PART)\"}"
+    },
+    "eg-0145": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0237": {
+      "verdict": "unsupported",
+      "rule": "Evaluation-time rule",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Evaluation-time rule\"}"
+    },
+    "eg-0053": {
+      "verdict": "unsupported",
+      "rule": "Use only the premise",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Use only the premise\"}"
+    },
+    "eg-0037": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0222": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0128": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0225": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0139": {
+      "verdict": "entailed",
+      "rule": "weakening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"weakening\"}"
+    },
+    "eg-0077": {
+      "verdict": "entailed",
+      "rule": "direct assertion",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"direct assertion\"}"
+    },
+    "eg-0018": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0119": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0142": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0172": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0232": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0057": {
+      "verdict": "unsupported",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0197": {
+      "verdict": "entailed",
+      "rule": "rewording/weakening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording/weakening\"}"
+    },
+    "eg-0110": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0055": {
+      "verdict": "entailed",
+      "rule": "weakening/rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"weakening/rewording\"}"
+    },
+    "eg-0157": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0160": {
+      "verdict": "unsupported",
+      "rule": "Contradiction requires exclusion, not absence",
+      "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Contradiction requires exclusion, not absence\"}"
+    },
+    "eg-0228": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0079": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0005": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording, never strengthening",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+    },
+    "eg-0218": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Window rule\"}"
+    },
+    "eg-0194": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (REPLACES exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (REPLACES exclusive)\"}"
+    },
+    "eg-0176": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0181": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0010": {
+      "verdict": "entailed",
+      "rule": "Entailment tolerates rewording",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording\"}"
+    },
+    "eg-0093": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (HAS_PART exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (HAS_PART exclusive)\"}"
+    },
+    "eg-0164": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0155": {
+      "verdict": "contradicted",
+      "rule": "Reversal rule (HAS_PART exclusive)",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (HAS_PART exclusive)\"}"
+    },
+    "eg-0193": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Exclusive-slot rule\"}"
+    },
+    "eg-0087": {
+      "verdict": "entailed",
+      "rule": "existential generalization",
+      "raw": "{\"verdict\":\"entailed\",\"rule\":\"existential generalization\"}"
+    },
+    "eg-0019": {
+      "verdict": "contradicted",
+      "rule": "Contradiction requires exclusion, not absence",
+      "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Contradiction requires exclusion, not absence\"}"
+    }
+  }
+}

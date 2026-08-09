@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 describe("LLMTab", () => {
-  it("renders the six live purpose cards and no provider/profile chrome", () => {
+  it("renders the seven writable purpose cards and no provider/profile chrome", () => {
     renderTab()
     for (const purpose of [
       "embedding",
@@ -33,6 +33,9 @@ describe("LLMTab", () => {
       "summarization",
       "reranker",
       "reasoning",
+      // Seeded inert (no consumer until T3.02) but writable since T2.106 —
+      // rendered as a normal editable card, not a Tier-C read-only one.
+      "synthesis",
     ]) {
       expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
     }
@@ -41,14 +44,53 @@ describe("LLMTab", () => {
     expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
   })
 
-  it("renders the two inert Tier-C purposes, clearly labelled and never omitted", () => {
+  it("renders the one remaining Tier-C purpose, clearly labelled and never omitted", () => {
     renderTab()
-    for (const purpose of ["synthesis", "verification"]) {
-      expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
+    expect(screen.getAllByText("verification").length).toBeGreaterThan(0)
+    // verification is live and dispatched (T2.26) and stays read-only here
+    // by deliberate T2.106 ruling, not a pending write-wire gap.
+    expect(screen.getByText("tier c · live")).toBeInTheDocument()
+    expect(screen.getByText(/qualification record is G-D's gate evidence/)).toBeInTheDocument()
+    expect(screen.queryByText("tier c · inert")).not.toBeInTheDocument()
+  })
+
+  it("does not render synthesis as a Tier-C read-only card", () => {
+    renderTab()
+    // Only one Tier-C card left (verification); synthesis has its own
+    // full editable card among the seven live purposes above.
+    expect(screen.queryByText(/no consumer yet — activates with/)).not.toBeInTheDocument()
+  })
+
+  it("synthesis is a fully editable card that saves through the normal wire", () => {
+    renderTab()
+    const input = screen.getByLabelText("synthesis model")
+    expect(input).not.toBeDisabled()
+    fireEvent.change(input, { target: { value: "qwen2.5:7b" } })
+    const saves = screen.getAllByRole("button", { name: "Save" })
+    const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
+    expect(enabled).toBeDefined()
+    fireEvent.click(enabled!)
+    expect(
+      screen.getByText(/Saved — synthesis purpose updated/),
+    ).toBeInTheDocument()
+  })
+
+  it("verification carries no editable inputs and no Save button", () => {
+    renderTab()
+    // `verification` has no `${purpose} model`-style aria-label because
+    // TierCPurposeCard never wires one — only the editable PurposeCard does.
+    expect(screen.queryByLabelText("verification model")).not.toBeInTheDocument()
+
+    const card = screen.getByText("verification").closest(".border-dashed")
+    expect(card).not.toBeNull()
+    const inputs = within(card as HTMLElement).getAllByRole("textbox")
+    expect(inputs.length).toBeGreaterThan(0)
+    for (const input of inputs) {
+      expect(input).toBeDisabled()
     }
-    expect(screen.getAllByText("inert").length).toBe(2)
-    expect(screen.getByText(/T3\.02/)).toBeInTheDocument()
-    expect(screen.getByText(/T2\.26/)).toBeInTheDocument()
+    expect(
+      within(card as HTMLElement).queryByRole("button", { name: "Save" }),
+    ).not.toBeInTheDocument()
   })
 
   it("carries dimensions only on embedding", () => {

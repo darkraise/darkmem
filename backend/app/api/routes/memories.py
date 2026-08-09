@@ -190,6 +190,29 @@ async def delete_memory(
     _user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
+    """Delete a memory row. **This is not a content purge** (T2.59, ruled
+    2026-08-06: accept and document).
+
+    The row goes, and so do its embeddings, its tags and its graph
+    contributions. Content *derived from* it survives by design, because the
+    journal is append-only and the consolidation record would otherwise
+    describe a history that did not happen:
+
+    - `events` payloads keep previews and full refine summaries
+      (`consolidated`, `undone`, `verified` counterpart triples);
+    - `knowledge_triples.fact` keeps the lifted sentence — retained by design,
+      since a fact outlives any one memory that asserted it;
+    - `messages.context` keeps citation snippets, and cited fact rows untrimmed;
+    - `memory_buffer` keeps raw content on `done` rows for
+      `buffer_done_retention_hours` (default 24, configurable).
+
+    Two existing remedies are real and worth naming: deleting a conversation
+    cascades its snippets and prose, and the buffer bound is a config row.
+    For a pasted secret — the one genuinely dangerous residue — the answer is
+    the operator break-glass procedure in `docs/runbook-content-purge.md`, not
+    an in-app path: giving the application a journal-rewriting code path would
+    cost more than the residue it removes.
+    """
     if not await service.delete_memory(memory_id, api_key_id=None):
         raise HTTPException(status_code=404, detail="Memory not found")
 

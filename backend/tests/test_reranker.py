@@ -12,10 +12,11 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 from app.config import LLMPurposeConfig
 from app.services.llm import LLMOrchestrator
-from app.services.reranker import RerankerService
+from app.services.reranker import RERANK_FAILURE_SENTINEL, RerankerService, _resolve_document_text
 
 
 def _make_reranker(keyword: str) -> RerankerService:
@@ -124,3 +125,116 @@ async def test_unscored_tail_is_appended_after_the_scored_head_reorders():
 
     assert reranked[0]["memory_id"] == "h20"
     assert [d["memory_id"] for d in reranked[40:]] == list(_TAIL_ORDER)
+
+
+# ── T2.69: the producer's text contract, and the ask-vs-failed sentinel ──
+
+
+def _always_200(score: int = 5):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps({"score": score})}}]},
+        )
+    return handler
+
+
+def _make_reranker_with_handler(handler) -> RerankerService:
+    config = {
+        "reasoning": LLMPurposeConfig(base_url="http://mock", model="test"),
+        "reranker": LLMPurposeConfig(base_url="http://mock", model="test"),
+    }
+    llm = LLMOrchestrator(config)
+    llm._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return RerankerService(llm)
+
+
+def test_resolve_document_text_reads_the_closed_set_of_known_shapes():
+    assert _resolve_document_text({"content": "x"}, "content") == "x"
+    assert _resolve_document_text({"payload": {"content": "y"}}, "content") == "y"
+    assert _resolve_document_text({"chunk_content": "z"}, "content") == "z"
+    assert _resolve_document_text({"payload": {"chunk_content": "w"}}, "content") == "w"
+
+
+def test_resolve_document_text_raises_on_an_unresolvable_document():
+    """A ``knowledge_triples`` row's text lives under ``fact`` — none of the
+    reranker's declared fields reach it. On unmodified code (pre-T2.69) this
+    silently fell through to "" and scored a real number against an empty
+    document; the fixed contract refuses instead."""
+    fact_row = {"fact": "postgres stores vectors", "subject_name": "postgres"}
+    with pytest.raises(ValueError):
+        _resolve_document_text(fact_row, "content")
+
+
+async def test_an_unresolvable_document_refuses_the_whole_rerank_call_loudly():
+    """R3: drive a knowledge_triples-shaped row through rerank() itself (not
+    just the resolver) and show the *service* refuses it — never a scored
+    row, and not silently swallowed into the "reranker failed, return
+    original order" degradation path either."""
+    svc = _make_reranker_with_handler(_always_200())
+    docs = [
+        {"memory_id": "a", "payload": {"content": "a real memory"}},
+        {"memory_id": "b", "fact": "a fact with no declared text field"},
+    ]
+    with pytest.raises(ValueError):
+        await svc.rerank("q", docs, top_k=2)
+
+
+async def test_a_single_failed_document_is_distinguishable_from_a_genuine_low_score():
+    """One document's LLM call errors (a 500); the rest score normally. The
+    failed document must not collapse into the same 0.0 a genuine worst-rated
+    document gets, and the window must report how many documents failed."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        document = body["messages"][-1]["content"]
+        if "BAD-DOC" in document:
+            return httpx.Response(500, text="upstream error")
+        score = 0 if "WORST-DOC" in document else 7
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": json.dumps({"score": score})}}]},
+        )
+
+    svc = _make_reranker_with_handler(handler)
+    docs = [
+        {"memory_id": "good", "payload": {"content": "GOOD-DOC relevant text"}},
+        {"memory_id": "worst", "payload": {"content": "WORST-DOC irrelevant text"}},
+        {"memory_id": "failed", "payload": {"content": "BAD-DOC text"}},
+    ]
+
+    reranked = await svc.rerank("q", docs, top_k=3)
+    by_id = {d["memory_id"]: d for d in reranked}
+
+    assert by_id["failed"]["rerank_failed"] is True
+    assert by_id["failed"]["rerank_score"] == RERANK_FAILURE_SENTINEL
+    assert by_id["worst"]["rerank_failed"] is False
+    assert by_id["worst"]["rerank_score"] == 0.0
+    assert by_id["good"]["rerank_failed"] is False
+    assert by_id["good"]["rerank_score"] > 0.0
+
+    # Countable within the window, not just visible on one row.
+    assert sum(1 for d in reranked if d["rerank_failed"]) == 1
+
+    # R4: the failed document must never rank above (or tie-interleave with)
+    # a document the model genuinely rated worst — "asked and failed" carries
+    # less information than "asked and rated 0", so it sorts strictly below.
+    assert [d["memory_id"] for d in reranked] == ["good", "worst", "failed"]
+
+
+async def test_a_total_outage_still_reports_all_zero_for_the_all_zero_guard():
+    """Every document in the window fails to score. T2.43's downstream
+    all-zero guard (``layer_composition.derive_rerank_scores``) depends on
+    every ``rerank_score`` reading exactly 0.0 in this case to recognise "no
+    usable signal" — that numeric shape must survive unchanged; only the new
+    ``rerank_failed`` flag is additive."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="upstream down")
+
+    svc = _make_reranker_with_handler(handler)
+    docs = [
+        {"memory_id": "a", "payload": {"content": "doc a"}},
+        {"memory_id": "b", "payload": {"content": "doc b"}},
+    ]
+
+    reranked = await svc.rerank("q", docs, top_k=2)
+
+    assert all(d["rerank_score"] == 0.0 for d in reranked)
+    assert all(d["rerank_failed"] is True for d in reranked)

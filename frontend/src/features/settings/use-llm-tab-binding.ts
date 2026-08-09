@@ -13,12 +13,14 @@ import {
   useUpdateLlmConfig,
   type LlmPurposeConfig,
 } from "@/hooks/api"
+import { TIER_C_LLM_PURPOSES, type TierCLLMPurpose } from "./llm-tier-c-purposes"
 
-/** Documentation copy for the six live purposes in real (non-demo) mode.
- *  Connection fields (model/api_kind/base_url/...) come from the API; this
- *  is only the descriptive text the demo fixture also carries, kept short
- *  here rather than imported from the demo module (real code should not
- *  depend on `@/demo/**` fixture data). */
+/** Documentation copy for the seven writable purposes in real (non-demo)
+ *  mode — the six always-live ones plus `synthesis` (T2.106). Connection
+ *  fields (model/api_kind/base_url/...) come from the API; this is only the
+ *  descriptive text the demo fixture also carries, kept short here rather
+ *  than imported from the demo module (real code should not depend on
+ *  `@/demo/**` fixture data). */
 const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> = {
   embedding: {
     tier: "tier A / B / C",
@@ -44,11 +46,37 @@ const LIVE_PURPOSE_META: Record<LLMPurposeName, { tier: string; role: string }> 
     tier: "tier A",
     role: "retrieval rerank scoring, top-40 RRF rows, flag-gated",
   },
+  // T2.106: promoted out of the Tier-C read-only list. Seeded inert (no
+  // consumer until T3.02, doc 11 §6) but writable — a mis-set connection
+  // here fails the day article synthesis finally dispatches on it, not
+  // before, and nothing today reads this row.
+  synthesis: {
+    tier: "tier C",
+    role: "Layer-3 article write-ups, auto-research write-ups — no consumer yet (T3.02)",
+  },
 }
 
 const LIVE_PURPOSES = Object.keys(LIVE_PURPOSE_META) as Array<
   keyof typeof LIVE_PURPOSE_META
 >
+
+export interface TierCPurposeView extends TierCLLMPurpose {
+  model: string
+  api_kind: string
+}
+
+/** Demo mode has no backend row for the one remaining Tier-C purpose (the
+ *  demo store's `CURATED_LLM_PURPOSES` fixture covers the seven writable
+ *  ones, `synthesis` included since T2.106), so this is a small demo-only
+ *  display fixture — not a mirror of backend truth the way the retired
+ *  hardcoded constant was, just the same kind of placeholder every other
+ *  demo fixture in this tab already is. */
+const DEMO_TIER_C_CONNECTION: Record<
+  TierCLLMPurpose["purpose"],
+  { model: string; api_kind: string }
+> = {
+  verification: { model: "qwen2.5:3b", api_kind: "ollama" },
+}
 
 function toDemoPurpose(
   purpose: keyof typeof LIVE_PURPOSE_META,
@@ -85,6 +113,9 @@ function toWirePatch(
 
 export interface LLMTabBinding {
   purposes: DemoLLMPurpose[]
+  /** The one remaining Tier-C purpose, read-only (see
+   *  llm-tier-c-purposes.ts). `synthesis` moved into `purposes` above. */
+  tierCPurposes: TierCPurposeView[]
   classifierKind: "llm" | "local"
   /** null = not live-bound in this mode (real mode has no buckets endpoint
    *  yet — there is no backend table for these, demo or otherwise). */
@@ -121,6 +152,10 @@ export function useLLMTabBinding(): LLMTabBinding {
   if (DEMO) {
     return {
       purposes: demo.purposes,
+      tierCPurposes: TIER_C_LLM_PURPOSES.map((p) => ({
+        ...p,
+        ...DEMO_TIER_C_CONNECTION[p.purpose],
+      })),
       classifierKind: demo.classifier_kind,
       buckets: demo.buckets,
       lastSave: demo.last_save,
@@ -136,9 +171,22 @@ export function useLLMTabBinding(): LLMTabBinding {
   const classifierKind =
     (query.data?.classification?.classifier_kind as "llm" | "local" | null) ??
     "llm"
+  // Real config once loaded; the demo-fixture connection values as a
+  // placeholder while the query is still in flight, so the card never
+  // renders blank fields during the initial load.
+  const tierCPurposes: TierCPurposeView[] = TIER_C_LLM_PURPOSES.map((p) => {
+    const cfg = query.data?.[p.purpose]
+    const fallback = DEMO_TIER_C_CONNECTION[p.purpose]
+    return {
+      ...p,
+      model: cfg?.model ?? fallback.model,
+      api_kind: cfg?.api_kind ?? fallback.api_kind,
+    }
+  })
 
   return {
     purposes,
+    tierCPurposes,
     classifierKind,
     buckets: null,
     lastSave: realLastSave,

@@ -138,6 +138,51 @@ EXPECTED_STATUS = {
     # correct today; DELETE-as-cancel is the thing left for a coordinated
     # client update, not the status code.
     ("DELETE", "/api/v1/repos/{repo_id}/tasks/{task_id}"): 200,
+    # T2.13. Both undo doors are 200-with-a-body rather than 204: the digest
+    # re-renders from the response, and a 204 would leave the UI nothing to
+    # mark the undone actions with.
+    ("GET", "/api/v1/dream-digest/cycles"): 200,
+    ("GET", "/api/v1/dream-digest/cycles/{cycle_id}"): 200,
+    ("POST", "/api/v1/dream-digest/actions/{event_id}/undo"): 200,
+    ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
+    ("GET", "/api/v1/knowledge/facts"): 200,
+    ("GET", "/api/v1/knowledge/facts/{fact_id}"): 200,
+    # A human adjudication verb, the same shape as review-queue's reject: 204,
+    # so the verb serves no memory-derived content and never becomes a content
+    # surface. 201 would claim a resource was minted at a new location and
+    # oblige a Location header pointing at one.
+    ("POST", "/api/v1/knowledge/facts/{fact_id}/ratify"): 204,
+    ("GET", "/api/v1/knowledge/overview"): 200,
+    ("GET", "/api/v1/knowledge/topics"): 200,
+    ("GET", "/api/v1/knowledge/topics/{label}"): 200,
+    ("GET", "/api/v1/knowledge/topics/pin-suggestions"): 200,
+    # Accept/dismiss are adjudication verbs, the same shape as ratify/reject:
+    # 204, no memory-derived content on the response.
+    ("POST", "/api/v1/knowledge/topics/pin-suggestions/accept"): 204,
+    ("POST", "/api/v1/knowledge/topics/pin-suggestions/dismiss"): 204,
+    # The composed read: a computation over a complex body, which the
+    # conventions doc puts on POST .../search and answers 200. It mints
+    # nothing, so 201 would be a lie about a resource; the query is too rich
+    # for a GET query string, which is the whole reason the pattern exists.
+    ("POST", "/api/v1/knowledge/search"): 200,
+    ("GET", "/api/v1/review-queue/articles"): 200,
+    ("GET", "/api/v1/review-queue/counts"): 200,
+    ("GET", "/api/v1/review-queue/facts"): 200,
+    ("POST", "/api/v1/review-queue/facts/{fact_id}/reject"): 204,
+    # 204 for `/reject`'s reason: the dismissal moves no served state, so
+    # there is no post-state worth echoing (T2.112).
+    ("POST", "/api/v1/review-queue/facts/{fact_id}/dismiss-suspicion"): 204,
+    # T2.23. Bulk actions are 200-with-a-body for the same reason the T2.13
+    # undo doors are: every item's own outcome (including a refusal) is the
+    # point of the response, and a 204 would give the caller nothing to act on.
+    ("GET", "/api/v1/hygiene-queue/duplicates"): 200,
+    ("GET", "/api/v1/hygiene-queue/low-confidence"): 200,
+    ("GET", "/api/v1/hygiene-queue/expiring-soon"): 200,
+    ("GET", "/api/v1/hygiene-queue/superseded"): 200,
+    ("GET", "/api/v1/hygiene-queue/counts"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/supersede"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/prune"): 200,
+    ("POST", "/api/v1/hygiene-queue/bulk/confirm-dedup"): 200,
     ("POST", "/api/v1/setup"): 200,
     ("GET", "/api/v1/setup/fs/list"): 200,
     ("GET", "/api/v1/setup/fs/roots"): 200,
@@ -377,6 +422,13 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
         "/api/v1/pipeline-failures",
         "/api/v1/code/symbols",
         "/api/v1/auth/audit",
+        "/api/v1/review-queue/facts",
+        "/api/v1/review-queue/articles",
+        "/api/v1/knowledge/facts",
+        "/api/v1/hygiene-queue/duplicates",
+        "/api/v1/hygiene-queue/low-confidence",
+        "/api/v1/hygiene-queue/expiring-soon",
+        "/api/v1/hygiene-queue/superseded",
     ]
     for path in paginated_gets:
         response = await client.get(path, headers=auth_headers)

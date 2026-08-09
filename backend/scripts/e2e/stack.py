@@ -16,6 +16,11 @@ any e2e assertion can run:
    fresh database has no ``admin_password_hash`` row, so
    ``require_uninitialized`` passes and this succeeds with no LLM
    configuration at all (doc: T1.64 plan §2.1).
+5. When ``seed_facts=True`` (T2.90), seed one real Layer-2 fact through
+   ``seed_facts.seed_fact_fixture`` — see that module's docstring for why
+   this is a direct-DB write against the just-reset e2e database rather
+   than an HTTP call: the Facts surface has no write door on purpose, and
+   this is not one either.
 
 Run directly for the manual, disposable-Playwright recipe (T1.64 plan §2.2):
 
@@ -52,6 +57,7 @@ import httpx  # noqa: E402
 # Overrides DATABASE_URL as a side effect of import — must happen before any
 # app.* import anywhere in this process.
 from e2e import e2e_db  # noqa: E402,F401  (ensures DATABASE_URL override first)
+from e2e.seed_facts import SeededFact, seed_fact_fixture  # noqa: E402
 
 ENV_FILE = HERE / ".env-e2e"
 
@@ -65,6 +71,7 @@ class StackHandle:
     process: subprocess.Popen
     base_url: str
     password: str
+    seeded_fact: SeededFact | None = None
 
     def teardown(self) -> None:
         """Kill the whole process group: TERM, a grace period, then KILL.
@@ -127,8 +134,17 @@ def _seed_admin(base_url: str, password: str) -> None:
         )
 
 
+async def _seed_facts_async() -> SeededFact:
+    async with e2e_db.session_factory() as session:
+        return await seed_fact_fixture(session)
+
+
 def boot(
-    *, port: int, password: str, health_timeout_s: float = HEALTH_POLL_TIMEOUT_S,
+    *,
+    port: int,
+    password: str,
+    health_timeout_s: float = HEALTH_POLL_TIMEOUT_S,
+    seed_facts: bool = False,
 ) -> StackHandle:
     asyncio.run(e2e_db.reset_e2e_db())
 
@@ -145,23 +161,43 @@ def boot(
     )
 
     base_url = f"http://127.0.0.1:{port}"
+    seeded: SeededFact | None = None
     try:
         _wait_for_health(base_url, health_timeout_s)
         _seed_admin(base_url, password)
+        if seed_facts:
+            # Direct DB write against the e2e database this run just reset —
+            # never through the running app's HTTP surface, which has no
+            # write door for a fact on purpose (seed_facts.py's docstring).
+            seeded = asyncio.run(_seed_facts_async())
     except Exception:
         handle = StackHandle(process=process, base_url=base_url, password=password)
         handle.teardown()
         raise
 
-    return StackHandle(process=process, base_url=base_url, password=password)
-
-
-def _write_env_file(base_url: str, password: str) -> None:
-    ENV_FILE.write_text(
-        "export E2E_DISPOSABLE_STACK=1\n"
-        f"export E2E_BASE_URL={base_url}\n"
-        f"export E2E_ADMIN_PASSWORD={password}\n"
+    return StackHandle(
+        process=process, base_url=base_url, password=password, seeded_fact=seeded,
     )
+
+
+def _shq(value: str) -> str:
+    """Single-quote `value` for safe interpolation into a sourced shell file."""
+    return "'" + value.replace("'", "'\\''") + "'"
+
+
+def _write_env_file(base_url: str, password: str, seeded: SeededFact | None) -> None:
+    lines = [
+        "export E2E_DISPOSABLE_STACK=1\n",
+        f"export E2E_BASE_URL={base_url}\n",
+        f"export E2E_ADMIN_PASSWORD={_shq(password)}\n",
+    ]
+    if seeded is not None:
+        lines += [
+            f"export E2E_SEEDED_FACT_PROJECT={_shq(seeded.project)}\n",
+            f"export E2E_SEEDED_FACT_SUBJECT={_shq(seeded.subject_name)}\n",
+            f"export E2E_SEEDED_FACT_TEXT={_shq(seeded.fact_text)}\n",
+        ]
+    ENV_FILE.write_text("".join(lines))
 
 
 def _main() -> None:
@@ -172,16 +208,25 @@ def _main() -> None:
         "--keep-running", action="store_true",
         help="boot and block instead of tearing down immediately",
     )
+    parser.add_argument(
+        "--seed-facts", action="store_true",
+        help=(
+            "seed one real Layer-2 fact (T2.90) via e2e.seed_facts, so a "
+            "Playwright spec has something to find on the Facts tab"
+        ),
+    )
     args = parser.parse_args()
 
-    handle = boot(port=args.port, password=args.password)
+    handle = boot(port=args.port, password=args.password, seed_facts=args.seed_facts)
     print(f"stack up: {handle.base_url} (pid {handle.process.pid})")
+    if handle.seeded_fact is not None:
+        print(f"seeded fact: {handle.seeded_fact.fact_text!r}")
 
     if not args.keep_running:
         handle.teardown()
         return
 
-    _write_env_file(handle.base_url, args.password)
+    _write_env_file(handle.base_url, args.password, handle.seeded_fact)
     print(f"wrote {ENV_FILE} — source it before running Playwright")
     print("Ctrl-C to tear down")
 

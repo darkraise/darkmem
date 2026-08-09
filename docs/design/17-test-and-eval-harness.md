@@ -146,6 +146,16 @@ flowchart TB
 
 **What the qualification measures, precisely.** The gold is human-labelled `(premise, hypothesis, verdict)` triples in two variants: *claim/fact* (an article-style sentence against a verified-fact text) and *claim/span* (an answer sentence against a block span). The judge's **precision on "entailed"** is the truth-critical number — a judge that calls an ungrounded claim grounded lets a fluent hallucination ship under a corroborated badge, the worst failure in the maintainer's truth-over-everything ordering — so the recommended bars weight it: precision ≥ 0.95 on entailed verdicts, recall ≥ 0.90, both `config` rows (`groundedness_gate_precision_bar` etc.), starting sizes ≥ 200 labelled pairs per variant seeded from real synthesis drafts once Layer 2 is live. The veto consumer inherits the same qualification on the contradiction verdict (precision on "contradicts" protects against manufactured disputes; §5.2's asymmetry protects the other side).
 
+**AMENDED 2026-08-08 (Tier-3, owner-ratified) — the contradiction consumer's metric pair inverts, because its consumer changed.** "Inherits the same qualification" was the whole derivation: 0.95 is derived here for *entailed* precision, where a false accept ships a hallucination under a badge, and the contradiction bar was taken over from it rather than derived from the veto's own cost. Doc 08 §4.2's amendment moves the LLM scan from disputing to opening review, and a **surfacing** instrument has the opposite truth-critical metric from a **deciding** one: a missed contradiction never reaches a reviewer at all, so **contradiction-recall is the truth-critical bar**, while contradiction-precision becomes a **review-load floor** — at the measured 0.88, roughly one flag in eight is noise, which is queue economics rather than truth. The single-metric gate was measured incoherent for the deciding consumer: replayed through the shipped scorer, a judge emitting `contradicted` on exactly one correct pair passes all three gated bars at contradiction-recall 0.0182, qualifying a near-mute judge to hold an absolute veto. `BAR_METRICS` gains a recall key.
+
+**The bars, stated 2026-08-08 — by derivation, which is the only lawful way to state them now.** The rule above predates every judge run: the truth-critical metric is barred at 0.95, the other at 0.90. The amendment makes **contradiction-recall** truth-critical, so it takes **0.95** by that same rule — a contradiction the arm misses reaches no reviewer, and the fact stays corroborated and citable. Nothing observed enters the derivation, and the check on that is direct: **the measured judge does not clear it.** gpt-5.5 scored contradiction-recall 0.945 on the now-retired gold; a bar chosen to launder that number would sit at 0.90.
+
+**Contradiction-precision moves 0.95 → 0.70, because its consumer changed and not because it was missed.** It is now a review-load floor: a false flag costs a reviewer a minute rather than a wrong belief, so the only property it must guarantee is a queue a human will actually work — noise a clear minority, under one flag in three. Holding it at 0.95 would keep pricing precision as truth after this section stopped treating it that way, and would block the gate for a reason unrelated to being right. That the honest consequence of the redesign is a *lower* bar on this axis is the point, not an embarrassment.
+
+**Granularity binds the recall bar.** At the retired gold's 55 contradicted pairs, recall resolves in steps of 1/55 ≈ 0.018, so 0.95 and 0.945 are the same measurement. T2.110's grown gold must carry a contradicted census large enough for 0.95 to be a distinguishable bar rather than a rounding artefact — otherwise the number is stated but not measurable.
+
+**Both are the owner's to move with a recorded argument, and neither may be moved to make a run pass.** Stated by the controller under delegated authority (2026-08-08) with the derivation written out precisely because the controller had already seen the measured results; a reader who wants to discount them knows exactly what to discount.
+
 **Why the gate is on the judge, not the articles.** Doc 09's per-article coverage threshold gates each article at runtime; but that gate is only as good as the judge computing it. Qualifying the judge on labelled gold is what turns "the article passed entailment" from circular self-assessment into a calibrated claim — the double duty doc 09 §4.3 names ("gates every individual article at runtime and gates the whole feature at ship time") is only honest if the runtime gate's instrument was itself measured here first.
 
 **Alternatives rejected.** Per-consumer judges (three purposes, three models) — rejected by doc 11 §6 and inherited: one truth-critical judge, qualified once, is auditable; three drift independently. Skipping qualification and trusting a frontier model's NLI ability — rejected: the judge may be a local model on a homelab box, and the gate must hold regardless of which model the operator configures; re-qualification after a `verification`-purpose model swap is mandatory (the qualification result is recorded against the model identity).
@@ -208,6 +218,30 @@ flowchart TB
 
 - **Retrieval gold-set construction and size.** *Stance: build the gold as labelled `(query, relevant_memory_ids, slice_tags)` JSON over a deterministic seeded bench corpus, starting at ≥ 100 pairs covering all seven slices (four query-type, three capability), grown opportunistically from real retrieval traces the maintainer adjudicates; version the gold file and never rewrite past entries.* The eval is target-new; the gold lands with it, before any `w_*` activation is proposed.
 - **Who labels the judge-qualification gold.** *Stance: the maintainer adjudicates, seeded from real synthesis drafts and real block answers once Layer 2 is live — synthetic-only entailment gold is rejected as unrepresentative; ≥ 200 pairs per task variant before the corresponding gate can open, re-qualification required after any `verification`-purpose model swap.*
+
+  **What "real" means, ruled 2026-07-31 (owner decision, Tier-3 escalation from T2.54).**
+  "Real" governs the **premise distribution, not the authorship or the database of
+  origin.** A `claim-fact` premise is real when it was **minted by the production code
+  path** — extraction → `fact_lift` → `fact_sentence` — and is byte-anchored to the
+  `knowledge_triples` row that produced it, whatever corpus was ingested to produce
+  that row. Facts lifted from the harness bench corpus therefore satisfy this clause;
+  hand-authored premises do not, however faithfully they imitate the shape.
+
+  The rejected reading was "rows from the production vault". It was rejected on two
+  grounds. It is **near-circular**: doc 20 sequences the homelab cutover *after* G-C
+  and G-D, so gating the gold on a production deploy gates the deploy on itself. And
+  the one route that satisfies it today — snapshotting the live instance's memories
+  into the bench database — would commit the maintainer's private memory content into
+  a committed `gold.json`, permanently, in a repository whose publication is
+  contemplated. The owner weighed that route explicitly and declined it.
+
+  What this clause does **not** license: a hand-authored premise self-declaring
+  `provenance: l2-fact`. The anchor is machine-checkable — the premise must be
+  byte-equal to the `fact` in a committed, byte-reproducible harvest manifest, with
+  the manifest row as the source of truth — and **≥ 50% of live pairs per variant must
+  carry such premises** (the `temporal` slice exempt while `fact_lift` renders no
+  validity windows; the exemption sunsets the moment it does). Volume alone was never
+  sufficient and a `199 synthetic / 1 real` set must not pass.
 - **Default bar values.** *Stance: the defaults named in §5–§6 (false-promotion < 1%, miss-rate writer trigger > 20% on the disjoint slice, judge precision ≥ 0.95 / recall ≥ 0.90) are conservative starting `config` values, not measured truths — each is expected to be re-tuned by its own protocol once real data exists, and each change is recorded like any tuning run.*
 - **Durable eval-results storage.** *Stance: dated report files under `docs/` remain the record for v1; an in-DB `eval_runs` table (and any doc-13 eval-viewer surface) is added only if the retrieval-trace persistence decision (doc 07 §8, doc 04 §13) lands a durable trace first — the two would share the tie-to-`events` pattern. Until then, no table.*
 - **Full-context baseline mechanics.** *Stance: bound the baseline corpus to what fits the configured model's context at the bench fingerprint's chunking, report the bound alongside the number, and treat the baseline as an anchor recomputed per gold-set version — not per run — since it is expensive by construction.*

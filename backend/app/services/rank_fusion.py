@@ -16,17 +16,39 @@ scalar would start moving list ordering. ``LIST_WEIGHT_KEYS`` and the
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 
 from app.services.confidence import CONFIDENCE_DEFAULT
 
 RRF_K = 60
 
+# How deep every ranked list is read before the fusion joins them, fixed here
+# rather than derived from whatever page the caller wanted. RRF is **not
+# truncation-consistent across depths**: a row inside one reader's arm window
+# and outside another's earns a contribution on one side only, so two doors
+# over one corpus produce two different orderings — invariant 17's divergence,
+# arriving with no error and no symptom. At a fixed depth a shallow reader's
+# list is the deep reader's list truncated, which is the property the doors
+# are compared on. The value is the depth the search surface already read at
+# its live page size (50 rows plus its 50-row exclusion over-fetch, times the
+# vector repository's fetch multiplier), so the surface's own ordering is
+# unchanged and every shallower reader converges onto it.
+FUSION_FETCH_DEPTH = 300
+
 IMPORTANCE_DEFAULT = 0.5
 
-LIST_WEIGHT_KEYS: frozenset[str] = frozenset({"semantic_weight"})
+# Every weight that moves a ranked list's RRF contribution, and nothing that
+# moves a per-row score. `w_ppr` and `w_dual` join here rather than as
+# `RankArm`s deliberately: both name a *producer of candidates*, so their
+# weight belongs to the fusion. Filed as arms they would have multiplied rows
+# the graph never proposed.
+LIST_WEIGHT_KEYS: frozenset[str] = frozenset(
+    {"semantic_weight", "w_ppr", "w_dual"}
+)
 
 
 # ── class 1: ranked lists ────────────────────────────────────────────
@@ -39,6 +61,17 @@ class RankedList:
     name: str
     rows: Sequence[Mapping] = field(default_factory=tuple)
     weight: float = 0.0
+
+
+def fusion_fetch_depth(limit: int) -> int:
+    """How many rows each ranked list is read to before it is fused.
+
+    Never fewer than the fused rows the caller asked for: two arms that
+    returned the same rows could not otherwise fill the request. Above that
+    floor the depth is constant, which is what makes one door's ranking a
+    truncation of another's rather than a different one.
+    """
+    return max(FUSION_FETCH_DEPTH, limit)
 
 
 def normalize_row_id(row: Mapping) -> str | None:
@@ -124,6 +157,101 @@ def _weight(weights: Mapping[str, object], flag: str) -> float:
         return float(weights.get(flag, 0.0) or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+# ── the heat and recency signals (doc 07 §3, T2.29's substrate) ──────
+#
+# `memory_access_stats` stores raw counters and deliberately derives nothing
+# (that module's own docstring says so). These are the derivations, and they
+# live here beside the arm that spends them rather than beside the counter,
+# so a second consumer cannot invent a second scale for the same signal.
+
+# Accesses at which heat reaches ~63% of its ceiling. A *saturating* transform
+# rather than a normalised one is the load-bearing choice: normalising by the
+# corpus maximum (or by the page's) makes one row's signal depend on other
+# rows, so the same memory scores differently in two result sets and the two
+# doors can no longer be compared. Saturation is per-row and absolute.
+HEAT_SCALE = 10.0
+
+# Access recency, not content recency. T2.29 built `memory_access_stats` as
+# "the substrate w_heat and w_recency will read", and `last_accessed` is the
+# column it offers; `updated_at` means "content changed" and is moved by the
+# `touch_updated_at` trigger, which is a different claim entirely.
+RECENCY_HALFLIFE_DAYS = 30.0
+
+
+def heat_signal(access_count: object) -> float | None:
+    """Bounded [0, 1) heat from a raw access count.
+
+    ``None`` when there is no counter row — which `arm_factor` already treats
+    as "leave this row alone". A never-accessed memory and a zero-count one
+    are the same claim, and both must be neutral rather than penalised: heat
+    ranks *up* what is hot, and turning absence into a downward multiplier
+    would demote every newly captured memory for as long as the arm is on.
+    """
+    if access_count is None:
+        return None
+    try:
+        count = float(access_count)
+    except (TypeError, ValueError):
+        return None
+    if count <= 0.0:
+        return 0.0
+    return 1.0 - math.exp(-count / HEAT_SCALE)
+
+
+def recency_signal(last_accessed: object, now: datetime | None = None) -> float | None:
+    """Bounded (0, 1] exponential decay on time since last access."""
+    if not isinstance(last_accessed, datetime):
+        return None
+    reference = now or datetime.now(timezone.utc)
+    if last_accessed.tzinfo is None:
+        last_accessed = last_accessed.replace(tzinfo=timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    age_days = (reference - last_accessed).total_seconds() / 86400.0
+    if age_days <= 0.0:
+        return 1.0
+    return math.exp(-age_days * math.log(2.0) / RECENCY_HALFLIFE_DAYS)
+
+
+ACCESS_ARM_FLAGS: tuple[str, ...] = ("w_heat", "w_recency")
+
+
+def access_arms_active(weights: Mapping[str, object]) -> bool:
+    """Whether either access-fed arm carries weight.
+
+    Lets the channel skip the `memory_access_stats` read entirely, so an
+    install with both arms at zero pays nothing for a signal nothing spends —
+    the same "inert must also mean free" property the PPR arm holds.
+    """
+    return any(_weight(weights, flag) != 0.0 for flag in ACCESS_ARM_FLAGS)
+
+
+def ppr_list_weight(weights: Mapping[str, object]) -> float:
+    """The PPR list's fusion weight — zero unless its flag is on.
+
+    The flag-to-weight collapse lives here and is called by every door rather
+    than spelled at each of them. Two doors reading `ppr_enabled` and `w_ppr`
+    separately is exactly the shape that let chat and the search surface rank
+    one corpus two ways before T2.58: identical while both were off, divergent
+    the moment one was flipped, with no error on either side.
+    """
+    if not weights.get("ppr_enabled"):
+        return 0.0
+    return _weight(weights, "w_ppr")
+
+
+def dual_list_weight(weights: Mapping[str, object]) -> float:
+    """The dual-level list's fusion weight — zero unless its flag is on.
+
+    Same collapse as :func:`ppr_list_weight`, and here for the same reason:
+    two doors reading `dual_level_enabled` and `w_dual` separately are
+    identical while the arm is off and divergent the moment it is flipped on.
+    """
+    if not weights.get("dual_level_enabled"):
+        return 0.0
+    return _weight(weights, "w_dual")
 
 
 def arm_factor(arm: RankArm, signals: Mapping[str, float], weights: Mapping[str, object]) -> float:

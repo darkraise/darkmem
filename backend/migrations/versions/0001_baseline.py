@@ -52,6 +52,11 @@ def upgrade() -> None:
     # Extensions and types
     # ------------------------------------------------------------------
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # The contradiction scan's second candidate arm (doc 08 §5.3) is a trigram
+    # shortlist over knowledge_triples.fact. It is deliberately NOT an
+    # embedding channel: triple_embeddings stays template-only until a measured
+    # undercount of this generator justifies its writer (doc 04 §5.3).
+    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
     # The ONE native enum in the schema (doc 04 §2, §11). Every other state
     # column is CHECK-constrained text and every "type" column is varchar
@@ -388,6 +393,10 @@ def _pass_two() -> None:
     # fallback to 'concept' and collide with UNIQUE(name, entity_type).
     # Re-derivation is delete-and-rewrite per project, so community ids CHURN
     # on every run — nothing durable may FK one (doc 04 §8.4).
+    #
+    # UNIQUE (id, project) is trivially satisfiable (id is already the PK) and
+    # exists for the same reason memories_id_project_key does: it is what lets
+    # the members table declare a COMPOSITE endpoint FK.
     op.execute(
         """
         CREATE TABLE memory_communities (
@@ -397,16 +406,34 @@ def _pass_two() -> None:
             report_string TEXT,
             properties    JSONB,
             created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT memory_communities_pkey PRIMARY KEY (id)
+            CONSTRAINT memory_communities_pkey PRIMARY KEY (id),
+            CONSTRAINT memory_communities_id_project_key UNIQUE (id, project)
         )
         """
     )
+    # BOTH endpoint FKs are composite on `project`, and one is not enough.
+    # With only the memory-side key, a member row naming a project-A community,
+    # a project-B memory and project B satisfies every constraint and is still
+    # cross-project. With both, `project` must equal the memory's project AND
+    # the community's project, so those two are equal by transitivity — which
+    # makes a cross-project membership unrepresentable rather than merely
+    # forbidden. All three columns are NOT NULL, so MATCH SIMPLE offers no null
+    # escape. There is deliberately no ON UPDATE action: a memory changing
+    # project must clear its memberships first (app/services/memory.py), the
+    # same shape as the demote-before-delete rule.
     op.execute(
         """
         CREATE TABLE memory_community_members (
-            community_id UUID NOT NULL REFERENCES memory_communities(id) ON DELETE CASCADE,
-            memory_id    UUID NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-            CONSTRAINT memory_community_members_pkey PRIMARY KEY (community_id, memory_id)
+            community_id UUID NOT NULL,
+            memory_id    UUID NOT NULL,
+            project      TEXT NOT NULL,
+            CONSTRAINT memory_community_members_pkey PRIMARY KEY (community_id, memory_id),
+            CONSTRAINT fk_memory_community_members_community
+                FOREIGN KEY (community_id, project)
+                REFERENCES memory_communities(id, project) ON DELETE CASCADE,
+            CONSTRAINT fk_memory_community_members_memory
+                FOREIGN KEY (memory_id, project)
+                REFERENCES memories(id, project) ON DELETE CASCADE
         )
         """
     )
@@ -457,6 +484,17 @@ def _pass_two() -> None:
     # table's contract is invalidate-not-delete, so expired triples must
     # survive their endpoints. The denormalised lowercase names carry the
     # durable identity instead.
+    #
+    # demotion_pending_since / demotion_pending_cycles are doc 08 §4.3's
+    # demotion hysteresis, and they are NOT a fifth rung: the CHECK below
+    # still admits exactly four verification_status values, and an
+    # under-sourced fact is a still-`corroborated` row wearing an overlay
+    # (doc 13 §5.3, doc 14). `demotion_pending_since IS NOT NULL` is
+    # simultaneously the label a consumer renders and the review-queue
+    # predicate `verification_ladder.derive_review_state` registers, which is
+    # why the marker is nullable rather than defaulted. The companion counter
+    # is what makes the grace measurable at all: doc 08 §4.3 fixes the window
+    # in *consecutive recompute cycles*, and a timestamp cannot count cycles.
     op.execute(
         """
         CREATE TABLE knowledge_triples (
@@ -479,6 +517,36 @@ def _pass_two() -> None:
             learned_in          TEXT[],
             review_state        TEXT,
             source_file         TEXT,
+            demotion_pending_since  TIMESTAMPTZ,
+            demotion_pending_cycles INTEGER NOT NULL DEFAULT 0,
+            -- T2.112 (doc 08 §6, ruled 2026-08-08). Doc 08 §6's third review
+            -- opener, shaped after demotion_pending_since above rather than
+            -- invented. The ladder re-derives the model scan's finding on
+            -- every recompute (guards re-applied against live rows) and
+            -- writes the result here in the SAME UPDATE as
+            -- verification_status, so this is a cache the authority refreshes
+            -- each cycle, not a frozen verdict. It is not a rung: a flagged
+            -- fact keeps its status, its badge and its place in retrieval
+            -- while a human looks.
+            --
+            -- No FK on the counterpart, deliberately. Facts are
+            -- invalidate-not-delete, so a counterpart outlives its own
+            -- retirement; a cascade would blank the evidence for the flag at
+            -- exactly the moment a reviewer needed it. Same reasoning as
+            -- knowledge_triples.subject_id/object_id carrying no FK.
+            contradiction_suspected_at    TIMESTAMPTZ,
+            contradiction_counterpart_id  UUID,
+            -- T2.85 (doc 08 §3.1/§9, ruled 2026-08-06). The expiry a fact's
+            -- own text STATES, recorded at lift time and spent later by the
+            -- recompute arm, which writes invalid_at := stated_expiry once
+            -- the date passes. It is deliberately NOT invalid_at at write
+            -- time: invalid_at is only-ever-past by contract, and a future
+            -- one drops the fact out of OPEN_BELIEF_PREDICATE the day it is
+            -- written. It is deliberately NOT expired_at either: as_of
+            -- ignores expired_at, so a stated expiry recorded there answers
+            -- the historical question wrongly for every instant past the
+            -- date. Nullable; a fact whose text states no expiry has none.
+            stated_expiry       TIMESTAMPTZ,
             created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT knowledge_triples_pkey PRIMARY KEY (id),
             CONSTRAINT knowledge_triples_verification_status_check
@@ -494,6 +562,25 @@ def _pass_two() -> None:
         "ON knowledge_triples (subject_name, rel_type, object_name) "
         "WHERE expired_at IS NULL"
     )
+    # T2.98 (doc 08 §5.3, 2026-08-07). The contradiction scan's same-endpoint
+    # arm probes `subject_name = X OR object_name = Y`, and a BitmapOr needs
+    # BOTH disjuncts indexed or Postgres falls back to scanning the whole of
+    # whatever index is narrowest — the subject one above, in this table's
+    # case, since it is still cheaper than the heap. That is real work
+    # proportional to every live triple, not a lookup, which is what doc
+    # 08 §5.3's "cheap SQL" cost argument assumes for both endpoints.
+    # Mirrors the subject index's column order rather than staying
+    # object-name-only: `GET /api/v1/knowledge/facts` (`facts_read.list_facts`
+    # via `get_live`/`list_live`) filters `object_name` together with
+    # `rel_type` and no `subject_name`, the exact object-side analogue of the
+    # subject probe the leading `(subject_name, rel_type, ...)` order already
+    # serves. A narrower object-name-only index would miss that combination's
+    # leading column.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_live_object "
+        "ON knowledge_triples (object_name, rel_type, subject_name) "
+        "WHERE expired_at IS NULL"
+    )
     op.execute(
         "CREATE INDEX ix_knowledge_triples_window ON knowledge_triples (valid_at, invalid_at)"
     )
@@ -507,6 +594,63 @@ def _pass_two() -> None:
     op.execute(
         "CREATE INDEX ix_knowledge_triples_review ON knowledge_triples (review_state) "
         "WHERE review_state = 'open'"
+    )
+    # The recompute arm's sweep: open beliefs carrying a stated expiry, which
+    # is a small subset of a small subset. Partial on the same two-NULL
+    # predicate the open-belief indexes use, so it stays in step with them.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_stated_expiry "
+        "ON knowledge_triples (stated_expiry) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL "
+        "AND stated_expiry IS NOT NULL"
+    )
+    # The three the Layer-2 retrieval channel is born with (doc 07 §2, §7).
+    # All three are partial on the CURRENTLY-OPEN-BELIEF window rather than on
+    # `expired_at IS NULL`: doc 08 §3.1 reserves "live" for the latter, which
+    # still counts window-closed rows as history, and serving those would
+    # present a withdrawn belief as current. Partial rather than full is also
+    # what pushes the belief scope into the index itself, so a query that
+    # widens the predicate stops matching the index instead of quietly
+    # returning history.
+    #
+    # No tsvector column and no trigger: `fact`, `subject_name` and
+    # `object_name` are written once at fact-lift time and never updated (the
+    # belief and verification axes move the timestamps and the status, never
+    # the text), so a stored column would carry maintenance cost for a value
+    # that cannot change. The query must spell these expressions verbatim or
+    # the planner cannot match them.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_fact_fts ON knowledge_triples "
+        "USING gin (to_tsvector('english', fact)) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    # 'simple' rather than 'english' on the endpoints: these are canonicalised
+    # lowercase identifiers, not prose, and stemming a product name buys no
+    # recall while risking a collision between two distinct names.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_name_fts ON knowledge_triples "
+        "USING gin (to_tsvector('simple', subject_name || ' ' || object_name)) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
+    )
+    # The contradiction scan's trigram shortlist (doc 08 §5.3), and the one
+    # index here that is partial on LIVE rather than on OPEN BELIEF. The scan
+    # adjudicates a candidate pair on whether their validity windows overlap,
+    # so a window-closed row is still a legitimate counterpart; narrowing this
+    # to the open-belief predicate the FTS indexes use would silently drop
+    # exactly the succession-versus-contradiction cases the overlap guard
+    # exists to decide. Same liveness predicate the deterministic
+    # same-endpoint scan already selects on, so the two arms agree about which
+    # rows exist.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_fact_trgm ON knowledge_triples "
+        "USING gin (fact gin_trgm_ops) WHERE expired_at IS NULL"
+    )
+    # The project pushdown's own support, the analogue of
+    # ix_memories_project_live: it serves the scope when the query carries no
+    # search term, where neither FTS index applies.
+    op.execute(
+        "CREATE INDEX ix_knowledge_triples_project_open ON knowledge_triples (project) "
+        "WHERE expired_at IS NULL AND invalid_at IS NULL"
     )
 
     # Provenance leaves the fact row entirely: a uuid[] cannot carry per-source
@@ -534,6 +678,27 @@ def _pass_two() -> None:
         "CREATE INDEX ix_fact_sources_kind_ref ON fact_sources (source_kind, source_ref)"
     )
     op.execute("CREATE INDEX ix_fact_sources_fact ON fact_sources (fact_id)")
+
+    # The fact-keyed analogue of memory_access_stats (doc 08 §6, T2.84,
+    # 2026-08-05). T2.65 measured that FactsChannel serves knowledge_triples
+    # rows directly and records heat nowhere, so review_ranking's frequency
+    # arm degraded toward zero for facts channel traffic; this table is the
+    # replacement substrate, fed from that channel's serving path the same
+    # way memory_access_stats is fed from the memory hybrid's. 1:1 side table
+    # for the identical reason memory_access_stats is one rather than two
+    # columns on knowledge_triples: a per-read bump must never rewrite the
+    # fact row itself, which knowledge_triples has no updated_at trigger to
+    # protect but which fact_lift and the verification ladder both read and
+    # write at a much lower rate than facts are served.
+    op.execute(
+        """
+        CREATE TABLE fact_access_stats (
+            fact_id       UUID PRIMARY KEY REFERENCES knowledge_triples(id) ON DELETE CASCADE,
+            access_count  INTEGER NOT NULL DEFAULT 0,
+            last_accessed TIMESTAMPTZ
+        )
+        """
+    )
 
     # ------------------------------------------------------------------
     # knowledge_articles + article_citations — Layer 3 (doc 04 §8.8)
@@ -1130,6 +1295,7 @@ def downgrade() -> None:
         "repositories",
         "article_citations",
         "knowledge_articles",
+        "fact_access_stats",
         "fact_sources",
         "knowledge_triples",
         "blocks",

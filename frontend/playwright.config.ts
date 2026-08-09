@@ -31,11 +31,16 @@ import { defineConfig, devices } from "@playwright/test"
 // stylesheet and the layout route's own internal switch, never exposed
 // through a control). See docs/planning/tasks/E1-engine-core.md's amendment
 // log for the evidence and the named follow-up that owns real coverage.
+// knowledge.spec.ts joined the list with T2.36's fix round: the Facts tab's
+// render clauses (both axes, both sides of a dispute, virtualization, the
+// detail-level rule) are the same components on both producers, and the
+// fixture is the corpus there, so the spec needs no backend.
 const DEMO_FIXTURE_SPECS = [
   "activity.spec.ts",
   "activity-pipeline.spec.ts",
   "code-index-debt.spec.ts",
   "dashboard.spec.ts",
+  "knowledge.spec.ts",
   "memories-command-palette.spec.ts",
   "honesty/exclusions-on-empty.spec.ts",
   "honesty/labels-always-render.spec.ts",

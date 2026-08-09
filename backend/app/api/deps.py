@@ -31,9 +31,8 @@ async def get_chat_service(request: Request, session: AsyncSession = Depends(get
     if not llm:
         from fastapi import HTTPException
         raise HTTPException(status_code=503, detail="LLM service unavailable")
-    vector_repo = PostgresVectorRepository(session)
     graph_repo = PostgresGraphRepository(session)
-    return ChatService(session, llm, vector_repo, graph_repo)
+    return ChatService(session, llm, graph_repo)
 
 
 async def get_analytics_service(request: Request, session: AsyncSession = Depends(get_session)) -> AnalyticsService:

@@ -17,7 +17,28 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 BACKEND="$REPO_ROOT/backend"
 FRONTEND="$REPO_ROOT/frontend"
-PY="$BACKEND/.venv/bin/python"
+
+# Resolve Python interpreter: allow env override, prefer local .venv, fall back to main checkout
+if [ -z "${PY:-}" ]; then
+    LOCAL_PY="$BACKEND/.venv/bin/python"
+    if [ -x "$LOCAL_PY" ]; then
+        PY="$LOCAL_PY"
+    else
+        # No local .venv; fall back to main checkout's interpreter.
+        # Use git to robustly detect if we're in a worktree: git rev-parse --git-common-dir
+        # returns the shared .git directory for both main checkout and worktrees.
+        # In a worktree at /path/to/worktrees/<name>, it returns /path/to/.git,
+        # so the main checkout is its parent.
+        if GIT_COMMON_DIR="$(cd "$REPO_ROOT" && git rev-parse --git-common-dir 2>/dev/null)"; then
+            # We have a git repository; use git-common-dir to find the main checkout
+            MAIN_CHECKOUT="$(cd "$GIT_COMMON_DIR/.." && pwd -P)"
+        else
+            # Fall back to current directory if git fails
+            MAIN_CHECKOUT="$REPO_ROOT"
+        fi
+        PY="$MAIN_CHECKOUT/backend/.venv/bin/python"
+    fi
+fi
 
 FULL=0
 for arg in "$@"; do
@@ -87,6 +108,13 @@ run_gate() {
 }
 
 cd "$REPO_ROOT" || exit 1
+
+# Report which Python interpreter is being used. This is critical for worktrees:
+# a silent fallback to the wrong checkout's interpreter would produce a green gate
+# that means nothing. Explicit reporting happens before preflight checks so it
+# always prints, even when other toolchain dependencies are missing.
+printf '\n\033[1m── resolved interpreter ──\033[0m\n'
+printf 'Python: %s\n' "$PY"
 
 # ── preflight ────────────────────────────────────────────────────────────
 # A missing toolchain is an environment problem, not a failing gate. Say so
@@ -161,9 +189,16 @@ run_gate "frontend build" 900 "$FRONTEND" \
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
 # schema change once broke the harness with the floor still green (T0.17).
+#
+# benchlib/bench_db.py resolves BENCH_DATABASE_URL at import time, separately
+# from TEST_DATABASE_URL above — the harness has its own database on
+# purpose (CLAUDE.md "Three databases, three purposes"), so it needs its own
+# env var passed through here or it silently resets the shared unnumbered
+# darkmem_bench (T2.76).
 run_gate "benchlib tests" 900 "$BACKEND" \
     env -C "$BACKEND" \
         TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+        BENCH_DATABASE_URL="${BENCH_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench}" \
         "$PY" -m pytest scripts/benchlib/tests -q
 
 # The F1 bench in --algo-only mode: it errors rather than calling the LLM if
@@ -183,8 +218,21 @@ if [ "$FULL" -eq 1 ]; then
     # after is a genuine leak from this run and fails the gate loudly.
     PORTS_BEFORE="$(ss -ltn 2>/dev/null | grep -E ':8000|:3636|:3637' | sort || true)"
 
-    run_gate "retrieval eval" 3600 "$BACKEND" \
-        env -C "$BACKEND" "$PY" scripts/benchlib/run_retrieval_eval.py
+    # run_retrieval_eval.py imports benchlib.bench_db, same resolution as the
+    # benchlib suite above — it needs BENCH_DATABASE_URL passed through too.
+    # Named "replay" deliberately (2026-08-08). This arm runs the eval and
+    # fails on a crash, a missing key or a cross-fingerprint refusal — it does
+    # NOT fail on the numbers it produces, and a negative ΔMRR exits green.
+    # Unlike the F1 bench above, no floor exists to enforce: the G-B row
+    # requires the retrieval eval be *reported* with its latency/cost twin,
+    # never floored, so adding a bar here would be a bar set after measuring,
+    # which the ledger forbids. Setting one is a pre-registration decision the
+    # gate owner has to make deliberately; until then the label must not imply
+    # a health check nobody wrote.
+    run_gate "retrieval eval replay" 3600 "$BACKEND" \
+        env -C "$BACKEND" \
+            BENCH_DATABASE_URL="${BENCH_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench}" \
+            "$PY" scripts/benchlib/run_retrieval_eval.py
 
     # The API e2e suite (T1.64): boots and tears down its own disposable
     # stack, so it never runs concurrently against :8000 with the playwright

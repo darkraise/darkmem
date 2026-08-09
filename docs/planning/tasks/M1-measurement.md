@@ -79,6 +79,326 @@ this one.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
 
+#### T2.108 — A measurement corpus that can actually promote
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T2.10` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-07 from the gate-ordering analysis, which found this is the long pole
+under every option considered — and that no task owned it.**
+
+T2.40's G-C run returned *not evaluable* on all four probes. The judge dependency gets the
+attention, but it blocks **one arm of one probe**. The corpus starves **all four**: the
+production `darkmem` journal holds 0 events, and the only existing corpus is structurally
+incapable of promoting — all 62 facts are anonymous-origin, folding into the bucket that
+counts once and can never fire a gate.
+
+**And the production route is circular before the cutover.** Doc 17 §11's own sequencing
+puts the homelab cutover *after* G-C and G-D, so "wait for real traffic" is not available
+to a gate that must clear first. A purpose-built measurement corpus is the only
+pre-cutover route to any G-C verdict at all.
+
+**What.** A corpus that exercises the promotion ladder for real: facts reaching the
+eligible population with **distinct `origin_key`s**, so `COUNT(DISTINCT origin_key)`
+crosses the required N and promotions actually journal. Enough of them that G-C's
+decidability thresholds are met — `promotion_rate_min_eligible` (5 per bucket) and
+`false_promotion_min_corroborated` (20 in-window), both already committed in
+`promotion_bars.py`.
+
+**The trap this task exists inside.** A corpus built to make a gate clear is not evidence,
+it is a fixture wearing evidence's clothes. What makes this admissible is that it must
+exercise the *shipped* lift and the *shipped* recompute — T2.40's own run is the
+precedent: 62 facts flowed end to end through the production path with 0 live model calls.
+Hand-writing journal rows, or seeding `verification_status` directly, measures the
+fixture. State plainly in the report which parts of the path the corpus drives and which
+it stubs, because the gate's credibility rests entirely on that boundary.
+
+**Done when:**
+- [ ] Facts flow through the shipped lift and recompute — no hand-written `verified`
+      events, no directly-seeded statuses
+- [ ] Distinct `origin_key`s produce real promotions that journal, proven by a non-zero
+      promotion count read back from `events` by SQL
+- [ ] Both decidability thresholds in `promotion_bars.py` are met, so every probe that
+      does not need the judge becomes decidable
+- [ ] The corpus is reproducible from a committed definition, not a one-off database state
+- [ ] The report states exactly what is driven and what is stubbed
+
+**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
+
+#### T2.107 — The resample sitting's instrument
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54 (partial)` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-07 at the owner's request, to shorten the one step no agent may
+perform.** T2.54's Layer-3 blind resample is the last outstanding clause on the gold set,
+and it blocks G-D (T2.41) and — as T2.40's run established — G-C's false-promotion audit
+as well.
+
+**Most of the instrument already exists and is well built.** `resample_draw.py` has drawn
+the sample (n = 93; full census of `contradicted` at 55, proportional `unsupported` 17 and
+`entailed` 21), pinned its seed to the gold's own SHA-256 so it can be neither re-rolled
+nor chosen, deliberately recorded no ids, and emitted a shuffled blind export at
+`entailment/resample_blind.json` carrying only `id`, `premise`, `hypothesis`.
+
+**What is missing is the return path.** `judge_qualification.py`'s lock requires
+`gold_doc["resample"]` to carry `n`, `disagreements`, `seed`, `performed_by` and `date`,
+and nothing computes or writes that block. So the owner can sit and label, and there is
+no supported way to score the result.
+
+**What.** Two pieces, and the discipline around them is most of the work:
+
+1. **A readable sheet** generated from the existing blind export — 93 items, each with its
+   premise, hypothesis and the `LABELLING.md` rule references a labeller needs, in the
+   export's shuffled order, with a slot for one verdict per item. It must leak nothing the
+   export does not already leak: no stratum, no neighbouring-item hint, no ordering signal.
+2. **A scorer** that takes the completed verdicts, compares them against the stored gold,
+   counts disagreements, and writes the `resample` block.
+
+**Done when:**
+- [ ] The sheet is generated from `resample_blind.json`, never from `gold.json` — proven
+      structurally, so a future edit cannot reach the labels
+- [ ] The scorer refuses when `gold.json`'s SHA-256 no longer matches the manifest's
+      `gold_sha256`: the draw is pinned to one gold version, and scoring a stale draw
+      certifies nothing
+- [ ] The scorer writes `n`, `disagreements`, `seed` (from the manifest, never recomputed
+      from a changed gold), `performed_by` and `date`, and `judge_qualification`'s lock
+      accepts the block it writes — tested against the real lock, not a mock
+- [ ] **A re-run cannot improve the number**: scoring is recorded once per draw, and a
+      second sitting requires a new draw against a new gold SHA. State how this is enforced
+- [ ] The disagreeing items are reported by id with both verdicts, since a miss is the
+      instrument's most useful output — it localises where the rulebook is underspecified
+
+**No agent labels any pair, in the sheet, the scorer, or the tests.** The resample is the
+first accuracy measurement made from outside the family that labelled the set; an agent
+supplying either side of the comparison destroys the only thing it measures. Test fixtures
+use synthetic pairs, never the real gold's verdicts.
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_resample_draw.py scripts/benchlib/tests/test_judge_qualification.py -q`
+
+#### T2.109 — The veto's two arms: ratify and rewire (G-D redesign)
+
+`Model: Opus 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.41` · `Doc: 08 §4.2, 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D` · `OWNER-GATED`
+
+**What.** G-D was measured three times and does not clear; the resolution spike
+(2026-08-08, recorded under G-D in `gate-ledger.md`) found the defect is not the model
+and not the bar but **the veto's architecture** — the LLM judge is wired directly into
+the absolute dispute veto and gated on precision alone.
+
+**The coherence result that decides it, reproduced against the shipped scorer:** a judge
+that says `contradicted` on exactly one correct pair — missing 54 of 55 — **passes all
+three gated bars** (precision 1.0, recall 0.0182). Only total silence fails, and only via
+the precision-is-None rule. The gate as specified qualifies a near-mute judge to hold an
+absolute veto while failing the measured 0.88-precision / 0.95-recall one.
+
+**Why not the other resolutions.** Not clearable: the two vendors' false positives
+intersect on 3 pairs, so even a conjunctive two-vendor veto — the most precision-favouring
+composition of every judge measured, fitted post-hoc — ceilings at 55/58 = 0.9483 at any
+recall. Not the bar: 0.95 was *inherited* from the entailed bar (doc 17 §6's own words),
+never derived from the veto's cost function, which argues the disputing consumer's bar
+should be **higher**, since a scanned false dispute is near-permanent.
+
+**Proposed shape (the owner ratifies; this task does not decide it).**
+- The absolute veto stays on the **deterministic arm** — precise by construction, and no
+  migration burden since the LLM arm has never fired.
+- The LLM scan's finding **opens review instead of disputing**, which doc 08 §5.3's
+  delay-not-manufacture asymmetry already licenses.
+- The qualification metric pair **inverts**: recall becomes truth-critical, precision
+  becomes a review-load floor.
+
+**Done when:**
+- [ ] The owner has ratified the design as a Tier-3 amendment to doc 08 §4.2 and doc 17 §6
+- [ ] **New bars are stated by the owner before any measurement.** Both gpt-5.5 numbers
+      are already public, so a bar chosen now by anyone who has seen them is fitted —
+      this is why the spike deliberately proposed none
+- [ ] Measured on **T2.54-grown gold**, not this one: it carries 3 contacts and its
+      false-positive census is public
+- [ ] The `disputed` rung, the demotion hysteresis and doc 08 §4.2's veto semantics are
+      each shown to survive the rewire, or amended with it
+- [ ] The G-C→G-D cross-edge is re-read under the audit's new shape — the machine-dispute
+      arm's reachability changes if the LLM arm stops disputing
+
+**Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py --gate`
+after the rewire, against the grown gold.
+
+---
+
+#### T2.112 — Show the reviewer what was suspected
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.109` · `Doc: 08 §4.2, §6` · `Tag: target-new` · `Gate: standing`
+
+**Minted 2026-08-08 from T2.109's own review.** The redesign moved the LLM contradiction
+scan from disputing to opening review — but `review_queue._fact_reason` derives the
+queue's reason from the fact's own columns (`verification_status`,
+`demotion_pending_since`), and the suspicion is computed at recompute time from the scan's
+journal and persisted nowhere. So a contradiction-suspected fact arrives in the queue
+rendering `unspecified`: a healthy-looking row, no counterpart, nothing to adjudicate
+against.
+
+**Why this is not cosmetic.** The whole argument for the redesign is that a flag awaiting
+human confirmation is a *delayed* dispute rather than a manufactured one — doc 08 §5.3's
+sanctioned direction of error. That argument holds only if a human can actually confirm
+it. A reviewer who cannot see which fact contradicts, or why, cannot confirm or dismiss,
+so the flag is neither a dispute nor a delay — it is a fact stuck in a queue. The
+half-shipped state is worse than either end: it consumes review attention and resolves
+nothing.
+
+**The evidence already exists**; only the path to the reader is missing. The scan writes
+its counterpart and reason on its own journal row. Surfacing it costs either a journal
+read on the queue query or a column on the fact row — a real trade (query cost against
+schema, and the schema is still pre-freeze so a column is cheap *now* and not later).
+T2.109 deliberately did not guess; it documented the gap at both sites.
+
+**Done when:**
+- [ ] A contradiction-suspected fact renders a reason naming the suspicion, not `unspecified`
+- [ ] The counterpart fact is reachable from the queue entry, so the reviewer can compare
+- [ ] The chosen path (journal read vs persisted column) is argued in the commit, including
+      the pre-freeze schema consideration
+- [ ] Confirming from the queue disputes through the existing `human_adjudication.reject_fact`
+      door — no second write path
+- [ ] Dismissing clears only this opener; `derive_review_state` stays total and the clear
+      remains the absence of every opener
+
+**Verify.** `cd backend && python -m pytest tests/test_review_queue.py tests/test_verification_ladder.py -q`
+
+#### T2.113 — Make an unjournalled ladder transition impossible
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.111` · `Doc: 17 §5.1, 08 §6` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-09 from T2.111's third vacuity clause, which it ruled OPERABLE AND
+UNRESOLVED and which had no owner.** T2.40 stated the clause; T2.111 verified it in code and
+found the remedy pattern already in the tree. Nothing owned closing it.
+
+**The defect, verified rather than suspected.** `KnowledgeTripleRepository.set_verification_status`
+ends with a bare `await record_event(...)` — return value not inspected, rows not counted
+back — and `record_event` degrades loudly but **never raises into its caller**, by design, so
+that a journal failure cannot take down a capture. The consequence here is different from the
+one that design serves: the status UPDATE commits while the journal row silently does not, and
+**every G-C metric reads `events` alone**. `ratify` has the same shape on the human-only rung.
+
+**Why it is the one clause that matters.** An unjournalled transition does not show up as a
+gap. It lands in the **denominator** — the completeness probe compares column state against
+journal rows and would score a fact that never journalled as consistent, and the promotion rate
+would divide by an eligible count that silently shrank. Under-power announces itself; this does
+not. A future G-C run that *is* powered would therefore be untrustworthy for a reason no probe
+in the suite can surface, which is why this blocks trusting the gate rather than merely
+annoying it.
+
+**The remedy already exists in this tree and should be copied, not invented.** `dream_undo`
+counts its own `undone` rows back and raises when short, on the stated principle that "an undo
+that could not be journalled does not happen". The same principle applies exactly: a ladder
+transition that could not be journalled must not stand.
+
+**Do not make `record_event` raise.** Its never-raising contract is load-bearing for capture,
+extraction and auth, which must survive a journal failure. The asymmetry is the point — some
+callers can lose a journal row and some cannot — so the signal has to be available to the
+callers that care without changing what happens to the callers that do not.
+
+**Done when:**
+- [ ] A journal failure on a verification transition fails the transition, atomically — the
+      status change and its `verified` row live or die together
+- [ ] `record_event`'s never-raises contract is unchanged for every existing caller
+- [ ] `ratify` carries the same guarantee as the machine journaller, or its exemption is argued
+- [ ] The guarantee is pinned by a test that induces a real journal failure, not a mocked one —
+      a mock proves the branch, not the property
+- [ ] The operational cost is stated: a broken `events` partition now fails recomputes instead
+      of degrading, and `events_ensure_partition`'s boot and maintenance arms are what bound it
+
+**Verify.** `cd backend && python -m pytest tests/test_ladder_journaling.py tests/test_verification_ladder.py tests/test_events.py -q`
+
+#### T2.110 — Grow the entailment gold past its contacted census
+
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.54` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-08 because T2.109 requires it and nothing owned it** — the same shape as
+the measurement-corpus gap the gate-ordering analysis found in August: a precondition
+written into one task's done-when and owned by no task.
+
+**What.** Additional labelled pairs under T2.54's full discipline, so G-D's re-measure has
+an uncontaminated surface to run on.
+
+**Why growth, precisely.** Not for headroom — that reasoning is wrong and should not be
+repeated. Three runs failed on an FP *rate* (7–13 false positives), and a larger gold with
+the same rate fails identically; only the resolution improves. The reason is
+**contamination**: this gold carries three `gold_touching_attempts`, and its false-positive
+census is now public in the ledger, in T2.41's commits and in the resolution brief. A
+prompt or design change measured against pairs whose failure modes are written down is
+fitted to them, which is exactly the loop T2.26's plan review flagged as its one Critical.
+
+**The authoring constraint that makes it worth doing.** The new pairs must be authored
+**without reading the judge's recorded failure census.** That census lives in
+`gate-ledger.md`'s G-D sections and in `briefs/2026-08-08-gd-resolution-spike.md`; it names
+the failing pair ids and the slice-level profile, and this task deliberately **does not
+reproduce them here** — the first version of this paragraph did, which made a document
+stating a blindness requirement the fastest way to destroy it. An author who knows the judge
+over-calls contradiction on non-exclusive reversals and writes more of them is building a
+targeted test, not a gold. Separate owner, adversarial review, blind adjudication — the
+T2.54 pattern, for the same reason it existed there.
+
+**Blindness here is partial, and saying so is part of the task.** A gold author must read
+`LABELLING.md` to author anything, and that file necessarily cites pair ids as worked
+examples of its rules — one of which is also in the judge's failure set. So the achievable
+property is not "the author has seen no failing pair" but **"the author has not seen the
+judge's failure *profile*"**: which verdict it over-calls, on which relation classes, at
+what rate. That is what makes targeted authoring possible, and that is what must stay
+unread. Record the residual rather than claiming a blindness the task does not have.
+
+**Composition still binds** (doc 17 §11): ≥ 50% `l2-fact` premises anchored to committed
+manifest rows, verdict/slice lawfulness enforced by the loader, and the declared counts
+recomputed rather than hand-maintained.
+
+**If T2.109 lands first, the target composition changes.** Under the proposed redesign the
+metric pair inverts — recall becomes truth-critical — so the `contradicted` census is the
+population that needs growing most, not the `entailed` one. Read T2.109's ratified shape
+before fixing the targets.
+
+**Done when:**
+- [ ] Pairs authored blind to the recorded failure census, by an owner who has not read it
+- [ ] §11 composition holds on the grown set, recomputed not asserted
+- [ ] The blind resample is **re-drawn** — the draw is pinned to `gold_sha256`, and growth
+      moves it, so the recorded resample does not carry over
+- [ ] `gold_touching_attempts` resets with the gold file, and the report says so
+- [ ] The grown gold's own eligibility passes `judge_qualification.gate_eligibility`
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_judge_qualification.py -q`
+
+#### T2.111 — G-C re-measure under the veto's ratified shape
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.108, T2.109, T2.110` · `Doc: 20 §4, 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-08 because T2.40 is closed and nothing owns re-running it.** T2.40
+recorded the verdict *not evaluable* and carries three clauses binding "this re-measure" —
+but a `done` task cannot be the thing that re-runs, so those clauses had no owner.
+
+**What.** Re-run G-C's four probes and record a verdict, against T2.108's corpus and
+whatever arm structure T2.109 ratifies.
+
+**Rule on all three vacuity clauses before recording any verdict** (they are stated in
+full under T2.40, and they are cumulative, not alternatives):
+1. The false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is
+   structurally zero — `audit_clears` cannot distinguish precision from inoperability.
+2. Probes 1–2 carry a weaker form: `blocked ≡ 0` is data-precluded, so `slice_clears`
+   reads True with its failing direction unreachable.
+3. The substrate itself may be incomplete: `record_event` never raises and
+   `set_verification_status` never counts its rows back, so the ladder can move while the
+   journal records nothing — degrading the *denominator* without announcing under-power.
+
+**The redesign may change the audit's shape, not merely unblock it.** G-C's machine-dispute
+arm counts `disputed` transitions. If T2.109 moves the LLM scan from disputing to opening
+review, that arm's population changes at the source — the audit may need re-deriving rather
+than re-running, and the human-rejection arm's relative weight rises. Establish which
+before measuring; a probe carried over unexamined would be measuring the old architecture.
+
+**Done when:**
+- [ ] All three vacuity clauses ruled operable or vacuous, with the reasoning recorded
+- [ ] The audit's numerator arms re-derived against the ratified arm structure
+- [ ] Every metric from `events` by SQL; no hand-written journal rows
+- [ ] The verdict recorded whether or not it clears — a miss is the result, not a failure
+- [ ] `app/services/promotion_metrics_record.json` minted **only** on a cleared verdict,
+      deliberately, never as a side effect of measuring
+- [ ] The G-C→G-D cross-edge re-read and its ledger wording corrected if the redesign
+      changed what it binds
+
+**Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
+
 #### T2.41 — G-D evidence run
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`
@@ -101,7 +421,18 @@ never built.
 
 #### T2.40 — G-C evidence run
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.06, T2.09, T2.10, T2.11, T2.24, T2.51, **T2.41 passing**` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-C`
+
+**The false-promotion audit probe requires T2.41 to have *passed*, not merely run —
+ratified into doc 20 §3 on 2026-08-07.** The audit's machine-dispute arm reaches
+`VerificationJudge.judge()`, which refuses unconditionally without a qualification record
+that only a cleared G-D mints, and the binding is to the *currently configured judge
+identity*, so a G-D miss keeps the arm dark until a model or prompt change re-qualifies.
+The dependency is narrow by design: it binds this one arm. The human-rejection arm is
+live with no judge on its path (`human_adjudication.reject_fact` accepts any fact id and
+journals `human_verdict`), and the other three probes need only a promotable corpus — so
+a run before T2.41 passes can measure everything except a systematic false-promotion
+number, and must not record a full G-C verdict on that basis.
 
 **Born-corroborated facts are invisible to this run, and that is by construction —
 inherit it knowingly (recorded 2026-08-06 from T2.28's review).** T2.28's lift mints
@@ -123,9 +454,49 @@ where the number is recorded.
 which N fired; false-promotion audit (corroborated facts later disputed or human-rejected)
 under the stated bar; every ladder transition journaled.
 
+**A decidable number is not automatically a meaningful one — established 2026-08-07 by
+T2.108 and confirmed on data by its adversarial review.** With a corpus that actually
+promotes (31 facts, all three gate buckets), the false-promotion audit reads *decidable,
+clears* at rate 0.0000 — and that reading is **vacuous**, because the numerator is
+structurally zero rather than measured. All three legs verified: no qualification record
+exists so `VerificationJudge.judge()` raises unconditionally; `SINGLE_VALUED_RELATIONS`
+is empty (`contradiction_veto.py:104`) and the corpus's stored `rel_type`s carry no
+REPLACES-family edge, so the deterministic arm never arms; and there are zero
+`human_verdict` events. `audit_clears(0.0, 31)` returns True and **cannot distinguish
+precision from inoperability.**
+
+The review sharpened it twice, and both sharpenings survive attack: the vacuity is a joint
+bar-plus-corpus property — an inverse-REPLACES corpus could drive machine disputes
+judge-free — but **no corpus in the 20–99 band can be both operable-numerator and passing
+under the strict 1% bar**, so the defect attributes to the bar. Probes 1–2 carry a weaker
+form of the same shape: `blocked ≡ 0` is data-precluded, so `slice_clears` reads True with
+its failing direction unreachable. The asymmetry matters — probes 1–2's decidability
+carries earned content (31 journaled promotions where the first run had zero), the audit's
+carries none of its numerator's operability.
+
+**This re-measure must rule on that before recording any verdict**, and rule on both
+instances under one lens. A gate that clears on a number which cannot fail is the shape
+doc 20 §4's "no layer advances on intuition" exists to forbid.
+
+**A third instance, and the clause must absorb it (E2 whole-branch review, 2026-08-08,
+silent-success lens).** The vacuity above is about the numerator; this one is about the
+substrate. `record_event` never raises by design (`events.py`), and
+`set_verification_status` — the journaller for every rung the ladder moves
+(`knowledge_triples.py`) — never counts its row back. Every G-C metric is SQL over
+`events` alone, and nothing reconciles rung state in `knowledge_triples` against the
+journaled transitions. So a broken or missing monthly partition lets the ladder move
+while the measurement substrate records nothing, and every probe reads clean over a
+journal that is silently short. That is a second route to "the audit reads clean while
+measuring nothing", independent of the numerator argument, and it degrades the *denominator*
+rather than the numerator — so it does not announce itself as under-powered either.
+**The re-measure must therefore prove its substrate complete before reading any number
+off it**, not merely rule the numerator operable. The codebase already owns the pattern:
+`dream_undo` counts its journal rows back and raises when short.
+
 **Done when:** all three measured from the `events` journal by SQL; bars stated as
 `config` before measuring, not after; **facts have actually flowed through the ladder**
-(a 0/0 promotion rate is under-powered, not a pass); verdict in `gate-ledger.md`;
+(a 0/0 promotion rate is under-powered, not a pass); **each probe's decidability is ruled
+operable or vacuous, with the reasoning recorded** (above); verdict in `gate-ledger.md`;
 `CLAUDE.md` refreshed to the shipped L2 shape; a miss leaves G-C open and the deriver
 lane (T2.27–T2.28) closed.
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
@@ -194,4 +565,6 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-09 | T2.54, T2.110 | 1 | **Two minors parked from the 2026-08-09 delta review, both on the gold's eligibility lock, neither actioned.** (D-7) `gate_eligibility` validates that the embedded `resample` block *says* n ≥ 93 with ≤ 1 disagreement and carries its citation fields, and nothing binds that certification to the pair content it certified — a post-certification label flip keeps eligibility green on a certification of a different file. T2.110 handled exactly this correctly **by procedure**, stripping the carried-over block for that stated reason, so the protocol already understands what the code does not enforce; the slice-count pin catches appends, not flips. Fix shape when someone takes it: a pairs-only content hash recorded in the block and re-derived at eligibility time. (D-8) The sitting wrote its certification *into* `gold.json`, so the certified sha is not the measured sha — verified annotation-only, and the attempt counter treats the new sha as uncontacted | Parked rather than fixed because both are hardening on a lock whose current answer is correct: the gold *is* eligible, by a resample that did happen, on the file as it stands. Recorded here rather than only in the review report because the next person to touch the lock is the one who needs them, and the report is a dated artefact while this file is the task's own |
 | 2026-08-06 | T2.40, T2.41, T2.54, T3.22, T3.24, TH1.10, TH1.17 | 2 | **Epic created; all seven evidence-and-gold tasks moved here from E2, E3 and EH1, ids unchanged.** Ids keep their original epic prefix deliberately — every gate-ledger row, analysis and commit message in the tree already cites them, and renumbering would break that trail to buy nothing | Controller decision: implementation must not queue behind datasets. One unlabelled gold (T2.54) was holding six E2 tasks and, through the epic entry gates, most of E3 and EH1 — while 89 of 96 E2 tasks had already closed without any gold at all, which is the measurement that the coupling was accidental. Moving them out makes the dependency explicit rather than structural: M1 consumes implementation, never gates it. Safety is preserved by `T2.95`'s serving gate, not by ordering |
+| 2026-08-07 | T2.40, T2.108 | 2 | **T2.40 gains a clause: a decidable probe is not automatically a meaningful one, and this re-measure must rule on that before recording a verdict.** With T2.108's corpus the false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is structurally zero — judge unqualified, `SINGLE_VALUED_RELATIONS` empty with no REPLACES-family edge in the corpus, no `human_verdict` events — and the committed predicate cannot distinguish precision from inoperability | Verified on data by T2.108's adversarial review, not inferred. The review's own attack sharpened rather than weakened it: the vacuity is joint bar-plus-corpus, but no corpus in the 20–99 band can be both operable-numerator and passing under the 1% bar, so it attributes to the bar. Probes 1–2 carry a weaker form (`blocked ≡ 0` data-precluded) that T2.108's report did not frame as the same shape. Recorded on T2.40 rather than fixed anywhere, because changing a bar after a measurement is exactly what the pre-statement rule forbids — the gate owner rules |

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.memory import Memory, MemoryBuffer
+from app.repositories import memory_communities
 from app.repositories.relational import (
     PostgresAuditRepository,
     PostgresMemoryRepository,
@@ -17,7 +18,7 @@ from app.repositories.vector import MemoryFilter
 from app.schemas.envelope import PageInfo
 from app.schemas.memory import CaptureAck, MemoryCreate, MemorySearchRequest, MemoryUpdate
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
-from app.services import buffer_flush, memory_buffer, repo_provision
+from app.services import buffer_flush, memory_buffer, project_registry, repo_provision
 from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
@@ -116,6 +117,20 @@ class MemoryService:
         replayed verbatim at flush (doc 04 §8.6) — dropping one silently here
         is the exact failure that tuple exists to make visible.
         """
+        # Lazy registration (doc 04 §7): every project string that reaches a
+        # buffer row gets a visible `projects` row in the same transaction as
+        # the capture, so a typo never opens a silent parallel fact-identity
+        # scope. Never fails the capture — see project_registry.register's
+        # own docstring. Deduped per batch (not per entry): a same-project
+        # conflict within one transaction is a harmless no-op either way, but
+        # a 100-entry batch to one project has no reason to open 100
+        # savepoints for it.
+        batch_projects = dict.fromkeys(
+            data.project or "default" for data in entries
+        )
+        for project in batch_projects:
+            await project_registry.register(self.session, project)
+
         rows: list[MemoryBuffer] = []
         for data in entries:
             project = data.project or "default"
@@ -249,9 +264,37 @@ class MemoryService:
             update_fields["memory_type"] = normalize_memory_type(
                 update_fields["memory_type"]
             )
+        # Before the update, not after it. `memory_repo.update` flushes, and
+        # `memory_community_members`' composite FK on (memory_id, project) has
+        # no ON UPDATE action, so with a membership row live the flush itself
+        # raises and anything placed in the post-update project branch below
+        # would be unreachable. Deleting is the correct semantic rather than a
+        # workaround: doc 06 §7's lifecycle already decays members out of
+        # communities, and a memory that leaves project A has left A's topic
+        # space. Same shape as the demote-before-delete rule — clear the
+        # dependent rows first, or the constraint aborts the operation.
+        if "project" in update_fields:
+            current = await self.memory_repo.get(memory_id)
+            if current is not None and current.project != update_fields["project"]:
+                await memory_communities.delete_memberships_for_memory(
+                    self.session, memory_id
+                )
+
         memory = await self.memory_repo.update(memory_id, **update_fields)
         if not memory:
             return None
+
+        # A memory row can also change project through this door (REST
+        # PUT /memories/{id}; MCP memory_update does not expose the field).
+        # Registration happens for every path that lands a project string on
+        # a memory row, not just capture (doc 04 §7) — otherwise a moved
+        # memory sits in an unregistered scope until the next boot backfill.
+        # Deliberately after the `not memory` guard above: a project string
+        # on an update to a nonexistent id never reaches a memory row, so it
+        # must not register either — the brief's binding sentence is about
+        # what actually lands, not what was merely requested.
+        if "project" in update_fields:
+            await project_registry.register(self.session, update_fields["project"])
 
         if data.tags is not None:
             await self.memory_repo.set_tags(memory_id, data.tags)
@@ -571,6 +614,35 @@ limit=params.limit, offset=params.offset,
                 continue
             kept.append((row, mem))
 
+        # The post-fusion multiplier decides the order here, exactly as it does
+        # on the untraced path (``pipeline.semantic_search``). Computing it for
+        # display alone — which this door did — left an activated rank arm
+        # visible in the trace and absent from the ranking, so the live search
+        # surface would have gone on serving the unweighted order while the
+        # arm's own measurement said it had moved. Every arm sits at weight
+        # zero today, every factor is exactly 1.0, and the sort is stable, so
+        # the shipped order is unchanged to the bit.
+        #
+        # A rerank is authoritative and is not sorted away: the factor still
+        # rescales, matching ``preserve_order=True`` on the untraced path.
+        breakdowns = {
+            row["memory_id"]: rank_fusion_breakdown({"confidence": mem.confidence}, flags)
+            for row, mem in kept
+        }
+        factors: dict[str, float] = {}
+        for memory_id, breakdown in breakdowns.items():
+            factor = 1.0
+            for arm_value in breakdown.values():
+                factor *= arm_value
+            factors[memory_id] = factor
+        if not reranked:
+            kept.sort(
+                key=lambda pair: (
+                    float(pair[0].get("rrf_score") or 0.0) * factors[pair[0]["memory_id"]]
+                ),
+                reverse=True,
+            )
+
         total = len(kept)
         page = kept[params.offset:params.offset + params.limit]
 
@@ -582,10 +654,8 @@ limit=params.limit, offset=params.offset,
 
         items: list[MemoryTraceRow] = []
         for row, mem in page:
-            breakdown = rank_fusion_breakdown({"confidence": mem.confidence}, flags)
-            factor = 1.0
-            for arm_value in breakdown.values():
-                factor *= arm_value
+            breakdown = breakdowns[row["memory_id"]]
+            factor = factors[row["memory_id"]]
             channel = channel_trace.channel_scores.get(row["memory_id"], {})
             scores = {
                 "semantic": channel.get("semantic"),

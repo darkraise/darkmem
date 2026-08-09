@@ -14,9 +14,12 @@ counting queries rather than by inspecting the result (T1.01).
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import event, text
+from sqlalchemy import event, select, text
 
-from app.services.config import PURPOSES, get_llm_config
+from app.models.llm_config import LLMPurposeConfigRow
+from app.schemas.config import LLMConfigUpdate
+from app.services.config import PURPOSES, cfg_to_schema, get_llm_config
+from tests.response_coverage import undeclared_keys
 
 
 class _QueryCounter:
@@ -187,3 +190,108 @@ async def test_absent_purposes_fall_back_to_settings_defaults(session):
     config = await get_llm_config(session)
     assert set(config) == set(PURPOSES)
     assert config["embedding"].model
+
+
+# ───────────────── the undeclared-field guard (T2.104) ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_config_llm_route_serves_every_purpose_it_resolves(
+    client, auth_headers, session
+):
+    """`get_llm_config` resolves all eight `PURPOSES` and `GET /config/llm`
+    always builds a payload keyed on all eight of them, but
+    `LLMConfigResponse` used to declare six — dropping `synthesis` and
+    `verification` exactly like `facts_read`'s fields, one directory over.
+    Diffs the resolved purpose set against the served JSON instead of
+    hand-listing eight names, so a ninth purpose added later is covered
+    without a new assertion.
+    """
+    config = await get_llm_config(session)
+    built = {
+        purpose: cfg_to_schema(cfg).model_dump() for purpose, cfg in config.items()
+    }
+
+    response = await client.get("/api/v1/config/llm", headers=auth_headers)
+    served = response.json()
+
+    missing = undeclared_keys(built, served)
+    assert not missing, f"LLMConfigResponse dropped: {missing}"
+    assert set(PURPOSES) <= set(served)
+
+
+# ───────── the write-side asymmetry, decided per purpose (T2.106) ─────────
+
+
+def test_llm_config_update_declares_synthesis_but_not_verification():
+    """The read side (`LLMConfigResponse`) declares all eight purposes; the
+    write side deliberately does not mirror that. `synthesis` is seeded
+    inert (no consumer until T3.02) so widening its write is cheap.
+    `verification` is live (`VerificationJudge`, T2.26) and its qualification
+    record is G-D's gate evidence — repointing it through this route is a
+    real capability whose write-time guard would mean touching the
+    verification ladder, which is out of this task's scope. The asymmetry
+    is asserted directly on the schema so a future edit that reintroduces
+    (or accidentally removes) either field fails loudly here rather than
+    being noticed only via a route-level probe."""
+    fields = set(LLMConfigUpdate.model_fields)
+    assert fields == {
+        "embedding", "extraction", "classification", "reasoning",
+        "summarization", "reranker", "synthesis",
+    }
+    assert "verification" not in fields
+
+
+@pytest.mark.asyncio
+async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
+    """`synthesis` is now writable end to end: the row is created/updated
+    and the change is visible both in the response and in the underlying
+    table, exactly like the six always-writable purposes."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={
+            "synthesis": {
+                "base_url": "https://api.example.invalid/v1",
+                "model": "synthesis-test-model",
+                "api_kind": "openai",
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["synthesis"]["model"] == "synthesis-test-model"
+
+    row = (await session.execute(
+        select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "synthesis")
+    )).scalar_one()
+    assert row.model == "synthesis-test-model"
+    assert row.base_url == "https://api.example.invalid/v1"
+
+
+@pytest.mark.asyncio
+async def test_post_config_llm_ignores_verification_write(client, auth_headers, session):
+    """A `verification` key on the POST body is not a declared field on
+    `LLMConfigUpdate`, so pydantic's default `extra="ignore"` drops it
+    before the route ever sees it — no row is created or changed, and the
+    served config for `verification` is untouched. This is the deliberate
+    read-only ruling, proven rather than merely stated in a comment: an
+    operator's settings form cannot repoint the qualified judge's model
+    through this door, silently or otherwise."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={
+            "verification": {
+                "base_url": "https://repointed.invalid/v1",
+                "model": "a-different-judge-model",
+                "api_kind": "openai",
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["verification"]["model"] != "a-different-judge-model"
+
+    row = (await session.execute(
+        select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "verification")
+    )).scalar_one_or_none()
+    assert row is None or row.model != "a-different-judge-model"

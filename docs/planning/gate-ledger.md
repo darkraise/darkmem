@@ -25,8 +25,8 @@ its artifact path, and a verdict — not when someone believes the work is done.
 |---|---|---|---|---|
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
-| G-C | L2 → deriver; Phase 2 exit | **open** | — | — |
-| G-D | L2 → L3 | **open** | — | — |
+| G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
+| G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
 | G-E | L3 → F7 | **open** | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -470,19 +470,242 @@ in turn and the corresponding tests observed failing before restoration.
 
 ## G-C — L2 → deriver; Phase 2 exit
 
-**Owning task:** T2.40. **Bar lives in:** `config` rows. **Metrics computed from the
-`events` journal by SQL** — an unjournaled transition is an unmeasurable one.
+**Owning task:** T2.40. **Bar lives in:** `config` rows over committed defaults —
+`backend/scripts/benchlib/promotion_bars.py` (`PROMOTION_BAR_DEFAULTS`, pinned by value in
+`scripts/benchlib/tests/test_promotion_bars.py` so a moved bar is a two-file diff, never a
+quiet constant tweak). **Metrics computed from the `events` journal by SQL** — an
+unjournaled transition is an unmeasurable one.
+
+**Bars stated 2026-08-07, before any gate run** (T2.40; the G-D rows are the precedent
+for this recording). The bar module also commits, ahead of any count, the two
+definitional rulings that decide what the audit counts: **R1** — a citation-driven
+downgrade (T2.48) is a `demote`, never a false promotion (the audit measures promotion
+precision, not repository churn; boundary case of promoted-on-already-stale-citation
+stated and bounded by one reverify tick); **R2** — the T2.101 fact fold can move a
+journaled corroboration's identity out from under a later dispute when the keeper's rung
+was unjournaled (born-corroborated), so the audit **undercounts** in exactly that shape —
+anti-conservative, therefore every measurement reports the in-window fold count beside
+the audit; **R3** — `_write_born_rung`'s two unjournaled writes (deriver birth, and the
+post-dispute restore, which IS a `candidate → corroborated` change that journals nothing
+on doc 10 §6's licence) are the completeness probe's one carve-out, counted and reported,
+never silently absorbed.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | — | — | — | — |
-| Promotion rate, sliced by which N fired | — | — | — | — |
-| False-promotion audit (corroborated later disputed or human-rejected) | Under stated bar | — | — | — |
-| Every ladder transition journaled | 100% | — | — | — |
+| Promotion rate `(promoted / eligible)`, sliced by source-kind diversity | Every powered bucket ≥ 0.5 (`promotion_rate_floor`); axis decidable only with ≥ 1 powered bucket (eligible ≥ 5, `promotion_rate_min_eligible` = the harness's own `UNDER_POWERED_THRESHOLD`) **and** ≥ 1 journaled `promote` in window (`promotion_rate_min_promotions`); stated 2026-08-07, before any gate run | **0 eligible, 0 promotions** on both targets (window 2026-05-09 → 2026-08-07): production `darkmem` journal holds 0 `verified` events; bench corpus (62 facts through the shipping lift + recompute) journaled 0 transitions — every fact is a single anonymous origin (`origin_key` NULL on all 62 `fact_sources` rows, folded to the reserved bucket, which counts once and can never fire a gate), so nothing can meet N. Axis not decidable under the pre-stated predicate | `docs/eval/2026-08-07-promotion-metrics.md` (production probe, the task's Verify); `docs/eval/2026-08-07-t2.40-gc-evidence/` (bench run + corpus structure); reproduce: `run_promotion_metrics.py`, `run_gc_evidence.py` | **UNDER-POWERED — not evaluable; gate stays open** |
+| Promotion rate, sliced by which N fired | Same bar family, same keys, per bucket; under-powered buckets reported with denominators, never collapsed, and can neither clear nor fail; stated 2026-08-07, before any gate run | Same numbers, same window, same two targets: 0 eligible in every bucket on both axes (`gate_fired` buckets empty) | same | **UNDER-POWERED — not evaluable; gate stays open** |
+| False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
+| Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
+
+### G-C re-measure (2026-08-08, T2.111): **still NOT CLEARED**, and the audit was re-derived
+
+Report: `docs/eval/2026-08-08-promotion-metrics.md`. Every probe reports the same
+under-powered result as T2.40: 0 eligible transitions, 0 corroborations, 0 in
+either audit arm, R2's fold companion 0. **The numbers did not move and the
+verdict does not either.** What changed is what the numbers *mean*, and that is
+the work this task existed to do.
+
+**The audit's numerator arms, re-derived against T2.109's ratified shape.**
+`_FALSE_PROMOTION_AUDIT_SQL` has exactly two arms: `disputed_after` (a `verified`
+event whose `payload.after.verification_status = 'disputed'`) and
+`rejected_after` (a `human_verdict` event with `verdict = 'rejected'`).
+
+- The LLM `contradiction_scan` **no longer contributes to `disputed_after` at
+  all.** Its finding now arrives on `contradiction_suspected`, which `decide`
+  holds inert by construction — "no branch reads it, it appears in no
+  condition, and every outcome this function can return is identical with it set
+  and unset" — so it can produce no status transition and therefore no row this
+  arm can see.
+- `disputed_after` is consequently **judge-free**: its only remaining producer is
+  the deterministic `adjudicate_contradiction_finding`, whose `inverse_replacement`
+  arm needs a stored REPLACES-family edge and whose `single_valued` sibling is
+  disarmed by an empty `SINGLE_VALUED_RELATIONS`.
+
+**The G-C→G-D cross-edge, corrected.** The 2026-08-07 ruling — "G-C therefore has
+G-D's judge qualification on its critical path", ratified into doc 20 §3 — was
+true of the architecture it was written against and is **no longer true as
+written**. The machine-dispute arm cannot be blocked by an unqualified judge
+because the judge is not on it. The edge does not vanish, it lengthens and
+changes kind: the scan's findings can still reach the audit, but only through
+`rejected_after`, which requires a human to confirm a flag and reject the fact.
+That route is gated on G-D passing **and** on a reviewer who can actually see the
+suspicion.
+
+**A cross-edge nobody had recorded: T2.112 sits on G-C's path.** A
+contradiction-suspected fact currently reaches the review queue rendering
+`unspecified`, with no counterpart and nothing to adjudicate against —
+`review_queue._fact_reason` derives from the fact's own columns and the suspicion
+is persisted in none of them. So today the human route is not merely gated, it is
+**impassable**: even a qualified judge's findings could not reach `rejected_after`,
+because no reviewer can confirm what they cannot see. T2.112 is therefore a
+precondition for the audit's LLM-originated detection power, not a display
+nicety.
+
+> **Addendum 2026-08-09 — the route is passable now, and it took two landings.**
+> T2.112 (`90b8fc7f`) persisted the flag as `contradiction_suspected_at` /
+> `contradiction_counterpart_id` and served both from the queue — on the wire.
+> The 2026-08-09 delta review found the screen still dropped them and the
+> dismissal door had no caller at all, so the reviewer's only button *confirmed*
+> the flag; `f0b2a2ed` renders the counterpart and ships the dismissal. The
+> paragraph above is what a reader planning T2.40's re-measure needs corrected:
+> "impassable" was true when written and again after the wire-only landing, and
+> is false now. Note what the route still needs — a qualified judge (G-D, open)
+> and a human who acts.
+
+**The honest cost of the redesign, stated where it will be read.** G-D's
+amendment bought veto precision by moving the scan off the veto. The same move
+**reduces the audit's reach**: a detection route that was automatic
+(scan → dispute → counted) is now human-gated (scan → review → human → reject →
+counted). The audit's precision claim is unaffected; its *power* is strictly
+lower, and the human-rejection arm's relative weight rises accordingly. Both
+follow from one ratified decision and neither is a defect.
+
+**The three vacuity clauses, ruled — they are cumulative and all three are now
+answered.**
+
+1. *The audit could read "decidable, clears" at 0.0000 with a structurally zero
+   numerator.* **Vacuous for this run, live in principle.** Decidability requires
+   ≥ 20 in-window corroborations (`false_promotion_min_corroborations`); there are
+   0, so the audit cannot report decidable at all and the failure mode is
+   unreachable. It stays live for any future run that reaches 20 corroborations
+   while the numerator's producers remain dark — and note the reason a zero would
+   be vacuous has *changed*: it is no longer "the judge is unqualified" but "the
+   corpus carries no REPLACES-family edge and no human has adjudicated."
+2. *Probes 1–2 read `slice_clears` True with `blocked ≡ 0` data-precluded.*
+   **Vacuous for this run, live in principle.** With 0 eligible transitions both
+   probes are under-powered and can neither clear nor fail, so the failing
+   direction being unreachable costs nothing here.
+3. *The substrate itself may be incomplete.* **OPERABLE AND UNRESOLVED — the one
+   clause that is not vacuous.** Verified in code: `set_verification_status`
+   ends with a bare `await record_event(...)`, no return inspected and no row
+   counted back, and `record_event` degrades loudly but never raises into its
+   caller. So a status UPDATE can commit while its journal row silently fails,
+   and every G-C metric reads `events` alone — the loss lands in the
+   **denominator**, which is the one direction that does not announce itself as
+   under-power. The remedy pattern already exists in this tree: `dream_undo`
+   counts its own `undone` rows back and raises when short ("an undo that could
+   not be journalled does not happen"). Nothing applies it here. **This clause
+   alone would prevent a future powered run from being trusted, and it has no
+   owner.**
+
+   > **Addendum 2026-08-09 — clause 3 has an owner, and is closed on both
+   > streams.** T2.113 (`0d9b5dca`) was minted from this clause: `record_event`
+   > now returns whether the row landed, and `set_verification_status` /
+   > `ratify` raise `JournalWriteFailed` on a `False`, so a transition and its
+   > journal row are atomic. The 2026-08-09 delta review then found the fix one
+   > stream short — `record_human_verdict` and `dismiss_contradiction_suspicion`
+   > still ignored the return — closed by `149f1f1e`. That half matters more to
+   > *this* gate than the first: no column records a human rejection, so that
+   > event row **is** the audit's `rejected_after` arm, and losing one deletes a
+   > numerator rather than shrinking a denominator — the gate would read cleaner
+   > than the system is. A powered run can now be trusted in both directions.
+
+**No promotion record minted.** `app/services/promotion_metrics_record.json` stays
+absent, so every promoted or born badge continues to serve as `candidate` with the
+`verification_unmeasured` reason, scan-enforced.
+
+### G-C verdict: **NOT CLEARED — the gate cannot yet be evaluated** (2026-08-07, T2.40)
+
+**The measurement ran and the honest result is that no fact has ever flowed through the
+counting ladder, anywhere this machine can see.** The production `darkmem` database is
+migrated but its journal is empty (0 events of any type). The only corpus that exists —
+the committed retrieval corpus, flowed end-to-end through the shipping lift and the
+production recompute's fast drain (62 `sources_changed` events drained, 62 facts
+recomputed, 0 live LLM calls, fingerprint `qwen3-embedding:0.6b|1024`) — is structurally
+incapable of powering the gate: all 62 facts carry exactly one `fact_sources` row with a
+NULL `origin_key`, which rule 4 of `fact_sources` folds into the reserved anonymous
+bucket; that bucket counts once and is excluded from both gates by design, so no fact can
+ever meet N on this corpus. A 0/0 is under-powered, not a pass, and it is recorded as
+that. **The deriver lane's consequence holds where it now lives — on the label, not the
+build** (M1 split, 2026-08-06): T2.27/T2.28 are merged, but
+`claim_gates.PROMOTION_RECORD_PATH` remains absent — this run minted **no** promotion
+record, so every born-`corroborated` row keeps serving as `candidate` with the
+`verification_unmeasured` reason, scan-enforced. "The deriver lane stays closed" means
+exactly that and nothing more.
+
+**The reason this gate should not clear, looked for hardest and found (three, compounding):**
+
+1. **Starvation is structural, not circumstantial.** No corpus with attributable,
+   diverse origins exists; the bench corpus cannot be made to promote without authoring
+   origin structure, and a corpus authored to promote measures its own design.
+2. **The false-promotion audit's *broadest* systematic detector is dark until the
+   `verification` judge qualifies.** The Tier-C LLM `contradiction_scan` reaches
+   `VerificationJudge.judge()`, which refuses unconditionally without a qualification
+   record (T2.41, behind T2.54's gold). **G-C therefore has G-D's
+   judge qualification on its critical path** — a sequencing dependency stated nowhere
+   before this run (T2.40's Depends list does not carry it), ratified into doc 20 §3 on
+   2026-08-07. The dependency binds to G-D **passing at the currently configured judge
+   identity**, not merely running: a G-D miss keeps this arm dark until a model or prompt
+   change re-qualifies. Clearing G-C on a zero recorded while the audit's broadest
+   detector was dark would certify the ladder's precision using an instrument that could
+   not have caught most of an imprecision.
+
+   **Second correction (2026-08-08, E2 whole-branch review, claim-honesty lens).** As
+   first written *and as corrected on 2026-08-07*, this item said machine disputes "flow
+   only through `contradiction_scan` → `VerificationJudge.judge()`". That is false, and
+   the 2026-08-07 pass reinforced it rather than catching it. The veto has a **second,
+   judge-free instrument**: `adjudicate_contradiction_finding` runs
+   `CONTRADICTION_DETECTORS`, and `verification_ladder` reaches it on every recompute, so
+   the `inverse_replacement` arm can dispute a fact with no qualification record. Whether
+   it fires is a corpus property, not a code one — it needs a stored REPLACES-family edge,
+   and T2.108's corpus had none, which is the finding that was mistaken for a code-level
+   dead-end. The sibling `single_valued` arm is separately disarmed
+   (`SINGLE_VALUED_RELATIONS` is empty). **G-C's verdict is unaffected** — the arm's
+   sensitivity over a corpus with no such edges is nil, and the gate stays open on the
+   corpus grounds of item 1. What changes is the *reason*: the judge is not a total
+   barrier to machine disputes, and the gate-ordering analysis that ratified the
+   G-C→G-D cross-edge never considered this arm. The cross-edge stands on the LLM scan's
+   breadth; it does not stand on machine disputes being unreachable.
+
+   **Correction (2026-08-07, Tier-3 analysis `2026-08-07-gate-ordering.md`, ratified).**
+   This item originally read "human rejections flow only through a review queue that only
+   disputes and blocked holds can fill. Both numerator arms dead-end today." **Both halves
+   are contradicted by the shipped code, and the overstatement is corrected here so a
+   future reader planning a fallback is not misled.** `human_adjudication.reject_fact`
+   accepts *any* fact id — deliberately, since a corroborated fact has no opener firing on
+   it and is therefore not on the queue at all — and journals a `human_verdict` event with
+   `verdict='rejected'`, which is exactly what the audit's `rejected_after` CTE counts. No
+   judge appears anywhere on that path. Nor is the queue's fill predicate judge-exclusive:
+   `verification_ladder.REVIEW_OPENERS` also carries `_under_sourced_opens_review`, driven
+   by source changes, never by the judge. So the human arm is **live**, and a zero from it
+   is non-vacuous rather than dead — but its *sensitivity* is unknown and unmeasurable
+   (nothing states what fraction of false promotions an unprompted human catches), so it
+   cannot carry a "promotion precision ≥ 99%" claim on its own. The verdict below stands
+   unchanged; only this supporting claim narrows from "both arms" to the machine arm.
+3. **Once the record is minted, the badge outruns the measurement — say so here, where
+   the number lives (T2.28's inherited consequence).** The promotion record this gate
+   mints will light `corroborated` on born rows that the counting ladder never counted:
+   they enter neither the promotion rate's numerator nor its denominator, never appear
+   in the false-promotion audit, and their birth (and post-dispute restore,
+   `_write_born_rung`) journals nothing, by design. Doc 10 §6's argument — *the parse is
+   the verification* — may well be right, since a parsed import is not an inference. But
+   G-C's number is a statement about the **counting** ladder only, and the badge it
+   unlocks will also appear on rows outside that statement's scope. Any future reader of
+   a cleared G-C row must read its claim that narrowly.
+
+**What would evaluate this gate.** Either (a) a production journal window after the
+homelab cutover, with organically captured facts asserted by ≥ 2 attributable
+`origin_key`s across ≥ 2 source kinds or ≥ 7-day gaps, measured **after** T2.54 → T2.41
+qualify the judge so the dispute arm is live — sized to at least one powered bucket per
+axis (≥ 5 eligible), ≥ 20 distinct corroborated facts, ≥ 1 promote; or (b) a
+purpose-built measurement corpus with designed origin/kind/time-gap structure, authored
+under the gold discipline (separate owner, adversarial review — T2.54's pattern), with
+the stated caveat that its promotion rate partially measures the corpus design, and the
+same judge-qualification precondition for the audit. Hand-written journal rows evaluate
+nothing and are forbidden in both branches.
+
+**Twin (rule 2):** this run made **0 live LLM calls** (ingest fully cache-served; lift,
+recompute and every metric are SQL); the bench arm end-to-end is ~40 s wall clock on the
+dev machine, dominated by LAN embedding of the 94-entry corpus. There is no accuracy
+figure here to twin — every rate came back undefined — but the cost column is recorded so
+a future powered run has a baseline for what the measurement itself costs.
 
 **Consequence of a miss:** the code-deriver lane (T2.27–T2.28) stays closed. The deriver
 mints facts born `corroborated`; shipping it over an unproven ladder would put unverified
-assertions into the vault at the ladder's second rung.
+assertions into the vault at the ladder's second rung. *(Updated 2026-08-07: the lane's
+code is merged under the M1 split; "closed" is enforced at the label —
+`claim_gates.corroboration_gate` fails closed while the promotion record stays unminted,
+and this run deliberately minted none.)*
 
 ---
 
@@ -492,16 +715,432 @@ assertions into the vault at the ladder's second rung.
 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
-| `verification` judge precision on labelled entailment gold | — | — | — | — |
-| `verification` judge recall on labelled entailment gold | — | — | — | — |
+| `verification` judge precision on labelled entailment gold | ≥ 0.95 on `entailed` (`groundedness_gate_precision_bar`, config default; stated 2026-07-31, before any gate run) | **0.9895** (deepseek) / **0.9806** (gpt-5.5) | `docs/eval/2026-08-08-judge-qualification-4d886440.md`, `-1bb9d9ba.md` | **PASS** both |
+| `verification` judge recall on labelled entailment gold | ≥ 0.90 on `entailed` (`groundedness_gate_recall_bar`, config default; stated 2026-07-31, before any gate run) | **0.9307** (deepseek) / **1.0000** (gpt-5.5) | same | **PASS** both |
+| `verification` judge precision on the **contradiction** verdict | ≥ 0.95 (`contradiction_precision_bar`, config default; stated 2026-07-31) | **0.7937** (deepseek) / **0.8814** (gpt-5.5) | same | **FAIL** both |
+
+The veto consumer inherits the same qualification on the **contradiction** verdict
+(doc 17 §6): `contradiction_precision_bar` = **≥ 0.95**, config default, stated
+2026-07-31 before any gate run alongside the two above.
+
+### G-D re-measure under the redesign (2026-08-08): **NOT CLEARED — one bar, one slice**
+
+The first measurement of the redesigned gate, on the grown gold after its
+Layer-3 ruling and certification. Report:
+`docs/eval/2026-08-08-judge-qualification-fd39e7b2.md`.
+
+| Bar | Value | Pooled (351) | Never-contacted (110) |
+|---|---|---|---|
+| `groundedness_gate_precision_bar` | 0.95 | 0.9932 **PASS** | 1.0000 **PASS** |
+| `groundedness_gate_recall_bar` | 0.90 | 0.9932 **PASS** | 0.9778 **PASS** |
+| `contradiction_precision_bar` | 0.70 | 0.9012 **PASS** | 0.9200 **PASS** |
+| `contradiction_recall_bar` | 0.95 | **0.9125 FAIL** | **0.9200 FAIL** |
+
+> **Provenance note added 2026-08-09 (delta review D-6): this run's
+> never-contacted column is ledger-only.** The subset renderer landed in
+> `47e3dce1`, the same commit that recorded the run, and the run's own recorded
+> sha (`e69895cb`) predates it, so the committed report carries no subset
+> section and the entailment cache the cells derive from is untracked. Three
+> checks were run against that: the four cells are arithmetically consistent
+> with the report's pooled confusion, the run ledger holds exactly **one**
+> attempt row for gold sha `800d4d91` (so "no extra gold contact" survives its
+> own counting rule, warm replays included), and the verdict does not turn on
+> the column — the gate fails on pooled recall either way. Forward-closed: the
+> runner now renders the subset, so the next run's column comes from its own
+> report.
+
+**The redesign's own prediction held, and that is the first thing to say.**
+Precision — repriced from truth to review-load — came in at 0.90 against the
+0.70 floor, comfortably. The gate now fails on the metric the amendment made
+truth-critical, which is the gate working as redesigned rather than failing in
+a new place. Recall 0.9125 = 73/80; the bar needs 76/80. **Three pairs.**
+
+**The failure is one rule, not a diffuse weakness.** All **7** contradiction-recall
+misses are `value-swap`, every one judged `unsupported` — the slice whose
+verdict is fixed by the exclusive-slot rule. The judge is declining to treat a
+differing value in a single-valued slot as *exclusion*, falling back to
+"contradiction requires exclusion, not absence". The precision errors sit
+elsewhere entirely (6 `temporal`, 2 `direction`), so the two metrics are failing
+on disjoint material.
+
+**Two checks that close off the easy explanations, both pre-existing rather
+than constructed after the number:**
+
+1. *Is the gold wrong?* No, and this is the strongest evidence available. The
+   n = 93 Layer-3 resample draws a **full census of the contradicted class**, so
+   every one of the 42 `value-swap` pairs was independently re-labelled blind by
+   a non-Claude model days before this run. It returned **one** disagreement in
+   93, and that one was `temporal` (eg-0018), not `value-swap`. The six host-swap
+   pairs this file had flagged as "procedurally weak evidence... exactly the pairs
+   the resample's full contradicted census exists to test" were tested, and held.
+2. *Is the prompt missing the rule?* No. `SYSTEM_PROMPT` lists under
+   `contradicted`: "a different value in a slot the premise fills exclusively".
+   The judge was told the rule and did not apply it. So this is not a
+   prompt-coverage gap, and editing the prompt would be tuning against the set
+   that measured the failure — barred by doc 17 §6 and unnecessary on the facts.
+
+**Rule B was enforced for the first time here, and it was not previously
+implemented.** LABELLING.md's contacted-pairs rule requires every barred metric
+on both populations "with the gate verdict required to hold on both"; the runner
+scored the pool only. It now scores both from the verdicts already in hand — no
+extra model call, no extra gold contact. The subset agrees with the pool on every
+bar, including the miss, so pooling was not hiding anything **this time**. Note
+the 241 pairs below the boundary had been contacted three times, which is exactly
+the blend the rule exists to prevent being read as one number.
+
+**A granularity finding the subset exposes, recorded because it will matter
+before it bites.** The never-contacted subset holds 25 contradicted pairs, so its
+recall lattice is 1.00 / 0.96 / 0.92 — **0.95 is not on it**, and the subset
+therefore enforces ≥ 0.96 (at most one miss in 25) where the pooled census
+permits four in 80. T2.110 sized the pooled census at 80 precisely so 76/80 lands
+on 0.9500 exactly; that analysis was never run for the subset Rule B also gates.
+**It is not load-bearing for this verdict** — the subset scored 23/25, which
+fails against 0.95 and 0.96 alike — but a future run landing on 24/25 would be
+passed by the stated bar and failed by the lattice, and the owner should settle
+whether the subset gates or is reported-only before that happens.
+
+**Attempts and provenance, stated plainly.** `gold_touching_attempts` keys on
+`gold_sha256`, so this is attempt **1** on the grown gold; doc 17 §6's two-attempt
+budget has one left. The judge identity is `fd39e7b2c47fa375`
+(`gpt-5.5`, `params={"reasoning_effort":"high"}`), which is **not** attempt 2's
+`1bb9d9bae62eb9d8` even though the model and the prompt are the same — `params`
+is in `IDENTITY_FIELDS`, and attempt 2's params are unrecoverable (the resolution
+spike probed ~18k candidate configs and had to fall back to token-checksum
+attribution; an independent search here also found nothing). The prompt is
+byte-identical across both: `prompt_sha f99151e4add69b31`. Because the cache key
+folds in the identity, **nothing replayed warm** — all 351 pairs are fresh
+inference. Reports since 2026-08-08 record the full invocation, so this gap is
+closed forward and cannot be closed backward.
+
+**Deliberately not recorded here: the per-pair miss census.** Publishing the last
+one is part of what contaminated the 241-pair gold and forced T2.110's growth
+round. The slice-level attribution above is what a decision needs; the pair ids
+are what a future author must not be able to read.
+
+**No qualification record was minted**, and `verification_qualification.json`
+does not exist. G-D stays closed and the judge stays unqualified, so
+`VerificationJudge.judge()` still refuses and the Tier-C scan still produces
+nothing.
+
+### G-D redesign: **RATIFIED by the owner, 2026-08-08**
+
+The recommendation below is adopted. Tier-3 amendments applied to
+`docs/design/08-temporal-lifecycle-consolidation.md` §4.2 (the LLM scan leaves the veto's
+inputs and becomes a review opener) and `docs/design/17-test-and-eval-harness.md` §6 (the
+contradiction metric pair inverts with its consumer). Implementation is T2.109; the
+follow-on preconditions are T2.110 (grown gold) and T2.111 (G-C re-measure under the new
+shape).
+
+**The bars, stated 2026-08-08 by the controller under delegated authority.**
+`contradiction_recall_bar` = **0.95**, `contradiction_precision_bar` = 0.95 → **0.70**.
+Derived, not measured: doc 17 §6's rule — truth-critical metric at 0.95, the other at 0.90
+— predates every judge run, and the amendment is what made recall truth-critical, so recall
+takes 0.95 by that rule. **The check that this is a derivation and not a fit is that the
+measured judge does not clear it**: gpt-5.5 scored contradiction-recall 0.945, so a bar
+chosen to launder that number would sit at 0.90, and `test_contradiction_recall_is_gated_and_barred_by_derivation`
+pins the bar *against* 0.90 for exactly that reason. Precision drops because its consumer
+changed and not because it was missed — a false flag now costs a reviewer a minute rather
+than a wrong belief, so the bar need only keep the queue workable (noise under one flag in
+three); left at 0.95 it would price precision as truth after §6 stopped doing so.
+**Granularity binds:** at the retired gold's 55 contradicted pairs recall resolves in steps
+of 0.018, so 0.95 and 0.945 are one measurement — T2.110's census must make 0.95
+distinguishable or the bar is stated but not measurable. Disclosed plainly because it
+matters: the controller had already seen both judges' results when deriving these, which is
+why the derivation is written out rather than asserted, and why both remain the owner's to
+move with a recorded argument. Neither may be moved to make a run pass.
+
+**What ratification did not do on its own: supply the bars.** `contradiction_recall_bar`
+is the truth-critical bar under the new shape and **has no default and no value** — the
+gate fails closed until the owner states one. That is deliberate and structural rather
+than conventional: both measured judges' numbers are public in this file, so a default
+chosen now would be a bar chosen while looking at them, which is the one thing that would
+make the re-qualification worthless. `contradiction_precision_bar` is retained as a
+review-load floor and its value is equally the owner's to restate, since 0.95 was derived
+for a deciding consumer that no longer exists on that arm.
+
+**G-D stays open.** Nothing about this ratification clears it; it changes what clearing
+would mean, and the measurement runs on T2.110's gold, not this one.
+
+### G-D resolution (2026-08-08, resolution spike): the defect is the veto's architecture, not the judge
+
+**Verdict — of the four possible resolutions (clearable / bar wrong / veto architecture
+wrong / not resolvable now): the veto's architecture is wrong.** Specifically: wiring the
+LLM judge's verdict directly into the absolute dispute veto, and gating that wiring on a
+single precision metric, jointly demand a judge no measured configuration provides and
+reward a judge that goes quiet. The gate stays open; nothing was minted; this run made
+**zero live model calls** — every number below is an offline replay of the cache at
+`backend/scripts/benchlib/entailment/cache` (both qualifying runs' calls are cached), no
+`--gate` invocation, no new gold contact through the runner.
+
+**New measured evidence (cache replay, live_calls == 0).**
+
+- **Per-pair verdicts of both counted attempts were recovered from the cache.**
+  deepseek-v4-flash by exact cache-key reconstruction (241/241 pairs resolved, recomputed
+  contradiction-precision 0.7937 — equal to the report). gpt-5.5 by token-checksum
+  attribution (the cache stores no request text, so files were attributed to pairs via
+  o200k tokenization: expected prompt-tokens = 309 + user-message tokens for prompt v1,
+  +162 for v2). The attribution is over-determined: all four serving-invariant token
+  totals reproduce exactly (v1 gold 82150/37202, fixture 3041/966; v2 gold 121192/34449,
+  fixture 4499/994), the v1 confusion table reproduces the published report cell-for-cell
+  (52/3 · 101 · 7/2/76), and the recovered v1 false-positive set independently reproduces
+  the 7 ids the T2.41 follow-up had already identified.
+- **The two vendors' false positives overlap on exactly three pairs, and they are the
+  same failure.** deepseek: 13 FPs (11 `direction`, 1 `overreach`, 1 `temporal`).
+  gpt-5.5: 7 FPs (4 `temporal`, 3 `direction`). Intersection: eg-0023 (load-balancing
+  roles), eg-0075 (`USES`), eg-0163 (`CAUSES`) — all three are reversals of
+  **non-exclusive** relations, gold-`unsupported` under the reversal rule's non-exclusive
+  case, all `adjudicated`/owner-ruled labels. On eg-0023 the blind resample record shows
+  **both independent human passes made the same `contradicted` error the models make**
+  (the owner ruling corrected them). The exclusion-vs-absence distinction on reversed
+  non-exclusive relations sits at or past the blind human ceiling, not just the model one.
+- **The most precision-favouring composition available from every judge this project has
+  measured still fails, and cannot pass.** A conjunctive two-vendor veto — dispute only
+  where *both* judges say `contradicted`, assembled post-hoc with full knowledge of both
+  error sets, i.e. the best case any ensemble of these judges could reach — measures
+  precision 48/51 = **0.9412**, recall 48/55 = 0.8727. With the 3 shared FPs its
+  precision ceiling is 55/58 = **0.9483 at any recall**: no true-positive count that
+  exists can clear 0.95 over those three errors. (Diagnostic only: as a qualification
+  this arrangement would be contaminated by construction — it was fitted on a
+  three-times-contacted gold.)
+- **The single-metric gate is incoherent for a veto consumer, measured, not argued.**
+  Replayed through the shipped scorer (`judge_qualification.score_judgments` +
+  `bar_results`): a judge that emits `contradicted` on exactly one correct pair and
+  `unsupported` elsewhere scores contradiction-precision 1.0, leaves entailed P/R
+  untouched, and **passes all three gated bars at contradiction-recall 0.0182**. Only
+  total silence fails (precision over zero acceptances is None → fail).
+  `BAR_METRICS` carries no recall key, so the gate as specified qualifies a near-mute
+  judge to hold an absolute veto while scoring the measured 0.88-precision /
+  0.95-recall judge as a failure. Run 3 walked this gradient by accident; the scorer
+  replay shows the end of the gradient is a pass.
+
+**Why the other three resolutions are not it.**
+
+1. *"G-D is clearable as specified"* — no. Three counted runs, two vendors, one frozen
+   prompt: 0.7937 / 0.8814 / 0.9020. The one principled prompt fix was measured and
+   reverted (+0.02 precision bought by −0.11 recall). The two-vendor conjunction sits at
+   0.9412 with a 0.9483 ceiling. Model-shopping past two attempts is barred (doc 17 §6),
+   and the failure is task-shaped — both vendors, and the blind human passes, err the
+   same way on the same distinction.
+2. *"The bar is wrong — lower it"* — no. The 0.95 was **inherited**, not derived: doc 17
+   §6 derives 0.95 for *entailed* precision (a hallucination shipping under a badge) and
+   then says "the veto consumer inherits the same qualification". Derived from the veto
+   consumer's own cost function, the bar should be *higher*, not lower: a scanned FP
+   dispute is near-permanent (`detect_scanned_contradiction` — the scan never re-checks
+   a disputed fact; the exits are guard-lapse or human ratification), demotes a
+   correctly-corroborated fact, and serves it `disputed` to every consumer. Lowering the
+   bar to the measured 0.88 would license ~7 manufactured near-permanent disputes per
+   241 checked pairs into an instrument that beats any corroboration count. The bar
+   number is not the defect; the consumer that demands it is.
+3. *"Not resolvable now"* — no. The evidence above is sufficient to resolve the design
+   question; what remains is ratification (below), not measurement.
+
+**The recommended design — owner's to ratify, Tier-3 (it amends doc 08 §4.2 and
+doc 17 §6).** The architecture already contains two arms with opposite precision
+profiles, and the fix is to pair each arm with the consumer its profile supports:
+
+- **The absolute veto stays absolute — on the deterministic arm only.**
+  `detect_open_contradiction` decides from the closed vocabulary with no judgment;
+  its precision is by construction, which is what an unappealable instrument requires.
+  No migration burden exists: the LLM arm has never fired in production (dark behind the
+  unqualified judge), so no scanned dispute anywhere needs re-adjudication.
+- **The LLM scan's finding opens review instead of disputing.**
+  `detect_scanned_contradiction` leaves `CONTRADICTION_DETECTORS`; the scan's journalled
+  verdict drives a new review opener (doc 08 §6 gains a fourth opener,
+  contradiction-suspected). The fact keeps its rung and its badge while flagged; a human
+  confirming the flag disputes it through the already-live human door
+  (`human_adjudication.reject_fact`). Doc 08 §5.3's own asymmetry licenses this: a flag
+  awaiting confirmation is a *delayed* dispute — the sanctioned direction of error —
+  where the current wiring converts every judge FP into the failure the asymmetry
+  forbids. Relative to the shipped state (an arm that finds nothing) review-opening is
+  strictly more detection; relative to the aspirational state it trades automatic
+  demotion for human latency, bounded by review cadence.
+- **The qualification metric pair inverts with the consumer.** For a surfacing
+  instrument, contradiction-**recall** is the truth-critical bar (a missed contradiction
+  never reaches a reviewer — and recall is precisely what the current gate lets go to
+  0.018) and precision becomes a review-load floor (at the measured 0.88, ~1 in 8
+  flags is noise — a queue-economics number, not a truth number). The new bars are the
+  owner's to state **in advance** of the next gate run; this spike deliberately states
+  none, because both measured gpt-5.5 numbers are known and a bar chosen now would be
+  chosen looking at them. The re-qualification must run on T2.54-grown gold — this gold
+  has 3 recorded contacts and its FP census is now fully public in this file.
+- **What stands unchanged:** the `disputed` rung, the conjunctive recovery, the
+  hysteresis, `_write_born_rung`, human-only `confirmed`, and the G-C false-promotion
+  audit. The audit's machine arm changes shape (review-confirmed human rejections
+  instead of raw machine disputes — better-attributed evidence), so the G-C→G-D
+  cross-edge analysis must be re-read under the new shape before G-C is re-attempted.
+- **Costs, stated:** a review queue nobody works is a dispute deferred forever — the
+  precision floor is what keeps the queue workable, and the queue consumer becomes
+  load-bearing for contradiction handling; and doc 08 §4.2's sentence naming the LLM
+  scan a veto input is amended, with §4.3's flowchart keeping its dispute node for the
+  deterministic arm only.
+
+**If the owner rejects the redesign and keeps the current specification:** then the
+honest answer to this gate is that nothing this project can lawfully do clears it — no
+measured judge, no lawful prompt change, and no ensemble of the judges measured reaches
+0.95 on this census, and the two lawful remedies (a third model, more gold) are
+respectively barred and unable to remove the shared-error class the blind human passes
+also fell into. That is a result, and this file records it as one.
+
+### G-D verdict: **NOT CLEARED** — two vendors, one bar (2026-08-08, T2.41)
+
+**Attempt 2: `gpt-5.5` at the same frozen prompt** (identity `1bb9d9bae62eb9d8`,
+`prompt_sha f99151e4add69b31` — unchanged from attempt 1, which is what makes the two
+comparable). Doc 17 §6's sanctioned remedy for a missed bar is a different judge model at
+a frozen prompt; this is that, and `gold_touching_attempts: 2` records it. Report:
+`docs/eval/2026-08-08-judge-qualification-1bb9d9ba.md`.
+
+- entailed-precision **0.9806** ≥ 0.95 — **PASS**
+- entailed-recall **1.0000** ≥ 0.90 — **PASS** (101/101, zero false rejects)
+- contradiction-precision **0.8814** vs 0.95 — **FAIL**
+
+**gpt-5.5 is markedly the better judge and still misses.** `direction` accuracy rises
+0.567 → **0.900**, entailed-recall 0.931 → **1.000**, and manufactured disputes fall from
+13 to **7**. The residual is 7 gold-`unsupported` pairs called `contradicted` against 52
+true positives. At 55 gold-contradicted pairs the 0.95 bar permits at most **two** false
+positives (52/54 = 0.963; 52/55 = 0.945), so the bar is effectively "at most two
+manufactured disputes in 241 pairs".
+
+**The finding is about the task, not the model.** Two frontier models from two vendors,
+same frozen prompt, fail the same bar in the same direction — over-calling contradiction
+on pairs the premise merely fails to assert. That is the exclusion-vs-absence distinction
+the rulebook's own "Contradiction requires exclusion, not absence" clause exists for, and
+it is the distinction the production veto depends on being right about, since one non-echo
+contradiction beats any corroboration count with no config on its path. A judge that
+manufactures 7 disputes per 241 claims would, unqualified, be a live source of false
+`disputed` transitions.
+
+**A prompt fix was tried, measured, and reverted — record it so it is not redone.**
+The prompt referenced "a reversed relation when the relation is exclusive in direction"
+without ever saying which relations qualify; the gold decides that from a 16-row table
+the judge has never seen. That gap was real: enumerating both classes from the taxonomy's
+own semantics took `direction` from 0.900 to a perfect **30/30**. But the same edit made
+the judge broadly reluctant to call contradiction at all, and `value-swap` collapsed
+**0.897 → 0.690**. Net (`docs/eval/2026-08-08-judge-qualification-7779f3dd.md`, run as a
+diagnostic against a non-canonical record path so it could not mint):
+
+| | v1 | v2 |
+|---|---|---|
+| contradiction-precision | 0.8814 | 0.9020 |
+| contradiction-**recall** | 0.945 (52/55) | **0.836 (46/55)** |
+| `direction` | 0.900 | 1.000 |
+| `value-swap` | 0.897 | 0.690 |
+
+Precision improved **only because the judge predicted contradiction less often** — false
+positives 7 → 5 while true positives fell 52 → 46. Reverted to v1, so the identity the two
+recorded attempts measured is the shipped one.
+
+**The gate rewarded that trade, and that is a gate-design finding.** Contradiction
+*recall* is computed on every run and carries **no bar**; only precision is gated. So a
+change that trades recall for precision reads as progress on the one number the gate
+watches while making the judge worse at its job — missing 9 contradictions of 55 instead
+of 3. One unplanned edit walked straight into it. Before the next attempt, the owner
+should decide whether contradiction-recall gets a bar of its own (or the pair is gated on
+an F-measure); optimising an absolute veto on precision alone selects for a judge that
+stays quiet.
+
+**Local prompt edits have non-local effects.** The direction enumeration was defensible in
+isolation, sourced from the taxonomy rather than from the observed errors, and it still
+broke an unrelated slice. Any future prompt work needs the whole slice table read before
+and after, not just the metric being chased.
+
+**Stopping here rather than trying a third model.** Two attempts at a frozen prompt is the
+remedy; an open-ended sweep until one clears is tuning-against-gold by another route, and
+the harness counts contacts precisely so that is visible. The remaining honest moves are
+the owner's: grow the gold's contradicted census so the bar has headroom that is not
+single-error resolution; or re-examine whether 0.95 on contradiction-precision is the
+right bar, which is a bar change and needs its own recorded argument, not a quiet edit.
+
+**A same-day report collision was fixed here.** Attempt 2 overwrote attempt 1's report —
+the path was date-keyed only, and two attempts in a day is the *normal* shape of a missed
+bar. Attempt 1 survived solely because it had already been committed. Report paths now
+carry the judge identity hash, and both attempts are preserved:
+`-4d886440.md` (deepseek-v4-flash) and `-1bb9d9ba.md` (gpt-5.5).
+
+#### Attempt 1 — `deepseek-v4-flash` (2026-08-08)
+
+
+**Two bars of three cleared; the contradiction bar missed by a wide margin, and it is
+the one the veto consumer depends on.** Run against gold v1 at 241 live pairs
+(`sha256 e6d5647a…`), judge identity `4d886440a646f176` (`deepseek-v4-flash`, prompt v1),
+`gold_touching_attempts: 1`, invalid responses 0/241. Full report:
+`docs/eval/2026-08-08-judge-qualification.md`.
+
+- entailed-precision **0.9895** ≥ 0.95 — **PASS**
+- entailed-recall **0.9307** ≥ 0.90 — **PASS**
+- contradiction-precision **0.7937** vs 0.95 — **FAIL**
+
+**The failure is the one T2.26 predicted, at scale.** 13 gold-`unsupported` pairs were
+judged `contradicted` — manufactured disputes — against 50 true positives. The interim
+run's 0.818 on 41 pairs was dismissed as unresolvable at that size (one error moved it
+0.09); at 241 pairs the granularity objection is gone, and the number went *down*. The
+`direction` slice carries it: **0.567 accuracy (17/30)**, against 0.97+ on `overreach`,
+`paraphrase`, `verbatim` and `unrelated`. The judge reads an unasserted reversal as an
+excluded one.
+
+**What this closes.** G-D stays open, so Phase 3 (L3 articles) stays closed and no
+qualification record exists — the runner wrote none, by the rule below.
+`VerificationJudge.judge()` therefore continues to refuse unconditionally, which keeps the
+machine's contradiction arm dark and, through the G-C→G-D cross-edge ratified 2026-08-07,
+leaves G-C's false-promotion audit unable to produce a systematic number. **E2 cannot
+close on this run.**
+
+**A failed gate run no longer mints the record it would have opened (fixed 2026-08-08).**
+This run wrote `app/services/verification_qualification.json` carrying its own failing
+metrics and `gate_eligible: true`. Nothing was qualified by it — `qualification_state`
+re-checks every metric against its bar at read time and refused — but the artifact sat at
+the canonical path, and a bar is a `config` row: loosen one and the key turns. The G-C
+driver had always stated the opposite rule for its own record ("written only by a run
+whose verdict cleared … never as a side effect of measuring"); the two gates now agree.
+The record was deleted and the runner will not write one on a miss.
+
+**Do not fix this by tuning the prompt against this gold.** A prompt edit moves
+`prompt_sha`, hence the judge identity, hence de-qualifies mechanically — and tuning
+against the set that measured the failure is the contaminating loop T2.26's plan review
+flagged as its one Critical. A re-attempt needs either a different judge model at the same
+frozen prompt, or gold growth authored independently of these 13 errors.
+
+**Interim measurement (T2.26, 2026-07-31) — not a gate verdict.** One counted run of the
+qualified-judge candidate (`app/services/verification_judge.py`; model
+`deepseek-v4-flash`, identity `66df91cee44d2415`, prompt v1 frozen at fixture-pass before
+first gold contact; `gold_touching_attempts: 2` = one live pass + its warm verification
+replay), against gold v1 (`sha256 3fd42fc0…`, 41 live pairs), recorded in
+`docs/eval/2026-07-31-judge-qualification.md`:
+
+- entailed-precision **1.000** (17/17 accepts, zero false accepts) — above bar
+- entailed-recall **1.000** (17/17) — above bar
+- contradiction-precision **0.818** (9/11) — **below its 0.95 bar**: two `unsupported`
+  `direction` pairs judged `contradicted` (the manufactured-disputes failure);
+  contradiction-recall 0.900 (one missed `temporal` contradiction); invalid 0/41
+- twin: **408.2 tokens/claim** on the gold pass (16,736 tokens / 41 claims, fixture
+  stage excluded); live judge-call latency p50 1.07 s / p95 1.27 s (n=41, powered)
+- granularity at this size: 17 gold-entailed means one false accept ≈ 17/18 = 0.944,
+  so the precision bar is effectively "zero false accepts"; 10 gold-contradicted means
+  one manufactured contradiction ≈ 10/11 = 0.909 — single-error resolution, which is
+  why the set must grow before a verdict means anything
+
+**Interim only — gate not claimable:** `run_judge_qualification.py --gate` refuses this
+gold before any model call (composition: 41 < 200 live pairs; `l2-fact: 0/41`;
+author-labelled: 41/41), no app-side qualification record exists (its absence is
+test-pinned), and the verdict is T2.41's after T2.54. Under the 2026-07-31 amendment's
+reading, §11's real-material requirement reaches the claim/fact gold's *premise* side
+(`l2-fact`); the hypothesis side remains hand-authored indefinitely for this variant —
+T2.41's verdict must state composition in those terms and not overstate it.
 
 **Gold set:** built in T2.25, **before** the judge, so the judge cannot be tuned to its
-own test. Material comes from running `article_synthesis` in a labelled non-shipping
-mode against `darkmem_bench`, plus hand-authored claim/fact pairs — **not** from real
-Phase-3 drafts, which do not exist until after this gate clears.
+own test. *(Corrected 2026-07-31 to match the two amendments logged in
+`tasks/E2-truth-core.md` that date:)* both material sources this paragraph originally
+named were verified unavailable at T2.25's branch point — `article_synthesis` is a
+`PlaceholderJobRunner` until T3.02 (behind this gate) and `knowledge_triples` has no
+producer until T2.10 — so the seed set is 41 hand-authored pairs (16 anchored verbatim
+to the retrieval corpus, machine-checked), with `synthesis-draft` and `l2-fact`
+provenances reserved at test-pinned zero. Doc 17 §11 makes composition gate-binding:
+synthetic-only gold is rejected, so growth to ≥ 200 pairs with real `l2-fact` premises
+and full re-adjudication is T2.54's (after T2.10), and this gate cannot open before it.
 
 **Consequence of a miss:** E3 stays closed. Below the bar, no L3 article ships as grounded —
-enforced in code (T3.03), not by policy.
+enforced in code, not by policy: the mechanism half landed in T2.26 (the only door to the
+`verification` purpose is the judge's qualification-gated `judge()`, scan-enforced; the
+record only a canonical-gold `--gate` run can mint), and the ship-path half is T3.03's.
 
 ---
 
@@ -568,7 +1207,12 @@ These never "clear" once — they apply per activation, every time.
 
 | Date | Arm | Slice deltas | p95 latency | Token cost | Decision | Artifact |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | — |
+| 2026-08-05 | `w_importance` (T2.30, probe weight 1.0, on−off) | Aggregate ΔMRR **−0.3980**, Δhit@10 **−0.0784** over 102 live pairs. Per-slice ΔMRR: exact 0.0000, fact −0.4628, knowledge-update −0.1664, multi-hop −0.7745, paraphrase −0.3536, temporal −0.2844, typo −0.6653. Byte-identical across two consecutive warm-cache runs | end_to_end p95: off 0.00346 s, on 0.00389 s (all query embeds cache-served; no live latency samples, per the twin's own caveat discipline) | Zero LLM calls attributed on either leg — the retrieval read path is embed-cache + SQL; the arm adds one column to an existing one-row query | **Stays at weight 0.** The bar is a positive delta; this one is negative on six of seven slices. The signal source is extraction's own per-memory `importance` estimate (0.3–0.7 across the 94-entry corpus), and at weight 1.0 its factor span [0.8, 1.2] dominates RRF's rank gaps (rank 1 vs rank 10 within one list is 1/61 vs 1/70, ratio ≈ 1.15 < 1.5), reshuffling against the gold. A smaller magnitude only shrinks this perturbation toward zero — probing weights until one turns positive would be bar-shopping, so no further legs were run. Note the multi-hop hit@10 **+0.1429** is the designed-0 baseline (T0.06a desaturation) being accidentally broken by the reshuffle, not a win — its ΔMRR is −0.7745 | `docs/eval/2026-08-05-retrieval-eval-arm-w_importance.md` — corpus 94, gold v4, k=10, fingerprint `qwen3-embedding:0.6b|1024` pinned across both legs, ingest fully cached (`deepseek-v4-flash` cache, 0 live calls) |
+| 2026-08-06 | `w_ppr` (built T2.32, judged T2.50; probe 0.3, on−off; bar and semantics pre-registered in `analyses/2026-08-06-t2.50-preregistration.md` before any judge measurement) | Recorded run `500e272d`: aggregate ΔMRR **−0.2609**, Δhit@10 **−0.0294** over 102 pairs; per-slice ΔMRR: exact 0.0000, fact −0.3810, knowledge-update −0.1701, multi-hop −0.3429, paraphrase −0.0790, temporal −0.3909, typo −0.4612; multi-hop hit +0.1429, temporal hit −0.5000. Judge verification run `fc32a172` (clean sha `594db59e`, lane DB): aggregate −0.2608, every sign and both hit flips identical — but per-slice MRR wobbles up to ~0.04 across rebuilds (typo −0.4982 vs −0.4612; off legs byte-identical), so **this arm's on leg is not byte-reproducible**: the snapshot's synonymy KNN (`LIMIT :top_k`, no deterministic tie-break) and reseeded ingest order vary across builds. Superseded sibling row named per the disregard discipline: `c2470c25` (probe 1.0, ΔMRR −0.4742 — measures the probe, not the arm) | end_to_end p95: off 0.00367 s, on 0.00377 s recorded (verification 0.00578/0.00563); all embeds cache-served, no live samples | Zero LLM tokens on either leg — the arm reads an in-process snapshot (invariant 15). **A zero twin is the query path only, not the arm's price**: the artifact economy is the Tier-C snapshot rebuild per project per cron tick, unpriced by this eval | **Stays at weight 0.0.** Entity-linking semantics stated before the multi-hop verdict (T0.06a): the snapshot links by **name-embedding** — synonymy KNN over entity-name vectors, threshold 0.8 / top-5 (`ppr_snapshot.py`) — so SLICES.md's 14/14 ceiling applies; confirmed against the built artifact (the two `hv-27` rows, `place`/`entity`, share an edge of weight 1.0 with zero `entity_relations` rows between them). But the multi-hop +0.1429 is **not traversal**: at this protocol (`retrieval_limit` 94, fetch depth 300, thresholdless semantic arm) every query's semantic list is the whole corpus, `_ppr_search` seeds from all of it, and `seed_vertices_for_memories` then selects **all 128 vertices for every query** — PPR with a full uniform reset set *is* global PageRank, and the judge measured the arm's ranked list **byte-identical across five queries including a nonsense query matching nothing in the corpus**. rg-0104/0105's consequence memory sits at constant rank 7 in that one list; its RRF voice 0.3/(60+7) lifts it from baseline 12/15 into top-10 on *every* query equally. That is the exact "global-popularity list fused into every query" `ppr_snapshot.py`'s own docstring forbids for the empty-seed case, arriving from the full-seed end — perturbation, the `w_importance` precedent's shape, and pre-registered bar rule 2 fails. Temporal (−0.39 MRR, −0.50 hit) is the same constant, time-blind list displacing gold siblings — structural at any weight, since every weight fuses the same list, scaled. No magnitude can therefore clear the bar and none was probed (anti-bar-shopping rule; the pre-registration conditioned further probes on constancy being *refuted*). No slice clears the per-slice sub-verdict either (every slice ΔMRR ≤ 0). **Design finding, reported not fixed (the judge may not edit ranking code):** seeding from the semantic list at `fusion_fetch_depth` ≥ corpus size degenerates the arm for any project under ~300 memories — production behaviour today, not an eval artifact. Query-conditioned PPR needs a bounded seed set (e.g. top-K semantic hits, K ≪ corpus); that is a T2.32-owner or successor-task change, and until it lands re-measuring this arm is pointless | `docs/eval/2026-08-06-retrieval-eval-arm-w_ppr.md` (canonical, run `500e272d`); `docs/eval/2026-08-06-retrieval-eval-arm-w_ppr-t250-verification.md` (judge re-run `fc32a172`); `docs/planning/analyses/2026-08-06-t2.50-preregistration.md` — corpus 94, gold v4, k=10, fingerprint `qwen3-embedding:0.6b|1024`, 0 live LLM calls |
+| 2026-08-06 | `w_dual` / dual-level (built T2.94 over T2.49's vectors, judged T2.50; probe 0.3 plus a pre-registered 0.1 diagnostic leg) | Recorded run `a1b2b903`: aggregate ΔMRR **−0.1867**, Δhit@10 **−0.1667**; per-slice ΔMRR: exact 0.0000, fact −0.1111, knowledge-update −0.2832, multi-hop −0.1961, paraphrase −0.0278, temporal −0.5694, typo −0.2143; multi-hop hit +0.0714, temporal hit **−0.9167**. Judge verification run `cfcd0a50` (clean sha `594db59e`): **byte-identical deltas**, repairing the recorded row's dirty-tree attribution (`e4768c8f` predates prep commit `3f67152a`). Diagnostic leg `7310cdb0` at 0.1: aggregate ΔMRR −0.1285, Δhit +0.0098, temporal ΔMRR still **−0.3470** (11 of 12 pairs demoted; hit unchanged). Vacuous sibling row named per the disregard discipline: `2ae27407` (empty `relation_embeddings` partition — all-zero, not a measurement) | end_to_end p95: off 0.00360 s, on 0.00452 s recorded; one extra SQL round trip, no extra model call | Zero LLM tokens on either leg. The unpriced artifact economy here is the relation-vector refresh: this run embedded 62 relation phrases before the legs (LAN Ollama embed cost, amortised by T2.49's Tier-C job in production) | **Stays at weight 0.0; `dual_level_enabled` stays False.** Semantics stated before the multi-hop verdict (T0.06a): this channel **does not link entities at all** — it embeds terse relation phrases (`source rel_type target`, `relation_embeddings.py`) against the query vector and resolves matches to asserting memories via `memory_ids` (`hybrid_search.py`), so both SLICES.md ceilings are inapplicable in their own terms (effective 14/14: any memory asserting an embedded edge is reachable directly, no bridge required). The multi-hop gain fails bar rule 2 as perturbation, on three measurements: the flipped pair *changes with magnitude* (rg-0108 at 0.3, rg-0104 at 0.1 — a robust mechanism does not swap its wins when its voice shrinks); the consequence memories sit mid-list in the channel (rank 11 and 14) at similarity 0.41–0.49 inside a **non-discriminating score band** — the judge probed the channel's top phrases and unrelated edges score 0.44–0.60 for every query tried, including `'postfix DEPLOYED_ON mail-01'` at 0.44 against a door-badge query; and for rg-0108 the top-scoring phrase (0.60) is **memory A's own edge**, already at rank 1 in the baseline, so the channel's strongest signal duplicates what retrieval already had. Temporal is structurally broken, not magnitude-broken: relation phrases carry no time, both snapshot siblings assert same-shaped edges, and the damage persists at a third of the voice (−0.5694 → −0.3470). Aggregate ΔMRR is negative at both probed magnitudes, so bar rule 1 fails everywhere measured; the 0.1 leg was pre-registered as diagnostic and cannot activate anything under the anti-bar-shopping rule. No slice clears the sub-verdict (multi-hop's +0.0714 hit rides ΔMRR −0.1961 and rule-2 failure) | `docs/eval/2026-08-06-retrieval-eval-arm-w_dual.md` (canonical, run `a1b2b903`); `docs/eval/2026-08-06-retrieval-eval-arm-w_dual-t250-verification.md` (judge re-run `cfcd0a50`); `docs/eval/2026-08-06-retrieval-eval-arm-w_dual-w0.1-t250-diagnostic.md` (run `7310cdb0`); `docs/planning/analyses/2026-08-06-t2.50-preregistration.md` — corpus 94, gold v4, k=10, fingerprint `qwen3-embedding:0.6b|1024`, 0 live LLM calls |
+| 2026-08-06 | Community injection (`community_injection_enabled`, judged T2.50) | **Unmeasured — and unmeasurable today**, recorded as a result per this gate's own text, never folded into the MRR verdict (doc 17 §2: it augments context, it is not a ranking signal). Two independently sufficient gaps, both verified in code: (1) the flag has **no consumer** — outside its `FEATURE_FLAGS_DEFAULTS` entry in `app/config.py` its only reference is a test pinning the default `False`, so there is no injection code path to measure; (2) the required metric is an answer-quality/groundedness delta on `memory_reason` over a **reasoning gold set**, which doc 17 §2 marks `(target-new)` and which exists nowhere under `scripts/benchlib/` | n/a — no measurement ran | n/a — no measurement ran | **Flag stays `False`.** Activating it would first need the injection path built and a reasoning gold authored with SLICES.md-grade decision procedures — gold-authoring plus feature work, the same honest floor T2.35's context axis was left at. Until both exist, any number offered for this flag should be distrusted on sight, and an MRR number for it would be a category error under the standing gate's own definition | This row; `docs/design/17-test-and-eval-harness.md` §2 |
+| 2026-08-06 | `w_context_boost` / `applies_when` (T1.34 built it; T2.35 owns its magnitude) | **Unmeasured — measurement deferred, not attempted and failed.** The mechanism shipped in T1.34 (`match_context`, `CONTEXT_BOOST_FLAG`, the boost-plus-label and conflict-count hard rules) and is inert for one reason: `run_retrieval` declares no context and gold v4 carries no `env`/`version`/`situation` axis, so `match_context` returns the neutral outcome at every magnitude. There is no delta to report because there is no non-neutral leg to run | n/a — no measurement ran | n/a — no measurement ran | **Stays at weight 0.0.** Controller decision, 2026-08-06: the missing artifact is a context-bearing corpus, and authoring one now would measure a synthetic world at the cost of a day. The standing gate's own rule provides for this — *"an arm that cannot show its number stays at weight 0, and that outcome is recorded here as a result, not a failure"* — so the arm is closed as a result rather than held open. **Deferred to whole-system measurement after the implementation phase**, when a real corpus and real declared contexts exist; this gate applies per activation, so nothing is foreclosed. The hard rules are unaffected: they are not tunable and stay on at magnitude 0 | This row; `docs/design/07-retrieval-and-ranking.md` §6; T2.35 |
+| 2026-08-06 | `w_heat` / `w_recency` (T2.29 built the substrate; T2.31 owns the activation) | **Unmeasured for activation — but the mechanism is live and proven, which distinguishes this row from the two above.** The signal was wired 2026-08-06 (`rank_fusion.heat_signal` / `recency_signal`, stamped on the shared channel's rows) and the arm demonstrably moves the order: aggregate ΔMRR **−0.3082**, Δhit@10 −0.1275 under the seed-and-freeze fixture. **That number is liveness, not activation**, and must not be read as "heat hurts": the seeded history is uncorrelated with relevance by construction (SHA-256 of each memory's own id, blind to the gold), so the on leg applies an essentially random multiplier and a random multiplier can only degrade MRR on average. A −0.31 aggregate is close to what a correctly-wired, uninformative arm should produce | end_to_end p95: recorded in the run artifact; all embeds cache-served | Zero LLM tokens — the arm reads one `memory_access_stats` row set, gated so both arms at zero pay nothing | **Stays at weight 0.0.** Controller decision, 2026-08-06: a realistic heat prior cannot be manufactured on the bench — any distribution it invents is either gold-correlated (which would make the arm win by construction) or gold-blind (which is the run above). **Deferred to whole-system measurement after the implementation phase**, when real `memory_access_stats` telemetry exists and heat correlates with retrievability for real reasons. The fixture, the freeze and the tests remain, so that later run is a command rather than a project | `docs/eval/2026-08-06-retrieval-eval-arm-w_heat.md`; `docs/planning/briefs/2026-08-06-t2.31-heat-recency-signals.md`; T2.31 |
 
 ---
 

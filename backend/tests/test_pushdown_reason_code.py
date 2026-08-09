@@ -357,34 +357,30 @@ async def test_reason_front_door_carries_the_project(client, auth_headers):
 async def test_chat_retrieval_scopes_memories_in_sql(session):
     rows = await _hostile_corpus(session)
 
-    svc = ChatService(
-        session, _FakeLLM(),
-        PostgresVectorRepository(session), PostgresGraphRepository(session),
-    )
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
     retrieval = await svc._retrieve("which pooler", {"project": "alpha"})
 
-    ids = {r["memory_id"] for r in retrieval["raw_memories"]}
-    assert rows["mine"].id in ids
-    assert rows["foreign"].id not in ids
-    assert rows["superseded"].id not in ids
-    assert rows["archived"].id not in ids
+    # Composed rows carry the composition's own normalised str id
+    # (invariant 9), so the comparison is spelled in that space.
+    ids = {r["id"] for r in retrieval["memories"]}
+    assert str(rows["mine"].id) in ids
+    assert str(rows["foreign"].id) not in ids
+    assert str(rows["superseded"].id) not in ids
+    assert str(rows["archived"].id) not in ids
 
 
 @pytest.mark.asyncio
 async def test_chat_retrieval_excludes_dead_rows_without_a_project(session):
     rows = await _hostile_corpus(session)
 
-    svc = ChatService(
-        session, _FakeLLM(),
-        PostgresVectorRepository(session), PostgresGraphRepository(session),
-    )
+    svc = ChatService(session, _FakeLLM(), PostgresGraphRepository(session))
     retrieval = await svc._retrieve("which pooler", None)
 
-    ids = {r["memory_id"] for r in retrieval["raw_memories"]}
-    assert rows["mine"].id in ids
-    assert rows["superseded"].id not in ids
-    assert rows["deprecated"].id not in ids
-    assert rows["archived"].id not in ids
+    ids = {r["id"] for r in retrieval["memories"]}
+    assert str(rows["mine"].id) in ids
+    assert str(rows["superseded"].id) not in ids
+    assert str(rows["deprecated"].id) not in ids
+    assert str(rows["archived"].id) not in ids
 
 
 @pytest.mark.asyncio
@@ -397,7 +393,7 @@ async def test_chat_entity_mention_is_scoped_by_asserting_memories(session):
     await graph_repo.create_entity("pgcat", "tool", {}, rows["foreign"].id)
     await session.flush()
 
-    svc = ChatService(session, _FakeLLM(), PostgresVectorRepository(session), graph_repo)
+    svc = ChatService(session, _FakeLLM(), graph_repo)
     retrieval = await svc._retrieve("compare @pgbouncer and @pgcat", {"project": "alpha"})
 
     names = {e.get("name") for e in retrieval["entities"]}

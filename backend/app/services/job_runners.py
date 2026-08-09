@@ -138,6 +138,69 @@ def make_code_reconcile_runner(app, session_factory: async_sessionmaker[AsyncSes
     return run
 
 
+def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
+    """Sweep every indexed repository through `assert_repo_graph` (doc 10 §6).
+
+    T2.96's production trigger for the T2.27 deriver — see
+    `code_deriver_job.py` for why this is a Tier-C job rather than a reindex
+    hook. Each repo runs in its own session/transaction so one repo's
+    failure can't roll back another's write, mirroring
+    `make_code_reconcile_runner` above.
+
+    A failure never raises out of the sweep: it is recorded in
+    `pipeline_failures` under `pipeline_name=CODE_DERIVER_PIPELINE_NAME`,
+    distinct from the index run's own `"code_index"` rows, and the sweep
+    moves on to the next repo. That is how the failure surfaces without
+    ever failing an index run — visible on `GET /api/v1/pipeline-failures`
+    the same way an indexing failure is.
+    """
+    async def run() -> None:
+        from app.models.code import Repository
+        from app.services.code_deriver import assert_repo_graph
+        from app.services.code_deriver_job import CODE_DERIVER_PIPELINE_NAME
+        from app.services.pipeline_failures import PipelineFailureService
+
+        async with session_factory() as list_session:
+            repo_ids = (await list_session.execute(
+                select(Repository.id).where(Repository.last_indexed_commit.isnot(None))
+            )).scalars().all()
+
+        for repo_id in repo_ids:
+            async with session_factory() as repo_session:
+                failure_svc = PipelineFailureService(repo_session)
+                try:
+                    # One commit covers both the derivation write and the
+                    # resolve() update: if resolve() itself raises, the
+                    # rollback below undoes the derivation too, so the except
+                    # branch records a real failure rather than a phantom one
+                    # for a repo whose derivation had actually succeeded.
+                    result = await assert_repo_graph(repo_session, repo_id)
+                    await failure_svc.resolve(
+                        "code_repo", repo_id, CODE_DERIVER_PIPELINE_NAME,
+                    )
+                    await repo_session.commit()
+                    logger.info(
+                        "Code deriver: repo=%s entities=%d relations=%d",
+                        repo_id, result["entities"], result["relations"],
+                    )
+                except Exception as e:
+                    await repo_session.rollback()
+                    logger.error("Code deriver failed for repo %s: %s", repo_id, e)
+                    try:
+                        await failure_svc.record(
+                            entity_type="code_repo", entity_id=repo_id,
+                            pipeline_name=CODE_DERIVER_PIPELINE_NAME,
+                            failed_step="derive",
+                            error_message=f"{type(e).__name__}: {e}"[:2000],
+                        )
+                        await repo_session.commit()
+                    except Exception as e2:
+                        logger.error(
+                            "Failed to record deriver failure for %s: %s", repo_id, e2,
+                        )
+    return run
+
+
 def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
     """Delete expired entries from the token blocklist."""
     async def run() -> None:
@@ -250,17 +313,34 @@ def make_tag_orphan_cleanup_runner(session_factory: async_sessionmaker[AsyncSess
 
 
 def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
-    """Delete memories past their ``expires_at`` TTL.
+    """Delete memories past their ``expires_at`` TTL, and heal stranded provenance.
 
     Without this, a client-set TTL is silently never honored (the column was
     accepted, stored, and never swept). Embedding partition rows go with the
     memory via ON DELETE CASCADE; orphaned graph entities and tags left behind
-    are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup."""
+    are reclaimed by graph_orphan_cleanup / tag_orphan_cleanup.
+
+    ``fact_sources.source_ref`` is a **soft** reference with no FK, so nothing
+    cascades there: this sweep withdraws provenance itself (doc 05 §8.4), on the
+    same terms as every other delete path. The provenance backstop rides here as
+    a second arm rather than on graph_orphan_cleanup because that job is Layer-1
+    graph hygiene, on which Phase-4 dedup depends, and a Layer-2 failure sharing
+    its session would take it down; this job is already the one that makes
+    memories vanish, which is what strands provenance in the first place."""
     from sqlalchemy import text
+    # Module-qualified rather than name-imported: the two arms below heal the
+    # same end state, so a test proving the sweep withdraws on its own has to be
+    # able to stub the backstop out. A name imported here would still see such a
+    # patch (this runs when the factory is called, after the patch is applied),
+    # but a name imported at module scope — which is what an import hoist or an
+    # import sorter produces — would not, and the test would silently pass on
+    # the backstop's work instead. Attribute lookup cannot drift that way.
+    from app.services import fact_provenance
     from app.services.supersession import demote_dependents
     async def run() -> None:
         from app.services.events import record_maintenance_run
         deleted = 0
+        reaped = 0
         try:
             async with session_factory() as session:
                 expired = (await session.execute(text(
@@ -275,22 +355,46 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
                     # Shared with the interactive delete path
                     # (MemoryService.delete_memory) so the two cannot drift.
                     await demote_dependents(session, ids)
+                    # Then withdraw provenance, still before the DELETE and in
+                    # the same transaction: a rollback must take the inline
+                    # expiry and the append-only sources_changed rows with the
+                    # delete that justified them. The batch is all-or-nothing
+                    # for the same reason it always was -- a memory whose
+                    # withdrawal failed must not be deleted anyway, which is the
+                    # stranding this closes.
+                    for memory_id in ids:
+                        await fact_provenance.withdraw_memory_sources(
+                            session, memory_id=memory_id
+                        )
                     result = await session.execute(
                         text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
                         {"ids": ids},
                     )
                     deleted = len(result.scalars().all())
                     await session.commit()
+
+            # The backstop, in its own transaction after the delete committed,
+            # and outside the `if expired` branch: what it heals was stranded by
+            # some *other* path -- ProcessingPipeline.delete_memory swallows a
+            # failed withdrawal -- so it must run on ticks that expire nothing.
+            async with session_factory() as session:
+                reaped = len(
+                    await fact_provenance.reap_orphaned_memory_sources(session)
+                )
+                await session.commit()
         except Exception:
             await record_maintenance_run(
                 session_factory, operation="expired_memory_cleanup", outcome="error",
             )
             raise
-        if deleted:
-            logger.info("Expired memory cleanup: deleted=%s", deleted)
+        if deleted or reaped:
+            logger.info(
+                "Expired memory cleanup: deleted=%s provenance_reaped=%s",
+                deleted, reaped,
+            )
         await record_maintenance_run(
             session_factory, operation="expired_memory_cleanup", outcome="ok",
-            detail={"deleted": deleted},
+            detail={"deleted": deleted, "provenance_reaped": reaped},
         )
     return run
 
@@ -350,3 +454,315 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
         worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
         await worker.process_batch(batch_size=batch_size)
     return run
+
+
+def make_ppr_snapshot_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Rebuild a rotating batch of projects' PPR snapshots (doc 07 §4).
+
+    Tier C, and the only writer of the in-process cache the graph arms read.
+    It is deliberately *not* a member of the dreaming family: contract 6 fixes
+    that family as the consolidation passes, and doc 07 §4 owns this artefact's
+    mechanics separately. Invariant 15 is unaffected either way — retrieval
+    reads the artefact, never this runner.
+
+    **The cursor advances on a visited project, not a successful one.** A
+    project whose graph fails deterministically would otherwise pin the
+    rotation and starve every project behind it, which is the failure the
+    rotation exists to avoid. A short batch means the rotation reached the end,
+    so the cursor resets — without that the job goes inert after one pass and
+    still reports ``ok``, the half `run_topic_detection` originally missed.
+
+    **A missing fingerprint degrades the snapshot; it never fails the run.**
+    Without one the synonymy arm is skipped and the graph is relation-only,
+    which is a weaker snapshot but a correct one. Refusing to build at all
+    would retire the arm entirely on any install whose embedder is still
+    settling.
+    """
+    async def run() -> None:
+        from app.repositories.vector import PostgresVectorRepository
+        from app.services.ppr_snapshot import (
+            PPR_SNAPSHOT_CONFIG_SCHEMA,
+            PPR_SNAPSHOT_JOB_KEY,
+            refresh_snapshots,
+        )
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in PPR_SNAPSHOT_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(PPR_SNAPSHOT_JOB_KEY)
+            knobs.update(cfg.config or {})
+        batch_size = int(knobs.pop("batch_size"))
+
+        fingerprint: str | None = None
+        llm = getattr(app.state, "llm", None)
+        if llm is not None:
+            try:
+                async with session_factory() as session:
+                    fingerprint = await PostgresVectorRepository(
+                        session
+                    ).resolve_read_fingerprint(llm)
+            except Exception as e:
+                logger.info(
+                    "ppr_snapshot: no resolvable read fingerprint (%s); "
+                    "building relation-only snapshots", e,
+                )
+
+        after_project = await _load_ppr_cursor(session_factory)
+        outcome = await refresh_snapshots(
+            session_factory,
+            fingerprint=fingerprint,
+            batch_size=batch_size,
+            after_project=after_project,
+            synonymy_threshold=float(knobs["synonymy_threshold_pct"]) / 100.0,
+            synonymy_top_k=int(knobs["synonymy_top_k"]),
+            synonymy_max_nodes=int(knobs["synonymy_max_nodes"]),
+            max_snapshot_edges=int(knobs["max_snapshot_edges"]),
+            build_timeout_seconds=float(knobs["build_timeout_seconds"]),
+        )
+
+        wrapped = outcome.projects_visited < batch_size
+        cursor = None if wrapped else outcome.last_project
+        await _save_ppr_cursor(session_factory, cursor)
+
+        logger.info(
+            "PPR snapshot visited %d project(s) from cursor %r: %d built, "
+            "%d skipped; cursor now %r%s",
+            outcome.projects_visited, after_project, outcome.snapshots_built,
+            outcome.skipped, cursor, " (wrapped to start)" if wrapped else "",
+        )
+    return run
+
+
+def make_relation_embedding_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Keep `relation_embeddings__<slug>` current (doc 07 §4, doc 19 §6).
+
+    Tier C: the dual-level channel's global arm reads these vectors, and
+    writing them during Phase 5 would put an extra embed round trip on every
+    capture for a signal retrieval does not read until its flag is on.
+
+    Without an orchestrator there is nothing to embed with, so the run is a
+    no-op rather than a failure — the same stance every other model-spending
+    runner takes in Postgres-only mode.
+    """
+    async def run() -> None:
+        from app.services.relation_embeddings import (
+            RELATION_EMBEDDING_CONFIG_SCHEMA,
+            RELATION_EMBEDDING_JOB_KEY,
+            refresh_relation_embeddings,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("relation_embedding_refresh skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in RELATION_EMBEDDING_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(RELATION_EMBEDDING_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await refresh_relation_embeddings(
+                session, llm,
+                missing_batch=int(knobs["missing_batch"]),
+                rotation_batch=int(knobs["rotation_batch"]),
+                chunk_size=int(knobs["embed_chunk"]),
+            )
+            await session.commit()
+
+        if outcome.total:
+            logger.info(
+                "Relation embeddings: %d new, %d rotated under %s",
+                outcome.missing_written, outcome.rotated, outcome.fingerprint,
+            )
+    return run
+
+
+def make_repo_entity_anchoring_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Embed repo-minted entities so the code bridge anchors (doc 10 §6, T2.97).
+
+    Tier C, and deliberately not a dreaming-family member: contract 6 fixes that
+    family at six, and this is an artefact refresh in the same class as
+    `ppr_snapshot` and `relation_embedding_refresh`. Invariant 15 is unaffected
+    — Phase 4 reads the partition this fills, never this runner.
+
+    The deriver that mints these entities is LLM-free by structural guard, so
+    the embed cannot live at derive time; it lives here, one scheduled tick
+    behind. Without an orchestrator there is nothing to embed with, so the run
+    is a no-op rather than a failure.
+    """
+    async def run() -> None:
+        from app.services.entity_anchoring import (
+            REPO_ENTITY_ANCHORING_CONFIG_SCHEMA,
+            REPO_ENTITY_ANCHORING_JOB_KEY,
+            refresh_repo_entity_anchors,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("repo_entity_anchoring skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in REPO_ENTITY_ANCHORING_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(REPO_ENTITY_ANCHORING_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await refresh_repo_entity_anchors(
+                session, llm,
+                missing_batch=int(knobs["missing_batch"]),
+                chunk_size=int(knobs["embed_chunk"]),
+            )
+            await session.commit()
+
+        if outcome.written:
+            logger.info(
+                "Repo entity anchoring: %d entities embedded under %s",
+                outcome.written, outcome.fingerprint,
+            )
+    return run
+
+
+def make_repo_entity_merge_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Fuse the near-named pairs the anchoring order left behind (T2.101).
+
+    Tier C, and deliberately not a dreaming-family member for the same reason
+    `repo_entity_anchoring` is not: contract 6 fixes that family at six, and
+    this is a graph repair in the class doc 10 §6 owns. Invariant 15 is
+    unaffected — neither capture nor retrieval reaches this runner.
+
+    The pass reads vectors rather than producing them, so the orchestrator is
+    needed only to name the fingerprint a partition read may key on. Without
+    one there is nothing to resolve, so the run is a no-op rather than a
+    failure.
+    """
+    async def run() -> None:
+        from app.services.entity_merge import (
+            REPO_ENTITY_MERGE_CONFIG_SCHEMA,
+            REPO_ENTITY_MERGE_JOB_KEY,
+            merge_repo_entity_duplicates,
+        )
+
+        llm = getattr(app.state, "llm", None)
+        if llm is None:
+            logger.info("repo_entity_merge skipped: no LLM orchestrator")
+            return
+
+        registry = getattr(app.state, "job_registry", None)
+        knobs = {fd.key: fd.default for fd in REPO_ENTITY_MERGE_CONFIG_SCHEMA}
+        if registry is not None:
+            cfg = await registry.load_config(REPO_ENTITY_MERGE_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await merge_repo_entity_duplicates(
+                session, llm, candidate_batch=int(knobs["candidate_batch"]),
+            )
+            await session.commit()
+
+        if outcome.merged:
+            logger.info(
+                "Repo entity merge: %d pair(s) fused of %d probed under %s",
+                outcome.merged, outcome.probed, outcome.fingerprint,
+            )
+    return run
+
+
+def make_citation_reverify_runner(
+    app,
+    session_factory: async_sessionmaker[AsyncSession],
+):
+    """Re-resolve code citations against each repository's current HEAD.
+
+    Tier C, and not a dream-job family member — contract 6 fixes that family at
+    six, and the PPR snapshot is the standing precedent for a scheduled Tier-C
+    job outside it. Invariant 15 binds by proximity: a re-index **enqueues**,
+    and this job is what the enqueue eventually feeds; neither capture nor
+    retrieval may reach it.
+
+    No orchestrator and no model: re-resolution is two indexed lookups and a
+    jsonb write, so the run is meaningful in Postgres-only mode where the
+    model-spending runners degrade to a no-op.
+    """
+    async def run() -> None:
+        from app.services.citation_reverify import (
+            CITATION_REVERIFY_CONFIG_SCHEMA,
+            CITATION_REVERIFY_JOB_KEY,
+            DEFAULT_REVERIFY_BATCH,
+            reverify_citations,
+        )
+
+        knobs = {fd.key: fd.default for fd in CITATION_REVERIFY_CONFIG_SCHEMA}
+        registry = getattr(app.state, "job_registry", None)
+        if registry is not None:
+            cfg = await registry.load_config(CITATION_REVERIFY_JOB_KEY)
+            knobs.update(cfg.config or {})
+
+        async with session_factory() as session:
+            outcome = await reverify_citations(
+                session,
+                batch_size=int(knobs.get("batch_size", DEFAULT_REVERIFY_BATCH)),
+            )
+            await session.commit()
+
+        if outcome.marked_stale or outcome.cleared:
+            logger.info(
+                "Citation re-verify: %d stale, %d cleared, %d facts enqueued",
+                outcome.marked_stale, outcome.cleared, outcome.facts_enqueued,
+            )
+    return run
+
+
+_PPR_STATE_CONFIG_KEY = "job:ppr_snapshot:state"
+
+
+async def _load_ppr_cursor(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str | None:
+    from app.models.config import Config
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Config).where(Config.key == _PPR_STATE_CONFIG_KEY)
+            )
+        ).scalar_one_or_none()
+        if row is None or not isinstance(row.value, dict):
+            return None
+        cursor = row.value.get("last_project")
+        return cursor if isinstance(cursor, str) and cursor else None
+
+
+async def _save_ppr_cursor(
+    session_factory: async_sessionmaker[AsyncSession],
+    last_project: str | None,
+) -> None:
+    from app.models.config import Config
+
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                select(Config).where(Config.key == _PPR_STATE_CONFIG_KEY)
+            )
+        ).scalar_one_or_none()
+        value = {"last_project": last_project}
+        if row is None:
+            session.add(Config(key=_PPR_STATE_CONFIG_KEY, value=value))
+        else:
+            row.value = value
+        await session.commit()

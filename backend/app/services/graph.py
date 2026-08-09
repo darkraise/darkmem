@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
-from app.repositories.vector import MemoryFilter, PostgresVectorRepository
+from app.repositories.vector import EmbedderFingerprintUnresolved, MemoryFilter, PostgresVectorRepository
 from app.services.llm import LLMOrchestrator
 from app.services import prompt
 
@@ -46,10 +46,11 @@ class GraphService:
         memory_nodes = []
         clusters: dict[int, list[str]] = {}
         similarity_edges: list[dict] = []
+        fingerprint_unresolved = False
 
         if self.vector_repo and self.llm is not None:
             try:
-                fingerprint = self.llm.llm_fingerprint()
+                fingerprint = await self.vector_repo.resolve_read_fingerprint(self.llm)
                 clustered = await self.vector_repo.get_louvain_clustered_vectors(
                     fingerprint=fingerprint,
                     min_score=similarity_threshold,
@@ -83,6 +84,18 @@ class GraphService:
                         clusters.setdefault(cluster_id, []).append(mid)
 
                 similarity_edges = self._compute_similarity_edges(clustered, similarity_threshold)
+            except EmbedderFingerprintUnresolved:
+                # Distinguishable from "no data": the embedding purpose's
+                # dimensions is unset, or set to a value no real embed has
+                # produced, and nothing has ever embedded under this model, so
+                # there is no partition to read at all (invariant 2,
+                # T2.68/T2.83) — surfaced on the response rather than only
+                # logged, so an empty vector arm can never be mistaken for
+                # "no data".
+                fingerprint_unresolved = True
+                logger.warning(
+                    "Unified graph vector arm skipped: embedding fingerprint unresolved"
+                )
             except Exception:
                 logger.exception("Failed to fetch vector data")
 
@@ -93,6 +106,7 @@ class GraphService:
             "clusters": {str(k): v for k, v in clusters.items()},
             "cluster_names": cluster_names,
             "similarity_edges": similarity_edges,
+            "fingerprint_unresolved": fingerprint_unresolved,
         }
 
         if include_entities:

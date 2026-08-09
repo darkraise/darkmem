@@ -28,8 +28,12 @@ import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
 import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
-import { INERT_LLM_PURPOSES } from "../llm-inert-purposes"
-import { useLLMTabBinding, type LLMTabBinding } from "../use-llm-tab-binding"
+import type { TierCLLMPurpose } from "../llm-tier-c-purposes"
+import {
+  useLLMTabBinding,
+  type LLMTabBinding,
+  type TierCPurposeView,
+} from "../use-llm-tab-binding"
 
 const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   embedding: Braces,
@@ -38,13 +42,10 @@ const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   summarization: FileText,
   reranker: ArrowDownUp,
   reasoning: Bot,
+  synthesis: FileText,
 }
 
-const INERT_PURPOSE_ICONS: Record<
-  (typeof INERT_LLM_PURPOSES)[number]["purpose"],
-  LucideIcon
-> = {
-  synthesis: FileText,
+const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
   verification: ShieldCheck,
 }
 
@@ -331,12 +332,9 @@ function PurposeCard({
   )
 }
 
-function InertPurposeCard({
-  purpose,
-}: {
-  purpose: (typeof INERT_LLM_PURPOSES)[number]
-}) {
-  const Icon = INERT_PURPOSE_ICONS[purpose.purpose]
+function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
+  const Icon = TIER_C_PURPOSE_ICONS[purpose.purpose]
+  const live = purpose.activatesWith === null
   return (
     <div className="border-border bg-card/60 flex flex-col gap-2.5 rounded-lg border border-dashed p-4 opacity-90">
       <div className="flex flex-wrap items-center gap-2">
@@ -348,15 +346,31 @@ function InertPurposeCard({
           {purpose.role}
         </HelpTip>
         <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
-          inert
+          {live ? "tier c · live" : "tier c · inert"}
         </span>
       </div>
       <p className="text-muted-foreground text-sm">
-        Seeded row, resolvable, no consumer yet — activates with{" "}
-        <span className="font-mono">{purpose.activatesWith}</span>. Rendered
-        rather than omitted: a hidden inert purpose reads as "not
-        configured", the same misreading a dormant w_* arm at zero would
-        cause if it were left off the Flags tab.
+        {live ? (
+          <>
+            Seeded row, resolvable, and dispatched — this connection judges
+            fact verification-ladder promotions today. Read-only by
+            deliberate ruling (T2.106), not an oversight: its qualification
+            record is G-D's gate evidence, pinned to this exact model
+            identity, and a settings-form repoint is a real capability with
+            a real failure mode. The judge already refuses to serve on a
+            mismatched identity, but the write-time guard that would make
+            editing this row safe means touching the verification ladder's
+            enforcement path — out of scope here.
+          </>
+        ) : (
+          <>
+            Seeded row, resolvable, no consumer yet — activates with{" "}
+            <span className="font-mono">{purpose.activatesWith}</span>.
+            Rendered rather than omitted: a hidden inert purpose reads as
+            "not configured", the same misreading a dormant w_* arm at zero
+            would cause if it were left off the Flags tab.
+          </>
+        )}
       </p>
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
@@ -459,9 +473,9 @@ function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
             Saved — {lastSave.purpose} purpose updated
           </span>
           <span className="text-muted-foreground text-sm">
-            The orchestrator was rebuilt from all six purpose rows and the live
-            reference was swapped in-process. This change is already serving
-            requests — no redeploy needed.
+            The orchestrator was rebuilt from all eight resolved purpose rows
+            and the live reference was swapped in-process. This change is
+            already serving requests — no redeploy needed.
           </span>
         </div>
         <Button size="sm" variant="ghost" onClick={binding.dismissSave}>
@@ -481,8 +495,8 @@ function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
             orchestrator
           </span>
           <span>
-            new instance built from six purpose rows, reference swapped
-            atomically
+            new instance built from all eight resolved purpose rows,
+            reference swapped atomically
           </span>
         </div>
         <div className="flex gap-2.5">
@@ -550,9 +564,12 @@ export function LLMTab() {
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
-          Six inline purpose cards — each a self-contained connection binding
-          — plus the two Tier-C purposes seeded inert. A save live-reloads
-          the orchestrator; no redeploy, no LLM_* env vars.
+          Seven inline purpose cards — each a self-contained connection
+          binding, including the seeded-inert `synthesis` purpose — plus
+          `verification`, read-only here (T2.106: it judges the
+          verification ladder and its qualification is a gate's evidence).
+          A save live-reloads the orchestrator; no redeploy, no LLM_* env
+          vars.
         </span>
         <HelpTip label="About the LLM tab">
           Each purpose is one row with no provider/profile indirection. Every
@@ -567,8 +584,8 @@ export function LLMTab() {
         {binding.purposes.map((purpose) => (
           <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
         ))}
-        {INERT_LLM_PURPOSES.map((purpose) => (
-          <InertPurposeCard key={purpose.purpose} purpose={purpose} />
+        {binding.tierCPurposes.map((purpose) => (
+          <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
         ))}
       </div>
       <RemovedChrome />

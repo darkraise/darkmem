@@ -28,6 +28,7 @@ async def run_retrieval(
     session_factory,
     gold_pairs: Iterable[Mapping],
     limit: int = 10,
+    filters=None,
 ) -> dict[str, list]:
     """Run every live gold pair's query through the shipping retriever.
 
@@ -45,12 +46,23 @@ async def run_retrieval(
     One ``ProcessingPipeline`` instance is reused across every query in the
     call -- cheap, since ``semantic_search`` opens its own session per call
     and this class holds no per-query state.
+
+    ``filters`` defaults to ``None``, which is the unscoped read every
+    baseline row in the ledger was measured under; it is **not** widened to a
+    default scope, because changing what the default path retrieves would
+    silently invalidate every prior recorded number (ruling 3). The
+    arm-ablation path passes a scope only for arms whose signal is itself
+    project-scoped -- today the PPR list arm, whose cached snapshot has no
+    defined meaning across two projects -- and applies the same scope to both
+    of its legs, so the delta it reports stays internally consistent.
     """
     pipeline = ProcessingPipeline(llm, session_factory)
     results: dict[str, list] = {}
     for pair in gold_pairs:
         if pair.get("retired"):
             continue
-        hits = await pipeline.semantic_search(pair["query"], limit=limit)
+        hits = await pipeline.semantic_search(
+            pair["query"], limit=limit, filters=filters,
+        )
         results[pair["id"]] = [hit["memory_id"] for hit in hits]
     return results

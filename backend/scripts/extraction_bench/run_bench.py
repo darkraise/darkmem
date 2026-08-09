@@ -303,10 +303,60 @@ async def main():
     print("\n================ AGGREGATE (micro) ================")
     labels = {"ent_nt": "Entity (name+type)", "ent_n": "Entity (name only)",
               "rel_full": "Relation (s,TYPE,t)", "rel_pair": "Relation (s,t) type-agnostic"}
+    measured = {}
     for dim, lab in labels.items():
         tp, fp, fn = dims[dim]
         p, r, f = prf(tp, fp, fn)
+        measured[dim] = f
         print(f"  {lab:<32} P={p:.3f} R={r:.3f} F1={f:.3f}   (tp={tp} fp={fp} fn={fn})")
+
+    _assert_floors(measured, labels)
+
+
+# The four gold-corpus floors, from the G-B ledger row (T1.50, 2026-07-28).
+# These are not new numbers and carry no new tolerance: T0.05 set the parity
+# tolerance on 2026-07-26, *before* Phase 1 opened, and these floors are that
+# tolerance already applied to the recorded baseline. Enforcing them here
+# changes nothing about what G-B decided; it changes only whether a later
+# regression can pass unnoticed.
+GOLD_F1_FLOORS = {
+    "ent_nt": 0.881,
+    "ent_n": 0.910,
+    "rel_full": 0.784,
+    "rel_pair": 0.811,
+}
+
+
+def _assert_floors(measured: dict[str, float], labels: dict[str, str]) -> None:
+    """Fail the run when a dimension drops below its recorded floor.
+
+    Until 2026-08-08 this script printed the cells and exited 0 unconditionally,
+    so ``./scripts/gate.sh``'s "extraction F1 bench" arm could fail on a cache
+    miss, a manifest mismatch or a crash — but never on the number it names. A
+    reader seeing GATE GREEN reasonably concludes F1 is healthy; nothing was
+    checking. That is the completion-gate-masquerading-as-a-measurement-gate
+    shape, and it is the arm most likely to be trusted blind.
+    """
+    breaches = [
+        (labels[dim], measured[dim], floor)
+        for dim, floor in GOLD_F1_FLOORS.items()
+        if measured.get(dim, 0.0) < floor
+    ]
+    if not breaches:
+        print(f"\n  floors: all {len(GOLD_F1_FLOORS)} dimensions at or above "
+              f"the G-B recorded floors")
+        return
+    lines = "\n".join(
+        f"    {lab:<32} F1={value:.3f} < floor {floor:.3f}"
+        for lab, value, floor in breaches
+    )
+    raise SystemExit(
+        f"\nEXTRACTION F1 BELOW THE RECORDED FLOOR ({len(breaches)} of "
+        f"{len(GOLD_F1_FLOORS)} dimensions):\n{lines}\n\n"
+        "  These floors are the T0.05 parity tolerance applied to the G-B\n"
+        "  baseline; see gate-ledger.md's G-B row. Do not widen them to make\n"
+        "  a run pass — the ledger says so explicitly. Triage with --diffs."
+    )
 
 
 if __name__ == "__main__":

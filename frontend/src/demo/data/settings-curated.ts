@@ -137,7 +137,8 @@ export const CURATED_FLAGS: DemoFlagsState = {
 }
 
 // ---------------------------------------------------------------------------
-// S26 — LLM. Six inline purpose cards; no provider/profile chrome.
+// S26 — LLM. Seven inline purpose cards (six live plus seeded-inert
+// `synthesis`, writable since T2.106); no provider/profile chrome.
 // ---------------------------------------------------------------------------
 
 export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
@@ -214,6 +215,21 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     api_key: "sk-demo-0000000000000000004f2a",
     params: '{"temperature": 0.7}',
     reasoning: true,
+  },
+  {
+    purpose: "synthesis",
+    tier: "tier C",
+    role: "Layer-3 article write-ups, auto-research write-ups",
+    model: "qwen2.5:3b",
+    api_kind: "ollama",
+    base_url: "localhost:11434",
+    api_key: "",
+    params: '{"temperature": 0.3}',
+    reasoning: false,
+    hint: {
+      tone: "info",
+      text: "seeded, resolvable, and writable — no consumer until T3.02, so a mis-set connection here has no runtime effect yet.",
+    },
   },
 ]
 

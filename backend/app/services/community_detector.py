@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from collections import Counter
@@ -9,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.utils.graph_keys import compose_key
+from app.utils.leiden import partition_graph
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,6 @@ class CommunityDetector:
         self.repo_id = repo_id
 
     async def detect(self) -> int:
-        try:
-            import igraph
-            import leidenalg
-        except ImportError:
-            logger.warning("igraph or leidenalg not installed, skipping community detection")
-            return 0
-
         nodes_result = await self.session.execute(
             text("""
                 SELECT key, properties->>'file_path' AS file_path
@@ -104,8 +97,6 @@ class CommunityDetector:
                 filtered_edges = edge_list
             edge_list = filtered_edges
 
-        g = igraph.Graph(n=len(node_list), edges=edge_list, directed=False)
-
         if is_large:
             resolution = 2.0
             max_iterations = 3
@@ -113,28 +104,25 @@ class CommunityDetector:
             resolution = 1.0
             max_iterations = -1
 
-        try:
-            loop = asyncio.get_running_loop()
-            partition = await asyncio.wait_for(
-                loop.run_in_executor(
-                    None,
-                    lambda: leidenalg.find_partition(
-                        g,
-                        leidenalg.RBConfigurationVertexPartition,
-                        resolution_parameter=resolution,
-                        n_iterations=max_iterations,
-                        seed=0,
-                    ),
-                ),
-                timeout=60.0,
-            )
-        except asyncio.TimeoutError:
+        result = await partition_graph(
+            len(node_list),
+            edge_list,
+            resolution=resolution,
+            n_iterations=max_iterations,
+        )
+        # Before the deletes below, not after: a missing clustering library
+        # means nothing was computed, and deleting the previous run's
+        # communities to write nothing in their place is strictly worse than
+        # leaving them.
+        if result.outcome == "unavailable":
+            return 0
+        if result.outcome == "timeout":
             logger.warning(
                 "Leiden timed out for repo %s (%d nodes), falling back to single community",
                 self.repo_id,
                 len(node_list),
             )
-            partition = None
+        membership = result.membership
 
         await self.session.execute(
             text("DELETE FROM code_edges WHERE repo_id = :repo_id AND edge_type = 'member_of'"),
@@ -145,11 +133,11 @@ class CommunityDetector:
             {"repo_id": self.repo_id},
         )
 
-        if partition is None:
+        if membership is None:
             return await self._store_single_community(node_list)
 
         communities: dict[int, list[int]] = {}
-        for node_idx, comm_id in enumerate(partition.membership):
+        for node_idx, comm_id in enumerate(membership):
             communities.setdefault(comm_id, []).append(node_idx)
 
         comm_labels: dict[int, str] = {}
