@@ -293,7 +293,7 @@ every open item on its critical path now sits in M1.
 
 | Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|
-| T3.01 | Subject eligibility gate + priority scoring | M | Opus | high | | todo | | | |
+| T3.01 | Subject eligibility gate + priority scoring | M | Opus | high | claude/e3-synthesis-and-reach | wip | | | Claimed 2026-08-09. Startable with G-D open: eligibility and priority *scoring* ships no grounded claim, and the epic's 2026-08-06 amendment moves the gate downstream to T3.02 |
 | T3.02 | `article_synthesis` productive runs | L | Opus | high | | todo | | | |
 | T3.03 | Claim-level entailment pass + coverage routing | L | Opus | high | | todo | | | |
 | T3.04 | `article_citations` — the one hard FK | S | Sonnet | high | | todo | | | |
