@@ -240,7 +240,7 @@ def _row_to_dict(row: Any) -> dict:
 
 
 class JournalWriteFailed(RuntimeError):
-    """A verification transition could not be written to the events journal.
+    """A measured transition could not be written to the events journal.
 
     Raised rather than logged because doc 17 §5.1's metrics are SQL over
     ``events`` alone: a transition missing from the journal is not a missing log
@@ -248,6 +248,13 @@ class JournalWriteFailed(RuntimeError):
     caller's transaction unwinds, so the status change and its journal row are
     atomic — the property ``promotion_bars.JOURNAL_COMPLETENESS_SQL`` asserts
     and, before T2.113, could not actually rely on.
+
+    **Not only the machine's rungs** (widened 2026-08-09). ``human_verdict``
+    raises this too: the false-promotion audit's ``rejected_after`` arm counts
+    that row and nothing else, and since T2.109 moved the LLM scan off the veto
+    it is the scan's *only* route into the audit at all. Losing one there does
+    not under-power the measurement, it makes the gate read **better** than
+    reality — the one direction that never announces itself.
     """
 
 

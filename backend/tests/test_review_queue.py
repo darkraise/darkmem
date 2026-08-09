@@ -35,6 +35,7 @@ from sqlalchemy import text
 
 from app.repositories.knowledge_triples import (
     ContradictionSuspicion,
+    JournalWriteFailed,
     KnowledgeTripleRepository,
 )
 from app.services import human_adjudication, review_queue as review_queue_service
@@ -679,6 +680,41 @@ async def test_dismissing_an_unflagged_fact_is_refused_not_journalled(session):
         text("SELECT count(*) FROM events WHERE event_type = 'contradiction_dismissed'")
     )).scalar_one()
     assert journalled == 0
+
+
+async def test_a_dismissal_that_cannot_be_journalled_does_not_clear_the_flag(session):
+    """T2.113's contract, applied to the stream it left out.
+
+    The docstring on the door calls the journalled dismissal "the durable
+    reason it stays gone", which is only true while the row and the clear are
+    atomic: `record_event` never raises, so without the return check the door
+    answered 204, the marker cleared, and the next recompute re-flagged the
+    fact — T2.62's bare-clear failure reached by a silent journal loss.
+
+    The failure is real, not mocked: dropping the month's partition makes the
+    INSERT fail the way a genuinely missing one would, inside `record_event`'s
+    own SAVEPOINT. A mock would prove the branch and not the property.
+    """
+    subject, _ = await _suspected(session)
+    child = (await session.execute(
+        text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+    )).scalar_one()
+    await session.execute(text(f"DROP TABLE {child}"))
+
+    with pytest.raises(JournalWriteFailed):
+        await human_adjudication.dismiss_contradiction_suspicion(
+            session, subject, actor="alice")
+
+    # `record_event` rolls its own SAVEPOINT back, so the session is still
+    # usable and this reads live state. The raise leaves the clear for the
+    # caller to unwind; what this door owes is not having cleared the marker
+    # ahead of the row, which is what the read below checks.
+    still_flagged = (await session.execute(
+        text("SELECT contradiction_suspected_at FROM knowledge_triples "
+             "WHERE id = CAST(:i AS uuid)"),
+        {"i": subject},
+    )).scalar_one()
+    assert still_flagged is not None
 
 
 async def test_dismissal_is_not_a_human_verdict_on_the_fact(session):

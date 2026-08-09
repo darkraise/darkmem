@@ -78,6 +78,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.knowledge_triples import (
     HUMAN_SOURCE_KIND,
+    JournalWriteFailed,
     KnowledgeTripleRepository,
 )
 from app.services.claim_gates import journalled_status, unserved_status
@@ -163,7 +164,7 @@ async def record_human_verdict(
     }
     if note:
         payload["note"] = note[:NOTE_MAX_LENGTH]
-    await record_event(
+    journalled = await record_event(
         session,
         event_type=HUMAN_VERDICT_EVENT_TYPE,
         object_type="fact",
@@ -172,6 +173,19 @@ async def record_human_verdict(
         actor=actor,
         payload=payload,
     )
+    if not journalled:
+        # T2.113's contract, applied to the stream it left out. This row is the
+        # audit's `rejected_after` arm in full — there is no column on
+        # `knowledge_triples` that records a human having rejected — and since
+        # T2.109 moved the LLM scan off the veto, that arm is the scan's only
+        # route into the audit at all. A lost row here does not shrink the
+        # denominator, it deletes a numerator: the gate reads cleaner than the
+        # system is.
+        raise JournalWriteFailed(
+            f"human verdict {verdict!r} on fact {fact_id} could not be "
+            "journalled; refusing to leave an adjudication whose only record "
+            "is the belief withdrawal it was supposed to explain"
+        )
 
 
 async def reject_fact(
@@ -351,7 +365,7 @@ async def dismiss_contradiction_suspicion(
     if row["contradiction_suspected_at"] is None:
         return False
 
-    await record_event(
+    journalled = await record_event(
         session,
         event_type=CONTRADICTION_DISMISSED,
         object_type="fact",
@@ -368,6 +382,17 @@ async def dismiss_contradiction_suspicion(
             "note": note,
         },
     )
+    if not journalled:
+        # The docstring above calls the journalled dismissal "the durable reason
+        # it stays gone", and that is exactly why the clear cannot outlive it:
+        # without the row, this door answers 204, the marker clears, and the
+        # next recompute re-flags the fact — the bare-clear failure T2.62 named,
+        # reached by a silent journal loss instead of a missing write.
+        raise JournalWriteFailed(
+            f"contradiction dismissal on fact {row['id']} could not be "
+            "journalled; refusing to clear a marker the next recompute would "
+            "restore, with no record of the human having ruled"
+        )
     await KnowledgeTripleRepository(session).set_verification_status(
         fact_id, None, suspicion=None
     )

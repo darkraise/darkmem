@@ -28,6 +28,7 @@ from sqlalchemy import text
 
 from app.repositories.knowledge_triples import (
     REVIEW_STATE_OPEN,
+    JournalWriteFailed,
     KnowledgeTripleRepository,
 )
 from app.services import human_adjudication
@@ -417,6 +418,34 @@ async def test_a_seeded_rejection_makes_the_audit_arm_non_zero(session):
     await session.flush()
 
     assert await _human_rejected_count(session, since=EPOCH, until=FAR_FUTURE) == 1
+
+
+async def test_a_rejection_that_cannot_be_journalled_does_not_happen(session):
+    """T2.113's contract, on the arm that needs it most.
+
+    There is no column on ``knowledge_triples`` recording that a human
+    rejected: this event row **is** the audit's ``rejected_after`` arm, and
+    since T2.109 moved the LLM scan off the veto it is that scan's only route
+    into the audit at all. Ignoring ``record_event``'s return let the belief
+    withdrawal commit while its verdict row silently vanished — which does not
+    under-power the measurement, it deletes a numerator and the gate reads
+    cleaner than the system is.
+
+    Real failure, not mocked: the month's partition is dropped, so the INSERT
+    fails the way a genuinely missing one would, inside ``record_event``'s own
+    SAVEPOINT.
+    """
+    fact_id = await _fact(session, subject="lost", obj="verdict")
+    await _corroborate(session, fact_id)
+    await session.flush()
+
+    child = (await session.execute(
+        text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+    )).scalar_one()
+    await session.execute(text(f"DROP TABLE {child}"))
+
+    with pytest.raises(JournalWriteFailed):
+        await reject_fact(session, fact_id, actor="admin")
 
 
 async def test_the_audit_counts_distinct_facts_not_verdicts(session):
