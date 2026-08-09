@@ -240,3 +240,25 @@ export function useRejectFact() {
     },
   })
 }
+
+/** The reviewer's answer when the model scan's flag is wrong (T2.112).
+ *
+ *  Not a verdict on the fact: rejecting says the *claim* is false, this says
+ *  the *finding* was. Without it the only button beside a suspicion confirms
+ *  it, which is not a review — and the flag would return on the next
+ *  recompute, because the journalled dismissal is what makes the clear stick.
+ */
+export function useDismissSuspicion() {
+  const qc = useQueryClient()
+  return useMutation<void, Error, { factId: string; note?: string }>({
+    mutationFn: ({ factId, note }) =>
+      apiFetch<void>(`/review-queue/facts/${factId}/dismiss-suspicion`, {
+        method: "POST",
+        body: note ? JSON.stringify({ note }) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["reviewQueue"] })
+      qc.invalidateQueries({ queryKey: ["knowledge"] })
+    },
+  })
+}

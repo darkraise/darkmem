@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  EyeOff,
   Loader2,
   Pencil,
   SearchX,
@@ -30,8 +31,8 @@ import { LayerChip, VerificationBadge, useDetailLevel } from "@/components/darkm
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
-import { useRatifyFact, useRejectFact } from "@/hooks/api"
-import { UnderSourcedBadge } from "./fact-parts"
+import { useDismissSuspicion, useRatifyFact, useRejectFact } from "@/hooks/api"
+import { SuppressedBadge, UnderSourcedBadge } from "./fact-parts"
 import { ListSurface } from "./list-surface"
 import {
   useReviewArticleRows,
@@ -143,14 +144,51 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
   )
 }
 
+/** The other side of the model scan's flag (T2.112).
+ *
+ *  Unconditional in every detail level, like the honesty labels above it: the
+ *  reviewer's lawful actions here are "reject the fact" and "dismiss the
+ *  finding", and choosing between them is not possible without seeing what
+ *  the finding was. An expired counterpart is rendered, never hidden — facts
+ *  are invalidate-not-delete, so a flag can outlive its other side, and that
+ *  is exactly the case worth telling a human about.
+ */
+function SuspicionBlock({ fact }: { fact: ReviewFactRowData }) {
+  const s = fact.suspected_contradiction
+  if (!s) return null
+  const triple =
+    s.counterpart_subject != null &&
+    s.counterpart_rel_type != null &&
+    s.counterpart_object != null
+      ? `${s.counterpart_subject} → ${s.counterpart_rel_type} → ${s.counterpart_object}`
+      : null
+  return (
+    <div className="border-border text-muted-foreground space-y-1 rounded-md border border-dashed p-2 font-mono text-xs">
+      <p className="flex items-center gap-1.5">
+        <AlertTriangle aria-hidden className="h-3.5 w-3.5 shrink-0" />
+        <span>
+          <b className="text-foreground font-semibold">suspected contradiction</b> · since{" "}
+          {s.suspected_at}
+        </span>
+      </p>
+      <p>counterpart: {triple ?? "no triple recorded for the counterpart"}</p>
+      {s.counterpart_expired_at != null && (
+        <p>counterpart withdrawn {s.counterpart_expired_at} — belief expired, flag stands</p>
+      )}
+    </div>
+  )
+}
+
 function FactRow({
   fact,
   onRatify,
   onReject,
+  onDismissSuspicion,
 }: {
   fact: ReviewFactRowData
   onRatify: (fact: ReviewFactRowData) => void
   onReject: (fact: ReviewFactRowData) => void
+  onDismissSuspicion: (fact: ReviewFactRowData) => void
 }) {
   const level = useDetailLevel((s) => s.level)
   return (
@@ -163,6 +201,9 @@ function FactRow({
           queued: {fact.reason}
         </Badge>
         {fact.under_sourced && <UnderSourcedBadge />}
+        {fact.label_suppressed != null && (
+          <SuppressedBadge reason={fact.label_suppressed} />
+        )}
         <span className="text-muted-foreground ml-auto font-mono text-sm">
           project: {fact.project}
         </span>
@@ -177,6 +218,7 @@ function FactRow({
         </p>
       ) : null}
       <p className="text-sm">{fact.fact_text}</p>
+      <SuspicionBlock fact={fact} />
       <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
         <TrendingUp aria-hidden className="h-3.5 w-3.5 shrink-0" />
         <span>
@@ -195,6 +237,16 @@ function FactRow({
           <XCircle className="mr-1.5 size-3.5" />
           Reject
         </Button>
+        {fact.suspected_contradiction != null && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onDismissSuspicion(fact)}
+          >
+            <EyeOff className="mr-1.5 size-3.5" />
+            Dismiss suspicion
+          </Button>
+        )}
         <Button size="sm" variant="outline" asChild>
           <Link to="/knowledge/facts/$factId" params={{ factId: fact.id }}>
             <Pencil className="mr-1.5 size-3.5" />
@@ -255,6 +307,7 @@ export function ReviewQueue({ project }: { project?: string }) {
   const [articlesOffset, setArticlesOffset] = useState(0)
   const [ratifyTarget, setRatifyTarget] = useState<ReviewFactRowData | null>(null)
   const [rejectTarget, setRejectTarget] = useState<ReviewFactRowData | null>(null)
+  const [dismissTarget, setDismissTarget] = useState<ReviewFactRowData | null>(null)
 
   useEffect(() => {
     setFactsOffset(0)
@@ -267,6 +320,7 @@ export function ReviewQueue({ project }: { project?: string }) {
 
   const ratifyMutation = useRatifyFact()
   const rejectMutation = useRejectFact()
+  const dismissMutation = useDismissSuspicion()
   const demoRatify = useDemoStore((s) => s.ratifyReviewItem)
   const demoClear = useDemoStore((s) => s.clearReviewItem)
 
@@ -330,6 +384,30 @@ export function ReviewQueue({ project }: { project?: string }) {
       )
     }
     setRejectTarget(null)
+  }
+  // No demo arm: the fixture carries no suspicion, so `SuspicionBlock` and
+  // this button never render there. A demo branch here would be a path no
+  // fixture can reach.
+  const runDismiss = (fact: ReviewFactRowData) => {
+    dismissMutation.mutate(
+      { factId: fact.id },
+      {
+        onError: (error) => {
+          if (error instanceof ApiError) {
+            toast.error("Dismiss failed — the flag was not cleared", {
+              description: error.message,
+            })
+            return
+          }
+          toast.error("Dismiss failed — state unknown", {
+            description: `${
+              error instanceof Error ? error.message : "the request did not complete"
+            }. Re-check the fact before retrying.`,
+          })
+        },
+      },
+    )
+    setDismissTarget(null)
   }
 
   const countsLine = counts.error
@@ -397,6 +475,7 @@ export function ReviewQueue({ project }: { project?: string }) {
                 fact={fact}
                 onRatify={setRatifyTarget}
                 onReject={setRejectTarget}
+                onDismissSuspicion={setDismissTarget}
               />
             ))}
             <PageControls
@@ -521,6 +600,37 @@ export function ReviewQueue({ project }: { project?: string }) {
             <AlertDialogAction onClick={() => rejectTarget && runReject(rejectTarget)}>
               <XCircle className="mr-1.5 size-3.5" />
               Reject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={dismissTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setDismissTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dismiss this contradiction flag?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Says the model scan's finding was wrong — not that the fact is.
+              The fact keeps its rung either way; the flag never moved one.
+              The dismissal is journalled, and that record is what keeps the
+              next recompute from raising the same flag again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
+            POST /api/v1/review-queue/facts/{dismissTarget?.id}/dismiss-suspicion ·
+            authenticated · not a human_verdict — it adjudicates the finding,
+            not the fact
+          </p>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => dismissTarget && runDismiss(dismissTarget)}>
+              <EyeOff className="mr-1.5 size-3.5" />
+              Dismiss suspicion
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

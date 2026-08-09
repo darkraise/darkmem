@@ -1061,3 +1061,94 @@ describe("HygieneQueue: 'Supersede instead' states a direction and applies that 
     expect(body).toEqual({ items: [{ memory_id: "m1", superseded_by: "m2" }] })
   })
 })
+
+// T2.112 shipped the suspicion on the wire and left it dead at the screen —
+// the 2026-08-09 delta review's D-1, and the third instance of that shape in
+// this epic. These assert the render and the action, because a hook test
+// cannot see either: the field can be carried correctly and still reach no
+// pixel, which is exactly what happened.
+
+const SUSPECTED_ITEM = {
+  ...FACT_ITEM,
+  id: "f-suspect",
+  verification_status: "corroborated",
+  reason: "contradiction-suspected",
+  label_suppressed: "verification_unmeasured",
+  suspected_contradiction: {
+    counterpart_id: "f-other",
+    counterpart_subject: "darkmem",
+    counterpart_rel_type: "USES",
+    counterpart_object: "sqlite",
+    counterpart_expired_at: null,
+    suspected_at: "2026-08-08T10:00:00Z",
+  },
+}
+
+describe("ReviewTab: the model scan's flag reaches the reviewer (D-1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "simple" })
+  })
+
+  it("renders the counterpart and the suppressed label, in the simple level", async () => {
+    mockApi({ facts: { items: [SUSPECTED_ITEM], total: 1, limit: 10, offset: 0 } })
+    render(withQuery(<ReviewTab />))
+
+    // Unconditional, like the other honesty labels: a reviewer on the default
+    // detail level must not have to opt in to see what they are judging.
+    expect(await screen.findByText(/suspected contradiction/)).toBeInTheDocument()
+    expect(screen.getByText(/darkmem → USES → sqlite/)).toBeInTheDocument()
+    expect(screen.getByText("label withheld")).toBeInTheDocument()
+  })
+
+  it("offers a dismissal, and it posts to the dismissal door", async () => {
+    mockApi({ facts: { items: [SUSPECTED_ITEM], total: 1, limit: 10, offset: 0 } })
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url.startsWith("/review-queue/counts")) return { facts: 1, articles: 0 }
+      if (url.startsWith("/review-queue/facts/f-suspect/dismiss-suspicion")) return undefined
+      if (url.startsWith("/review-queue/facts")) {
+        return { items: [SUSPECTED_ITEM], total: 1, limit: 10, offset: 0 }
+      }
+      if (url.startsWith("/review-queue/articles")) return emptyList()
+      throw new Error(`unexpected apiFetch call in test: ${url}`)
+    })
+    render(withQuery(<ReviewTab />))
+
+    fireEvent.click(await screen.findByText("Dismiss suspicion"))
+    // Nothing is posted from the button alone: dismissing is an adjudication,
+    // so it confirms first, like reject and ratify.
+    expect(
+      vi.mocked(apiFetch).mock.calls.some((call) =>
+        (call[0] as string).includes("dismiss-suspicion"),
+      ),
+    ).toBe(false)
+
+    await screen.findByText("Dismiss this contradiction flag?")
+    fireEvent.click(screen.getAllByText("Dismiss suspicion")[1]!)
+
+    await waitFor(() =>
+      expect(
+        vi.mocked(apiFetch).mock.calls.some(
+          (call) => (call[0] as string) === "/review-queue/facts/f-suspect/dismiss-suspicion",
+        ),
+      ).toBe(true),
+    )
+    // The dismissal adjudicates the finding, never the fact: routing it
+    // through /reject would manufacture a false promotion in doc 17 §5.1's
+    // human-rejection arm out of the scan's own false positive.
+    expect(
+      vi.mocked(apiFetch).mock.calls.some((call) =>
+        (call[0] as string).endsWith("/reject"),
+      ),
+    ).toBe(false)
+  })
+
+  it("shows no suspicion block and no dismissal on an unflagged fact", async () => {
+    mockApi()
+    render(withQuery(<ReviewTab />))
+
+    expect(await screen.findByText(/why ranked here:/)).toBeInTheDocument()
+    expect(screen.queryByText(/suspected contradiction/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Dismiss suspicion")).not.toBeInTheDocument()
+  })
+})

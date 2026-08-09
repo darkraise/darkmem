@@ -9,6 +9,7 @@ import {
   type ConsequenceExplanation,
   type ReviewQueueArticleItem,
   type ReviewQueueFactItem,
+  type SuspectedContradiction,
   type VerifiedEvidence,
 } from "@/hooks/api"
 
@@ -50,10 +51,20 @@ export interface ReviewFactRowData {
   fact_text: string
   verification_status: VerificationStatus
   /** The backend's own reason the row is queued — 'disputed' |
-   *  'under-sourced' | 'unspecified' — carried verbatim, never re-derived
-   *  or reworded here (doc 12 §4's discipline extended to this field). */
+   *  'under-sourced' | 'contradiction-suspected' | 'unspecified' — carried
+   *  verbatim, never re-derived or reworded here (doc 12 §4's discipline
+   *  extended to this field). */
   reason: string
   under_sourced: boolean
+  /** Why the served rung is not the stored one, or null when nothing was
+   *  withheld. This is the screen whose whole purpose is judging support, so
+   *  a suppressed label has to be visible here above anywhere else. */
+  label_suppressed: string | null
+  /** T2.112's other side: the counterpart the model scan flagged this fact
+   *  against. Null when there is no flag — a reviewer cannot confirm what
+   *  they cannot see, and the fact keeps its rung while flagged, so this is
+   *  a prompt to look rather than a demotion. */
+  suspected_contradiction: SuspectedContradiction | null
   /** One-line ranking readout, always present — composed from
    *  `consequence`'s numeric fields (there is no competing backend prose
    *  string for ranking rationale to duplicate, unlike a verification
@@ -131,6 +142,8 @@ function factFromApi(item: ReviewQueueFactItem): ReviewFactRowData {
     verification_status: statusOf(item.verification_status),
     reason: item.reason,
     under_sourced: item.demotion_pending_since !== null,
+    label_suppressed: item.label_suppressed,
+    suspected_contradiction: item.suspected_contradiction,
     rank_note: item.consequence
       ? rankNoteOf(item.consequence)
       : "arrival order — no consequence signal computed for this row",
@@ -173,6 +186,12 @@ function factFromDemo(item: DemoReviewItem): ReviewFactRowData {
     verification_status: statusOf(item.badge ?? null),
     reason: reasonOfDemo(item),
     under_sourced: Boolean(item.under_sourced),
+    // The demo fixture models neither: it has no gated rung to explain and
+    // no scan behind it. Inventing either would put a claim on the screen
+    // that no producer made, which is what the demo/live split exists to
+    // prevent.
+    label_suppressed: null,
+    suspected_contradiction: null,
     rank_note: item.rank_note,
     consequence: null,
     evidence: null,
