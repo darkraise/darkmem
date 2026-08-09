@@ -79,7 +79,14 @@ class TestTheContractBinding:
     async def test_generation_refuses_when_a_route_is_missing(self, monkeypatch):
         """The refusal is the enforcement. Without it the generator would
         happily emit a method that calls a 404, which is the drift doc 15 §6
-        generates the SDK to prevent."""
+        generates the SDK to prevent.
+
+        Matched on the route arm's own message rather than on "refusing to
+        generate". A mutation drill found the looser assertion green with the
+        route check deleted: a path the contract lacks has no request schema
+        either, so the *field* arm refuses instead and a reader would be told
+        the route guard held when it was gone.
+        """
         monkeypatch.setitem(
             sdk_generate.VERBS,
             "capture",
@@ -90,7 +97,9 @@ class TestTheContractBinding:
             },
         )
 
-        with pytest.raises(SystemExit, match="refusing to generate"):
+        with pytest.raises(
+            SystemExit, match=r"capture → POST /api/v1/route-that-does-not-exist"
+        ):
             sdk_generate._require_contract(_schema_copy())
 
     async def test_generation_refuses_when_a_field_is_missing(self, monkeypatch):

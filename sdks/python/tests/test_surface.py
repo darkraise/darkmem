@@ -141,7 +141,14 @@ class TestNoOtherDoorIsReachable:
         """The whitelist above only holds while paths are whole literals. A
         client that concatenated `/api/v1/knowledge/` with a suffix would pass
         it while reaching anywhere; the bound paths are the only `/api/`
-        fragments in either file, so there is nothing to build from."""
+        fragments in either file, so there is nothing to build from.
+
+        Not redundant with the test above, and measured rather than assumed: a
+        drill that added a `ratify` method to both clients failed the quoted
+        literal check on the Python one and **passed** it on the TypeScript
+        one, because the interpolated path was in backticks. This is what
+        caught it.
+        """
         fragments = set(re.findall(r"/api/[\w/{}.-]*", client.read_text()))
         assert fragments == BOUND_PATHS
 
