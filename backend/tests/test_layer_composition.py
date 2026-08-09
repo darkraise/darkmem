@@ -1095,6 +1095,35 @@ async def test_the_limit_bounds_the_union_of_the_channels(session, monkeypatch):
     assert len(result.rows) == 5
 
 
+def test_the_cut_keeps_the_head_of_the_composed_order():
+    """The sibling test above pins how many rows survive the budget, not
+    *which* — replacing the cut with ``ordered[-limit:]`` keeps its length
+    assertion green while serving the tail of the order.
+
+    The budget is documented as dropping the tail of a total order, so the
+    served page must equal the unlimited order's own prefix. Both compositions
+    run over one candidate list, so the only difference between them is the
+    cut.
+    """
+    candidates = [
+        lc.memory_candidate(_memory_row(uuid4()), channel_rank=rank)
+        for rank in range(1, 6)
+    ] + [
+        lc.fact_candidate(_fact_row(uuid4()), channel_rank=rank)
+        for rank in range(1, 6)
+    ]
+
+    full = lc.compose(candidates)
+    cut = lc.compose(candidates, limit=5)
+
+    # The premise: the union really does overrun the budget. Without this the
+    # prefix assertion below passes on an uncut result.
+    assert len(full.rows) == 10
+
+    assert [row.key for row in cut.rows] == [row.key for row in full.rows][:5]
+    assert cut.excluded_by_result_limit == 5
+
+
 def test_two_candidates_cannot_share_one_composition_key():
     shared = _fact_row(uuid4())
     with pytest.raises(ValueError):
