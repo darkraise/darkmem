@@ -1942,9 +1942,20 @@ _SQL_STATEMENT = re.compile(r"\bfrom\b", re.IGNORECASE)
 # builds its `COUNT(*)` exactly that way, and that count is gated only because
 # `facts_read` hands it a served-inverted set. Neither this scan nor the label
 # scan sees that shape. What covers it is a door drive with the gate closed.
+# - `article_eligibility` counts a subject's verified facts to decide whether
+#   it clears doc 09 §4.1's synthesis floor. **Ungated on purpose, and the
+#   reason is that it serves nobody**: the module has no route, no door and no
+#   caller outside the synthesis selection path, and its consumer (T3.02) is
+#   held shut by G-D. It counts the stored rungs because the question it asks
+#   is what the vault holds, not what it may currently say out loud — see its
+#   module docstring. **The obligation this entry records:** the returned
+#   `verified_fact_count` is a stored-vocabulary number, so the first surface
+#   that renders it owes the same `raw_statuses_for_served` inversion
+#   `pin_suggestions` does, or it becomes the oracle that gates against.
 AGGREGATES_NAMING_THE_RUNG = {
     "app/services/pin_suggestions.py",
     "app/services/review_ranking.py",
+    "app/services/article_eligibility.py",
 }
 
 
