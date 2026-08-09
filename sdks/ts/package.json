@@ -1,0 +1,11 @@
+{
+  "name": "@darkmem/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal darkmem client — three verbs, generated from the doc 12 contract",
+  "main": "src/client.ts",
+  "scripts": {
+    "build": "make -C .. build"
+  }
+}
