@@ -129,16 +129,22 @@ class TestSearch:
         assert rec.body() == {"query": "what replaced redis", "with_trace": True}
         assert result["envelope"]["context"] is None
 
-    def test_the_trace_is_on_by_default_and_can_be_turned_off(self, recorder):
-        """Doc 15 §6 defines the verb as returning the labelled results *with
-        their trace*, and the contract's own default is off — so the SDK asks
-        for it. `False` is sent rather than dropped: filtering on falsiness
-        would make an explicit choice indistinguishable from silence."""
+    def test_the_trace_is_always_asked_for(self, recorder):
+        """Not a preference, and not an argument. The door resolves a declared
+        context only on the traced branch — an untraced search answers 200 with
+        a null envelope and discards the declaration on both ranks — so an
+        option to turn the trace off would be an option to silently drop the
+        declaration, which is the defect this binding exists to close."""
         rec = recorder()
+        client = Darkmem()
+        client.declare_context({"env": "prod"})
 
-        asyncio.run(Darkmem().search("q", with_trace=False))
+        asyncio.run(client.search("q"))
 
-        assert rec.body() == {"query": "q", "with_trace": False}
+        assert rec.body()["with_trace"] is True
+        assert CONTEXT_HEADER in rec.only.headers
+        with pytest.raises(TypeError):
+            asyncio.run(Darkmem().search("q", with_trace=False))
 
     def test_the_limit_rides_the_body(self, recorder):
         rec = recorder()

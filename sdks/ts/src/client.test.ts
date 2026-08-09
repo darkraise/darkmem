@@ -107,15 +107,20 @@ describe("search", () => {
     expect(result.envelope?.context).toBeNull();
   });
 
-  it("asks for the trace by default and sends an explicit false", async () => {
-    // Doc 15 §6 defines the verb as returning the labelled results *with their
-    // trace*, and the contract's own default is off. `false` is a value, not an
-    // omission — filtering on falsiness would erase an explicit choice.
+  it("always asks for the trace, with no argument to turn it off", async () => {
+    // Not a preference. The door resolves a declared context only on the
+    // traced branch — an untraced search answers 200 with a null envelope and
+    // discards the declaration on both ranks — so an option to turn the trace
+    // off would be an option to silently drop the declaration, which is the
+    // defect this binding exists to close.
     respond();
+    const client = new Darkmem();
+    client.declareContext({ env: "prod" });
 
-    await new Darkmem().search("q", { withTrace: false });
+    await client.search("q");
 
-    expect(recorded[0].body).toEqual({ query: "q", with_trace: false });
+    expect(recorded[0].body.with_trace).toBe(true);
+    expect(recorded[0].headers[CONTEXT_HEADER]).toBeDefined();
   });
 
   it("carries the limit in the body", async () => {
@@ -236,6 +241,18 @@ describe("the surface, at run time", () => {
     // class-field method — the shape that defeated the source scan — shows up
     // here as one.
     expect(Object.getOwnPropertyNames(new Darkmem({}))).toEqual([]);
+  });
+
+  it("hangs nothing off the constructor", () => {
+    // The third home a member can have, and the one that defeated both probes
+    // above: a `static` method lives on the constructor, so it is neither a
+    // prototype method nor an instance property. A review drove one to a real
+    // ratify call with every suite green.
+    expect(Object.getOwnPropertyNames(Darkmem).sort()).toEqual([
+      "length",
+      "name",
+      "prototype",
+    ]);
   });
 
   it("exports only the client and its types", async () => {

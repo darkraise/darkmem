@@ -18,18 +18,28 @@ emitted client ratified a fact:
   whitelist's own filter hid it;
 - a **module-level function** in either language — on no class at all.
 
-So the checks are now whitelists over three surfaces rather than one, and none
-of them filters by kind: the class's whole public attribute set, the module's
-whole public name set, and the emitted TypeScript's whole member and export
-set. A fourth verb has to survive all of them, and the run-time probes in
-``ts/src/client.test.ts`` (prototype **and** instance) cover the TypeScript
-constructs a source scan reads poorly.
+Those three were closed and a second review found **two more**, which is the
+finding that matters: closing named instances is not closing the class.
 
-Reach still missing, stated rather than implied: Python's ``_post`` is a naming
-convention that a determined caller can reach, and these scans read the emitted
-files rather than executing the Python client, so a construct that changes the
-surface only at run time (a metaclass, a ``__getattr__``) would pass. Both are
-noted as things a future defect could use, not as things that hold today.
+- a TypeScript ``static`` member — on the *constructor*, so neither the
+  prototype probe nor the instance probe sees it, and the source regex was
+  anchored to exactly two leading spaces, which the generator itself writes;
+- a Python ``def __call__`` — every whitelist filtered names on a leading
+  underscore, so **no dunder could ever appear in one**, and an instance that
+  is callable is a verb by any measure.
+
+So no check here filters by kind *or* by name shape any more. Each is an exact
+whitelist of a whole surface: ``vars(Darkmem)`` including every dunder, the
+module's names owned by that module, and the emitted TypeScript's members and
+exports. The run-time probes in ``ts/src/client.test.ts`` cover all three
+JavaScript homes a member can have — prototype, instance, constructor —
+because a source scan reads none of them reliably.
+
+Reach still missing, stated rather than implied: these scans read the emitted
+files and the imported module, so a construct that changes the surface only
+when something else happens (a ``__getattr__``, a metaclass, a monkeypatch at
+import time) would pass. ``_post`` remains reachable by a caller who wants it.
+Both are things a future defect could use, not things that hold today.
 """
 
 from __future__ import annotations
@@ -49,6 +59,24 @@ PYTHON_CLIENT = SDKS / "python/darkmem_sdk/client.py"
 TYPESCRIPT_CLIENT = SDKS / "ts/src/client.ts"
 
 THE_THREE_VERBS_PY = {"capture", "search", "declare_context"}
+
+# `vars(Darkmem)` in full, dunders included. Not "public names" — a whitelist
+# that filters on a leading underscore can never see a `__call__`, and an
+# instance you can call is a verb. The interpreter-supplied entries are listed
+# rather than subtracted so a new one is a visible, deliberate edit.
+PY_CLASS_MEMBERS = {
+    "__dict__",
+    "__doc__",
+    "__firstlineno__",
+    "__init__",
+    "__module__",
+    "__static_attributes__",
+    "__weakref__",
+    "_post",
+    "capture",
+    "declare_context",
+    "search",
+}
 THE_THREE_VERBS_TS = {"capture", "search", "declareContext"}
 BOUND_PATHS = {CAPTURE_PATH, SEARCH_PATH}
 
@@ -80,23 +108,44 @@ TS_TYPE_EXPORTS = {
 
 
 def _typescript_class_members(source: str) -> set[str]:
-    """Every member name declared at class-body indentation.
+    """Every member name declared directly in the class body.
 
     Deliberately not restricted to methods: a class **field** holding an arrow
-    function is a method in every sense that matters to a caller, and the
-    earlier `name(` shape missed exactly that. Two-space indentation is the
-    generator's own formatting, which is what makes this parseable without a
-    TypeScript parser.
+    function is a method in every sense that matters to a caller, and the first
+    version's `name(` shape missed exactly that. Nor to one indentation — the
+    second version anchored on exactly two leading spaces, and the file's
+    formatting is written by the very generator this defends against, so a
+    `static` member at four spaces was invisible. Depth is tracked by counting
+    braces instead, with comments and string literals removed first so a brace
+    inside either cannot move it.
+
+    A text scan is the secondary check regardless. `ts/src/client.test.ts`'s
+    three run-time probes are the primary one: they read what the engine sees —
+    prototype, instance and constructor — rather than what the text looks like.
     """
-    body = source.split("export class Darkmem {", 1)[-1]
-    return set(
-        re.findall(
-            r"^  (?:readonly\s+)?(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?"
-            r"([A-Za-z_$#][\w$]*)\s*[(<:=;]",
-            body,
-            re.MULTILINE,
-        )
-    )
+    body = _typescript_without_comments(source).split("export class Darkmem {", 1)[-1]
+    body, _ = _mask_strings(body)
+
+    members: set[str] = set()
+    depth = 1
+    # Parentheses too: a multi-line method signature keeps brace depth at 1
+    # while its parameters sit inside `(`, and `query: string,` on its own line
+    # is not a member declaration.
+    parens = 0
+    for line in body.splitlines():
+        if depth == 1 and parens == 0:
+            match = re.match(
+                r"\s*(?:readonly\s+)?(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?"
+                r"([A-Za-z_$#][\w$]*)\s*[(<:=;]",
+                line,
+            )
+            if match:
+                members.add(match.group(1))
+        depth += line.count("{") - line.count("}")
+        parens += line.count("(") - line.count(")")
+        if depth <= 0:
+            break
+    return members
 
 
 def _typescript_exports(source: str) -> tuple[set[str], set[str]]:
@@ -143,20 +192,55 @@ def _python_code_names(source: str) -> set[str]:
     return names
 
 
+_STRING_LITERAL = re.compile(r'"[^"\n]*"|\'[^\'\n]*\'|`[^`]*`')
+
+
+def _mask_strings(source: str) -> tuple[str, list[str]]:
+    """Replace every string literal with a placeholder, keeping the originals.
+
+    Order matters and cost a round here: stripping `//` comments first eats the
+    rest of any line holding a URL, because `http://` is two slashes. That
+    truncated `(options.baseUrl ?? "http:` mid-expression, left an unbalanced
+    parenthesis, and made the member scan below stop reading after the
+    constructor — reporting a one-member class as if that were the truth.
+    """
+    kept: list[str] = []
+
+    def take(match: re.Match) -> str:
+        kept.append(match.group(0))
+        return f"__STR{len(kept) - 1}__"
+
+    return _STRING_LITERAL.sub(take, source), kept
+
+
 def _typescript_without_comments(source: str) -> str:
-    without_block = re.sub(r"/\*[\s\S]*?\*/", "", source)
-    return re.sub(r"//.*$", "", without_block, flags=re.MULTILINE)
+    """Comments removed, string literals intact.
+
+    The literals are kept because a path or a verb name hiding in one is
+    exactly what the scans below look for; only the comments are noise.
+    """
+    masked, kept = _mask_strings(source)
+    without_block = re.sub(r"/\*[\s\S]*?\*/", "", masked)
+    stripped = re.sub(r"//.*$", "", without_block, flags=re.MULTILINE)
+    for index, literal in enumerate(kept):
+        stripped = stripped.replace(f"__STR{index}__", literal)
+    return stripped
 
 
 class TestThePublicSurfaceIsTheThreeVerbs:
-    def test_the_python_class_exposes_exactly_three_public_attributes(self):
-        """No `callable` filter. `callable(classmethod(f))` is False, which is
-        how a classmethod fourth verb sat on this class through a whole green
-        suite; a property or a staticmethod would have done the same."""
-        public = {
-            name for name in dir(Darkmem) if not name.startswith("_")
-        } - set(dir(object))
-        assert public == THE_THREE_VERBS_PY
+    def test_the_python_class_carries_no_member_it_was_not_given(self):
+        """Every member, dunder included, against an exact whitelist.
+
+        Two filters failed here in turn. `callable(classmethod(f))` is False,
+        so a classmethod fourth verb sat on this class through a green suite;
+        then `startswith("_")` meant a `def __call__` could not appear in the
+        set at all, and `Darkmem(token=...)(path, body)` reached the ratify
+        door. Neither kind nor name shape decides membership now.
+        """
+        assert set(vars(Darkmem)) == PY_CLASS_MEMBERS
+        # The three verbs are in there, so the whitelist cannot be satisfied by
+        # a client that lost them.
+        assert THE_THREE_VERBS_PY <= PY_CLASS_MEMBERS
 
     def test_the_python_module_exposes_no_other_public_name(self):
         """A module-level `async def send(client, path, body)` is on no class
@@ -164,6 +248,17 @@ class TestThePublicSurfaceIsTheThreeVerbs:
         can see it — this is the surface that can."""
         public = {name for name in vars(client_module) if not name.startswith("_")}
         assert public == PY_MODULE_PUBLIC
+
+    def test_the_python_module_defines_only_the_client(self):
+        """The name-shape-free half of the same check: anything *defined here*
+        rather than imported, whatever it is called. An underscore-prefixed
+        module-level helper is as reachable as a public one."""
+        owned = {
+            name
+            for name, value in vars(client_module).items()
+            if getattr(value, "__module__", None) == client_module.__name__
+        }
+        assert owned == {"Darkmem"}
 
     def test_the_package_exports_only_the_client(self):
         assert darkmem_sdk.__all__ == ["Darkmem"]

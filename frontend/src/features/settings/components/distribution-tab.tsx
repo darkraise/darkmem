@@ -131,17 +131,28 @@ function ClientRow({ client }: { client: DemoDistClient }) {
  */
 function TokenBudgetField({
   budget,
+  rejected,
   onCommit,
 }: {
   budget: number
+  /** The last write failed, so `budget` did **not** move. Without this the
+   *  field goes on showing the rejected number while the banner above says
+   *  "push is still whatever the server last accepted, shown below" — the same
+   *  screen-asserts-what-is-not-in-force failure, in the failure path. */
+  rejected: boolean
   onCommit: (next: number) => void
 }) {
   const [draft, setDraft] = useState(String(budget))
   const [seed, setSeed] = useState(budget)
+  const [sawRejection, setSawRejection] = useState(rejected)
   if (seed !== budget) {
     // The server's value moved (a write landed, or a refetch): take it.
     setSeed(budget)
     setDraft(String(budget))
+  }
+  if (sawRejection !== rejected) {
+    setSawRejection(rejected)
+    if (rejected) setDraft(String(budget))
   }
 
   return (
@@ -275,6 +286,7 @@ function LiveDistribution() {
           <span>Token budget</span>
           <TokenBudgetField
             budget={policy.token_budget}
+            rejected={setPolicy.isError}
             onCommit={(token_budget) =>
               setPolicy.mutate({ ...policy, token_budget })
             }

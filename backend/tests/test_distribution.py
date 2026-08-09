@@ -251,3 +251,38 @@ class TestARefusedTargetIsNamedOnTheWire:
         assert "project-relative" in (ia.reject_reason("~/notes.md") or "")
         assert "project-relative" in (ia.reject_reason("../escape.md") or "")
         assert "no context_file" in (ia.reject_reason("") or "")
+
+    async def test_a_non_object_entry_is_named_too(self, client, auth_headers, session):
+        """N-5: `reject_reason` covers the `context_file` shapes, but an entry
+        that is not a mapping at all was still dropped log-only — the same
+        operator, the same vanished row, the same reason on the server."""
+        session.add(Config(
+            key=ia.INJECT_ADAPTERS_CONFIG_KEY, value={"stringly": "nope"},
+        ))
+        await session.flush()
+
+        state = (await client.get(
+            "/api/v1/distribution", headers=auth_headers
+        )).json()
+
+        assert [r["tool"] for r in state["rejected"]] == ["stringly"]
+        assert "not an object" in state["rejected"][0]["reason"]
+
+    async def test_the_registry_is_merged_once_per_request(
+        self, client, auth_headers, monkeypatch
+    ):
+        """N-6: the one caller that needs both halves used to pay two SELECTs
+        of the same config row and two merges."""
+        calls = 0
+        original = ia._resolve
+
+        async def counting(session):
+            nonlocal calls
+            calls += 1
+            return await original(session)
+
+        monkeypatch.setattr(ia, "_resolve", counting)
+
+        await client.get("/api/v1/distribution", headers=auth_headers)
+
+        assert calls == 1

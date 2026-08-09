@@ -53,6 +53,7 @@ __all__ = [
     "UnsupportedCadence",
     "get_adapter_rejections",
     "get_adapters",
+    "get_registry",
     "reject_reason",
     "resolve_adapter",
 ]
@@ -167,8 +168,17 @@ async def _resolve(
     raw = row.value if row is not None and isinstance(row.value, dict) else {}
 
     merged: dict[str, dict[str, str]] = {k: dict(v) for k, v in DEFAULT_ADAPTERS.items()}
+    rejected: dict[str, str] = {}
     for tool, entry in raw.items():
         if not isinstance(entry, dict):
+            # Served, not merely logged: an operator whose entry is a string
+            # rather than an object watches their row vanish exactly as one
+            # with a bad `context_file` did, and the reason has the same right
+            # to reach the screen.
+            rejected[tool] = (
+                f"the entry is {type(entry).__name__}, not an object — an "
+                "adapter is a mapping of context_file / mcp_config / refresh"
+            )
             logger.warning(
                 "%s: entry for %r is %s, not an object; ignoring",
                 INJECT_ADAPTERS_CONFIG_KEY, tool, type(entry).__name__,
@@ -199,7 +209,6 @@ async def _resolve(
         merged.setdefault(tool, {}).update(usable)
 
     adapters: dict[str, Adapter] = {}
-    rejected: dict[str, str] = {}
     for tool, entry in merged.items():
         context_file = entry.get("context_file")
         # The invariants the docstring states, enforced at the door a config
@@ -260,6 +269,19 @@ async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
     """
     adapters, _ = await _resolve(session)
     return adapters
+
+
+async def get_registry(
+    session: AsyncSession,
+) -> tuple[dict[str, Adapter], dict[str, str]]:
+    """Both halves for the one caller that needs both.
+
+    ``get_adapters`` + ``get_adapter_rejections`` is two SELECTs of the same
+    ``config`` row and two merges per request. The docstring above says a second
+    pass "would mean a second copy of the merge" — the copy was avoided, the
+    pass was not.
+    """
+    return await _resolve(session)
 
 
 async def get_adapter_rejections(session: AsyncSession) -> dict[str, str]:

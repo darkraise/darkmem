@@ -20,11 +20,19 @@ block is cleared to an empty marker pair. Both landed in the closed vocabulary
 taxonomy-first, long before this emitter; this module is what makes them live,
 which is why it is also what owes them a place in the frontend's map.
 
-**No producer yet, deliberately.** T3.10 owns the content fill and is held by
-G-D, so nothing calls this in the tree today. It ships as the primitive its
-caller will need, the way T2.08's placeholders and T0.13's inert partitions
-did (invariant 23) — with the difference that this one is fully functional the
-moment a caller exists.
+**One of the two has a producer; the other does not, and saying which is the
+point.** ``record_inject_curbed`` is called by ``PUT /api/v1/distribution/policy``
+— a human turning the curb on is the one curb act the system can observe today,
+and doc 15 §7 requires it be journalled. ``record_inject`` still has **no
+caller**: T3.10 owns the content fill and is held by G-D, so no inject has
+happened to journal. It ships as the primitive its caller will need, the way
+T2.08's placeholders and T0.13's inert partitions did (invariant 23) — fully
+functional the moment a caller exists.
+
+This paragraph said "no producer yet" for both, and went on saying it for one
+commit after the curb gained its caller. That is the false present tense
+invariant 23 guards against, in the module whose own finding was about exactly
+that; corrected 2026-08-10.
 """
 
 from __future__ import annotations

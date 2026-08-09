@@ -47,10 +47,14 @@ class Darkmem:
         X-Darkmem-Context header. The server decides between them, not the SDK.
 
         The header goes only to doors that take part in that chain -- today that
-        is `search` alone. `capture` sends no declaration because the capture
-        door serves none: MemoryCreate has no `context` field and the route reads
-        no header, so a declaration sent there would be discarded in silence.
-        Generation refuses if that ever stops being true of every bound door.
+        is `search` alone, and only because it always asks for the trace: the
+        door resolves the declaration on the traced branch alone, so an untraced
+        search would accept the header and discard it. That is why `search` has
+        no argument to turn the trace off. `capture` sends no declaration at all,
+        because the capture door serves none on either rank: MemoryCreate has no
+        `context` field and the route reads no header, so a declaration sent
+        there would be discarded in silence. Generation refuses if that ever
+        stops being true of every bound door.
         """
         self._context = context
 
@@ -79,13 +83,18 @@ class Darkmem:
         project: str | None = None,
         limit: int | None = None,
         context: dict[str, Any] | None = None,
-        with_trace: bool = True,
     ) -> dict:
         """Run the memory read.
 
         ``context`` is doc 12 section 5's rank-1 per-call argument and outranks
-        any session declaration; ``with_trace`` (on by default) asks for the
-        "why retrieved" envelope doc 15 section 6's verb is defined by.
+        any session declaration.
+
+        The trace is always requested and there is no argument to turn it off.
+        That is not a preference: the door resolves a declared context **only**
+        on the traced branch -- measured, ``with_trace: false`` answers 200 with
+        a null envelope and discards the declaration on both ranks -- so an
+        option to turn it off would be an option to silently drop the
+        declaration, which is the defect this whole binding exists to close.
         """
         return await self._post(
             SEARCH_PATH,
@@ -94,7 +103,7 @@ class Darkmem:
                 "project": project if project is not None else self.project,
                 "limit": limit,
                 "context": context,
-                "with_trace": with_trace,
+                "with_trace": True,
             },
             carries_context=True,
         )

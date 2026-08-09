@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.database import get_session
 from app.models.config import Config
-from app.services.inject_adapters import get_adapter_rejections, get_adapters
+from app.services.inject_adapters import get_registry
 from app.services.inject_journal import record_inject_curbed
 
 router = APIRouter(prefix="/api/v1/distribution", tags=["distribution"])
@@ -99,7 +99,7 @@ async def get_distribution(
     shows what the inject writer would actually use — a second list would be a
     screen that agrees with itself and not with the system.
     """
-    adapters = await get_adapters(session)
+    adapters, rejected = await get_registry(session)
     return DistributionState(
         targets=[
             DistributionTarget(
@@ -113,7 +113,7 @@ async def get_distribution(
         policy=await _policy(session),
         rejected=[
             RejectedTarget(tool=tool, reason=reason)
-            for tool, reason in sorted((await get_adapter_rejections(session)).items())
+            for tool, reason in sorted(rejected.items())
         ],
     )
 

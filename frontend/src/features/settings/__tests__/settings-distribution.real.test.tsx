@@ -206,6 +206,25 @@ describe("Distribution tab — live", () => {
     expect(calls).not.toContain("/distribution/policy")
   })
 
+  it("puts the field back to what is in force when the write is rejected", async () => {
+    // The banner says "push is still whatever the server last accepted, shown
+    // below" — so the field below it must not go on showing the number the
+    // server just refused.
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url === "/distribution/policy") throw new Error("boom")
+      return STATE
+    })
+
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+    const field = (await screen.findByLabelText("Token budget")) as HTMLInputElement
+    fireEvent.change(field, { target: { value: "999999" } })
+    fireEvent.blur(field)
+
+    await screen.findByText(/was not saved/)
+    await waitFor(() => expect(field.value).toBe("2000"))
+  })
+
   it("says so when the curb could not be saved", async () => {
     // The switch snaps back to server truth, so a silent failure leaves a
     // human believing they stopped push when they did not.

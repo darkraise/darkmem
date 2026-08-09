@@ -155,3 +155,47 @@ class TestADeclaredContextIsResolved:
         response = await client.post(verb["path"], json=body, headers=auth_headers)
 
         assert response.json()["envelope"]["context"] is None
+
+
+class TestTheUntracedBranchIsWhyTheOptionIsGone:
+    """N-1: the door resolves a declaration **only** when asked for the trace.
+
+    `search_memories_paginated` calls `resolve_request_context` on the
+    `with_trace=True` branch alone, and the untraced response has no envelope
+    to echo into. So an SDK argument that turned the trace off would be an
+    argument that silently dropped the declaration — C-1's failure mode in a
+    narrower window, and one both of C-1's guards are blind to: the generator's
+    arm reads the request schema, which declares `context` unconditionally.
+
+    The clients therefore emit `with_trace` as a constant. This measures the
+    behaviour that makes that constant necessary, so a future round that
+    re-adds the argument has to walk past a test naming the cost.
+    """
+
+    async def test_an_untraced_search_discards_the_declaration(
+        self, client, auth_headers
+    ):
+        verb = sdk_generate.VERBS["search"]
+        body = {"query": "anything", "project": "default", "with_trace": False}
+
+        response = await client.post(
+            verb["path"],
+            json=body,
+            headers={
+                **auth_headers,
+                sdk_generate.CONTEXT_HEADER: json.dumps(DECLARED),
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["envelope"] is None
+
+    async def test_the_clients_never_send_that_shape(self):
+        """`with_trace` is a declared field with a constant expression in both
+        languages — there is no argument threading into it, so no caller can
+        reach the branch above."""
+        assert sdk_generate.TS_EXPRESSIONS["with_trace"] == "true"
+        assert sdk_generate.PY_EXPRESSIONS["with_trace"] == "True"
+
+        emitted = sdk_generate.render_python("digest")
+        assert "with_trace" not in emitted.split("async def search(", 1)[-1].split(")")[0]
