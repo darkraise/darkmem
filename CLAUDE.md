@@ -638,10 +638,18 @@ that contract is right for most callers and wrong for a few. A capture must
 survive a journal failure; a *verification transition* must not, since doc 17
 §5.1's metrics are SQL over this table alone, so a status change whose row never
 landed is not a lost log line but a row that silently leaves the measurement's
-**denominator** — and under-power announces itself where that does not. The two
-callers for whom the journal is load-bearing (`set_verification_status`,
-`ratify`) raise `JournalWriteFailed` on a `False`, making the transition and its
-row atomic; every other caller ignores the return and behaves exactly as before.
+**denominator** — and under-power announces itself where that does not. **Four**
+callers raise `JournalWriteFailed` on a `False`, making the write and its row
+atomic (corrected 2026-08-09 — this said "the two callers", which undercounted
+from the day T2.113 landed): `set_verification_status` and `ratify` for the
+machine's and the human's rungs, and `record_human_verdict` and
+`dismiss_contradiction_suspicion` for the adjudication stream. **The human
+verdict is the one with no second trace at all.** No column records that a human
+rejected a fact, so that event row *is* the audit's `rejected_after` arm — and
+since T2.109 moved the LLM scan off the veto, that arm is the scan's only route
+into the audit. A loss there does not shrink a denominator, it deletes a
+numerator: the gate reads cleaner than the system is. Every other caller ignores
+the return and behaves exactly as before.
 Making `record_event` itself raise would impose the strict contract on capture,
 extraction and auth, which is why it does not. The stated cost: a broken
 partition now fails recomputes instead of degrading past them, bounded by
