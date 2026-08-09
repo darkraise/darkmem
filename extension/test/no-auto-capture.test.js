@@ -58,6 +58,54 @@ test("no shipped source arms an automatic trigger", () => {
   );
 });
 
+test("the manifest grants only the two permissions capture needs", () => {
+  // An allowlist, because the denylist above is alias-defeatable and this is
+  // not: a capture that runs without a human needs a capability, and the
+  // manifest is where capabilities are granted. Found by the 2026-08-09 task
+  // review, which noted this arm called itself "the sharpest bundle-level
+  // check available" while never reading `permissions` -- where the unused
+  // `scripting` and `activeTab` grants sat.
+  const manifest = JSON.parse(readFileSync(join(ROOT, "manifest.json"), "utf8"));
+
+  assert.deepEqual(
+    [...(manifest.permissions ?? [])].sort(),
+    ["contextMenus", "storage"],
+    "v1 needs the context menu and local storage; `scripting`, `activeTab` " +
+      "and `tabs` are how a capture reaches a page without a gesture",
+  );
+});
+
+test("no capture is reachable from an extension lifecycle event", () => {
+  // The mutation that defeated the denylist: `chrome.runtime.onInstalled`
+  // posting content no human selected passed all 36 tests, because
+  // `onInstalled` is not a timer and `postCapture` is allowed in
+  // background.js. So the assertion is about *which listener* the capture
+  // sits in, not about which APIs are absent.
+  const background = readFileSync(join(SRC, "background.js"), "utf8");
+
+  const lifecycle = ["onInstalled", "onStartup", "onConnect", "onMessage"];
+  for (const event of lifecycle) {
+    const index = background.indexOf(event);
+    if (index === -1) continue;
+    // The listener body runs until the next top-level `chrome.` registration.
+    const rest = background.slice(index);
+    const body = rest.slice(0, rest.indexOf("\nchrome.") + 1 || rest.length);
+    assert.ok(
+      !body.includes("postCapture"),
+      `capture reachable from ${event}, which fires without a human`,
+    );
+  }
+});
+
+test("no shipped source reaches an API through a computed name", () => {
+  // `globalThis["set" + "Interval"]` passes a substring denylist. Computed
+  // access to a global is the general shape, and v1 needs none of it.
+  const computed = /(globalThis|window|self|chrome)\s*\[/;
+  for (const { file, text } of sources) {
+    assert.ok(!computed.test(text), `${file} reaches a global by computed name`);
+  }
+});
+
 test("the manifest requests no host access to the AI-chat surfaces", () => {
   // The sharpest bundle-level check available: a content script injected into
   // chatgpt.com or claude.ai is the shape auto-scrape would take, and the

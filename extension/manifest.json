@@ -3,9 +3,19 @@
   "name": "darkmem capture",
   "version": "0.1.0",
   "description": "Send a selected passage to darkmem through the ordinary capture door.",
-  "permissions": ["contextMenus", "storage", "scripting", "activeTab"],
-  "host_permissions": ["http://localhost:8000/*"],
-  "background": { "service_worker": "src/background.js", "type": "module" },
+  "permissions": [
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
   "options_page": "src/options.html",
-  "action": { "default_title": "Capture selection to darkmem" }
+  "action": {
+    "default_title": "Capture selection to darkmem"
+  }
 }

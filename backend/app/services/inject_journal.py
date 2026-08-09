@@ -79,8 +79,16 @@ async def record_inject(
     tokens_used: int | None = None,
     project: str = "default",
     actor: str | None = None,
-) -> None:
-    """Journal one push. Does not commit.
+) -> bool:
+    """Journal one push, returning whether the row landed. Does not commit.
+
+    The return is not decoration. For this module the journal **is** the
+    deliverable — doc 13 §6.5's whole point is that the human can see what the
+    agent was told — so a caller that pushed context while the record silently
+    failed has done the thing invariant 14 forbids. It does not raise, because
+    T2.113's strict contract belongs to the verification ladder where a lost
+    row corrupts a measurement; here the caller (T3.10) decides whether to
+    surface it, and it can only decide if it is told.
 
     The three id lists stay separate rather than merging into one: a reader
     asking "was a fact injected as corroborated" needs to know which ids are
@@ -93,7 +101,7 @@ async def record_inject(
     id list alone, and they mean different things about what the agent was not
     told.
     """
-    await record_event(
+    return await record_event(
         session,
         event_type=INJECT_EVENT,
         object_type=OBJECT_TYPE,
@@ -120,15 +128,15 @@ async def record_inject_curbed(
     project: str = "default",
     actor: str | None = None,
     reason: str | None = None,
-) -> None:
-    """Journal the human curbing push for one target (doc 15 §3.2, *Curbed*).
+) -> bool:
+    """Journal the curb, returning whether the row landed (doc 15 §3.2).
 
     A separate event type rather than an ``inject`` with an empty id list: the
     two are different facts, and a reader counting injections would otherwise
     count a curb as a push of nothing. It also means the timeline shows *when*
     the human turned it off, which is the question a curb is asked about.
     """
-    await record_event(
+    return await record_event(
         session,
         event_type=INJECT_CURBED_EVENT,
         object_type=OBJECT_TYPE,
@@ -147,6 +155,10 @@ def injected_ids(payload: dict) -> list[UUID | str]:
     could disagree with the first.
     """
     out: list[UUID | str] = []
-    for key in ("memory_ids", "fact_ids", "article_ids"):
+    # Doc 15 §3.4's fill order is **facts, then articles, then memory
+    # summaries** — truth-first. The first version iterated memories first and
+    # called the result "served order", which inverted the very ordering the
+    # docstring claimed to preserve.
+    for key in ("fact_ids", "article_ids", "memory_ids"):
         out.extend(payload.get(key) or [])
     return out

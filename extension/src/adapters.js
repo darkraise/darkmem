@@ -23,23 +23,49 @@
  * than breaking capture.
  */
 
-/** Turn markers these surfaces render, in the order they are tried. */
+/**
+ * Turn markers these surfaces render.
+ *
+ * **Colon only.** A dash separator was accepted in the first version and it
+ * misfired on ordinary prose: "AI-assisted coding is..." matched the
+ * assistant pattern and shipped a fabricated turn role. A speaker label is
+ * `Name:`; anything looser reads English as markup.
+ */
 const TURN_PATTERNS = [
-  { role: "user", pattern: /^(you|user|me)\s*[:—-]\s*/i },
-  { role: "assistant", pattern: /^(chatgpt|claude|gemini|assistant|ai)\s*[:—-]\s*/i },
+  { role: "user", pattern: /^(you|user|me):\s+/i },
+  { role: "assistant", pattern: /^(chatgpt|claude|gemini|assistant):\s+/i },
 ];
 
 /**
  * Split a selection into labelled turns where the surface marked them.
  *
- * Conservative on purpose: a line that carries no recognised marker is kept
- * verbatim as an `unknown` turn rather than being guessed onto the previous
- * speaker. Mislabelling who said something is worse than not labelling it —
- * an assistant's claim attributed to the human reads as the human's own
+ * Conservative on purpose, and the rule is narrower than an earlier version of
+ * this comment claimed (corrected 2026-08-09 after review). An unmarked line
+ * **before any marker** is kept as an `unknown` turn. An unmarked line *after*
+ * one is a continuation and joins the turn above it, which is what a wrapped
+ * paragraph is — treating each wrapped line as its own `unknown` turn would
+ * shred every multi-line message. So: openers are never guessed; continuations
+ * are attributed, because a line following "Claude:" with no new marker is
+ * still Claude speaking.
+ *
+ * Mislabelling who said something is worse than not labelling it — an
+ * assistant's claim attributed to the human reads as the human's own
  * assertion, and darkmem stores it as one.
  */
 export function splitTurns(selection) {
-  const lines = (selection ?? "").split(/\r?\n/);
+  const text = selection ?? "";
+
+  // **A selection with no line breaks yields no roles at all**, and that is
+  // the case that matters rather than an edge: Chromium collapses newlines in
+  // `info.selectionText`, so a two-turn exchange can arrive as one line. The
+  // first version then labelled the whole thing with the first speaker it saw
+  // and shipped `["user"]` over text containing the assistant's reply --
+  // precisely the misattribution this module calls worse than no label. With
+  // no separator there is no evidence of where a turn ends, so it says
+  // nothing instead of guessing.
+  if (!/\r?\n/.test(text.trim())) return [];
+
+  const lines = text.split(/\r?\n/);
   const turns = [];
 
   for (const line of lines) {

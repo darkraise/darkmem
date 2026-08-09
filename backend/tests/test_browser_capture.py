@@ -148,7 +148,7 @@ class TestNoNewPipeline:
         version of the mistake — someone adding `browser_capture.py` — rather
         than every conceivable one.
         """
-        app_dir = Path("app")
+        app_dir = Path(__file__).resolve().parents[1] / "app"
         offenders = [
             str(path)
             for path in app_dir.rglob("*.py")
@@ -162,7 +162,10 @@ class TestNoNewPipeline:
     async def test_no_capture_route_names_the_extension(self):
         """The other half: an existing module could branch on the client."""
         offenders: list[str] = []
-        for path in Path("app/api").rglob("*.py"):
+        api = Path(__file__).resolve().parents[1] / "app/api"
+        scanned = sorted(api.rglob("*.py"))
+        assert len(scanned) > 10, "the scan reached no files"
+        for path in scanned:
             source = path.read_text()
             tree = ast.parse(source)
             for node in ast.walk(tree):

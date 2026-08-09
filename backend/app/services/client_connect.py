@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from dataclasses import dataclass, field
 
 __all__ = [
@@ -107,27 +108,89 @@ def merge_json_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
     return json.dumps(document, indent=2) + "\n"
 
 
-_TOML_SECTION = re.compile(
-    rf"^\[mcp_servers\.{SERVER_KEY}\]\n(?:(?!\[).*\n?)*", re.M
-)
+_TABLE_HEADER = re.compile(r"^\s*\[\[?\s*(?P<key>[^\]]+?)\s*\]\]?\s*(?:#.*)?$")
+
+OUR_TABLE = f"mcp_servers.{SERVER_KEY}"
+
+
+def _normalise_key(raw: str) -> str:
+    """`[ mcp_servers."darkmem" ]` and `[mcp_servers.darkmem]` are one table."""
+    return ".".join(part.strip().strip('"').strip("'") for part in raw.split("."))
 
 
 def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
     """Merge the darkmem table into Codex's TOML config.
 
-    Rewritten as a targeted section replace rather than a parse-and-dump:
-    Python ships a TOML *reader* and no writer, so a round trip would mean
-    re-emitting a human's whole config from a parsed structure — losing their
-    comments and formatting in a file they maintain by hand. Replacing only
-    our own table leaves the rest byte-identical.
+    **Line-scanned, not byte-matched, and parsed before it is returned**
+    (rewritten 2026-08-09; the first version was a Critical). A regex over the
+    table's exact rendering missed nine valid TOML shapes — a trailing comment
+    on the header, a trailing space, CRLF, a quoted key, spaced brackets, a
+    dotted key, an array-of-tables, an inline table, a multi-line array in the
+    body — and every miss **appended a second** ``[mcp_servers.darkmem]``,
+    which makes ``tomllib`` reject the operator's whole Codex config. The CLI
+    then printed "connected" because the handshake tests the URL and not the
+    file: silent data loss with success reported.
+
+    Still a text edit rather than parse-and-dump, for the original reason —
+    Python ships no TOML writer, so re-emitting would drop a hand-maintained
+    file's comments. What changed is that the table is located structurally
+    and the result must parse.
     """
-    section = f'[mcp_servers.{SERVER_KEY}]\nurl = "{url}"\n'
+    section = f'[{OUR_TABLE}]\nurl = "{url}"\n'
+    newline = "\r\n" if "\r\n" in existing else "\n"
+    lines = existing.splitlines()
 
-    if _TOML_SECTION.search(existing):
-        return _TOML_SECTION.sub(section, existing, count=1)
+    start = end = None
+    for index, line in enumerate(lines):
+        header = _TABLE_HEADER.match(line)
+        if not header:
+            continue
+        if start is None and _normalise_key(header.group("key")) == OUR_TABLE:
+            start = index
+        elif start is not None and end is None:
+            end = index
+            break
+    if start is not None and end is None:
+        end = len(lines)
 
-    separator = "" if not existing.strip() else ("\n" if existing.endswith("\n") else "\n\n")
-    return f"{existing}{separator}{section}"
+    if start is None:
+        prefix = existing
+        if prefix.strip() and not prefix.endswith(("\n", "\r\n")):
+            prefix += newline
+        if prefix.strip():
+            prefix += newline
+        merged = prefix + section
+    else:
+        # Blank and comment lines directly above the next header belong to
+        # *that* section in every hand-written config, so they survive rather
+        # than being swallowed with our table's body.
+        tail = end
+        while tail > start + 1 and (
+            not lines[tail - 1].strip() or lines[tail - 1].lstrip().startswith("#")
+        ):
+            tail -= 1
+        merged = newline.join(
+            [*lines[:start], *section.rstrip("\n").split("\n"), *lines[tail:]]
+        )
+        if existing.endswith(("\n", "\r\n")):
+            merged += newline
+
+    # The guard the first version lacked, and the one that catches all nine
+    # shapes at once: never hand back TOML that does not parse, or that does
+    # not name our URL where a reader will look for it.
+    try:
+        parsed = tomllib.loads(merged.replace("\r\n", "\n"))
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(
+            f"merging the darkmem entry would produce invalid TOML ({error}); "
+            f"refusing to write. This command edits a file you also own."
+        ) from error
+    if parsed.get("mcp_servers", {}).get(SERVER_KEY, {}).get("url") != url:
+        raise ValueError(
+            "the merged config does not name darkmem's URL where expected; "
+            "refusing to write a config whose effective server is unclear"
+        )
+    return merged
 
 
 def config_format_for(path: str) -> str:
@@ -152,7 +215,11 @@ async def verify_handshake(call) -> list[str]:
     if not isinstance(initialize, dict):
         raise HandshakeFailed("initialize returned no result object")
 
-    await call("notifications/initialized", {})
+    # A notification, not a request: sent with an id the real server answers
+    # JSON-RPC -32602 and never delivers it. Masked here only because
+    # darkmem's mount is stateless. `call` is told which it is so the
+    # transport can omit the id.
+    await call("notifications/initialized", {}, notification=True)
 
     listed = await call("tools/list", {})
     tools = (listed or {}).get("tools") or []

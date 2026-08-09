@@ -94,6 +94,18 @@ test("the set is bounded and forgets the oldest first", async () => {
   assert.equal(storage.data[`${SEEN_STORAGE_PREFIX}ext:1`].length, SEEN_LIMIT);
 });
 
+test("two concurrent captures both survive", async () => {
+  // MV3 wakes the worker per event, so a plain read-modify-write drops one.
+  // `origin.js` already settles this way; this is the same idiom.
+  const storage = fakeStorage();
+  const [a, b] = [await fingerprint("first"), await fingerprint("second")];
+
+  await Promise.all([remember(storage, "ext:1", a), remember(storage, "ext:1", b)]);
+
+  assert.equal(await alreadyCaptured(storage, "ext:1", a), true);
+  assert.equal(await alreadyCaptured(storage, "ext:1", b), true);
+});
+
 test("remembering the same digest twice does not grow the set", async () => {
   const storage = fakeStorage();
   const digest = await fingerprint("once");

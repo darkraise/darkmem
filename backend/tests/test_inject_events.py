@@ -109,6 +109,43 @@ class TestWhatThePushRecords:
             for value in payload[key]:
                 UUID(value)
 
+    async def test_injected_ids_follow_doc_15_s_truth_first_fill_order(self, session):
+        """Task review, Important. The helper iterated memories first while its
+        docstring claimed "served order" — inverting the very ordering it
+        promised. Doc 15 §3.4 fills facts, then articles, then memory
+        summaries."""
+        facts = [uuid4(), uuid4()]
+        articles = [uuid4()]
+        memories = [uuid4()]
+        await _push(session, memory_ids=memories, fact_ids=facts, article_ids=articles)
+
+        payload = (await _payloads(session, ij.INJECT_EVENT))[0]
+
+        assert ij.injected_ids(payload) == [
+            *[str(i) for i in facts], *[str(i) for i in articles],
+            *[str(i) for i in memories],
+        ]
+
+    async def test_the_writer_reports_whether_the_row_landed(self, session):
+        """The journal is this module's deliverable, so a push whose record
+        silently failed is the silent context swap invariant 14 forbids. The
+        writer does not raise — T2.113's strict contract belongs to the ladder
+        — but it must tell its caller, which is the only way T3.10 can."""
+        landed = await ij.record_inject(
+            session, tool="claude-code", context_file="CLAUDE.md", project=PROJECT
+        )
+        assert landed is True
+
+        child = (await session.execute(
+            text("SELECT 'events_' || to_char(date_trunc('month', now()), 'YYYYMM')")
+        )).scalar_one()
+        await session.execute(text(f"DROP TABLE {child}"))
+
+        lost = await ij.record_inject(
+            session, tool="claude-code", context_file="CLAUDE.md", project=PROJECT
+        )
+        assert lost is False
+
     async def test_an_empty_push_still_journals(self, session):
         """"Nothing was injected" is an answer the human needs — it is the
         difference between a quiet system and a broken one."""

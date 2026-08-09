@@ -108,6 +108,61 @@ class TestIdempotence:
         assert "localhost" not in second
 
 
+class TestTheTomlShapesThatBrokeIt:
+    """The valid-TOML shapes the byte-matched first version missed.
+
+    Each produced a **second** ``[mcp_servers.darkmem]`` table, which makes
+    ``tomllib`` reject the operator's entire Codex config — and the CLI then
+    printed "connected", because the handshake tests the URL and not the file.
+    Found by the 2026-08-09 task review and rated Critical, correctly: silent
+    data loss with success reported.
+    """
+
+    @pytest.mark.parametrize(
+        "existing",
+        [
+            '[mcp_servers.darkmem]  # ours\nurl = "http://old/mcp/"\n',
+            '[mcp_servers.darkmem] \nurl = "http://old/mcp/"\n',
+            '[mcp_servers.darkmem]\r\nurl = "http://old/mcp/"\r\n',
+            '[mcp_servers."darkmem"]\nurl = "http://old/mcp/"\n',
+            '[ mcp_servers.darkmem ]\nurl = "http://old/mcp/"\n',
+            '[mcp_servers.darkmem]\nargs = [\n  "a",\n  "b",\n]\n',
+            'model = "gpt-5"\n\n[mcp_servers.darkmem]\nurl = "http://old/mcp/"\n',
+            '[[history]]\nid = 1\n\n[mcp_servers.darkmem]\nurl = "http://old/mcp/"\n',
+            '[mcp_servers.darkmem]\nurl = "http://old/mcp/"\n\n[other]\nx = 1\n',
+        ],
+    )
+    async def test_no_shape_produces_a_second_table(self, existing):
+        import tomllib
+
+        merged = merge_toml_config(existing, url="http://new:8000/mcp/")
+
+        parsed = tomllib.loads(merged.replace("\r\n", "\n"))
+        assert parsed["mcp_servers"]["darkmem"]["url"] == "http://new:8000/mcp/"
+        assert "http://old/mcp/" not in merged
+
+    async def test_a_neighbouring_table_and_its_comments_survive(self):
+        """The first version swallowed comments and blank lines between our
+        table and the next header, on every merge."""
+        existing = (
+            '[mcp_servers.darkmem]\nurl = "http://old/mcp/"\n\n'
+            "# this comment introduces the next section\n"
+            '[mcp_servers.other]\nurl = "http://elsewhere"\n'
+        )
+
+        merged = merge_toml_config(existing)
+
+        assert "# this comment introduces the next section" in merged
+        assert "[mcp_servers.other]" in merged
+        assert 'url = "http://elsewhere"' in merged
+
+    async def test_output_that_would_not_parse_is_refused(self):
+        """The post-merge parse is the guard that catches every shape at once,
+        so it must actually raise rather than decorate."""
+        with pytest.raises(ValueError, match="invalid TOML"):
+            merge_toml_config('[unclosed\nurl = "x"\n')
+
+
 # ─────────────── clause 1: the handshake, and what it reports ───────────────
 
 
@@ -116,30 +171,36 @@ class TestTheHandshake:
         """A reachable port proves neither that the endpoint speaks MCP nor
         that it will answer this client's Host, which is why doc 15 §5 asks
         for the handshake rather than a ping."""
-        seen: list[str] = []
+        seen: list[tuple[str, bool]] = []
 
-        async def call(method, params):
-            seen.append(method)
+        async def call(method, params, *, notification=False):
+            seen.append((method, notification))
             if method == "tools/list":
                 return {"tools": [{"name": "memory_search"}, {"name": "memory_add"}]}
             return {}
 
         tools = await verify_handshake(call)
 
-        assert seen == ["initialize", "notifications/initialized", "tools/list"]
+        assert [m for m, _ in seen] == [
+            "initialize", "notifications/initialized", "tools/list",
+        ]
+        # `notifications/initialized` is a notification, and sending it with an
+        # id makes a conforming server answer JSON-RPC -32602 and never deliver
+        # it -- masked here only because darkmem's mount is stateless.
+        assert [n for _, n in seen] == [False, True, False]
         assert tools == ["memory_search", "memory_add"]
 
     async def test_a_server_that_lists_no_tools_is_not_connected(self):
         """The failure this catches: something answers at the URL and speaks
         the protocol, but it is not darkmem's MCP surface."""
-        async def call(method, params):
+        async def call(method, params, *, notification=False):
             return {"tools": []} if method == "tools/list" else {}
 
         with pytest.raises(HandshakeFailed, match="listed no tools"):
             await verify_handshake(call)
 
     async def test_the_transport_error_reaches_the_caller(self):
-        async def call(method, params):
+        async def call(method, params, *, notification=False):
             raise ConnectionRefusedError("connection refused")
 
         with pytest.raises(ConnectionRefusedError):
@@ -186,16 +247,31 @@ async def test_no_module_suggests_disabling_the_host_allowlist():
     looks for the suggestion in prose the user could see, not for the constant
     itself — `MCP_ALLOWED_HOSTS` is named all over the codebase legitimately.
     """
+    # Widened after the 2026-08-09 review measured the first version: it
+    # covered `app/` only -- not `scripts/`, where this CLI's own user-facing
+    # prose lives -- and missed the gerund, the split form, and the
+    # set-it-to-star shape. It was also cwd-relative, so it passed vacuously
+    # whenever pytest ran from the repo root. Anchored on __file__ now.
     suggestion = re.compile(
-        r"(disable|turn off|bypass)[^.\n]{0,40}(allowlist|host check|rebinding)",
+        r"((disabl|turn(ing)? off|bypass|switch off|remov)\w*[^.\n]{0,60}"
+        r"(allowlist|allow-list|host check|rebinding))"
+        r"|(turn[^.\n]{0,40}(allowlist|host check)[^.\n]{0,20}off)"
+        r"|(MCP_ALLOWED_HOSTS\s*=\s*[\"\']?\*)",
         re.I,
     )
+    backend = Path(__file__).resolve().parents[1]
+    roots = [backend / "app", backend / "scripts"]
     offenders: list[str] = []
-    for path in sorted(Path("app").rglob("*.py")):
+    scanned = 0
+    for path in sorted(p for root in roots for p in root.rglob("*.py")):
+        scanned += 1
         for number, line in enumerate(path.read_text().splitlines(), 1):
             if suggestion.search(line):
                 offenders.append(f"{path}:{number}: {line.strip()}")
 
+    # A scan that found no files is not a passing scan. The first version
+    # used a cwd-relative path and reported clean from the repo root.
+    assert scanned > 100, f"the scan reached only {scanned} files"
     assert not offenders, (
         "a LAN 421 is fixed by extending MCP_ALLOWED_HOSTS, never by "
         f"disabling the protection (invariant 20):\n  " + "\n  ".join(offenders)

@@ -22,7 +22,14 @@ from pathlib import Path
 
 import httpx
 
-from app.database import async_session_factory
+# `python scripts/connect.py` -- the invocation this file's own docstring
+# documents -- puts `scripts/` on the path and not `backend/`, so the app
+# package is unimportable and the CLI died with ModuleNotFoundError before
+# doing anything. Fixed here rather than by changing the documented command,
+# since a CLI a human runs from a shell should not require `-m`.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.database import async_session_factory  # noqa: E402
 from app.services.client_connect import (
     DEFAULT_MCP_URL,
     HandshakeFailed,
@@ -33,6 +40,21 @@ from app.services.client_connect import (
     verify_handshake,
 )
 from app.services.inject_adapters import UnknownTool, resolve_adapter
+
+
+def _decode(response: httpx.Response) -> dict:
+    """JSON, or the first data frame of an SSE stream.
+
+    The MCP mount negotiates `text/event-stream`, so a bare `.json()` fails on
+    a perfectly good response. Reading only the first `data:` line is enough
+    for a handshake, where each request has exactly one reply.
+    """
+    if "text/event-stream" in response.headers.get("content-type", ""):
+        for line in response.text.splitlines():
+            if line.startswith("data:"):
+                return json.loads(line[5:].strip())
+        return {}
+    return response.json()
 
 
 def _url_for(host: str | None) -> str:
@@ -49,10 +71,12 @@ async def _rpc_caller(client: httpx.AsyncClient, url: str):
     """
     state: dict[str, int | None] = {"status": None}
 
-    async def call(method: str, params: dict):
+    async def call(method: str, params: dict, *, notification: bool = False):
+        body: dict = {"jsonrpc": "2.0", "method": method, "params": params}
+        if not notification:
+            body["id"] = 1
         response = await client.post(
-            url,
-            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            url, json=body,
             headers={"Accept": "application/json, text/event-stream"},
         )
         state["status"] = response.status_code
@@ -60,7 +84,18 @@ async def _rpc_caller(client: httpx.AsyncClient, url: str):
             raise HandshakeFailed(f"HTTP {response.status_code}")
         if not response.content:
             return {}
-        return response.json().get("result", {})
+
+        payload = _decode(response)
+        # A JSON-RPC error rides HTTP 200. Dropping the `error` member reported
+        # every one of them as "not serving darkmem's MCP surface", which sends
+        # the human to the wrong side of the connection.
+        if isinstance(payload, dict) and payload.get("error"):
+            error = payload["error"]
+            raise HandshakeFailed(
+                f"the server returned JSON-RPC error {error.get('code')}: "
+                f"{error.get('message')}"
+            )
+        return (payload or {}).get("result", {})
 
     return call, state
 
@@ -78,12 +113,24 @@ async def main() -> int:
 
     url = _url_for(args.host)
 
-    async with async_session_factory() as session:
-        try:
+    # The registry lives in the database (doc 15 §3.3 requires a config row),
+    # and this command runs on a *client* machine where Postgres is usually
+    # unreachable. An unhandled OSError there is a traceback in a human's
+    # terminal for an entirely expected condition.
+    try:
+        async with async_session_factory() as session:
             adapter = await resolve_adapter(session, args.tool)
-        except UnknownTool as error:
-            print(f"error: {error}", file=sys.stderr)
-            return 2
+    except UnknownTool as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(
+            f"error: cannot reach darkmem's database to read the adapter "
+            f"registry ({error}). Run this on the machine hosting darkmem, or "
+            f"set DATABASE_URL to point at it.",
+            file=sys.stderr,
+        )
+        return 2
 
     config_path = Path(adapter.mcp_config).expanduser()
     existing = config_path.read_text() if config_path.exists() else ""

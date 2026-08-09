@@ -88,6 +88,63 @@ class TestTheMatrix:
 
         assert adapter.context_file == ".zed/darkmem.md"
 
+    async def test_a_bad_field_value_is_logged_not_silently_ignored(self, session, caplog):
+        """Task review, Important. The first version filtered non-strings
+        silently, so an operator who typed `context_file: 42` kept the shipped
+        default and believed they had moved the file — blocks landing in the
+        old one with nothing said."""
+        await _config(session, {"cursor": {"context_file": 42}})
+
+        with caplog.at_level("WARNING"):
+            adapters = await get_adapters(session)
+
+        assert adapters["cursor"].context_file == ".cursor/rules/darkmem.mdc"
+        assert "not a string" in caplog.text
+
+    async def test_an_unknown_field_is_logged_not_silently_ignored(
+        self, session, caplog
+    ):
+        await _config(session, {"cursor": {"contextfile": "typo.md"}})
+
+        with caplog.at_level("WARNING"):
+            await get_adapters(session)
+
+        assert "unknown field" in caplog.text
+
+    @pytest.mark.parametrize(
+        "escape", ["/etc/passwd", "~/somewhere.md", "../../outside.md", "C:/win.md"]
+    )
+    async def test_a_path_that_escapes_the_workspace_is_dropped(
+        self, session, caplog, escape
+    ):
+        """Task review, Important. The docstring said "never absolute" and
+        nothing enforced it on a config row — and `Path(workspace) /
+        "/etc/passwd"` **is** `/etc/passwd`, so this is an escape rather than
+        a cosmetic violation."""
+        await _config(session, {"rogue": {"context_file": escape}})
+
+        with caplog.at_level("WARNING"):
+            adapters = await get_adapters(session)
+
+        assert "rogue" not in adapters
+        with pytest.raises(UnknownTool):
+            await resolve_adapter(session, "rogue")
+
+    async def test_a_non_markdown_target_is_warned_but_honoured(
+        self, session, caplog
+    ):
+        """Warned, not dropped: the config row exists so a tool's convention
+        change is an edit rather than a release, and refusing an unfamiliar
+        suffix would put the operator back behind a deploy. `.cursorrules` —
+        a documented legacy target with no suffix at all — is not warned."""
+        await _config(session, {"weird": {"context_file": "notes.rst"}})
+
+        with caplog.at_level("WARNING"):
+            adapter = await resolve_adapter(session, "weird")
+
+        assert adapter.context_file == "notes.rst"
+        assert "not Markdown" in caplog.text
+
     async def test_a_malformed_entry_is_dropped_loudly_not_raised(
         self, session, caplog
     ):
@@ -164,7 +221,13 @@ class TestTheCadence:
         at session start. A scan, because a cadence nobody enforces is prose.
         """
         offenders: list[str] = []
-        for path in sorted(Path("app").rglob("*.py")):
+        # Anchored on __file__, not cwd: the first version used `Path("app")`
+        # and so reported clean whenever pytest ran from the repo root — a
+        # scan that reaches no files is not a passing scan.
+        backend = Path(__file__).resolve().parents[1]
+        paths = sorted((backend / "app").rglob("*.py"))
+        assert len(paths) > 100, "the scan reached no files"
+        for path in paths:
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):

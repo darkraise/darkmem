@@ -68,5 +68,16 @@ export async function remember(storage, originKey, digest) {
 
   const next = [...seen, digest].slice(-SEEN_LIMIT);
   await storage.set({ [key]: next });
-  return next;
+
+  // Re-read and union, the same settle `origin.js` performs and for the same
+  // reason: MV3 wakes the worker per event, so two captures can read the same
+  // set and the second write would drop the first's digest. Losing one here
+  // means the next duplicate is not suppressed, which is mild -- but the fix
+  // is three lines and the sibling module already establishes the idiom.
+  const settled = await storage.get(key);
+  const merged = [...new Set([...(settled?.[key] ?? []), ...next])].slice(-SEEN_LIMIT);
+  if (merged.length !== (settled?.[key] ?? []).length) {
+    await storage.set({ [key]: merged });
+  }
+  return merged;
 }

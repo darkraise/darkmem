@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from pathlib import PurePosixPath as Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,14 @@ __all__ = [
 ]
 
 INJECT_ADAPTERS_CONFIG_KEY = "inject_adapters"
+
+# The fields an entry may carry. A row naming anything else is a typo, and a
+# typo that is silently ignored is a config the operator believes took effect.
+_ADAPTER_FIELDS = frozenset({"context_file", "mcp_config", "refresh"})
+
+# Every v1 context file is Markdown, which is what makes one marker style
+# serve all four. Enforced on config rows too, not just on the defaults.
+MARKDOWN_SUFFIXES = frozenset({".md", ".mdc", ".markdown"})
 
 # The only cadence v1 implements. `watch` is T4.06's, and a parameter accepted
 # but unimplemented is worse than one refused: the caller believes it took.
@@ -140,13 +149,66 @@ async def get_adapters(session: AsyncSession) -> dict[str, Adapter]:
                 INJECT_ADAPTERS_CONFIG_KEY, tool, type(entry).__name__,
             )
             continue
-        merged.setdefault(tool, {}).update(
-            {k: v for k, v in entry.items() if isinstance(v, str)}
-        )
+        # Every discarded field is logged. The first version filtered silently,
+        # so a non-string value or a mistyped key left the shipped default in
+        # place while the operator believed they had moved a tool's file --
+        # blocks keep landing in the old one, with nothing said. That directly
+        # contradicted this module's own "degrade loudly" contract.
+        usable: dict[str, str] = {}
+        for field, value in entry.items():
+            if field not in _ADAPTER_FIELDS:
+                logger.warning(
+                    "%s: entry for %r has unknown field %r; ignoring. Known "
+                    "fields: %s",
+                    INJECT_ADAPTERS_CONFIG_KEY, tool, field, sorted(_ADAPTER_FIELDS),
+                )
+                continue
+            if not isinstance(value, str):
+                logger.warning(
+                    "%s: entry for %r has %s = %r, which is not a string; "
+                    "ignoring that field and keeping the default",
+                    INJECT_ADAPTERS_CONFIG_KEY, tool, field, value,
+                )
+                continue
+            usable[field] = value
+        merged.setdefault(tool, {}).update(usable)
 
     adapters: dict[str, Adapter] = {}
     for tool, entry in merged.items():
         context_file = entry.get("context_file")
+        # The invariants the docstring states, enforced at the door a config
+        # row comes through rather than only over the committed defaults.
+        # `Path(workspace) / "/etc/passwd"` **is** `/etc/passwd`, so an
+        # absolute path is not a cosmetic violation.
+        if context_file and (
+            context_file.startswith("/")
+            or context_file.startswith("~")
+            or ".." in Path(context_file).parts
+            or (len(context_file) > 1 and context_file[1] == ":")
+        ):
+            logger.warning(
+                "%s: entry for %r has context_file %r, which is not a "
+                "project-relative path; dropping it — this path is resolved "
+                "against the client's workspace and an absolute one escapes it",
+                INJECT_ADAPTERS_CONFIG_KEY, tool, context_file,
+            )
+            continue
+        suffix = Path(context_file).suffix if context_file else ""
+        if context_file and suffix and suffix not in MARKDOWN_SUFFIXES:
+            # **Warned, not dropped**, and the difference is the config row's
+            # whole purpose: doc 15 §3.3 makes this operator-configurable so a
+            # tool changing its convention is an edit rather than a release,
+            # and refusing an unfamiliar suffix would put the operator back
+            # behind a deploy. An extensionless name is not warned at all --
+            # `.cursorrules` is a documented legacy target and the dotfile
+            # convention is normal here.
+            logger.warning(
+                "%s: entry for %r targets %r, whose suffix is not Markdown. "
+                "The managed block's markers are HTML comments and may render "
+                "literally there; parameterising them is the recorded seam "
+                "(T3.11) if this target is here to stay",
+                INJECT_ADAPTERS_CONFIG_KEY, tool, context_file,
+            )
         if not context_file:
             logger.warning(
                 "%s: entry for %r has no context_file; dropping it — an adapter "
