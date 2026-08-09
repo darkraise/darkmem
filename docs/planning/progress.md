@@ -316,7 +316,7 @@ every open item on its critical path now sits in M1.
 | T3.21 | Session checkpoints / resume view | M | Sonnet | high | | todo | | | |
 | T3.23 | Articles retrieval channel + `article_embeddings` writer | M | Opus | high | | todo | | | |
 | T3.25 | SDK scaffold and generator | M | Sonnet | high | | todo | | | |
-| T3.26 | Browser-extension scaffold | S | Sonnet | high | | todo | | | |
+| T3.26 | Browser-extension scaffold | S | Sonnet | high | claude/e3-synthesis-and-reach | wip | | | Claimed 2026-08-09. Lands inert; no site adapter (T3.15's) |
 
 ## E4 — Hardening & scale (10 tasks)
 
