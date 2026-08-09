@@ -1381,6 +1381,40 @@ class TestUndoWindow:
             "unsupported_action", "state_changed",
         )
 
+    def test_an_older_reason_outranks_unsupported_action_at_runtime(self):
+        """The tuple above pins the reasons' *declared* order; nothing pinned
+        where the comparator lookup actually sits, so hoisting it above the
+        three older checks passed the suite. An action kind with no inverse
+        satisfies every earlier condition too — each one must still win.
+        """
+        action = undo.ResolvedAction(
+            event_id=1,
+            created_at=datetime.now(timezone.utc) - timedelta(days=400),
+            object_id=str(new_id()),
+            project="p",
+            payload={"action": "a_kind_with_no_inverse", "after": {}},
+        )
+        now = datetime.now(timezone.utc)
+        short = timedelta(days=undo.DEFAULT_RETENTION_DAYS)
+        wide = timedelta(days=500)
+        gone = undo.LiveState(exists=False)
+        alive = undo.LiveState(exists=True, memory={"status": "active"})
+
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=True, now=now, retention=short
+        ) == "already_undone"
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=False, now=now, retention=short
+        ) == "retention_elapsed"
+        assert undo.blocking_reason(
+            action, live=gone, already_undone=False, now=now, retention=wide
+        ) == "object_missing"
+        # The positive control: with all three cleared the kind is what blocks,
+        # so the assertions above are precedence and not an unreachable branch.
+        assert undo.blocking_reason(
+            action, live=alive, already_undone=False, now=now, retention=wide
+        ) == "unsupported_action"
+
     async def test_an_unknown_event_id_is_refused_not_invented(
         self, committing, project
     ):
