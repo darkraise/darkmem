@@ -9,7 +9,9 @@ behavior change, not a cleanup.
 
 - **Merge gate (from the repo root): `./scripts/gate.sh`** — one command for
   the whole floor: the alembic single-revision assertion, backend pytest,
-  frontend typecheck/test/build, the benchlib harness suite, and the F1 bench
+  frontend typecheck/test/build, the browser-extension suite, **both SDK
+  suites** (`sdks/python` under pytest, `sdks/ts` under the frontend's vitest),
+  the benchlib harness suite, and the F1 bench
   in `--algo-only` mode. `--full` adds the retrieval eval, the API e2e
   suite (`backend/scripts/e2e/`, boots its own disposable stack), the
   Playwright e2e run, and a port-hygiene diff.
@@ -82,6 +84,16 @@ dated audit reports, `api-rest-conventions.md` (the REST contract new
 endpoints must match: 201 create, 204 delete, 202 async-accepted,
 POST `.../search` for complex queries), `superpowers/specs/` design
 specs, and `e2e/` runbooks.
+
+Two distribution clients sit **outside** the box (doc 15 §2) and speak REST
+or MCP into the one instance: `extension/` (the browser capture shell) and
+`sdks/` (the minimal client, three verbs). **`sdks/ts/src/client.ts` and
+`sdks/python/darkmem_sdk/client.py` are generated** — edit `sdks/generate.py`
+and run `make generate` in `sdks/`, never the emitted files. The generator
+reads the live OpenAPI document off the app object and **refuses to generate**
+when a verb names a route, a request-body field, or a header the contract does
+not serve; that refusal is the whole reason the SDK is generated rather than
+written (invariant 17).
 
 ## Domain model
 
