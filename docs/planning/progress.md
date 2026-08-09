@@ -301,7 +301,7 @@ every open item on its critical path now sits in M1.
 | T3.06 | Articles tab | M | Sonnet | high | | todo | | | |
 | T3.07 | Research-agent loop through the ordinary capture door | M | Opus | high | | todo | | | |
 | T3.08 | Distinct-origin stamping for researched sources | M | Opus | high | | todo | | | |
-| T3.09 | Managed-block writer, client-side pull-then-write | M | Opus | high | | todo | | | |
+| T3.09 | Managed-block writer, client-side pull-then-write | M | Opus | high | claude/e3-synthesis-and-reach | wip | | | Claimed 2026-08-09. Lands inert per the 2026-08-06 unblocking; the productive path stays gated |
 | T3.10 | Truth-first content fill under a token budget | L | Opus | high | | todo | | | |
 | T3.11 | Per-tool adapters (Claude Code, Cursor, Codex, Cline) | M | Sonnet | high | | todo | | | |
 | T3.12 | Inject records journaled as events | M | Sonnet | high | | todo | | | |
