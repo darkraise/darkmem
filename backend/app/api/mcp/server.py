@@ -444,11 +444,18 @@ async def checkpoint_save(
         next_steps=list(next_steps or []),
         project=project,
     )
+    # Resolved exactly as the REST twin resolves it, through doc 05 §2.1.
+    # Storing the caller's string verbatim put checkpoints in a different key
+    # space from the memories of the same run, which is the correlation this
+    # table is keyed on.
+    origin = checkpoint_service.resolve_checkpoint_origin(
+        body.origin_key, source=checkpoint_service.DOOR_SOURCE, project=body.project
+    )
     async with async_session_factory() as session:
         try:
             row = await checkpoint_service.save_checkpoint(
                 session,
-                origin_key=body.origin_key,
+                origin_key=origin,
                 summary=body.summary,
                 next_steps=body.bounded_steps(),
                 project=body.project,
@@ -471,9 +478,12 @@ async def checkpoint_save(
 async def checkpoint_latest(origin_key: str, project: str = "default") -> str:
     from app.services import checkpoints as checkpoint_service
 
+    resolved = checkpoint_service.resolve_checkpoint_origin(
+        origin_key, source=checkpoint_service.DOOR_SOURCE, project=project
+    )
     async with async_session_factory() as session:
         row = await checkpoint_service.latest_checkpoint(
-            session, origin_key=origin_key, project=project
+            session, origin_key=resolved, project=project
         )
         # `null` rather than an empty object, matching REST's 404: "saved
         # nothing" and "saved an empty note" are different answers and the

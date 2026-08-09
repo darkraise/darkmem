@@ -196,6 +196,44 @@ class TestThePayloadIsBounded:
         with pytest.raises(ValueError):
             body.bounded_steps()
 
+    async def test_a_cjk_payload_inside_every_character_limit_is_still_refused(self):
+        """Task review I-1. The schema bounded characters and the CHECK bounds
+        bytes, so these two limits were **born** different rather than
+        drifted: 15 steps of 500 CJK characters passes every character check
+        and encodes to ~22.5 KB, violating the constraint at flush — a 500 on
+        a request this validation had just called valid.
+        """
+        from app.schemas.checkpoint import CheckpointCreate
+
+        body = CheckpointCreate(
+            origin_key=ORIGIN, summary="ok",
+            next_steps=["漢" * cp.MAX_STEP_LENGTH] * 15,
+        )
+        with pytest.raises(ValueError, match="bytes"):
+            body.bounded_steps()
+
+    async def test_the_schema_maximal_ascii_payload_round_trips(self, session):
+        """The seam the suite was missing: the largest payload the schema
+        accepts must actually reach the table. If the schema's ceiling sits
+        above the constraint's, this is the test that says so."""
+        from app.schemas.checkpoint import CheckpointCreate
+
+        steps = ["x" * cp.MAX_STEP_LENGTH] * cp.MAX_NEXT_STEPS
+        body = CheckpointCreate(origin_key=ORIGIN, summary="x" * cp.MAX_SUMMARY_LENGTH,
+                                next_steps=steps, project=PROJECT)
+        try:
+            accepted = body.bounded_steps()
+        except ValueError:
+            # The schema refuses its own nominal maximum, which is the honest
+            # outcome once the byte bound governs -- what must never happen is
+            # the schema accepting something the database then refuses.
+            return
+        await cp.save_checkpoint(
+            session, origin_key=f"maximal:{uuid4()}", summary=body.summary,
+            next_steps=accepted, project=PROJECT,
+        )
+        await session.flush()
+
     async def test_the_database_refuses_it_too_when_the_schema_is_bypassed(
         self, session
     ):
@@ -335,22 +373,71 @@ class TestBothDoors:
         assert rest.status_code == 201
         await mcp_server.checkpoint_save(origin_key=mcp_origin, **body)
 
+        # Looked up by the *resolved* key, not the declared one: both doors
+        # now run the declared identity through doc 05 §2.1's derivation, and
+        # each resolves `source` from its own transport exactly as the capture
+        # doors do. Comparing raw strings would assert that the resolution
+        # never happened.
         rows = {}
-        for origin in (rest_origin, mcp_origin):
+        for label, origin in (("rest", rest_origin), ("mcp", mcp_origin)):
+            # Matched on the sanitised tail rather than a source this test
+            # hard-codes: `resolve_client_source` reads the transport's own
+            # headers, so pinning REST's source here would pin the test
+            # client's User-Agent instead of the behaviour under test.
             row = (await session.execute(
-                text("SELECT summary, next_steps, project FROM session_checkpoints "
-                     "WHERE origin_key = :o"),
-                {"o": origin},
+                text("SELECT summary, next_steps, project, origin_key "
+                     "FROM session_checkpoints WHERE origin_key LIKE :pattern"),
+                {"pattern": f"%{origin.replace(':', '')}"},
             )).mappings().one()
-            rows[origin] = dict(row)
-        assert rows[rest_origin] == rows[mcp_origin]
+            rows[label] = dict(row)
+
+        # The resolution happened on both doors: neither stored the declared
+        # string verbatim, which is the defect this replaced.
+        for label, origin in (("rest", rest_origin), ("mcp", mcp_origin)):
+            assert rows[label]["origin_key"] != origin
+            assert rows[label]["origin_key"].endswith(origin.replace(":", ""))
+        for row in rows.values():
+            row.pop("origin_key")
+
+        # Everything the doors are allowed to have in common must be identical.
+        # `origin_key` is deliberately excluded: it carries the transport's own
+        # resolved source, which differs by door by design and does so for
+        # capture too.
+        assert rows["rest"] == rows["mcp"]
 
         journalled = (await session.execute(
             text("SELECT COUNT(*) FROM events WHERE event_type = 'checkpoint_saved' "
-                 "AND payload->>'origin_key' = ANY(:origins)"),
-            {"origins": [rest_origin, mcp_origin]},
+                 "AND payload->>'origin_key' LIKE ANY(:patterns)"),
+            {"patterns": [f"%{rest_origin.replace(':', '')}", f"%{mcp_origin.replace(':', '')}"]},
         )).scalar_one()
         assert journalled == 2
+
+    async def test_both_doors_refuse_an_undeclared_origin(self, client, auth_headers):
+        """The refusal is the door's, not the schema's, so it must hold on
+        both. An undeclared checkpoint merged into the coarse bucket would let
+        two runs read each other's notes — safe for counting, wrong for
+        lookup."""
+        from app.api.mcp import server as mcp_server
+
+        response = await client.post(
+            "/api/v1/checkpoints",
+            json={"origin_key": "   ", "summary": "no run"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+        with pytest.raises(ValueError):
+            await mcp_server.checkpoint_save(origin_key="  ", summary="no run")
+
+    async def test_a_declared_identity_resolves_the_same_way_on_both_doors(self):
+        """The correlation's own mechanism: one declared identity and one
+        source resolve to one key, whichever door did the resolving. This is
+        what lets a client that can never see the resolved form still land on
+        it from both sides."""
+        declared = "boot-uuid-1234"
+        assert cp.resolve_checkpoint_origin(
+            declared, source="api", project=PROJECT
+        ) == cp.resolve_checkpoint_origin(declared, source="api", project=PROJECT)
 
     async def test_the_mcp_door_answers_null_for_a_run_with_no_checkpoint(self):
         from app.api.mcp import server as mcp_server

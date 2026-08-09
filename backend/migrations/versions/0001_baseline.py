@@ -733,6 +733,12 @@ def _pass_two() -> None:
             CONSTRAINT chk_session_checkpoints_summary_len
                 CHECK (char_length(summary) <= 4000),
             CONSTRAINT chk_session_checkpoints_next_steps_len
+                -- Mirrored by `checkpoints.NEXT_STEPS_MAX_BYTES`, which the
+                -- schema layer checks the *encoded* size against. Character
+                -- bounds alone were not enough: JSONB encoding of non-ASCII
+                -- text costs several bytes per character, so a payload well
+                -- inside every character limit still violated this CHECK and
+                -- surfaced as a 500 on a request validation had passed.
                 CHECK (pg_column_size(next_steps) <= 16384)
         )
         """

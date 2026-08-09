@@ -20,6 +20,32 @@ redundant: the first is the good error message, the second is the guarantee.
 an agent said about its own run — nothing corroborated it, so it carries no
 rung, and it is not a memory. T3.18 owns that rule as an invariant; the
 absence of any capture call in this module is what implements it today.
+
+**The key is resolved through doc 05 §2.1, and an undeclared one is refused
+rather than merged.** Both halves matter and they pull in opposite directions
+from the memory side. Resolving is what the plan asked for (feature-epics F10
+keys checkpoints on "the agent-run identity, doc 05 §2.1") and it is what
+makes correlation possible at all: `origin_key` is write-only over the wire,
+so a client can never learn its resolved form — it declares the same raw
+identity to both doors and the server derives the same key on each.
+
+But :func:`resolve_origin_key`'s *fallback* must not be inherited. That
+function merges an undeclared origin to a coarse `unknown:<source>:<project>`
+bucket, and its own docstring gives the reason: for corroboration
+"undercounting only delays a promotion; overcounting manufactures one", so
+merging is the safe direction **because the key is a counting key**. Here it
+is a **lookup** key, and the same merge is unsafe: two concurrent runs that
+declared nothing would share one bucket, and each `latest_checkpoint` would
+return whichever saved last — T3.17's resume silently loading another run's
+notes, a wrong-context failure with no symptom. So an undeclared origin is
+refused at the door instead.
+
+**What the correlation actually guarantees, stated because the first version
+overstated it.** A checkpoint and the memories of one run share a key *when
+the client declares the same identity and the same source to both doors*. It
+is a client-discipline property, not a system guarantee and not a join: a run
+capturing over MCP and checkpointing over REST resolves two different sources
+and therefore two different keys. Nothing here enforces it and nothing can.
 """
 
 from __future__ import annotations
@@ -30,11 +56,15 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.mcp.client_identity import UNKNOWN_ORIGIN_PREFIX, resolve_origin_key
 from app.models.checkpoint import SessionCheckpoint
 from app.services.events import record_event
 
 __all__ = [
     "CHECKPOINT_SAVED_EVENT",
+    "DOOR_SOURCE",
+    "UndeclaredOrigin",
+    "resolve_checkpoint_origin",
     "MAX_NEXT_STEPS",
     "MAX_STEP_LENGTH",
     "MAX_SUMMARY_LENGTH",
@@ -45,11 +75,66 @@ __all__ = [
 CHECKPOINT_SAVED_EVENT = "checkpoint_saved"
 OBJECT_TYPE = "checkpoint"
 
+# The source a checkpoint door assumes when the client names none. It is the
+# *fallback*, not a constant: `resolve_client_source` prefers the
+# X-Darkmem-Client header and then the User-Agent product map, so a client
+# that names itself to the capture door the same way lands on the same source
+# here -- which is the half of the correlation this module can influence.
+DOOR_SOURCE = "checkpoint"
+
 # The bounds the done-when asks for. Mirrored by CHECK constraints in the
 # baseline; these produce the 422, those produce the guarantee.
 MAX_SUMMARY_LENGTH = 4000
 MAX_NEXT_STEPS = 50
 MAX_STEP_LENGTH = 500
+
+# The database bounds `next_steps` with `pg_column_size(...) <= NEXT_STEPS_MAX_BYTES`.
+# The schema layer must refuse everything the constraint would, or the API
+# accepts a payload its own validation called valid and the write dies at
+# flush as a 500. The two limits were born different -- 50x500 *characters*
+# against 16384 *bytes* -- so 15 steps of 500 CJK characters passed Pydantic
+# and violated the CHECK. Both sides now read this one number, and the schema
+# checks encoded size rather than character count.
+NEXT_STEPS_MAX_BYTES = 16384
+
+
+class UndeclaredOrigin(ValueError):
+    """A checkpoint arrived with no declared agent-run identity.
+
+    Refused rather than merged into :func:`resolve_origin_key`'s coarse
+    fallback. See the module docstring: that bucket is safe for counting and
+    unsafe for lookup, because two undeclared runs would share it and each
+    would read the other's checkpoint as its own.
+    """
+
+
+def resolve_checkpoint_origin(declared, *, source: str, project: str) -> str:
+    """The run's key, by doc 05 §2.1's derivation, or a refusal.
+
+    Deliberately calls the same resolver capture calls rather than formatting
+    `source:id` here: the sanitisation, the length bound and the prefix are
+    that function's, and a second copy of them is a second answer to one
+    question -- which is how the two RRF constants drifted.
+    """
+    if not isinstance(declared, str) or not declared.strip():
+        raise UndeclaredOrigin(
+            "a checkpoint needs a declared agent-run identity: send "
+            "`origin_key`, or the X-Darkmem-Origin header the client mints at "
+            "process boot. Undeclared checkpoints cannot be merged into one "
+            "bucket the way undeclared captures can -- two runs sharing it "
+            "would each read the other's checkpoint as their own."
+        )
+    resolved = resolve_origin_key(declared, None, source=source, project=project)
+    if resolved.startswith(f"{UNKNOWN_ORIGIN_PREFIX}:"):
+        # Unreachable while `declared` is non-empty -- the resolver only falls
+        # back when it finds nothing -- but asserted rather than assumed,
+        # because the failure it guards is silent and lands in T3.17.
+        raise UndeclaredOrigin(
+            f"origin resolution produced the merge-to-one bucket {resolved!r}; "
+            "refusing to store a checkpoint under a key shared by every "
+            "unattributed run of this source and project"
+        )
+    return resolved
 
 
 async def save_checkpoint(
