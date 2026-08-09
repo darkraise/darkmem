@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**55 surfaces: 19 two-door, 36 single-door with a stated reason (30 REST-only, 6 MCP-only), 0 divergent.**
+**56 surfaces: 19 two-door, 37 single-door with a stated reason (31 REST-only, 6 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -46,6 +46,7 @@ the test rather than quietly joining the surface.
 <!-- BEGIN GENERATED PARITY TABLE -->
 | Surface | REST | MCP | Status | Reason / note |
 |---|---|---|---|---|
+| `distribution.config` | `GET /api/v1/distribution`<br>`PUT /api/v1/distribution/policy` | — | REST single-door | Configures what agents are *told*, and the curb stops push entirely. Exposing 'stop telling agents things' to an agent inverts the control it exists to give a human, so this is single-door on purpose rather than by omission. |
 | `checkpoint.save` | `POST /api/v1/checkpoints` | `checkpoint_save` | two-door | — |
 | `checkpoint.latest` | `GET /api/v1/checkpoints/latest` | `checkpoint_latest` | two-door | — |
 | `memory.capture` | `POST /api/v1/memories` | `memory_add` | two-door | — |

@@ -17,6 +17,9 @@ import {
   ModuleSurface,
   SurfaceStateChip,
 } from "@/features/activity/components/module-surface"
+import { DEMO } from "@/lib/demo-flag"
+import { useDetailLevel } from "@/components/darkmem"
+import { useDistribution, useSetDistributionPolicy } from "@/hooks/api"
 import { useDemoDistribution } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoDistClient } from "@/demo/types"
@@ -111,6 +114,109 @@ function ClientRow({ client }: { client: DemoDistClient }) {
   )
 }
 
+/** The live half: the registry's targets, the policy, and the one curb.
+ *
+ *  Separate from the demo panel below rather than merged, matching the split
+ *  the knowledge surfaces use: a demo fixture and a live read are two
+ *  producers, and a component that branched per field would make "is this
+ *  real" unanswerable from the screen.
+ */
+function LiveDistribution() {
+  const level = useDetailLevel((s) => s.level)
+  const { data, isLoading, isError } = useDistribution({ enabled: !DEMO })
+  const setPolicy = useSetDistributionPolicy()
+
+  if (isError) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        distribution config unavailable — the targets and the curb could not be
+        read, so nothing here describes what push would do
+      </p>
+    )
+  }
+  if (isLoading || !data) {
+    return <p className="text-muted-foreground text-sm">loading…</p>
+  }
+
+  const { targets, policy } = data
+
+  return (
+    <div className="space-y-3">
+      <div className="border-border flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold">
+            {policy.curbed ? "Push is curbed" : "Push is live"}
+          </p>
+          <p className="text-muted-foreground text-sm">
+            One control, applied on the server: every target stops at once.
+            Curbing clears each managed block to an empty marker pair rather
+            than deleting it, so the human&apos;s own file is untouched.
+          </p>
+        </div>
+        <Switch
+          aria-label="Allow push"
+          checked={!policy.curbed}
+          disabled={setPolicy.isPending}
+          onCheckedChange={(on) =>
+            setPolicy.mutate({ ...policy, curbed: !on })
+          }
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <SectionHead icon={FileText}>Managed block per target</SectionHead>
+        {targets.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            no targets configured — add a row to the inject_adapters config
+          </p>
+        ) : (
+          targets.map((target) => (
+            <div
+              key={target.tool}
+              className="border-border flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
+            >
+              <b className="font-semibold">{target.tool}</b>
+              <code className="text-muted-foreground font-mono">
+                {target.context_file}
+              </code>
+              {level === "advanced" && (
+                <span className="text-muted-foreground ml-auto font-mono text-sm">
+                  mcp: {target.mcp_config} · refresh: {target.refresh}
+                </span>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <SectionHead icon={Gauge}>Inject content policy</SectionHead>
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          <span>Token budget</span>
+          <input
+            type="number"
+            min={0}
+            max={100000}
+            defaultValue={policy.token_budget}
+            aria-label="Token budget"
+            className="border-border w-32 rounded-md border px-2 py-1 font-mono text-sm"
+            onBlur={(event) => {
+              const next = Number(event.currentTarget.value)
+              if (Number.isFinite(next) && next !== policy.token_budget) {
+                setPolicy.mutate({ ...policy, token_budget: next })
+              }
+            }}
+          />
+          <span className="text-muted-foreground">
+            spent truth-first: facts, then articles, then memory summaries
+          </span>
+        </label>
+      </div>
+    </div>
+  )
+}
+
 export function DistributionTab() {
   const d = useDemoDistribution()
   const connected = d.clients.filter((c) => c.status !== "disconnected").length
@@ -140,6 +246,11 @@ export function DistributionTab() {
         state="staged"
         meta={`${connected} connected · ${curbed} curbed · ${disconnected} not connected`}
       >
+        {/* Mounted only outside demo: a conditional *return* would still run
+            the query hook, which is what put a QueryClient requirement on the
+            demo path that never had one. */}
+        {!DEMO && <LiveDistribution />}
+
         <div className="flex flex-col gap-2">
           <SectionHead icon={Plug}>Connect status per client</SectionHead>
           {d.clients.map((client) => (

@@ -539,6 +539,11 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # derived from a `memories` row — this surface reads that table and no
     # other. It is project-scoped in its own right, so the scoping question
     # these surfaces exist to answer does not arise here.
+    # Distribution config (T3.19): adapter paths and a token budget. No
+    # memory content crosses -- it configures what *would* be injected, and
+    # the injected rows themselves are T3.10's surface.
+    "GET /api/v1/distribution",
+    "PUT /api/v1/distribution/policy",
     "POST /api/v1/checkpoints",
     "GET /api/v1/checkpoints/latest",
     "GET /health",

@@ -62,6 +62,18 @@ V1 = "/api/v1"
 PARITY_TABLE: tuple[Surface, ...] = (
     # ── Both doors ──────────────────────────────────────────────────
     Surface(
+        name="distribution.config",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/distribution"), ("PUT", f"{V1}/distribution/policy")),
+        mcp=(),
+        reason=(
+            "Configures what agents are *told*, and the curb stops push "
+            "entirely. Exposing 'stop telling agents things' to an agent "
+            "inverts the control it exists to give a human, so this is "
+            "single-door on purpose rather than by omission."
+        ),
+    ),
+    Surface(
         name="checkpoint.save",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/checkpoints"),),

@@ -9,6 +9,7 @@ export type SettingsTabValue =
   | "jobs"
   | "security"
   | "maintenance"
+  | "distribution"
 const KNOWN: SettingsTabValue[] = [
   "flags",
   "classification",
@@ -20,6 +21,10 @@ const KNOWN: SettingsTabValue[] = [
   "jobs",
   "security",
   "maintenance",
+  // Registered 2026-08-09 (T3.19). The tab was routed and rendered but
+  // absent from this list, so `resolveStoredTab` fell back to "flags" on
+  // every reload -- the one tab a human could not return to.
+  "distribution",
 ]
 
 export function resolveStoredTab(stored: string | null): SettingsTabValue {

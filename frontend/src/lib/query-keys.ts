@@ -57,6 +57,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /dream-digest/cycles takes an explicit `project` filter (doc 13 §6.3); the single-cycle read is addressed by cycle_id and carries no project param at all",
   },
+  distribution: {
+    kind: "global",
+    reason:
+      "Distribution config is per-installation, not per-project: the adapter registry maps a tool to a file path, and the curb stops push everywhere at once (doc 13 §6.5). Scoping it to a project would imply push could be curbed for one and live for another, which is the opposite of what a single stop control means",
+  },
   reviewQueue: {
     kind: "manual",
     reason:

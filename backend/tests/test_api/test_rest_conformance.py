@@ -92,6 +92,10 @@ EXPECTED_STATUS = {
     # queued work an ack would describe.
     ("POST", "/api/v1/checkpoints"): 201,
     ("GET", "/api/v1/checkpoints/latest"): 200,
+    ("GET", "/api/v1/distribution"): 200,
+    # 200 rather than 204: the curb is here, and a human turning push off
+    # needs to see the state now in force.
+    ("PUT", "/api/v1/distribution/policy"): 200,
     ("GET", "/api/v1/graph/unified"): 200,
     ("GET", "/api/v1/jobs"): 200,
     ("PUT", "/api/v1/jobs/{key}"): 200,

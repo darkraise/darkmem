@@ -17,7 +17,7 @@ from sqlalchemy import select, text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
+from app.api.routes import analytics, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -730,6 +730,7 @@ app.include_router(code.router)
 app.include_router(pipeline_failures.router)
 app.include_router(review_queue.router)
 app.include_router(checkpoint_routes.router)
+app.include_router(distribution_routes.router)
 app.include_router(facts_routes.router)
 app.include_router(knowledge_search_routes.router)
 app.include_router(ratification_routes.router)
