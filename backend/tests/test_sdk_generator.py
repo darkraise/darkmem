@@ -235,26 +235,46 @@ class TestTheEmittedBodyIsTheDeclaredFields:
     from the tuple, so the two cannot say different things."""
 
     async def test_the_python_body_keys_are_exactly_the_declared_fields(self):
-        emitted = sdk_generate.render_python("digest")
-        for verb_name in ("capture", "search"):
-            fields = sdk_generate.VERBS[verb_name]["fields"]
-            body = sdk_generate._body(
-                verb_name, sdk_generate.PY_EXPRESSIONS, " " * 16, True
-            )
-            assert body in emitted
-            assert [line.split(":")[0].strip().strip('"') for line in body.splitlines()] \
-                == list(fields)
+        """Parsed out of the **emitted client**, not out of `_body`'s return
+        value. Comparing the renderer against itself would pass while a key
+        sat in the template beside the rendered block, which is the same
+        never-checked gap in a new place."""
+        import ast
+
+        tree = ast.parse(sdk_generate.render_python("digest"))
+        posted = {
+            node.name: [
+                key.value
+                for call in ast.walk(node)
+                if isinstance(call, ast.Call)
+                and getattr(call.func, "attr", None) == "_post"
+                for argument in call.args
+                if isinstance(argument, ast.Dict)
+                for key in argument.keys
+            ]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name != "_post"
+        }
+        assert posted == {
+            "capture": list(sdk_generate.VERBS["capture"]["fields"]),
+            "search": list(sdk_generate.VERBS["search"]["fields"]),
+        }
 
     async def test_the_typescript_body_keys_are_exactly_the_declared_fields(self):
+        """The same property on the other client, read out of the emitted
+        source for the same reason."""
+        import re
+
         emitted = sdk_generate.render_typescript("digest")
         for verb_name in ("capture", "search"):
-            fields = sdk_generate.VERBS[verb_name]["fields"]
-            body = sdk_generate._body(
-                verb_name, sdk_generate.TS_EXPRESSIONS, " " * 8, False
+            block = re.search(
+                r'#post<\w+>\(\s*"[^"]+",\s*\{(.*?)\n      \},',
+                emitted.split(f"async {verb_name}(", 1)[-1],
+                re.DOTALL,
             )
-            assert body in emitted
-            assert [line.split(":")[0].strip() for line in body.splitlines()] \
-                == list(fields)
+            assert block, f"no post body found for {verb_name}"
+            keys = re.findall(r"^\s*([\w$]+):", block.group(1), re.MULTILINE)
+            assert keys == list(sdk_generate.VERBS[verb_name]["fields"])
 
     async def test_a_field_with_no_expression_refuses_rather_than_emitting(
         self, monkeypatch
