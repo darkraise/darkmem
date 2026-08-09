@@ -51,7 +51,6 @@ __all__ = [
     "Adapter",
     "UnknownTool",
     "UnsupportedCadence",
-    "get_adapter_rejections",
     "get_adapters",
     "get_registry",
     "reject_reason",
@@ -133,9 +132,9 @@ def reject_reason(context_file: str | None) -> str | None:
     """Why this ``context_file`` cannot be an adapter target, or ``None``.
 
     One predicate with two readers — the registry below and
-    :func:`get_adapter_rejections`, which the distribution surface renders. A
-    second copy of these rules would be the drift that lets the screen say a
-    row was kept while the writer dropped it.
+    :func:`get_registry`, whose second return value the distribution surface
+    renders. A second copy of these rules would be the drift that lets the
+    screen say a row was kept while the writer dropped it.
     """
     if not context_file:
         return "no context_file — an adapter with no file cannot say where the block goes"
@@ -174,7 +173,10 @@ async def _resolve(
             # Served, not merely logged: an operator whose entry is a string
             # rather than an object watches their row vanish exactly as one
             # with a bad `context_file` did, and the reason has the same right
-            # to reach the screen.
+            # to reach the screen. The sentence is finished after the merge —
+            # a malformed *override* of a shipped tool leaves that tool served
+            # at its default, and calling that "no block is written" would be
+            # the screen asserting something not in force.
             rejected[tool] = (
                 f"the entry is {type(entry).__name__}, not an object — an "
                 "adapter is a mapping of context_file / mcp_config / refresh"
@@ -255,6 +257,16 @@ async def _resolve(
             mcp_config=entry.get("mcp_config", ""),
             refresh=entry.get("refresh", REFRESH_SESSION_START),
         )
+
+    # A rejected entry for a tool that still resolves is an override that did
+    # not take effect, not a target that vanished. Every other rejection path
+    # leaves its tool absent from `adapters`; this is the one that does not.
+    for tool in rejected:
+        if tool in adapters:
+            rejected[tool] += (
+                f" — the shipped default is still in force, so {tool} is still "
+                "served at its committed path"
+            )
     return adapters, rejected
 
 
@@ -276,24 +288,15 @@ async def get_registry(
 ) -> tuple[dict[str, Adapter], dict[str, str]]:
     """Both halves for the one caller that needs both.
 
-    ``get_adapters`` + ``get_adapter_rejections`` is two SELECTs of the same
-    ``config`` row and two merges per request. The docstring above says a second
-    pass "would mean a second copy of the merge" — the copy was avoided, the
-    pass was not.
+    Two entry points asking ``_resolve`` separately would be two SELECTs of the
+    same ``config`` row and two merges per request. The docstring above says a
+    second pass "would mean a second copy of the merge" — the copy was avoided,
+    the pass was not, and this is where that is paid once.
     """
     return await _resolve(session)
 
 
-async def get_adapter_rejections(session: AsyncSession) -> dict[str, str]:
-    """Which configured tools were dropped, and why.
 
-    The log was the only place this went, so an operator editing
-    ``inject_adapters`` watched their row vanish from the screen with the reason
-    on the server. A registry that drops a row silently is the same defect as a
-    retrieval that drops a match silently (invariant 14).
-    """
-    _, rejected = await _resolve(session)
-    return rejected
 
 
 async def resolve_adapter(

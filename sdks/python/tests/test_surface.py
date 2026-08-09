@@ -26,7 +26,18 @@ finding that matters: closing named instances is not closing the class.
   anchored to exactly two leading spaces, which the generator itself writes;
 - a Python ``def __call__`` — every whitelist filtered names on a leading
   underscore, so **no dunder could ever appear in one**, and an instance that
-  is callable is a verb by any measure.
+  is callable is a verb by any measure;
+
+and a third round found two more, which is the finding rather than a footnote:
+
+- a **symbol-keyed** TypeScript member (``[Symbol.for("send")]()``) —
+  ``Object.getOwnPropertyNames`` enumerates no symbol in *any* of the three
+  homes, so all three run-time probes were blind to one construct at once, and
+  a computed key starts ``[`` where the source regex wants an identifier. The
+  probes read ``Reflect.ownKeys`` now;
+- a Python **instance** attribute (``self.send = lambda ...`` in ``__init__``)
+  — ``vars(Darkmem)`` is the *class* dict and never moves. The TypeScript side
+  had an instance probe from the previous round; this side had none.
 
 So no check here filters by kind *or* by name shape any more. Each is an exact
 whitelist of a whole surface: ``vars(Darkmem)`` including every dunder, the
@@ -192,7 +203,14 @@ def _python_code_names(source: str) -> set[str]:
     return names
 
 
-_STRING_LITERAL = re.compile(r'"[^"\n]*"|\'[^\'\n]*\'|`[^`]*`')
+# Escapes handled: `"\"{"` is one literal holding a brace, and reading it as
+# two would move the depth walk below. The placeholder uses NUL, which cannot
+# occur in the source, because a literal `"__STR1__"` in the file collided with
+# the substitution and corrupted the restore.
+_STRING_LITERAL = re.compile(
+    r'"(?:[^"\\\n]|\\.)*"' r"|'(?:[^'\\\n]|\\.)*'" r"|`(?:[^`\\]|\\.)*`"
+)
+_PLACEHOLDER = "\x00STR{}\x00"
 
 
 def _mask_strings(source: str) -> tuple[str, list[str]]:
@@ -208,7 +226,7 @@ def _mask_strings(source: str) -> tuple[str, list[str]]:
 
     def take(match: re.Match) -> str:
         kept.append(match.group(0))
-        return f"__STR{len(kept) - 1}__"
+        return _PLACEHOLDER.format(len(kept) - 1)
 
     return _STRING_LITERAL.sub(take, source), kept
 
@@ -223,11 +241,26 @@ def _typescript_without_comments(source: str) -> str:
     without_block = re.sub(r"/\*[\s\S]*?\*/", "", masked)
     stripped = re.sub(r"//.*$", "", without_block, flags=re.MULTILINE)
     for index, literal in enumerate(kept):
-        stripped = stripped.replace(f"__STR{index}__", literal)
+        stripped = stripped.replace(_PLACEHOLDER.format(index), literal)
     return stripped
 
 
+# Everything a constructed client is allowed to carry. `vars(Darkmem)` is the
+# class dict and cannot see an attribute assigned in `__init__`, which is where
+# a fourth verb sat through a green suite.
+PY_INSTANCE_ATTRIBUTES = {"base_url", "token", "project", "_context"}
+
+
 class TestThePublicSurfaceIsTheThreeVerbs:
+    def test_a_constructed_client_carries_only_its_configuration(self):
+        """The Python instance probe, matching the one the TypeScript suite has
+        had since the class-field escape. `self.send = lambda ...` in
+        `__init__` leaves every class-level whitelist byte-identical."""
+        assert set(vars(Darkmem())) == PY_INSTANCE_ATTRIBUTES
+        assert set(vars(Darkmem(token="t", project="p", context={"env": "x"}))) == (
+            PY_INSTANCE_ATTRIBUTES
+        )
+
     def test_the_python_class_carries_no_member_it_was_not_given(self):
         """Every member, dunder included, against an exact whitelist.
 

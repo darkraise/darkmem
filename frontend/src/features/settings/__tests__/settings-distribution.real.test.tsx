@@ -109,7 +109,7 @@ describe("Distribution tab — live", () => {
 
     expect(screen.getByText("test-tool-gamma")).toBeInTheDocument()
     expect(screen.getByText(/not a project-relative path/)).toBeInTheDocument()
-    expect(screen.getByText(/1 configured target refused/)).toBeInTheDocument()
+    expect(screen.getByText(/1 configured entry did not take effect/)).toBeInTheDocument()
   })
 
   it("offers one control that stops every target, and posts it", async () => {
@@ -223,6 +223,25 @@ describe("Distribution tab — live", () => {
 
     await screen.findByText(/was not saved/)
     await waitFor(() => expect(field.value).toBe("2000"))
+  })
+
+  it("keeps an uncommitted budget edit when a different control fails", async () => {
+    // The curb switch and the budget field write through the same mutation, so
+    // resetting on its shared error state meant a failed *curb* discarded
+    // typing in a field the human was not touching.
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      if (url === "/distribution/policy") throw new Error("boom")
+      return STATE
+    })
+
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+    const field = (await screen.findByLabelText("Token budget")) as HTMLInputElement
+    fireEvent.change(field, { target: { value: "5000" } })
+    fireEvent.click(screen.getByLabelText("Allow push"))
+
+    await screen.findByText(/was not saved/)
+    expect(field.value).toBe("5000")
   })
 
   it("says so when the curb could not be saved", async () => {

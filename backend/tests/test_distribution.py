@@ -286,3 +286,40 @@ class TestARefusedTargetIsNamedOnTheWire:
         await client.get("/api/v1/distribution", headers=auth_headers)
 
         assert calls == 1
+
+    async def test_a_malformed_override_of_a_known_tool_is_not_a_refusal(
+        self, client, auth_headers, session
+    ):
+        """NEW-2, a regression the first N-5 fix introduced: the rejection was
+        written from the raw-config loop while the shipped default survived the
+        merge, so `cursor` came back in **both** lists and the screen said no
+        block was written for a tool that has one."""
+        session.add(Config(
+            key=ia.INJECT_ADAPTERS_CONFIG_KEY, value={"cursor": "nope"},
+        ))
+        await session.flush()
+
+        state = (await client.get(
+            "/api/v1/distribution", headers=auth_headers
+        )).json()
+
+        assert "cursor" in [t["tool"] for t in state["targets"]]
+        assert [r["tool"] for r in state["rejected"]] == ["cursor"]
+        assert "still in force" in state["rejected"][0]["reason"]
+
+    async def test_an_unknown_tool_with_no_default_is_a_plain_refusal(
+        self, client, auth_headers, session
+    ):
+        """The other half, and the one the first test happened to use — which
+        is why it could not fail on the defect above."""
+        session.add(Config(
+            key=ia.INJECT_ADAPTERS_CONFIG_KEY, value={"stringly": "nope"},
+        ))
+        await session.flush()
+
+        state = (await client.get(
+            "/api/v1/distribution", headers=auth_headers
+        )).json()
+
+        assert "stringly" not in [t["tool"] for t in state["targets"]]
+        assert "still in force" not in state["rejected"][0]["reason"]

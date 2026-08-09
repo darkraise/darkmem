@@ -199,3 +199,10 @@ class TestTheUntracedBranchIsWhyTheOptionIsGone:
 
         emitted = sdk_generate.render_python("digest")
         assert "with_trace" not in emitted.split("async def search(", 1)[-1].split(")")[0]
+
+        # The TypeScript half, which the first version of this test omitted.
+        # `withTrace?: boolean` back in the options type passes `make build`
+        # and both client suites while the client ignores the caller and posts
+        # `with_trace: true` anyway — vitest transpiles without typechecking,
+        # and `sdks/ts` has no tsconfig, so nothing else in the gate can see it.
+        assert "withTrace" not in sdk_generate.render_typescript("digest")

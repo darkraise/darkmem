@@ -223,12 +223,25 @@ describe("transport", () => {
 
 describe("the surface, at run time", () => {
   // The escape hatch that would make ratification expressible is a reachable
-  // transport. Two probes, because either alone has a blind spot a review drill
-  // walked through: `private` is erased by the compiler and leaves the method
-  // on the prototype, while a public class field (`send = async (...) => {}`)
-  // is an *instance* property and never appears on the prototype at all.
+  // transport, and a member has three homes and two key kinds. Each
+  // combination has hidden a drilled fourth verb at least once:
+  //
+  //   prototype   — `private post()`; the modifier is erased at compile time
+  //   instance    — `send = async (...) => {}`, a class field, never on the prototype
+  //   constructor — `static async send(...)`, on neither of the two above
+  //   symbol key  — `[Symbol.for("send")]()`, which `Object.getOwnPropertyNames`
+  //                 enumerates in *none* of the three, so one construct was
+  //                 invisible to all three probes at once
+  //
+  // `Reflect.ownKeys` is names and symbols together, which is why every probe
+  // below reads it rather than `getOwnPropertyNames`.
+  const ownKeys = (target: object) =>
+    Reflect.ownKeys(target)
+      .map((key) => (typeof key === "symbol" ? key.toString() : key))
+      .sort();
+
   it("exposes exactly three methods on the prototype", () => {
-    expect(Object.getOwnPropertyNames(Darkmem.prototype).sort()).toEqual([
+    expect(ownKeys(Darkmem.prototype)).toEqual([
       "capture",
       "constructor",
       "declareContext",
@@ -237,22 +250,12 @@ describe("the surface, at run time", () => {
   });
 
   it("puts nothing at all on the instance", () => {
-    // Every field is `#private`, so an instance has no own properties. Any
-    // class-field method — the shape that defeated the source scan — shows up
-    // here as one.
-    expect(Object.getOwnPropertyNames(new Darkmem({}))).toEqual([]);
+    // Every field is `#private`, so an instance has no own keys of any kind.
+    expect(ownKeys(new Darkmem({}))).toEqual([]);
   });
 
   it("hangs nothing off the constructor", () => {
-    // The third home a member can have, and the one that defeated both probes
-    // above: a `static` method lives on the constructor, so it is neither a
-    // prototype method nor an instance property. A review drove one to a real
-    // ratify call with every suite green.
-    expect(Object.getOwnPropertyNames(Darkmem).sort()).toEqual([
-      "length",
-      "name",
-      "prototype",
-    ]);
+    expect(ownKeys(Darkmem)).toEqual(["length", "name", "prototype"]);
   });
 
   it("exports only the client and its types", async () => {

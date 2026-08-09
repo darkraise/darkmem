@@ -131,28 +131,24 @@ function ClientRow({ client }: { client: DemoDistClient }) {
  */
 function TokenBudgetField({
   budget,
-  rejected,
   onCommit,
 }: {
   budget: number
-  /** The last write failed, so `budget` did **not** move. Without this the
-   *  field goes on showing the rejected number while the banner above says
-   *  "push is still whatever the server last accepted, shown below" — the same
-   *  screen-asserts-what-is-not-in-force failure, in the failure path. */
-  rejected: boolean
-  onCommit: (next: number) => void
+  /** Resolves when the server has accepted the value, rejects when it has not.
+   *
+   *  A promise rather than a shared `isError` flag: the curb switch and this
+   *  field write through the same mutation, so keying the reset on that flag
+   *  meant a *failed curb* wiped an uncommitted budget edit — a control the
+   *  human was not touching discarding their typing. This way each write
+   *  learns its own outcome. */
+  onCommit: (next: number) => Promise<unknown>
 }) {
   const [draft, setDraft] = useState(String(budget))
   const [seed, setSeed] = useState(budget)
-  const [sawRejection, setSawRejection] = useState(rejected)
   if (seed !== budget) {
     // The server's value moved (a write landed, or a refetch): take it.
     setSeed(budget)
     setDraft(String(budget))
-  }
-  if (sawRejection !== rejected) {
-    setSawRejection(rejected)
-    if (rejected) setDraft(String(budget))
   }
 
   return (
@@ -172,7 +168,9 @@ function TokenBudgetField({
           return
         }
         if (next !== budget) {
-          onCommit(next)
+          // The field must not go on showing a number the server refused,
+          // while the banner above says the value in force is shown below.
+          onCommit(next).catch(() => setDraft(String(budget)))
         }
       }}
     />
@@ -268,9 +266,8 @@ function LiveDistribution() {
       {rejected.length > 0 && (
         <div className="border-warning/55 bg-warning/10 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
           <b className="font-semibold">
-            {rejected.length} configured target
-            {rejected.length === 1 ? "" : "s"} refused — no block is written for
-            {rejected.length === 1 ? " it" : " them"}
+            {rejected.length} configured{" "}
+            {rejected.length === 1 ? "entry" : "entries"} did not take effect
           </b>
           {rejected.map((row) => (
             <span key={row.tool} className="text-muted-foreground">
@@ -286,9 +283,8 @@ function LiveDistribution() {
           <span>Token budget</span>
           <TokenBudgetField
             budget={policy.token_budget}
-            rejected={setPolicy.isError}
             onCommit={(token_budget) =>
-              setPolicy.mutate({ ...policy, token_budget })
+              setPolicy.mutateAsync({ ...policy, token_budget })
             }
           />
           <span className="text-muted-foreground">
