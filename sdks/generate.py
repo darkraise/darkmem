@@ -11,46 +11,80 @@ same schema the app serves — rather than a checked-in copy that could age.
 **Three verbs, deliberately** — `capture`, `search`, `declareContext`. darkmem
 is not building a client platform; doc 00 §8's success criterion is that a
 minimal SDK exists. Each verb is bound to the contract surface it wraps and
-generation **fails** if that surface is absent: an SDK method with no route
-behind it is precisely the drift this design exists to prevent.
+generation **fails** if that surface is absent.
 
-**The binding is per *field*, not per route (T3.14).** T3.25 pinned each verb
-to a path and a method, which is a real guard but a shallow one: it passed
-while both emitted bodies sent an ``applies_when`` key that no request schema
-in the contract has — silently dropped by every door, so a declared context
-reached nothing and nothing said so. A route-level guard cannot see that. So
-each verb now also names the request-body fields it sends, and generation
-refuses when the contract's request schema does not carry one.
+**The guard has been widened twice, each time by a defect it could not see.**
 
-**Contract bindings, and why these three and not the ones T3.25 guessed:**
+1. *Route-deep* (T3.25). It asked only whether a path and method exist. Both
+   emitted clients passed while posting an ``applies_when`` key that no request
+   schema in the contract has — pydantic ignores an unknown key, so every
+   declared context was dropped by the door with nothing said.
+2. *Field-deep* (T3.14, first round). Each verb now names the request-body
+   fields it sends and generation refuses when the contract's request schema
+   lacks one. A review drill then showed the tuple was checked while the
+   *emitted body* was not: an extra key added to a template, with the tuple
+   untouched, generated cleanly. So the body literals are no longer written by
+   hand at all — ``_body`` renders them from the same tuple the guard checks,
+   which makes the two impossible to separate.
+3. *Consumption-deep* (T3.14, second round). The header binding was checked
+   for spelling only. It matched the app's constant and **neither bound door
+   read it**: measured live, ``POST /api/v1/knowledge/search`` and
+   ``POST /api/v1/memories`` both answer with ``envelope.context`` null and no
+   trace of the declaration, because ``resolve_declared_context_for_request``
+   has exactly one caller in the tree. A verb whose whole job is to declare
+   something declared nothing — the same silent drop as ``applies_when``,
+   relocated from the body to a header. So a context-carrying verb must now
+   bind a door whose request schema declares the rank-1 ``context`` argument,
+   which is the contract's own visible signal that a door is in doc 12 §5's
+   chain, and at least one verb must carry it or the header binds nothing.
 
-- ``capture`` → ``POST /api/v1/memories``, unchanged.
-- ``search`` → ``POST /api/v1/knowledge/search``, **moved off**
-  ``/api/v1/memories/search``. Doc 15 §6 defines the verb as "the F3 read"
-  returning "the labelled results with their trace" and gives it a ``fused?``
-  argument; only the composed read serves any of that — the plain memories
-  search returns a bare ``list[MemoryResponse]`` with no envelope, no layer or
-  verification labels and no ``fuse`` axis. ``app/schemas/knowledge.py`` says
-  as much from the other side, naming "an SDK generator reading it — doc 15's,
-  eventually" as the reason ``rows``/``sections`` exclusivity is enforced in
-  the model.
-- ``declareContext`` → the ``X-Darkmem-Context`` **header**, not a route. It
-  was pinned to ``POST /api/v1/memories/reason``, which it has nothing to do
-  with; the route existed, so the guard was satisfied by a binding that meant
-  nothing. Doc 12 §5 settles per-session context as a header precisely because
-  a stateful ``context_declare`` "would be a lie on a ``stateless_http=True``
-  server", so there is no route to bind and pretending otherwise is the drift
-  in miniature. The header name is pinned here and checked against the app's
-  own constant, so a rename refuses generation exactly as a missing route does.
+The reach of that third check is stated rather than assumed: the schema signal
+is necessary, not sufficient — ``POST /api/v1/memories/search`` declares
+``context`` and deliberately does not resolve it. What proves *consumption* is
+``backend/tests/test_sdk_contract_conformance.py``, which drives the real app
+with the exact wire shape emitted here and asserts the declaration comes back
+resolved. Generation-time refusal on the contract-visible signal; a test on the
+behaviour. Neither alone is enough.
+
+**Contract bindings, and why each is where it is:**
+
+- ``capture`` → ``POST /api/v1/memories``. It carries **no context**: doc 12
+  §5's rank-1 wire form is "a ``context`` object on the search/vault tool (or
+  the REST body)", ``MemoryCreate`` has no such field, and the route resolves
+  no header. Doc 15 §6's ``capture(content, project?, context?, source?)``
+  therefore names an argument the contract does not serve, and doc 15 §6 itself
+  says "doc 12 owns the wire shape" — so the contract wins and the argument is
+  absent. Logged as an amendment, not silently narrowed.
+- ``search`` → ``POST /api/v1/memories/search/paginated``. Doc 01 F3 is the
+  memory retrieval flow ("Objects: Memory (read); Entity/Relation (traversed)")
+  returning "ranked results with a 'why retrieved' trace", and doc 15 §6's own
+  mermaid names the memories twin (``POST .../search · memory_search``). This
+  is the door that carries the rank-1 ``context`` field, resolves the
+  ``X-Darkmem-Context`` header, and returns the trace envelope with
+  ``with_trace``. An earlier round of T3.14 bound the composed read
+  (``POST /api/v1/knowledge/search``) on the strength of doc 15 §6's ``fused?``
+  argument and the word "labelled"; that door serves neither rank of the
+  context chain, which is how the header came to reach nothing. ``fused`` is
+  consequently **not** expressible — the one argument in doc 15 §6's signature
+  that only the composed read serves, recorded rather than faked.
+- ``declareContext`` → the ``X-Darkmem-Context`` **header**, not a route. Doc
+  12 §5 settles per-session context as a header precisely because a stateful
+  ``context_declare`` "would be a lie on a ``stateless_http=True`` server", so
+  there is no route to bind. The name is pinned here and checked against the
+  app's own constant, so a rename refuses generation as a missing route does.
+
+Rank 1 and rank 2 are now *both* real and distinct, which is what doc 12 §5
+describes: a per-call ``context`` argument rides the body field, a session
+declaration rides the header, and the server's own precedence decides between
+them rather than the SDK collapsing them into one carrier.
 
 **What the SDK deliberately cannot express.** Ratification, review and vault
-administration are absent, and doc 15 §6 gives the reason: they are
-human-authenticated actions, and "putting them in a LAN client SDK would hand
-``confirmed``-power to an unauthenticated caller". Absence is asserted, not
-reviewed — ``sdks/python/tests/test_surface.py`` reads both generated files and
-checks the public surface *is* the three verbs, rather than checking that one
-forbidden word is missing from it. The TypeScript transport is a ``#private``
-method so the escape hatch is closed at run time and not merely in the types.
+administration are absent. Doc 15 §6's reason is that they are
+human-authenticated single-door acts; note that this client speaks only REST
+and every door it can reach is behind ``require_auth``, so what keeps ratify
+out of *this* client is the surface it is given, not the absence of auth.
+Absence is asserted, not reviewed — ``sdks/python/tests/test_surface.py`` reads
+both generated files and checks the public surface *is* the three verbs.
 
 **Output is deterministic.** No timestamps, no versions read from the
 environment, sorted everywhere — because ``make generate && git diff
@@ -80,20 +114,25 @@ sys.path.insert(0, str(SDKS.parent / "backend"))
 # failure as a missing route and deserves the same refusal.
 CONTEXT_HEADER = "X-Darkmem-Context"
 
+# Doc 12 §5's rank-1 wire form, and the contract's visible signal that a door
+# takes part in the declared-context chain at all.
+CONTEXT_FIELD = "context"
+
 # The three verbs, each pinned to the contract surface it wraps, down to the
-# request-body fields it sends. The pinning is the point: if a route is renamed
-# or a field dropped, generation fails here rather than emitting an SDK that
-# calls a 404 or posts a key the door ignores.
+# request-body fields it sends. `fields` is the single source for both the
+# guard and the emitted body literal — see `_body`.
 VERBS = {
     "capture": {
         "method": "post",
         "path": "/api/v1/memories",
         "fields": ("content", "project", "source"),
+        "carries_context": False,
     },
     "search": {
         "method": "post",
-        "path": "/api/v1/knowledge/search",
-        "fields": ("query", "project", "limit", "fuse"),
+        "path": "/api/v1/memories/search/paginated",
+        "fields": ("query", "project", "limit", CONTEXT_FIELD, "with_trace"),
+        "carries_context": True,
     },
     # No route, by doc 12 §5's decision. The binding is the header.
     "declareContext": {"header": CONTEXT_HEADER},
@@ -131,7 +170,7 @@ def _request_properties(schema: dict, verb: dict) -> dict:
 def _require_contract(schema: dict) -> None:
     """Refuse to generate unless every verb's whole binding is served.
 
-    Three failures, one message, because they are one defect: the SDK claims a
+    Four failures, one message, because they are one defect: the SDK claims a
     surface the contract does not have.
     """
     missing: list[str] = []
@@ -152,6 +191,24 @@ def _require_contract(schema: dict) -> None:
         for field in verb["fields"]:
             if field not in properties:
                 missing.append(f"{name} → {verb['path']} has no field {field!r}")
+        if verb["carries_context"] and CONTEXT_FIELD not in properties:
+            missing.append(
+                f"{name} → {verb['path']} takes no {CONTEXT_FIELD!r} argument, so it "
+                "is not in doc 12 §5's declared-context chain and the "
+                f"{CONTEXT_HEADER} header would reach nothing there"
+            )
+
+    # The header binds a mechanism, not a door, so nothing above notices when
+    # no verb actually sends it. Without this, `declareContext` can go back to
+    # declaring into the void one re-pointing at a time.
+    if any("header" in verb for verb in VERBS.values()) and not any(
+        verb.get("carries_context") for verb in VERBS.values()
+    ):
+        missing.append(
+            f"declareContext → no verb carries the {CONTEXT_HEADER} header, so a "
+            "declaration would reach no door at all"
+        )
+
     if missing:
         raise SystemExit(
             "refusing to generate: the contract does not serve "
@@ -184,6 +241,52 @@ def _hash(schema: dict) -> str:
     ).hexdigest()[:16]
 
 
+# Per-language expressions for each wire field, keyed by the *contract's* field
+# name so the guard and the emitted literal cannot drift: `_body` renders one
+# line per declared field and refuses a field it has no expression for, which
+# is what makes "the tuple says one thing, the body posts another" unwritable.
+TS_EXPRESSIONS = {
+    "content": "content",
+    "project": "options.project ?? this.#project",
+    "source": "options.source",
+    "query": "query",
+    "limit": "options.limit",
+    "context": "options.context",
+    "with_trace": "options.withTrace ?? true",
+}
+
+PY_EXPRESSIONS = {
+    "content": "content",
+    "project": "project if project is not None else self.project",
+    "source": "source",
+    "query": "query",
+    "limit": "limit",
+    "context": "context",
+    "with_trace": "with_trace",
+}
+
+
+def _body(verb_name: str, expressions: dict[str, str], indent: str, quote: bool) -> str:
+    """Render a verb's request body from its declared field tuple.
+
+    The one place either client's post body is written. A key that is not a
+    declared field cannot appear here, and a declared field the contract lacks
+    never reaches here because ``_require_contract`` refuses first.
+    """
+    fields = VERBS[verb_name]["fields"]
+    unknown = [field for field in fields if field not in expressions]
+    if unknown:
+        raise SystemExit(
+            f"refusing to generate: {verb_name} declares {unknown} with no "
+            "expression to emit for it"
+        )
+    lines = []
+    for field in fields:
+        key = f'"{field}"' if quote else field
+        lines.append(f"{indent}{key}: {expressions[field]},")
+    return "\n".join(lines)
+
+
 HEADER = (
     "// Generated by sdks/generate.py from darkmem's OpenAPI contract (doc 12).\n"
     "// Do not edit: run `make generate` in sdks/ instead.\n"
@@ -199,16 +302,16 @@ PY_HEADER = (
 
 # The one honest limitation both clients state at the point a reader meets it.
 CONTEXT_NOTE_LINES = (
-    "A declared context rides the X-Darkmem-Context header on every request.",
-    "Doc 12 section 5 ranks a per-call `context` body argument above that",
-    "header, but neither bound door carries such a field -- MemoryCreate has",
-    "none, and KnowledgeSearchRequest deliberately has none so both doors stay",
-    "equal (invariant 17). So a per-call context is carried in the header too,",
-    "at rank 2 rather than rank 1. Only one context is ever sent, so the",
-    "distinction cannot change which declaration wins; it is recorded because",
-    "the SDK carries the value and never decides what it means -- whether a",
-    "context boosts, labels or excludes is doc 07's, and which doors resolve",
-    "it at all is the server's.",
+    "Doc 12 section 5 gives a declaration two wire forms and the SDK uses both",
+    "for what each is: a per-call `context` argument is rank 1 and rides the",
+    "search body; this session declaration is rank 2 and rides the",
+    "X-Darkmem-Context header. The server decides between them, not the SDK.",
+    "",
+    "The header goes only to doors that take part in that chain -- today that",
+    "is `search` alone. `capture` sends no declaration because the capture",
+    "door serves none: MemoryCreate has no `context` field and the route reads",
+    "no header, so a declaration sent there would be discarded in silence.",
+    "Generation refuses if that ever stops being true of every bound door.",
 )
 
 
@@ -237,35 +340,47 @@ export interface DarkmemOptions {
 export interface CaptureAck {
   schema_version: number;
   id: string;
+  status: string;
 }
 
-export interface ComposedRow {
+export interface MemoryRow {
   id: string;
-  layer: string;
-  text: string;
-  score: number;
-  labels: Record<string, unknown>;
+  content: string;
+  summary: string | null;
+  /** `active` | `superseded` | `deprecated` — carried so a caller never reads
+   * a retired row as current (doc 01 F3's honesty guarantee). */
+  status: string;
+  project: string;
+  /** Present only when the request asked for the trace. */
+  trace?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
-export interface SearchEnvelope {
-  fused: boolean;
+export interface RetrievalEnvelope {
+  query: string;
+  channels: Record<string, unknown>;
+  excluded: Record<string, unknown>;
+  /** The declaration the server resolved, and which tier it came from — null
+   * when nothing was declared. */
+  context: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
-/** `rows` and `sections` are exclusive — the shape the `fused` argument chose.
- * Expressed as a union rather than two nullable fields so a caller reading the
- * wrong one for the requested shape is a type error rather than a `null` that
- * looks like an empty vault. */
-export type SearchResult =
-  | { rows: ComposedRow[]; sections: null; envelope: SearchEnvelope }
-  | { rows: null; sections: Record<string, ComposedRow[]>; envelope: SearchEnvelope };
+export interface SearchResult {
+  items: MemoryRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  /** Null unless the request asked for the trace. */
+  envelope: RetrievalEnvelope | null;
+}
 
 /** A thin typed wrapper over the two front doors. Three verbs, no framework.
  *
  * Ratification, review and vault administration are absent by design: they are
- * human-authenticated single-door acts, and an unauthenticated LAN client that
- * could reach them would hold `confirmed`-power (doc 15 §6).
+ * human-authenticated single-door acts (doc 15 §6). Every door this client can
+ * reach is authenticated, so what keeps ratify out is the surface it is given,
+ * not the absence of auth.
  */
 export class Darkmem {
   readonly #baseUrl: string;
@@ -280,7 +395,8 @@ export class Darkmem {
     this.#context = options.context ?? null;
   }
 
-  /** Declare the session's context once; every later call carries it.
+  /** Declare the session's context once; every later call to a door that
+   * resolves it carries the declaration.
    *
 __CONTEXT_NOTE_TS__
    */
@@ -294,47 +410,42 @@ __CONTEXT_NOTE_TS__
     options: {
       project?: string;
       source?: string;
-      context?: DeclaredContext;
     } = {},
   ): Promise<CaptureAck> {
     return this.#post<CaptureAck>(
       "__CAPTURE_PATH__",
       {
-        content,
-        project: options.project ?? this.#project,
-        source: options.source,
+__CAPTURE_BODY__
       },
-      options.context,
+      false,
     );
   }
 
-  /** Run the composed four-layer read. `fused` selects doc 07 §5's single-list
-   * shape for a token-budgeted consumer; the default is sectioned by layer. */
+  /** Run the memory read. `context` is doc 12 §5's rank-1 per-call argument and
+   * outranks any session declaration; `withTrace` (on by default) asks for the
+   * "why retrieved" envelope doc 15 §6's verb is defined by. */
   async search(
     query: string,
     options: {
       project?: string;
       limit?: number;
-      fused?: boolean;
       context?: DeclaredContext;
+      withTrace?: boolean;
     } = {},
   ): Promise<SearchResult> {
     return this.#post<SearchResult>(
       "__SEARCH_PATH__",
       {
-        query,
-        project: options.project ?? this.#project,
-        limit: options.limit,
-        fuse: options.fused,
+__SEARCH_BODY__
       },
-      options.context,
+      true,
     );
   }
 
   async #post<T>(
     path: string,
     body: Record<string, unknown>,
-    context?: DeclaredContext,
+    carriesContext: boolean,
   ): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -342,13 +453,16 @@ __CONTEXT_NOTE_TS__
     if (this.#token) {
       headers["Authorization"] = `Bearer ${this.#token}`;
     }
-    const declared = context ?? this.#context;
-    if (declared) {
-      headers["__CONTEXT_HEADER__"] = JSON.stringify(declared);
+    // An empty declaration is not a declaration: doc 12 §5's resolver treats
+    // `{}` as undeclared, so sending it would put a header on the wire that
+    // says nothing. Python's truthiness does this for free; TypeScript's does
+    // not, and a generated pair should not differ.
+    if (carriesContext && this.#context && Object.keys(this.#context).length > 0) {
+      headers["__CONTEXT_HEADER__"] = JSON.stringify(this.#context);
     }
     // An omitted argument is omitted from the wire, never sent as null: the
-    // contract's defaults (`limit`, `fuse`) are non-nullable, so a null would
-    // be a 422 for an argument the caller never passed.
+    // contract's defaults (`limit`, `with_trace`) are non-nullable, so a null
+    // would be a 422 for an argument the caller never passed.
     const payload = Object.fromEntries(
       Object.entries(body).filter(([, value]) => value !== undefined && value !== null),
     );
@@ -358,7 +472,12 @@ __CONTEXT_NOTE_TS__
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      throw new Error(`darkmem ${path} answered ${response.status}`);
+      // The body is where a 422 names the field it rejected — the most likely
+      // failure for a minimal client, and useless to a caller who cannot see it.
+      const detail = await response.text().catch(() => "");
+      throw new Error(
+        `darkmem ${path} answered ${response.status}${detail ? `: ${detail}` : ""}`,
+      );
     }
     return (await response.json()) as T;
   }
@@ -382,8 +501,9 @@ class Darkmem:
     """A thin typed wrapper over the two front doors. Three verbs, no framework.
 
     Ratification, review and vault administration are absent by design: they are
-    human-authenticated single-door acts, and an unauthenticated LAN client that
-    could reach them would hold ``confirmed``-power (doc 15 section 6).
+    human-authenticated single-door acts (doc 15 section 6). Every door this
+    client can reach is authenticated, so what keeps ratify out is the surface
+    it is given, not the absence of auth.
     """
 
     def __init__(
@@ -399,7 +519,8 @@ class Darkmem:
         self._context = context
 
     def declare_context(self, context: dict[str, Any] | None) -> None:
-        """Declare the session's context once; every later call carries it.
+        """Declare the session's context once; every later call to a door that
+        resolves it carries the declaration.
 
 __CONTEXT_NOTE_PY__
         """
@@ -411,17 +532,14 @@ __CONTEXT_NOTE_PY__
         *,
         project: str | None = None,
         source: str | None = None,
-        context: dict[str, Any] | None = None,
     ) -> dict:
         """File a memory. Answers 202 with a pre-minted id -- every door buffers."""
         return await self._post(
             CAPTURE_PATH,
             {
-                "content": content,
-                "project": project or self.project,
-                "source": source,
+__CAPTURE_BODY__
             },
-            context=context,
+            carries_context=False,
         )
 
     async def search(
@@ -430,39 +548,35 @@ __CONTEXT_NOTE_PY__
         *,
         project: str | None = None,
         limit: int | None = None,
-        fused: bool | None = None,
         context: dict[str, Any] | None = None,
+        with_trace: bool = True,
     ) -> dict:
-        """Run the composed four-layer read.
+        """Run the memory read.
 
-        ``fused`` selects doc 07 section 5's single-list shape for a
-        token-budgeted consumer; the default is sectioned by layer. Exactly one
-        of ``rows`` / ``sections`` comes back populated, and ``envelope.fused``
-        names which.
+        ``context`` is doc 12 section 5's rank-1 per-call argument and outranks
+        any session declaration; ``with_trace`` (on by default) asks for the
+        "why retrieved" envelope doc 15 section 6's verb is defined by.
         """
         return await self._post(
             SEARCH_PATH,
             {
-                "query": query,
-                "project": project or self.project,
-                "limit": limit,
-                "fuse": fused,
+__SEARCH_BODY__
             },
-            context=context,
+            carries_context=True,
         )
 
-    async def _post(
-        self, path: str, body: dict, *, context: dict[str, Any] | None = None,
-    ) -> dict:
+    async def _post(self, path: str, body: dict, *, carries_context: bool) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
-        declared = context if context is not None else self._context
-        if declared:
-            headers[CONTEXT_HEADER] = json.dumps(declared, separators=(",", ":"))
+        # An empty declaration is not a declaration: doc 12 section 5's resolver
+        # treats ``{}`` as undeclared, so sending it would put a header on the
+        # wire that says nothing.
+        if carries_context and self._context:
+            headers[CONTEXT_HEADER] = json.dumps(self._context, separators=(",", ":"))
         # An omitted argument is omitted from the wire, never sent as null: the
-        # contract's defaults (``limit``, ``fuse``) are non-nullable, so a null
-        # would be a 422 for an argument the caller never passed.
+        # contract's defaults (``limit``, ``with_trace``) are non-nullable, so a
+        # null would be a 422 for an argument the caller never passed.
         payload = {key: value for key, value in body.items() if value is not None}
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -480,6 +594,8 @@ def render_typescript(digest: str) -> str:
         .replace("__SEARCH_PATH__", VERBS["search"]["path"])
         .replace("__CONTEXT_HEADER__", CONTEXT_HEADER)
         .replace("__CONTEXT_NOTE_TS__", _ts_comment(CONTEXT_NOTE_LINES))
+        .replace("__CAPTURE_BODY__", _body("capture", TS_EXPRESSIONS, " " * 8, False))
+        .replace("__SEARCH_BODY__", _body("search", TS_EXPRESSIONS, " " * 8, False))
     )
 
 
@@ -490,6 +606,8 @@ def render_python(digest: str) -> str:
         .replace("__SEARCH_PATH__", VERBS["search"]["path"])
         .replace("__CONTEXT_HEADER__", CONTEXT_HEADER)
         .replace("__CONTEXT_NOTE_PY__", _py_comment(CONTEXT_NOTE_LINES, "        "))
+        .replace("__CAPTURE_BODY__", _body("capture", PY_EXPRESSIONS, " " * 16, True))
+        .replace("__SEARCH_BODY__", _body("search", PY_EXPRESSIONS, " " * 16, True))
     )
 
 

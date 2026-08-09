@@ -8,6 +8,12 @@ surface, and doc 15 §6's whole stance is that this SDK is not one.
 Tests are synchronous and drive the coroutine with ``asyncio.run`` so the suite
 needs no pytest plugin beyond pytest itself — ``cd sdks/python && python -m
 pytest -q`` is the task's Verify and it should hold on a bare interpreter.
+
+**What this file cannot tell you**, and ``backend/tests/test_sdk_contract_conformance.py``
+can: whether the door on the other end honours any of it. A review found this
+client sending a declared context to two doors that both discarded it, with
+every test here green, because a mock transport answers whatever it is told to.
+The two files are one claim in two halves.
 """
 
 from __future__ import annotations
@@ -39,8 +45,8 @@ class Recorder:
         assert len(self.requests) == 1, f"expected one request, got {len(self.requests)}"
         return self.requests[0]
 
-    def body(self) -> dict:
-        return json.loads(self.only.content)
+    def body(self, index: int = 0) -> dict:
+        return json.loads(self.requests[index].content)
 
 
 @pytest.fixture
@@ -60,14 +66,14 @@ def recorder(monkeypatch):
 
 class TestCapture:
     def test_it_posts_the_content_to_the_capture_door(self, recorder):
-        rec = recorder({"schema_version": 1, "id": "abc"})
+        rec = recorder({"schema_version": 1, "id": "abc", "status": "accepted"})
         client = Darkmem(base_url="http://darkmem.test:8000")
 
         ack = asyncio.run(client.capture("the tab is on live data"))
 
         assert str(rec.only.url) == "http://darkmem.test:8000" + CAPTURE_PATH
         assert rec.body()["content"] == "the tab is on live data"
-        assert ack == {"schema_version": 1, "id": "abc"}
+        assert ack["id"] == "abc"
 
     def test_the_constructor_project_is_the_default_and_the_argument_wins(
         self, recorder
@@ -76,16 +82,28 @@ class TestCapture:
         client = Darkmem(project="darkmem")
 
         asyncio.run(client.capture("one"))
-        assert rec.requests[0] and json.loads(rec.requests[0].content)["project"] == "darkmem"
-
         asyncio.run(client.capture("two", project="other"))
-        assert json.loads(rec.requests[1].content)["project"] == "other"
+
+        assert rec.body(0)["project"] == "darkmem"
+        assert rec.body(1)["project"] == "other"
+
+    def test_an_empty_project_is_a_value_not_an_omission(self, recorder):
+        """Nullish, not falsy. `project=""` is a caller saying something, and
+        `or` would silently substitute the constructor's project — a divergence
+        from the TypeScript client's `??`, which a generated pair must not have
+        (found in review as M-2)."""
+        rec = recorder()
+        client = Darkmem(project="darkmem")
+
+        asyncio.run(client.capture("one", project=""))
+
+        assert rec.body()["project"] == ""
 
     def test_an_omitted_argument_is_absent_from_the_wire(self, recorder):
-        """Never sent as null. The contract's `MemoryCreate` would accept a
-        null `source`, but `KnowledgeSearchRequest.limit` is a non-nullable
-        int with a default — one filter, applied on both doors, keeps an
-        argument the caller never passed from becoming a 422."""
+        """Never sent as null. `MemoryCreate` would accept a null `source`, but
+        `MemorySearchRequest.limit` is a non-nullable int with a default — one
+        filter, applied on both doors, keeps an argument the caller never
+        passed from becoming a 422."""
         rec = recorder()
 
         asyncio.run(Darkmem().capture("content only"))
@@ -100,87 +118,96 @@ class TestCapture:
 
 
 class TestSearch:
-    def test_it_posts_the_query_to_the_composed_read(self, recorder):
-        rec = recorder({"rows": None, "sections": {}, "envelope": {"fused": False}})
+    def test_it_posts_the_query_to_the_bound_read(self, recorder):
+        rec = recorder({"items": [], "total": 0, "limit": 20, "offset": 0,
+                        "envelope": {"context": None}})
         client = Darkmem()
 
         result = asyncio.run(client.search("what replaced redis"))
 
         assert str(rec.only.url).endswith(SEARCH_PATH)
-        assert rec.body() == {"query": "what replaced redis"}
-        assert result["envelope"]["fused"] is False
+        assert rec.body() == {"query": "what replaced redis", "with_trace": True}
+        assert result["envelope"]["context"] is None
 
-    def test_fused_maps_to_the_contract_field_name(self, recorder):
-        """The SDK argument is doc 15 §6's `fused?`; the wire field is doc 07
-        §5's `fuse`. The generator pins the wire name, so a rename on either
-        side is caught there rather than here — this only fixes the mapping."""
-        rec = recorder({"rows": [], "sections": None, "envelope": {"fused": True}})
+    def test_the_trace_is_on_by_default_and_can_be_turned_off(self, recorder):
+        """Doc 15 §6 defines the verb as returning the labelled results *with
+        their trace*, and the contract's own default is off — so the SDK asks
+        for it. `False` is sent rather than dropped: filtering on falsiness
+        would make an explicit choice indistinguishable from silence."""
+        rec = recorder()
 
-        asyncio.run(Darkmem().search("q", fused=True, limit=5))
+        asyncio.run(Darkmem().search("q", with_trace=False))
 
-        assert rec.body() == {"query": "q", "fuse": True, "limit": 5}
+        assert rec.body() == {"query": "q", "with_trace": False}
 
-    def test_fused_false_is_sent_rather_than_dropped(self, recorder):
-        """`False` is a value, not an omission. Filtering on falsiness instead
-        of on `None` would make an explicit `fused=False` indistinguishable
-        from silence — harmless while the contract default agrees, and a
-        silent behaviour change the day it does not."""
-        rec = recorder({"rows": None, "sections": {}, "envelope": {"fused": False}})
+    def test_the_limit_rides_the_body(self, recorder):
+        rec = recorder()
 
-        asyncio.run(Darkmem().search("q", fused=False))
+        asyncio.run(Darkmem().search("q", limit=5))
 
-        assert rec.body() == {"query": "q", "fuse": False}
+        assert rec.body()["limit"] == 5
 
 
 class TestDeclaredContext:
     def test_no_context_sends_no_header(self, recorder):
         rec = recorder()
 
-        asyncio.run(Darkmem().capture("undeclared"))
+        asyncio.run(Darkmem().search("undeclared"))
 
         assert CONTEXT_HEADER not in rec.only.headers
 
-    def test_a_declaration_rides_every_later_call(self, recorder):
+    def test_an_empty_declaration_is_not_a_declaration(self, recorder):
+        """`{}` resolves to undeclared server-side, so a header carrying it
+        says nothing. Pinned on both clients because the two languages disagree
+        about `{}`'s truthiness and a generated pair should not (M-1)."""
         rec = recorder()
-        client = Darkmem()
-
-        client.declare_context({"env": "prod"})
-        asyncio.run(client.capture("one"))
-        asyncio.run(client.search("two"))
-
-        for request in rec.requests:
-            assert json.loads(request.headers[CONTEXT_HEADER]) == {"env": "prod"}
-
-    def test_a_per_call_context_wins_over_the_declaration(self, recorder):
-        rec = recorder()
-        client = Darkmem(context={"env": "dev"})
-
-        asyncio.run(client.capture("one", context={"env": "prod"}))
-
-        assert json.loads(rec.only.headers[CONTEXT_HEADER]) == {"env": "prod"}
-
-    def test_only_one_context_is_ever_sent(self, recorder):
-        """The header is the SDK's single carrier: no body field named
-        `context`, `applies_when` or anything else. An earlier draft of the
-        generated client posted `applies_when` — a key no request schema in
-        the contract has — so every declaration was dropped by the door with
-        nothing said. The field-level guard in `generate.py` is what catches
-        that; this pins the emitted shape from the client's side."""
-        rec = recorder()
-        client = Darkmem()
-        client.declare_context({"env": "prod"})
+        client = Darkmem(context={})
 
         asyncio.run(client.search("q"))
 
-        assert set(rec.body()) == {"query"}
-        assert CONTEXT_HEADER in rec.only.headers
+        assert CONTEXT_HEADER not in rec.only.headers
+
+    def test_a_declaration_rides_the_search_door(self, recorder):
+        rec = recorder()
+        client = Darkmem()
+
+        client.declare_context({"env": "prod"})
+        asyncio.run(client.search("q"))
+
+        assert json.loads(rec.only.headers[CONTEXT_HEADER]) == {"env": "prod"}
+
+    def test_capture_never_carries_a_declaration(self, recorder):
+        """The capture door serves no context on either rank — `MemoryCreate`
+        has no `context` field and the route reads no header — so sending one
+        would be a value discarded in silence, which is the defect this whole
+        task exists to close. Generation refuses if a context-carrying verb
+        ever binds such a door."""
+        rec = recorder()
+        client = Darkmem(context={"env": "prod"})
+
+        asyncio.run(client.capture("one"))
+
+        assert CONTEXT_HEADER not in rec.only.headers
+        assert "context" not in rec.body()
+
+    def test_a_per_call_context_rides_the_body_at_rank_one(self, recorder):
+        """Doc 12 §5's two forms used as two forms: the argument is rank 1 in
+        the body, the declaration is rank 2 in the header, and the *server*
+        decides between them. The SDK may send both."""
+        rec = recorder()
+        client = Darkmem(context={"env": "dev"})
+
+        asyncio.run(client.search("q", context={"env": "prod"}))
+
+        assert rec.body()["context"] == {"env": "prod"}
+        assert json.loads(rec.only.headers[CONTEXT_HEADER]) == {"env": "dev"}
 
     def test_a_declaration_can_be_withdrawn(self, recorder):
         rec = recorder()
         client = Darkmem(context={"env": "prod"})
 
         client.declare_context(None)
-        asyncio.run(client.capture("undeclared again"))
+        asyncio.run(client.search("undeclared again"))
 
         assert CONTEXT_HEADER not in rec.only.headers
 
@@ -206,3 +233,15 @@ class TestTransport:
         asyncio.run(Darkmem(base_url="http://darkmem.test:8000/").capture("x"))
 
         assert str(rec.only.url) == "http://darkmem.test:8000" + CAPTURE_PATH
+
+    def test_the_failure_carries_the_response_the_door_sent(self, recorder):
+        """A 422 names the field it rejected, and a caller who cannot read it
+        is left guessing. `raise_for_status` hands over the whole response;
+        the TypeScript client puts the body in the message for the same
+        reason."""
+        recorder({"detail": [{"loc": ["body", "limit"], "msg": "too large"}]}, status=422)
+
+        with pytest.raises(httpx.HTTPStatusError) as raised:
+            asyncio.run(Darkmem().search("q", limit=9999))
+
+        assert "too large" in raised.value.response.text

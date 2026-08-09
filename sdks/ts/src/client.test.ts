@@ -6,6 +6,12 @@
 // against the same generator, so a template edit that breaks one language
 // without the other is caught rather than averaged.
 //
+// What no mock transport can tell you is whether the door on the other end
+// honours any of this — see `backend/tests/test_sdk_contract_conformance.py`,
+// which drives the real app with the shape emitted here. A review found this
+// client declaring a context to doors that discarded it, with every test in
+// this file green.
+//
 // Not typechecked by `make build`, deliberately: that target compiles the
 // generated client alone, and pulling a test file in would need vitest's types
 // resolvable from a package that installs no node_modules of its own.
@@ -15,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Darkmem } from "./client";
 
 const CAPTURE_PATH = "/api/v1/memories";
-const SEARCH_PATH = "/api/v1/knowledge/search";
+const SEARCH_PATH = "/api/v1/memories/search/paginated";
 const CONTEXT_HEADER = "X-Darkmem-Context";
 
 type Recorded = { url: string; body: Record<string, unknown>; headers: Record<string, string> };
@@ -23,7 +29,7 @@ type Recorded = { url: string; body: Record<string, unknown>; headers: Record<st
 let recorded: Recorded[];
 const realFetch = globalThis.fetch;
 
-function respond(payload: unknown = {}, status = 200) {
+function respond(payload: unknown = {}, status = 200, text = "") {
   globalThis.fetch = vi.fn(async (url: string, init: RequestInit) => {
     recorded.push({
       url: String(url),
@@ -34,6 +40,7 @@ function respond(payload: unknown = {}, status = 200) {
       ok: status >= 200 && status < 300,
       status,
       json: async () => payload,
+      text: async () => text,
     };
   }) as unknown as typeof fetch;
 }
@@ -48,7 +55,7 @@ afterEach(() => {
 
 describe("capture", () => {
   it("posts the content to the capture door", async () => {
-    respond({ schema_version: 1, id: "abc" });
+    respond({ schema_version: 1, id: "abc", status: "accepted" });
 
     const ack = await new Darkmem({ baseUrl: "http://darkmem.test:8000" }).capture(
       "the tab is on live data",
@@ -70,6 +77,16 @@ describe("capture", () => {
     expect(recorded[1].body.project).toBe("other");
   });
 
+  it("treats an empty project as a value, not an omission", async () => {
+    // Nullish, not falsy — the Python client uses `is not None` for the same
+    // reason, and a generated pair must not diverge here (review finding M-2).
+    respond();
+
+    await new Darkmem({ project: "darkmem" }).capture("one", { project: "" });
+
+    expect(recorded[0].body.project).toBe("");
+  });
+
   it("omits an argument the caller never passed rather than sending null", async () => {
     respond();
 
@@ -77,41 +94,36 @@ describe("capture", () => {
 
     expect(Object.keys(recorded[0].body)).toEqual(["content"]);
   });
-
-  it("throws on a failure status", async () => {
-    respond({ detail: "nope" }, 422);
-
-    await expect(new Darkmem().capture("rejected")).rejects.toThrow("422");
-  });
 });
 
 describe("search", () => {
-  it("posts the query to the composed read", async () => {
-    respond({ rows: null, sections: {}, envelope: { fused: false } });
+  it("posts the query to the bound read", async () => {
+    respond({ items: [], total: 0, limit: 20, offset: 0, envelope: { context: null } });
 
     const result = await new Darkmem().search("what replaced redis");
 
     expect(recorded[0].url.endsWith(SEARCH_PATH)).toBe(true);
-    expect(recorded[0].body).toEqual({ query: "what replaced redis" });
-    expect(result.envelope.fused).toBe(false);
+    expect(recorded[0].body).toEqual({ query: "what replaced redis", with_trace: true });
+    expect(result.envelope?.context).toBeNull();
   });
 
-  it("maps `fused` to the contract's `fuse` field", async () => {
-    respond({ rows: [], sections: null, envelope: { fused: true } });
+  it("asks for the trace by default and sends an explicit false", async () => {
+    // Doc 15 §6 defines the verb as returning the labelled results *with their
+    // trace*, and the contract's own default is off. `false` is a value, not an
+    // omission — filtering on falsiness would erase an explicit choice.
+    respond();
 
-    await new Darkmem().search("q", { fused: true, limit: 5 });
+    await new Darkmem().search("q", { withTrace: false });
 
-    expect(recorded[0].body).toEqual({ query: "q", fuse: true, limit: 5 });
+    expect(recorded[0].body).toEqual({ query: "q", with_trace: false });
   });
 
-  it("sends an explicit `fused: false` rather than dropping it", async () => {
-    // `false` is a value, not an omission — filtering on falsiness would make
-    // an explicit choice indistinguishable from silence.
-    respond({ rows: null, sections: {}, envelope: { fused: false } });
+  it("carries the limit in the body", async () => {
+    respond();
 
-    await new Darkmem().search("q", { fused: false });
+    await new Darkmem().search("q", { limit: 5 });
 
-    expect(recorded[0].body).toEqual({ query: "q", fuse: false });
+    expect(recorded[0].body.limit).toBe(5);
   });
 });
 
@@ -119,45 +131,52 @@ describe("declareContext", () => {
   it("sends no header when nothing is declared", async () => {
     respond();
 
-    await new Darkmem().capture("undeclared");
+    await new Darkmem().search("undeclared");
 
     expect(recorded[0].headers[CONTEXT_HEADER]).toBeUndefined();
   });
 
-  it("rides every later call once declared", async () => {
+  it("treats an empty declaration as no declaration", async () => {
+    // `{}` resolves to undeclared server-side, so a header carrying it says
+    // nothing. `{}` is truthy in JavaScript and falsy in Python, which is
+    // exactly how the two clients came to disagree (review finding M-1).
+    respond();
+
+    await new Darkmem({ context: {} }).search("q");
+
+    expect(recorded[0].headers[CONTEXT_HEADER]).toBeUndefined();
+  });
+
+  it("rides the search door once declared", async () => {
     respond();
     const client = new Darkmem();
 
     client.declareContext({ env: "prod" });
-    await client.capture("one");
-    await client.search("two");
-
-    for (const call of recorded) {
-      expect(JSON.parse(call.headers[CONTEXT_HEADER])).toEqual({ env: "prod" });
-    }
-  });
-
-  it("lets a per-call context win over the declaration", async () => {
-    respond();
-    const client = new Darkmem({ context: { env: "dev" } });
-
-    await client.capture("one", { context: { env: "prod" } });
+    await client.search("q");
 
     expect(JSON.parse(recorded[0].headers[CONTEXT_HEADER])).toEqual({ env: "prod" });
   });
 
-  it("carries the context in the header and never as a body field", async () => {
-    // An earlier draft of the generated client posted `applies_when`, a key no
-    // request schema in the contract has, so every declaration was dropped by
-    // the door with nothing said.
+  it("never rides the capture door", async () => {
+    // The capture door serves no context on either rank, so sending one would
+    // be a value discarded in silence — the defect this task exists to close.
     respond();
-    const client = new Darkmem();
-    client.declareContext({ env: "prod" });
+    const client = new Darkmem({ context: { env: "prod" } });
 
-    await client.search("q");
+    await client.capture("one");
 
-    expect(Object.keys(recorded[0].body)).toEqual(["query"]);
-    expect(recorded[0].headers[CONTEXT_HEADER]).toBeDefined();
+    expect(recorded[0].headers[CONTEXT_HEADER]).toBeUndefined();
+    expect(recorded[0].body.context).toBeUndefined();
+  });
+
+  it("puts a per-call context in the body at rank 1 and keeps the declaration at rank 2", async () => {
+    respond();
+    const client = new Darkmem({ context: { env: "dev" } });
+
+    await client.search("q", { context: { env: "prod" } });
+
+    expect(recorded[0].body.context).toEqual({ env: "prod" });
+    expect(JSON.parse(recorded[0].headers[CONTEXT_HEADER])).toEqual({ env: "dev" });
   });
 
   it("can be withdrawn", async () => {
@@ -165,7 +184,7 @@ describe("declareContext", () => {
     const client = new Darkmem({ context: { env: "prod" } });
 
     client.declareContext(null);
-    await client.capture("undeclared again");
+    await client.search("undeclared again");
 
     expect(recorded[0].headers[CONTEXT_HEADER]).toBeUndefined();
   });
@@ -188,16 +207,42 @@ describe("transport", () => {
     expect(recorded[0].url).toBe(`http://darkmem.test:8000${CAPTURE_PATH}`);
   });
 
-  it("exposes no fourth method at run time", async () => {
-    // The escape hatch that would make ratification expressible is a reachable
-    // transport, and `private` does not close it: TypeScript erases the
-    // modifier and leaves the method on the prototype. `#post` does not exist
-    // at run time, so there is nothing to call with an arbitrary path.
+  it("puts the door's own response in the failure", async () => {
+    // A 422 names the field it rejected. Throwing the status alone leaves the
+    // caller guessing at the most likely failure a minimal client has.
+    respond({}, 422, '{"detail":[{"loc":["body","limit"],"msg":"too large"}]}');
+
+    await expect(new Darkmem().search("q", { limit: 9999 })).rejects.toThrow("too large");
+  });
+});
+
+describe("the surface, at run time", () => {
+  // The escape hatch that would make ratification expressible is a reachable
+  // transport. Two probes, because either alone has a blind spot a review drill
+  // walked through: `private` is erased by the compiler and leaves the method
+  // on the prototype, while a public class field (`send = async (...) => {}`)
+  // is an *instance* property and never appears on the prototype at all.
+  it("exposes exactly three methods on the prototype", () => {
     expect(Object.getOwnPropertyNames(Darkmem.prototype).sort()).toEqual([
       "capture",
       "constructor",
       "declareContext",
       "search",
     ]);
+  });
+
+  it("puts nothing at all on the instance", () => {
+    // Every field is `#private`, so an instance has no own properties. Any
+    // class-field method — the shape that defeated the source scan — shows up
+    // here as one.
+    expect(Object.getOwnPropertyNames(new Darkmem({}))).toEqual([]);
+  });
+
+  it("exports only the client and its types", async () => {
+    // A module-level `export function send(...)` reaches any door and belongs
+    // to no class, so neither probe above sees it. Types erase at run time, so
+    // what remains is the value exports.
+    const module = await import("./client");
+    expect(Object.keys(module).sort()).toEqual(["Darkmem"]);
   });
 });

@@ -207,6 +207,13 @@ run_gate "sdk python tests" 300 "$SDKS/python" \
 run_gate "sdk typescript tests" 300 "$SDKS/ts" \
     env -C "$SDKS/ts" npm test
 
+# T3.25's "both packages build", which nothing ran automatically. vitest
+# transpiles with esbuild and does not typecheck, so a type error injected into
+# the emitted TypeScript passed both arms above and the backend generator suite;
+# only this target caught it. A generated file is exactly what rots this way.
+run_gate "sdk build" 300 "$SDKS" \
+    env -C "$SDKS" make build
+
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
 # schema change once broke the harness with the floor still green (T0.17).

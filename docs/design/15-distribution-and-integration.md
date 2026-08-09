@@ -239,15 +239,23 @@ The minimal SDK surface — three verbs over the existing contract, the context 
 ```mermaid
 flowchart LR
     subgraph SDK["darkmem SDK (TS + Python, generated from doc 12)"]
-        CAP["capture(content, project?, context?, source?)"]
-        SRCH["search(query, project?, context?, fused?)"]
+        CAP["capture(content, project?, source?)"]
+        SRCH["search(query, project?, context?, withTrace?)"]
         CTX["declareContext(context)  — per-session"]
     end
-    CAP -->|"POST /memories · memory_add"| DOOR["REST / MCP — one service layer (inv 17)"]
-    SRCH -->|"POST .../search · memory_search"| DOOR
-    CTX -->|"X-Darkmem-Context header / session tool (doc 12)"| DOOR
+    CAP -->|"POST /api/v1/memories · memory_add"| DOOR["REST / MCP — one service layer (inv 17)"]
+    SRCH -->|"POST /api/v1/memories/search/paginated · memory_search"| DOOR
+    CTX -->|"X-Darkmem-Context header (doc 12 §5)"| DOOR
     DOOR --> SVC["MemoryService · HybridSearchService (docs 05, 07)"]
 ```
+
+**Amendment, 2026-08-10 (T3.14, Tier-1 — the diagram was checked against the contract and three of its labels were wrong).** The signatures above are the ones the generator emits; what they replaced, and why:
+
+- **`capture` lost its `context?` argument.** `MemoryCreate` has no `context` field and `POST /api/v1/memories` reads no header, so on that door a declaration is discarded in silence. This section defers the wire shape to doc 12 ("doc 12 owns the wire shape"), and doc 12 §5's rank-1 form is "a `context` object on the **search/vault** tool (or the REST body)" — capture is not in that chain. The contract wins over this diagram.
+- **`search` lost `fused?` and gained `withTrace?`, and its arrow now names a specific door.** The old label said `POST .../search · memory_search`, which is the memories twin, while `fused?` exists only on the composed read `POST /api/v1/knowledge/search`. The two halves named different doors. Resolved in favour of the arrow and of doc 01 F3 — the memory retrieval flow returning "ranked results with a 'why retrieved' trace" — because the composed read serves **neither** rank of doc 12 §5's context chain, so binding there made `declareContext` a no-op measured against the live app. `fused` is therefore not expressible in the SDK today; that is a real cost of the choice, recorded rather than hidden.
+- **`declareContext` dropped "session tool".** Doc 12 §5 rejects a stateful `context_declare` outright ("would be a lie on a `stateless_http=True` server"). The header is the whole mechanism.
+
+The first version of T3.14 read this section's prose over its diagram and bound the composed read; the header then reached nothing on either bound door, and a review found it by driving the app. Both the diagram and the prose are now aligned with what the contract serves, and the generator refuses to emit a context-carrying verb bound to a door outside the chain.
 
 **The three verbs, and why exactly these three.** `capture` files a memory (the write half of reach); `search` runs the F3 read and returns the labelled results with their trace (the pull half); `declareContext` sets the session's `applies_when` context so subsequent `search`/`capture` calls carry it (contract 3). These are the three surfaces every distribution client needs — the browser extension captures, an embedded agent searches, and both declare context — and nothing more belongs in a *minimal* SDK. Ratification, review, and vault administration are **not** in the SDK: those are human-authenticated REST/UI actions (doc 12's stance that no unauthenticated MCP surface may ratify), and putting them in a LAN client SDK would hand `confirmed`-power to an unauthenticated caller. The SDK stays on the safe, un-privileged verbs.
 
