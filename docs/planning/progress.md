@@ -308,7 +308,7 @@ every open item on its critical path now sits in M1.
 | T3.13 | `darkmem connect <tool>` | M | Sonnet | high | | todo | | | |
 | T3.14 | Minimal TypeScript + Python SDKs | M | Sonnet | high | | todo | | | |
 | T3.15 | Browser capture extension | L | Sonnet | high | | todo | | | |
-| T3.16 | `session_checkpoints` table + REST/MCP surface | M | Sonnet | high | | todo | | | |
+| T3.16 | `session_checkpoints` table + REST/MCP surface | M | Sonnet | high | claude/e3-synthesis-and-reach | wip | | | Claimed 2026-08-09. Gate-exempt (doc 20: the store half needs only `origin_key`). Carries a baseline regeneration — the table does not exist yet |
 | T3.17 | Resume as a specialised inject | M | Opus | high | | todo | | | |
 | T3.18 | Checkpoints are operational, not vault knowledge | S | Sonnet | high | | todo | | | |
 | T3.19 | Settings → Distribution tab | M | Sonnet | high | | todo | | | |
