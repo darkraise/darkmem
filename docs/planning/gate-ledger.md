@@ -541,6 +541,17 @@ because no reviewer can confirm what they cannot see. T2.112 is therefore a
 precondition for the audit's LLM-originated detection power, not a display
 nicety.
 
+> **Addendum 2026-08-09 — the route is passable now, and it took two landings.**
+> T2.112 (`90b8fc7f`) persisted the flag as `contradiction_suspected_at` /
+> `contradiction_counterpart_id` and served both from the queue — on the wire.
+> The 2026-08-09 delta review found the screen still dropped them and the
+> dismissal door had no caller at all, so the reviewer's only button *confirmed*
+> the flag; `f0b2a2ed` renders the counterpart and ships the dismissal. The
+> paragraph above is what a reader planning T2.40's re-measure needs corrected:
+> "impassable" was true when written and again after the wire-only landing, and
+> is false now. Note what the route still needs — a qualified judge (G-D, open)
+> and a human who acts.
+
 **The honest cost of the redesign, stated where it will be read.** G-D's
 amendment bought veto precision by moving the scan off the veto. The same move
 **reduces the audit's reach**: a detection route that was automatic
@@ -576,6 +587,18 @@ answered.**
    not be journalled does not happen"). Nothing applies it here. **This clause
    alone would prevent a future powered run from being trusted, and it has no
    owner.**
+
+   > **Addendum 2026-08-09 — clause 3 has an owner, and is closed on both
+   > streams.** T2.113 (`0d9b5dca`) was minted from this clause: `record_event`
+   > now returns whether the row landed, and `set_verification_status` /
+   > `ratify` raise `JournalWriteFailed` on a `False`, so a transition and its
+   > journal row are atomic. The 2026-08-09 delta review then found the fix one
+   > stream short — `record_human_verdict` and `dismiss_contradiction_suspicion`
+   > still ignored the return — closed by `149f1f1e`. That half matters more to
+   > *this* gate than the first: no column records a human rejection, so that
+   > event row **is** the audit's `rejected_after` arm, and losing one deletes a
+   > numerator rather than shrinking a denominator — the gate would read cleaner
+   > than the system is. A powered run can now be trusted in both directions.
 
 **No promotion record minted.** `app/services/promotion_metrics_record.json` stays
 absent, so every promoted or born badge continues to serve as `candidate` with the
@@ -712,6 +735,19 @@ Layer-3 ruling and certification. Report:
 | `groundedness_gate_recall_bar` | 0.90 | 0.9932 **PASS** | 0.9778 **PASS** |
 | `contradiction_precision_bar` | 0.70 | 0.9012 **PASS** | 0.9200 **PASS** |
 | `contradiction_recall_bar` | 0.95 | **0.9125 FAIL** | **0.9200 FAIL** |
+
+> **Provenance note added 2026-08-09 (delta review D-6): this run's
+> never-contacted column is ledger-only.** The subset renderer landed in
+> `47e3dce1`, the same commit that recorded the run, and the run's own recorded
+> sha (`e69895cb`) predates it, so the committed report carries no subset
+> section and the entailment cache the cells derive from is untracked. Three
+> checks were run against that: the four cells are arithmetically consistent
+> with the report's pooled confusion, the run ledger holds exactly **one**
+> attempt row for gold sha `800d4d91` (so "no extra gold contact" survives its
+> own counting rule, warm replays included), and the verdict does not turn on
+> the column — the gate fails on pooled recall either way. Forward-closed: the
+> runner now renders the subset, so the next run's column comes from its own
+> report.
 
 **The redesign's own prediction held, and that is the first thing to say.**
 Precision — repriced from truth to review-load — came in at 0.90 against the
