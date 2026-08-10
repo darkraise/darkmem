@@ -367,3 +367,60 @@ class TestTheWordItself:
     def test_ratify_appears_nowhere_in_the_typescript_client(self):
         code = _typescript_without_comments(TYPESCRIPT_CLIENT.read_text())
         assert "ratif" not in code.lower()
+
+
+class TestTheCommentStripperItself:
+    """`_typescript_without_comments` is what every source scan below reads,
+    so a regression in it silently weakens all of them at once — and it has
+    regressed once already: stripping `//` comments before masking string
+    literals ate the rest of any line holding a URL, truncated
+    `(options.baseUrl ?? "http:` mid-expression, and made the member scan stop
+    reading after the constructor while reporting a one-member class as the
+    truth.
+
+    The hardening was shipped with no test of its own (rescope NEW-6): it was
+    covered only transitively, by scans that happen to pass on today's client.
+    A future regression of either regex would keep those green on a file that
+    no longer parses the way they assume, so the helper is pinned directly on
+    the three shapes that broke it or would.
+    """
+
+    def test_a_url_in_a_literal_survives_comment_stripping(self):
+        """The exact regression. `http://` is two slashes inside a string."""
+        source = 'const a = (o.baseUrl ?? "http://localhost:8000"); // trailing'
+
+        stripped = _typescript_without_comments(source)
+
+        assert '"http://localhost:8000"' in stripped
+        assert "trailing" not in stripped
+
+    def test_an_escaped_quote_does_not_end_the_literal(self):
+        """`"\\"{"` is one literal holding a brace. Reading it as two moves the
+        brace-depth walk the member scan depends on."""
+        source = 'const a = "she said \\"{\\" loudly"; // gone\nconst b = 1;'
+
+        stripped = _typescript_without_comments(source)
+
+        assert 'she said \\"{\\" loudly' in stripped
+        assert "gone" not in stripped
+        assert "const b = 1;" in stripped
+
+    def test_a_literal_shaped_like_the_placeholder_round_trips(self):
+        """The placeholder is NUL-delimited precisely because a literal
+        `"__STR0__"` in the source collided with the substitution and corrupted
+        the restore. If someone 'tidies' NUL back to underscores, this fails."""
+        source = 'const a = "__STR0__"; const b = "real"; /* c */'
+
+        stripped = _typescript_without_comments(source)
+
+        assert '"__STR0__"' in stripped
+        assert '"real"' in stripped
+        assert "c */" not in stripped
+
+    def test_a_block_comment_between_literals_goes_without_taking_them(self):
+        source = 'const a = "keep"; /* drop\nme */ const b = "keep2";'
+
+        stripped = _typescript_without_comments(source)
+
+        assert '"keep"' in stripped and '"keep2"' in stripped
+        assert "drop" not in stripped
