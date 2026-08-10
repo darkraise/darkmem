@@ -251,6 +251,14 @@ describe("the surface, at run time", () => {
 
   it("puts nothing at all on the instance", () => {
     // Every field is `#private`, so an instance has no own keys of any kind.
+    //
+    // NOT total, and reading it as total is what let escape 8 through on the
+    // fourth reopening of this finding (2026-08-10): this constructs one
+    // client, with default options, so a member attached only when
+    // `options.baseUrl` is set — i.e. in every real deployment — has no own
+    // key *here* and a working transport everywhere else. The total check is
+    // a source walk over assignment targets that mention `this`, in
+    // backend/tests/test_sdk_generator.py::TestNoMemberCanBeAttachedConditionally.
     expect(ownKeys(new Darkmem({}))).toEqual([]);
   });
 

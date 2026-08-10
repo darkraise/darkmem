@@ -255,7 +255,18 @@ class TestThePublicSurfaceIsTheThreeVerbs:
     def test_a_constructed_client_carries_only_its_configuration(self):
         """The Python instance probe, matching the one the TypeScript suite has
         had since the class-field escape. `self.send = lambda ...` in
-        `__init__` leaves every class-level whitelist byte-identical."""
+        `__init__` leaves every class-level whitelist byte-identical.
+
+        **This probe is not total and must not be read as if it were.** An
+        instance's attribute set is a function of the constructor's arguments,
+        and both constructions below sit at the default `base_url`, so a
+        member attached only under some *other* construction is invisible here
+        — which is escape 8, found 2026-08-10 on the fourth reopening of this
+        finding. The total check is a source walk over assignment targets,
+        `backend/tests/test_sdk_generator.py::TestNoMemberCanBeAttachedConditionally`;
+        it never constructs anything, so no branch can hide from it. This
+        stays because it is the cheap one that fails first.
+        """
         assert set(vars(Darkmem())) == PY_INSTANCE_ATTRIBUTES
         assert set(vars(Darkmem(token="t", project="p", context={"env": "x"}))) == (
             PY_INSTANCE_ATTRIBUTES
