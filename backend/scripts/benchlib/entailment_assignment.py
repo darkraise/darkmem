@@ -199,7 +199,31 @@ ROUND3_SLICE_TARGETS: dict[str, int] = {
     "value-swap": 8,
     "direction": 4 + 4,   # 4 contradicted + 4 unsupported companions
     # Companions, largest-remainder over the live non-contradicted
-    # (slice, verdict) distribution.
+    # (slice, verdict) distribution -- the **cell-level** variant.
+    #
+    # **This is not the variant the plan review approved, and the deviation
+    # went unrecorded until 2026-08-10** (branch review I-7). Plan v2 §6,
+    # written to answer the plan review's own I7, states the 51 companions as
+    # the **slice-marginal** largest remainder over the same population. Both
+    # were re-derived from the pre-round file:
+    #
+    #     slice-marginal (approved):  temporal 7 / unrelated 6
+    #     cell-level     (executed):  temporal 6 / unrelated 7
+    #
+    # Everything else is identical, so the whole deviation is one slot moved
+    # from temporal to unrelated. Both algorithms are content-blind and name
+    # slices rather than pairs, so neither can select for difficulty, and the
+    # precision floor sits at 0.70 against a measured 0.90.
+    #
+    # What is not fine is how it was chosen: by the **contaminated**
+    # controller -- the one that had read the slice-level failure attribution
+    # -- and committed in `48ad7e8e` *together with the authored pairs*,
+    # rather than before them the way the retirement module was. That is the
+    # plan review's I1 procedure-shopping channel applied to the companion
+    # quota. The round's "zero degrees of freedom" claim is overstated by
+    # exactly this much. Recorded rather than re-run: re-executing on the
+    # approved variant is gold surgery, which moves the sha and voids the
+    # certification and the spent G-D attempt.
     "overreach": 10,
     "paraphrase": 10,
     "unrelated": 7,

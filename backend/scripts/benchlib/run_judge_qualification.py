@@ -355,7 +355,7 @@ async def run_qualification(
             for pid, v in verdicts.items()
         },
     }, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"[2/4] per-pair verdicts: {verdicts_path}")
+    print(f"[3/4] per-pair verdicts: {verdicts_path}")
 
     jq.record_qualification(score, twin, metadata={
         "run_id": run_id,
