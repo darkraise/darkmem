@@ -193,10 +193,11 @@ def test_progress_rows_have_task_headings():
 # derives the Version column from the ladder — hard-refuses to run off master. A
 # working-tree read would compare an epic branch's ladder against master's rows.
 
-# One rule, shared with `gen_progress.py`: a `### ` section whose label is a
-# version or `Gate track` owns the `- ``Tid`` ` list items beneath it. Every other
-# heading owns prose, so the parked ids — which appear as inline backticks in a
-# sentence — are read by neither parser and correctly carry no version.
+# One rule, byte-identical to `gen_progress.py`: a `### ` section whose label is
+# a version or `Gate track` owns the `- ``Tid`` ` list items beneath it, and any
+# other heading **of any level** ends that section. The reset used to fire only
+# on `## `, which left an h3 hole — `### Parked` under `### Gate track` reset
+# nothing, so parked list items parsed as `gate`.
 LADDER_SECTION = re.compile(r"^### (v\d+\.\d+|Gate track)\b")
 LADDER_ITEM = re.compile(rf"^- `({TASK_ID})`")
 CELL = re.compile(r"(?<!\\)\|")
@@ -218,7 +219,7 @@ def _versioned_task_ids() -> dict[str, set[str]]:
             current = "gate" if label == "Gate track" else label
             versions.setdefault(current, set())
             continue
-        if line.startswith("## "):
+        if line.startswith("#"):
             current = None
             continue
         item = LADDER_ITEM.match(line)
@@ -311,12 +312,16 @@ STUB_RELEASES = """# Releases
 
 - `T2.114` — Stub task
 
-## Parked
+### Parked — an h3, directly under a ladder section
 
 - `T4.06` — Stub task
 
 Parked prose naming `T1.01`, which must stay unversioned because a task id
 inside a sentence is a mention, not an assignment.
+
+## Also parked, at h2
+
+- `T2.01` — Stub task
 """
 
 
@@ -377,12 +382,18 @@ def test_the_generator_derives_the_version_column_from_the_ladder(tmp_path):
 
     assert _version_cell(progress, "T3.17") == "v0.2"
     assert _version_cell(progress, "T2.114") == "gate"
-    # The two ways a task id appears outside a ladder section. The list item is
-    # the one that bites: it is the shape the parser looks for, so only the
-    # section reset keeps it out — and a mutation drill on 2026-08-10 showed a
-    # prose-only fixture proves nothing about that reset.
+    # The ways a task id appears outside a ladder section. A list item is what
+    # bites — it is the shape the parser looks for, so only the section reset
+    # keeps it out — and the reset must fire at EVERY heading level. `T4.06`
+    # sits under an h3 parked heading directly below the gate track, which is
+    # the real file's own adjacency and the case a `## `-only reset missed:
+    # both parsers stamped it `gate` while every test stayed green, because the
+    # column and the ladder agreed with each other on the misparse.
     assert _version_cell(progress, "T4.06") == "—", (
-        "a list item under a non-ladder heading must not be assigned a version"
+        "a list item under an h3 non-ladder heading must not be assigned a version"
+    )
+    assert _version_cell(progress, "T2.01") == "—", (
+        "a list item under an h2 non-ladder heading must not be assigned a version"
     )
     assert _version_cell(progress, "T1.01") == "—", (
         "a task id mentioned in prose must not be assigned a version"

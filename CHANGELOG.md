@@ -16,7 +16,9 @@ deployed.
 - The entity/relationship graph, closed taxonomy, supersession, and
   fingerprint-partitioned embeddings.
 - Code indexing: symbol graph, code search, blast radius, wiki.
-- 21 scheduled jobs under one registry, including the Tier-C dream family.
+- 21 scheduled jobs under one registry, including the Tier-C dream family —
+  20 with real bodies; `article_synthesis` is still a registered placeholder,
+  and its productive run is v0.4's.
 - The verified-fact vault and its ladder — **badges serve as `candidate` until
   G-C and G-D clear**, which is deliberate, not a defect.
 - Session checkpoints on both doors.

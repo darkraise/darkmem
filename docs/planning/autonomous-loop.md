@@ -50,12 +50,36 @@ one ends.** A fact that exists only in the conversation does not exist.
 Never run two pytest sessions at once — they share `darkmem_test`, and conftest
 drops the schema at session start, so a collision produces failures
 indistinguishable from a real regression. Pass the Bash tool's own `timeout`
-on long runs; a tool-level auto-background leaves work unverified.
+on long runs; a tool-level auto-background leaves work unverified. **Never pipe
+a gate run through a filter that discards its output** — one red `frontend test`
+step on 2026-08-10 is permanently undiagnosable because of exactly that, and
+`gate.sh` streams rather than persisting per-step logs.
+
+**Start from a branch that is current with `master`.**
+`test_the_generator_is_the_same_on_this_branch_and_on_master` compares
+`gen_progress.py` across the two, so a branch cut before it last changed reds
+the floor for a reason the loop's own work did not cause — which routes
+straight into stop condition 7 and ends the session over a stale checkout.
+Rebase or re-land the generator first.
 
 ## 3. The version boundary
 
-`./scripts/gate.sh --full` → **Fable review of the whole version** → tag →
-CHANGELOG → `./scripts/release.sh vN.N` → **stop and report**.
+Write the `## vN.N` **CHANGELOG** section → **Fable review of the whole
+version** → `./scripts/release.sh vN.N` → **stop and report**.
+
+**Do not tag by hand first.** Spec §5 lists the order as "…→ tag → CHANGELOG →
+sync → deploy", which was written before `release.sh` existed and **cannot be
+executed**: the script refuses a version that is already tagged, and it writes
+the tag itself, last, only after the deployment serves the new version. A
+session following §5's arrows literally gets `v0.2 already tagged` and is one
+bad inference away from deleting a tag or hand-deploying past the health gate.
+The order above is the executable one; §5's sketch is flagged for the owner to
+amend rather than silently rewritten.
+
+`release.sh` runs `gate.sh --full` itself, so there is no separate gate step —
+and it refuses to tag if the gate is red, the tree is dirty, a version field
+failed to sync, the gate left changes it does not recognise, or nothing on
+`:8000` serves the new version.
 
 The owner looks before the next version starts. `release.sh` refuses a
 malformed version, a dirty tree, an existing tag and a changelog that does not
@@ -100,9 +124,26 @@ T2.114 ruling and argued it was content-blind; a Fable reviewer refuted it —
 the argument's evidential value depended on the author not having read the
 scoreboard, and the pre-positioned fallback "reads as its author's own doubt."
 
-Stopping is per-task, not per-session: **finish every other startable task in
-full**, then report what was left and why. A blocker is a reason to route
-around, not a reason to idle.
+**How far a stop reaches — scoped per condition, and PENDING OWNER
+RATIFICATION.** Spec §6 is titled "the loop **ends** and reports", i.e. a full
+halt. Narrowing that is not the loop's call to make silently, so the scoping
+below is written down to be ruled on. Until it is ratified, prefer the full
+halt where the two disagree.
+
+- **Conditions 1, 2, 3, 4, 7, 8 → full halt.** Each one means the loop's own
+  judgement or its evidence is in question, and continuing compounds it. For 7
+  specifically, continuing is not even possible honestly: every task's
+  definition of done requires a green floor, so "carry on with the next task"
+  and "never mark a task `done` with a failing check" cannot both hold.
+- **Conditions 5 and 6 → stop that task, not the loop.** A missing credential
+  or a task that has failed three ways blocks *that* task and says nothing
+  about the others. Mark it `blocked` with the reason in its Note, take the
+  next one, and report what was left and why.
+
+The v0.1 cut is the worked example: Task 2 hit condition 2, halted, and the
+remaining tasks shipped — but that was under an explicit owner instruction to
+exhaust the startable work, not under this document. That instruction is what
+the ratification above is asking to make standing.
 
 ## 6. Proportionality
 
@@ -116,7 +157,11 @@ hierarchy.
 
 ## 7. What the loop may never do
 
-- Write `backend/scripts/benchlib/entailment/gold.json`.
+- Write **any** gold set. There are five, not one: `extraction_bench/gold.json`
+  and `gold_heldout.json`, and `benchlib/`'s `retrieval/`, `entailment/` and
+  `contradiction/` sets. Stop condition 3's "the gold sha" means whichever one
+  a task would touch — naming only the entailment set, as this list first did,
+  invites the reading that the other four are fair game.
 - Spend a G-D measurement attempt, or any measurement attempt.
 - Freeze the schema. `v0.1` is not the freeze; the trigger — the first deploy
   whose data must survive — remains in the future.
