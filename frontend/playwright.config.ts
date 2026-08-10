@@ -50,13 +50,40 @@ const DEMO_FIXTURE_SPECS = [
 export default defineConfig({
   testDir: "./tests",
   use: {
-    trace: "on-first-retry",
+    // `on-first-retry` traces the *retry*, which passes. The failing attempt
+    // is the one nobody has ever seen: `activity.spec.ts:10` has now flaked
+    // three times across seven `gate.sh --full` runs and left only an
+    // error-context with no page snapshot, so what the page actually rendered
+    // at failure is still unknown. Retain the failing attempt's trace and
+    // screenshot instead — the next occurrence answers the question below
+    // instead of costing another investigation.
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
+  // **This is not the fix for the flake, and the flake is not fixed.** Raising
+  // the bound was hypothesis 4 of 4 and it was refuted by the next gate run:
+  // `activity.spec.ts:10` failed again at the new 15000ms with the same
+  // "element(s) not found". Waiting 3x longer changes nothing, so the element
+  // is never appearing rather than appearing late. Recorded here rather than
+  // reverted because the margin measurement below is real and 5000ms was an
+  // unchosen default either way — but nobody should read this number as
+  // having closed anything.
+  //
+  // **Where the investigation actually got to.** `activity.tsx` renders
+  // `<Tabs value={tab ?? "pipeline"}>`, so a `tab` that is undefined at render
+  // time shows the *pipeline* panel and "Days are UTC" never mounts — at any
+  // timeout, which is exactly the observed shape. `DayTab` has no early return
+  // and the asserted string is unconditional shell text, so the remaining
+  // question is why the `?tab=day` search param would not be resolved when the
+  // page settles. The `_authenticated` guard is not it: `beforeLoad` returns
+  // immediately under DEMO. That is the next thing to check, and the
+  // `retain-on-failure` capture above is what will answer it.
+  //
   // Playwright's default expect timeout is 5000ms and nobody chose it. Two
   // tests flaked across six `gate.sh --full` runs on 2026-08-10 —
   // `code-real-mode.spec.ts:74` and `activity.spec.ts:10`, both
   // `getByText(...)` reporting "element(s) not found" — and both passed on
-  // the retry below, so the gate was green *through a retry* rather than
+  // the retry below, so the gate is green *through a retry* rather than
   // cleanly.
   //
   // Measured before changing anything, because a timeout raised to make a
@@ -72,15 +99,14 @@ export default defineConfig({
   // the flaking test, including the whole project serially three times in the
   // gate's own configuration, did not reproduce it.
   //
-  // So the finding is a margin, not a defect: ~2.3x between a load-sensitive
-  // operation and a bound nobody picked, on a host that idles at load 5-6 of
-  // 12 cores and to which the gate adds a Postgres, a uvicorn running 21 job
-  // loops, two Vite dev servers and a Chromium. 15s is sized against the
-  // measured worst case with room for a host several times slower. It costs
-  // nothing on a passing run — `toBeVisible` polls and returns as soon as the
-  // element appears — and only changes how long a genuinely broken assertion
-  // takes to report. The retry below stays, as a last resort rather than the
-  // routine absorber it had become.
+  // The margin was real — ~2.3x between a load-sensitive operation and a bound
+  // nobody picked, on a host that idles at load 5-6 of 12 cores and to which
+  // the gate adds a Postgres, a uvicorn running 21 job loops, two Vite dev
+  // servers and a Chromium — and 15s is sized against the measured worst case
+  // with room for a host several times slower. It costs nothing on a passing
+  // run (`toBeVisible` polls and returns as soon as the element appears; the
+  // project still runs in 12.5s). It simply was not the cause. The retry below
+  // stays, and is still doing the absorbing.
   expect: { timeout: 15000 },
   // T1.64: against a disposable stack, every "chromium"-project spec that
   // authenticates (auth.spec.ts, code-real-mode.spec.ts, code-wiki-empty.spec.ts,
