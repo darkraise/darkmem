@@ -312,7 +312,9 @@ STUB_RELEASES = """# Releases
 
 ## Parked
 
-Parked prose naming `T4.06`, which must stay unversioned because a task id
+- `T4.06` — Stub task
+
+Parked prose naming `T1.01`, which must stay unversioned because a task id
 inside a sentence is a mention, not an assignment.
 """
 
@@ -374,7 +376,14 @@ def test_the_generator_derives_the_version_column_from_the_ladder(tmp_path):
 
     assert _version_cell(progress, "T3.17") == "v0.2"
     assert _version_cell(progress, "T2.114") == "gate"
+    # The two ways a task id appears outside a ladder section. The list item is
+    # the one that bites: it is the shape the parser looks for, so only the
+    # section reset keeps it out — and a mutation drill on 2026-08-10 showed a
+    # prose-only fixture proves nothing about that reset.
     assert _version_cell(progress, "T4.06") == "—", (
+        "a list item under a non-ladder heading must not be assigned a version"
+    )
+    assert _version_cell(progress, "T1.01") == "—", (
         "a task id mentioned in prose must not be assigned a version"
     )
 
