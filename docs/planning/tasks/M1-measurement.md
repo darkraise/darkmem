@@ -496,6 +496,54 @@ before measuring; a probe carried over unexamined would be measuring the old arc
 
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
 
+#### T2.114 — G-D third-vendor attempt
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.109, **an owner-recorded argument**` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-09 at the owner's instruction. It must not run until the
+argument below is written down, and that is the whole point of the task.**
+
+**What.** One further judge-qualification run against the **frozen** prompt on a
+third vendor, scored by the existing runner on the existing gold.
+
+**Why this needs a recorded argument before it runs.** T2.41 used doc 17 §6's
+sanctioned remedy once (deepseek → gpt-5.5) and then **stopped at two on
+purpose**: "an open-ended sweep until one clears is tuning-against-gold by
+another route." A third attempt is not forbidden — it is the same sanctioned
+remedy — but nothing distinguishes "a third vendor, for a stated reason" from
+"the third draw of a sweep" except the reason, written before the run. So the
+owner records: which vendor, why that one, and what result would end the search
+rather than extend it. Without those three the task stays `blocked`; an agent
+may not supply them, because supplying them is the fitting doc 17 §6 forbids.
+
+**What must not move.** The prompt (`prompt_sha` is part of the judge identity —
+editing it de-qualifies mechanically), the gold, and both bars. The two
+measured judges' results are already public, so any bar moved after this run
+would be a fit against three known outcomes rather than a derivation.
+
+**What the run costs, stated so the decision is informed.**
+`gold_touching_attempts` counts gold CONTACTS for this `gold_sha256` across all
+judge identities — a warm verification rerun increments it too — so this
+attempt is permanently visible in the ledger whatever it returns.
+
+**An environmental precondition, not a formality.** This machine holds
+credentials for DeepSeek and a LAN Ollama (embeddings only, no judge). Attempt
+two ran on `gpt-5.5`. A third vendor needs a reachable endpoint and a key that
+exists before the task is claimed; the seed rows are inline
+`llm_purpose_configs`, so pointing `verification` at a new vendor is a config
+write, not a code change — but a vendor whose `api_kind` has no quirk row is
+the four-step rule in doc 11 §4, which is a code change.
+
+**Done when:** the argument is recorded in this task's own row *before* the run;
+the run is scored by the unmodified runner on the unmodified gold; the verdict —
+cleared **or** a measured miss — is recorded in `gate-ledger.md` beside the
+other two; and the search's stopping condition is stated as met or not.
+**A miss is the result, not a failure, and does not authorise a fourth attempt.**
+
+**Verify.** `cd backend && python scripts/benchlib/run_judge_qualification.py`
+
+---
+
 #### T2.41 — G-D evidence run
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.26, T2.54` · `Doc: 20 §4, 17 §11` · `Tag: target-new` · `Gate: G-D`
