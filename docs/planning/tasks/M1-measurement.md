@@ -501,6 +501,35 @@ argument below is written down, and that is the whole point of the task.**
 **What.** One further judge-qualification run against the **frozen** prompt on a
 third vendor, scored by the existing runner on the existing gold.
 
+**Attempted 2026-08-10 under an owner delegation, and NOT resolved — the
+attempt itself is recorded because it sharpened the task.** The assistant
+argued that no selection existed to make: attempt 1 on gold `98fc4b49` used
+`deepseek-v4-flash`, only one other model carries a qualification record, so
+"a different judge model" had one referent and a choice among one option cannot
+be a fit. A Fable-tier review refuted it and the refutation was accepted. The
+eligibility filter — *"already carries a qualification record"* — appears
+neither here nor in doc 17 §6; it was invented, and it is precisely what
+shrinks the set to one. **`deepseek-v4-pro` is a reachable, credentialed,
+different model.** Excluding it is defensible (it sat the Layer-3 resample, so
+judge and certifier would be one model) but making that argument *is* the
+judgment the draft claimed did not exist — made by a party that had read both
+judges' scores.
+
+**So the option set is now known to be at least {`gpt-5.5`, `deepseek-v4-pro`},
+with v4-pro carrying the resample-circularity objection.** That is the one thing
+the failed attempt leaves behind, and it narrows the owner's three sentences
+rather than supplying them. Note also that "the two measured judges" is the
+honest phrase and "already-qualified" is not: **no judge has ever qualified** —
+both carry failed records.
+
+**A second gate now sits in front of this task (ruling R-B, 2026-08-10):** no
+judge attempt may run on `98fc4b49` until the two contradicted duplicate
+propositions (`eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`) are retired and the gold
+re-certified. Rule B's attempt-1 pass was exactly 38/40 = 0.9500, and both
+duplicates sit in its population, so spending the final attempt before the
+repair is the one ordering that could manufacture an edge pass from a defect
+already on the record.
+
 **Why this needs a recorded argument before it runs.** T2.41 used doc 17 §6's
 sanctioned remedy once (deepseek → gpt-5.5) and then **stopped at two on
 purpose**: "an open-ended sweep until one clears is tuning-against-gold by
