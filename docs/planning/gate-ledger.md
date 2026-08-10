@@ -885,6 +885,55 @@ file. Both are fixed in v2. The authoring is firewalled from every G-D artifact
 including the untracked per-pair verdict cache, because the controller running
 the round has read the slice-level failure attribution and cannot author.
 
+### G-D re-measure on the resized gold (2026-08-10, T2.115 follow-on): **NOT CLEARED — pooled recall, by one pair**
+
+Attempt **1 of 2** on gold `98fc4b49` (lineage: 4 prior attempts across two
+ancestor golds, per ruling R4). Run from a **fresh session** — the controller
+that resized the gold authored its pairs and did not measure them. Report:
+`docs/eval/2026-08-10-judge-qualification-4d886440.md`.
+
+| Bar | Required | Pooled (402) | Rule B population (176) |
+|---|---|---|---|
+| `groundedness_gate_precision_bar` | 0.95 | 0.9938 **PASS** | 1.0000 **PASS** |
+| `groundedness_gate_recall_bar` | 0.90 | 0.9249 **PASS** | 0.9167 **PASS** |
+| `contradiction_precision_bar` | 0.70 | 0.8065 **PASS** | 0.8837 **PASS** |
+| `contradiction_recall_bar` | 0.95 | **0.9375 FAIL** | **0.9500 PASS** |
+
+**Verdict: NOT CLEARED.** Rule B requires the verdict to hold on both
+populations. Pooled contradiction-recall is 75/80 — five misses where the bar
+permits four. Seven of eight bar readings pass.
+
+**The resize did the thing it was built to do, and this run is the
+demonstration.** Rule B's population scored **38/40 = 0.9500 exactly** — a value
+that was *not on its lattice* before the round, when 25 contradicted pairs
+offered only 0.92 and 0.96. Under the old census this same judge performance
+would have been scored against an unrepresentable bar and reported as a stricter
+number than the one stated. That was the defect T2.115 existed to remove, and
+here it is removed: the subset now passes or fails at the bar the config
+actually names.
+
+**This is a different judge from 2026-08-08, and the comparison is not clean.**
+The judge here is `4d886440` (`deepseek-v4-flash`), the configured `verification`
+purpose on this machine; 2026-08-08 ran `fd39e7b2` (`gpt-5.5`), which is not
+reachable from here. So pooled 0.9375 against that run's 0.9125 crosses **both**
+a judge change and a census change, and — per the section below — the
+retirement's overlap with that run's misses is unattributable. **The delta is
+not evidence of a better judge and is not recorded as one.**
+
+**What the per-pair artifact bought immediately.** The five pooled misses are
+3 in the contacted population and 2 in Rule B's, by slice `temporal` 2,
+`direction` 2, `value-swap` 1. Contrast 2026-08-08, whose seven misses were
+**all** `value-swap` — a different judge failing differently, which is the sort
+of claim that could not be made before today because no artifact joined a pair
+id to a verdict. Future comparisons *against this run* are attributable; every
+comparison across it and 2026-08-08 is not.
+
+**Nothing was tuned and nothing re-run.** One attempt, one report, the number
+recorded as it landed. The remaining lawful moves are unchanged and are the
+owner's: the second attempt at a frozen prompt with a different judge model, or
+a recorded argument about the bar. Note the fitting rule still binds — the
+per-pair census above may not be used to author or retire pairs.
+
 #### The overlap disclosure T2.115 owed, and could not compute
 
 The plan review (I6) required the round's report to state **how many of the 15
