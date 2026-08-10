@@ -27,6 +27,34 @@ CELL = re.compile(r"(?<!\\)\|")
 STATUSES = ["todo", "wip", "blocked", "review", "done", "dropped"]
 FRESH = ("", "todo", "", "", "")
 
+# ------------------------------------------------------ the release ladder (scope)
+# `Version` is scope, not state, so it is derived from RELEASES.md rather than
+# hand-edited and carried forward. Two authorities for one fact is the drift this
+# generator exists to prevent, and a hand-edited version cell would be destroyed
+# by the first regeneration that got the carry-forward window wrong — silently,
+# because a row-count check still passes over a blanked column.
+#
+# One rule, shared verbatim with backend/tests/test_planning_docs.py: a `### `
+# section labelled `v0.N` or `Gate track` owns the `- `Tid`` list items beneath
+# it. Every other heading owns prose, so ids mentioned in a sentence (the parked
+# ones) are assigned nothing.
+LADDER_SECTION = re.compile(r"^### (v\d+\.\d+|Gate track)\b")
+LADDER_ITEM = re.compile(r"^- `(T(?:H1|[0-4])\.\d{2,3}[a-z]?)`")
+
+version_of = {}
+_section = None
+for _line in io.open("RELEASES.md", encoding="utf-8").read().split("\n"):
+    _head = LADDER_SECTION.match(_line)
+    if _head:
+        _section = "gate" if _head.group(1) == "Gate track" else _head.group(1)
+        continue
+    if _line.startswith("## "):
+        _section = None
+        continue
+    _item = LADDER_ITEM.match(_line)
+    if _item and _section:
+        version_of[_item.group(1)] = _section
+
 # ------------------------------------------------ carry hand-edited state forward
 # Regenerating rebuilds the derived columns from the epic files. The five state
 # columns belong to whoever is executing and must survive that: runbook §5 tells
@@ -58,7 +86,9 @@ out.append("# Progress tracker\n")
 out.append(
     "**Regenerated from the epic files** by\n"
     "`scripts/gen_progress.py` — task ids, titles, model tiers, and effort are derived, never\n"
-    "hand-copied, so the two cannot drift. Only the state columns (Owner, Status, Commit,\n"
+    "hand-copied, so the two cannot drift. **Version** is derived too, from\n"
+    "[`RELEASES.md`](RELEASES.md); editing it here is pointless because the next regeneration\n"
+    "overwrites it. Only the state columns (Owner, Status, Commit,\n"
     "Review, Note) are edited by hand.\n"
 )
 out.append(
@@ -86,7 +116,7 @@ out.append(
     "and the Note says so. That rule is the whole point of this file.\n"
 )
 out.append("## Claiming and concurrency\n")
-out.append(
+CLAIMING = (
     "- **This file is canonical on `master`**, not on an epic branch — otherwise it forks per\n"
     "  branch and no copy is true. Update it with a single commit touching only your row.\n"
     "- **Claiming is one commit** setting Owner and moving the row to `wip`. If two agents\n"
@@ -98,6 +128,33 @@ out.append(
     "  after any task is added, split, or retitled. It carries the five state columns\n"
     "  through unchanged, so regenerating mid-execution is safe and never resets a claim.\n"
 )
+out.append(CLAIMING)
+
+# ------------------------------------------------------------ carry standing notes
+# `progress.md` holds hand-written prose in two places this script cannot
+# reproduce — before `## Rollup`, and between the rollup table and the `---`
+# above the epic tables — and regenerating without carrying them is a silent
+# delete. Together they held 62 lines on 2026-08-10: a standing open-flake
+# record, and the account of three recount defects that says why the counts are
+# derived. The runbook tells every agent to regenerate after logging an
+# amendment, so the loss was one routine command away, and the plan that added
+# the Version column routed around it with "never run this in place" rather than
+# fixing it. Both regions are anchored on generated text, so a preamble edit
+# degrades to carrying nothing rather than to duplicating a section.
+_old = io.open("progress.md", encoding="utf-8").read() if os.path.exists("progress.md") else ""
+
+
+def standing_notes(after, before):
+    """Prose between two generated anchors in the previous progress.md."""
+    start, end = _old.find(after), _old.find(before)
+    if start == -1 or end <= start:
+        return ""
+    return _old[start + len(after):end].strip("\n")
+
+
+preamble_notes = standing_notes(CLAIMING, "## Rollup")
+if preamble_notes:
+    out.append(preamble_notes + "\n")
 
 tables = []
 totals = 0
@@ -132,15 +189,16 @@ for code, name, path, gate in EPICS:
     totals += len(rows)
     counts = dict.fromkeys(STATUSES, 0)
     t = ["## %s — %s (%d tasks)\n" % (code, name, len(rows))]
-    t.append("| Task | Title | Size | Model | Effort | Owner | Status | Commit | Review | Note |")
-    t.append("|---|---|---|---|---|---|---|---|---|---|")
+    t.append("| Task | Title | Size | Model | Effort | Version | Owner | Status | Commit | Review | Note |")
+    t.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for tid, title, model, size, effort in rows:
         state = prior.pop(tid, FRESH)
         if state[1] not in counts:
             bad.append("%s has status %r, which is not in the vocabulary" % (tid, state[1]))
             continue
         counts[state[1]] += 1
-        t.append(render([tid, title, size, model, effort] + list(state)))
+        version = version_of.get(tid, "—")
+        t.append(render([tid, title, size, model, effort, version] + list(state)))
     rollup.append((code, name, len(rows), counts, gate))
     tables.append("\n".join(t) + "\n")
 
@@ -169,6 +227,17 @@ r.append("| EH2 — .NET migration | outline |" + " — |" * len(STATUSES) + " G
 r.append("| **Total** | **%d** | %s | |" % (
     totals, " | ".join("**%d**" % tot[s] for s in STATUSES)))
 out.append("\n".join(r) + "\n")
+
+# The second standing-notes region: prose under the rollup table, above the
+# `---`. It holds the account of why these counts are derived, written by the
+# agents who found them drifted three times.
+rollup_block = standing_notes("## Rollup", "\n---\n")
+rollup_lines = rollup_block.split("\n")
+_last_row = max((k for k, line in enumerate(rollup_lines) if line.startswith("|")), default=-1)
+rollup_notes = "\n".join(rollup_lines[_last_row + 1:]).strip("\n")
+if rollup_notes:
+    out.append(rollup_notes + "\n")
+
 out.append("---\n")
 out.extend(tables)
 

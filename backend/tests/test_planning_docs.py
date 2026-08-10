@@ -281,10 +281,14 @@ def test_progress_version_column_agrees_with_the_ladder():
 
 
 # ------------------------------------------------------------- generator behaviour
-# These run the generator itself, read from master, because master is the only
-# branch it will run on — an epic branch's copy is whatever it was at the fork.
-# Both tests cover guards whose failure mode is silent: the output still has
-# every row, every count and every state cell, and is simply missing something.
+# These run the generator itself, from the working tree, so an edit is tested
+# before it is committed. `progress.md` is read from master and the generator is
+# not, which is only sound while the two copies agree — hence the sync check
+# below. Both tests cover guards whose failure mode is silent: the output still
+# has every row, every count and every state cell, and is simply missing
+# something.
+
+GENERATOR = Path(__file__).resolve().parents[2] / "docs/planning/scripts/gen_progress.py"
 
 EPIC_STUBS = {
     "E0-baseline-and-harness.md": "T0.01",
@@ -324,9 +328,24 @@ def _planning_fixture(root: Path) -> Path:
     (root / "RELEASES.md").write_text(STUB_RELEASES, encoding="utf-8")
     (root / "scripts").mkdir()
     (root / "scripts" / "gen_progress.py").write_text(
-        _read_from_master("docs/planning/scripts/gen_progress.py"), encoding="utf-8"
+        GENERATOR.read_text(encoding="utf-8"), encoding="utf-8"
     )
     return root
+
+
+def test_the_generator_is_the_same_on_this_branch_and_on_master():
+    """The generator only ever RUNS on master (it refuses elsewhere), but the
+    tests below run the working-tree copy so an edit is caught before it is
+    committed. Those two facts are only compatible while the copies agree — and
+    unlike progress.md, a script that differs per branch has no reading under
+    which either copy is the true one."""
+    assert GENERATOR.read_text(encoding="utf-8") == _read_from_master(
+        "docs/planning/scripts/gen_progress.py"
+    ), (
+        "docs/planning/scripts/gen_progress.py differs between this branch and "
+        "master. It writes a file that is canonical on master, so land the same "
+        "content on both rather than letting the copies drift."
+    )
 
 
 def _run_generator(root: Path) -> str:
