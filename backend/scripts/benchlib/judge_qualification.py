@@ -295,22 +295,37 @@ def bar_results(score: QualificationScore, bars: dict[str, float]) -> dict[str, 
 
 
 # LABELLING.md's contacted-pairs rule (Rule B), stated before any number
-# existed: the grown pairs are "a set no judge identity has ever contacted",
-# and T2.41 "must report every barred metric on **both** populations — all live
-# pairs, and the never-contacted subset — with the gate verdict required to
+# existed: T2.41 "must report every barred metric on **both** populations — all
+# live pairs, and the second population — with the gate verdict required to
 # hold on both".
+#
+# **The population is no longer "never contacted", and the name says so
+# (LABELLING.md amendment 2026-08-10, ruling R3).** The 2026-08-08 re-measure
+# ran fresh inference on every live pair, so a literal never-contacted set has
+# not existed since; and because every run scores all live pairs, a strict
+# reading would empty after each attempt. What the population *is*: pairs not
+# contacted before the grown-gold attempt, with the per-pair miss census
+# withheld — the withholding is what keeps it meaningful, since the ledger
+# publishes slice-level attribution only.
 #
 # The boundary lives here rather than in `gold.json` because the gold's sha256
 # is what the Layer-3 resample draw is pinned to: adding a per-pair marker
 # would move the sha and void the certification the same file just received.
-# LABELLING.md's T2.110 History entry is the source ("Rule B's never-contacted
-# population now spans eg-0242..eg-0351"); a growth round that extends it must
-# move this constant, and the test suite pins the two together.
-NEVER_CONTACTED_FIRST_ID = "eg-0242"
+# LABELLING.md's History is the source of record for the range; the test suite
+# pins the two together.
+#
+# **The constant does not move when a round appends pairs**, and that is the
+# correction T2.115's plan review forced: the filter is `id >= …` and
+# open-ended, so appended pairs join the population automatically. Moving it
+# forward would shrink the gated population to the appending round's own pairs
+# — which is how a growth round would silently make its own bar
+# unrepresentable. Only LABELLING.md's range *text* extends its end.
+RULE_B_FIRST_ID = "eg-0242"
 
 
-def never_contacted_pairs(live_pairs: list[dict]) -> list[dict]:
-    """Rule B's second population: pairs no judge identity has contacted.
+def rule_b_population(live_pairs: list[dict]) -> list[dict]:
+    """Rule B's second population: pairs not contacted before the grown-gold
+    attempt, with the per-pair miss census withheld.
 
     Pooling matters here rather than being a formality. The 241 pairs below the
     boundary were contacted three times across two judge identities, so a
@@ -320,7 +335,7 @@ def never_contacted_pairs(live_pairs: list[dict]) -> list[dict]:
     keyed by pair id, so this is a second call to ``score_judgments`` and not a
     second gold contact.
     """
-    return [p for p in live_pairs if p["id"] >= NEVER_CONTACTED_FIRST_ID]
+    return [p for p in live_pairs if p["id"] >= RULE_B_FIRST_ID]
 
 
 def _gold_class_count(score: QualificationScore, verdict: str) -> int:
@@ -459,10 +474,10 @@ def render_report(
     lines.extend(_granularity_lines(score))
     lines.append("")
 
-    nc_score = meta.get("never_contacted_score")
+    nc_score = meta.get("rule_b_score")
     if nc_score is not None:
         lines.append(
-            "## Bars on the never-contacted population (Rule B)"
+            "## Bars on Rule B's second population"
         )
         lines.append("")
         lines.append(
@@ -471,7 +486,7 @@ def render_report(
             f"both. The pairs above are all {score.n_pairs} live ones, of which "
             f"{score.n_pairs - nc_score.n_pairs} were contacted before; these "
             f"are the {nc_score.n_pairs} pairs "
-            f"(`{NEVER_CONTACTED_FIRST_ID}`+) no judge identity had seen."
+            f"(`{RULE_B_FIRST_ID}`+) not contacted before the grown-gold attempt."
         )
         lines.append("")
         for bar_key, result in bar_results(nc_score, meta["bars"]).items():

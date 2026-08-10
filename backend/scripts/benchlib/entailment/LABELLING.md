@@ -204,6 +204,47 @@ that pin — never a silent relabel of existing pairs.
   built from the semantics above; if a qualification run disagrees with a
   pair, the pair is re-examined *against these rules* — and if the rules
   were wrong, this file changes first, visibly, with the rationale.
+- **Lattice retirement — retiring a *correct* pair for census shape**
+  (ratified 2026-08-10, T2.115). Everything above retires a pair only
+  when its label is **wrong**. A census whose size puts a ratified bar
+  off its own lattice is a second, narrower reason, and it must never
+  become a licence to remove inconvenient evidence. All of the following
+  hold, each recorded in the task report:
+
+  1. **Contacted only** — the pair is in the contacted population, so a
+     round removes contaminated evidence and never fresh evidence.
+  2. **Never the protected core** — none of the 41 T2.25 pairs Rule B
+     keeps live.
+  3. **A committed, zero-degrees-of-freedom draw** — the selection
+     procedure lands in a commit *before* it executes and has no free
+     parameters: seed from `resample_draw.derive_seed` over the
+     pre-retirement file, eligible pool sorted by `id`, strata in a fixed
+     stated order, `rng.sample(pool, quota)`. Drawn ids and a
+     one-command reproduction go in the report. *Pinning a seed is not
+     enough: the same seed under a different algorithm yields a different
+     set, and choosing among defensible algorithms after seeing the seed
+     is the aiming channel this clause closes.*
+  4. **Content-blind beyond the stated stratification** — slice enters
+     only as clause 5's largest-remainder stratification; no rationale,
+     label, premise, hypothesis or judge result may enter the selection.
+  5. **Composition preserved, not only size** — the pooled census of the
+     affected verdict class **and its largest-remainder slice
+     distribution** are unchanged after replacement. Retiring 15
+     `value-swap` and authoring 15 `temporal` would reshape the census's
+     difficulty at constant size.
+  6. **Budget lineage recorded** — a reshape changes the gold sha and so
+     mints a fresh `gold_touching_attempts`. Cumulative attempts across
+     gold generations are recorded in the ledger and in every report, so
+     a reset is visible rather than silent (ruling R4).
+
+  **Reconciliation with the judge-blind clause above.** That clause bars
+  retiring a pair "on the basis of what any judge model answers", and a
+  lattice round is *triggered* by a gate failure. The two are compatible
+  and this file says so explicitly rather than leaving a reader to
+  reconcile them: the **trigger** is lattice arithmetic, recorded on
+  2026-08-08 before it bit; the **selection** is seeded and content-blind
+  by clauses 3–4. What is barred is choosing *which* pairs to retire from
+  judge output, and clauses 3–4 make that unavailable.
 
 ## Handoff to T2.54
 
@@ -456,9 +497,33 @@ The 41 T2.25 pairs were contacted twice by judge identity
 tuning, and their labels are the only fully human-scale cross-checked
 core. But the ≥ 200 new pairs are grown as a set **no judge identity has
 ever contacted**, and T2.41 must report every barred metric on **both**
-populations — all live pairs, and the never-contacted subset — with the
+populations — all live pairs, and the second population — with the
 gate verdict required to hold on both. Stated here before any number
 exists.
+
+**Amendment 2026-08-10 (T2.115, ruling R3) — the second population is
+renamed, because it had stopped being what its name said.** The
+2026-08-08 re-measure ran fresh inference on **all 351 pairs** ("nothing
+replayed warm"), so judge identity `fd39e7b2` has contacted the entire
+file and a literal *never-contacted* population has not existed since.
+The strict reading is also unsustainable: every qualification run scores
+all live pairs, so the population would empty after **every** attempt and
+Rule B would mean "grow the gold before each attempt", which no
+two-attempt budget survives.
+
+The population is therefore defined as **pairs not contacted before the
+grown-gold attempt, with the per-pair miss census withheld** — and the
+substance that keeps it meaningful is the withholding: the ledger
+deliberately publishes only slice-level attribution, so one contact
+without published feedback is materially unlike the 241 pairs' three
+contacts with a public failure census. This is a **weakening** of the
+text above and is recorded as one rather than absorbed quietly.
+
+**The boundary constant does not move.** `RULE_B_FIRST_ID` filters
+`id >= …` and is open-ended upward, so pairs appended by any later round
+join the population automatically. Moving it forward would shrink the
+gated population to that round's own pairs, which is how a growth round
+would silently make its own bar unrepresentable.
 
 ## The blind-adjudication protocol (Ruling 3)
 

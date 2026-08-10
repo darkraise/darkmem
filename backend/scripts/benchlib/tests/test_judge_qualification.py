@@ -178,7 +178,7 @@ def test_the_real_gold_is_now_eligible_on_every_condition():
 
 
 def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
-    """Rule B's never-contacted population is a claim about judge history that
+    """Rule B's second population is a claim about judge history that
     no column in `gold.json` records — and deliberately cannot, since adding
     one would move the sha the Layer-3 resample draw is pinned to. So the
     boundary lives in the harness, and the only thing keeping it honest is this
@@ -194,18 +194,18 @@ def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
     last_id = max(p["id"] for p in live)
 
     # The range LABELLING.md states, both ends, verbatim.
-    assert f"{jq.NEVER_CONTACTED_FIRST_ID}..{last_id}" in labelling, (
-        "LABELLING.md's never-contacted range no longer matches the constant "
-        f"({jq.NEVER_CONTACTED_FIRST_ID}) and the gold's last id ({last_id})"
+    assert f"{jq.RULE_B_FIRST_ID}..{last_id}" in labelling, (
+        "LABELLING.md's Rule B range no longer matches the constant "
+        f"({jq.RULE_B_FIRST_ID}) and the gold's last id ({last_id})"
     )
 
-    subset = jq.never_contacted_pairs(live)
+    subset = jq.rule_b_population(live)
     assert 0 < len(subset) < len(live), (
         "the subset must be a proper non-empty part of the gold: empty means "
         "Rule B silently stops constraining, and equal means the boundary "
         "stopped distinguishing contacted pairs at all"
     )
-    assert all(p["id"] >= jq.NEVER_CONTACTED_FIRST_ID for p in subset)
+    assert all(p["id"] >= jq.RULE_B_FIRST_ID for p in subset)
     # Every barred metric must be *computable* on the subset, or the rule's
     # "report on both populations" cannot be satisfied at all.
     verdict_classes = {p["verdict"] for p in subset}

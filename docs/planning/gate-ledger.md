@@ -822,6 +822,69 @@ does not exist. G-D stays closed and the judge stays unqualified, so
 `VerificationJudge.judge()` still refuses and the Tier-C scan still produces
 nothing.
 
+### G-D — the Rule B census resize (T2.115, rulings 2026-08-10)
+
+Not a gate run. The 2026-08-08 re-measure recorded a granularity finding and
+asked the owner to settle it before a run landed on it; this is that settlement
+and the round it authorises. **G-D is unaffected — it stays open, and no
+attempt is spent here.**
+
+**The finding.** Rule B's second population holds **25** contradicted pairs, so
+its recall lattice is 1.00 / 0.96 / 0.92 — **0.95 is not on it** — and "the gate
+verdict required to hold on both" therefore makes it enforce ≥ 0.96 where the
+pooled census permits four misses in 80. It did not bite the last run (23/25
+fails against 0.95 and 0.96 alike); a run landing on 24/25 would be passed by the
+stated bar and failed by the lattice.
+
+**Four rulings, 2026-08-10.** Ratified by the owner as an instruction to proceed
+on the text as drafted and Fable-reviewed; the drafting is the agent's, the
+adoption is the owner's, and that distinction is recorded rather than dressed up
+as owner-authored reasoning.
+
+| # | Ruling | Why it was the owner's |
+|---|---|---|
+| R1 | Resize so 0.95 lands on the second population's lattice, then let it gate | changes what the gate means |
+| R2 | Route: retire-and-replace at a **constant pooled census** — contacted contradicted 55 → 40, second population 25 → 40, pooled held at 80 | the only route changing nothing already ratified |
+| R3 | Rule B's second population is **redefined and renamed**, not abolished; the boundary constant stays `eg-0242` | weakens ratified protocol text |
+| R4 | The sha-keyed attempt budget is **reported by lineage, not blocked** | gate integrity |
+
+**Two derivations bound R2, and both were independently re-derived in review.**
+0.95 sits on a recall lattice only at `n ≡ 0 (mod 20)`; for **growth-only**
+routes pooled is `55 + N`, so both populations exact needs `N ≡ 0` and
+`N ≡ 5` — no solution. And the census cannot simply grow: the Layer-3
+resample's first stratum is a **full census** of `contradicted` at a ratified
+`n = 93`, enforced in code (`resample_draw.draw` raises above `RESAMPLE_N`).
+Retirement is what dissolves the first contradiction, by moving the 55.
+
+**R3, stated plainly because it is a weakening.** The 2026-08-08 re-measure ran
+fresh inference on **all 351 pairs** ("nothing replayed warm"), so a literal
+never-contacted population has not existed since. The strict reading is
+unsustainable besides — every run scores all live pairs, so the population would
+empty after every attempt. The population is now *pairs not contacted before the
+grown-gold attempt, with the per-pair miss census withheld*, and the withholding
+is what keeps it meaningful: one contact without published feedback is
+materially unlike the 241 pairs' three contacts with a public failure census.
+
+**R4 — the budget lineage, recorded here first so no later run can be the first
+to mention it.** `gold_touching_attempts` keys on `gold_sha256`, so any census
+reshape mints a fresh two-attempt budget as a side effect. Unguarded that is a
+loophole: a failed gate could be followed by a reshape that resets its budget.
+The owner ruled visibility over prohibition, matching how this corpus already
+treats gold contact. **Lineage at the time of writing: gold `800d4d91` — 1
+attempt (`fd39e7b2`, 2026-08-08); ancestor `047cbd6f`/pre-growth — 3 attempts
+across two judge identities. The resized gold starts at 0 on its own sha and
+inherits a recorded lineage of 4.**
+
+**The round is blocked on nothing measurable and everything procedural.** Its
+step-level plan (`docs/superpowers/plans/2026-08-10-entailment-gold-subset-resize.md`)
+was reviewed at Fable tier and returned *not safe to execute as written* with two
+Criticals — a boundary constant that would have shrunk the gated population to 15
+contradicted pairs, and a stale `resample` block that would have read
+`gate_eligible = True` through the whole round on a certification of a different
+file. Both are fixed in v2. The authoring is firewalled from every G-D artifact
+including the untracked per-pair verdict cache, because the controller running
+the round has read the slice-level failure attribution and cannot author.
+
 ### G-D redesign: **RATIFIED by the owner, 2026-08-08**
 
 The recommendation below is adopted. Tier-3 amendments applied to
