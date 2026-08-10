@@ -644,7 +644,7 @@ class RequestBodyLimitMiddleware:
         await self.app(scope, receive, send)
 
 
-app = FastAPI(title="darkmem", version="0.2.0", description="Centralized memory system for AI agents", lifespan=lifespan)
+app = FastAPI(title="darkmem", version="0.1.0", description="Centralized memory system for AI agents", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

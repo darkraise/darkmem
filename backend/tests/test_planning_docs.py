@@ -6,6 +6,7 @@ row in docs/planning/progress.md, and vice versa. This catches:
 - Progress rows for tasks that no longer exist (surviving a deletion or renumbering)
 """
 
+import json
 import os
 import re
 import subprocess
@@ -410,3 +411,47 @@ def test_the_generator_carries_hand_written_notes_through_a_regeneration(tmp_pat
     assert third.count("STANDING-PREAMBLE-NOTE") == 1
     assert third.count("STANDING-ROLLUP-NOTE") == 1
     assert third.count("## Rollup") == 1
+
+
+# ----------------------------------------------------------------- product version
+PRODUCT_VERSION = re.compile(r'version\s*=\s*"(\d+\.\d+\.\d+)"')
+
+
+def test_the_product_version_is_one_number_in_three_places():
+    """Backend, the OpenAPI document and the SPA ship as ONE image, so they are
+    one product with one version. The SDK and extension are distributed
+    separately (doc 15 §2) and keep their own — they are deliberately not
+    checked here."""
+    root = Path(__file__).resolve().parents[2]
+    pyproject = PRODUCT_VERSION.search(
+        (root / "backend/pyproject.toml").read_text(encoding="utf-8")
+    ).group(1)
+    fastapi = re.search(
+        r'FastAPI\([^)]*version="(\d+\.\d+\.\d+)"',
+        (root / "backend/app/main.py").read_text(encoding="utf-8"),
+    ).group(1)
+    package = json.loads(
+        (root / "frontend/package.json").read_text(encoding="utf-8")
+    )["version"]
+
+    assert pyproject == fastapi == package, (
+        f"product version drifted: pyproject={pyproject} "
+        f"fastapi={fastapi} package.json={package}"
+    )
+
+
+def test_the_changelog_names_the_version_being_shipped():
+    """`release.sh` tags whatever it is given and does not read the changelog.
+    A release whose changelog does not name it is the one failure that is
+    invisible until someone goes looking for what changed."""
+    root = Path(__file__).resolve().parents[2]
+    version = PRODUCT_VERSION.search(
+        (root / "backend/pyproject.toml").read_text(encoding="utf-8")
+    ).group(1)
+    tag = "v" + version.rsplit(".", 1)[0]
+    changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+
+    assert re.search(rf"^## {re.escape(tag)}\b", changelog, re.M), (
+        f"CHANGELOG.md has no `## {tag}` section for the version the product "
+        "fields currently claim"
+    )

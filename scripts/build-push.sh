@@ -19,7 +19,16 @@ docker build -t "${REGISTRY}/darkmem-api:${VERSION}" \
              -t "${REGISTRY}/darkmem-api:latest" \
              "$(dirname "$0")/.."
 
-# Push
+# Push. Releases build through here with DARKMEM_PUSH=0: doc "release
+# milestones" §10 puts publishing to any registry out of scope until the repo
+# is published, and a push is the one step of a release that cannot be undone
+# by deleting a local tag.
+if [ "${DARKMEM_PUSH:-1}" = "0" ]; then
+  echo "DARKMEM_PUSH=0 — built locally, not pushed."
+  echo "  ${REGISTRY}/darkmem-api:${VERSION} (${GIT_SHA})"
+  exit 0
+fi
+
 echo "Pushing image..."
 docker push "${REGISTRY}/darkmem-api:latest"
 docker push "${REGISTRY}/darkmem-api:${GIT_SHA}"
