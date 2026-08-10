@@ -527,6 +527,26 @@ rather than supplying them. Note also that "the two measured judges" is the
 honest phrase and "already-qualified" is not: **no judge has ever qualified** —
 both carry failed records.
 
+**OWNER RULING 2026-08-10: the model is `gpt-5.5`.** Recorded verbatim as the
+owner's; this session may not embellish it into a rationale, because the whole
+evidential value of the choice is that it was made by the party that had not
+been reasoning from the scoreboard. What the record may state without supplying
+the owner's reasons: `gpt-5.5` is one of the two models carrying a `verification`
+qualification record, and the alternative reachable model, `deepseek-v4-pro`,
+carries the objection that it sat the Layer-3 resample and would make judge and
+certifier one model.
+
+**Stopping rule, stated here in advance and binding regardless of outcome.**
+This is the **final** judge attempt on this gold. On a miss, G-D is recorded NOT
+CLEARED and no further model is tried on that sha; the only remaining moves are
+a new gold justified on grounds that do not cite this result, or a bar argument
+that does not cite it either. A maximally-binding stopping rule is the one part
+of this a contaminated party may write, because it cannot be selected for its
+effect on the outcome — it forecloses every branch equally.
+
+**This session must not run it.** Contaminated for the fitting rule, and it
+authored the surrounding work. Dispatch to a fresh session.
+
 **A second gate now sits in front of this task (ruling R-B, 2026-08-10):** no
 judge attempt may run on `98fc4b49` until the two contradicted duplicate
 propositions (`eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`) are retired and the gold

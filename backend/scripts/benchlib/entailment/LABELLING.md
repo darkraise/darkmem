@@ -369,6 +369,36 @@ that pin — never a silent relabel of existing pairs.
   afterwards, is the one ordering that could manufacture an edge pass out of a
   defect already in the record.
 
+  **Inadmissible-duplicate retirement — a third ground, ratified 2026-08-10
+  (ruling R-B).** The two retirement grounds above cover a pair whose *label* is
+  wrong and a census whose *size* puts a bar off its lattice. A duplicate is
+  neither: `eg-0367`'s label is correct and the census size is right — what was
+  wrong is its **admission**, because the proposition was already in the set.
+  Retiring it therefore needs its own ground, and the ground is deliberately
+  narrow:
+
+  1. **Only a pair the committed check reports**, at or above its threshold,
+     sharing a premise and a verdict. No pair is retired on a reader's
+     impression of similarity.
+  2. **The member that retires is the later-minted one**, by id order. This is
+     mechanical and content-blind: id order is authoring order, so the rule
+     retires the pair that *entered* an occupied slot and keeps the one that was
+     already there. Nobody chooses on difficulty, and no judge result may enter.
+  3. **Replacement is mandatory and the census is preserved** — clause 5's
+     absolute half binds here too. Retiring two `contradicted` pairs without
+     replacing them would take the pooled census to 78 and put 0.95 off its
+     lattice, which is the exact defect T2.115 existed to remove. So the
+     replacements are authored **blind**, under the ordinary firewall, into the
+     same slice and verdict.
+  4. **Re-certification follows**, because the sha moves: a fresh `n = 93`
+     resample, and the budget lineage recorded under clause 6.
+
+  **What this costs, stated so nobody discovers it mid-round.** It is not a
+  quick fix — a duplicate repair is a full retire-and-replace round with blind
+  authoring, blind adjudication and a re-certification sitting. That cost is why
+  the check exists: catching a duplicate at authoring time costs a re-brief,
+  catching it after certification costs a round.
+
   **Quarantine before authoring, and what is on the list.** Two directories
   hold per-pair judge output and neither may be readable by an author or an
   adjudicator: `entailment/cache/` (raw responses) and `entailment/verdicts/`
