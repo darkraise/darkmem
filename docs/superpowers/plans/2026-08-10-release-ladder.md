@@ -261,6 +261,43 @@ against a file it cannot fully reproduce."
 
 ### Task 2: Per-task gate marking
 
+> **STOPPED 2026-08-10 — Tier-3 amendment, spec §6 condition 2. Owner ruling
+> required; the rest of the plan (Tasks 3–6) proceeded, since none depends on
+> this.** Fable-tier ruling, with both load-bearing claims verified against the
+> tree:
+>
+> - Spec §4 defines `(label)` and `(blocking)` only, but §3's own gate track —
+>   `T2.114`, `T2.116`, `T3.22`, `T3.24`, `TH1.10`, `TH1.17`, all open —
+>   **produces** gates rather than waiting on them. Neither qualifier is true of
+>   a producer, and these six are the most-read qualifiers in the corpus because
+>   they are the next gate attempts the loop schedules.
+> - §4's sole `(blocking)` exemplar is wrong. `T2.41` is titled *"G-D evidence
+>   run"* and is `done` — it **mints** the qualification record rather than
+>   waiting on it, so the one deliberate use of the binary is a completed
+>   producer marked as blocked by its own gate. Today's true `(blocking)` set
+>   appears to be empty.
+> - A third qualifier is **already in the corpus**: `Gate: G-D (entry)` on
+>   `T3.01` (`tasks/E3-synthesis-and-reach.md:38`), encoding the epic-level entry
+>   gate that §4 says per-task marking replaces. The plan's regex cannot see it
+>   and its script would not rewrite it, so Task 2 touches the vocabulary
+>   question however it is executed.
+>
+> **The question for the owner:** ratify a third qualifier `(produces)` — *this
+> task's output is the gate's evidence; startable; stop conditions 1 and 3 govern
+> it, not the qualifier* — assigned to the rows `progress.md` already stamps
+> `Version: gate`. Or rule otherwise.
+>
+> **Two Tier-1 corrections to apply when it unblocks**, independent of the
+> ruling. **Scope is open-only**: 181 of the 236 gate fields sit on `done` tasks
+> in E0/E1/E2, where the qualifier has no consumer — the loop only ever asks
+> whether an *open* task is startable — and stamping them would write a false
+> claim into the historical record. The plan's own Files list already says E3,
+> E4, M1, EH1; only its `glob("*.md")` disagrees. **And the test's regex has a
+> silent-skip hole**: `` `Gate: (G-[A-F])(?: \((label|blocking)\))?` `` followed
+> by a mandatory backtick fails to match an *unrecognised* qualifier entirely, so
+> `(lable)` would pass forever. Capture any parenthesised token and reject
+> unknown values.
+
 **Files:**
 - Modify: `docs/planning/tasks/E3-synthesis-and-reach.md`, `E4-hardening-and-scale.md`, `M1-measurement.md`, `EH1-documents-pkm.md`
 - Test: `backend/tests/test_planning_docs.py`
