@@ -92,6 +92,12 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // the session-checkpoints / resume view in the Activity shell -- is
   // T3.21's, which is where this will be rendered rather than in the feed.
   "checkpoint_saved",
+  // T3.17's resume. Same reasoning as its sibling above and the same
+  // destination: a resume is one agent run reading another's note, which is
+  // operational state rather than a memory, fact or repo lifecycle step. It
+  // belongs on T3.21's session-checkpoints / resume view, beside the
+  // checkpoint it resumed from, not scattered through the feed.
+  "resumed",
   // Generic system housekeeping (re-embed sweeps, maintenance jobs) —
   // not a memory/fact/repo lifecycle step any of the five tabs models.
   "maintenance_run",
