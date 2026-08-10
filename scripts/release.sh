@@ -36,7 +36,28 @@ echo "── version fields -> $NUMERIC ──"
 sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NUMERIC\"/" backend/pyproject.toml
 sed -i -E "s/version=\"[0-9]+\.[0-9]+\.[0-9]+\"/version=\"$NUMERIC\"/" backend/app/main.py
 sed -i -E "s/\"version\": \"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$NUMERIC\"/" frontend/package.json
-git diff --quiet || git commit -aqm "chore(release): $VERSION"
+
+# Stage the three fields BY NAME. The first cut used `git commit -a` and the
+# gate had rewritten `docs/eval/<date>-retrieval-eval.md` in place — a fresh run
+# id, sha and latency table — so an eval re-stamp shipped inside a commit whose
+# subject says "chore(release)". A reader later asking why those numbers moved
+# finds a release commit. Anything the gate touches gets its own honest commit,
+# and a dirty path outside the known artifact set stops the release rather than
+# riding along unread.
+git add backend/pyproject.toml backend/app/main.py frontend/package.json
+git diff --cached --quiet || git commit -qm "chore(release): $VERSION"
+
+GATE_ARTIFACTS="$(git status --porcelain | awk '{print $2}' || true)"
+if [ -n "$GATE_ARTIFACTS" ]; then
+  UNEXPECTED="$(printf '%s\n' "$GATE_ARTIFACTS" | grep -v '^docs/eval/' || true)"
+  if [ -n "$UNEXPECTED" ]; then
+    echo "the gate left changes outside docs/eval/; commit or revert them first:" >&2
+    printf '  %s\n' $UNEXPECTED >&2
+    exit 1
+  fi
+  git add docs/eval
+  git commit -qm "docs(eval): re-stamp the retrieval eval from the $VERSION gate run"
+fi
 
 echo "── build ──"
 DARKMEM_PUSH=0 ./scripts/build-push.sh "$NUMERIC"
