@@ -260,7 +260,10 @@ def build_round3_assignment(
     # capacity. LABELLING.md already has the mechanism -- a slot with no usable
     # premise takes a hand-authored one with a recorded skip, "so slice targets
     # stay exact and only the `l2-fact` count moves" -- and doc 17 section 11's
-    # >= 50% l2-fact floor still holds with margin (248/402 = 61.7%).
+    # >= 50% l2-fact floor still holds with margin (238/402 = 59.2%). This read
+    # 248/402 = 61.7% until 2026-08-10: that assumed all 19 anchored slots
+    # landed, and ten of them skipped, which is the very mechanism the sentence
+    # above describes. The floor holds either way; the number did not.
     #
     # Scarce capacity goes to CONTRADICTED_FIRST_SLICES before anything else:
     # those pairs are the census the gate's truth-critical bar is computed over,

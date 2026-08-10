@@ -222,9 +222,12 @@ function LiveDistribution() {
             {policy.curbed ? "Push is curbed" : "Push is live"}
           </p>
           <p className="text-muted-foreground text-sm">
-            One control, applied on the server: every target stops at once.
-            Curbing clears each managed block to an empty marker pair rather
-            than deleting it, so the human&apos;s own file is untouched.
+            One control, stored on the server: every target will stop at once.
+            Nothing pushes yet — the inject writer is not built, so this flag
+            has no enforcer to reach and curbing clears no block today. When
+            push lands it will clear each managed block to an empty marker pair
+            rather than deleting it, leaving the human&apos;s own file
+            untouched.
           </p>
         </div>
         <Switch

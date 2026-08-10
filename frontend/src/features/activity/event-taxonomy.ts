@@ -6,8 +6,9 @@ import type { FeedCategory } from "@/features/activity/types"
  * This is a UI convenience, not a taxonomy the backend enforces — an
  * event_type absent from every bucket below still shows under "all", it
  * just has no dedicated tab. (This once cited inject/inject_curbed as the
- * open example; T3.12 landed their emitter and recorded them in
- * EVENT_TYPES_WITHOUT_TAB below, resolving that deferral.)
+ * open example; T3.12 landed the writer module and both are recorded in
+ * EVENT_TYPES_WITHOUT_TAB below, resolving that deferral. Only `inject_curbed`
+ * has a caller today — see there.)
  *
  * T2.102 (2026-08-07) closed the gap that let three straight rounds each
  * find one value missing here and fix only that one (`contradiction_scanned`
@@ -54,7 +55,14 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  * EVENT_TYPE_CATEGORY, so the next reader can tell "considered and
  * excluded" from "missed" (that ambiguity is what T2.102 was minted to
  * close). Each reason is why it does not fit one of the five tabs, not why
- * it lacks an emitter — all four below are emitted for real.
+ * it lacks an emitter.
+ *
+ * Membership here does NOT mean a value is emitted today. `inject` is listed
+ * and has no producer at all (below); it is here because the exclusion
+ * decision was made, not because rows exist. Reading this list as "these are
+ * all live" is invariant 23's mis-triage, and the sentence that used to sit
+ * here — "all four below are emitted for real" — was already stale by one
+ * value before T3.12 and outright wrong after it. Corrected 2026-08-10.
  */
 const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // Inject records (T3.12). Doc 13 section 6.5 puts them in the
@@ -62,9 +70,17 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // five tabs: an inject is neither a capture nor a lifecycle step, it is
   // this installation telling a tool what it already knows. The docstring
   // above deferred this decision as one "this task does not own" -- T3.12,
-  // which made both types live, is the task that owns it, and it resolves to
-  // an exclusion rather than a sixth tab because the surface doc 13 names
+  // which landed the writer, is the task that owns it, and it resolves to an
+  // exclusion rather than a sixth tab because the surface doc 13 names
   // already exists.
+  //
+  // Of the two, only `inject_curbed` has a producer: PUT
+  // /api/v1/distribution/policy journals the human turning the curb on.
+  // `record_inject` has NO caller -- T3.10 owns the content fill and is held
+  // by G-D -- so no `inject` row exists anywhere yet, and nothing will render
+  // here until it does. `backend/app/services/inject_journal.py` states the
+  // same split at the writer; this comment claimed T3.12 "made both types
+  // live", which was never true of `inject`.
   "inject",
   "inject_curbed",
   // A session checkpoint is operational, not vault knowledge (T3.16): it is

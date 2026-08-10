@@ -648,8 +648,21 @@ would silently make its own bar unrepresentable.
   **2148355473** (the pre-round file's own sha256), pool 45 eligible after
   excluding the ten T2.25 core pairs, quota by largest remainder **8
   value-swap / 4 direction / 3 temporal**. Reproduce with
-  `cd backend && PYTHONPATH=.:scripts python -m benchlib.lattice_retirement
-  --verdict contradicted --n 15`. Each retired pair carries
+
+  ```bash
+  git show 48ad7e8e~1:backend/scripts/benchlib/entailment/gold.json \
+    > /tmp/gold-pre-round.json
+  cd backend && PYTHONPATH=.:scripts python -m benchlib.lattice_retirement \
+    --verdict contradicted --n 15 --gold /tmp/gold-pre-round.json
+  ```
+
+  **`--gold` is the load-bearing argument and the first version of this line
+  omitted it** (corrected 2026-08-10). It defaults to the *current* gold file,
+  and the seed is that file's own sha256 — so the one-command form drew seed
+  2566671177 against a pool the round had already changed, reproducing
+  nothing. Against the pre-round file it yields seed 2148355473, quota 8/4/3
+  and exactly the fifteen ids marked below; re-verified 2026-08-10. Each
+  retired pair carries
   `retirement_kind: "lattice"` so no later reader mistakes fifteen correct
   labels for mislabels.
 
@@ -662,13 +675,42 @@ would silently make its own bar unrepresentable.
   weakness. **The harvest was exhausted**: 19 of 57 non-temporal slots had
   capacity, so scarce anchors went to the contradicted slices first by a rule
   stated before the draw, and the rest took hand-authored premises under the
-  skip mechanism. `l2-fact` 240 → 238 of 402 live (59.2%, floor 50%).
+  skip mechanism. `l2-fact` 235 → 238 of 402 live (59.2%, floor 50%) — six
+  retired, nine added. This read "240 → 238" until 2026-08-10; no state of the
+  file was ever 240, and the arrow pointed the wrong way as a result: the
+  round *raised* the l2-fact count, it did not spend it.
 
   **Ten skips**, all logged: three `direction` on symmetric relations, five
   `value-swap` on non-single-valued slots, and **two of a shape nobody had
   predicted** — a `direction` slot on a fact that already carries a live
   `direction` pair, where the reversal is determined and the loader rejected
   the byte-identical duplicate. Added to the known-infeasible list above.
+
+  **This round shipped with two Critical findings open against it, and they
+  are the owner's to rule on.** Recorded here as well as in the gate ledger
+  (2026-08-10, "C-1 / C-2") because a reader auditing the round's own record
+  must not have to find the ledger to learn the census is disputed. Neither is
+  adjudicated below; the ledger states the options and an agent may not choose
+  among them.
+
+  - **C-1 — clause 5 of the lattice-retirement rule was violated by the round
+    that ratified it.** The draw retired 8 value-swap / 4 direction / 3
+    temporal; the replacements landed 8 / 4 / **2** plus one
+    **overreach**-contradicted (`eg-0405`), so the pooled slice distribution
+    moved (temporal 15→14, overreach 0→1) while the census still landed at
+    exactly 80. Clause 5 requires the distribution be unchanged. The rule
+    cannot repair its own violation: clause 1 makes `eg-0405` ineligible for
+    lattice retirement because it sits in Rule B's population.
+  - **C-2 — `eg-0367` is a semantic near-duplicate of live `eg-0093`**:
+    identical premise, the same reversed proposition reworded. Two sibling
+    slots (13 and 28) collided byte-for-byte and were skipped, which is what
+    the paragraph above records; **slot 15 is a third instance that never
+    collided**, so the byte-uniqueness loader passed it and the instruction
+    added after the first two — *do not resolve it by rewording the reversal* —
+    was aimed at a shape it could not reach. The pooled census is therefore 80
+    rows and at most 79 independent items, and the duplicate straddles both
+    populations. The "all logged" account above is complete for the skips and
+    incomplete for the shape.
 
   **Blind adjudication: 64/66 adjudicated on the first pass.** Pass A (Opus)
   and pass B (Sonnet), separately dispatched, no shared context. Agreement

@@ -217,10 +217,14 @@ class TestTheRecordsSurface:
         )
         assert total == 1
 
-    async def test_the_frontend_map_accounts_for_both_now_that_they_emit(self):
+    async def test_the_frontend_map_accounts_for_both_event_types(self):
         """The map's own rule: a value with a live emitter owes either a tab or
         a recorded exclusion, and this task is the emitter. Its docstring said
         deciding was "a design call this task does not own" — T3.12 owns it.
+
+        The name said "now that they emit", which was true of `inject_curbed`
+        and false of `inject`: `record_inject` still has no caller (T3.10, held
+        by G-D). The map entry is owed by the *decision*, not by rows existing.
         """
         taxonomy = (
             __import__("pathlib").Path(__file__).resolve().parents[2]

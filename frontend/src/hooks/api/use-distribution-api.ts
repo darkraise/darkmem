@@ -12,7 +12,13 @@ export interface DistributionTarget {
 
 export interface DistributionPolicy {
   token_budget: number
-  /** The curb. One flag, server-side, stopping every target at once. */
+  /**
+   * The curb. One flag, stored server-side, that will stop every target at
+   * once. It has no enforcer yet: the inject writer is T3.10's and is held by
+   * G-D, so the row's only reader today is the GET that serves this shape
+   * back (`backend/app/api/routes/distribution.py` says the same). Setting it
+   * is recorded and journalled; it stops nothing, because nothing pushes.
+   */
   curbed: boolean
 }
 
