@@ -284,3 +284,83 @@ async def test_the_default_url_is_loopback():
     with the reminder that the server must permit it."""
     assert DEFAULT_MCP_URL.startswith("http://localhost:")
     assert cc.render_server_entry()["url"] == DEFAULT_MCP_URL
+
+
+# ---------------------------------------------------------------------------
+# Where a workspace-relative config actually lands (branch review I-8)
+# ---------------------------------------------------------------------------
+
+
+class TestConfigPathResolution:
+    """Three of the four shipped adapters name a **workspace-relative** config
+    (`.mcp.json`, `.cursor/mcp.json`, `cline_mcp_settings.json`), and the CLI
+    resolved them against the process's cwd while its own docstring said to run
+    from `backend/`. The documented invocation therefore wrote the config into
+    darkmem's own checkout — a workspace no project session of the user's ever
+    reads — and then printed "connected", because the handshake tests the URL
+    and not the file. Success reported for a wrong outcome, which is the same
+    failure shape as this task's original review Critical.
+    """
+
+    def test_an_absolute_or_home_config_ignores_the_workspace(self, tmp_path):
+        home = cc.resolve_config_path(
+            "~/.codex/config.toml", workspace=tmp_path, repo_root=tmp_path
+        )
+        assert home == Path("~/.codex/config.toml").expanduser()
+
+    def test_a_relative_config_lands_in_the_named_workspace_not_the_cwd(
+        self, tmp_path
+    ):
+        workspace = tmp_path / "my-project"
+        workspace.mkdir()
+        resolved = cc.resolve_config_path(
+            ".mcp.json", workspace=workspace, repo_root=tmp_path / "darkmem"
+        )
+        assert resolved == workspace / ".mcp.json"
+
+    def test_writing_into_darkmem_s_own_checkout_is_refused(self, tmp_path):
+        """The exact outcome the documented invocation produced. Refused rather
+        than defaulted, because there is no reading of `darkmem connect
+        claude-code` under which the answer is darkmem's own backend/."""
+        repo_root = tmp_path / "darkmem"
+        (repo_root / "backend").mkdir(parents=True)
+
+        with pytest.raises(cc.WorkspaceRequired) as caught:
+            cc.resolve_config_path(
+                ".mcp.json", workspace=repo_root / "backend", repo_root=repo_root
+            )
+
+        message = str(caught.value)
+        assert "--workspace" in message, "the refusal must name the way out"
+        assert ".mcp.json" in message
+
+    def test_the_repo_root_check_is_containment_not_a_name_match(self, tmp_path):
+        """A directory merely *called* darkmem elsewhere is a legitimate
+        workspace; a nested one inside the checkout is not."""
+        repo_root = tmp_path / "darkmem"
+        (repo_root / "frontend" / "src").mkdir(parents=True)
+        elsewhere = tmp_path / "work" / "darkmem"
+        elsewhere.mkdir(parents=True)
+
+        assert cc.resolve_config_path(
+            ".mcp.json", workspace=elsewhere, repo_root=repo_root
+        ) == elsewhere / ".mcp.json"
+
+        with pytest.raises(cc.WorkspaceRequired):
+            cc.resolve_config_path(
+                ".mcp.json",
+                workspace=repo_root / "frontend" / "src",
+                repo_root=repo_root,
+            )
+
+    def test_an_absolute_config_inside_the_checkout_is_still_allowed(self, tmp_path):
+        """The guard is about the *implicit* workspace, not about forbidding a
+        path a human typed. An operator pointing an absolute config at the repo
+        is doing something deliberate."""
+        repo_root = tmp_path / "darkmem"
+        repo_root.mkdir()
+        target = repo_root / "scratch.json"
+
+        assert cc.resolve_config_path(
+            str(target), workspace=None, repo_root=repo_root
+        ) == target

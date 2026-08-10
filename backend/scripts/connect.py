@@ -5,11 +5,21 @@ Thin by design. Every decision lives in ``app.services.client_connect`` and
 ``app.services.inject_adapters`` so it is testable without a terminal, a tool
 installation or a server; this file is argument parsing, file I/O and printing.
 
-Run from ``backend/``::
+Run it **from the project you are connecting**, by absolute path — the script
+puts ``backend/`` on ``sys.path`` itself, so its cwd is free to be your
+workspace::
 
-    python scripts/connect.py claude-code
-    python scripts/connect.py cursor --host 192.168.0.195:8000
-    python scripts/connect.py codex --dry-run
+    cd ~/my-project
+    python /path/to/darkmem/backend/scripts/connect.py claude-code
+    python /path/to/darkmem/backend/scripts/connect.py cursor --host 192.168.0.195:8000
+    python /path/to/darkmem/backend/scripts/connect.py codex --dry-run
+
+This said "Run from ``backend/``", which was wrong for three of the four
+adapters and silently so: `.mcp.json`, `.cursor/mcp.json` and
+`cline_mcp_settings.json` are **workspace** configs, so the documented
+invocation wrote them into darkmem's own checkout and the handshake still
+printed "connected". ``--workspace`` names the target explicitly; a
+workspace-relative write landing inside this repository is now refused.
 """
 
 from __future__ import annotations
@@ -37,8 +47,10 @@ from app.services.client_connect import (
     diagnose,
     merge_json_config,
     merge_toml_config,
+    resolve_config_path,
     verify_handshake,
 )
+from app.services.client_connect import WorkspaceRequired
 from app.services.inject_adapters import UnknownTool, resolve_adapter
 
 
@@ -108,6 +120,13 @@ async def main() -> int:
         help="non-loopback host:port. It must already be in MCP_ALLOWED_HOSTS "
              "on the server — this command cannot and must not add it there.",
     )
+    parser.add_argument(
+        "--workspace",
+        help="the project directory a workspace-relative config belongs to "
+             "(.mcp.json, .cursor/mcp.json, cline_mcp_settings.json). "
+             "Defaults to the current directory; ~/.codex/config.toml and any "
+             "absolute path ignore it.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="print, write nothing")
     args = parser.parse_args()
 
@@ -132,7 +151,15 @@ async def main() -> int:
         )
         return 2
 
-    config_path = Path(adapter.mcp_config).expanduser()
+    try:
+        config_path = resolve_config_path(
+            adapter.mcp_config,
+            workspace=args.workspace,
+            repo_root=Path(__file__).resolve().parents[2],
+        )
+    except WorkspaceRequired as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     existing = config_path.read_text() if config_path.exists() else ""
     merge = (
         merge_toml_config if config_format_for(adapter.mcp_config) == "toml"

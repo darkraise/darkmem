@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from pathlib import Path
 from dataclasses import dataclass, field
 
 __all__ = [
@@ -39,10 +40,12 @@ __all__ = [
     "SERVER_KEY",
     "ConnectResult",
     "HandshakeFailed",
+    "WorkspaceRequired",
     "diagnose",
     "merge_json_config",
     "merge_toml_config",
     "render_server_entry",
+    "resolve_config_path",
     "verify_handshake",
 ]
 
@@ -196,6 +199,51 @@ def merge_toml_config(existing: str, url: str = DEFAULT_MCP_URL) -> str:
 def config_format_for(path: str) -> str:
     """JSON or TOML, by the config file's own extension."""
     return "toml" if path.endswith(".toml") else "json"
+
+
+class WorkspaceRequired(ValueError):
+    """A workspace-relative config would land inside darkmem's own checkout."""
+
+
+def resolve_config_path(mcp_config: str, *, workspace, repo_root) -> Path:
+    """Where a tool's MCP config actually goes.
+
+    Adapters name their config two ways and only one of them is
+    self-locating. `~/.codex/config.toml` is a *user* config: absolute once
+    expanded, the same file wherever the command runs. `.mcp.json`,
+    `.cursor/mcp.json` and `cline_mcp_settings.json` are **workspace**
+    configs, meaningful only relative to the project the tool has open — and
+    resolving those against the process's cwd is what put three of the four
+    shipped adapters' configs inside darkmem's own `backend/`, since that is
+    where the CLI's docstring told the human to stand. The handshake then
+    reported "connected", because it tests the URL and not the file.
+
+    So a workspace-relative config resolved into this repository is
+    **refused**. There is no reading of `darkmem connect claude-code` under
+    which the intended answer is darkmem's own source tree, and a refusal
+    naming `--workspace` costs a retry where a silent write costs a debugging
+    session that starts from "the tool cannot see darkmem".
+
+    Containment, never a name match: a project of the user's that happens to
+    be called `darkmem` is a perfectly good workspace. And an *absolute* path
+    is honoured even inside the checkout — the guard exists to stop an
+    implicit default, not to overrule a path a human typed.
+    """
+    raw = Path(mcp_config).expanduser()
+    if raw.is_absolute():
+        return raw
+
+    base = Path(workspace) if workspace is not None else Path.cwd()
+    resolved = (base / raw).resolve()
+    root = Path(repo_root).resolve()
+    if resolved == root or root in resolved.parents:
+        raise WorkspaceRequired(
+            f"{mcp_config} is a workspace config and this would write it to "
+            f"{resolved}, inside darkmem's own checkout — a workspace the "
+            f"tool you are connecting never opens. Re-run from the project "
+            f"directory, or pass --workspace <dir> naming it."
+        )
+    return resolved
 
 
 async def verify_handshake(call) -> list[str]:
