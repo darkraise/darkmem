@@ -56,6 +56,20 @@ the epic branch. The ladder for what ships next is
 dev environment, disposable data, and CLAUDE.md's trigger (the first deploy
 whose data must survive) is still ahead.
 
+**Open and uncharacterised: one `frontend test` gate failure with no diagnostics
+(2026-08-10, 22:47).** `./scripts/gate.sh` exited red at the `frontend test`
+step. `npm test` run standalone immediately afterwards passed — 111 files, 753
+tests — and the next full gate run was green, so the gate is green *through a
+re-run*. **No output was captured**: the run was piped through a `grep` that
+kept only the `GATE`/`FAILED` lines, and `gate.sh` streams rather than
+persisting per-step logs, so the failure's actual cause is unknown and was
+destroyed by the operator, not by the tooling. This is **not** the known
+`activity.spec.ts` flake below — that one is Playwright e2e under
+`npm run test:e2e`, and this was vitest under `npm test`, a different suite in a
+different gate step. Recorded because one unexplained red in a suite that
+otherwise passes 753/753 is exactly the shape the flake below took before three
+waves walked past it. **Next occurrence: capture the whole step, do not grep.**
+
 **Open, not closed: an e2e flake with a wrong explanation withdrawn (2026-08-10).**
 `frontend/tests/activity.spec.ts:10` has failed on three of seven
 `gate.sh --full` runs and passed on the retry each time, so the gate is green
