@@ -153,6 +153,23 @@ def resolve_checkpoint_origin(declared, *, source: str, project: str) -> str:
             "refusing to store a checkpoint under a key shared by every "
             "unattributed run of this source and project"
         )
+    if resolved == f"{source}:":
+        # The refusal above was reachable round the front: `_sanitize_origin`
+        # drops separators and unprintables, so ":::", a lone zero-width space
+        # and " : " each reduce to the empty string and land on the bare
+        # "<source>:" -- one key shared by every run that declares such a
+        # string. Not the resolver's fallback bucket, but the same hazard, and
+        # the guard above cannot see it because the prefix is wrong. Keyed on
+        # the *sanitised* result rather than on the raw string containing a
+        # stripped character, since "boot:1" sanitises to "boot1" and is a
+        # perfectly good identity.
+        raise UndeclaredOrigin(
+            f"the declared agent-run identity {declared!r} contains nothing "
+            f"that survives sanitisation, so it resolves to the bare "
+            f"{resolved!r} -- a key every such run would share, and each would "
+            "read the others' checkpoints as its own. Send an identity with at "
+            "least one printable, non-separator character."
+        )
     return resolved
 
 

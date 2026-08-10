@@ -20,8 +20,26 @@ class CheckpointCreate(BaseModel):
     different rather than drifted, so 15 steps of 500 CJK characters passed
     every check here and violated the CHECK at flush — a 500 on a request this
     validation had just called valid. `bounded_steps` now measures encoded
-    size against the same constant the constraint uses, so the two cannot
-    disagree about any payload.
+    size against the same constant the constraint uses.
+
+    **What that buys is one-directional, and saying "the two cannot disagree
+    about any payload" overstated it** (branch review M-7, corrected
+    2026-08-10). The two sides measure different things: `json.dumps` defaults
+    to `ensure_ascii=True`, which renders a CJK character as a six-byte `\\uXXXX`
+    escape where JSONB stores its three UTF-8 bytes, and `pg_column_size`
+    reports the value *after* TOAST compression. So this check is
+    systematically **larger** than what the constraint measures — about 2× on
+    CJK text. That direction is the safe one and is deliberately kept: nothing
+    this layer accepts can violate the CHECK, which is the property that
+    matters, since the failure being prevented is a 500 on a request already
+    called valid.
+
+    The residue is that a payload the database would have accepted can be
+    refused here, and the message quotes a byte count that is neither its
+    UTF-8 length nor its stored size. Refusing something storable is a bounded
+    annoyance; storing something the constraint rejects is a 500. The error
+    text says which number it is quoting so the count is not mistaken for the
+    stored size.
     """
 
     # Optional here, required by the *door*. A required field made the routes'
@@ -57,10 +75,13 @@ class CheckpointCreate(BaseModel):
         encoded = len(json.dumps(self.next_steps).encode("utf-8"))
         if encoded > NEXT_STEPS_MAX_BYTES:
             raise ValueError(
-                f"next_steps encodes to {encoded} bytes; the bound is "
-                f"{NEXT_STEPS_MAX_BYTES}. Non-ASCII text costs several bytes "
-                f"per character, so a payload inside the per-step character "
-                f"limit can still exceed it."
+                f"next_steps encodes to {encoded} bytes with non-ASCII "
+                f"escaped; the bound is {NEXT_STEPS_MAX_BYTES}. That count is "
+                f"deliberately the conservative one — it runs larger than the "
+                f"UTF-8 bytes the database actually stores, so nothing "
+                f"accepted here can violate the CHECK. Non-ASCII text costs "
+                f"several bytes per character either way, so a payload inside "
+                f"the per-step character limit can still exceed it."
             )
         return self.next_steps
 

@@ -604,6 +604,31 @@ class TestBothDoors:
         assert answer is not None, "the MCP door ignored the X-Darkmem-Origin header"
         assert answer["summary"] == "identity from the header"
 
+    @pytest.mark.parametrize("declared", [":::", "::", "​", " : ", " "])
+    async def test_a_declaration_that_sanitises_to_nothing_is_refused(self, declared):
+        """The undeclared refusal was reachable round the front (branch review
+        M-9).
+
+        `_sanitize_origin` strips separators and unprintables, so `":::"`, a
+        lone zero-width space and friends all reduce to the empty string and
+        resolved to the bare `"<source>:"` — one key shared by every such run.
+        That is precisely the merge-to-one bucket `UndeclaredOrigin` exists to
+        refuse: safe for counting corroboration, wrong for lookup, because two
+        runs sharing it each read the other's checkpoint as their own. The
+        guard was written against an *empty* declaration and a declaration
+        that survives sanitisation, and these fall between the two.
+        """
+        with pytest.raises(cp.UndeclaredOrigin):
+            cp.resolve_checkpoint_origin(declared, source="codex", project=PROJECT)
+
+    async def test_a_declaration_that_survives_sanitising_is_still_accepted(self):
+        """The refusal must key on the sanitised result being empty, not on
+        the raw string containing a stripped character — `boot:1` sanitises to
+        `boot1`, which is a perfectly good identity."""
+        assert cp.resolve_checkpoint_origin(
+            "boot:1", source="codex", project=PROJECT
+        ) == "codex:boot1"
+
     async def test_neither_door_invents_an_identity_when_nothing_declares_one(
         self, client, auth_headers
     ):

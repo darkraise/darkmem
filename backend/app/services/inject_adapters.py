@@ -174,9 +174,20 @@ async def _resolve(
             # rather than an object watches their row vanish exactly as one
             # with a bad `context_file` did, and the reason has the same right
             # to reach the screen. The sentence is finished after the merge —
-            # a malformed *override* of a shipped tool leaves that tool served
+            # a *non-dict* override of a shipped tool leaves that tool served
             # at its default, and calling that "no block is written" would be
             # the screen asserting something not in force.
+            #
+            # **This branch only.** The comment used to say "a malformed
+            # override", which is false one branch down (branch review M-8):
+            # a well-typed-but-invalid override — `{"context_file":
+            # "/etc/passwd"}`, or an empty one — *replaces* the default's
+            # field in `merged`, so `reject_reason` below drops the tool from
+            # `adapters` entirely and the default is **not** in force. The
+            # wire stays honest either way (the tool is simply absent from
+            # `targets`); what was wrong was the general claim, on the one
+            # surface whose fix round was about the screen not asserting what
+            # is not in force.
             rejected[tool] = (
                 f"the entry is {type(entry).__name__}, not an object — an "
                 "adapter is a mapping of context_file / mcp_config / refresh"
