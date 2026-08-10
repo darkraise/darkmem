@@ -37,10 +37,18 @@ done rows carry no version, deliberately. The column answers "which release?"
 for *open* work, which is the visibility problem it was added to fix. Cut by
 demonstration, not by assertion.
 
-> ## ⛔ v0.2 IS BLOCKED — owner ruling required (2026-08-11)
+> ## ✅ RESOLVED 2026-08-11 — owner ratified; both edits applied
 >
-> **The ladder below cannot be executed in the order it states.** Two
-> version-inverting dependency edges exist, and they compose:
+> The owner's instruction was "start next two versions", which ships v0.2 **and**
+> v0.3. That settles the partition question by making it moot — `T3.10` is built
+> either way — leaving only the dependency amendment, applied below. `T3.10`
+> moved into v0.2 and its `T3.23` edge is dropped. The escalation is kept for
+> the record; the ladder sections themselves are now correct.
+>
+> ## The blockage, as escalated (2026-08-11)
+>
+> **The ladder could not be executed in the order it stated.** Two
+> version-inverting dependency edges existed, and they composed:
 >
 > | Edge | From | To |
 > |---|---|---|
@@ -91,13 +99,13 @@ demonstration, not by assertion.
 
 ### v0.2 — Resume and checkpoints
 
+- `T3.10` — Truth-first content fill under a token budget
 - `T3.17` — Resume as a specialised inject
 - `T3.18` — Checkpoints are operational, not vault knowledge
 - `T3.21` — Session checkpoints / resume view
 
 ### v0.3 — Auto-context into agent tools
 
-- `T3.10` — Truth-first content fill under a token budget
 - `T3.20` — Inject records in timeline and calendar
 - `T4.06` — Inject `watch` mode
 - `T4.07` — Auto-scrape opt-in
