@@ -455,3 +455,29 @@ def test_the_changelog_names_the_version_being_shipped():
         f"CHANGELOG.md has no `## {tag}` section for the version the product "
         "fields currently claim"
     )
+
+
+def test_every_shell_script_with_a_shebang_is_executable():
+    """A `#!` line is a declaration that the file is run directly, and
+    CLAUDE.md tells you to run several of these as `./scripts/<name>.sh`.
+    `scripts/build-push.sh` carried a shebang and mode 100644 anyway, so the
+    v0.1 release died at its build step after a clean full gate — and the first
+    fix used `git update-index --chmod=+x`, which sets the index mode only and
+    was silently reverted by the next `git add` of that path. Checking the
+    committed mode is what makes the fix stick."""
+    root = Path(__file__).resolve().parents[2]
+    listing = subprocess.run(
+        ["git", "ls-files", "-s", "--", "scripts/*.sh"],
+        cwd=root, capture_output=True, text=True, check=True, timeout=10,
+    ).stdout
+
+    not_executable = []
+    for line in listing.splitlines():
+        mode, _, rest = line.partition(" ")
+        path = rest.split("\t", 1)[1]
+        if (root / path).read_text(encoding="utf-8").startswith("#!") and mode != "100755":
+            not_executable.append(f"{path} is {mode}")
+
+    assert not_executable == [], (
+        f"shell scripts with a shebang but no executable bit: {not_executable}"
+    )
