@@ -918,11 +918,13 @@ the REST case alone.
 
 ## Live model endpoints (dev machine)
 
-Recorded at the owner's explicit instruction, 2026-07-28. **The key below
-is a real credential in a private repo; it is committed knowingly and is to
-be rotated before the repo is ever published.** Note that removing it in a
-later commit does not remove it from git history — that needs a history
-rewrite or a rotated key.
+Recorded at the owner's explicit instruction, 2026-07-28 (DeepSeek, Ollama) and
+2026-08-10 (OpenAI). **The keys below are real credentials in a private repo;
+they are committed knowingly and are to be rotated before the repo is ever
+published.** Note that removing one in a later commit does not remove it from
+git history — that needs a history rewrite or a rotated key. Both were also
+pasted into a chat transcript, which is a second copy outside this repo's
+control, so rotation is the only thing that actually retires them.
 
 - **Extraction / classification / reasoning — DeepSeek.**
   `base_url=https://api.deepseek.com/v1`, `api_kind=deepseek`,
@@ -932,6 +934,18 @@ rewrite or a rotated key.
   model, so a run on `-pro` is not comparable and must not be used for
   parity. Export as `DEEPSEEK_API_KEY` for `run_bench.py` and
   `benchlib/run_smoke.py`.
+- **G-D judge — OpenAI.** `base_url=https://api.openai.com/v1`,
+  `api_kind=openai`, key
+  `REDACTED-OPENAI-KEY-ROTATE-ME`.
+  Recorded 2026-08-10 for the owner-ruled **`gpt-5.5`** G-D judge attempt
+  (T2.114). Export as `OPENAI_API_KEY`; `run_judge_qualification.py` takes the
+  key as an argument and the model/base_url/api_kind as overrides, so a judge
+  swap lands in the identity hash and can never read as a re-run of the same
+  judge. **This is a judge credential, not an ingestion one** — it is not the
+  extraction/classification path and must not be pointed at one, because the F1
+  baseline and every gate re-measurement are fixed to `deepseek-v4-flash` and a
+  run on another model is not comparable.
+
 - **Embeddings — Ollama on the LAN.** `http://192.168.0.196:11434`,
   `api_kind=ollama`. Two embedding models, and the choice is load-bearing
   because the fingerprint partitions on it:
