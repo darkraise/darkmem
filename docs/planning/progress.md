@@ -43,6 +43,19 @@ and the Note says so. That rule is the whole point of this file.
   after any task is added, split, or retitled. It carries the five state columns
   through unchanged, so regenerating mid-execution is safe and never resets a claim.
 
+**`v0.1` tagged and deployed, 2026-08-10 — the first release.** Cut from
+`feat/e3-synthesis-and-reach` at `35e8668c` by `scripts/release.sh`, on a green
+`gate.sh --full` (floor, retrieval eval, API e2e, Playwright, port hygiene).
+The tag is written **last**, after the deployed stack answers `/health` — so it
+records a running system, not a green suite. Demonstrated end to end before the
+cut and recorded with its real output, gaps included, in
+[`docs/releases/v0.1-demonstration.md`](../releases/v0.1-demonstration.md) on
+the epic branch. The ladder for what ships next is
+[`RELEASES.md`](RELEASES.md); the loop that executes it is
+[`autonomous-loop.md`](autonomous-loop.md). **This is not the schema freeze** —
+dev environment, disposable data, and CLAUDE.md's trigger (the first deploy
+whose data must survive) is still ahead.
+
 **Open, not closed: an e2e flake with a wrong explanation withdrawn (2026-08-10).**
 `frontend/tests/activity.spec.ts:10` has failed on three of seven
 `gate.sh --full` runs and passed on the retry each time, so the gate is green
