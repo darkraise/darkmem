@@ -86,7 +86,7 @@ out.append(
     "and the Note says so. That rule is the whole point of this file.\n"
 )
 out.append("## Claiming and concurrency\n")
-out.append(
+CLAIMING = (
     "- **This file is canonical on `master`**, not on an epic branch — otherwise it forks per\n"
     "  branch and no copy is true. Update it with a single commit touching only your row.\n"
     "- **Claiming is one commit** setting Owner and moving the row to `wip`. If two agents\n"
@@ -98,6 +98,32 @@ out.append(
     "  after any task is added, split, or retitled. It carries the five state columns\n"
     "  through unchanged, so regenerating mid-execution is safe and never resets a claim.\n"
 )
+out.append(CLAIMING)
+
+# ------------------------------------------------------------ carry standing notes
+# `progress.md` holds hand-written prose in two places this script cannot
+# reproduce — before `## Rollup`, and between the rollup table and the `---`
+# above the epic tables — and regenerating without carrying them is a silent
+# delete. Together they held 62 lines on 2026-08-10: a standing open-flake
+# record, and the account of three recount defects that says why the counts are
+# derived. The runbook tells every agent to regenerate after logging an
+# amendment, so the loss was one routine command away. Both regions are anchored
+# on generated text, so a preamble edit degrades to carrying nothing rather than
+# to duplicating a section.
+_old = io.open("progress.md", encoding="utf-8").read() if os.path.exists("progress.md") else ""
+
+
+def standing_notes(after, before):
+    """Prose between two generated anchors in the previous progress.md."""
+    start, end = _old.find(after), _old.find(before)
+    if start == -1 or end <= start:
+        return ""
+    return _old[start + len(after):end].strip("\n")
+
+
+preamble_notes = standing_notes(CLAIMING, "## Rollup")
+if preamble_notes:
+    out.append(preamble_notes + "\n")
 
 tables = []
 totals = 0
@@ -169,6 +195,17 @@ r.append("| EH2 — .NET migration | outline |" + " — |" * len(STATUSES) + " G
 r.append("| **Total** | **%d** | %s | |" % (
     totals, " | ".join("**%d**" % tot[s] for s in STATUSES)))
 out.append("\n".join(r) + "\n")
+
+# The second standing-notes region: prose under the rollup table, above the
+# `---`. It holds the account of why these counts are derived, written by the
+# agents who found them drifted three times.
+rollup_block = standing_notes("## Rollup", "\n---\n")
+rollup_lines = rollup_block.split("\n")
+_last_row = max((k for k, line in enumerate(rollup_lines) if line.startswith("|")), default=-1)
+rollup_notes = "\n".join(rollup_lines[_last_row + 1:]).strip("\n")
+if rollup_notes:
+    out.append(rollup_notes + "\n")
+
 out.append("---\n")
 out.extend(tables)
 
