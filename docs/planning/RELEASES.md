@@ -37,6 +37,58 @@ done rows carry no version, deliberately. The column answers "which release?"
 for *open* work, which is the visibility problem it was added to fix. Cut by
 demonstration, not by assertion.
 
+> ## ⛔ v0.2 IS BLOCKED — owner ruling required (2026-08-11)
+>
+> **The ladder below cannot be executed in the order it states.** Two
+> version-inverting dependency edges exist, and they compose:
+>
+> | Edge | From | To |
+> |---|---|---|
+> | `T3.17` → `T3.10` | v0.2 | v0.3 |
+> | `T3.10` → `T3.23` | v0.3 | v0.4 |
+>
+> The full chain is `T3.17 → T3.10 → T3.23 → T3.02`, so **v0.2's headline
+> feature is transitively downstream of v0.4's**. Only `T3.18` is startable
+> today. Every other edge across v0.2/v0.3/v0.4 was checked and is clean.
+>
+> This is a Tier-3 amendment: the correction changes the owner-approved ladder
+> table in design spec §3, and which release delivers what is the owner's scope
+> authority, not the loop's. Fable-tier ruling; both edges verified against the
+> tree.
+>
+> **Proposed fix — two edits, either alone insufficient:**
+>
+> 1. **Amend `T3.10`'s `Depends` from `T3.09, T2.43, T3.23` to `T3.09, T2.43`**,
+>    adding a Done-when: *an absent or empty L3 channel yields an empty tier,
+>    never an error.* The edge is over-tight. `T3.10` must handle an empty L3
+>    tier **forever anyway** — every fresh install has zero articles even after
+>    `T3.23` ships — so the degradation is permanent required behaviour, not
+>    scaffolding for a missing dependency. `T3.10` reads L3 through the doc 07 §5
+>    composition (`T2.43`, done); `T3.23` registers a channel *into* that
+>    composition rather than defining an interface `T3.10` would have to invent,
+>    so no parallel path is created. What genuinely waits on `T3.23` is G-E's
+>    "L3 shipped" evidence — and `T3.10`'s gate is `G-E (label)`. Moving the edge
+>    from build to evidence is this epic's own ratified 2026-08-06 pattern:
+>    *a gate blocks what it certifies, not what merely precedes it.*
+> 2. **Move `T3.10` into v0.2** (shown below), leaving v0.3 as `T3.20`, `T4.06`,
+>    `T4.07`, `T4.08`. Spec §3's counts become v0.2: 3→4, v0.3: 5→4; the 14 / 24
+>    / 6 bucket arithmetic is unchanged.
+>
+> **Why this grouping and not the alternative** (move `T3.17` and `T3.21` down
+> to v0.3): v0.2's headline is only honest with `T3.10` inside it — resume as
+> specified *is* a budgeted digest through the fill path, so without `T3.10`
+> there is no resume, and v0.2 would ship an isolation guard under a feature
+> headline. The per-version user story stays true at each rung: v0.2 "your agent
+> can resume", v0.3 "context stays live and visible", v0.4 "synthesised articles
+> join the fill".
+>
+> **Note `T3.10` is `Size: L`**, so runbook §3 forbids executing it directly — it
+> needs a step-level plan reviewed at Fable tier first. That is a real cost of
+> moving it into v0.2 and is stated here rather than discovered later.
+>
+> **`T3.18` is startable under every candidate resolution** and is the correct
+> first task once this is ratified.
+
 ### v0.2 — Resume and checkpoints
 
 - `T3.17` — Resume as a specialised inject
