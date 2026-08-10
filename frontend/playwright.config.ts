@@ -52,6 +52,36 @@ export default defineConfig({
   use: {
     trace: "on-first-retry",
   },
+  // Playwright's default expect timeout is 5000ms and nobody chose it. Two
+  // tests flaked across six `gate.sh --full` runs on 2026-08-10 —
+  // `code-real-mode.spec.ts:74` and `activity.spec.ts:10`, both
+  // `getByText(...)` reporting "element(s) not found" — and both passed on
+  // the retry below, so the gate was green *through a retry* rather than
+  // cleanly.
+  //
+  // Measured before changing anything, because a timeout raised to make a
+  // symptom go away hides a real regression just as well as it hides a slow
+  // machine. First render of `/activity?tab=day` to the asserted text:
+  // **0.8-1.4s idle, 1.8-2.2s under 24 CPU burners on 12 cores, 1.4s with
+  // `node_modules/.vite` deleted**. The asserted string is static shell text,
+  // not behind a query, so nothing is waiting on data. Three hypotheses were
+  // tested and disproven: cold-start module transform (absorbed by the
+  // `webServer.url` wait), a data-gated assertion (the text renders
+  // unconditionally), and a Vite dep-optimizer reload (pre-bundling completes
+  // before the port opens; no reload is logged even cold). 84 executions of
+  // the flaking test, including the whole project serially three times in the
+  // gate's own configuration, did not reproduce it.
+  //
+  // So the finding is a margin, not a defect: ~2.3x between a load-sensitive
+  // operation and a bound nobody picked, on a host that idles at load 5-6 of
+  // 12 cores and to which the gate adds a Postgres, a uvicorn running 21 job
+  // loops, two Vite dev servers and a Chromium. 15s is sized against the
+  // measured worst case with room for a host several times slower. It costs
+  // nothing on a passing run — `toBeVisible` polls and returns as soon as the
+  // element appears — and only changes how long a genuinely broken assertion
+  // takes to report. The retry below stays, as a last resort rather than the
+  // routine absorber it had become.
+  expect: { timeout: 15000 },
   // T1.64: against a disposable stack, every "chromium"-project spec that
   // authenticates (auth.spec.ts, code-real-mode.spec.ts, code-wiki-empty.spec.ts,
   // setup-wizard-refresh.spec.ts) shares the one live, stateful backend
