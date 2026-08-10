@@ -134,3 +134,124 @@ certification sitting (T2.115's took three), and the attempt it exists to enable
 cannot follow until `OPENAI_API_KEY` is available. Doing the surgery now and
 discovering the key never arrives leaves the gold re-certified and unmeasured —
 no loss but the spend, and no gain either.
+
+
+---
+
+## Round executed 2026-08-10 — **certification FAILED, gold reverted, G-D not run**
+
+The owner supplied the OpenAI credential and authorised the sequence. It ran end
+to end and stopped at the certification, which is a measured result and is
+recorded as it landed. **`gold.json` is back at `98fc4b49`, the `58ac1a90`
+certification stands, the attempt budget is unspent and the harness suite is
+green (721).**
+
+### What ran, and what it produced
+
+1. **Quarantine** — `cache/` and `verdicts/` moved out before every dispatch.
+2. **Retirement** — `eg-0367` and `eg-0251`, mechanically, by the ratified
+   later-minted rule. No judgement exercised.
+3. **Premise draw** — first attempt was defective (no capacity filter) and a
+   blind author caught it; corrected, the l2 pool came back **empty**, so both
+   slots took hand-authored premises under the skip mechanism.
+4. **Blind authoring** — two independent authors, `HAS_PART` and `HAPPENED_ON`
+   drawn by seed. Both returned lawful pairs with clean novelty and duplicate
+   checks. **Recorded verbatim below so this need not be re-authored.**
+5. **Blind adjudication** — the first pass was **discarded**: both adjudicators
+   disclosed that the Read tool paged 2000 lines and overshot into History. That
+   was a defect in the dispatch instruction, not in the agents, and both
+   disclosed it unprompted. Re-run clean-room with an exact
+   `sed -n '1,746p'` read. Result **4/4 agreement** with the authors:
+   `contradicted` / `direction` on both.
+6. **Applied** — census preserved exactly: 402 live, contradicted 80, Rule B 40,
+   contacted 40, both lattices intact, `l2-fact` 238 → 236 (floor 58.7%).
+   The stale `resample` block was deleted rather than carried, per the T2.115
+   plan-review precedent.
+7. **Re-certification — FAILED.** New sha `12ce6b91`, n = 93, seed 315517841,
+   certifier `deepseek-v4-pro` (non-Claude by structural guard; deliberately not
+   `gpt-5.5`, which is the judge under test — certifier and judge must not be
+   one model). **3 disagreements against a bar of ≤ 1.**
+
+### The three disagreements, and why they matter more than this round
+
+| id | gold | resample | rule cited |
+|---|---|---|---|
+| `eg-0175` | contradicted | unsupported | additional-value rule |
+| `eg-0404` | contradicted | unsupported | additional-value rule |
+| `eg-0405` | contradicted | unsupported | additional-value rule |
+
+**None is one of the two pairs this round authored.** All three are
+pre-existing, and all three turn on the **Additional-value rule** — the ruling
+T2.115 ratified, whose own exemplar is `eg-0405`. An independent certifier
+applied the rulebook and reached `unsupported` on every pair that rule decides.
+
+That is a finding about the rule, not about this repair. LABELLING.md's protocol
+answers it: *classify each disagreement, apply rule-then-pairs, draw a fresh
+seeded sample; two consecutive failures stop the task.* This is failure **1 of
+2**. The classification and any re-adjudication are **not this session's**: it is
+contaminated, and the question is whether a ratified rule says what its author
+thought it said.
+
+### Why the gold was reverted rather than left repaired
+
+An uncertified gold fails `gate_eligibility` — correctly — so
+`test_the_real_gold_is_now_eligible_on_every_condition` goes red and no G-D run
+is possible anyway. The alternative was to weaken that test to assert the
+degraded state, which is the one move this corpus forbids outright. So the file
+is back at `98fc4b49` and the repair is reproducible from this record without
+re-authoring or re-adjudicating anything.
+
+### The deadlock, stated plainly
+
+- **Repaired gold:** uncertified → `gate_eligibility` refuses → no attempt.
+- **Unrepaired gold:** certified, but ruling R-B forbids an attempt on it.
+
+Either way the `gpt-5.5` attempt cannot run today, and the thing that breaks the
+deadlock is resolving the Additional-value disagreements — rule first, then
+pairs.
+
+### The two authored pairs, preserved
+
+```json
+{
+  "id": "eg-0418",
+  "premise": "The nightly maintenance job includes the certificate-renewal step as one of its tasks.",
+  "hypothesis": "The nightly maintenance job is one of the tasks inside the certificate-renewal step.",
+  "verdict": "contradicted",
+  "slice_tags": ["direction"],
+  "provenance": "hand-authored-synthetic-fact",
+  "label_source": "adjudicated",
+  "rationale": "Reversal of HAS_PART: the premise makes the certificate-renewal step a part of the nightly maintenance job, and the hypothesis makes the job a part of its own step. Proper parthood is antisymmetric - a part cannot contain its whole - so the reverse is excluded by the relation's meaning, not merely unasserted. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table)."
+}
+```
+
+```json
+{
+  "id": "eg-0419",
+  "premise": "The cutover to the new reverse proxy happened during the March 2026 maintenance window.",
+  "hypothesis": "The March 2026 maintenance window happened during the cutover to the new reverse proxy.",
+  "verdict": "contradicted",
+  "slice_tags": ["direction"],
+  "provenance": "hand-authored-synthetic-fact",
+  "label_source": "adjudicated",
+  "rationale": "Right entities, HAPPENED_ON reversed. The premise locates the occurrent (the cutover) inside its temporal frame (the maintenance window); the hypothesis swaps those roles, and the occurrent and its date/place cannot swap roles for one ordered pair. Contradicted under the reversal rule, exclusive case (HAPPENED_ON row of the reversal-exclusivity table)."
+}
+```
+
+Both adjudicators independently flagged one soft spot on `eg-0419`, and it is
+worth a rule decision before the pair is used: `HAPPENED_ON`'s table row says
+"date/place", and a *maintenance window* is an interval. Both judged the verdict
+holds under every reading (the row by analogy, `HAS_PART` containment, or the
+bare reversal rule's antisymmetry), so neither escalated — but if the table's
+rows are meant to be the only sanctioned source of exclusivity, that is a rule
+gap this pair sits on.
+
+### Dispatch hygiene defect worth fixing before the next round
+
+The brief said "read LABELLING.md down to the `## History` heading". The Read
+tool pages 2000 lines, so following that instruction literally reads History.
+One author avoided it by grepping for the line number first; two adjudicators
+did not. **The rulebook and its History live in one file, which makes
+"read the rules, not the history" a trap.** Until that is split, every authoring
+and adjudication brief must specify the exact
+`sed -n '1,<H-1>p'` command rather than naming a stopping heading.
