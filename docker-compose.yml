@@ -1,3 +1,14 @@
+# Both compose files otherwise default their project name to the directory,
+# `darkmem` — so `docker compose up -d` here RECREATED the dev stack's
+# containers and pointed the production API at the development database, which
+# is where pytest's `darkmem_test` lives. Found on 2026-08-10 cutting v0.1:
+# the dev Postgres was recreated under host networking, moving it off :5433 and
+# taking the backend floor down with it. Nothing was lost, because both files
+# happened to name the same volume — which is the other half of the defect, not
+# a mitigation. An explicit name gives production its own containers and its own
+# volume, and lets both stacks run at once.
+name: darkmem-prod
+
 services:
   # One image, and it is the network edge: it serves the REST API, /mcp, /ws
   # and the built SPA on :8000. Nothing binds :80 any more. The name is
