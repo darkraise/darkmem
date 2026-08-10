@@ -1,0 +1,774 @@
+{
+ "_notes": "Round-3 authored pairs (57 slots, ids eg-0352..eg-0408 in slot order). l2-fact pairs carry fact_key as the assignment's triple_key; the full five-field anchor object is to be resolved from the harvest manifest at integration time (the manifest was not on this round's authoring allowlist).",
+ "pairs": [
+  {
+   "id": "eg-0352",
+   "premise": "fleet-cfg related to booking schedule",
+   "hypothesis": "fleet-cfg is stored in a Git repository.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+   "label_source": "author",
+   "rationale": "The premise relates fleet-cfg to the booking schedule and says nothing about where fleet-cfg is stored; the two share only an entity (the unrelated slice's shared-entity precedent, eg-0041). Absence is not exclusion (procedure 4), so unsupported."
+  },
+  {
+   "id": "eg-0353",
+   "premise": "glitchtip replaces sentry",
+   "hypothesis": "GlitchTip replaces Sentry in every project.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+   "label_source": "author",
+   "rationale": "The added lexical quantifier 'every' asserts exhaustivity the premise does not carry (exhaustivity rule, lexical case), so the hypothesis is strictly stronger (procedure 3). The strengthening crosses no exclusion, so unsupported, not contradicted."
+  },
+  {
+   "id": "eg-0354",
+   "premise": "caddy improves on nginx",
+   "hypothesis": "Nginx is improved on by Caddy.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
+   "label_source": "author",
+   "rationale": "Voice swap only; both entities and the relation preserved, nothing added or dropped. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0355",
+   "premise": "The nightly backup job uploads 42 GB to the offsite MinIO bucket in about 18 minutes.",
+   "hypothesis": "The nightly backup job uploads tens of gigabytes offsite.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Values abstracted (42 GB to tens of gigabytes) and content dropped (the bucket, the duration); the hypothesis is strictly weaker. Entailed under the weakening rule (procedure 3: dropping content preserves entailment)."
+  },
+  {
+   "id": "eg-0356",
+   "premise": "The internal wiki listens on port 8443.",
+   "hypothesis": "The internal wiki listens on port 8080.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Identical sentence shape with the port value swapped to another corpus-plausible port. A port is a single-valued configuration slot, so a differing value is contradicted under the exclusive-slot rule."
+  },
+  {
+   "id": "eg-0357",
+   "premise": "Prometheus scrapes the node exporters every 30 seconds.",
+   "hypothesis": "Prometheus pulls data from the node exporters at 30-second intervals.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Full rewording of the same assertion — same subject, same targets, same interval — with nothing strengthened or weakened. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0358",
+   "premise": "restic uses wiki volume",
+   "hypothesis": "The wiki volume uses restic.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+   "label_source": "author",
+   "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is merely unasserted. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0359",
+   "premise": "The media server pins its transcoder to version 6.0.2.",
+   "hypothesis": "The media server pins its transcoder to version 5.1.4.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Identical sentence shape with the pinned version swapped to another plausible release. The version of one named instance is a single-valued configuration slot, so a differing value is contradicted under the exclusive-slot rule."
+  },
+  {
+   "id": "eg-0360",
+   "premise": "The guest Wi-Fi VLAN is isolated from the lab network.",
+   "hypothesis": "The lab network uses 10 GbE switching.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The premise concerns VLAN isolation and bears on nothing about switching hardware; the two share only the lab-network entity (unrelated slice, shared-entity precedent eg-0041). Unsupported under procedure 4: absence, not exclusion."
+  },
+  {
+   "id": "eg-0361",
+   "premise": "astro replaces mkdocs",
+   "hypothesis": "Astro replaces Hugo.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
+   "label_source": "author",
+   "rationale": "Same sentence shape, replaced-object slot swapped to another corpus-plausible site generator. The object of a named replacement is single-valued (exclusive-slot rule, REPLACES bullet, ratified 2026-08-06): this is an object swap, not a reversal, and a differing replaced object is contradicted."
+  },
+  {
+   "id": "eg-0362",
+   "premise": "The reverse proxy rewrites incoming requests to strip the /api prefix before forwarding them.",
+   "hypothesis": "Before requests are forwarded, the reverse proxy removes the /api prefix from them.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Full rewording — clause order flipped, 'strip' to 'remove' — with the same actor, the same transformation and the same ordering constraint. Entailed under the paraphrase rule; nothing strengthened or weakened."
+  },
+  {
+   "id": "eg-0363",
+   "premise": "The nightly backup job uploads data to an offsite bucket.",
+   "hypothesis": "The nightly backup job uploads 42 GB to an offsite bucket in about 18 minutes.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The hypothesis adds a volume and a duration the premise never states, so it is strictly stronger (procedure 3: adding content breaks entailment). Nothing in the premise excludes the added values, so unsupported (procedure 4)."
+  },
+  {
+   "id": "eg-0364",
+   "premise": "The homelab's DNS resolver blocks ad domains using a nightly-updated blocklist.",
+   "hypothesis": "Using a nightly-updated blocklist, the homelab's DNS resolver blocks ad domains.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Clause reorder only; every content element preserved, nothing added or dropped. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0365",
+   "premise": "The billing-v2 schema extends the base billing schema.",
+   "hypothesis": "The base billing schema extends the billing-v2 schema.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Right entities, EXTENDS reversed. Extension is a strict order and mutual extension is incoherent, so the reverse is excluded by the relation's meaning. Contradicted under the reversal rule, exclusive case (EXTENDS row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0366",
+   "premise": "The dashboard theme was switched to dark mode last month.",
+   "hypothesis": "Grafana renders the dashboards.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Corpus-plausible hypothesis, but the premise concerns only a theme change and asserts nothing about which tool renders the dashboards — the world-knowledge trap construction (eg-0038, eg-0039). Unsupported under procedure 2: only the premise counts."
+  },
+  {
+   "id": "eg-0367",
+   "premise": "hv-27 has part scratch partition",
+   "hypothesis": "hv-27 is a part of the scratch partition.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "31c1a0ee-0bcb-555a-ab9b-86cd7d898f40",
+   "label_source": "author",
+   "rationale": "Right entities, HAS_PART reversed. Proper parthood is antisymmetric — a part cannot contain its whole — so the reverse is excluded by the relation's meaning. Contradicted under the reversal rule, exclusive case (HAS_PART row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0368",
+   "premise": "Container images are mirrored to a local registry to survive upstream outages.",
+   "hypothesis": "The local registry requires authentication for pushes.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The premise states why the mirror exists and nothing about its authentication posture; the shared registry entity is the only contact (eg-0041 precedent). Unsupported under procedure 4: the premise fails to mention what the hypothesis asserts, which is absence, not exclusion."
+  },
+  {
+   "id": "eg-0369",
+   "premise": "The UPS keeps the rack powered for roughly twenty minutes during an outage.",
+   "hypothesis": "During a power outage, the rack stays up for about twenty minutes on the UPS.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Full rewording of one assertion — perspective shifted from the UPS to the rack, hedge and duration preserved. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0370",
+   "premise": "redis deployed on cache-01",
+   "hypothesis": "Redis is deployed on cache-02.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
+   "label_source": "author",
+   "rationale": "Same sentence shape with the host swapped to a corpus-plausible sibling hostname. The host a single named instance runs on is a single-valued slot (exclusive-slot rule, host/platform bullet, ratified 2026-08-06), so the differing host is contradicted."
+  },
+  {
+   "id": "eg-0371",
+   "premise": "The backup retention policy keeps daily snapshots for 30 days and weekly snapshots for a year.",
+   "hypothesis": "Daily snapshots are kept for about a month.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "One conjunct dropped and the 30-day value abstracted to 'about a month' — strictly weaker on both counts. Entailed under the weakening rule (procedure 3: dropping and generalising content preserves entailment)."
+  },
+  {
+   "id": "eg-0372",
+   "premise": "Deploys to the homelab cluster are triggered by pushing a tag to the infra repository.",
+   "hypothesis": "Pushing a tag to the infra repository kicks off a deploy to the homelab cluster.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Voice flipped and 'triggered' reworded to 'kicks off'; trigger, action and target all preserved. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0373",
+   "premise": "The ingress controller routes traffic for the wiki and the git server.",
+   "hypothesis": "The ingress controller routes traffic only for the wiki and the git server.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The added 'only' carries exhaustivity lexically, which is asserted content and strengthens (exhaustivity rule, lexical case; procedure 3). The premise does not exclude further routes, so the strengthening crosses no exclusion: unsupported."
+  },
+  {
+   "id": "eg-0374",
+   "premise": "Traefik terminates TLS for every service on the cluster and redirects plain HTTP to HTTPS.",
+   "hypothesis": "Traefik terminates TLS for services on the cluster.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The redirect conjunct is dropped and 'every service' weakens to bare 'services'. Strictly weaker, so entailed under the weakening rule (procedure 3)."
+  },
+  {
+   "id": "eg-0375",
+   "premise": "The token vault seals itself automatically after three failed unseal attempts.",
+   "hypothesis": "Three failed unseal attempts cause the token vault to seal itself automatically.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The temporal-conditional 'after three failed attempts' is reworded as the causal frame it expresses; count, actor and behaviour unchanged. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0376",
+   "premise": "The CI pipeline runs the test suite on Python 3.11 and 3.12.",
+   "hypothesis": "The CI pipeline runs the test suite on Python 3.12.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "One conjunct of the version list is dropped and nothing is added; the hypothesis is strictly weaker. Entailed under the weakening rule (procedure 3). Mirror of the overreach pair built from the same material."
+  },
+  {
+   "id": "eg-0377",
+   "premise": "The CI pipeline runs the test suite on Python 3.12.",
+   "hypothesis": "The CI pipeline runs the test suite on Python 3.11 and 3.12.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The hypothesis adds a second version the premise never states; a conjunction with one supported and one unsupported conjunct scores as the whole (procedure 1, eg-0028). The premise does not exclude 3.11, so unsupported, not contradicted (procedure 4)."
+  },
+  {
+   "id": "eg-0378",
+   "premise": "The object store replicates each write to two secondary nodes within 200 milliseconds.",
+   "hypothesis": "The object store replicates writes to secondary nodes.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The replica count and the latency bound are dropped; the hypothesis generalises the premise and adds nothing. Entailed under the weakening rule (procedure 3)."
+  },
+  {
+   "id": "eg-0379",
+   "premise": "Log retention on the central syslog host is ninety days.",
+   "hypothesis": "The central syslog host keeps logs for ninety days.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The nominal 'log retention is ninety days' is reworded as the verbal 'keeps logs for ninety days'; same host, same duration, nothing strengthened or weakened. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0380",
+   "premise": "Disk pressure causes pod evictions on the worker nodes.",
+   "hypothesis": "Pod evictions cause disk pressure on the worker nodes.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Right entities, CAUSES reversed. Feedback between the two phenomena is coherent, so the premise does not exclude the reverse causal direction — it is merely unasserted. Unsupported under the reversal rule, non-exclusive case (CAUSES row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0381",
+   "premise": "The metrics volume sits on an NVMe mirror totalling 1.6 TB.",
+   "hypothesis": "The metrics volume sits on NVMe storage of over a terabyte.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The mirror topology is dropped and 1.6 TB is abstracted to 'over a terabyte', which it satisfies. Strictly weaker, so entailed under the weakening rule (procedure 3: values abstracted)."
+  },
+  {
+   "id": "eg-0382",
+   "premise": "Certificate renewal is handled by a cron job that runs every Sunday night.",
+   "hypothesis": "A cron job running on Sunday nights takes care of renewing certificates.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Voice and clause structure reworked, 'handled by' to 'takes care of'; agent, task and schedule unchanged. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0383",
+   "premise": "Loki replaces the ELK stack for log aggregation.",
+   "hypothesis": "The ELK stack replaces Loki for log aggregation.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Right entities, REPLACES reversed. One replacement event cannot run both ways (eg-0022), so the reverse is excluded by the relation's meaning. Contradicted under the reversal rule, exclusive case (REPLACES row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0384",
+   "premise": "The wiki search index is rebuilt nightly.",
+   "hypothesis": "The wiki search index is rebuilt nightly at 02:00 UTC.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "A specific rebuild time is added that the premise never states, so the hypothesis is strictly stronger (procedure 3: adding content). The premise excludes no particular hour, so unsupported, not contradicted (procedure 4)."
+  },
+  {
+   "id": "eg-0385",
+   "premise": "Some of the lab hosts boot from network storage.",
+   "hypothesis": "All of the lab hosts boot from network storage.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "'All' tightens the quantifier against a premise that explicitly marks non-exhaustivity ('some hosts'), which strengthens (procedure 3; exhaustivity rule, explicit non-exhaustivity case). 'Some' merely implicates not-all without asserting it, and implicature never upgrades to contradiction (implicature-is-not-contradiction rule), so unsupported."
+  },
+  {
+   "id": "eg-0386",
+   "premise": "A misconfigured MTU caused the intermittent packet loss on the trunk link.",
+   "hypothesis": "A misconfigured MTU is what caused the intermittent packet loss.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The location ('on the trunk link') is dropped, so the hypothesis is strictly weaker (weakening rule). The pseudo-cleft's exhaustivity is carried by information structure, which is presupposed and defeasible and does not break entailment (exhaustivity rule, information-structure case, eg-0308)."
+  },
+  {
+   "id": "eg-0387",
+   "premise": "The runbook lists a rollback procedure for failed deploys.",
+   "hypothesis": "The runbook lists a fully automated rollback procedure for failed deploys.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "'Fully automated' adds a property of the procedure the premise never states, so the hypothesis is strictly stronger (procedure 3). Nothing in the premise excludes automation, so unsupported (procedure 4)."
+  },
+  {
+   "id": "eg-0388",
+   "premise": "The chat gateway retries failed webhook deliveries.",
+   "hypothesis": "The chat gateway retries failed webhook deliveries up to five times with exponential backoff.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "A retry cap and a backoff policy are added that the premise never states — strictly stronger under procedure 3. The premise excludes neither value, so the strengthening crosses no exclusion: unsupported."
+  },
+  {
+   "id": "eg-0389",
+   "premise": "The rack's intake temperature stays below 27 degrees Celsius in summer.",
+   "hypothesis": "The rack sits in the basement.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The premise states a thermal fact and bears on nothing about the rack's location; only the rack entity is shared (eg-0041 precedent). Unsupported under procedure 4: absence, not exclusion."
+  },
+  {
+   "id": "eg-0390",
+   "premise": "Node metrics are scraped at a 15-second interval.",
+   "hypothesis": "Node metrics are scraped at a 60-second interval.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Identical sentence shape with the interval swapped to another corpus-plausible value. A scrape interval is a single-valued configuration slot named by the exclusive-slot rule, so the differing value is contradicted."
+  },
+  {
+   "id": "eg-0391",
+   "premise": "The git server mirrors its repositories to an offsite host.",
+   "hypothesis": "The git server mirrors its repositories to an offsite host and encrypts them at rest.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "One conjunct restates the premise and the other adds encryption the premise never mentions; the whole hypothesis is scored, and a conjunction with an unsupported conjunct is unsupported (procedure 1, eg-0028). No exclusion is crossed, so not contradicted."
+  },
+  {
+   "id": "eg-0392",
+   "premise": "API tokens issued by the auth service live for 24 hours.",
+   "hypothesis": "API tokens issued by the auth service live for 72 hours.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Identical sentence shape with the lifetime swapped to another plausible value. A token lifetime is a single-valued configuration slot named by the exclusive-slot rule, so the differing value is contradicted."
+  },
+  {
+   "id": "eg-0393",
+   "premise": "The staging environment is rebuilt from scratch every Monday morning.",
+   "hypothesis": "Every Monday morning the staging environment is recreated from scratch.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "'Rebuilt' reworded as 'recreated' and the schedule fronted; same subject, same action, same cadence. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0394",
+   "premise": "The mail relay forwards outbound mail through an upstream smarthost.",
+   "hypothesis": "Outbound mail is forwarded by the mail relay through an upstream smarthost.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Passivisation only; agent, object and route all preserved, nothing added or dropped. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0395",
+   "premise": "The cluster's state file is kept in the ops-state bucket.",
+   "hypothesis": "The cluster's state file is kept in the ops-archive bucket.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Identical sentence shape with the bucket swapped to a plausible sibling. The bucket holding a state file is a single-valued configuration slot named by the exclusive-slot rule, so the differing value is contradicted."
+  },
+  {
+   "id": "eg-0396",
+   "premise": "Uptime checks probe the public endpoints every minute from two regions.",
+   "hypothesis": "Every minute, uptime checks probe the public endpoints from two regions.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Adverbial fronted, everything else literal; all content preserved. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0397",
+   "premise": "terraform uses tf-state",
+   "hypothesis": "tf-state uses Terraform.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+   "label_source": "author",
+   "rationale": "Right entities, USES reversed. Mutual use is coherent and the premise does not exclude the reverse, so the reversed claim is unasserted rather than excluded. Unsupported under the reversal rule, non-exclusive case (USES row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0398",
+   "premise": "The billing exporter depends on the ledger database.",
+   "hypothesis": "The ledger database depends on the billing exporter.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Right entities, DEPENDS_ON reversed. Circular dependency is not excluded by the relation's meaning (eg-0025), so the reverse is merely unasserted. Unsupported under the reversal rule, non-exclusive case (DEPENDS_ON row of the reversal-exclusivity table)."
+  },
+  {
+   "id": "eg-0399",
+   "premise": "The bastion host accepts SSH keys only from the hardware token.",
+   "hypothesis": "SSH keys are accepted by the bastion host only from the hardware token.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Passivisation with 'only' and every other content element preserved; nothing added or dropped. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0400",
+   "premise": "The photo library deduplicates uploads by content hash before storing them.",
+   "hypothesis": "Before storage, uploads to the photo library are deduplicated based on their content hash.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Full rewording — voice flipped, ordering clause fronted, 'by content hash' to 'based on their content hash' — with the same process and ordering. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0401",
+   "premise": "Failed login attempts lock the account for fifteen minutes.",
+   "hypothesis": "An account is locked for a quarter of an hour after failed login attempts.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Reworded with zero lexical anchor on the duration: 'fifteen minutes' and 'a quarter of an hour' denote the same value, and the trigger and effect are unchanged. Entailed under the paraphrase rule."
+  },
+  {
+   "id": "eg-0402",
+   "premise": "The wiki's attachment quota was raised to 50 MB.",
+   "hypothesis": "The wiki runs behind the reverse proxy.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Corpus-plausible hypothesis, but the premise concerns only an attachment quota and asserts nothing about the wiki's network placement — the world-knowledge trap construction (eg-0038, eg-0039). Unsupported under procedure 2: only the premise counts."
+  },
+  {
+   "id": "eg-0403",
+   "premise": "The DHCP server hands out leases valid for twelve hours.",
+   "hypothesis": "Leases valid for twelve hours are handed out by the DHCP server.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "verbatim"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Passivisation only; server, lease validity and action preserved. Entailed under the verbatim rule."
+  },
+  {
+   "id": "eg-0404",
+   "premise": "wireguard deployed on udp",
+   "hypothesis": "WireGuard is deployed on TCP.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "value-swap"
+   ],
+   "provenance": "l2-fact",
+   "fact_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+   "label_source": "author",
+   "rationale": "Same sentence shape with the DEPLOYED_ON object swapped to the corpus-plausible alternative transport. The relation's object is the platform slot of the named instance (DEPLOYED_ON row: host and guest roles), and the platform a single named instance runs on is single-valued (exclusive-slot rule, host/platform bullet, ratified 2026-08-06), so the differing value is contradicted."
+  },
+  {
+   "id": "eg-0405",
+   "premise": "The node exporter listens on port 9100.",
+   "hypothesis": "The node exporter listens on ports 9100 and 9101.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "overreach"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Strictly stronger — the premise's port is kept and a second is added — so this is overreach, not a swap. A port is a single-valued slot (exclusive-slot rule), so the premise excludes 9101 and the strengthening crosses an exclusion: the overreach slice's contradicted case."
+  },
+  {
+   "id": "eg-0406",
+   "premise": "The ingest queue holds at most 10,000 messages and drops the oldest beyond that.",
+   "hypothesis": "The ingest queue is bounded.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The cap value and the overflow policy are dropped and the specific limit is generalised to 'bounded', which a 10,000-message cap satisfies. Strictly weaker, so entailed under the weakening rule (procedure 3)."
+  },
+  {
+   "id": "eg-0407",
+   "premise": "The seedbox syncs completed downloads to the NAS overnight.",
+   "hypothesis": "The NAS exports its shares over NFS.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "unrelated"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "The premise describes a sync schedule and bears on nothing about the NAS's export protocol; only the NAS entity is shared (eg-0041 precedent). Unsupported under procedure 4: absence, not exclusion."
+  },
+  {
+   "id": "eg-0408",
+   "premise": "The metrics gateway implements the OpenMetrics specification.",
+   "hypothesis": "The OpenMetrics specification implements the metrics gateway.",
+   "verdict": "contradicted",
+   "slice_tags": [
+    "direction"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Right entities, IMPLEMENTS reversed. Specification and implementation are incompatible roles for one ordered pair, so the reverse is excluded by the relation's meaning. Contradicted under the reversal rule, exclusive case (IMPLEMENTS row of the reversal-exclusivity table)."
+  }
+ ],
+ "skips": [
+  {
+   "slot": 4,
+   "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+   "rel_type": "USES",
+   "fact": "grafana uses infra",
+   "reason": "value-swap on USES: the set of things a service uses is not a single-valued slot, so the exclusive-slot rule cannot fix 'contradicted' and value-swap admits no other verdict (named infeasible shape in the composition freeze)."
+  },
+  {
+   "slot": 7,
+   "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
+   "rel_type": "DEPENDS_ON",
+   "fact": "license-report depends on internal package mirror",
+   "reason": "value-swap on DEPENDS_ON: a component's dependencies are not a single-valued slot, so a swapped object is unsupported at best and value-swap admits only 'contradicted' (named infeasible shape in the composition freeze)."
+  },
+  {
+   "slot": 13,
+   "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+   "rel_type": "DEPLOYED_ON",
+   "fact": "wireguard deployed on udp",
+   "reason": "direction on a fact that already carries a live direction pair: the direction construction is essentially determined (the hypothesis is the premise's reversal), so authoring this slot collides with the existing pair on the loader's (premise, hypothesis) uniqueness check, and a reworded reversal would be the same pair in substance. Treated as a known-infeasible shape per the coordinator's ruling; hand-authored for the same slice."
+  },
+  {
+   "slot": 28,
+   "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
+   "rel_type": "USES",
+   "fact": "unleash uses oidc",
+   "reason": "direction on a fact that already carries a live direction pair: the direction construction is essentially determined (the hypothesis is the premise's reversal), so authoring this slot collides with the existing pair on the loader's (premise, hypothesis) uniqueness check, and a reworded reversal would be the same pair in substance. Treated as a known-infeasible shape per the coordinator's ruling; hand-authored for the same slice."
+  },
+  {
+   "slot": 31,
+   "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+   "rel_type": "RELATED_TO",
+   "fact": "ntfy related to sms",
+   "reason": "direction on RELATED_TO: the relation is symmetric, the reversal is entailed, and the direction slice admits no such verdict — the reversal-exclusivity table marks this a mandatory logged skip."
+  },
+  {
+   "slot": 38,
+   "triple_key": "11606722-ee98-5a68-a01f-3f2b5f1e49e7",
+   "rel_type": "RELATED_TO",
+   "fact": "vector related to telegraf",
+   "reason": "value-swap on RELATED_TO: what an entity is related to is not a single-valued slot, so the exclusive-slot rule cannot fix 'contradicted' and value-swap admits no other verdict (named infeasible shape in the composition freeze)."
+  },
+  {
+   "slot": 40,
+   "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
+   "rel_type": "USES",
+   "fact": "terraform uses minio",
+   "reason": "value-swap on USES: the set of things a service uses is not a single-valued slot, so the exclusive-slot rule cannot fix 'contradicted' and value-swap admits no other verdict (named infeasible shape in the composition freeze)."
+  },
+  {
+   "slot": 43,
+   "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+   "rel_type": "USES",
+   "fact": "ci runners uses docker-in-docker",
+   "reason": "value-swap on USES: the set of things ci runners use is not a single-valued slot, so the exclusive-slot rule cannot fix 'contradicted' and value-swap admits no other verdict (named infeasible shape in the composition freeze)."
+  },
+  {
+   "slot": 46,
+   "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+   "rel_type": "RELATED_TO",
+   "fact": "fleet-cfg related to booking schedule",
+   "reason": "direction on RELATED_TO: the relation is symmetric, the reversal is entailed, and the direction slice admits no such verdict — the reversal-exclusivity table marks this a mandatory logged skip."
+  },
+  {
+   "slot": 56,
+   "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+   "rel_type": "RELATED_TO",
+   "fact": "ntfy related to sms",
+   "reason": "direction on RELATED_TO: the relation is symmetric, the reversal is entailed, and the direction slice admits no such verdict — the reversal-exclusivity table marks this a mandatory logged skip."
+  }
+ ],
+ "direction_verdict_split": {
+  "contradicted": 4,
+  "unsupported": 4
+ }
+}

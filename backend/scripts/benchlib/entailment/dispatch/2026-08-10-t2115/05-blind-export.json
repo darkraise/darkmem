@@ -1,0 +1,332 @@
+[
+ {
+  "id": "eg-0352",
+  "premise": "fleet-cfg related to booking schedule",
+  "hypothesis": "fleet-cfg is stored in a Git repository."
+ },
+ {
+  "id": "eg-0353",
+  "premise": "glitchtip replaces sentry",
+  "hypothesis": "GlitchTip replaces Sentry in every project."
+ },
+ {
+  "id": "eg-0354",
+  "premise": "caddy improves on nginx",
+  "hypothesis": "Nginx is improved on by Caddy."
+ },
+ {
+  "id": "eg-0355",
+  "premise": "The nightly backup job uploads 42 GB to the offsite MinIO bucket in about 18 minutes.",
+  "hypothesis": "The nightly backup job uploads tens of gigabytes offsite."
+ },
+ {
+  "id": "eg-0356",
+  "premise": "The internal wiki listens on port 8443.",
+  "hypothesis": "The internal wiki listens on port 8080."
+ },
+ {
+  "id": "eg-0357",
+  "premise": "Prometheus scrapes the node exporters every 30 seconds.",
+  "hypothesis": "Prometheus pulls data from the node exporters at 30-second intervals."
+ },
+ {
+  "id": "eg-0358",
+  "premise": "restic uses wiki volume",
+  "hypothesis": "The wiki volume uses restic."
+ },
+ {
+  "id": "eg-0359",
+  "premise": "The media server pins its transcoder to version 6.0.2.",
+  "hypothesis": "The media server pins its transcoder to version 5.1.4."
+ },
+ {
+  "id": "eg-0360",
+  "premise": "The guest Wi-Fi VLAN is isolated from the lab network.",
+  "hypothesis": "The lab network uses 10 GbE switching."
+ },
+ {
+  "id": "eg-0361",
+  "premise": "astro replaces mkdocs",
+  "hypothesis": "Astro replaces Hugo."
+ },
+ {
+  "id": "eg-0362",
+  "premise": "The reverse proxy rewrites incoming requests to strip the /api prefix before forwarding them.",
+  "hypothesis": "Before requests are forwarded, the reverse proxy removes the /api prefix from them."
+ },
+ {
+  "id": "eg-0363",
+  "premise": "The nightly backup job uploads data to an offsite bucket.",
+  "hypothesis": "The nightly backup job uploads 42 GB to an offsite bucket in about 18 minutes."
+ },
+ {
+  "id": "eg-0364",
+  "premise": "The homelab's DNS resolver blocks ad domains using a nightly-updated blocklist.",
+  "hypothesis": "Using a nightly-updated blocklist, the homelab's DNS resolver blocks ad domains."
+ },
+ {
+  "id": "eg-0365",
+  "premise": "The billing-v2 schema extends the base billing schema.",
+  "hypothesis": "The base billing schema extends the billing-v2 schema."
+ },
+ {
+  "id": "eg-0366",
+  "premise": "The dashboard theme was switched to dark mode last month.",
+  "hypothesis": "Grafana renders the dashboards."
+ },
+ {
+  "id": "eg-0367",
+  "premise": "hv-27 has part scratch partition",
+  "hypothesis": "hv-27 is a part of the scratch partition."
+ },
+ {
+  "id": "eg-0368",
+  "premise": "Container images are mirrored to a local registry to survive upstream outages.",
+  "hypothesis": "The local registry requires authentication for pushes."
+ },
+ {
+  "id": "eg-0369",
+  "premise": "The UPS keeps the rack powered for roughly twenty minutes during an outage.",
+  "hypothesis": "During a power outage, the rack stays up for about twenty minutes on the UPS."
+ },
+ {
+  "id": "eg-0370",
+  "premise": "redis deployed on cache-01",
+  "hypothesis": "Redis is deployed on cache-02."
+ },
+ {
+  "id": "eg-0371",
+  "premise": "The backup retention policy keeps daily snapshots for 30 days and weekly snapshots for a year.",
+  "hypothesis": "Daily snapshots are kept for about a month."
+ },
+ {
+  "id": "eg-0372",
+  "premise": "Deploys to the homelab cluster are triggered by pushing a tag to the infra repository.",
+  "hypothesis": "Pushing a tag to the infra repository kicks off a deploy to the homelab cluster."
+ },
+ {
+  "id": "eg-0373",
+  "premise": "The ingress controller routes traffic for the wiki and the git server.",
+  "hypothesis": "The ingress controller routes traffic only for the wiki and the git server."
+ },
+ {
+  "id": "eg-0374",
+  "premise": "Traefik terminates TLS for every service on the cluster and redirects plain HTTP to HTTPS.",
+  "hypothesis": "Traefik terminates TLS for services on the cluster."
+ },
+ {
+  "id": "eg-0375",
+  "premise": "The token vault seals itself automatically after three failed unseal attempts.",
+  "hypothesis": "Three failed unseal attempts cause the token vault to seal itself automatically."
+ },
+ {
+  "id": "eg-0376",
+  "premise": "The CI pipeline runs the test suite on Python 3.11 and 3.12.",
+  "hypothesis": "The CI pipeline runs the test suite on Python 3.12."
+ },
+ {
+  "id": "eg-0377",
+  "premise": "The CI pipeline runs the test suite on Python 3.12.",
+  "hypothesis": "The CI pipeline runs the test suite on Python 3.11 and 3.12."
+ },
+ {
+  "id": "eg-0378",
+  "premise": "The object store replicates each write to two secondary nodes within 200 milliseconds.",
+  "hypothesis": "The object store replicates writes to secondary nodes."
+ },
+ {
+  "id": "eg-0379",
+  "premise": "Log retention on the central syslog host is ninety days.",
+  "hypothesis": "The central syslog host keeps logs for ninety days."
+ },
+ {
+  "id": "eg-0380",
+  "premise": "Disk pressure causes pod evictions on the worker nodes.",
+  "hypothesis": "Pod evictions cause disk pressure on the worker nodes."
+ },
+ {
+  "id": "eg-0381",
+  "premise": "The metrics volume sits on an NVMe mirror totalling 1.6 TB.",
+  "hypothesis": "The metrics volume sits on NVMe storage of over a terabyte."
+ },
+ {
+  "id": "eg-0382",
+  "premise": "Certificate renewal is handled by a cron job that runs every Sunday night.",
+  "hypothesis": "A cron job running on Sunday nights takes care of renewing certificates."
+ },
+ {
+  "id": "eg-0383",
+  "premise": "Loki replaces the ELK stack for log aggregation.",
+  "hypothesis": "The ELK stack replaces Loki for log aggregation."
+ },
+ {
+  "id": "eg-0384",
+  "premise": "The wiki search index is rebuilt nightly.",
+  "hypothesis": "The wiki search index is rebuilt nightly at 02:00 UTC."
+ },
+ {
+  "id": "eg-0385",
+  "premise": "Some of the lab hosts boot from network storage.",
+  "hypothesis": "All of the lab hosts boot from network storage."
+ },
+ {
+  "id": "eg-0386",
+  "premise": "A misconfigured MTU caused the intermittent packet loss on the trunk link.",
+  "hypothesis": "A misconfigured MTU is what caused the intermittent packet loss."
+ },
+ {
+  "id": "eg-0387",
+  "premise": "The runbook lists a rollback procedure for failed deploys.",
+  "hypothesis": "The runbook lists a fully automated rollback procedure for failed deploys."
+ },
+ {
+  "id": "eg-0388",
+  "premise": "The chat gateway retries failed webhook deliveries.",
+  "hypothesis": "The chat gateway retries failed webhook deliveries up to five times with exponential backoff."
+ },
+ {
+  "id": "eg-0389",
+  "premise": "The rack's intake temperature stays below 27 degrees Celsius in summer.",
+  "hypothesis": "The rack sits in the basement."
+ },
+ {
+  "id": "eg-0390",
+  "premise": "Node metrics are scraped at a 15-second interval.",
+  "hypothesis": "Node metrics are scraped at a 60-second interval."
+ },
+ {
+  "id": "eg-0391",
+  "premise": "The git server mirrors its repositories to an offsite host.",
+  "hypothesis": "The git server mirrors its repositories to an offsite host and encrypts them at rest."
+ },
+ {
+  "id": "eg-0392",
+  "premise": "API tokens issued by the auth service live for 24 hours.",
+  "hypothesis": "API tokens issued by the auth service live for 72 hours."
+ },
+ {
+  "id": "eg-0393",
+  "premise": "The staging environment is rebuilt from scratch every Monday morning.",
+  "hypothesis": "Every Monday morning the staging environment is recreated from scratch."
+ },
+ {
+  "id": "eg-0394",
+  "premise": "The mail relay forwards outbound mail through an upstream smarthost.",
+  "hypothesis": "Outbound mail is forwarded by the mail relay through an upstream smarthost."
+ },
+ {
+  "id": "eg-0395",
+  "premise": "The cluster's state file is kept in the ops-state bucket.",
+  "hypothesis": "The cluster's state file is kept in the ops-archive bucket."
+ },
+ {
+  "id": "eg-0396",
+  "premise": "Uptime checks probe the public endpoints every minute from two regions.",
+  "hypothesis": "Every minute, uptime checks probe the public endpoints from two regions."
+ },
+ {
+  "id": "eg-0397",
+  "premise": "terraform uses tf-state",
+  "hypothesis": "tf-state uses Terraform."
+ },
+ {
+  "id": "eg-0398",
+  "premise": "The billing exporter depends on the ledger database.",
+  "hypothesis": "The ledger database depends on the billing exporter."
+ },
+ {
+  "id": "eg-0399",
+  "premise": "The bastion host accepts SSH keys only from the hardware token.",
+  "hypothesis": "SSH keys are accepted by the bastion host only from the hardware token."
+ },
+ {
+  "id": "eg-0400",
+  "premise": "The photo library deduplicates uploads by content hash before storing them.",
+  "hypothesis": "Before storage, uploads to the photo library are deduplicated based on their content hash."
+ },
+ {
+  "id": "eg-0401",
+  "premise": "Failed login attempts lock the account for fifteen minutes.",
+  "hypothesis": "An account is locked for a quarter of an hour after failed login attempts."
+ },
+ {
+  "id": "eg-0402",
+  "premise": "The wiki's attachment quota was raised to 50 MB.",
+  "hypothesis": "The wiki runs behind the reverse proxy."
+ },
+ {
+  "id": "eg-0403",
+  "premise": "The DHCP server hands out leases valid for twelve hours.",
+  "hypothesis": "Leases valid for twelve hours are handed out by the DHCP server."
+ },
+ {
+  "id": "eg-0404",
+  "premise": "wireguard deployed on udp",
+  "hypothesis": "WireGuard is deployed on TCP."
+ },
+ {
+  "id": "eg-0405",
+  "premise": "The node exporter listens on port 9100.",
+  "hypothesis": "The node exporter listens on ports 9100 and 9101."
+ },
+ {
+  "id": "eg-0406",
+  "premise": "The ingest queue holds at most 10,000 messages and drops the oldest beyond that.",
+  "hypothesis": "The ingest queue is bounded."
+ },
+ {
+  "id": "eg-0407",
+  "premise": "The seedbox syncs completed downloads to the NAS overnight.",
+  "hypothesis": "The NAS exports its shares over NFS."
+ },
+ {
+  "id": "eg-0408",
+  "premise": "The metrics gateway implements the OpenMetrics specification.",
+  "hypothesis": "The OpenMetrics specification implements the metrics gateway."
+ },
+ {
+  "id": "eg-0409",
+  "premise": "Grafana dashboards were served from the standalone monitoring VM from April 2025 until the October 2025 move onto the k3s cluster.",
+  "hypothesis": "Grafana dashboards were still served from the standalone monitoring VM in August 2025."
+ },
+ {
+  "id": "eg-0410",
+  "premise": "Since the May 2026 cutover, LAN DNS has been handled by the pair of AdGuard Home instances.",
+  "hypothesis": "As of September 2026, AdGuard Home handles DNS for the LAN."
+ },
+ {
+  "id": "eg-0411",
+  "premise": "The nightly backup job has run at 02:00 UTC since it was rescheduled in March 2026; before that it ran at 04:00 UTC.",
+  "hypothesis": "In July 2026 the nightly backup job ran at 02:00 UTC."
+ },
+ {
+  "id": "eg-0412",
+  "premise": "Traefik was the ingress controller from June 2025 until the February 2026 switch to nginx-ingress.",
+  "hypothesis": "Traefik is currently the ingress controller."
+ },
+ {
+  "id": "eg-0413",
+  "premise": "The team wiki ran on DokuWiki until its November 2025 migration to BookStack.",
+  "hypothesis": "The team wiki was still running on DokuWiki in January 2026."
+ },
+ {
+  "id": "eg-0414",
+  "premise": "API tokens minted by the setup wizard expire 30 days after issue; the admin token was minted on 5 June 2026.",
+  "hypothesis": "The admin token is currently valid."
+ },
+ {
+  "id": "eg-0415",
+  "premise": "Automatic package upgrades were paused during the Q2 2026 storage rebuild.",
+  "hypothesis": "Automatic package upgrades have been re-enabled."
+ },
+ {
+  "id": "eg-0416",
+  "premise": "Since the January 2026 rollout, host metrics have been scraped by VictoriaMetrics.",
+  "hypothesis": "VictoriaMetrics was scraping host metrics in November 2025."
+ },
+ {
+  "id": "eg-0417",
+  "premise": "The rack's UPS batteries were replaced in August 2025 and are rated for a three-year service life.",
+  "hypothesis": "The UPS batteries are currently within their rated service life."
+ }
+]

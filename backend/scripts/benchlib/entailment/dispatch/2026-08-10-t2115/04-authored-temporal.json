@@ -1,0 +1,95 @@
+{
+  "pairs": [
+    {
+      "id": "eg-0409",
+      "premise": "Grafana dashboards were served from the standalone monitoring VM from April 2025 until the October 2025 move onto the k3s cluster.",
+      "hypothesis": "Grafana dashboards were still served from the standalone monitoring VM in August 2025.",
+      "verdict": "entailed",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "August 2025 lies inside the stated validity window [April 2025, October 2025). A claim time-scoped inside the window is entailed (window rule)."
+    },
+    {
+      "id": "eg-0410",
+      "premise": "Since the May 2026 cutover, LAN DNS has been handled by the pair of AdGuard Home instances.",
+      "hypothesis": "As of September 2026, AdGuard Home handles DNS for the LAN.",
+      "verdict": "entailed",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Open-window rule: a state valid since May 2026 with no closing event named entails the same state at any later reference date, including September 2026."
+    },
+    {
+      "id": "eg-0411",
+      "premise": "The nightly backup job has run at 02:00 UTC since it was rescheduled in March 2026; before that it ran at 04:00 UTC.",
+      "hypothesis": "In July 2026 the nightly backup job ran at 02:00 UTC.",
+      "verdict": "entailed",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The 02:00 window opens in March 2026 and no closing event is named, so the state holds at the later reference date July 2026 (open-window rule)."
+    },
+    {
+      "id": "eg-0412",
+      "premise": "Traefik was the ingress controller from June 2025 until the February 2026 switch to nginx-ingress.",
+      "hypothesis": "Traefik is currently the ingress controller.",
+      "verdict": "contradicted",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The window is explicitly closed by a named end event and successor (the February 2026 switch to nginx-ingress); a present-tense claim over an explicitly closed window is contradicted (window rule)."
+    },
+    {
+      "id": "eg-0413",
+      "premise": "The team wiki ran on DokuWiki until its November 2025 migration to BookStack.",
+      "hypothesis": "The team wiki was still running on DokuWiki in January 2026.",
+      "verdict": "contradicted",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The DokuWiki window is explicitly closed by the November 2025 migration to a named successor, and January 2026 lies after that close; a claim time-scoped past an explicitly closed window is contradicted (window rule)."
+    },
+    {
+      "id": "eg-0414",
+      "premise": "API tokens minted by the setup wizard expire 30 days after issue; the admin token was minted on 5 June 2026.",
+      "hypothesis": "The admin token is currently valid.",
+      "verdict": "unsupported",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "Whether the token is valid \"currently\" depends on an evaluation date the premise does not contain: a 30-day lifetime and an unanchored \"currently\" leave the claim undecidable, so it is unsupported (evaluation-time rule)."
+    },
+    {
+      "id": "eg-0415",
+      "premise": "Automatic package upgrades were paused during the Q2 2026 storage rebuild.",
+      "hypothesis": "Automatic package upgrades have been re-enabled.",
+      "verdict": "unsupported",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "\"Paused during Q2 2026\" implicates the pause ended but does not assert re-enablement; conversational implicature moves no verdict, and absence is not exclusion (implicature-is-not-contradiction rule; general procedure 4)."
+    },
+    {
+      "id": "eg-0416",
+      "premise": "Since the January 2026 rollout, host metrics have been scraped by VictoriaMetrics.",
+      "hypothesis": "VictoriaMetrics was scraping host metrics in November 2025.",
+      "verdict": "unsupported",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The stated window opens in January 2026 and the claim is scoped before it; the premise asserts nothing about the earlier period, and the implicature that scraping began only at the rollout is not asserted content (general procedure 4 — absence is not exclusion; implicature-is-not-contradiction rule)."
+    },
+    {
+      "id": "eg-0417",
+      "premise": "The rack's UPS batteries were replaced in August 2025 and are rated for a three-year service life.",
+      "hypothesis": "The UPS batteries are currently within their rated service life.",
+      "verdict": "unsupported",
+      "slice_tags": ["temporal"],
+      "provenance": "hand-authored-synthetic-fact",
+      "label_source": "author",
+      "rationale": "The claim's truth turns on an evaluation date the premise does not fix — a three-year life from August 2025 against an unanchored \"currently\" — so it is undecidable from the premise alone (evaluation-time rule)."
+    }
+  ],
+  "skips": []
+}

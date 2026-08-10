@@ -1,0 +1,34 @@
+[
+  {
+    "id": "eg-0405",
+    "premise": "The node exporter listens on port 9100.",
+    "hypothesis": "The node exporter listens on ports 9100 and 9101.",
+    "slice": "overreach",
+    "recorded_verdict": "contradicted",
+    "recorded_rationale": "Strictly stronger — the premise's port is kept and a second is added — so this is overreach, not a swap. A port is a single-valued slot (exclusive-slot rule), so the premise excludes 9101 and the strengthening crosses an exclusion: the overreach slice's contradicted case.",
+    "pass_a": {
+      "verdict": "contradicted",
+      "rule": "Exclusive-slot rule (a port is named as a single-valued slot, so the fact states THE operative port; asserting an additional listening port 9101 crosses that exclusion rather than merely adding unasserted content — overreach slice's 'contradicted only if the strengthening crosses an exclusion'). Noting the residual: the rulebook states the rule for a DIFFERING value and does not spell out the add-a-second-value shape."
+    },
+    "pass_b": {
+      "verdict": "unsupported",
+      "rule": "overreach (general procedure 3 strengthening: adds an unstated second port 9101 alongside the stated 9100, not a differing value for the same slot so the exclusive-slot rule's 'differing value' clause does not reach it); no exclusion so general procedure 4 keeps it unsupported"
+    }
+  },
+  {
+    "id": "eg-0416",
+    "premise": "Since the January 2026 rollout, host metrics have been scraped by VictoriaMetrics.",
+    "hypothesis": "VictoriaMetrics was scraping host metrics in November 2025.",
+    "slice": "temporal",
+    "recorded_verdict": "unsupported",
+    "recorded_rationale": "The stated window opens in January 2026 and the claim is scoped before it; the premise asserts nothing about the earlier period, and the implicature that scraping began only at the rollout is not asserted content (general procedure 4 — absence is not exclusion; implicature-is-not-contradiction rule).",
+    "pass_a": {
+      "verdict": "contradicted",
+      "rule": "Window rule applied to the opening boundary: the premise names an inception event ('since the January 2026 rollout'), which asserts the window's start, so the state is excluded at the earlier November 2025 date. RULEBOOK IS SILENT on this mirror case — the window rule states only the closing boundary (named end event or successor) and the open-window rule covers only later dates; the missing rule is whether 'since <named inception event>' excludes the state before that event or merely fails to assert it (which would make this unsupported under procedure 4)."
+    },
+    "pass_b": {
+      "verdict": "unsupported",
+      "rule": "rulebook is silent here: the window rule and open-window rule only state consequences for dates at or after an open window's start (or after an explicit close), not for a date before an open window's stated start with no named predecessor state; nearest applicable principle is implicature-is-not-contradiction ('since the January 2026 rollout' implicates but does not assert what ran before, so November 2025 is not excluded) plus general procedure 4 (no exclusion stated for the pre-rollout period), giving unsupported"
+    }
+  }
+]
