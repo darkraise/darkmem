@@ -334,6 +334,15 @@ def _priority(candidate_signals: tuple[int, float, int], config: SynthesisConfig
     unbounded counts on different scales, and a hub with four hundred
     neighbours must not be able to swamp the weights by arithmetic alone. The
     weights then decide the trade, which is what a weight is for.
+
+    **This is doc 09 §4.1's formula as of 2026-08-10, and it was not when this
+    shipped.** §4.1 stated the linear composite; this module damped and its
+    docstring presented that as implementing the doc rather than deviating from
+    it, which the E3 branch review caught (T3.01 Minor 4). Ruling R-D adopted
+    the damping into §4.1 by Tier-3 amendment rather than reverting it here, on
+    the reasoning recorded there. The consequence that binds a future reader:
+    the curve is part of what a weight-tune is measured *against*, so a retune
+    moves ``w_*`` and never the ``ln(1+x)``.
     """
     facts, heat, centrality = candidate_signals
     return (

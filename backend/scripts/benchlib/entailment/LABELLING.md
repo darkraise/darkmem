@@ -279,10 +279,95 @@ that pin — never a silent relabel of existing pairs.
      distribution** are unchanged after replacement. Retiring 15
      `value-swap` and authoring 15 `temporal` would reshape the census's
      difficulty at constant size.
+
+     **5a. Off-target authoring is handled by the skip mechanism, not by a
+     composition deviation** (amended 2026-08-10, ruling R-A; see the C-1
+     record in History). A blind author writing to a slot whose slice and
+     verdict targets were fixed *before* authoring may return a pair that
+     misses either. That is an ordinary miss and the frozen protocol
+     already answers it: **log a skip and re-author for the same slot**,
+     which is what keeps slice targets exact. Re-briefing a badly-slotted
+     construction rejects no content fact and consults no judge — the
+     fitting hazard is discarding a product for its *adjudicated outcome*
+     against a target that was **not** fixed beforehand, which this
+     clause requires and which the skip mechanism does not touch.
+
+     **5b. When a deviation is genuinely unavoidable, the absorbing slice
+     is chosen by committed code, never after the fact.** If a round
+     establishes that no re-authoring can satisfy the quota, the shortfall
+     is absorbed by a rule that lands in a commit **before** authoring
+     begins, exactly as clause 3 requires of the draw — prose is not
+     enough here, because "largest remainder" alone leaves the reference
+     distribution and the population unstated and a contaminated
+     controller would pick the reading. The deviation, its arithmetic and
+     the selecting rule are recorded in History **in the same commit as
+     the pairs**.
+
+     **5c. This clause was violated by the round that ratified it, and
+     5a/5b do not absolve that round.** T2.115 executed under clause 5 as
+     ratified above; the record of the violation stands unamended in
+     History and in the gate ledger. Amending a rule so a completed run
+     becomes compliant is the same move as moving a bar so a run passes.
+     5a and 5b bind the **next** round.
   6. **Budget lineage recorded** — a reshape changes the gold sha and so
      mints a fresh `gold_touching_attempts`. Cumulative attempts across
      gold generations are recorded in the ledger and in every report, so
      a reset is visible rather than silent (ruling R4).
+
+  **Independence is at the proposition, not at the bytes** (ratified
+  2026-08-10, ruling R-B; the C-2 record in History is the finding it comes
+  from). A new pair may not assert the same proposition as a live pair — the
+  same premise with a logically equivalent hypothesis — however differently
+  worded. The loader's byte-uniqueness check is necessary and **not
+  sufficient**, and an instruction aimed at an observed collision reaches only
+  the collisions that occur: round 3's two byte-identical duplicates were
+  caught and skipped, and `eg-0367`, which never collided, walked past the same
+  instruction into the gated census.
+
+  A prose clause that caught nothing is exactly what produced this finding, so
+  this one ships with `scripts/benchlib/duplicate_propositions.py` — a
+  deterministic, content-blind check over pairs sharing a premise, pinned in
+  `test_entailment_gold.py` against the **accepted** duplicate set. A new
+  duplicate fails the build; the four recorded ids do not block. The check
+  names ids and decides nothing about them.
+
+  **The accepted set, measured rather than hand-found.** The check reports
+  **nine** duplicate relations in the live gold, not the two the branch review
+  found by eye — which is the argument for having a check at all. Of the nine,
+  **two are `contradicted`** and therefore inside the census the G-D recall bar
+  is computed over, and **both straddle the two populations**: `eg-0093`
+  (contacted) / `eg-0367` (Rule B), and `eg-0194` (contacted) / `eg-0251`
+  (Rule B). So the pooled contradicted census is 80 rows carrying **78**
+  independent propositions, and Rule B's 40 contains **two** propositions the
+  contacted population already held.
+
+  The other seven are `entailed`, most of them one article or one cleft apart
+  ("audit-log has at least one consumer." / "The audit-log has at least one
+  consumer."), and they sit in paraphrase-shaped slices where rewording is the
+  point. They do not touch the contradiction bars. They are still correlated
+  items, so they inflate the *entailed* bars' apparent sample size, and the
+  ladder's own precision/recall readings on `entailed` should be read with that
+  in mind rather than treated as 200-odd independent trials.
+
+  **The bias is not one-directional, and the first version of this paragraph
+  said it was.** A judge that *misses* a duplicated proposition burns two of
+  its four permitted misses — harder. A judge that *catches* it banks two
+  correlated hits and may then miss four of the remaining 78 independent items:
+  a per-item tolerance of 4/78 ≈ 5.13% against the intended 4/80 = 5.00% —
+  strictly **easier**, and at measured recall ≈ 0.94 the catch is the common
+  case. The live instance is sharp: attempt 1 on this gold scored Rule B at
+  exactly **38/40 = 0.9500**, a zero-margin pass whose independent-item reading
+  is below the bar. Nothing about "the duplicates only make it stricter" is
+  true, and reading it that way is the reassuring error.
+
+  **Therefore: no further judge attempt may run on gold `98fc4b49` until the
+  duplicates are retired and the gold re-certified.** Retiring them is
+  *content-forced* by a deterministic finding, not a census-shape selection, so
+  clause 1's contacted-only restriction does not govern it and a contaminated
+  party is not the obstacle. Spending the final sanctioned attempt against a
+  census carrying a known bar-easing correlated duplicate, and repairing
+  afterwards, is the one ordering that could manufacture an edge pass out of a
+  defect already in the record.
 
   **Quarantine before authoring, and what is on the list.** Two directories
   hold per-pair judge output and neither may be readable by an author or an

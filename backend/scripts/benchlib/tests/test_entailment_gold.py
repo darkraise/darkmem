@@ -630,3 +630,68 @@ def test_the_contradicted_census_keeps_the_recall_bar_on_the_lattice(gold):
         "the bar cannot be exactly cleared or exactly missed"
     )
     assert census <= resample_draw.RESAMPLE_N
+
+
+# ---------------------------------------------------------------------------
+# Ruling R-B: independence is at the proposition, not at the bytes
+# ---------------------------------------------------------------------------
+
+# Every duplicated proposition currently live in the gold, measured rather than
+# hand-found. Two are `contradicted` and therefore inside the census the G-D
+# recall bar is computed over; the other seven are `entailed`. Recorded as
+# accepted debt by ruling R-B, to be retired at the next round that moves the
+# sha — pinned here so a *new* duplicate fails the build while these do not.
+ACCEPTED_DUPLICATE_PROPOSITIONS = {
+    ("eg-0051", "eg-0322"),
+    ("eg-0063", "eg-0125"),
+    ("eg-0078", "eg-0307"),
+    ("eg-0083", "eg-0247"),
+    ("eg-0093", "eg-0367"),
+    ("eg-0094", "eg-0279"),
+    ("eg-0094", "eg-0323"),
+    ("eg-0194", "eg-0251"),
+    ("eg-0279", "eg-0323"),
+}
+
+CONTRADICTED_DUPLICATES = {("eg-0093", "eg-0367"), ("eg-0194", "eg-0251")}
+
+
+def test_no_new_duplicate_proposition_enters_the_gold(gold):
+    """The guard C-2 showed was missing.
+
+    The loader compares bytes. `eg-0367` said what live `eg-0093` says in
+    different words, so it passed, and the History's instruction not to resolve
+    a collision by rewording could not reach the slot that never collided. A
+    second prose instruction would repeat that at one remove, so the rule ships
+    as a check.
+    """
+    from benchlib.duplicate_propositions import find_duplicate_propositions
+
+    found = {f.key() for f in find_duplicate_propositions(gold["pairs"])}
+
+    assert found - ACCEPTED_DUPLICATE_PROPOSITIONS == set(), (
+        "a new duplicated proposition entered the gold — independence is at the "
+        "proposition, not at the bytes (LABELLING.md, ruling R-B)"
+    )
+    assert ACCEPTED_DUPLICATE_PROPOSITIONS - found == set(), (
+        "an accepted duplicate is gone; retire the pin with the pairs"
+    )
+
+
+def test_the_contradicted_census_carries_exactly_two_duplicated_propositions(gold):
+    """The number the G-D reading has to disclose.
+
+    80 scored rows, 78 independent propositions. Asserted separately from the
+    set above because this is the one that changes what the recall bar means:
+    the entailed duplicates sit outside the census the bar is computed over.
+    """
+    from benchlib.duplicate_propositions import find_duplicate_propositions
+
+    pairs = gold["pairs"]
+    verdict = {p["id"]: p["verdict"] for p in pairs}
+    contradicted = {
+        f.key() for f in find_duplicate_propositions(pairs)
+        if verdict[f.left] == "contradicted"
+    }
+
+    assert contradicted == CONTRADICTED_DUPLICATES

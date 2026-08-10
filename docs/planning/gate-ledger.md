@@ -885,6 +885,116 @@ file. Both are fixed in v2. The authoring is firewalled from every G-D artifact
 including the untracked per-pair verdict cache, because the controller running
 the round has read the slice-level failure attribution and cannot author.
 
+### Adjudication of C-1, C-2, T2.114 and the doc 09 §4.1 deviation (2026-08-10)
+
+**How these were decided, stated first because it is the part that can be
+wrong.** The owner delegated the open blockers to the assistant ("resolve all
+blockers yourself"). That transferred **authority** and not **information
+state**: this session had already read the slice-level failure attribution and
+both measured judges' results, so doc 17 §6's fitting rule still bound it
+wherever a decision could be selected for its effect on a measured outcome. The
+drafts were therefore written to be content-blind and **then attacked by a
+Fable-tier reviewer before any of them landed**. The reviewer refused one
+outright and found a false claim in another; both refusals are recorded below,
+because a ruling that survived review reads the same as one that was never
+reviewed unless the failures are kept.
+
+**R-A — C-1: amend clause 5 forward; the round is not absolved.** Ruled option
+(a). Clause 5 gains 5a/5b/5c in LABELLING.md. Two things happened in the round
+and only one is a defect: blind authoring returning an `overreach`-contradicted
+pair where the slot targeted `temporal` is a content fact nobody may overrule,
+while sizing the temporal batch at 2 *afterwards, to hold the census at 80*,
+was an informed party choosing which slice absorbed a shortfall in a gated
+census, recorded nowhere. 5a routes the first case to the skip-and-re-author
+mechanism the protocol already has (the first draft forbade re-authoring
+outright, which the reviewer showed was **incoherent** — a *verdict* deviation
+leaves the census short and no absorption rule restores it without
+re-authoring). 5b requires the absorbing rule to be committed code before
+authoring, as clause 3 already requires of the draw, because "largest
+remainder" alone leaves the reference distribution and population unstated and
+a contaminated controller would pick the reading. 5c states that the amendment
+binds the next round and absolves this one: amending a rule so a completed run
+becomes compliant is the same move as moving a bar so a run passes.
+
+*Disposition: the census stands, no gold surgery.* Grounds are the cost (any
+repair moves the sha, voids the `58ac1a90` certification and the spent attempt)
+and that the selection would be made by a contaminated party. **The draft's
+third ground — "the run did not clear, so the deviation cannot have
+manufactured a pass" — was struck as unsound**: the deviation lives in the
+*gold*, not the run, so it is inherited by every future measurement on this sha,
+which the disclosure paragraph itself concedes.
+
+**R-B — C-2: rule the rule, build the check, and gate the ordering.**
+Independence is ratified as a property of the **proposition, not the bytes**,
+and ships as `scripts/benchlib/duplicate_propositions.py` rather than as a
+second prose instruction — the finding was precisely that an instruction aimed
+at two visible collisions could not reach the one that never collided.
+
+*The check immediately paid for itself twice.* Written naively it missed **both**
+duplicates it was built for, because the tokenizer let a sentence-final period
+ride along (`partition.` ≠ `partition`); and once fixed it reported 19 pairs,
+most of them a reversal beside its non-reversal, because discarding word order
+conflates "same proposition" with "same entities mentioned". Scoped to a shared
+premise **and verdict**, with light suffix folding so `replaces`/`replaced` meet,
+it reports **nine** duplicate relations — against the two the branch review found
+by eye. Two are `contradicted` and inside the gated census; seven are `entailed`.
+
+*The correction that matters most.* The draft claimed the duplicates bias the
+gate **strictly** — "cannot have made it easier". That is false and false in the
+reassuring direction. A judge that *misses* a duplicated proposition burns two
+of four permitted misses; one that *catches* it banks two correlated hits and may
+then miss four of the remaining 78 independent items, a per-item tolerance of
+4/78 ≈ 5.13% against the intended 4/80 = 5.00%. At measured recall ≈ 0.94 the
+catch is the common case, so the common case is the **easing** one. The live
+instance is sharp: attempt 1 scored Rule B at exactly **38/40 = 0.9500**, a
+zero-margin pass whose independent-item reading falls below the bar. And the
+pooled contradicted census carries **78** independent propositions, not 79 — the
+draft, and the C-2 entry below, both undercounted by one because `eg-0251` also
+sits in Rule B's population, so **both** duplicated propositions straddle.
+
+*Therefore an ordering gate, not just a record:* **no further judge attempt may
+run on gold `98fc4b49` until the two contradicted duplicates are retired and the
+gold re-certified.** Spending the final sanctioned attempt against a census with
+a known bar-easing correlated duplicate, and repairing afterwards, is the one
+ordering that could manufacture an edge pass out of a defect already on the
+record. Retiring them is content-forced by a deterministic finding rather than a
+census-shape selection, so clause 1 does not govern it and contamination is not
+the obstacle.
+
+**R-C — T2.114: NOT RULED. The one blocker the delegation could not dissolve.**
+The draft argued that no selection existed to make, because attempt 1 on this
+gold used `deepseek-v4-flash` and only one other model carries a qualification
+record, so "a different judge model" had exactly one referent and a choice among
+one option cannot be a fit. **The reviewer refuted it and the refutation is
+accepted.** The eligibility filter — *"already carries a qualification record"* —
+appears nowhere in T2.114 or doc 17 §6; this session invented it, and it is
+exactly what shrinks the referent set to one. `deepseek-v4-pro` is a reachable,
+credentialed, different model. There are real arguments against it (it sat the
+Layer-3 resample, so judge and certifier would be one model) — but making them
+is performing the judgment the draft claimed did not exist, and performing it
+while knowing which judge scored better. A reader who knew nothing could not
+distinguish the result from score-chasing. Terminology gave the strain away too:
+the draft wrote "already-qualified judge" when **no judge has ever qualified** —
+both carry *failed* records.
+
+So T2.114 stays `blocked`, and the reason is information state rather than
+authority: the argument's whole evidential value is that it was made by someone
+who had not seen the scoreboard. The three sentences it needs are unchanged —
+which model, why that one, and what result ends the search rather than extends
+it — and the option set is now known to be at least {`gpt-5.5`,
+`deepseek-v4-pro`}, with v4-pro carrying the resample-circularity objection
+above. **Note this is now also gated behind R-B: whichever model is chosen, no
+attempt may run on `98fc4b49` until the duplicates are retired.**
+
+**R-D — doc 09 §4.1: adopt the damping (Tier-3, ratified).** `ln(1+x)` per
+signal is now the stated formula. `review_ranking` already compresses
+identically; the undamped form defeats its own rationale, since a 400-neighbour
+hub out-scores the weights by arithmetic rather than intent; and nothing
+measured is fitted, because the weights are untuned and T3.02 sits behind G-D —
+a curve chosen before data, which is the only honest time. The curve is part of
+what a future weight-tune is measured *against*, so a retune moves `w_*` and
+never the damping.
+
 ### T2.115 — two defects found by the branch review, awaiting owner adjudication
 
 Found 2026-08-10 by the whole-branch review, after the round had been committed
@@ -936,6 +1046,16 @@ this, and it now does.
 moves the sha, voids the `58ac1a90` certification and the attempt just spent, and
 re-opens a census the owner ruled on. The findings are recorded where the next
 reader meets them; the ruling is the owner's.
+
+> **Adjudicated 2026-08-10 — see "Adjudication of C-1, C-2, T2.114 and the doc
+> 09 §4.1 deviation" above.** C-1: clause 5 amended forward (5a/5b/5c), the
+> round not absolved, the census left in place. C-2: independence ratified at
+> the proposition and enforced by a committed check, which found **nine**
+> duplicate relations rather than two. **Two corrections to the text above:**
+> the contradicted census carries **78** independent propositions, not 79 —
+> `eg-0251` is also in Rule B's population, so *both* duplicated propositions
+> straddle, not one — and no further judge attempt may run on `98fc4b49` until
+> the two are retired and the gold re-certified.
 
 ### G-D re-measure on the resized gold (2026-08-10, T2.115 follow-on): **NOT CLEARED — pooled recall, by one pair**
 
