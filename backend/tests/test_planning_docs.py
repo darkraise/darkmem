@@ -19,6 +19,8 @@ from pathlib import Path
 # invisible on both sides, which is why nothing ever went red.
 TASK_ID = r"T(?:H1|\d+)\.\d+[a-z]*"
 
+TASKS_DIR = Path(__file__).resolve().parents[2] / "docs/planning/tasks"
+
 
 def get_task_ids_from_headings() -> set[str]:
     """Extract all task IDs from task heading lines in docs/planning/tasks/*.md files.
@@ -492,3 +494,77 @@ def test_every_shell_script_with_a_shebang_is_executable():
     assert not_executable == [], (
         f"shell scripts with a shebang but no executable bit: {not_executable}"
     )
+
+
+# ------------------------------------------------------------- gate qualifiers
+# Owner ruling 2026-08-10: three qualifiers, not two. `(produces)` names the
+# class spec §3 already had and §4 had no word for — a task whose OUTPUT is the
+# gate. Scope is open tasks only: 181 of the 236 `Gate:` fields sit on done work
+# in E0/E1/E2, where the qualifier has no reader (the loop only ever asks whether
+# an OPEN task is startable) and stamping them would write a claim about history
+# that was never true of it.
+
+GATE_FIELD = re.compile(r"`Gate: (G-[A-F])(?:\s*\(([^)]*)\))?`")
+GATE_QUALIFIERS = {"label", "blocking", "produces"}
+TASK_HEADING = re.compile(rf"^#### ({TASK_ID}) —")
+RESOLVED = {"done", "dropped"}
+
+
+def _task_state_from_master() -> dict[str, tuple[str, str]]:
+    """`{task: (status, version)}` from master's progress.md."""
+    state: dict[str, tuple[str, str]] = {}
+    row = re.compile(rf"^\| ({TASK_ID}) \|")
+    for line in _read_from_master("docs/planning/progress.md").split("\n"):
+        match = row.match(line)
+        if match:
+            cells = [c.strip() for c in CELL.split(line)]
+            state[match.group(1)] = (cells[8], cells[6])
+    return state
+
+
+def _open_gate_fields():
+    """`(file, line, task, gate, qualifier)` for every unresolved gated task."""
+    state = _task_state_from_master()
+    found = []
+    for path in sorted(TASKS_DIR.glob("*.md")):
+        task = None
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            heading = TASK_HEADING.match(line)
+            if heading:
+                task = heading.group(1)
+            for gate, qualifier in GATE_FIELD.findall(line):
+                # A task with no row fails closed: it is unschedulable, so a
+                # newly minted one must qualify rather than slip through.
+                status = state.get(task, ("", ""))[0]
+                if status not in RESOLVED:
+                    found.append((path.name, number, task, gate, qualifier))
+    return found
+
+
+def test_every_open_gate_field_says_what_it_blocks():
+    """An unqualified `Gate:` reads as "blocked until the gate clears", which is
+    false for nearly every task carrying one: gates gate labels, and T2.95's
+    serving boundary already refuses an unbacked claim. That ambiguity is what
+    queued the roadmap behind measurement — 232 tasks done, nothing released."""
+    bad = [
+        f"{name}:{number} {task} Gate: {gate} ({qualifier or 'unqualified'})"
+        for name, number, task, gate, qualifier in _open_gate_fields()
+        if qualifier not in GATE_QUALIFIERS
+    ]
+    assert bad == [], (
+        "these Gate fields do not say whether the code is blocked, the label "
+        f"waits, or the task produces the gate: {bad}"
+    )
+
+
+def test_the_gate_track_is_qualified_produces():
+    """`Version: gate` and `Gate: G-x (produces)` are two spellings of one fact.
+    Binding them stops a task being scheduled as feature work in one document
+    and as a measurement run in the other."""
+    state = _task_state_from_master()
+    wrong = [
+        f"{task}: Version={state.get(task, ('', '?'))[1]} but Gate ({qualifier or 'unqualified'})"
+        for _, _, task, _, qualifier in _open_gate_fields()
+        if (state.get(task, ("", ""))[1] == "gate") != (qualifier == "produces")
+    ]
+    assert wrong == [], f"gate-track marking disagrees across the two documents: {wrong}"

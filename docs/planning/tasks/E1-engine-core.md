@@ -1405,7 +1405,7 @@ and tested, so what would be missing is exactly this rehearsal.
 
 #### T1.54 — Provision the homelab instance fresh on the baseline
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.50, T1.62` · `Doc: 19 §2, §5` · `Tag: target-new` · `Gate: G-B`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T1.50, T1.62` · `Doc: 19 §2, §5` · `Tag: target-new` · `Gate: G-B (label)`
 
 **Rewritten 2026-07-28 by owner decision: greenfield, no data retained.** This was "execute
 the cutover, verify, apply the freeze tag". There is no cutover — the homelab instance is

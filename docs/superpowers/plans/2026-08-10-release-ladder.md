@@ -261,10 +261,21 @@ against a file it cannot fully reproduce."
 
 ### Task 2: Per-task gate marking
 
-> **STOPPED 2026-08-10 — Tier-3 amendment, spec §6 condition 2. Owner ruling
-> required; the rest of the plan (Tasks 3–6) proceeded, since none depends on
-> this.** Fable-tier ruling, with both load-bearing claims verified against the
-> tree:
+> **RESOLVED 2026-08-10 — owner ratified `(produces)`; this task then executed.**
+> The stop and its reasoning are kept below because the escalation is the record
+> worth having: the binary vocabulary was owner-approved hours earlier and still
+> could not describe the corpus it was written for.
+>
+> **As executed:** three qualifiers, scope open-only (35 fields, not 236),
+> `(produces)` on the six gate-track rows and bound by test to `Version: gate`,
+> `(label)` on the other 29, and `(blocking)` **empty** — no open task's text
+> claims a gate dependency. `T3.01`'s legacy `(entry)` is left alone as a done
+> task, out of scope. Amendment row in `tasks/E3-synthesis-and-reach.md`.
+>
+> ---
+>
+> **The original stop — Tier-3 amendment, spec §6 condition 2.** Fable-tier
+> ruling, with both load-bearing claims verified against the tree:
 >
 > - Spec §4 defines `(label)` and `(blocking)` only, but §3's own gate track —
 >   `T2.114`, `T2.116`, `T3.22`, `T3.24`, `TH1.10`, `TH1.17`, all open —

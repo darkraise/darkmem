@@ -124,11 +124,10 @@ T2.114 ruling and argued it was content-blind; a Fable reviewer refuted it —
 the argument's evidential value depended on the author not having read the
 scoreboard, and the pre-positioned fallback "reads as its author's own doubt."
 
-**How far a stop reaches — scoped per condition, and PENDING OWNER
-RATIFICATION.** Spec §6 is titled "the loop **ends** and reports", i.e. a full
-halt. Narrowing that is not the loop's call to make silently, so the scoping
-below is written down to be ruled on. Until it is ratified, prefer the full
-halt where the two disagree.
+**How far a stop reaches — scoped per condition. Owner-ratified 2026-08-10.**
+Spec §6 is titled "the loop **ends** and reports", i.e. a full halt. This
+narrows it, which was not the loop's call to make silently, so it was put to the
+owner and ratified rather than applied.
 
 - **Conditions 1, 2, 3, 4, 7, 8 → full halt.** Each one means the loop's own
   judgement or its evidence is in question, and continuing compounds it. For 7
@@ -140,10 +139,13 @@ halt where the two disagree.
   about the others. Mark it `blocked` with the reason in its Note, take the
   next one, and report what was left and why.
 
-The v0.1 cut is the worked example: Task 2 hit condition 2, halted, and the
-remaining tasks shipped — but that was under an explicit owner instruction to
-exhaust the startable work, not under this document. That instruction is what
-the ratification above is asking to make standing.
+The v0.1 cut is the worked example: Task 2 hit condition 2, that task halted,
+and the remaining five shipped. Note what a full halt would have cost — the
+blocking discovery was a planning-vocabulary defect, and halting on it would
+have left the release uncut for a reason unrelated to any of it. Note also what
+the stop bought: the escalation returned a third qualifier, and the first
+execution attempt would have stamped a completed evidence run as blocked by its
+own gate.
 
 ## 6. Proportionality
 

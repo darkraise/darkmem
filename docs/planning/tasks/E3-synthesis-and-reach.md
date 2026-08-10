@@ -59,7 +59,7 @@ is never synthesised because it happened to rank high.
 
 #### T3.02 — `article_synthesis` productive runs
 
-`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14, T2.95` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14, T2.95` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D (label)`
 
 **Inherited from T3.01, to be settled here before any productive run**
 (recorded 2026-08-10 from the E3 branch review's triage of T3.01's minors).
@@ -117,7 +117,7 @@ non-disputed corroborated/confirmed facts — a disputed fact never reaches a dr
 
 #### T3.03 — Claim-level entailment pass + coverage routing
 
-`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26, T2.95` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.02, T2.26, T2.95` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E (label)`
 
 **Buildable now (amended 2026-08-06 with the M1 split).** This pass spends the
 verification judge whose qualification G-D certifies, and building it against an
@@ -141,7 +141,7 @@ under-claiming rule meets generated prose.
 
 #### T3.04 — `article_citations` — the one hard FK
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.03` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.03` · `Doc: 09 §4.3` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** The single hard FK to `knowledge_triples`, safe only because facts are
 invalidate-not-delete.
@@ -152,7 +152,7 @@ intact and the article marked stale; a hard fact delete is impossible.
 
 #### T3.05 — Staleness gate + debounced re-synthesis
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.04` · `Doc: 09 §4.4` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.04` · `Doc: 09 §4.4` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Staleness is a hash of the **verified** fact set only — a churning candidate
 does not trigger re-synthesis. Re-synthesis is debounced, strip-before-rewrite, and
@@ -167,7 +167,7 @@ supersedes the prior article.
 
 #### T3.06 — Articles tab
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.04` · `Doc: 13 §5.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.04` · `Doc: 13 §5.2` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Grounded prose with inline claim citations, the claim-support-coverage readout,
 and the stale label.
@@ -185,7 +185,7 @@ stale articles are labelled, not withheld.
 
 #### T3.07 — Research-agent loop through the ordinary capture door
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.06, T1.12` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.06, T1.12` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** A thin orchestration over already-shipped capture, consolidation, and synthesis.
 Evidence is filed through the **ordinary capture front door** — no privileged path, no
@@ -200,7 +200,7 @@ second pipeline. That is the entire reason F7 is cheap here.
 
 #### T3.08 — Distinct-origin stamping for researched sources
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07, T1.11` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07, T1.11` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Each genuinely independent source gets a distinct `origin_key`. **The same
 source fetched twice, or an unknown identity, merges to ONE origin** — corroboration is
@@ -241,7 +241,7 @@ the client's filesystem** — that boundary is the whole trust posture of this f
 
 #### T3.10 — Truth-first content fill under a token budget
 
-`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.09, T2.43, T3.23` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.09, T2.43, T3.23` · `Doc: 15 §3.4` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Fill order is L2 facts, then L3 articles, then L0 memory summaries, under a
 `config` token budget. Every item carries its layer, verification, and badge labels — an
@@ -356,7 +356,7 @@ Phase-1-capable and it may be pulled ahead of G-D.*
 
 #### T3.17 — Resume as a specialised inject
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.16, T3.10` · `Doc: 15 §3.2` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** At session start the latest checkpoint writes into the managed block under the
 token budget, so a fresh session loads a budgeted digest instead of reloading full
@@ -368,7 +368,7 @@ checkpoint degrades to the ordinary inject; `checkpoint_saved` / `resumed` journ
 
 #### T3.18 — Checkpoints are operational, not vault knowledge
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.16` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** A checkpoint carries **no verification badge** — it is operational state, not a
 claim about the world. Conflating the two would put unverified agent notes into the vault.
@@ -399,7 +399,7 @@ single control stops all injection immediately; Simple/Advanced honoured.
 
 #### T3.20 — Inject records in timeline and calendar
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.12` · `Doc: 13 §6.5` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Injections appear as journaled events — the human can see and curb push, never
 a silent context swap.
@@ -410,7 +410,7 @@ clicking one shows exactly what was pushed; Simple/Advanced honoured.
 
 #### T3.21 — Session checkpoints / resume view
 
-`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: M` · `Depends: T3.17` · `Doc: 13 §6` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Per-run digest, next-steps, and copy-resume in the Activity shell.
 
@@ -424,7 +424,7 @@ injected text; `checkpoint_saved` / `resumed` events visible; Simple/Advanced ho
 
 #### T3.23 — Articles retrieval channel + `article_embeddings` writer
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.02, T2.43, T0.13` · `Doc: 07 §2, 04 §5.3` · `Tag: target-new` · `Gate: G-E (label)`
 
 **What.** Doc 07 §2 makes the articles channel target-new and semantic over
 `article_embeddings__<slug>` — the channel without which T3.10's truth-first inject fill
@@ -485,3 +485,4 @@ per-install `origin_key` is stable across restarts; no site adapter is required 
 |---|---|---|---|---|
 | 2026-08-06 | T3.01, T3.02, T3.03, T3.09, T3.25, T3.26 | 2 | **A gate blocks what it certifies, not what merely precedes it.** Implementation lands **inert**; only the productive or serving path waits for evidence. This is the repo's own standing pattern, applied more consistently — T0.13's inert partitions, T2.08's `PlaceholderJobRunner` family, T2.32/T2.50's build-versus-judge split, and invariant 23's scaffolding-not-substrate. Dependency edges re-pointed off the evidence runs accordingly | Controller decision: the plan had implementation work queued behind **evaluation artifacts it does not depend on** — an SDK scaffold and a browser-extension scaffold waited on a groundedness evidence run, and a document parser waited on a faithfulness metric. That is phase coupling, not artifact coupling, and it stalls build work on datasets that do not exist yet. Evaluation is deferred to an independent measurement phase after the implementation is complete, where it can be run against the whole system rather than against fixtures. **What was deliberately left gated**: T2.28 (mints facts born `corroborated` — the exact harm G-C names), T3.02 (productive article runs — where a grounded claim first reaches a reader), T3.03 (the groundedness consumer). Freeing those would put unverified assertions in front of users, which is a different thing from unblocking a scaffold. |
 | 2026-08-10 | T3.14 (correcting T3.25) | 1 | **The generator's verb bindings were wrong twice and its guard could not see either.** Round 1: the guard widened from route existence to the request-body **fields** each verb sends, after both emitted clients were found posting an `applies_when` key no request schema in the contract has — silently dropped by every door. `declareContext` was re-pointed off `POST /memories/reason` (a route it has no relationship with) onto the `X-Darkmem-Context` header, and `search` off `POST /memories/search` onto `POST /knowledge/search`. Round 2, after the Fable review of 2026-08-10: **`search` re-pointed again, to `POST /memories/search/paginated`**, because the composed read serves neither rank of doc 12 §5's context chain — measured live, the header reached nothing on either bound door, so `declareContext` declared into the void. `capture` lost its `context` argument for the same reason. The guard gained a consumption arm (a context-carrying verb must bind a door whose schema declares the rank-1 `context` field, and some verb must carry the header), the emitted bodies are now rendered from the declared field tuple so the two cannot diverge, and `backend/tests/test_sdk_contract_conformance.py` drives the real app to prove the declaration is resolved | Round 1's argument weighed doc 15 §6's prose ("the F3 read", "labelled results with their trace", a `fused?` argument) and did not record that the section's own mermaid arrow says `POST .../search · memory_search` — the memories twin — which is the counter-evidence and turned out to be right. Doc 01 F3 is the memory retrieval flow, and only the memories door carries the rank-1 `context` field, resolves the header and returns the trace envelope. The cost is that `fused` is not expressible in the SDK; recorded rather than faked. **Doc 15 §6 has been amended in place** with a dated note correcting three diagram labels, which round 1 failed to do — an amendment whose document still says the opposite regenerates the old answer. The general lesson, worth more than the binding: a schema-shaped guard proves a door *accepts* a value, never that anything *reads* it, and for a generated artifact one test must drive the artifact rather than the generator |
+| 2026-08-10 | all open gated tasks | 2 | **`Gate:` is now qualified `(label)`, `(blocking)` or `(produces)`, on open tasks only.** An unqualified field read as "blocked until the gate clears", which is false for nearly every task carrying one: gates gate labels, and `T2.95`'s serving boundary already refuses an unbacked claim. **Three values, not the two the design spec §4 offered** — owner-ratified 2026-08-10 after a Fable-tier review escalated it as a Tier-3 amendment. §3's own gate track (`T2.114`, `T2.116`, `T3.22`, `T3.24`, `TH1.10`, `TH1.17`) *produces* gates rather than waiting on them, and §4 had no word for the class §3 itself named; `(produces)` is bound by test to the rows `progress.md` marks `Version: gate`, so the two documents cannot disagree. **`(blocking)` is empty today.** §4's sole exemplar was wrong: `T2.41` is "G-D evidence run", it is `done`, and it *mints* the qualification record it was said to wait for — and a scan of every open gated task's text for a gate dependency returned nothing. Scope is deliberately open-only: 181 of the 236 fields sit on `done` work in E0/E1/E2, where the qualifier has no reader and stamping one would write a claim about history that was never true of it. `T3.01`'s legacy `Gate: G-D (entry)` is left as-is for the same reason — it is `done`, so it is out of scope, and §4's "per-task marking replaces the epic-level entry gate" makes it a spec-text note rather than an edit | The ambiguity is what serialised the roadmap behind measurement — 232 tasks done, nothing ever released, and E3 work sitting behind an open G-D that gates only its badge. Recorded rather than silently applied because it changes which work an agent believes is startable. The escalation is itself the record worth keeping: the binary was ratified hours earlier and still could not describe the corpus it was written for, and the first execution attempt would have stamped a completed evidence run as blocked by its own gate |

@@ -126,7 +126,7 @@ it stubs, because the gate's credibility rests entirely on that boundary.
 
 #### T2.116 — Bind the resample certification to the pairs it certified
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.107` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.107` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
 
 **Minted 2026-08-10 from the E3 branch review's triage, which ruled D-7 and D-8
 "may stand" and then noted T2.115 had just paid their manual tax a third
@@ -498,7 +498,7 @@ before measuring; a probe carried over unexamined would be measuring the old arc
 
 #### T2.114 — G-D third-vendor attempt
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.109, **an owner-recorded argument**` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.109, **an owner-recorded argument**` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D (produces)`
 
 **Minted 2026-08-09 at the owner's instruction. It must not run until the
 argument below is written down, and that is the whole point of the task.**
@@ -697,7 +697,7 @@ lane (T2.27–T2.28) closed.
 
 #### T3.24 — Coverage-distribution runner
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T3.03` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E (produces)`
 
 **What.** The plumbing behind T3.22's verify. Reports the **distribution** of per-article
 claim-support coverage, not a mean — one well-covered article is not evidence.
@@ -711,7 +711,7 @@ claim-support coverage, not a mean — one well-covered article is not evidence.
 
 #### T3.22 — G-E evidence run
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T3.05, T3.06, T3.08, T3.23, T3.24` · `Doc: 20 §4` · `Tag: target-new` · `Gate: G-E (produces)`
 
 **What.** L3 shipped **and** the per-article coverage distribution holding above the
 runtime threshold in production — a distribution, not a single flattering article.
@@ -728,7 +728,7 @@ to "nothing automated touches `darkmem`" — it is **read-only** and may never w
 
 #### TH1.17 — Faithfulness-gate runner
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F (produces)`
 
 **What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
 designs the bar and reads the number (runbook §2).
@@ -741,7 +741,7 @@ per-slice; emits its cost twin.
 
 #### TH1.10 — Faithfulness ship gate (G-F evidence)
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F`
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: TH1.09, TH1.17` · `Doc: 20 §4, 17 §6` · `Tag: horizon` · `Gate: G-F (produces)`
 
 **What.** Double duty: TH1.09 is the per-answer runtime gate; this is the **ship** gate.
 The metric defined in TH1.01 must clear its bar on a labelled gold set before H1 ships.
