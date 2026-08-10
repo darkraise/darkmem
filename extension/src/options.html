@@ -11,6 +11,15 @@
 <h1>darkmem capture</h1>
 <label for="base">Server</label>
 <input id="base" placeholder="http://localhost:8000" />
+<p class="note">
+  <strong>Only <code>http://localhost:8000</code> works today.</strong> The
+  manifest grants this extension network access to that one origin, so a LAN
+  address saves fine and then fails on every capture — the browser blocks the
+  request before darkmem sees it. Reaching a LAN instance means widening
+  <code>host_permissions</code> in the manifest and reloading the extension,
+  which is a deliberate re-grant rather than a setting: a capture extension
+  that could post anywhere is a different trust posture from one that cannot.
+</p>
 <label for="token">API token</label>
 <input id="token" type="password" />
 <label for="project">Project</label>

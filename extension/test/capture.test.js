@@ -15,6 +15,7 @@ import {
   MAX_SELECTION_CHARS,
   SOURCE,
   buildCapture,
+  permissionHint,
   postCapture,
 } from "../src/capture.js";
 
@@ -135,4 +136,26 @@ test("no Authorization header is sent when no token is configured", async () => 
   await postCapture(fetchImpl, BASE, buildCapture({ selection: "x", originKey: "ext:a" }));
 
   assert.equal("Authorization" in calls[0].init.headers, false);
+});
+
+test("a base URL outside host_permissions is named as the cause", () => {
+  // Branch review M-6: the options page offers a Server field while the
+  // manifest grants one origin, so a LAN address fails with a bare
+  // "Failed to fetch" and the human goes looking at the server.
+  const hosts = ["http://localhost:8000/*"];
+
+  assert.equal(permissionHint("http://localhost:8000", hosts), "");
+  assert.equal(permissionHint("http://localhost:8000/", hosts), "");
+
+  const hint = permissionHint("http://192.168.0.195:8000", hosts);
+  assert.match(hint, /host_permissions/);
+  assert.match(hint, /192\.168\.0\.195:8000/);
+  assert.match(hint, /reload the extension/);
+});
+
+test("the hint reads the granted origins rather than restating them", () => {
+  // A widened manifest must not leave the hint asserting the old grant.
+  const widened = ["http://localhost:8000/*", "http://192.168.0.195:8000/*"];
+
+  assert.equal(permissionHint("http://192.168.0.195:8000", widened), "");
 });

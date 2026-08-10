@@ -78,3 +78,26 @@ export async function postCapture(fetchImpl, baseUrl, body, { token } = {}) {
   }
   return response.json();
 }
+
+/** Why a transport-level failure probably happened, when it probably did.
+ *
+ * The options page offers a Server field while `manifest.json` grants network
+ * access to one origin, so a LAN base URL saves fine and is then blocked by
+ * the browser before darkmem ever sees the request — surfacing as a bare
+ * "Failed to fetch". The human reads that as darkmem being down and goes
+ * looking at the server. Read out of the manifest rather than restated here,
+ * so a widened grant cannot leave this hint claiming the old one.
+ */
+export function permissionHint(baseUrl, hostPatterns) {
+  const patterns = hostPatterns ?? [];
+  const granted = patterns.some((pattern) => {
+    const prefix = pattern.replace(/\*$/, "");
+    return `${baseUrl.replace(/\/+$/, "")}/`.startsWith(prefix);
+  });
+  if (granted || patterns.length === 0) return "";
+  return (
+    ` — ${baseUrl} is not in this extension's host_permissions ` +
+    `(${patterns.join(", ")}), so the browser blocked the request before ` +
+    `darkmem saw it. Widen the manifest and reload the extension.`
+  );
+}

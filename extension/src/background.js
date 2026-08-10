@@ -8,7 +8,12 @@
  */
 
 import { getOriginKey } from "./origin.js";
-import { CaptureRefused, buildCapture, postCapture } from "./capture.js";
+import {
+  CaptureRefused,
+  buildCapture,
+  permissionHint,
+  postCapture,
+} from "./capture.js";
 import { packageExchange } from "./adapters.js";
 import { alreadyCaptured, fingerprint, remember } from "./dedupe.js";
 
@@ -73,10 +78,17 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     // Surfaced, never swallowed: a capture that silently did not happen is
     // the failure the human cannot detect, and they have already navigated
     // away by the time anything else could tell them.
+    // A transport failure is where the manifest's narrow `host_permissions`
+    // shows up, and it shows up as a bare "Failed to fetch" that reads like
+    // darkmem being down. `CaptureRefused` is ours and needs no hint.
+    const hint =
+      error instanceof CaptureRefused
+        ? ""
+        : permissionHint(baseUrl, chrome.runtime.getManifest().host_permissions);
     await notify(
       error instanceof CaptureRefused
         ? `Not captured — ${error.message}`
-        : `Not captured — ${error?.message ?? "the request did not complete"}`,
+        : `Not captured — ${error?.message ?? "the request did not complete"}${hint}`,
     );
   }
 });
