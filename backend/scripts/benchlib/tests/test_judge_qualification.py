@@ -1018,3 +1018,34 @@ def test_an_uncitable_resample_is_refused():
         )
         assert eligibility.eligible is False, field
         assert f"{field!r} missing" in "\n".join(eligibility.reasons)
+
+
+def test_the_per_pair_verdict_artifact_is_quarantined_not_committed():
+    """T2.115 could not compute the overlap disclosure its plan review
+    required, because no artifact joins a pair id to what the judge said: the
+    cache is keyed on an identity no run records, and the report withholds the
+    per-pair census by design.
+
+    The fix separates the two readers rather than publishing anything. A
+    controller needs the join to attribute a re-measure's delta; an author must
+    never see it, or the next round's pairs are aimed at the known misses. So
+    the artifact lives beside `entailment/cache/` under the same gitignore and
+    the same quarantine rule — and this test is what keeps it there, since a
+    committed census would be the exact leak the whole firewall exists to stop.
+    """
+    import pathlib
+
+    from benchlib import run_judge_qualification as rjq
+
+    root = pathlib.Path(__file__).resolve().parents[4]
+    ignore = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    rel = "backend/scripts/benchlib/entailment/verdicts/"
+
+    assert rel in ignore, (
+        f"{rel} must be gitignored: it holds per-pair judge verdicts, which is "
+        "the census the ledger withholds so a future author cannot aim at it"
+    )
+    # And it is the directory the runner actually writes to, so the ignore rule
+    # cannot drift away from the artifact it protects.
+    assert rjq.VERDICTS_DIR.name == "verdicts"
+    assert rjq.VERDICTS_DIR.parent.name == "entailment"

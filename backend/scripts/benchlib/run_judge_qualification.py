@@ -78,6 +78,27 @@ from app.config import LLMPurposeConfig  # noqa: E402
 from app.services import verification_judge as vj  # noqa: E402
 
 CACHE_DIR = entailment_gold.ENTAILMENT_DIR / "cache"
+
+# **Per-pair verdicts, in the same contaminated category as the cache above.**
+#
+# Written because T2.115 could not compute the disclosure its own plan review
+# required -- "how many of the retired pairs were misses in the last attempt",
+# without which a re-measure's recall moves for census-content reasons and
+# nobody can tell that from a judge change. Three routes were closed: the cache
+# is keyed on a `base_url`/`params` identity no run records, the report withholds
+# the per-pair census by design, and matching cached reasons by token collides
+# across pairs.
+#
+# The tension that made it unanswerable is real: the census is withheld so a
+# later *author* cannot aim at it, and that withholding is what makes the
+# controller's join impossible. This artifact resolves it by separating the two
+# readers rather than by publishing anything -- a controller gets the join, an
+# author never sees the file, because it lives beside `cache/` under the same
+# gitignore and the same quarantine-before-authoring rule (LABELLING.md's
+# allowlist names what an author may read, and this is not on it).
+#
+# Never commit it, never cite a pair id from it in a report or the ledger.
+VERDICTS_DIR = entailment_gold.ENTAILMENT_DIR / "verdicts"
 REPORT_DIR = REPO_ROOT / "docs" / "eval"
 
 ATTEMPT_KIND = "judge_qualification_attempt"
@@ -260,7 +281,9 @@ async def run_qualification(
         judge, recorder, llm, "judge_call",
         [(p["id"], p["premise"], p["hypothesis"]) for p in live_pairs],
     )
+    pair_by_id = {p["id"]: p for p in live_pairs}
     score = jq.score_judgments(live_pairs, verdicts)
+
     # Rule B's second population, from the verdicts already in hand: no extra
     # model call and no extra gold contact. Scoring only the pool would blend
     # pairs this judge's model has already been measured on with the pairs the
@@ -309,6 +332,30 @@ async def run_qualification(
     )
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(report_text, encoding="utf-8")
+
+    # The join a later round needs, keyed by pair id and by this run's identity
+    # so two attempts never overwrite each other's evidence.
+    verdicts_path = Path(VERDICTS_DIR) / (
+        f"{run_date.isoformat()}-{identity_hash[:8]}-{gold_sha256[:8]}.json"
+    )
+    verdicts_path.parent.mkdir(parents=True, exist_ok=True)
+    verdicts_path.write_text(json.dumps({
+        "_notes": (
+            "Per-pair judge verdicts. CONTAMINATED ARTIFACT: quarantine this "
+            "directory before any authoring or adjudication dispatch, exactly "
+            "as entailment/cache/ is quarantined, and never publish a pair id "
+            "from it. It exists so a controller can attribute a re-measure's "
+            "delta to census content versus judge behaviour."
+        ),
+        "gold_sha256": gold_sha256,
+        "judge_identity": identity_hash,
+        "date": run_date.isoformat(),
+        "verdicts": {
+            pid: {"gold": pair_by_id[pid]["verdict"], "judged": v.verdict}
+            for pid, v in verdicts.items()
+        },
+    }, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"[2/4] per-pair verdicts: {verdicts_path}")
 
     jq.record_qualification(score, twin, metadata={
         "run_id": run_id,

@@ -27,3 +27,4 @@ backend/scripts/benchlib/entailment/cache/
 backend/scripts/benchlib/promotion/cache/
 backend/scripts/e2e/.env-e2e
 docs/eval/*-retrieval-eval.md
+backend/scripts/benchlib/entailment/verdicts/

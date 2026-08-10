@@ -284,6 +284,18 @@ that pin — never a silent relabel of existing pairs.
      gold generations are recorded in the ledger and in every report, so
      a reset is visible rather than silent (ruling R4).
 
+  **Quarantine before authoring, and what is on the list.** Two directories
+  hold per-pair judge output and neither may be readable by an author or an
+  adjudicator: `entailment/cache/` (raw responses) and `entailment/verdicts/`
+  (the pair-id join, added 2026-08-10 after T2.115 found the disclosure its
+  own review required was uncomputable without it). Both are gitignored, both
+  are moved outside the repository before any authoring dispatch, and neither
+  may have a pair id quoted from it in a report or the gate ledger. They exist
+  so a **controller** can attribute a re-measure's delta to census content
+  rather than judge behaviour; an author who read either would write the next
+  round's pairs at the known misses, which is the one thing the firewall is
+  for.
+
   **Reconciliation with the judge-blind clause above.** That clause bars
   retiring a pair "on the basis of what any judge model answers", and a
   lattice round is *triggered* by a gate failure. The two are compatible
