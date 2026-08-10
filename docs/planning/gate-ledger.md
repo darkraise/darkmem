@@ -885,6 +885,47 @@ file. Both are fixed in v2. The authoring is firewalled from every G-D artifact
 including the untracked per-pair verdict cache, because the controller running
 the round has read the slice-level failure attribution and cannot author.
 
+#### The overlap disclosure T2.115 owed, and could not compute
+
+The plan review (I6) required the round's report to state **how many of the 15
+retired pairs were misses in the last recorded attempt** — otherwise a future
+re-measure's recall moves for census-content reasons and nobody can tell that
+from a judge change. It judged the number "computable by the
+already-contaminated controller" from the quarantined per-pair verdict cache.
+
+**It is not computable, and the reason is a gap worth more than the number
+was.** Three routes, all closed:
+
+1. **Exact join.** The cache is keyed on
+   `sha256(purpose, purpose_identity, messages, kwargs)`, and
+   `_KEYED_CONFIG_FIELDS` folds in `base_url`, `api_kind` and `params`. The
+   2026-08-08 attempt's `base_url` is recorded nowhere; 24 candidate configs
+   reproduced zero keys. This is the same wall this file already records for
+   attempt 2's params, where a ~18k-candidate search failed and fell back to
+   token-checksum attribution.
+2. **The run report.** `docs/eval/2026-08-08-judge-qualification-fd39e7b2.md`
+   carries the confusion matrix and per-slice accuracy and **no per-pair
+   census** — withheld deliberately, as this file states, because "the pair ids
+   are what a future author must not be able to read".
+3. **Text attribution.** Matching cached reasons to pairs by distinctive tokens
+   collides across pairs — `wireguard`+`deployed` matches two retired pairs and
+   pools their responses across every attempt — so the counts blend pairs and
+   sittings. A number from this would look like evidence and be noise.
+
+**The tension is real and is the point.** The per-pair census is withheld so a
+later author cannot aim at it; that same withholding makes the retirement's
+effect on the next re-measure unattributable. Both properties are wanted and
+the current artifacts cannot have both.
+
+**Forward fix, for whoever runs the next qualification.** The run should emit a
+`{pair_id: verdict}` artifact beside its raw cache, in the *same* contaminated
+category — quarantined from every authoring allowlist exactly as
+`entailment/cache/` now is, never published in the report or this file. That
+gives a controller the join without giving an author the census. Until it
+exists, **a re-measure on the resized gold cannot separate a census-content
+delta from a judge delta**, and any comparison against the 0.9125 recorded on
+2026-08-08 must say so.
+
 ### G-D redesign: **RATIFIED by the owner, 2026-08-08**
 
 The recommendation below is adopted. Tier-3 amendments applied to
