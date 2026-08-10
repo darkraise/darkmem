@@ -885,6 +885,58 @@ file. Both are fixed in v2. The authoring is firewalled from every G-D artifact
 including the untracked per-pair verdict cache, because the controller running
 the round has read the slice-level failure attribution and cannot author.
 
+### T2.115 — two defects found by the branch review, awaiting owner adjudication
+
+Found 2026-08-10 by the whole-branch review, after the round had been committed
+and after the G-D attempt above had run. **Both are in the round's execution and
+both were verified at the file before being recorded here.** Neither is a
+measurement error; both are claims the artifact does not support, which is this
+corpus's characteristic defect appearing in the round that was most careful
+about it.
+
+**C-1 — the round violated the clause it ratified, and three in-tree sentences
+say otherwise.** Clause 5 of the lattice-retirement rule requires the affected
+verdict class's "largest-remainder slice distribution ... unchanged after
+replacement". Measured: retired `value-swap` 8 / `direction` 4 / `temporal` 3;
+replaced `value-swap` 8 / `direction` 4 / `temporal` **2** + `overreach` **1**.
+Pooled contradicted moved `temporal` 15→14 and `overreach` 0→1.
+
+What actually happened, stated plainly because it is worse than an oversight:
+authoring returned one `overreach`-contradicted pair (a lawful but rare shape the
+author flagged at the time), and the temporal batch was then sized at 2
+contradicted instead of 3 **to keep the census at 80** — the verdict arithmetic
+was rebalanced around it and the composition deviation was recorded nowhere.
+Contradicted by commit `48ad7e8e` ("composition preserved"),
+`entailment_assignment.py` ("unchanged end to end (rule clause 5)") and its
+round-3 comment ("3 contradicted + 3 entailed + 3 unsupported", shipped 2/3/4).
+
+**The rule as written cannot fix its own violation.** The obvious repair —
+retire the `overreach`-contradicted pair and author a `temporal` one — is barred:
+`eg-0405` is in Rule B's population and clause 1 admits only *contacted* pairs.
+So the owner's options are to amend clause 5 (e.g. permit a recorded deviation
+with its arithmetic), to relax clause 1 for this repair, or to accept and record
+the deviation as standing. **An agent may not pick among these**: clause 5 is
+ratified text and the choice changes what a future round may do.
+
+**C-2 — a semantic near-duplicate entered the census through the loophole the
+round itself documented.** Three anchored `direction` slots sat on facts already
+carrying a live `direction` pair. Two produced byte-identical hypotheses, were
+caught by the loader's uniqueness check, and were skipped with the instruction —
+recorded in History — **"do not resolve it by rewording"**. The third never
+collided byte-for-byte: `eg-0367`'s hypothesis says the same thing as
+`eg-0093`'s in different words, so it passed. The instruction was given for the
+two collisions that were visible and could not reach the one that was not.
+
+Consequence: the pooled contradicted census is 80 rows and at most 79
+independent items, and Rule B's 40 contains one proposition the contacted
+population already held. The honest reading of the G-D entry above must carry
+this, and it now does.
+
+**Deliberately not fixed by this session.** Every repair is gold surgery, which
+moves the sha, voids the `58ac1a90` certification and the attempt just spent, and
+re-opens a census the owner ruled on. The findings are recorded where the next
+reader meets them; the ruling is the owner's.
+
 ### G-D re-measure on the resized gold (2026-08-10, T2.115 follow-on): **NOT CLEARED — pooled recall, by one pair**
 
 Attempt **1 of 2** on gold `98fc4b49` (lineage: 4 prior attempts across two
@@ -903,14 +955,33 @@ that resized the gold authored its pairs and did not measure them. Report:
 populations. Pooled contradiction-recall is 75/80 — five misses where the bar
 permits four. Seven of eight bar readings pass.
 
-**The resize did the thing it was built to do, and this run is the
-demonstration.** Rule B's population scored **38/40 = 0.9500 exactly** — a value
-that was *not on its lattice* before the round, when 25 contradicted pairs
-offered only 0.92 and 0.96. Under the old census this same judge performance
-would have been scored against an unrepresentable bar and reported as a stricter
-number than the one stated. That was the defect T2.115 existed to remove, and
-here it is removed: the subset now passes or fails at the bar the config
-actually names.
+**The resize put 0.95 on the subset's lattice, and Rule B's population scored
+38/40 = 0.9500 exactly.** Before the round, 25 contradicted pairs offered only
+0.92 and 0.96, so this same judge performance would have been measured against a
+bar its census could not express. That much holds.
+
+> **Correction, same day, from the branch review (C-1/C-2).** The paragraph
+> above originally read "the resize did the thing it was built to do, and this
+> run is the demonstration". **That claim is stronger than the artifact
+> supports and is withdrawn**, for two reasons found after this entry was
+> written and both confirmed at the file:
+>
+> 1. **The census is 80 rows and fewer than 80 independent items.** New
+>    `eg-0367` and live `eg-0093` share an identical premise
+>    (`hv-27 has part scratch partition`) and semantically identical reversal
+>    hypotheses, both `contradicted`. The lattice-exactness argument presumes 80
+>    independent trials. Worse for *this* run: eg-0367 is in Rule B's population
+>    and eg-0093 is in the contacted one, so the judge had already met that
+>    proposition — the subset's "not contacted before" property is dented in
+>    substance for one of the 40 pairs whose exactness the paragraph celebrates.
+> 2. **The retirement's slice composition was not preserved.** Retired
+>    8 value-swap / 4 direction / 3 temporal; replaced 8 / 4 / **2** plus one
+>    **overreach**-contradicted. The pooled contradicted distribution moved
+>    (temporal 15→14, overreach 0→1), which ratified clause 5 forbids.
+>
+> Neither changes a measured number and neither is a reason to re-run: the bars
+> read what they read. What changes is what may be *claimed* from them. Both are
+> owner-adjudication items below.
 
 **This is a different judge from 2026-08-08, and the comparison is not clean.**
 The judge here is `4d886440` (`deepseek-v4-flash`), the configured `verification`

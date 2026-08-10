@@ -189,8 +189,13 @@ def build_round2_assignment(
 CONTRADICTED_FIRST_SLICES = ("value-swap", "direction")
 
 ROUND3_SLICE_TARGETS: dict[str, int] = {
-    # Contradicted replacements, mirroring the retirement draw's quota so the
-    # pooled slice distribution is unchanged end to end (rule clause 5).
+    # Contradicted replacements, mirroring the retirement draw's quota.
+    # **This did NOT hold in execution and the comment used to claim it did**
+    # ("unchanged end to end (rule clause 5)"): authoring returned one
+    # `overreach`-contradicted pair and the temporal batch was sized at 2
+    # rather than 3 to keep the census at 80, moving the pooled distribution
+    # (temporal 15->14, overreach 0->1). Recorded in the gate ledger as C-1,
+    # awaiting owner adjudication; do not re-assert preservation here.
     "value-swap": 8,
     "direction": 4 + 4,   # 4 contradicted + 4 unsupported companions
     # Companions, largest-remainder over the live non-contradicted
@@ -201,7 +206,8 @@ ROUND3_SLICE_TARGETS: dict[str, int] = {
     "verbatim": 6,
     "weakening": 8,
     # Temporal is hand-authored (doc 17 section 11's premise exemption) and
-    # takes no l2 slot: 3 contradicted + 3 entailed + 3 unsupported.
+    # takes no l2 slot. Planned 3C/3E/3U; **shipped 2C/3E/4U**, sized after
+    # authoring to land the census at 80 (see C-1 in the gate ledger).
     "temporal": 9,
 }
 
