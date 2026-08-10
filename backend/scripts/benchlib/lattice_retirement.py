@@ -31,10 +31,21 @@ Nothing here reads a label, a rationale, a premise, a hypothesis or any judge
 output. The only pair property that enters is ``slice_tags``, and only as the
 stratification the rule's clause 4 permits by name.
 
-Reproduction is one command, and the report must carry it::
+Reproduction must carry ``--gold``, and the report must record the form that
+actually reproduces::
 
+    git show <pre-round-rev>:backend/scripts/benchlib/entailment/gold.json \
+        > /tmp/gold-pre-round.json
     cd backend && PYTHONPATH=.:scripts python -m benchlib.lattice_retirement \
-        --verdict contradicted --n 15
+        --verdict contradicted --n 15 --gold /tmp/gold-pre-round.json
+
+**Omitting ``--gold`` does not reproduce anything, and this docstring used to
+tell rounds to record exactly that form.** The flag defaults to the *current*
+gold file and the seed is that file's own sha256, so once the round has landed
+its retirements and replacements the bytes have moved, the seed differs and the
+draw runs against a pool that no longer exists. T2.115 recorded the one-command
+form and it was found non-reproducing four days later; corrected 2026-08-10 at
+the source so the next round does not inherit it.
 """
 
 from __future__ import annotations

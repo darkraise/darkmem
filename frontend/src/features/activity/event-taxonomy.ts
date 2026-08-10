@@ -60,9 +60,12 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  * Membership here does NOT mean a value is emitted today. `inject` is listed
  * and has no producer at all (below); it is here because the exclusion
  * decision was made, not because rows exist. Reading this list as "these are
- * all live" is invariant 23's mis-triage, and the sentence that used to sit
- * here — "all four below are emitted for real" — was already stale by one
- * value before T3.12 and outright wrong after it. Corrected 2026-08-10.
+ * all live" is invariant 23's mis-triage. The sentence that used to sit here
+ * — "all four below are emitted for real" — was true when written (`19a19695`,
+ * four members, every one emitted); by the commit before T3.12 the set held
+ * twelve, so the count was stale by eight while the claim still held for every
+ * member; T3.12 then added the first member with no emitter and made the claim
+ * false. Corrected 2026-08-10.
  */
 const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // Inject records (T3.12). Doc 13 section 6.5 puts them in the

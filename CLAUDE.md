@@ -132,8 +132,13 @@ A memory carries:
   for batch adds) — the "no writer yet" note here was stale and was corrected
   2026-07-28. **No *capture* response echoes it**: it is absent from
   `MemoryResponse`, so on the capture doors it is write-only over the wire and
-  only a direct database read can observe it. A test asserting it through a
-  capture door's response will assert nothing. **That is not tree-wide, and
+  a test asserting it through a capture door's response will assert nothing.
+  That is a statement about those doors, not about observability — two other
+  read surfaces serve resolved keys on purpose: `GET
+  /api/v1/knowledge/facts/{id}` (`FactSourceGroup.origin_key`, the
+  corroboration audit) and `GET /events` (`checkpoint_saved` payloads). Saying
+  "only a direct database read can observe it" was wrong and was corrected
+  2026-08-10. **The capture-door claim is also not tree-wide, and
   this said "any door" from `ad19c53a` until it was corrected 2026-08-10**:
   `session_checkpoints` carries its own `origin_key` and `CheckpointResponse`
   serves it on both verbs of both doors. The difference is what the key is
