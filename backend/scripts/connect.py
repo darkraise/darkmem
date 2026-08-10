@@ -134,8 +134,15 @@ async def main() -> int:
 
     # The registry lives in the database (doc 15 §3.3 requires a config row),
     # and this command runs on a *client* machine where Postgres is usually
-    # unreachable. An unhandled OSError there is a traceback in a human's
+    # unreachable. An unhandled error there is a traceback in a human's
     # terminal for an entirely expected condition.
+    #
+    # Two branches because asyncpg raises two shapes and only one is an
+    # OSError -- measured, not assumed (branch review M-5): a refused port or
+    # a bad host surfaces as `OSError`/`ConnectionRefusedError`, while wrong
+    # credentials surface as `InvalidPasswordError`, which is not an OSError
+    # and used to traceback. Both are "this client cannot read the registry",
+    # and neither is the human's mistake to read a stack trace about.
     try:
         async with async_session_factory() as session:
             adapter = await resolve_adapter(session, args.tool)
@@ -147,6 +154,14 @@ async def main() -> int:
             f"error: cannot reach darkmem's database to read the adapter "
             f"registry ({error}). Run this on the machine hosting darkmem, or "
             f"set DATABASE_URL to point at it.",
+            file=sys.stderr,
+        )
+        return 2
+    except Exception as error:  # noqa: BLE001 -- see the two-branch note above
+        print(
+            f"error: could not read darkmem's adapter registry "
+            f"({type(error).__name__}: {error}). Check DATABASE_URL's "
+            f"credentials and that the database has been migrated.",
             file=sys.stderr,
         )
         return 2

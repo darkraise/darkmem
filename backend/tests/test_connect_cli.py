@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -364,3 +365,85 @@ class TestConfigPathResolution:
         assert cc.resolve_config_path(
             str(target), workspace=None, repo_root=repo_root
         ) == target
+
+
+# ---------------------------------------------------------------------------
+# The CLI's own error branches (branch review M-5)
+# ---------------------------------------------------------------------------
+
+
+def _connect_module():
+    """Import `scripts/connect.py` the way a human runs it."""
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "connect.py"
+    spec = importlib.util.spec_from_file_location("darkmem_connect_cli", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestTheRegistryReadFailsSoftly:
+    """`main()` had no test at all, and its `except OSError` branch rested on
+    an unverified premise: that asyncpg surfaces a refused database as an
+    `OSError` rather than a wrapped SQLAlchemy error.
+
+    Measured 2026-08-10 against the real driver: a refused port raises
+    `OSError`, and **wrong credentials raise `InvalidPasswordError`, which is
+    not an OSError** and tracebacked out of a command whose whole point is
+    that a client machine usually cannot reach the database. Both branches are
+    now covered, and both are asserted on the exit code a shell sees rather
+    than on the message.
+    """
+
+    @pytest.fixture
+    def cli(self, monkeypatch):
+        module = _connect_module()
+        monkeypatch.setattr(sys, "argv", ["connect.py", "claude-code", "--dry-run"])
+        return module
+
+    def _fail_registry_with(self, module, monkeypatch, error):
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def session_factory():
+            raise error
+            yield  # pragma: no cover — unreachable, keeps this a generator
+
+        monkeypatch.setattr(module, "async_session_factory", session_factory)
+
+    async def test_an_unreachable_database_is_an_error_not_a_traceback(
+        self, cli, monkeypatch, capsys
+    ):
+        self._fail_registry_with(cli, monkeypatch, ConnectionRefusedError("refused"))
+
+        assert await cli.main() == 2
+        assert "cannot reach darkmem's database" in capsys.readouterr().err
+
+    async def test_rejected_credentials_are_an_error_not_a_traceback(
+        self, cli, monkeypatch, capsys
+    ):
+        """The shape the OSError branch does not catch. Before this it left a
+        stack trace in the human's terminal."""
+
+        class InvalidPasswordError(Exception):
+            pass
+
+        self._fail_registry_with(
+            cli, monkeypatch, InvalidPasswordError('password authentication failed')
+        )
+
+        assert await cli.main() == 2
+        error = capsys.readouterr().err
+        assert "could not read darkmem's adapter registry" in error
+        assert "InvalidPasswordError" in error, "the shape must reach the human"
+
+    async def test_an_unknown_tool_is_refused_before_anything_is_read(
+        self, cli, monkeypatch, capsys
+    ):
+        from app.services.inject_adapters import UnknownTool
+
+        self._fail_registry_with(cli, monkeypatch, UnknownTool("no such tool: nope"))
+
+        assert await cli.main() == 2
+        assert "no such tool" in capsys.readouterr().err

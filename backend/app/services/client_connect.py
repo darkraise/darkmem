@@ -33,12 +33,10 @@ import json
 import re
 import tomllib
 from pathlib import Path
-from dataclasses import dataclass, field
 
 __all__ = [
     "DEFAULT_MCP_URL",
     "SERVER_KEY",
-    "ConnectResult",
     "HandshakeFailed",
     "WorkspaceRequired",
     "diagnose",
@@ -62,17 +60,6 @@ SERVER_KEY = "darkmem"
 
 class HandshakeFailed(RuntimeError):
     """Verification failed, carrying the concrete cause rather than a summary."""
-
-
-@dataclass
-class ConnectResult:
-    tool: str
-    config_path: str
-    url: str
-    connected: bool
-    tool_count: int = 0
-    diagnosis: str = ""
-    tools: list[str] = field(default_factory=list)
 
 
 def render_server_entry(url: str = DEFAULT_MCP_URL) -> dict:
