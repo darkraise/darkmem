@@ -364,46 +364,44 @@ before fixing the targets.
 
 `Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.110` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
 
-**Written retroactively 2026-08-10, after the task had already run.** T2.115 was minted
-and claimed directly in `progress.md` (`fcdb315b`) and never defined here, which is a
-Tier-2 amendment nobody logged. It is written now from the shipped work rather than
-recalled as intent, and it is stated as such: this entry documents what the round did, it
-is not the brief the round was executed against. The cost of the omission was mechanical
-and larger than it looks — `gen_progress.py` refuses to write when `progress.md` holds a
-task no epic file defines, so the rollup silently stopped regenerating and drifted twice.
+**Minted 2026-08-10, Tier-2 amendment: the plan had no task for a granularity finding the
+2026-08-08 re-measure recorded and asked the owner to settle.** Rule B's never-contacted
+subset holds 25 contradicted pairs, so its recall lattice is 1.00 / 0.96 / 0.92 — **0.95 is
+not on it** — and "the gate verdict required to hold on both" therefore makes the subset
+enforce ≥ 0.96 where the pooled census permits four misses in 80. It did not bite the last
+run (23/25 fails either way); a run landing on 24/25 would be passed by the stated bar and
+failed by the lattice.
 
-**What.** Put 0.95 on **both** contradiction-recall lattices at once. Rule B's second
-population held 25 contradicted pairs, so its lattice was 1.00 / 0.96 / 0.92 and the bar
-it gates by was silently ≥ 0.96. The round moved the contacted contradicted census
-55 → 40 and the second population 25 → 40, holding the pooled census at exactly 80
-(76/80 and 38/40, both exact).
+**Owner ruling 2026-08-10: resize so 0.95 lands on the subset's lattice, then let it gate.**
+Two derivations shape the round and are recorded in the plan: 0.95 cannot be exact on *both*
+populations (contacted contradicted is 55, and `N ≡ 0` with `55 + N ≡ 0 (mod 20)` has no
+solution), and the census cannot simply grow because the Layer-3 resample's first stratum is
+a **full census** of `contradicted` at a ratified `n = 93`. So the only route that changes
+nothing ratified is **retire-and-replace at a constant pooled census**: contacted 55 → 40,
+never-contacted 25 → 40, pooled held at 80, resample unchanged.
 
-**Why retirement rather than growth.** Growth cannot reach it: `N ≡ 0` and
-`55 + N ≡ 0 (mod 20)` has no solution, and the Layer-3 resample's full-census stratum caps
-the pooled census at 93 regardless. Retirement was the only route that changed nothing
-already ratified — which is why the round had to ratify a lattice-retirement rule first,
-as its own blocker B1.
+**What.** Execute the step-level plan at
+`docs/superpowers/plans/2026-08-10-entailment-gold-subset-resize.md` (runbook §3), whose
+step 0 is the owner's ratification of a new **lattice-retirement** rule — retiring a
+*correctly labelled* pair for census shape has no precedent, and the rule's whole content is
+the four conditions that keep the act content-blind.
 
-**Done when.**
+**The firewall is the part most likely to be got wrong.** The controller that wrote the plan
+has read the G-D slice-level failure attribution and is therefore barred from authoring;
+authoring runs in a sub-agent forbidden the ledger, the qualification reports and
+`resample_runs/`, and the slice quotas are derived mechanically so the brief itself cannot
+leak the failure.
 
-- [ ] The lattice-retirement rule is ratified into `LABELLING.md` **before** the draw runs,
-      and the drawing module is committed before it executes — pinning a seed alone does
-      not close the aiming channel when the executor writes the algorithm afterwards
-- [ ] The draw is reproducible from committed pre-round data alone
-- [ ] Replacement pairs are authored blind, by agents that read neither the gate ledger
-      nor the qualification reports, with the contaminated controller barred from authoring
-- [ ] §11 composition recomputed, not asserted
-- [ ] The resample is re-drawn against the resized file and the gold passes
-      `judge_qualification.gate_eligibility`
+**Done when:** the subset's contradicted census is 40 and pooled is still 80; the retirement
+draw is reproducible from the recorded seed; every new pair is `adjudicated` or `owner`; a
+fresh `n = 93` resample certifies the new sha; `NEVER_CONTACTED_FIRST_ID` and LABELLING.md's
+range move together.
+*Deliberately excludes the G-D re-measure — it spends an attempt from a budget keyed on the
+gold sha, and running it from the session that authored the pairs is the contamination this
+round exists to escape.*
 
-**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_lattice_retirement.py scripts/benchlib/tests/test_entailment_assignment.py scripts/benchlib/tests/test_judge_qualification.py -q`
-
-**Two Criticals are open against the executed round and are the owner's to rule on**
-(gate ledger, 2026-08-10, C-1 / C-2): the round violated clause 5 of the rule it ratified,
-and `eg-0367` entered the census as a semantic near-duplicate of live `eg-0093`. Both are
-recorded in `LABELLING.md`'s History without adjudication. Every repair is gold surgery,
-which moves the sha, voids the `58ac1a90` certification and the G-D attempt spent against
-`98fc4b49`.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
+and `./scripts/gate.sh --full`
 
 #### T2.111 — G-C re-measure under the veto's ratified shape
 

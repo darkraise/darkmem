@@ -72,23 +72,38 @@ the defect this paragraph is about; it is recorded rather than quietly fixed.
 (different titles, sizes, owners and commits, both `done`), so 278 rows carry
 277 distinct ids.
 
-Two of the generator's three blockers are now fixed. `T0.18` and the first
-`T2.86` row carried malformed table rows — T0.18's Review cell quotes a ledger
-table and its three pipes were unescaped, which shifted the end-anchored column
-window so the parser read the *status* as `G-B`; the earlier version of this
-note repeated that parser error as a fact about the tracker, and T0.18's status
-is and was `done`. Both rows now parse. T2.115's epic definition, never written
-when the task was minted straight into this file, is restored in
-`tasks/M1-measurement.md`.
+Three things blocked the generator, and the first two are now fixed. `T0.18`
+and the first `T2.86` row carried malformed table rows — T0.18's Review cell
+quotes a ledger table and its three pipes were unescaped, which shifted the
+end-anchored column window so the parser read the *status* as `G-B`. An earlier
+version of this note repeated that parser error as a fact about the tracker;
+T0.18's status is and was `done`. Both rows now parse.
 
-**The remaining blocker must not be fixed by running the generator.** With the
-duplicate T2.86 rows present, regeneration keys carried-forward state by id, so
-the last row wins and the first row's owner, three commit shas and completion
-note are **destroyed with no error** — verified by running it against a scratch
-copy. Deciding whether those are one task with two dispatches or two tasks is a
-planning call, and it has to be made before the next regeneration, not by it.
-Until then the section *headings* ("E2 — Truth core (99 tasks)", "M1 —
-Measurement phase (7 tasks)") stay stale for the same reason the rollup did.
+**The third was diagnosed wrong twice, and the real cause is structural.**
+`gen_progress.py` refused because `progress.md` held T2.115 while no epic file
+defined it — which is true of the copy of `tasks/` sitting on `master`, and
+false of the tree. T2.115's definition was written when the task was minted; it
+was written **on the epic branch**, because that is where task text is edited,
+while this file is canonical on `master`. So master's `tasks/` lags every branch
+by the whole life of that branch, and the generator refuses on every task minted
+during one. That is not a T2.115 defect and no amount of writing task text fixes
+it — the generator can only be run from a tree whose `tasks/` is current, and its
+output has to land here. Master's copy now carries T2.115's definition **taken
+verbatim from the branch**; an earlier attempt wrote a retroactive reconstruction
+into that slot instead, which would have replaced the genuine brief at merge, and
+was reverted.
+
+**The remaining blocker must not be fixed by running the generator, and running
+it at all is currently destructive.** With the duplicate T2.86 rows present,
+regeneration keys carried-forward state by id, so the last row wins and the first
+row's owner, three commit shas and completion note are **destroyed with no
+error**. That is not a prediction: it happened in this session, in place, and was
+recovered only because the state had been committed minutes earlier. Deciding
+whether those are one task with two dispatches or two tasks is a planning call,
+and it has to be made before the next regeneration rather than by it. Until then
+the section *headings* ("E2 — Truth core (99 tasks)", "M1 — Measurement phase
+(7 tasks)") stay stale for the same reason the rollup did, and anyone testing the
+generator should run it against a scratch copy.
 
 ---
 
