@@ -99,6 +99,18 @@ def _ua_product_source(user_agent: str) -> str | None:
     return KNOWN_UA_SOURCES.get(slug, slug)
 
 
+def declared_origin(ctx=None, *, headers=None) -> str | None:
+    """The `X-Darkmem-Origin` header, or None — door-agnostic.
+
+    Exists so a door can offer the header fallback without unwrapping an MCP
+    ``ctx`` itself. ``resolve_origin_key`` already reads the header when it is
+    given the ``ctx``, but the checkpoint doors resolve a declared identity
+    *before* calling it (they refuse the merge-to-one bucket rather than
+    inheriting it), so they need the header separately.
+    """
+    return _header(_headers_from(ctx, headers), ORIGIN_HEADER).strip() or None
+
+
 def resolve_client_source(explicit_source, ctx=None, *, headers=None, fallback=FALLBACK_SOURCE) -> str:
     """Resolve the source label: explicit arg > header > User-Agent > fallback.
 

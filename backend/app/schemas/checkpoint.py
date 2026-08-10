@@ -24,7 +24,14 @@ class CheckpointCreate(BaseModel):
     disagree about any payload.
     """
 
-    origin_key: str = Field(min_length=1, max_length=500)
+    # Optional here, required by the *door*. A required field made the routes'
+    # `body.origin_key or <X-Darkmem-Origin header>` fallback unreachable, so
+    # the header the refusal message tells callers to send was documented on
+    # both doors and honoured on neither — while capture's identical ladder
+    # (`MemoryCreate.origin_key`, also optional) honoured it. The refusal that
+    # matters is `resolve_checkpoint_origin`'s, which fires when neither the
+    # field nor the header declares an identity, and which names both.
+    origin_key: str | None = Field(default=None, max_length=500)
     summary: str = Field(min_length=1, max_length=MAX_SUMMARY_LENGTH)
     next_steps: list[str] = Field(
         default_factory=list, max_length=MAX_NEXT_STEPS

@@ -35,9 +35,11 @@ async def save_checkpoint(
     session: AsyncSession = Depends(get_session),
 ):
     # Resolved through doc 05 §2.1's derivation, exactly as capture resolves
-    # it, so a run declaring one identity to both doors lands on one key --
-    # which is the only way the correlation can work, since `origin_key` is
-    # write-only over the wire and no client can learn its resolved form.
+    # it, so a run declaring one identity *and one client* to both doors lands
+    # on one key. Both halves are load-bearing: the derivation is shared, and
+    # each door must feed it the source its own transport declares. A door
+    # passing a constant here puts its checkpoints in a key space the other
+    # door cannot read.
     source = resolve_client_source(
         None, headers=request.headers, fallback=checkpoint_service.DOOR_SOURCE
     )
@@ -66,7 +68,7 @@ async def save_checkpoint(
 @router.get("/latest", response_model=CheckpointResponse)
 async def latest_checkpoint(
     request: Request,
-    origin_key: str = Query(min_length=1),
+    origin_key: str | None = Query(default=None),
     project: str = Query(default="default"),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
@@ -80,13 +82,18 @@ async def latest_checkpoint(
     """
     # Resolved on the read too, or the door could never find what the write
     # stored: the client declares the same raw identity both times and the
-    # server derives the same key.
+    # server derives the same key. The header is honoured on the read for the
+    # same reason it is on the write -- a client that mints its run id once at
+    # boot and sends it as a header would otherwise be able to save a
+    # checkpoint it could never fetch.
     source = resolve_client_source(
         None, headers=request.headers, fallback=checkpoint_service.DOOR_SOURCE
     )
     try:
         resolved = checkpoint_service.resolve_checkpoint_origin(
-            origin_key, source=source, project=project
+            origin_key or request.headers.get(ORIGIN_HEADER),
+            source=source,
+            project=project,
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

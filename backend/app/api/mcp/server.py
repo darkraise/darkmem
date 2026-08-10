@@ -11,6 +11,7 @@ from sqlalchemy import select, text
 
 from app.api.mcp.client_identity import (
     FALLBACK_SOURCE,
+    declared_origin,
     resolve_client_source,
     resolve_entry_identity,
     resolve_origin_key,
@@ -427,10 +428,11 @@ async def memory_tags() -> str:
     )
 )
 async def checkpoint_save(
-    origin_key: str,
     summary: str,
+    origin_key: str | None = None,
     next_steps: list[str] | None = None,
     project: str = "default",
+    ctx: Context | None = None,
 ) -> str:
     from app.schemas.checkpoint import CheckpointCreate
     from app.services import checkpoints as checkpoint_service
@@ -444,12 +446,19 @@ async def checkpoint_save(
         next_steps=list(next_steps or []),
         project=project,
     )
-    # Resolved exactly as the REST twin resolves it, through doc 05 §2.1.
-    # Storing the caller's string verbatim put checkpoints in a different key
-    # space from the memories of the same run, which is the correlation this
-    # table is keyed on.
+    # Resolved exactly as the REST twin resolves it, through doc 05 §2.1 --
+    # and that means resolving `source` from this transport too, not passing
+    # the door's fallback as a constant. A constant here is a second key space:
+    # a client declaring `X-Darkmem-Client: codex` saved `codex:<id>` over REST
+    # and `checkpoint:<id>` over MCP, so `checkpoint_latest` on one door
+    # silently missed the other door's checkpoint.
+    source = resolve_client_source(
+        None, ctx, fallback=checkpoint_service.DOOR_SOURCE
+    )
     origin = checkpoint_service.resolve_checkpoint_origin(
-        body.origin_key, source=checkpoint_service.DOOR_SOURCE, project=body.project
+        body.origin_key or declared_origin(ctx),
+        source=source,
+        project=body.project,
     )
     async with async_session_factory() as session:
         try:
@@ -475,11 +484,20 @@ async def checkpoint_save(
         "that run saved none."
     )
 )
-async def checkpoint_latest(origin_key: str, project: str = "default") -> str:
+async def checkpoint_latest(
+    origin_key: str | None = None,
+    project: str = "default",
+    ctx: Context | None = None,
+) -> str:
     from app.services import checkpoints as checkpoint_service
 
+    # Same ladder as the save above, for the same reason: a read resolving a
+    # different source from the write can never find what the write stored.
+    source = resolve_client_source(
+        None, ctx, fallback=checkpoint_service.DOOR_SOURCE
+    )
     resolved = checkpoint_service.resolve_checkpoint_origin(
-        origin_key, source=checkpoint_service.DOOR_SOURCE, project=project
+        origin_key or declared_origin(ctx), source=source, project=project
     )
     async with async_session_factory() as session:
         row = await checkpoint_service.latest_checkpoint(

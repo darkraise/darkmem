@@ -130,9 +130,17 @@ A memory carries:
   both doors** since T1.11 (`resolve_origin_key`, called from
   `api/routes/memories.py` and `api/mcp/server.py`, and on the raw entry dicts
   for batch adds) — the "no writer yet" note here was stale and was corrected
-  2026-07-28. **No response echoes it**: it is absent from `MemoryResponse`, so
-  it is write-only over the wire and only a direct database read can observe it.
-  A test asserting it through any door's response will assert nothing.
+  2026-07-28. **No *capture* response echoes it**: it is absent from
+  `MemoryResponse`, so on the capture doors it is write-only over the wire and
+  only a direct database read can observe it. A test asserting it through a
+  capture door's response will assert nothing. **That is not tree-wide, and
+  this said "any door" from `ad19c53a` until it was corrected 2026-08-10**:
+  `session_checkpoints` carries its own `origin_key` and `CheckpointResponse`
+  serves it on both verbs of both doors. The difference is what the key is
+  *for* — counting corroboration-independence on the capture side, where
+  observing another run's key is the hazard; a lookup key on the checkpoint
+  side, where a caller is only ever handed back the row it fetched under its
+  own declared identity.
 - `updated_at` is bumped by the **`touch_updated_at` SQL trigger**, not by
   SQLAlchemy's client-side `onupdate`: a raw-SQL UPDATE must move it too.
 - `technologies` (lowercase Text[]) — denormalised cache of entity names

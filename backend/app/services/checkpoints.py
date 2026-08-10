@@ -25,9 +25,22 @@ absence of any capture call in this module is what implements it today.
 rather than merged.** Both halves matter and they pull in opposite directions
 from the memory side. Resolving is what the plan asked for (feature-epics F10
 keys checkpoints on "the agent-run identity, doc 05 §2.1") and it is what
-makes correlation possible at all: `origin_key` is write-only over the wire,
-so a client can never learn its resolved form — it declares the same raw
-identity to both doors and the server derives the same key on each.
+makes correlation possible at all: the client declares the same raw identity
+and the same client name to both doors, and the server derives the same key on
+each. The derivation is shared *and* each door must feed it the source its own
+transport declares — a door passing a constant would put its checkpoints in a
+key space the other door cannot read, which is what the MCP door did until
+2026-08-10.
+
+**Unlike capture, this surface does echo the resolved key.** ``serialize``
+returns ``origin_key`` and ``CheckpointResponse`` serves it on both verbs of
+both doors. CLAUDE.md's "no response echoes it" is a property of the *capture*
+doors, where the key is a corroboration-counting key and observing another
+run's is the hazard; here it is a lookup key and a caller can only ever be
+handed back the row it looked up under its own declared identity. This
+docstring claimed the capture property for two commits after the doors started
+resolving, which would have mis-triaged anyone auditing
+corroboration-independence across doors; corrected 2026-08-10.
 
 But :func:`resolve_origin_key`'s *fallback* must not be inherited. That
 function merges an undeclared origin to a coarse `unknown:<source>:<project>`
@@ -80,6 +93,12 @@ OBJECT_TYPE = "checkpoint"
 # X-Darkmem-Client header and then the User-Agent product map, so a client
 # that names itself to the capture door the same way lands on the same source
 # here -- which is the half of the correlation this module can influence.
+#
+# It is the fallback on *both* doors, which is a property of the call sites
+# rather than of this constant, and the MCP door shipped passing it as a
+# constant while this comment said otherwise. The behavioural pin is
+# `test_one_declared_client_lands_on_one_key_through_either_door`; a comment
+# cannot hold this on its own.
 DOOR_SOURCE = "checkpoint"
 
 # The bounds the done-when asks for. Mirrored by CHECK constraints in the

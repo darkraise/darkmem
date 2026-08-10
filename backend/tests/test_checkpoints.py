@@ -26,12 +26,68 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from app.api.mcp.client_identity import CLIENT_HEADER, ORIGIN_HEADER
 from app.services import checkpoints as cp
 
 pytestmark = pytest.mark.asyncio
 
 ORIGIN = "cli:session-abc"
 PROJECT = "t3-16"
+
+
+def _ctx(headers: dict[str, str] | None):
+    """An MCP ``Context`` as far as identity resolution is concerned.
+
+    The MCP door reads its transport's headers through
+    ``ctx.request_context.request``, exactly as ``memory_add`` does. Driving
+    the tool with a real header mapping is the only way a test can see which
+    source the door resolved — an in-process call with ``ctx=None`` exercises
+    the fallback rung and nothing above it.
+    """
+    from types import SimpleNamespace
+
+    from starlette.datastructures import Headers
+
+    if headers is None:
+        return None
+    return SimpleNamespace(
+        request_context=SimpleNamespace(request=SimpleNamespace(headers=Headers(headers)))
+    )
+
+
+@pytest.fixture
+def mcp_on_the_test_session(session, monkeypatch):
+    """Point the MCP tools' own session factory at the test session.
+
+    The MCP door opens sessions from the module-level
+    ``async_session_factory`` rather than the FastAPI dependency, so by
+    default it commits on a second connection and cannot see a row the REST
+    door wrote inside the test's uncommitted transaction. Any test that reads
+    one door's write through the *other* door needs this, or it fails for a
+    harness reason that looks exactly like the key-space divergence it is
+    hunting.
+    """
+    from contextlib import asynccontextmanager
+
+    import app.api.mcp.server as mcp_module
+
+    @asynccontextmanager
+    async def _ctx_manager():
+        yield session
+
+    monkeypatch.setattr(mcp_module, "async_session_factory", lambda: _ctx_manager())
+
+
+async def mcp_checkpoint_save(**kwargs):
+    from app.api.mcp import server as mcp_server
+
+    return await mcp_server.checkpoint_save(**kwargs)
+
+
+async def mcp_checkpoint_latest(**kwargs):
+    from app.api.mcp import server as mcp_server
+
+    return await mcp_server.checkpoint_latest(**kwargs)
 
 
 # ─────────────── the store ───────────────
@@ -429,15 +485,140 @@ class TestBothDoors:
         with pytest.raises(ValueError):
             await mcp_server.checkpoint_save(origin_key="  ", summary="no run")
 
-    async def test_a_declared_identity_resolves_the_same_way_on_both_doors(self):
-        """The correlation's own mechanism: one declared identity and one
-        source resolve to one key, whichever door did the resolving. This is
-        what lets a client that can never see the resolved form still land on
-        it from both sides."""
-        declared = "boot-uuid-1234"
-        assert cp.resolve_checkpoint_origin(
-            declared, source="api", project=PROJECT
-        ) == cp.resolve_checkpoint_origin(declared, source="api", project=PROJECT)
+    async def test_one_declared_client_lands_on_one_key_through_either_door(
+        self, client, auth_headers, session
+    ):
+        """The correlation's own mechanism, driven through both doors.
+
+        The test this replaced asserted ``f(x) == f(x)`` on the resolver — a
+        tautology that drove neither door, passed under the pre-resolution
+        implementation, and passed while the MCP door hard-coded ``source``
+        into a different key space from REST's. The property that matters is
+        not that the function is deterministic; it is that **both transports
+        feed it the same source**, which only a test that drives both can see.
+        """
+        declared = f"boot-{uuid4()}"
+        body = {"summary": "same run, two doors", "project": PROJECT}
+
+        rest = await client.post(
+            "/api/v1/checkpoints",
+            json={"origin_key": declared, **body},
+            headers={**auth_headers, CLIENT_HEADER: "codex"},
+        )
+        assert rest.status_code == 201, rest.text
+        await mcp_checkpoint_save(
+            origin_key=declared, ctx=_ctx({CLIENT_HEADER: "codex"}), **body
+        )
+
+        keys = (await session.execute(
+            text("SELECT origin_key FROM session_checkpoints "
+                 "WHERE project = :p AND origin_key LIKE :pattern"),
+            {"p": PROJECT, "pattern": f"%{declared}"},
+        )).scalars().all()
+
+        assert len(keys) == 2
+        assert set(keys) == {f"codex:{declared}"}
+
+    async def test_the_mcp_door_reads_the_checkpoint_the_rest_door_saved(
+        self, client, auth_headers, mcp_on_the_test_session
+    ):
+        """The failure the key space causes, stated as behaviour.
+
+        One agent run, one declared identity, one declared client — a resume
+        over MCP must find the note the run saved over REST. While MCP passed
+        the ``checkpoint`` constant as ``source`` and REST resolved ``codex``
+        from the header, this returned ``null``: a wrong-context resume with
+        no error and no symptom, which is the failure the refusal machinery in
+        this module exists to prevent.
+        """
+        declared = f"boot-{uuid4()}"
+        saved = await client.post(
+            "/api/v1/checkpoints",
+            json={"origin_key": declared, "summary": "saved over rest",
+                  "project": PROJECT},
+            headers={**auth_headers, CLIENT_HEADER: "codex"},
+        )
+        assert saved.status_code == 201, saved.text
+
+        answer = json.loads(await mcp_checkpoint_latest(
+            origin_key=declared, project=PROJECT, ctx=_ctx({CLIENT_HEADER: "codex"})
+        ))
+
+        assert answer is not None, "the MCP door missed the REST door's checkpoint"
+        assert answer["summary"] == "saved over rest"
+
+    async def test_an_undeclared_client_still_lands_on_the_door_fallback(
+        self, client, auth_headers, session
+    ):
+        """Resolution is a ladder, not a header requirement. With nothing to
+        read, both doors fall back to ``DOOR_SOURCE`` — so the fix for the
+        hard-coded source does not make an unannounced client's checkpoints
+        unreadable."""
+        declared = f"boot-{uuid4()}"
+        await mcp_checkpoint_save(
+            origin_key=declared, summary="no client header", project=PROJECT, ctx=None
+        )
+
+        key = (await session.execute(
+            text("SELECT origin_key FROM session_checkpoints "
+                 "WHERE project = :p AND origin_key LIKE :pattern"),
+            {"p": PROJECT, "pattern": f"%{declared}"},
+        )).scalar_one()
+
+        assert key == f"{cp.DOOR_SOURCE}:{declared}"
+
+    async def test_the_origin_header_alone_is_enough_on_both_doors(
+        self, client, auth_headers, mcp_on_the_test_session
+    ):
+        """The header the refusal message names must actually work.
+
+        ``UndeclaredOrigin`` tells the caller to "send `origin_key`, or the
+        X-Darkmem-Origin header the client mints at process boot", and the
+        REST route reads that header — but ``CheckpointCreate`` required
+        ``origin_key``, so the header branch was unreachable on REST and the
+        MCP tool required the argument outright. The documented mechanism
+        worked on neither door; capture's identical ladder
+        (``routes/memories.py``) worked on both.
+        """
+        declared = f"boot-{uuid4()}"
+        headers = {**auth_headers, ORIGIN_HEADER: declared}
+
+        saved = await client.post(
+            "/api/v1/checkpoints",
+            json={"summary": "identity from the header", "project": PROJECT},
+            headers=headers,
+        )
+        assert saved.status_code == 201, saved.text
+
+        fetched = await client.get(
+            "/api/v1/checkpoints/latest",
+            params={"project": PROJECT},
+            headers=headers,
+        )
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["summary"] == "identity from the header"
+
+        answer = json.loads(await mcp_checkpoint_latest(
+            project=PROJECT, ctx=_ctx({ORIGIN_HEADER: declared})
+        ))
+        assert answer is not None, "the MCP door ignored the X-Darkmem-Origin header"
+        assert answer["summary"] == "identity from the header"
+
+    async def test_neither_door_invents_an_identity_when_nothing_declares_one(
+        self, client, auth_headers
+    ):
+        """Making the header live must not make the refusal optional."""
+        from app.api.mcp import server as mcp_server
+
+        response = await client.post(
+            "/api/v1/checkpoints",
+            json={"summary": "no run", "project": PROJECT},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+        with pytest.raises(ValueError):
+            await mcp_server.checkpoint_save(summary="no run", project=PROJECT)
 
     async def test_the_mcp_door_answers_null_for_a_run_with_no_checkpoint(self):
         from app.api.mcp import server as mcp_server
