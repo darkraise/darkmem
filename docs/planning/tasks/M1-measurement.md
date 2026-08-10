@@ -360,6 +360,49 @@ before fixing the targets.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_judge_qualification.py -q`
 
+#### T2.115 — Resize the never-contacted contradicted census
+
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.110` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-10, Tier-2 amendment: the plan had no task for a granularity finding the
+2026-08-08 re-measure recorded and asked the owner to settle.** Rule B's never-contacted
+subset holds 25 contradicted pairs, so its recall lattice is 1.00 / 0.96 / 0.92 — **0.95 is
+not on it** — and "the gate verdict required to hold on both" therefore makes the subset
+enforce ≥ 0.96 where the pooled census permits four misses in 80. It did not bite the last
+run (23/25 fails either way); a run landing on 24/25 would be passed by the stated bar and
+failed by the lattice.
+
+**Owner ruling 2026-08-10: resize so 0.95 lands on the subset's lattice, then let it gate.**
+Two derivations shape the round and are recorded in the plan: 0.95 cannot be exact on *both*
+populations (contacted contradicted is 55, and `N ≡ 0` with `55 + N ≡ 0 (mod 20)` has no
+solution), and the census cannot simply grow because the Layer-3 resample's first stratum is
+a **full census** of `contradicted` at a ratified `n = 93`. So the only route that changes
+nothing ratified is **retire-and-replace at a constant pooled census**: contacted 55 → 40,
+never-contacted 25 → 40, pooled held at 80, resample unchanged.
+
+**What.** Execute the step-level plan at
+`docs/superpowers/plans/2026-08-10-entailment-gold-subset-resize.md` (runbook §3), whose
+step 0 is the owner's ratification of a new **lattice-retirement** rule — retiring a
+*correctly labelled* pair for census shape has no precedent, and the rule's whole content is
+the four conditions that keep the act content-blind.
+
+**The firewall is the part most likely to be got wrong.** The controller that wrote the plan
+has read the G-D slice-level failure attribution and is therefore barred from authoring;
+authoring runs in a sub-agent forbidden the ledger, the qualification reports and
+`resample_runs/`, and the slice quotas are derived mechanically so the brief itself cannot
+leak the failure.
+
+**Done when:** the subset's contradicted census is 40 and pooled is still 80; the retirement
+draw is reproducible from the recorded seed; every new pair is `adjudicated` or `owner`; a
+fresh `n = 93` resample certifies the new sha; `NEVER_CONTACTED_FIRST_ID` and LABELLING.md's
+range move together.
+*Deliberately excludes the G-D re-measure — it spends an attempt from a budget keyed on the
+gold sha, and running it from the session that authored the pairs is the contamination this
+round exists to escape.*
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
+and `./scripts/gate.sh --full`
+
 #### T2.111 — G-C re-measure under the veto's ratified shape
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.108, T2.109, T2.110` · `Doc: 20 §4, 17 §5.1` · `Tag: target-new` · `Gate: G-C`
@@ -568,3 +611,4 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 | 2026-08-09 | T2.54, T2.110 | 1 | **Two minors parked from the 2026-08-09 delta review, both on the gold's eligibility lock, neither actioned.** (D-7) `gate_eligibility` validates that the embedded `resample` block *says* n ≥ 93 with ≤ 1 disagreement and carries its citation fields, and nothing binds that certification to the pair content it certified — a post-certification label flip keeps eligibility green on a certification of a different file. T2.110 handled exactly this correctly **by procedure**, stripping the carried-over block for that stated reason, so the protocol already understands what the code does not enforce; the slice-count pin catches appends, not flips. Fix shape when someone takes it: a pairs-only content hash recorded in the block and re-derived at eligibility time. (D-8) The sitting wrote its certification *into* `gold.json`, so the certified sha is not the measured sha — verified annotation-only, and the attempt counter treats the new sha as uncontacted | Parked rather than fixed because both are hardening on a lock whose current answer is correct: the gold *is* eligible, by a resample that did happen, on the file as it stands. Recorded here rather than only in the review report because the next person to touch the lock is the one who needs them, and the report is a dated artefact while this file is the task's own |
 | 2026-08-06 | T2.40, T2.41, T2.54, T3.22, T3.24, TH1.10, TH1.17 | 2 | **Epic created; all seven evidence-and-gold tasks moved here from E2, E3 and EH1, ids unchanged.** Ids keep their original epic prefix deliberately — every gate-ledger row, analysis and commit message in the tree already cites them, and renumbering would break that trail to buy nothing | Controller decision: implementation must not queue behind datasets. One unlabelled gold (T2.54) was holding six E2 tasks and, through the epic entry gates, most of E3 and EH1 — while 89 of 96 E2 tasks had already closed without any gold at all, which is the measurement that the coupling was accidental. Moving them out makes the dependency explicit rather than structural: M1 consumes implementation, never gates it. Safety is preserved by `T2.95`'s serving gate, not by ordering |
 | 2026-08-07 | T2.40, T2.108 | 2 | **T2.40 gains a clause: a decidable probe is not automatically a meaningful one, and this re-measure must rule on that before recording a verdict.** With T2.108's corpus the false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is structurally zero — judge unqualified, `SINGLE_VALUED_RELATIONS` empty with no REPLACES-family edge in the corpus, no `human_verdict` events — and the committed predicate cannot distinguish precision from inoperability | Verified on data by T2.108's adversarial review, not inferred. The review's own attack sharpened rather than weakened it: the vacuity is joint bar-plus-corpus, but no corpus in the 20–99 band can be both operable-numerator and passing under the 1% bar, so it attributes to the bar. Probes 1–2 carry a weaker form (`blocked ≡ 0` data-precluded) that T2.108's report did not frame as the same shape. Recorded on T2.40 rather than fixed anywhere, because changing a bar after a measurement is exactly what the pre-statement rule forbids — the gate owner rules |
+| 2026-08-10 | T2.115 | 2 | **Minted.** The 2026-08-08 G-D re-measure recorded a granularity finding — Rule B's never-contacted subset holds 25 contradicted pairs, so 0.95 is not on its recall lattice and "the verdict must hold on both" silently gates it at ≥ 0.96 — and asked the owner to settle it before a run landed on 24/25. The owner ruled 2026-08-10 (resize so 0.95 lands on it, then let it gate); no task owned the work | Same shape as T2.110's own minting: a precondition written into one task's findings and owned by no task. Recorded as Tier-2 rather than Tier-1 because it adds a task, changes what Rule B's second population means, and its step 0 asks the owner to ratify a **lattice-retirement** rule the protocol has no precedent for — LABELLING.md retires a pair only when its label is *wrong*, and this round retires correctly-labelled contacted pairs to hold the pooled census constant. Two derivations bound the route and are in the plan: 0.95 cannot be exact on both populations (`N ≡ 0` and `55 + N ≡ 0 (mod 20)` has no solution), and the census cannot grow because the Layer-3 resample's first stratum is a full contradicted census at a ratified n = 93 |
