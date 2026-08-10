@@ -142,17 +142,29 @@ verbatim from the branch**; an earlier attempt wrote a retroactive reconstructio
 into that slot instead, which would have replaced the genuine brief at merge, and
 was reverted.
 
-**The remaining blocker must not be fixed by running the generator, and running
-it at all is currently destructive.** With the duplicate T2.86 rows present,
-regeneration keys carried-forward state by id, so the last row wins and the first
-row's owner, three commit shas and completion note are **destroyed with no
-error**. That is not a prediction: it happened in this session, in place, and was
-recovered only because the state had been committed minutes earlier. Deciding
-whether those are one task with two dispatches or two tasks is a planning call,
-and it has to be made before the next regeneration rather than by it. Until then
-the section *headings* ("E2 — Truth core (99 tasks)", "M1 — Measurement phase
-(7 tasks)") stay stale for the same reason the rollup did, and anyone testing the
-generator should run it against a scratch copy.
+**RESOLVED 2026-08-10 — this paragraph used to say regenerating was destructive
+and must not be done, and every clause of that is now false.** It is preserved
+rather than deleted because the standing-notes carry that kept it is the same
+mechanism that made it misleading: the guard faithfully preserved a claim the
+same commit falsified, which is invariant 23 arriving by a new route. Read the
+correction, not the claim.
+
+The original blocker was the duplicate `T2.86` rows: regeneration keys
+carried-forward state by id, so the last row won and the first row's owner,
+three commit shas and completion note were destroyed with no error. That was
+observed, not predicted. **The duplicate was merged into one row on 2026-08-10**
+(one task, two dispatches; both notes preserved), so the id collision no longer
+exists. The stale section headings named here — "E2 — Truth core (99 tasks)" and
+"M1 — Measurement phase (7 tasks)" against rollup counts of 105 and 17 — were
+**corrected by the first regeneration**, which is what they were waiting for.
+
+Two things changed about regeneration itself, both on 2026-08-10. `Version` is
+now derived from [`RELEASES.md`](RELEASES.md), so it is rebuilt rather than
+carried. And the generator now **carries the hand-written prose** in this region
+and above `## Rollup`, which it previously deleted on every run — 62 lines,
+silently, with every row and count intact. Regenerating in place is now the
+normal thing to do. The scratch-copy habit is still cheap insurance for a change
+*to the generator*, but it is no longer required to avoid losing this file.
 
 ---
 

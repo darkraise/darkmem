@@ -34,12 +34,20 @@ FRESH = ("", "todo", "", "", "")
 # by the first regeneration that got the carry-forward window wrong — silently,
 # because a row-count check still passes over a blanked column.
 #
-# One rule, shared verbatim with backend/tests/test_planning_docs.py: a `### `
-# section labelled `v0.N` or `Gate track` owns the `- `Tid`` list items beneath
-# it. Every other heading owns prose, so ids mentioned in a sentence (the parked
-# ones) are assigned nothing.
+# One rule, shared verbatim with backend/tests/test_planning_docs.py — both
+# patterns below appear there byte-identically: a `### ` section labelled `v0.N`
+# or `Gate track` owns the `- `Tid`` list items beneath it, and **any other
+# heading of any level ends that section**.
+#
+# The reset used to fire only on `## `, which left an h3 hole: `### Parked`
+# sitting under `### Gate track` reset nothing, so every parked list item parsed
+# as `gate`. Today's RELEASES.md has exactly that adjacency and is safe only
+# because its parked ids are prose — one editor normalising them to list items
+# would have stamped the whole parked set as gate work and sent the loop to
+# schedule it. Every test still passed on the misparse, because the column and
+# the ladder agreed with each other.
 LADDER_SECTION = re.compile(r"^### (v\d+\.\d+|Gate track)\b")
-LADDER_ITEM = re.compile(r"^- `(T(?:H1|[0-4])\.\d{2,3}[a-z]?)`")
+LADDER_ITEM = re.compile(r"^- `(T(?:H1|\d+)\.\d+[a-z]*)`")
 
 version_of = {}
 _section = None
@@ -48,7 +56,7 @@ for _line in io.open("RELEASES.md", encoding="utf-8").read().split("\n"):
     if _head:
         _section = "gate" if _head.group(1) == "Gate track" else _head.group(1)
         continue
-    if _line.startswith("## "):
+    if _line.startswith("#"):
         _section = None
         continue
     _item = LADDER_ITEM.match(_line)
@@ -145,11 +153,23 @@ _old = io.open("progress.md", encoding="utf-8").read() if os.path.exists("progre
 
 
 def standing_notes(after, before):
-    """Prose between two generated anchors in the previous progress.md."""
-    start, end = _old.find(after), _old.find(before)
-    if start == -1 or end <= start:
+    """Prose between two generated anchors in the previous progress.md.
+
+    `before` is matched line-anchored: an unanchored search truncates the
+    carried block at the first *mention* of the heading, and this region exists
+    to hold prose about the tracker, where mentioning `## Rollup` is natural.
+    """
+    start = _old.find(after)
+    if start == -1:
+        if _old.strip():
+            # The preamble was edited, so the carry silently keeps nothing —
+            # which is the original delete-on-regenerate bug, re-armed. Say so.
+            print("WARNING: preamble anchor not found; standing notes NOT carried")
         return ""
-    return _old[start + len(after):end].strip("\n")
+    end = _old.find("\n" + before + "\n", start)
+    if end == -1:
+        return ""
+    return _old[start + len(after):end + 1].strip("\n")
 
 
 preamble_notes = standing_notes(CLAIMING, "## Rollup")
@@ -231,7 +251,7 @@ out.append("\n".join(r) + "\n")
 # The second standing-notes region: prose under the rollup table, above the
 # `---`. It holds the account of why these counts are derived, written by the
 # agents who found them drifted three times.
-rollup_block = standing_notes("## Rollup", "\n---\n")
+rollup_block = standing_notes("## Rollup", "---")
 rollup_lines = rollup_block.split("\n")
 _last_row = max((k for k, line in enumerate(rollup_lines) if line.startswith("|")), default=-1)
 rollup_notes = "\n".join(rollup_lines[_last_row + 1:]).strip("\n")
