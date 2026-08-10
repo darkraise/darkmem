@@ -6,8 +6,17 @@ row in docs/planning/progress.md, and vice versa. This catches:
 - Progress rows for tasks that no longer exist (surviving a deletion or renumbering)
 """
 
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
+
+# `TH1` is a real epic prefix, not a typo — `gen_progress.py` has always matched
+# it (`T(?:H1|[0-4])\.\d{2,3}[a-z]?`) while this module's `T\d+\.\d+` did not, so
+# EH1's 17 tasks were invisible to every correspondence check here. Consistently
+# invisible on both sides, which is why nothing ever went red.
+TASK_ID = r"T(?:H1|\d+)\.\d+[a-z]*"
 
 
 def get_task_ids_from_headings() -> set[str]:
@@ -21,7 +30,7 @@ def get_task_ids_from_headings() -> set[str]:
 
     # Pattern matches: #### followed by whitespace, then T<digits>.<digits>[<letters>]
     # The pattern captures the full ID including letter suffixes.
-    pattern = re.compile(r"^#### (T\d+\.\d+[a-z]*)\s")
+    pattern = re.compile(rf"^#### ({TASK_ID})\s")
 
     for task_file in task_dir.glob("*.md"):
         with open(task_file, encoding="utf-8") as f:
@@ -73,7 +82,7 @@ def get_task_ids_from_master_headings() -> set[str]:
     from **either** source, since a row is only orphaned when no branch
     defines its task.
     """
-    pattern = re.compile(r"^#### (T\d+\.\d+[a-z]*)\s")
+    pattern = re.compile(rf"^#### ({TASK_ID})\s")
     listing = _read_from_master("docs/planning/tasks")
     task_ids: set[str] = set()
     for name in listing.split("\n"):
@@ -101,7 +110,7 @@ def get_task_ids_from_progress() -> set[str]:
 
     # Pattern matches: | followed by T<digits>.<digits>[<letters>] followed by |
     # Anchored to line start (after optional whitespace) to ignore prose mentions.
-    pattern = re.compile(r"^\| (T\d+\.\d+[a-z]*)\s*\|")
+    pattern = re.compile(rf"^\| ({TASK_ID})\s*\|")
 
     try:
         result = subprocess.run(
@@ -175,3 +184,201 @@ def test_progress_rows_have_task_headings():
             f"master: {orphaned_rows}. Expected while an epic branch holds the "
             "heading; a defect only if it survives that branch's merge."
         )
+
+
+# ----------------------------------------------------------------- release ladder
+# `RELEASES.md` is read from master for the same reason `progress.md` is: both are
+# planning state, canonical there and nowhere else, and `gen_progress.py` — which
+# derives the Version column from the ladder — hard-refuses to run off master. A
+# working-tree read would compare an epic branch's ladder against master's rows.
+
+# One rule, shared with `gen_progress.py`: a `### ` section whose label is a
+# version or `Gate track` owns the `- ``Tid`` ` list items beneath it. Every other
+# heading owns prose, so the parked ids — which appear as inline backticks in a
+# sentence — are read by neither parser and correctly carry no version.
+LADDER_SECTION = re.compile(r"^### (v\d+\.\d+|Gate track)\b")
+LADDER_ITEM = re.compile(rf"^- `({TASK_ID})`")
+CELL = re.compile(r"(?<!\\)\|")
+
+
+def _versioned_task_ids() -> dict[str, set[str]]:
+    """Task ids per ladder section, parsed from master's `RELEASES.md`.
+
+    The gate track is keyed `gate`: it is not a version, but it is an
+    assignment, and a task in both it and a version is the same
+    double-count a task in two versions is.
+    """
+    versions: dict[str, set[str]] = {}
+    current = None
+    for line in _read_from_master("docs/planning/RELEASES.md").split("\n"):
+        heading = LADDER_SECTION.match(line)
+        if heading:
+            label = heading.group(1)
+            current = "gate" if label == "Gate track" else label
+            versions.setdefault(current, set())
+            continue
+        if line.startswith("## "):
+            current = None
+            continue
+        item = LADDER_ITEM.match(line)
+        if item and current:
+            versions[current].add(item.group(1))
+    return versions
+
+
+def test_every_versioned_task_exists_in_progress():
+    """A version that names a task nobody tracks is a plan nobody can execute."""
+    versioned = {t for ids in _versioned_task_ids().values() for t in ids}
+    rows = get_task_ids_from_progress()
+
+    assert versioned - rows == set(), (
+        f"RELEASES.md names tasks with no progress.md row: {sorted(versioned - rows)}"
+    )
+
+
+def test_no_task_is_assigned_to_two_versions():
+    """One task ships once. Two homes means the burn-down double-counts."""
+    seen: dict[str, str] = {}
+    duplicated = []
+    for version, ids in sorted(_versioned_task_ids().items()):
+        for task in sorted(ids):
+            if task in seen:
+                duplicated.append(f"{task}: {seen[task]} and {version}")
+            seen[task] = version
+
+    assert duplicated == [], f"tasks assigned to two versions: {duplicated}"
+
+
+def test_progress_version_column_agrees_with_the_ladder():
+    """The Version cell is derived from RELEASES.md, so a disagreement means
+    `progress.md` was regenerated against a different ladder than the one
+    committed — or edited by hand, which the column is not for. Checking the
+    cell rather than the row count is the point: a stale column still has the
+    right number of rows.
+    """
+    expected = {
+        task: version
+        for version, ids in _versioned_task_ids().items()
+        for task in ids
+    }
+    row = re.compile(rf"^\| ({TASK_ID}) \|")
+    mismatched = []
+    for line in _read_from_master("docs/planning/progress.md").split("\n"):
+        match = row.match(line)
+        if not match:
+            continue
+        cells = [c.strip() for c in CELL.split(line)]
+        # 0 is the empty lead, then Task Title Size Model Effort Version.
+        actual = cells[6] if len(cells) > 6 else "<no such column>"
+        want = expected.get(match.group(1), "—")
+        if actual != want:
+            mismatched.append(f"{match.group(1)}: column={actual!r} ladder={want!r}")
+
+    assert mismatched == [], (
+        "progress.md's Version column disagrees with RELEASES.md; regenerate it "
+        f"on master with scripts/gen_progress.py: {mismatched}"
+    )
+
+
+# ------------------------------------------------------------- generator behaviour
+# These run the generator itself, read from master, because master is the only
+# branch it will run on — an epic branch's copy is whatever it was at the fork.
+# Both tests cover guards whose failure mode is silent: the output still has
+# every row, every count and every state cell, and is simply missing something.
+
+EPIC_STUBS = {
+    "E0-baseline-and-harness.md": "T0.01",
+    "E1-engine-core.md": "T1.01",
+    "E2-truth-core.md": "T2.01",
+    "E3-synthesis-and-reach.md": "T3.17",
+    "E4-hardening-and-scale.md": "T4.06",
+    "EH1-documents-pkm.md": "TH1.10",
+    "M1-measurement.md": "T2.114",
+}
+
+STUB_RELEASES = """# Releases
+
+### v0.2 — Stub version
+
+- `T3.17` — Stub task
+
+### Gate track
+
+- `T2.114` — Stub task
+
+## Parked
+
+Parked prose naming `T4.06`, which must stay unversioned because a task id
+inside a sentence is a mention, not an assignment.
+"""
+
+
+def _planning_fixture(root: Path) -> Path:
+    """A minimal docs/planning the generator can run against."""
+    (root / "tasks").mkdir()
+    for name, task in EPIC_STUBS.items():
+        (root / "tasks" / name).write_text(
+            f"#### {task} — Stub task\n`Size: M` · `Model: Sonnet 5` · `Effort: high`\n",
+            encoding="utf-8",
+        )
+    (root / "RELEASES.md").write_text(STUB_RELEASES, encoding="utf-8")
+    (root / "scripts").mkdir()
+    (root / "scripts" / "gen_progress.py").write_text(
+        _read_from_master("docs/planning/scripts/gen_progress.py"), encoding="utf-8"
+    )
+    return root
+
+
+def _run_generator(root: Path) -> str:
+    result = subprocess.run(
+        [sys.executable, "scripts/gen_progress.py"],
+        cwd=root, capture_output=True, text=True, timeout=60,
+        env={**os.environ, "GEN_PROGRESS_ALLOW_BRANCH": "1"},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return (root / "progress.md").read_text(encoding="utf-8")
+
+
+def _version_cell(progress: str, task: str) -> str:
+    for line in progress.split("\n"):
+        cells = [c.strip() for c in CELL.split(line)]
+        if len(cells) > 6 and cells[1] == task:
+            return cells[6]
+    raise AssertionError(f"no row for {task}")
+
+
+def test_the_generator_derives_the_version_column_from_the_ladder(tmp_path):
+    """Version is scope, so it comes from RELEASES.md. Were it hand-edited and
+    carried forward instead, a wrong carry window would blank all 278 cells
+    while every row, count and state cell stayed correct."""
+    progress = _run_generator(_planning_fixture(tmp_path))
+
+    assert _version_cell(progress, "T3.17") == "v0.2"
+    assert _version_cell(progress, "T2.114") == "gate"
+    assert _version_cell(progress, "T4.06") == "—", (
+        "a task id mentioned in prose must not be assigned a version"
+    )
+
+
+def test_the_generator_carries_hand_written_notes_through_a_regeneration(tmp_path):
+    """progress.md holds standing prose in two regions the generator cannot
+    reproduce. Dropping them is a silent delete — on 2026-08-10 that was an
+    open-flake record and the account of three recount defects, 62 lines."""
+    root = _planning_fixture(tmp_path)
+    first = _run_generator(root)
+
+    seeded = first.replace("## Rollup", "STANDING-PREAMBLE-NOTE\n\n## Rollup", 1)
+    seeded = seeded.replace("\n---\n", "\nSTANDING-ROLLUP-NOTE\n\n---\n", 1)
+    assert "STANDING-PREAMBLE-NOTE" in seeded and "STANDING-ROLLUP-NOTE" in seeded
+    (root / "progress.md").write_text(seeded, encoding="utf-8")
+
+    second = _run_generator(root)
+    assert "STANDING-PREAMBLE-NOTE" in second, "preamble notes were deleted"
+    assert "STANDING-ROLLUP-NOTE" in second, "rollup notes were deleted"
+
+    # Carrying must also be idempotent: an anchor that matched the carried copy
+    # as well as the generated one would grow the file on every regeneration.
+    third = _run_generator(root)
+    assert third.count("STANDING-PREAMBLE-NOTE") == 1
+    assert third.count("STANDING-ROLLUP-NOTE") == 1
+    assert third.count("## Rollup") == 1
