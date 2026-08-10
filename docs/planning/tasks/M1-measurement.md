@@ -124,6 +124,55 @@ it stubs, because the gate's credibility rests entirely on that boundary.
 
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
 
+#### T2.116 — Bind the resample certification to the pairs it certified
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.107` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-10 from the E3 branch review's triage, which ruled D-7 and D-8
+"may stand" and then noted T2.115 had just paid their manual tax a third
+time.** Both were parked twice as hardening on a lock whose current answer is
+correct. That reasoning still holds and is not what mints this: the cost is now
+measured at three rounds of the same manual step, and a procedure re-executed
+correctly three times is a procedure waiting to be executed incorrectly once.
+
+**D-7 — the eligibility lock does not bind the certification to pair content.**
+`gate_eligibility` validates that the embedded `resample` block *says* n ≥ 93
+with ≤ 1 disagreement and carries its citation fields. Nothing ties that
+certification to the pairs it certified, so a post-certification label flip
+keeps eligibility green on a certification of a different file. T2.110 and
+T2.115 both handled it correctly **by procedure** — stripping the carried-over
+block because the file had moved — which is the tell: the protocol already
+understands what the code does not enforce. The slice-count pin catches
+appends, not flips. `--from-raw`'s sha refusal covers the *raw* record and not
+the embedded block.
+
+**D-8 — the certification is written into `gold.json`, so the certified sha is
+not the measured sha.** Reproduced again this round: certified `58ac1a90`
+against an on-disk `98fc4b49`. Verified annotation-only each time, and the
+attempt counter treats the new sha as uncontacted, which is the behaviour the
+ledger's lineage note already describes. It is the same root as D-7 — a record
+about a file, stored inside it.
+
+**What.** Record a pairs-only content hash in the `resample` block and
+re-derive it at eligibility time, so a certification names the pair set it saw.
+That closes D-7 directly and makes D-8 a stated property rather than a footnote:
+the certified sha may differ from the file sha, and the content hash is what
+actually has to match.
+
+**Done when:**
+- [ ] The block carries a hash over the pairs alone, excluding the block itself
+- [ ] `gate_eligibility` re-derives it and refuses a mismatch, with the refusal
+      naming which pairs moved rather than only that something did
+- [ ] A label flipped after certification turns eligibility red — asserted by
+      mutation, since this is the exact case the current lock passes
+- [ ] The existing certified gold re-certifies without a manual strip
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py scripts/benchlib/tests/test_entailment_gold.py -q`
+
+**Not a G-D blocker.** The gold *is* eligible today, by a resample that did
+happen, on the file as it stands. This is hardening the next round should not
+have to do by hand.
+
 #### T2.107 — The resample sitting's instrument
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54 (partial)` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
