@@ -360,6 +360,51 @@ before fixing the targets.
 
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_judge_qualification.py -q`
 
+#### T2.115 — Resize the never-contacted contradicted census
+
+`Model: Fable 5` · `Effort: high` · `Size: L` · `Depends: T2.110` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
+
+**Written retroactively 2026-08-10, after the task had already run.** T2.115 was minted
+and claimed directly in `progress.md` (`fcdb315b`) and never defined here, which is a
+Tier-2 amendment nobody logged. It is written now from the shipped work rather than
+recalled as intent, and it is stated as such: this entry documents what the round did, it
+is not the brief the round was executed against. The cost of the omission was mechanical
+and larger than it looks — `gen_progress.py` refuses to write when `progress.md` holds a
+task no epic file defines, so the rollup silently stopped regenerating and drifted twice.
+
+**What.** Put 0.95 on **both** contradiction-recall lattices at once. Rule B's second
+population held 25 contradicted pairs, so its lattice was 1.00 / 0.96 / 0.92 and the bar
+it gates by was silently ≥ 0.96. The round moved the contacted contradicted census
+55 → 40 and the second population 25 → 40, holding the pooled census at exactly 80
+(76/80 and 38/40, both exact).
+
+**Why retirement rather than growth.** Growth cannot reach it: `N ≡ 0` and
+`55 + N ≡ 0 (mod 20)` has no solution, and the Layer-3 resample's full-census stratum caps
+the pooled census at 93 regardless. Retirement was the only route that changed nothing
+already ratified — which is why the round had to ratify a lattice-retirement rule first,
+as its own blocker B1.
+
+**Done when.**
+
+- [ ] The lattice-retirement rule is ratified into `LABELLING.md` **before** the draw runs,
+      and the drawing module is committed before it executes — pinning a seed alone does
+      not close the aiming channel when the executor writes the algorithm afterwards
+- [ ] The draw is reproducible from committed pre-round data alone
+- [ ] Replacement pairs are authored blind, by agents that read neither the gate ledger
+      nor the qualification reports, with the contaminated controller barred from authoring
+- [ ] §11 composition recomputed, not asserted
+- [ ] The resample is re-drawn against the resized file and the gold passes
+      `judge_qualification.gate_eligibility`
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py scripts/benchlib/tests/test_lattice_retirement.py scripts/benchlib/tests/test_entailment_assignment.py scripts/benchlib/tests/test_judge_qualification.py -q`
+
+**Two Criticals are open against the executed round and are the owner's to rule on**
+(gate ledger, 2026-08-10, C-1 / C-2): the round violated clause 5 of the rule it ratified,
+and `eg-0367` entered the census as a semantic near-duplicate of live `eg-0093`. Both are
+recorded in `LABELLING.md`'s History without adjudication. Every repair is gold surgery,
+which moves the sha, voids the `58ac1a90` certification and the G-D attempt spent against
+`98fc4b49`.
+
 #### T2.111 — G-C re-measure under the veto's ratified shape
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.108, T2.109, T2.110` · `Doc: 20 §4, 17 §5.1` · `Tag: target-new` · `Gate: G-C`
