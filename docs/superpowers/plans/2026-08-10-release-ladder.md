@@ -575,6 +575,13 @@ sync, tag, deploy — because they repeat at every version."
   is not a running system, and this task exists because the difference is
   exactly what "nothing visible" means.
 
+**Fully autonomous — no human step.** Setup is plain REST (`POST /api/v1/setup`
+takes `{"password": ...}` as its only required block) and it **issues the auth
+cookie itself**, so there is no login form to drive and no JWT to lift out of a
+browser. `_extract_token` reads the cookie before the `Authorization` header, so
+a `curl` jar authenticates everything after. A browser appears exactly once, in
+Step 4b, for the one claim curl cannot substantiate: that the SPA renders.
+
 - [ ] **Step 1: Build the image and bring the stack up**
 
 ```bash
@@ -588,35 +595,58 @@ Expected: `health=200`. If the prod compose refuses for missing `.env` values,
 use `docker compose -f docker-compose.dev.yml up -d` and record that the
 demonstration ran against the dev stack.
 
-- [ ] **Step 2: Walk the setup wizard**
+- [ ] **Step 2: Finalize setup over REST — no browser needed**
 
-Open `http://localhost:8000/`, complete setup (admin password, the LLM purposes
-from CLAUDE.md's live-endpoints section), and record the resulting state.
+`POST /api/v1/setup` takes `{"password": ...}` as its only required block and
+**issues the auth cookie itself** on a successful password write, so there is no
+separate login step. `_extract_token` reads the cookie before the `Authorization`
+header, so a cookie jar authenticates every later call.
+
+```bash
+cd /root/repositories/darkmem
+JAR=/tmp/darkmem-v01.jar; rm -f "$JAR"
+PASSWORD='v0.1-demonstration-password'
+
+curl -sS -c "$JAR" -X POST http://localhost:8000/api/v1/setup \
+  -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$PASSWORD\"}" | head -c 300; echo
+grep -q darkmem_session "$JAR" && echo "session cookie issued"
+```
+
+Expected: a `SetupResponse` with `password.ok = true`, and `session cookie issued`.
+
+Then confirm the guard closes behind it:
 
 ```bash
 curl -sS -o /dev/null -w "setup_guard=%{http_code}\n" \
-  -X POST http://localhost:8000/api/v1/setup/init
+  -X POST http://localhost:8000/api/v1/setup \
+  -H 'Content-Type: application/json' -d "{\"password\":\"$PASSWORD\"}"
 ```
 
-Expected: `setup_guard=403` after setup — `require_uninitialized` refuses a
-second run, which is the trust-on-first-use property.
+Expected: `setup_guard=403` — `require_uninitialized` refuses a second run, which
+is the trust-on-first-use property.
 
 - [ ] **Step 3: Capture and retrieve through a real door**
 
 ```bash
-TOKEN="<paste the JWT from the browser session>"
-curl -sS -X POST http://localhost:8000/api/v1/memories \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+curl -sS -b "$JAR" -X POST http://localhost:8000/api/v1/memories \
+  -H 'Content-Type: application/json' \
   -d '{"content":"darkmem v0.1 was demonstrated on 2026-08-10 by capturing this memory.","project":"default","wait_process":true}' \
   | head -c 400; echo
 
-curl -sS -X POST http://localhost:8000/api/v1/memories/search \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+sleep 3
+curl -sS -b "$JAR" -X POST http://localhost:8000/api/v1/memories/search \
+  -H 'Content-Type: application/json' \
   -d '{"query":"v0.1 demonstrated","limit":3}' | head -c 400; echo
 ```
 
-Expected: a `202` ack (or `201` with the processed memory under
-`wait_process=true`), then the memory coming back from search.
+Expected: a `202` ack carrying the pre-minted memory id (or `201` with the
+processed memory, if `wait_process` settled inside
+`buffer_wait_timeout_seconds`), then that memory coming back from search.
+
+**If capture returns 202 and search finds nothing**, the buffer has not flushed
+yet — wait for the `buffer_flush` job or re-run the search. That is the designed
+Tier-A accept, not a failure.
 
 - [ ] **Step 4: Confirm MCP answers**
 
@@ -628,8 +658,51 @@ curl -sS -X POST http://localhost:8000/mcp/ \
 ```
 
 Expected: a JSON-RPC result naming the server. A `421` means the Host allowlist
-refused — fix by extending `MCP_ALLOWED_HOSTS`, **never** by disabling the
-check (invariant 20).
+refused — fix by extending `MCP_ALLOWED_HOSTS`, **never** by disabling the check
+(invariant 20).
+
+- [ ] **Step 4b: Prove the SPA renders — the one job curl cannot do**
+
+Everything above exercises the API. v0.1 also claims a UI, and a served
+`index.html` is not a rendering app. This is the only step that needs a browser,
+and it reuses the cookie rather than driving a login form.
+
+```bash
+cd /root/repositories/darkmem/frontend
+node - "$JAR" <<'JS'
+import { chromium } from "@playwright/test";
+import { readFileSync } from "node:fs";
+
+const base = "http://localhost:8000";
+// Netscape cookie jar: the last tab-separated field is the value.
+const token = readFileSync(process.argv[2], "utf8")
+  .split("\n").find((l) => l.includes("darkmem_session"))
+  .split("\t").pop().trim();
+
+const browser = await chromium.launch();
+const ctx = await browser.newContext();
+await ctx.addCookies([{ name: "darkmem_session", value: token, url: base }]);
+const page = await ctx.newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e)));
+
+await page.goto(`${base}/memories`, { waitUntil: "networkidle" });
+const body = await page.locator("body").innerText();
+const ok = /v0\.1 was demonstrated/i.test(body);
+
+console.log(JSON.stringify({
+  url: page.url(),
+  rendered_the_captured_memory: ok,
+  page_errors: errors,
+}, null, 2));
+await page.screenshot({ path: "/tmp/v0.1-spa.png", fullPage: true });
+await browser.close();
+JS
+```
+
+Expected: `rendered_the_captured_memory: true` and `page_errors: []`. That single
+assertion walks image → SPA bundle → API → Postgres → back to the screen, which
+is the whole claim v0.1 makes. Keep `/tmp/v0.1-spa.png`.
 
 - [ ] **Step 5: Record the evidence**
 
