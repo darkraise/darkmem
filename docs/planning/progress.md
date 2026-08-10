@@ -48,16 +48,28 @@ and the Note says so. That rule is the whole point of this file.
 | E0 — Baseline & harness | 22 | 0 | 0 | 0 | 0 | 22 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 1 | 0 | 0 | 0 | 83 | 1 | **G-B CLEARED 2026-07-28** |
 | E2 — Truth core | 106 | 0 | 0 | 0 | 0 | 106 | 0 | G-C, G-D open |
-| E3 — Synthesis & reach | 24 | 24 | 0 | 0 | 0 | 0 | 0 | G-E open |
+| E3 — Synthesis & reach | 24 | 13 | 0 | 0 | 0 | 11 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 10 | 0 | 0 | 0 | 0 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 13 | 8 | 0 | 0 | 0 | 5 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 14 | 2 | 0 | 1 | 0 | 11 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **275** | **58** | **0** | **0** | **0** | **216** | **1** | |
+| **Total** | **276** | **41** | **0** | **1** | **0** | **233** | **1** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
 every open item on its critical path now sits in M1.
+
+**Recounted again 2026-08-10, and `gen_progress.py` could not do it.** E3 read
+24 todo / 0 done against eleven `done` rows in its own table, M1 had grown to
+14 rows, and the Total was short by one. All seven rows above were re-derived
+by counting the status column of every task row in the section tables. The
+generator refuses to run for two reasons unrelated to either drift — **T0.18
+carries the status `G-B`, which is not in the vocabulary above, and T2.115
+exists here with no epic file defining it** — so it writes nothing and the
+rollup silently ages instead. Until both are resolved, every recount is manual
+and will drift again; the section *headings* ("E2 — Truth core (99 tasks)",
+"M1 — Measurement phase (7 tasks)") are generator-derived and are stale for the
+same reason. Fixing the generator's two inputs is worth a task.
 
 ---
 
