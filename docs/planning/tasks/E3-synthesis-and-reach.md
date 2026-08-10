@@ -61,6 +61,19 @@ is never synthesised because it happened to rank high.
 
 `Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T3.01, T2.14, T2.95` · `Doc: 09 §4` · `Tag: target-new` · `Gate: G-D`
 
+**Inherited from T3.01, to be settled here before any productive run**
+(recorded 2026-08-10 from the E3 branch review's triage of T3.01's minors).
+`article_eligibility`'s priority formula applies `ln(1+x)` per signal, where
+doc 09 §4.1 states the linear form `w_facts·verified_count + w_heat·read_heat +
+w_central·centrality`. The compression matches `review_ranking` and the module's
+argument for it is sound, but the docstring presents it as *implementing* §4.1
+rather than as a recorded deviation from it — and the damping changes what a
+measured `w_*` tune means, so it cannot stay ambiguous once these weights are
+tuned against a real corpus. T3.01 shipped inert with zero consumers, which is
+why it could stand; **this task is the first consumer**, so it either adopts the
+deviation explicitly (amending doc 09 §4.1, a Tier-3 move) or drops the damping.
+Decide on purpose, not by inheriting.
+
 **Buildable now; the grounded label waits (amended 2026-08-06 with the M1
 split).** The title says *productive* runs, and this is where a synthesised
 article first reaches a reader — so "below the bar, no L3 article ships as

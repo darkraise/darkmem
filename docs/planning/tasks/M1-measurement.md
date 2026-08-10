@@ -124,6 +124,55 @@ it stubs, because the gate's credibility rests entirely on that boundary.
 
 **Verify.** `cd backend && python scripts/benchlib/run_promotion_metrics.py`
 
+#### T2.116 — Bind the resample certification to the pairs it certified
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.107` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D`
+
+**Minted 2026-08-10 from the E3 branch review's triage, which ruled D-7 and D-8
+"may stand" and then noted T2.115 had just paid their manual tax a third
+time.** Both were parked twice as hardening on a lock whose current answer is
+correct. That reasoning still holds and is not what mints this: the cost is now
+measured at three rounds of the same manual step, and a procedure re-executed
+correctly three times is a procedure waiting to be executed incorrectly once.
+
+**D-7 — the eligibility lock does not bind the certification to pair content.**
+`gate_eligibility` validates that the embedded `resample` block *says* n ≥ 93
+with ≤ 1 disagreement and carries its citation fields. Nothing ties that
+certification to the pairs it certified, so a post-certification label flip
+keeps eligibility green on a certification of a different file. T2.110 and
+T2.115 both handled it correctly **by procedure** — stripping the carried-over
+block because the file had moved — which is the tell: the protocol already
+understands what the code does not enforce. The slice-count pin catches
+appends, not flips. `--from-raw`'s sha refusal covers the *raw* record and not
+the embedded block.
+
+**D-8 — the certification is written into `gold.json`, so the certified sha is
+not the measured sha.** Reproduced again this round: certified `58ac1a90`
+against an on-disk `98fc4b49`. Verified annotation-only each time, and the
+attempt counter treats the new sha as uncontacted, which is the behaviour the
+ledger's lineage note already describes. It is the same root as D-7 — a record
+about a file, stored inside it.
+
+**What.** Record a pairs-only content hash in the `resample` block and
+re-derive it at eligibility time, so a certification names the pair set it saw.
+That closes D-7 directly and makes D-8 a stated property rather than a footnote:
+the certified sha may differ from the file sha, and the content hash is what
+actually has to match.
+
+**Done when:**
+- [ ] The block carries a hash over the pairs alone, excluding the block itself
+- [ ] `gate_eligibility` re-derives it and refuses a mismatch, with the refusal
+      naming which pairs moved rather than only that something did
+- [ ] A label flipped after certification turns eligibility red — asserted by
+      mutation, since this is the exact case the current lock passes
+- [ ] The existing certified gold re-certifies without a manual strip
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py scripts/benchlib/tests/test_entailment_gold.py -q`
+
+**Not a G-D blocker.** The gold *is* eligible today, by a resample that did
+happen, on the file as it stands. This is hardening the next round should not
+have to do by hand.
+
 #### T2.107 — The resample sitting's instrument
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.54 (partial)` · `Doc: 17 §6, §11` · `Tag: target-new` · `Gate: G-D`
@@ -618,3 +667,4 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 | 2026-08-07 | T2.40, T2.108 | 2 | **T2.40 gains a clause: a decidable probe is not automatically a meaningful one, and this re-measure must rule on that before recording a verdict.** With T2.108's corpus the false-promotion audit reads *decidable, clears* at 0.0000 while its numerator is structurally zero — judge unqualified, `SINGLE_VALUED_RELATIONS` empty with no REPLACES-family edge in the corpus, no `human_verdict` events — and the committed predicate cannot distinguish precision from inoperability | Verified on data by T2.108's adversarial review, not inferred. The review's own attack sharpened rather than weakened it: the vacuity is joint bar-plus-corpus, but no corpus in the 20–99 band can be both operable-numerator and passing under the 1% bar, so it attributes to the bar. Probes 1–2 carry a weaker form (`blocked ≡ 0` data-precluded) that T2.108's report did not frame as the same shape. Recorded on T2.40 rather than fixed anywhere, because changing a bar after a measurement is exactly what the pre-statement rule forbids — the gate owner rules |
 | 2026-08-10 | T2.115 | 2 | **Minted.** The 2026-08-08 G-D re-measure recorded a granularity finding — Rule B's never-contacted subset holds 25 contradicted pairs, so 0.95 is not on its recall lattice and "the verdict must hold on both" silently gates it at ≥ 0.96 — and asked the owner to settle it before a run landed on 24/25. The owner ruled 2026-08-10 (resize so 0.95 lands on it, then let it gate); no task owned the work | Same shape as T2.110's own minting: a precondition written into one task's findings and owned by no task. Recorded as Tier-2 rather than Tier-1 because it adds a task, changes what Rule B's second population means, and its step 0 asks the owner to ratify a **lattice-retirement** rule the protocol has no precedent for — LABELLING.md retires a pair only when its label is *wrong*, and this round retires correctly-labelled contacted pairs to hold the pooled census constant. Two derivations bound the route and are in the plan: 0.95 cannot be exact on both populations (`N ≡ 0` and `55 + N ≡ 0 (mod 20)` has no solution), and the census cannot grow because the Layer-3 resample's first stratum is a full contradicted census at a ratified n = 93 |
 | 2026-08-10 | T2.115 | 1 | **Two execution deviations recorded after the fact, neither of which had an amendment when it landed** (branch review M-1, I-7). (M-1) The done-when said `NEVER_CONTACTED_FIRST_ID` and LABELLING.md's range "move together"; owner ruling R3 reversed that mid-round — the constant stays `eg-0242` and was renamed `RULE_B_FIRST_ID` — so the task text asserted the pre-ruling behaviour for the whole execution. Corrected in the done-when. (I-7) The 51 companions were drawn by the **cell-level** largest remainder where plan v2 §6, written to answer the plan review's own I7 and reviewed at Fable tier, states the **slice-marginal** one. Both re-derived from the pre-round file: slice-marginal gives temporal 7 / unrelated 6, cell-level gives temporal 6 / unrelated 7, and nothing else differs — one slot. Recorded at `ROUND3_SLICE_TARGETS` | Recorded rather than re-executed, because re-drawing is gold surgery: it moves the sha, voids the `58ac1a90` certification and the G-D attempt already spent against `98fc4b49`. Both deviations are bounded and content-blind — neither algorithm names a pair, and the precision floor is 0.70 against a measured 0.90 — but the variant was chosen by the **contaminated** controller and committed in `48ad7e8e` together with the authored pairs rather than before them, which is the plan review's own procedure-shopping channel. The round's "zero degrees of freedom" claim is overstated by exactly one slot, and a claim that is nearly true is the kind this corpus is built to catch |
+| 2026-08-10 | T2.116 | 2 | **Minted** from the E3 branch review's triage of D-7 and D-8. The review ruled both "may stand" and then recorded that T2.115 had just paid their manual tax a third time; the fix shape it names — a pairs-only content hash in the `resample` block, re-derived at eligibility time — is now a task rather than a note in two amendment logs | Not a G-D blocker and not a correction: the gold is eligible today by a resample that happened, on the file as it stands. What changed is the evidence about cost. Twice-parked as hardening on a lock whose answer is right, it has now been executed correctly by hand three times (T2.110, T2.115, and T2.115's own re-certification), and a procedure re-executed correctly three times is one waiting to be executed incorrectly once — which here means a certification that names no pair set silently certifying a different file |
