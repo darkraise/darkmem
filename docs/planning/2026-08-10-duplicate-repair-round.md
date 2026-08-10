@@ -77,3 +77,60 @@ label to a user, attempt 1 landed one pair from the bar, and a pass that lands
 inside the artifact's width is a pass this corpus would have to disclose as
 possibly manufactured — which is the outcome every rule in this file exists to
 prevent.
+
+
+---
+
+## Execution log — three findings that change the plan (2026-08-10)
+
+The round was started under the owner's instruction ("run the repair round, then
+the gpt-5.5 attempt"). It stopped before touching `gold.json`. **The sha is
+still `98fc4b49`, the `58ac1a90` certification stands and the attempt is
+unspent.** Three things came out of the attempt that the staged plan did not
+anticipate, and each changes what the round costs.
+
+### 1. The premise draw was defective, and a blind author caught it
+
+`replacement_premise_draw.py` filtered on *no live `direction` pair* and *an
+exclusive reversal relation*, and **not** on the per-premise cap.
+`l2_harvest.json`'s header fixes `pairs_per_premise_cap` at 4 and
+`test_no_premise_supports_more_than_four_live_pairs` enforces it. Both drawn
+premises already carried four live pairs, so both slots were infeasible as
+dispatched.
+
+The author of slot `eg-0418` checked the cap before writing, found the slot
+infeasible and **recorded a skip instead of a pair** — the correct outcome, and
+the firewall working in a direction nobody designs it for: the blind party
+caught the contaminated party's mechanical error. The author of `eg-0419`
+returned a well-formed pair that is unusable for the same reason, having not
+checked the cap. Both are discarded; the module now filters on capacity and
+reports exhaustion explicitly.
+
+### 2. The l2-fact route is exhausted — the replacements must be hand-authored
+
+With all three filters, the eligible pool is **zero**. Every harvest fact whose
+reversal is exclusive and which carries no live `direction` pair is at the
+4-pair cap, and the two retirements free no capacity (both sit on premises that
+already carry a live `direction` pair, which filter 1 excludes anyway).
+
+So the replacements take **hand-authored premises** under the frozen skip
+mechanism, exactly as round 3 did for its own capacity skips. The consequence is
+one declared count: `l2-fact` 238 → 236 and `hand-authored-synthetic-fact`
+148 → 150. Doc 17 §11's ≥ 50% floor is unaffected — 236/402 = 58.7%.
+
+### 3. `gpt-5.5` cannot be run from this machine
+
+The owner-ruled judge is `gpt-5.5`. The 2026-08-08 run of it went to
+`api.openai.com` (`resample_runs/2026-08-08-gpt-5-5.json`), and **no OpenAI
+credential exists** — not in the environment, not in the repo, and CLAUDE.md's
+live-endpoints section records only DeepSeek and a LAN Ollama. `run_judge_qualification`
+takes the key as an argument, so the runner is ready; the credential is not
+here.
+
+**Sequencing consequence.** The repair is worth doing on its own merits — the
+duplicates block *any* future attempt, not just this one. But completing it
+means voiding the `58ac1a90` certification and spending a fresh `n = 93`
+certification sitting (T2.115's took three), and the attempt it exists to enable
+cannot follow until `OPENAI_API_KEY` is available. Doing the surgery now and
+discovering the key never arrives leaves the gold re-certified and unmeasured —
+no loss but the spend, and no gain either.

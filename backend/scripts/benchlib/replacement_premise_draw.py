@@ -18,7 +18,15 @@ Three filters, each from a ratified source and none from a judge:
    is `unsupported`, not `contradicted` — `USES`, `DEPENDS_ON` and `CAUSES`
    cannot fill a contradicted slot, and symmetric `RELATED_TO` was the recorded
    skip ground for three round-3 slots.
-3. **Seeded draw over the survivors, sorted by `triple_key`.** The seed is the
+3. **Capacity under the per-premise cap.** `l2_harvest.json`'s header fixes
+   `pairs_per_premise_cap` at 4 and `test_no_premise_supports_more_than_four_live_pairs`
+   enforces it, so a premise already carrying four live pairs cannot take a
+   fifth. **The first version of this module omitted this filter and the draw it
+   produced was infeasible on both slots** — caught by a blind author who
+   checked the cap before writing, which is the firewall working in the
+   direction nobody designs it for.
+
+4. **Seeded draw over the survivors, sorted by `triple_key`.** The seed is the
    gold file's own sha256, so the draw is a pure function of committed state and
    reproduces from the pre-round file alone.
 
@@ -31,6 +39,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+from collections import Counter
 from pathlib import Path
 
 # LABELLING.md's reversal-exclusivity table, exclusive rows only. A reversal of
@@ -52,33 +61,68 @@ def derive_seed(gold_path: Path) -> int:
     return int(digest[:8], 16)
 
 
-def eligible_premises(gold: dict, harvest: list[dict]) -> list[dict]:
-    """Harvest facts that can carry a *new* `direction`/`contradicted` pair."""
-    live = [p for p in gold["pairs"] if "retired" not in p]
+PAIRS_PER_PREMISE_CAP = 4
+
+
+def eligible_premises(
+    gold: dict, harvest: list[dict], *, retiring: frozenset[str] = frozenset()
+) -> list[dict]:
+    """Harvest facts that can carry a *new* `direction`/`contradicted` pair.
+
+    ``retiring`` names ids leaving in this same round, so capacity they free is
+    counted. Here it frees none — both retiring pairs sit on premises that
+    already carry a live `direction` pair, which filter 1 excludes anyway — but
+    computing it the other way round would make the module wrong for the next
+    repair rather than merely lucky for this one.
+    """
+    live = [
+        p for p in gold["pairs"]
+        if "retired" not in p and p["id"] not in retiring
+    ]
     occupied = {
         p.get("fact_key", {}).get("triple_key")
         for p in live
         if "direction" in (p.get("slice_tags") or [])
     }
+    pairs_on = Counter(p["premise"] for p in live)
     return sorted(
         (
             fact for fact in harvest
             if fact["triple_key"] not in occupied
             and fact["rel_type"] in EXCLUSIVE_REVERSAL_RELATIONS
+            and pairs_on[fact["fact"]] < PAIRS_PER_PREMISE_CAP
         ),
         key=lambda f: f["triple_key"],
     )
 
 
-def draw_premises(gold_path: Path, harvest_path: Path, count: int) -> dict:
+def draw_premises(
+    gold_path: Path,
+    harvest_path: Path,
+    count: int,
+    *,
+    retiring: frozenset[str] = frozenset(),
+) -> dict:
     gold = json.loads(gold_path.read_text())
     harvest = json.loads(harvest_path.read_text())["facts"]
-    pool = eligible_premises(gold, harvest)
+    pool = eligible_premises(gold, harvest, retiring=retiring)
     seed = derive_seed(gold_path)
+    if len(pool) < count:
+        # Exhaustion is an outcome, not an error: LABELLING.md's skip mechanism
+        # already answers it — the slot takes a hand-authored premise and only
+        # the `l2-fact` count moves. Returning a short draw silently would let a
+        # caller author against a capped premise and redden the floor at commit.
+        return {
+            "seed": seed,
+            "pool_size": len(pool),
+            "exhausted": True,
+            "drawn": [],
+        }
     drawn = random.Random(seed).sample(pool, count)
     return {
         "seed": seed,
         "pool_size": len(pool),
+        "exhausted": False,
         "drawn": [
             {
                 "triple_key": f["triple_key"],
