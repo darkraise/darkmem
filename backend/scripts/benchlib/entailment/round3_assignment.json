@@ -1,0 +1,462 @@
+{
+ "_notes": "The seeded (premise x slice) assignment T2.115's authors worked from, committed as an artifact because it CANNOT be re-derived after the fact: the round consumed the harvest capacity the builder computes from, so `build_round3_assignment` now refuses (correctly) on the post-round file. The chain a checker can still walk: apply `lattice_retirement.draw` to the pre-round gold to reproduce the retirement, take the post-retirement file's sha256 for the seed, and rebuild -- every step is committed code over committed data.",
+ "seed_derivation": "int(sha256(gold.json at 336 live pairs)[:8], 16)",
+ "slots": [
+  {
+   "slot": 0,
+   "slice": "unrelated",
+   "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+   "rel_type": "RELATED_TO",
+   "fact": "fleet-cfg related to booking schedule",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 1,
+   "slice": "overreach",
+   "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+   "rel_type": "REPLACES",
+   "fact": "glitchtip replaces sentry",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 2,
+   "slice": "verbatim",
+   "triple_key": "60a400b1-1d0c-58f3-ac90-f5e3c2831d44",
+   "rel_type": "IMPROVES_ON",
+   "fact": "caddy improves on nginx",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 3,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 4,
+   "slice": "value-swap",
+   "triple_key": "505aabfc-86d4-548f-b9af-71c08d1ad7fb",
+   "rel_type": "USES",
+   "fact": "grafana uses infra",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 5,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 6,
+   "slice": "direction",
+   "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+   "rel_type": "USES",
+   "fact": "restic uses wiki volume",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 7,
+   "slice": "value-swap",
+   "triple_key": "6c47ab46-8bdd-5d7d-92d2-62fa1af14d2f",
+   "rel_type": "DEPENDS_ON",
+   "fact": "license-report depends on internal package mirror",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 8,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 9,
+   "slice": "value-swap",
+   "triple_key": "d08a8d38-04c1-5631-a8e5-f870fdba3f8e",
+   "rel_type": "REPLACES",
+   "fact": "astro replaces mkdocs",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 10,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 11,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 12,
+   "slice": "verbatim",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 13,
+   "slice": "direction",
+   "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+   "rel_type": "DEPLOYED_ON",
+   "fact": "wireguard deployed on udp",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 14,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 15,
+   "slice": "direction",
+   "triple_key": "31c1a0ee-0bcb-555a-ab9b-86cd7d898f40",
+   "rel_type": "HAS_PART",
+   "fact": "hv-27 has part scratch partition",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 16,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 17,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 18,
+   "slice": "value-swap",
+   "triple_key": "a02af11e-49a4-56de-aa61-b3f11d9bf66d",
+   "rel_type": "DEPLOYED_ON",
+   "fact": "redis deployed on cache-01",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 19,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 20,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 21,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 22,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 23,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 24,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 25,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 26,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 27,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 28,
+   "slice": "direction",
+   "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
+   "rel_type": "USES",
+   "fact": "unleash uses oidc",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 29,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 30,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 31,
+   "slice": "direction",
+   "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+   "rel_type": "RELATED_TO",
+   "fact": "ntfy related to sms",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 32,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 33,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 34,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 35,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 36,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 37,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 38,
+   "slice": "value-swap",
+   "triple_key": "11606722-ee98-5a68-a01f-3f2b5f1e49e7",
+   "rel_type": "RELATED_TO",
+   "fact": "vector related to telegraf",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 39,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 40,
+   "slice": "value-swap",
+   "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
+   "rel_type": "USES",
+   "fact": "terraform uses minio",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 41,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 42,
+   "slice": "verbatim",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 43,
+   "slice": "value-swap",
+   "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+   "rel_type": "USES",
+   "fact": "ci runners uses docker-in-docker",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 44,
+   "slice": "verbatim",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 45,
+   "slice": "direction",
+   "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+   "rel_type": "USES",
+   "fact": "terraform uses tf-state",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 46,
+   "slice": "direction",
+   "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+   "rel_type": "RELATED_TO",
+   "fact": "fleet-cfg related to booking schedule",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 47,
+   "slice": "verbatim",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 48,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 49,
+   "slice": "paraphrase",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 50,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 51,
+   "slice": "verbatim",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 52,
+   "slice": "value-swap",
+   "triple_key": "3822925d-685c-596b-adba-ee726a6bdf10",
+   "rel_type": "DEPLOYED_ON",
+   "fact": "wireguard deployed on udp",
+   "premise_source": "l2-fact"
+  },
+  {
+   "slot": 53,
+   "slice": "overreach",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 54,
+   "slice": "weakening",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 55,
+   "slice": "unrelated",
+   "triple_key": null,
+   "rel_type": null,
+   "fact": null,
+   "premise_source": "hand-authored (harvest capacity exhausted)"
+  },
+  {
+   "slot": 56,
+   "slice": "direction",
+   "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+   "rel_type": "RELATED_TO",
+   "fact": "ntfy related to sms",
+   "premise_source": "l2-fact"
+  }
+ ]
+}

@@ -111,11 +111,18 @@ def test_round2_assignment_respects_the_cap_over_existing_usage():
     assert max(total.values()) <= cap
 
 
-def test_committed_round2_l2_pairs_sit_on_assigned_slots():
-    """The anti-curation property: every round-2 l2-fact pair's
-    (slice, premise) is one the seeded assignment handed its author. Skips
+def test_committed_l2_pairs_sit_on_assigned_slots():
+    """The anti-curation property: every appended l2-fact pair's
+    (slice, premise) is one a seeded assignment handed its author. Skips
     only remove assigned slots (logged in LABELLING.md); nothing may add a
-    hand-picked premise under the l2 provenance."""
+    hand-picked premise under the l2 provenance.
+
+    The union of every round's assignment, not round 2's alone. T2.115
+    appended nine l2 pairs from its own seeded round-3 assignment, and
+    checking them against round 2's slots reported them as curated when they
+    were nothing of the kind — the property is "some seeded assignment handed
+    this out", and each round has its own seed by construction.
+    """
     import json
 
     from benchlib.entailment_assignment import (
@@ -125,6 +132,16 @@ def test_committed_round2_l2_pairs_sit_on_assigned_slots():
 
     gold_doc = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
     assignment = build_round2_assignment(load_l2_harvest(), gold_doc)
+    # Round 3 from its committed artifact rather than rebuilt: the round
+    # consumed the harvest capacity the builder computes from, so rebuilding
+    # against the post-round file raises (correctly -- there is no capacity for
+    # a fresh round). The artifact is checkable end to end: reproduce the
+    # retirement with `lattice_retirement.draw`, take the post-retirement
+    # sha256 as the seed, rebuild.
+    round3 = json.loads(
+        (GOLD_PATH.parent / "round3_assignment.json").read_text(encoding="utf-8")
+    )
+    assignment += [e for e in round3["slots"] if e["fact"] is not None]
     assigned = Counter((e["slice"], e["fact"]) for e in assignment)
 
     committed = Counter(

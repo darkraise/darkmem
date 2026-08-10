@@ -154,14 +154,14 @@ def test_the_real_gold_is_now_eligible_on_every_condition():
     doc = entailment_gold.load_entailment_gold()
     eligibility = jq.gate_eligibility(doc)
     assert eligibility.eligible is True
-    assert eligibility.live_pairs == 351
-    assert eligibility.l2_fact_pairs == 235
+    assert eligibility.live_pairs == 402
+    assert eligibility.l2_fact_pairs == 238
     assert eligibility.author_labelled_pairs == 0
     # Eligible means exactly one reason: the composition line, no blockers.
     assert len(eligibility.reasons) == 1
     joined = eligibility.reasons[0]
-    assert "l2-fact: 235/351" in joined
-    assert "author-labelled: 0/351" in joined
+    assert "l2-fact: 238/402" in joined
+    assert "author-labelled: 0/402" in joined
 
     # The ruling closed the queue: no live pair is author-labelled, and
     # eg-0308 carries the owner's provenance rather than the author's.
@@ -975,7 +975,7 @@ def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
     fixture = result.twin.channels["fixture_call"]
     gold = result.twin.channels["judge_call"]
     assert fixture.live.n == len(SANITY_PREMISES)
-    assert gold.live.n == result.score.n_pairs == 351
+    assert gold.live.n == result.score.n_pairs == 402
 
 
 # ── the resample condition (T2.54 Step 6, 2026-08-06) ───────────────────

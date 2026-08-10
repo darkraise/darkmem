@@ -74,13 +74,29 @@ def test_clause_2_the_protected_core_is_never_eligible():
 
 
 def test_clause_5_the_quota_is_largest_remainder_over_the_pool():
-    """Composition, not just size. The quota is a function of the eligible
-    pool's own slice distribution — not of anything the executor picks."""
+    """Composition, not just size: the quota is a function of the eligible
+    pool's own slice distribution, not of anything the executor picks.
+
+    Asserted as the *property* rather than as one round's numbers. The first
+    version pinned `{value-swap: 8, direction: 4, temporal: 3}` — T2.115's own
+    draw — and then T2.115 retired those pairs, which moved the pool the pin
+    was computed over and turned a correct procedure into a red test. A round's
+    actual draw belongs in LABELLING.md's History, which is the protocol's
+    memory; this file's job is that the next round's draw is derived the same
+    way.
+    """
     pool = lr.eligible_pool(_pairs(), "contradicted")
-    quota = lr.largest_remainder({k: len(v) for k, v in pool.items()}, 15)
+    sizes = {k: len(v) for k, v in pool.items()}
+    quota = lr.largest_remainder(sizes, 15)
 
     assert sum(quota.values()) == 15
-    assert quota == {"value-swap": 8, "direction": 4, "temporal": 3}
+    population = sum(sizes.values())
+    for slice_name, taken in quota.items():
+        exact = 15 * sizes[slice_name] / population
+        assert abs(taken - exact) < 1, (
+            f"{slice_name}: {taken} is not within one of its proportional "
+            f"share {exact:.2f} — the allocation is not largest-remainder"
+        )
 
 
 def test_input_order_cannot_move_the_result():

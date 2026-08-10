@@ -35,24 +35,30 @@ from benchlib.retrieval_gold import load_retrieval_corpus
 # contributor appending pairs updates all of these together -- a silent
 # re-tagging or a drifted count shows up as a failure here.
 DOCUMENTED_SLICE_COUNTS = {
-    "verbatim": 35,
-    "paraphrase": 51,
-    "weakening": 42,
-    "temporal": 51,
-    "direction": 44,
-    "overreach": 51,
+    "verbatim": 41,
+    "paraphrase": 61,
+    "weakening": 50,
+    "temporal": 57,
+    "direction": 48,
+    "overreach": 61,
     "value-swap": 42,
-    "unrelated": 35,
+    "unrelated": 42,
 }
 # The contradicted census is 80 BY DESIGN, not by accident of authoring
 # (T2.110): contradiction_recall_bar = 0.95 = 19/20 resolves in steps of
 # 1/census, so the bar sits on the achievable lattice only when the census
 # is a multiple of 20 — and the resample protocol's full-census stratum
 # caps it at 93. 80 is the only multiple of 20 in (55, 93].
+#
+# T2.115 held it at 80 while splitting it 40/40 across Rule B's two
+# populations, so 0.95 lands exactly on BOTH lattices (76/80 and 38/40)
+# rather than only the pooled one. That is why the round retired 15
+# contacted pairs instead of growing: growth alone cannot put 0.95 on both,
+# and the resample's full-census stratum forbids growing past 93 anyway.
 DOCUMENTED_VERDICT_COUNTS = {
-    "entailed": 146,
+    "entailed": 173,
     "contradicted": 80,
-    "unsupported": 125,
+    "unsupported": 149,
 }
 # synthesis-draft is PINNED AT ZERO: no producer exists (article_synthesis
 # is a PlaceholderJobRunner until T3.02). l2-fact moved off its zero pin
@@ -61,10 +67,10 @@ DOCUMENTED_VERDICT_COUNTS = {
 # the loader. Provenance honesty is what keeps G-D's numbers meaning what
 # they claim.
 DOCUMENTED_PROVENANCE_COUNTS = {
-    "hand-authored-synthetic-fact": 100,
+    "hand-authored-synthetic-fact": 148,
     "hand-authored-bench-corpus": 16,
     "synthesis-draft": 0,
-    "l2-fact": 235,
+    "l2-fact": 238,
 }
 
 

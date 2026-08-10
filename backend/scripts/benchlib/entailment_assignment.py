@@ -20,6 +20,7 @@ Run from backend/:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import random
 import sys
 from pathlib import Path
@@ -156,6 +157,157 @@ def build_round2_assignment(
             "triple_key": row["triple_key"],
             "rel_type": row["rel_type"],
             "fact": row["fact"],
+        })
+    return assignment
+
+
+# ── T2.115 lattice-resize round (round 3) ────────────────────────────────
+#
+# Not a growth round: the pooled contradicted census is held at 80 while
+# Rule B's second population goes 25 -> 40, so 0.95 lands on its recall
+# lattice (38/40) as it already does on the pooled one (76/80). Fifteen
+# contacted contradicted pairs retire under LABELLING.md's lattice-retirement
+# rule and fifteen are authored to replace them, with 51 companions keeping
+# the second population's contradicted base rate at the gold's own ~23%.
+#
+# **Two decisions the plan review required be stated rather than inferred:**
+#
+# 1. **Usage counts LIVE pairs only.** LABELLING.md's cap is "<= 4 **live**
+#    pairs per premise", and round 2's helper counted by id threshold
+#    regardless of retirement -- correct there, because nothing had retired.
+#    Here fifteen pairs have, and reading the cap literally is what lets
+#    their premises take a replacement. Counting them would leave capacity
+#    stranded behind pairs that no longer exist.
+# 2. **The seed hashes the POST-retirement file.** Step 2 moves the sha, so
+#    "the file's own hash" is ambiguous between the pre- and post-retirement
+#    states; either is unchooseable, and two implementers reading the same
+#    sentence would otherwise derive different assignments. The state that
+#    *precedes the operation this seed drives* is the post-retirement one.
+# Slices whose pairs are all contradicted, or whose verdict the
+# reversal-exclusivity table may make contradicted. Named by slice, never by
+# pair, so the priority cannot select for difficulty.
+CONTRADICTED_FIRST_SLICES = ("value-swap", "direction")
+
+ROUND3_SLICE_TARGETS: dict[str, int] = {
+    # Contradicted replacements, mirroring the retirement draw's quota so the
+    # pooled slice distribution is unchanged end to end (rule clause 5).
+    "value-swap": 8,
+    "direction": 4 + 4,   # 4 contradicted + 4 unsupported companions
+    # Companions, largest-remainder over the live non-contradicted
+    # (slice, verdict) distribution.
+    "overreach": 10,
+    "paraphrase": 10,
+    "unrelated": 7,
+    "verbatim": 6,
+    "weakening": 8,
+    # Temporal is hand-authored (doc 17 section 11's premise exemption) and
+    # takes no l2 slot: 3 contradicted + 3 entailed + 3 unsupported.
+    "temporal": 9,
+}
+
+
+def _live_premise_usage(gold_doc: dict) -> dict[str, int]:
+    """Premise usage over **live** pairs, per LABELLING.md's cap wording."""
+    usage: dict[str, int] = {}
+    for pair in gold_doc["pairs"]:
+        if pair.get("retired"):
+            continue
+        usage[pair["premise"]] = usage.get(pair["premise"], 0) + 1
+    return usage
+
+
+def build_round3_assignment(
+    manifest: dict | None = None, gold_doc: dict | None = None,
+) -> list[dict]:
+    """The round-3 seeded (premise x slice) assignment.
+
+    Same capacity-aware cycle as round 2 -- each slot takes the next fact in
+    the seeded order with remaining capacity -- over live usage and a seed
+    derived from the post-retirement file.
+    """
+    import json
+
+    manifest = manifest or load_l2_harvest()
+    gold_path = HERE / "entailment" / "gold.json"
+    if gold_doc is None:
+        gold_doc = json.loads(gold_path.read_text(encoding="utf-8"))
+
+    seed = int(hashlib.sha256(gold_path.read_bytes()).hexdigest()[:8], 16)
+    facts = manifest["facts"]
+    cap = manifest["header"]["pairs_per_premise_cap"]
+    usage = _live_premise_usage(gold_doc)
+    remaining = {row["triple_key"]: cap - usage.get(row["fact"], 0) for row in facts}
+
+    rng = random.Random(seed)
+    slots = [
+        slice_name
+        for slice_name in sorted(ROUND3_SLICE_TARGETS)
+        if slice_name != "temporal"
+        for _ in range(ROUND3_SLICE_TARGETS[slice_name])
+    ]
+    shuffled_slots = rng.sample(slots, len(slots))
+    fact_order = rng.sample(range(len(facts)), len(facts))
+
+    # **The harvest is exhausted, and the shortfall is allocated by a rule
+    # stated before the draw** (owner ruling 2026-08-10). Round 2 could anchor
+    # every non-temporal slot; after it, 19 of this round's 57 slots have
+    # capacity. LABELLING.md already has the mechanism -- a slot with no usable
+    # premise takes a hand-authored one with a recorded skip, "so slice targets
+    # stay exact and only the `l2-fact` count moves" -- and doc 17 section 11's
+    # >= 50% l2-fact floor still holds with margin (248/402 = 61.7%).
+    #
+    # Scarce capacity goes to CONTRADICTED_FIRST_SLICES before anything else:
+    # those pairs are the census the gate's truth-critical bar is computed over,
+    # so they are where a real minted premise is worth most. The rule is
+    # content-blind -- it names slices, never pairs -- and companions then take
+    # what is left in the seeded shuffled order, so which companions get anchors
+    # is decided by the seed rather than by anyone.
+    capacity = sum(max(r, 0) for r in remaining.values())
+    priority = [
+        index for index, name in enumerate(shuffled_slots)
+        if name in CONTRADICTED_FIRST_SLICES
+    ]
+    rest = [
+        index for index, name in enumerate(shuffled_slots)
+        if name not in CONTRADICTED_FIRST_SLICES
+    ]
+    anchored = set((priority + rest)[:capacity])
+    if len(priority) > capacity:
+        raise RuntimeError(
+            f"{len(priority)} contradicted slots exceed the harvest's remaining "
+            f"capacity ({capacity}); the round cannot anchor the census it "
+            "measures and the corpus must grow first (do not widen the cap)"
+        )
+
+    assignment = []
+    cursor = 0
+    for slot, slice_name in enumerate(shuffled_slots):
+        if slot not in anchored:
+            # Recorded as a capacity skip, not an infeasible-shape one.
+            assignment.append({
+                "slot": slot,
+                "slice": slice_name,
+                "triple_key": None,
+                "rel_type": None,
+                "fact": None,
+                "premise_source": "hand-authored (harvest capacity exhausted)",
+            })
+            continue
+        for _ in range(len(facts)):
+            row = facts[fact_order[cursor % len(facts)]]
+            cursor += 1
+            if remaining[row["triple_key"]] > 0:
+                break
+        else:
+            raise RuntimeError("no fact with remaining capacity")
+        remaining[row["triple_key"]] -= 1
+        assignment.append({
+            "slot": slot,
+            "slice": slice_name,
+            "triple_key": row["triple_key"],
+            "rel_type": row["rel_type"],
+            "fact": row["fact"],
+            "premise_source": "l2-fact",
         })
     return assignment
 

@@ -97,6 +97,28 @@ this same file — collapsing it to a binary would throw that away.
     replaced object, with the sentence shape otherwise preserved, is
     `contradicted`, not unsupported. This is an object swap, not a reversal,
     so the reversal rule below does not reach it.
+- **Additional-value rule** (ruled by the owner 2026-08-10, rule-then-pairs
+  on eg-0405). The exclusive-slot rule above is written for a *differing*
+  value. It says nothing about an **added** one — a hypothesis that keeps
+  the premise's value and asserts a second alongside it ("listens on port
+  9100" -> "listens on ports 9100 and 9101"). Two blind passes split on
+  exactly that, one reading it as crossing the exclusion and one as the
+  `overreach` slice's own definition.
+
+  **The slot's cardinality decides, and it is a property of the slot rather
+  than of the sentence.** Where the slot is single-valued *in the world the
+  premise describes*, a second value is `contradicted`: one process
+  listening on one named port cannot also be listening on another and still
+  make the premise true as stated. Where the slot is genuinely multi-valued,
+  the second value is unasserted content and the pair is `unsupported` — a
+  CI matrix testing Python 3.12 may well also test 3.11 (eg-0377), a host
+  runs several services, a person holds several roles.
+
+  Ask *"could both values hold at once without making the premise false?"*
+  If yes, `unsupported`. If no, `contradicted`. This is the same question
+  the exclusive-slot rule already asks about a differing value; the ruling
+  is that adding does not escape it, not that adding is a new kind of thing.
+
 - **Exhaustivity rule** (ruled by the owner 2026-08-08, rule-then-pairs on
   eg-0308). Procedure 3 breaks entailment on strengthening, and exhaustivity
   is strengthening only when the hypothesis **asserts** it.
@@ -120,6 +142,31 @@ this same file — collapsing it to a binary would throw that away.
   claim time-scoped inside the window is `entailed` (eg-0016); a
   present-tense claim over a window the fact *explicitly closes* — named
   end event or successor — is `contradicted` (eg-0018).
+- **Inception-window rule** (ruled by the owner 2026-08-10, rule-then-pairs
+  on eg-0416). The window rule fixes a window's *closing* boundary and the
+  open-window rule below covers claims dated at or after an open window's
+  start. Neither reaches a claim dated **before** that start — "Since the
+  January 2026 rollout, host metrics have been scraped by VictoriaMetrics"
+  against "VictoriaMetrics was scraping host metrics in November 2025".
+  Both blind passes flagged the gap independently and split on it, which is
+  what a gap looks like from outside.
+
+  **Whether "since <inception>" excludes the earlier state depends on
+  whether the premise names what came before.**
+  - "Since X, <state>", with **no predecessor named** — the premise fixes
+    the state forward from X and asserts nothing about what held earlier.
+    A claim about a date before X is `unsupported`, by general procedure 4:
+    absence is not exclusion.
+  - "Since X, <state>", where the premise **also names the state X
+    displaced** — the premise does assert what held before, so a claim
+    putting the *new* state before X is `contradicted`, on the same footing
+    as the window rule's named-successor case.
+
+  The asymmetry is deliberate and is the one procedure 4 draws everywhere
+  else: a premise earns a `contradicted` only by asserting the thing the
+  hypothesis denies. An inception date alone asserts a beginning, not a
+  prior absence.
+
 - **Open-window rule.** A fact valid "since X" with no closing event
   entails the same state at any later reference date (eg-0017). This is
   the convention the production veto needs: `knowledge_triples` rows with
@@ -359,7 +406,21 @@ only the `l2-fact` count moves. Known-infeasible shapes, named now: a
 `direction` slot on a symmetric relation (see the table below), and a
 `value-swap` slot on a fact whose swapped slot is not single-valued (the
 exclusive-slot rule cannot fix `contradicted`, and `value-swap` admits no
-other verdict). The authoring target is **≥ 130 `l2-fact` pairs** — 41
+other verdict).
+
+**A third shape, found in round 3 (T2.115) rather than predicted: a
+`direction` slot on a fact that already carries a live `direction` pair.**
+For that slice the hypothesis *is* the reversal of the premise, so the
+construction is determined and a second slot on the same fact reproduces
+the existing pair byte-for-byte — which the loader rejects as a duplicate
+live `(premise, hypothesis)`. The author cannot see it coming: the
+colliding pair is outside the allowlist a blind authoring round runs
+under. So it is a skip like the other two, logged with its reason and
+hand-authored for the same slice. **Do not resolve it by rewording the
+reversal** — that passes the uniqueness check while leaving a
+near-duplicate in a measurement set, which is worse than the collision it
+hides. A future round's assignment should exclude facts already carrying a
+live pair of any slice whose hypothesis the premise determines. The authoring target is **≥ 130 `l2-fact` pairs** — 41
 skips of margin — and the gate floor is ≥ 50% of live pairs (doc 17 §11,
 ratified 2026-07-31).
 
@@ -558,6 +619,89 @@ would silently make its own bar unrepresentable.
 
 ## History
 
+- **2026-08-10 (T2.115 lattice resize — the census split 40/40, certified at
+  the bar's edge).** Rule B's second population held 25 contradicted pairs, so
+  its recall lattice was 1.00 / 0.96 / 0.92 and **0.95 was not on it** — the
+  bar it gates by was silently ≥ 0.96. The round put 0.95 on both lattices at
+  once: contacted contradicted 55 → 40, second population 25 → 40, **pooled
+  held at exactly 80** (76/80 and 38/40, both exact). Growth could not do it —
+  `N ≡ 0` and `55 + N ≡ 0 (mod 20)` has no solution — and the Layer-3
+  resample's full-census stratum caps the pooled census at 93 anyway, so
+  retirement was the only route that changed nothing ratified.
+
+  **The retirement.** Fifteen contacted contradicted pairs under the new
+  lattice-retirement rule, drawn by `benchlib.lattice_retirement` — committed
+  *before* it ran, because pinning a seed alone does not close the aiming
+  channel when the executor writes the algorithm afterwards. Seed
+  **2148355473** (the pre-round file's own sha256), pool 45 eligible after
+  excluding the ten T2.25 core pairs, quota by largest remainder **8
+  value-swap / 4 direction / 3 temporal**. Reproduce with
+  `cd backend && PYTHONPATH=.:scripts python -m benchlib.lattice_retirement
+  --verdict contradicted --n 15`. Each retired pair carries
+  `retirement_kind: "lattice"` so no later reader mistakes fifteen correct
+  labels for mislabels.
+
+  **The authoring: 66 pairs, `eg-0352`..`eg-0417`, two firewalled batches.**
+  Neither author read the gate ledger, the qualification reports or
+  `resample_runs/`; both bounded their rulebook read above this section and
+  attested to it. The *controller* was contaminated — it had read the
+  slice-level failure attribution — so it could not author, and the slice
+  quotas were derived mechanically so the brief itself could not leak the
+  weakness. **The harvest was exhausted**: 19 of 57 non-temporal slots had
+  capacity, so scarce anchors went to the contradicted slices first by a rule
+  stated before the draw, and the rest took hand-authored premises under the
+  skip mechanism. `l2-fact` 240 → 238 of 402 live (59.2%, floor 50%).
+
+  **Ten skips**, all logged: three `direction` on symmetric relations, five
+  `value-swap` on non-single-valued slots, and **two of a shape nobody had
+  predicted** — a `direction` slot on a fact that already carries a live
+  `direction` pair, where the reversal is determined and the loader rejected
+  the byte-identical duplicate. Added to the known-infeasible list above.
+
+  **Blind adjudication: 64/66 adjudicated on the first pass.** Pass A (Opus)
+  and pass B (Sonnet), separately dispatched, no shared context. Agreement
+  against the recorded labels **0.9848 each**; against each other **0.9697** —
+  they split on two pairs, which is the independence signal a correlated pair
+  would not produce.
+
+  **Two escalations, both ruled rule-then-pairs**, and both passes flagged the
+  first independently before either knew the other existed:
+  - **eg-0416** → the **Inception-window rule**. "Since X" with no predecessor
+    named asserts a beginning, not a prior absence. Recorded `unsupported`
+    stands, `label_source: owner`.
+  - **eg-0405** → the **Additional-value rule**. The slot's cardinality
+    decides. Recorded `contradicted` stands, `label_source: owner`.
+
+  **Slice re-adjudication under both new rules changed no label** — 57
+  temporal pairs and every added-value shape across all 402 checked. The
+  Inception-window rule's second bullet governs no live pair today; it is
+  written because the question needed deciding, not because a pair needs it.
+
+  **The certification took three sittings, and that is recorded rather than
+  tidied.** `--write-gold` re-ran the model instead of recording the measured
+  run, and an LLM sitting is not reproducible: sitting 1 found **1**
+  disagreement (eg-0341), sitting 2 found **0**, sitting 3 found **1**
+  (eg-0175). All three pass `bar ≤ 1`, but recording sitting 2 would have
+  been choosing the best of three by accident. Sitting 2's record was
+  withdrawn, and **sitting 3 is what the gold carries**, recorded from its own
+  raw replies with `--from-raw` and no fresh model call. Three tool defects
+  were fixed first: `--write-gold` re-running rather than recording, a second
+  sitting overwriting the first's raw replies (same date, same model, same
+  gold — the collision class T2.110 closed only for *different* golds), and a
+  hardcoded `performed_by` date that stamped every run "owner-directed
+  2026-08-08".
+
+  **Both disagreements were model error and both were the same shape**: a rule
+  cited whose own precondition excludes it. eg-0341's premise explicitly
+  closes its window *and* names the successor, so the evaluation-time rule
+  cannot reach it — identical to T2.110's eg-0018, the same model failing the
+  same way two rounds running. eg-0175 is a pure value *swap* (first →
+  fifteenth) and the model cited the **Additional-value rule**, which requires
+  the premise's value be kept and a second asserted alongside. Worth stating
+  plainly: a rule added hours earlier became a new way for the instrument to be
+  wrong, which is a cost of amending a rulebook an LLM reads.
+
+
 - **2026-08-08 (T2.110 Layer-3 resample — n = 93, 1 disagreement, PASS at the
   bar's edge).** The fresh seeded draw against the ruled gold (sha256
   `047cbd6f…`, seed 75283823, strata 80 census + 6 + 7) was sat by
@@ -704,7 +848,7 @@ would silently make its own bar unrepresentable.
   blind export, manifest and sheet were regenerated against the grown file's
   hash. `gold_touching_attempts` is keyed on `gold_sha256` and therefore reads
   0 for the grown file. The grown set has never been contacted by any judge
-  identity (Rule B's never-contacted population now spans eg-0242..eg-0351).
+  identity (Rule B's population then spanned eg-0242..eg-0351; T2.115 extended its end to eg-0242..eg-0417 without moving the boundary, which is what the open-ended `id >=` filter is for).
 
 ### Skip log (T2.110 round)
 

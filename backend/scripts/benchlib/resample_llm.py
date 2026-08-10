@@ -185,11 +185,31 @@ def main(argv: list[str] | None = None) -> int:
         "--write-gold", action="store_true",
         help="persist the resample block into gold.json (default: measure only)",
     )
+    ap.add_argument(
+        "--from-raw", default=None, metavar="PATH",
+        help=(
+            "score and record a sitting that ALREADY HAPPENED, from its raw "
+            "replies, with no model call. Use this to record what you "
+            "measured: a second invocation with --write-gold re-sits the "
+            "model, and an LLM sitting is not reproducible, so the number "
+            "certified would come from a different sitting than the one you "
+            "read. Measured 1 disagreement and recorded 0 that way once "
+            "(T2.115, 2026-08-10)."
+        ),
+    )
+    ap.add_argument(
+        "--performed-by", default=None, metavar="TEXT",
+        help=(
+            "provenance for the record. Defaults to naming the model and this "
+            "run's date; never a person, since the record must not read as a "
+            "human sitting when no human sat."
+        ),
+    )
     args = ap.parse_args(argv)
 
     assert_not_claude_family(args.model)
     api_key = os.environ.get(args.api_key_env)
-    if not api_key:
+    if not api_key and not args.from_raw:
         raise SystemExit(f"{args.api_key_env} is not set")
 
     params: dict = {}
@@ -200,15 +220,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.reasoning_effort:
         params["reasoning_effort"] = args.reasoning_effort
 
-    print(f"model: {args.model}  host: {urlsplit(args.base_url).netloc}  params: {params}")
-    verdicts = asyncio.run(run(
-        base_url=args.base_url, model=args.model, api_key=api_key,
-        concurrency=args.concurrency, timeout=args.timeout, params=params,
-    ))
-
     gold_path = Path(entailment_gold.GOLD_PATH)
     gold_bytes = gold_path.read_bytes()
     gold_sha = hashlib.sha256(gold_bytes).hexdigest()
+
+    if args.from_raw:
+        recorded = json.loads(Path(args.from_raw).read_text(encoding="utf-8"))
+        if recorded.get("gold_sha256") != gold_sha:
+            raise SystemExit(
+                f"{args.from_raw} certifies gold {recorded.get('gold_sha256', '?')[:8]} "
+                f"and this gold is {gold_sha[:8]} -- a resample means nothing "
+                "except relative to the file it certifies"
+            )
+        verdicts = recorded["verdicts"]
+        params = recorded.get("params", params)
+        raw_path = Path(args.from_raw)
+        print(f"scoring the recorded sitting at {raw_path} -- no model call")
+    else:
+        print(f"model: {args.model}  host: {urlsplit(args.base_url).netloc}  params: {params}")
+        verdicts = asyncio.run(run(
+            base_url=args.base_url, model=args.model, api_key=api_key,
+            concurrency=args.concurrency, timeout=args.timeout, params=params,
+        ))
 
     raw_dir = Path(args.raw_dir) if args.raw_dir else RAW_DIR
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -217,16 +250,30 @@ def main(argv: list[str] | None = None) -> int:
     # {date}-{model} alone collides whenever the same model re-sits a re-drawn
     # gold on the same day — which silently destroyed the previous round's
     # record once. Runs predating this carry the bare name.
-    raw_path = (raw_dir / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}"
-                          f"-{gold_sha[:8]}.json")
-    raw_path.write_text(
-        json.dumps({"model": args.model, "host": urlsplit(args.base_url).netloc,
-                    "date": args.date, "params": params,
-                    "gold_sha256": gold_sha, "verdicts": verdicts},
-                   indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    print(f"raw replies: {raw_path}")
+    if not args.from_raw:
+        raw_path = (raw_dir / f"{args.date}-{re.sub(r'[^a-zA-Z0-9]+', '-', args.model)}"
+                              f"-{gold_sha[:8]}.json")
+        # **A second sitting never overwrites the first.** The sha in the name
+        # separates sittings of different golds; it does nothing for two
+        # sittings of the SAME gold on the same day, which is the ordinary
+        # shape of measure-then-record -- and one of them destroyed the other's
+        # evidence (T2.115). An LLM sitting is not reproducible, so each one is
+        # its own artifact.
+        suffix = 2
+        while raw_path.exists():
+            raw_path = raw_path.with_name(
+                f"{raw_path.name.removesuffix('.json')}".rsplit("-sitting", 1)[0]
+                + f"-sitting{suffix}.json"
+            )
+            suffix += 1
+        raw_path.write_text(
+            json.dumps({"model": args.model, "host": urlsplit(args.base_url).netloc,
+                        "date": args.date, "params": params,
+                        "gold_sha256": gold_sha, "verdicts": verdicts},
+                       indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(f"raw replies: {raw_path}")
 
     block, disagreements = resample_score.score(
         {k: {"verdict": v["verdict"], "rule": v["rule"]} for k, v in verdicts.items()},
@@ -236,7 +283,9 @@ def main(argv: list[str] | None = None) -> int:
         blind_ids=resample_score.load_blind_ids(),
         # Names the instrument, never a person: the record must not read as a
         # human sitting when no human sat.
-        performed_by=f"LLM pass: {args.model} (non-Claude, owner-directed 2026-08-08)",
+        performed_by=args.performed_by or (
+            f"LLM pass: {args.model} (non-Claude, owner-directed {args.date})"
+        ),
         date=args.date,
     )
     print(f"\nn={block['n']}  disagreements={block['disagreements']}  "
