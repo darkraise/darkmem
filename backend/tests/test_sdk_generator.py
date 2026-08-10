@@ -442,12 +442,12 @@ class TestNoMemberCanBeAttachedConditionally:
     what it carries and to ask the source what it can attach.
     """
 
-    def test_the_python_client_attaches_only_its_configuration(self):
+    async def test_the_python_client_attaches_only_its_configuration(self):
         source = (SDKS / "python/darkmem_sdk/client.py").read_text()
 
         assert _python_self_assignments(source) == PY_SELF_ATTRIBUTES
 
-    def test_the_typescript_client_assigns_only_to_its_private_fields(self):
+    async def test_the_typescript_client_assigns_only_to_its_private_fields(self):
         """No parser is reachable from this suite, so the rule is deliberately
         conservative: in generated code, an assignment whose left-hand side
         mentions `this` at all must land on a whitelisted `#private` field.
@@ -474,7 +474,7 @@ class TestNoMemberCanBeAttachedConditionally:
             f"whitelist: {offenders}"
         )
 
-    def test_no_alias_smuggles_the_instance_past_the_walk(self):
+    async def test_no_alias_smuggles_the_instance_past_the_walk(self):
         """Both walks key on the literal receiver (`self` / `this`). Binding it
         to another name first would defeat them, so generated code may not."""
         py = (SDKS / "python/darkmem_sdk/client.py").read_text()
