@@ -65,6 +65,11 @@ COVERAGE_THRESHOLD_FIELD = "threshold"
 # floors there is no machinery here that refuses a loosening, so lowering it is
 # a convention-9 move that owes a recorded argument in the gate ledger.
 #
+# The derivation now lives there and was owner-ratified 2026-08-11 (gate ledger,
+# "G-E"): doc 17 §6's rule bars the truth-critical metric at 0.95, and coverage
+# is truth-critical on the same argument that made *entailed* precision so — a
+# false pass ships an ungrounded sentence under a corroborated badge.
+#
 # Quantisation, stated because it bites: at 0.95 any article under 20 claims
 # requires *every* claim entailed.
 DEFAULT_COVERAGE_THRESHOLD = 0.95

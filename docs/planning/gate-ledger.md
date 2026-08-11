@@ -27,7 +27,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
 | G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
-| G-E | L3 → F7 | **open** | — | — |
+| G-E | L3 → F7 | **open** (runtime coverage threshold stated 2026-08-11 by derivation and owner-ratified at **0.95**, before any coverage number exists anywhere; the corpus **share** is still unstated and is owed before T3.24's runner reads production — see "G-E") | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
 
@@ -1498,10 +1498,65 @@ Measured by T3.24's runner. The production read is the one sanctioned exception 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
 | L3 shipped | Articles live in production | — | — | — |
-| Per-article claim-support coverage **distribution** above the runtime threshold | — | — | — | — |
+| Per-article claim-support coverage **distribution** above the runtime threshold | runtime threshold **0.95** (stated below); corpus share **not yet stated** | — | — | — |
 
 **A distribution, not a mean.** One well-covered article does not clear this gate; the
 question is whether coverage holds across the corpus in production.
+
+### The runtime threshold: **0.95**, stated 2026-08-11 by derivation, owner-ratified
+
+`article_coverage.threshold` (`config`, default in
+`claim_entailment.DEFAULT_COVERAGE_THRESHOLD`). It is the per-article routing bar T3.03
+ships: an article at or above it may carry the grounded label, one below it goes to review
+labelled, never published as corroborated.
+
+**Derived, not measured — and unfittable in principle at the time of stating.** No
+coverage number has ever been produced anywhere in this corpus: the entailment pass runs
+against a judge that refuses unconditionally without a qualification record (T2.26,
+scan-enforced), and G-D is open, so every article measured to date is `unmeasured` rather
+than scored. There was no number to fit the bar to, which is the same posture that
+committed the promotion bars before the first run.
+
+**The derivation is doc 17 §6's own rule**, applied to this consumer: the truth-critical
+metric is barred at 0.95, the other at 0.90. Coverage is truth-critical on the same
+argument that made *entailed* precision truth-critical there — a false pass ships a
+fluent ungrounded sentence under a corroborated badge, which is the worst failure in the
+maintainer's truth-over-everything ordering. Nothing about the failure changes because the
+instrument is an article-level fraction rather than a per-pair verdict, so the bar does
+not change either. **0.95.**
+
+**Quantisation binds, and the consequence is stated rather than discovered.** At 0.95 an
+article of fewer than 20 claims needs *every* claim entailed — 19/20 = 0.95 is the first
+passing fraction with any slack at all. Doc 09 §4.2's length budget (a few hundred words)
+yields roughly 16–26 sentences, so for most articles the bar is exactly "every sentence
+grounded" and the fractional slack is reachable only by the longest. That is **not** an
+argument for lowering it: §4.3's uncited-span rule already makes a single uncited sentence
+a hard failure independent of coverage, so on a short article the effective policy is the
+one §4.3 states outright, and the threshold adds nothing a reader could be surprised by.
+It does mean the number is coarse near the short end, and a re-tune argued from "articles
+route to review too often" must first separate *ungrounded* from *short* — the failure
+T3.03's review round found in the draft lead, where a structurally uncitable sentence
+capped coverage at N/(N+1) and would have routed well-grounded articles on their length.
+
+**Loosening is convention-9, not machinery.** Unlike the verification ladder's floors there
+is no clamp here that refuses a lower value; the row can be edited. The discipline is that
+a loosening owes a recorded argument in this file, and — the standing rule for every bar
+in this ledger — **it may never be moved to make a run pass**.
+
+### The corpus share: **not stated, and owed before T3.24 runs**
+
+The row above has two numbers and only one of them exists. The threshold governs one
+article; G-E asks whether coverage *holds across the corpus*, which needs a share — what
+fraction of live articles must sit at or above the threshold for the layer to have
+shipped. Left unstated deliberately rather than overlooked: it is the owner's to state,
+and stating it after the first production read would be fitting.
+
+Recommendation, by the same rule and offered for ratification: **0.90**, the non-truth-critical
+side. An article below the threshold is *handled* — it routes to review labelled and never
+reaches a reader as corroborated — so the share does not price truth, it prices whether
+the layer is viable enough to be worth shipping, exactly as contradiction-precision became
+a review-load floor when its consumer changed. Nothing measures this until T3.24's runner
+exists, so the number costs nothing to state now and cannot be stated honestly later.
 
 ---
 
