@@ -200,6 +200,7 @@ _FACT_COLUMNS = ", ".join(_FACT_COLUMN_NAMES)
 _ARTICLE_COLUMNS = (
     "id, subject_key, project, title, status, confidence, "
     "fact_set_hash, review_state, synthesized_at, created_at, "
+    "resynthesis_held_at, resynthesis_held_coverage, resynthesis_held_hash, "
     "LEFT(content, 200) AS content_preview"
 )
 
@@ -306,6 +307,7 @@ def _article_reason(
     status: str | None,
     confidence: float | None = None,
     threshold: float | None = None,
+    held_at: Any = None,
 ) -> str:
     """Derived from the article's own columns, never from ``review_state``.
 
@@ -319,6 +321,11 @@ def _article_reason(
     """
     if status == "disputed":
         return "disputed"
+    # Ordered after `disputed` by the `_fact_reason` rule — the graver
+    # condition names the row. A held marker says a *replacement* could not be
+    # grounded; a disputed article says this one is contested, which is worse.
+    if held_at is not None:
+        return "resynthesis-held"
     if confidence is None:
         return "coverage_unmeasured"
     if threshold is not None and confidence < threshold:
@@ -388,6 +395,32 @@ def build_articles_query(project: str | None) -> tuple[str, str]:
     inheriting the facts arm's default would be a claim this arm cannot back.
     """
     where = ["review_state = 'open'"]
+    if project is not None:
+        where.append("project = CAST(:project AS text)")
+    where_sql = " AND ".join(where)
+    order_sql = _ORDER_SQL[ReviewQueueOrder.ARRIVAL_DESC]
+    items_sql = (
+        f"SELECT {_ARTICLE_COLUMNS} FROM knowledge_articles "
+        f"WHERE {where_sql} ORDER BY {order_sql} LIMIT :limit OFFSET :offset"
+    )
+    count_sql = f"SELECT COUNT(*) FROM knowledge_articles WHERE {where_sql}"
+    return items_sql, count_sql
+
+
+def build_held_articles_query(project: str | None) -> tuple[str, str]:
+    """The held-re-synthesis lane (doc 09 §4.4 as amended 2026-08-12).
+
+    A **separate statement**, not a widened predicate on the arm above. Each
+    arm's `WHERE` matches its own partial index — `ix_knowledge_articles_review`
+    for `review_state = 'open'`, `ix_knowledge_articles_resynthesis_held` for
+    this one — and an `OR` across both loses both, which is the property the
+    module's EXPLAIN tests exist to hold.
+
+    `review_state IS DISTINCT FROM 'open'` is what keeps a row from listing
+    twice: an unmeasured-open article can also collect a held marker, and such
+    a row belongs in the open arm, where the marker rides its projection anyway.
+    """
+    where = ["resynthesis_held_at IS NOT NULL", "review_state IS DISTINCT FROM 'open'"]
     if project is not None:
         where.append("project = CAST(:project AS text)")
     where_sql = " AND ".join(where)
@@ -515,12 +548,17 @@ async def list_open_articles(
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[dict], int]:
-    """Articles whose ``review_state = 'open'`` — low-confidence/ungrounded
-    articles (doc 09). ``article_synthesis`` is a ``PlaceholderJobRunner``
-    until T3.02 (behind G-D), so nothing writes ``knowledge_articles`` in
-    production yet: this arm is exercised in tests only against seeded rows,
-    never against a real producer. Do not read a passing test here as proof
-    against live data — there is none yet.
+    """The queue's article lane, in two arms.
+
+    **Arm one** — ``review_state = 'open'`` — is the ungrounded/disputed
+    article withheld from the corroborated view (doc 09 §4.3).
+
+    **Arm two** — a held re-synthesis marker (doc 09 §4.4 as amended
+    2026-08-12) — is the opposite kind of row and the reason this lane is not
+    one query: the article is *not* withheld, keeps its badge and its place in
+    retrieval, and is listed because its **subject** could not be re-grounded.
+    Serving them in one lane is right (a human triaging articles wants both),
+    but the two must not be one predicate — see ``build_held_articles_query``.
     """
     items_sql, count_sql = build_articles_query(project)
     params: dict[str, Any] = {"limit": limit, "offset": offset}
@@ -545,36 +583,79 @@ async def list_open_articles(
 
     threshold = await get_coverage_threshold(session)
 
-    items = []
-    for row in rows:
-        # Through `row_labels`, the one producer of the claim surface. This arm
-        # emitted `row["status"]` raw, and `knowledge_articles`' CHECK admits
-        # `corroborated` -- so an article promoted by a future writer would
-        # have reached a reader here without passing the gate at all. T2.95's
-        # gate keys on `id_kind`, which cannot protect a path that never asks
-        # it.
-        labels = row_labels(
-            id_kind="article",
-            verification_status=row["status"],
-            gate=gate,
-        )
-        items.append(
-            {
-                "id": str(row["id"]),
-                "subject_key": row["subject_key"],
-                "project": row["project"],
-                "title": row["title"],
-                "status": labels["verification_status"],
-                "label_suppressed": labels["label_suppressed"],
-                "confidence": row["confidence"],
-                "fact_set_hash": row["fact_set_hash"],
-                "review_state": row["review_state"],
-                "reason": _article_reason(row["status"], row["confidence"], threshold),
-                "content_preview": row["content_preview"],
-                "synthesized_at": row["synthesized_at"],
-                "created_at": row["created_at"],
-            }
-        )
+    items = [_article_item(row, gate=gate, threshold=threshold) for row in rows]
+
+    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+    total = (await session.execute(text(count_sql), count_params)).scalar_one()
+
+    held_items, held_total = await _list_held_articles(
+        session, project=project, gate=gate, threshold=threshold,
+        limit=limit, offset=offset,
+    )
+    return items + held_items, int(total) + held_total
+
+
+def _article_item(row, *, gate, threshold: float) -> dict[str, Any]:
+    """One queue row, for **both** arms.
+
+    Shared rather than duplicated per arm: the two arms select different
+    membership and must label identically, and a second copy of this
+    projection is how one lane starts serving two vocabularies.
+
+    Through `row_labels`, the one producer of the claim surface. This arm
+    emitted `row["status"]` raw once, and `knowledge_articles`' CHECK admits
+    `corroborated` -- so an article promoted by a future writer would have
+    reached a reader here without passing the gate at all. T2.95's gate keys on
+    `id_kind`, which cannot protect a path that never asks it.
+    """
+    labels = row_labels(
+        id_kind="article",
+        verification_status=row["status"],
+        gate=gate,
+    )
+    return {
+        "id": str(row["id"]),
+        "subject_key": row["subject_key"],
+        "project": row["project"],
+        "title": row["title"],
+        "status": labels["verification_status"],
+        "label_suppressed": labels["label_suppressed"],
+        "confidence": row["confidence"],
+        "fact_set_hash": row["fact_set_hash"],
+        "review_state": row["review_state"],
+        "reason": _article_reason(
+            row["status"], row["confidence"], threshold, row["resynthesis_held_at"],
+        ),
+        # The finding itself, so a reviewer sees the measurement rather than
+        # only its name. Absent-as-NULL is meaningful: no held attempt.
+        "resynthesis_held_at": row["resynthesis_held_at"],
+        "resynthesis_held_coverage": row["resynthesis_held_coverage"],
+        "resynthesis_held_hash": row["resynthesis_held_hash"],
+        "content_preview": row["content_preview"],
+        "synthesized_at": row["synthesized_at"],
+        "created_at": row["created_at"],
+    }
+
+
+async def _list_held_articles(
+    session: AsyncSession,
+    *,
+    project: str | None,
+    gate,
+    threshold: float,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict], int]:
+    """Arm two, sharing arm one's gate and threshold rather than resolving its
+    own: two resolutions of one claim gate inside one response is how a page
+    ends up labelling two rows against different evidence."""
+    items_sql, count_sql = build_held_articles_query(project)
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    if project is not None:
+        params["project"] = project
+
+    rows = (await session.execute(text(items_sql), params)).mappings().all()
+    items = [_article_item(row, gate=gate, threshold=threshold) for row in rows]
 
     count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
     total = (await session.execute(text(count_sql), count_params)).scalar_one()

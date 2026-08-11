@@ -612,3 +612,217 @@ class TestThePass:
         )
 
         assert (outcome.stale, outcome.attempted, outcome.failed) == (0, 0, 0)
+
+
+# ─────────── the held marker: attention without withholding (§4.4) ─────────
+#
+# Doc 09 §4.4 as amended 2026-08-12. The clause "it routes to review" was
+# unimplementable as written — routing the *draft* means storing it, and
+# storing it means superseding the article the same sentence protects — so what
+# routes is the **subject**: the standing article is marked, and deliberately
+# not withheld.
+
+
+async def _held_columns(session, article_id: str) -> dict:
+    return (
+        await session.execute(
+            text(
+                "SELECT status, review_state, resynthesis_held_at, "
+                "resynthesis_held_coverage, resynthesis_held_hash "
+                "FROM knowledge_articles WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": article_id},
+        )
+    ).mappings().one()
+
+
+class TestTheHeldMarker:
+    async def test_a_held_draft_marks_the_standing_article(self, session):
+        prior_id, stale, fact_ids = await _standing(session)
+
+        new_id, reason = await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+
+        assert (new_id, reason) == (None, "held")
+        row = await _held_columns(session, prior_id)
+        assert row["resynthesis_held_at"] is not None
+        assert row["resynthesis_held_coverage"] == pytest.approx(0.0, abs=1e-6)
+        assert row["resynthesis_held_hash"] == stale.current_hash
+
+    async def test_it_never_touches_review_state_or_status(self, session):
+        """The whole reason the marker exists rather than `review_state`: doc 13
+        §5.2 withholds an open article from the corroborated view, so setting it
+        here would take a *good* article from readers because a *different*
+        draft could not be grounded."""
+        prior_id, stale, fact_ids = await _standing(session)
+
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+
+        row = await _held_columns(session, prior_id)
+        assert row["review_state"] is None
+        assert row["status"] == "corroborated"
+
+    async def test_the_marked_article_is_still_served(self, session):
+        """The non-withholding proof, and the article twin of the review
+        queue's a-queued-fact-stays-retrievable property."""
+        from app.services import articles_read
+
+        prior_id, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+
+        items, total = await articles_read.list_articles(session, project=PROJECT)
+
+        assert total == 1
+        assert items[0]["id"] == prior_id
+        assert items[0]["resynthesis_held_at"] is not None
+        # The badge is untouched: the finding is about the subject's verified
+        # set, not about this prose.
+        assert items[0]["status"] == "candidate"
+
+    async def test_it_journals_the_measurement_and_never_the_prose(self, session):
+        prior_id, stale, fact_ids = await _standing(session)
+
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+
+        payload = (
+            await session.execute(
+                text(
+                    "SELECT payload FROM events WHERE object_id = CAST(:id AS uuid) "
+                    "AND event_type = 'resynthesis_held'"
+                ),
+                {"id": prior_id},
+            )
+        ).scalars().one()
+        assert payload["coverage"] == pytest.approx(0.0, abs=1e-6)
+        assert payload["threshold"] == pytest.approx(0.95, abs=1e-6)
+        assert payload["fact_set_hash"] == stale.current_hash
+        # Write-time minimization: the held draft's text exists nowhere.
+        assert "A re-synthesised claim." not in json.dumps(payload)
+
+    async def test_the_hold_opened_once_while_the_coverage_refreshes(self, session):
+        """`_at` is when the hold opened — T2.112's `since` semantics — while
+        the measurement and the fact set it was taken against refresh, which is
+        what tells "still failing on the same knowledge" from "failing again on
+        knowledge that moved"."""
+        prior_id, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+        first = await _held_columns(session, prior_id)
+
+        await _fact(session)
+        moved = (await ast_.stale_articles(session, project=PROJECT))[0]
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), moved,
+            project=PROJECT, now=T0 + timedelta(days=1),
+        )
+        second = await _held_columns(session, prior_id)
+
+        assert second["resynthesis_held_at"] == first["resynthesis_held_at"]
+        assert second["resynthesis_held_hash"] != first["resynthesis_held_hash"]
+
+    async def test_a_successful_resynthesis_clears_the_marker(self, session):
+        """Exit one. The retirement and the clear are one statement: a
+        superseded row still carrying a marker would sit in the queue's held
+        lane forever, describing an article no reader can reach."""
+        prior_id, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+        assert (await _held_columns(session, prior_id))["resynthesis_held_at"]
+
+        await _fact(session)
+        moved = (await ast_.stale_articles(session, project=PROJECT))[0]
+        new_id, _reason = await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("entailed"), moved,
+            project=PROJECT, now=T0 + timedelta(days=2),
+        )
+
+        assert new_id is not None
+        row = await _held_columns(session, prior_id)
+        assert row["status"] == "superseded"
+        assert row["resynthesis_held_at"] is None
+        assert row["resynthesis_held_hash"] is None
+
+    async def test_the_tick_clears_a_marker_whose_subject_stopped_being_stale(
+        self, session, factory
+    ):
+        """Exit three, the one no re-synthesis performs: the verified set
+        reverted to what the standing article was built from, so the finding
+        describes nothing."""
+        prior_id, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+        # The article's stored hash now matches the live set: not stale.
+        await session.execute(
+            text(
+                "UPDATE knowledge_articles SET fact_set_hash = CAST(:h AS text) "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"h": await _current_hash(session), "id": prior_id},
+        )
+        await session.commit()
+
+        outcome = await ast_.run_article_resynthesis(
+            factory, _StubLLM(fact_ids), projects=[PROJECT], now=NOW,
+        )
+
+        assert outcome.cleared == 1
+        assert (await _held_columns(session, prior_id))["resynthesis_held_at"] is None
+
+    async def test_the_same_fact_set_is_not_re_attempted(self, session, factory):
+        """The retry policy the routing licenses. Before it, a chronically
+        ungroundable subject paid one draft plus a full entailment pass every
+        tick, forever, discarded, with an in-memory counter as its only trace."""
+        _prior, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+        await session.commit()
+
+        outcome = await ast_.run_article_resynthesis(
+            factory, _StubLLM(fact_ids), projects=[PROJECT],
+            debounce_hours=1, now=NOW + timedelta(hours=48),
+        )
+
+        assert outcome.held_suppressed == 1
+        assert outcome.attempted == 0
+
+    async def test_a_moved_fact_set_is_attempted_again(self, session, factory):
+        """...and the suppression is keyed on the knowledge, not on a clock, so
+        it lifts exactly when there is something new to attempt."""
+        _prior, stale, fact_ids = await _standing(session)
+        await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("unsupported"), stale,
+            project=PROJECT, now=T0,
+        )
+        await _fact(session)
+        await session.commit()
+
+        first = await ast_.run_article_resynthesis(
+            factory, _StubLLM(fact_ids), projects=[PROJECT],
+            debounce_hours=1, now=NOW,
+        )
+        second = await ast_.run_article_resynthesis(
+            factory, _StubLLM(fact_ids), projects=[PROJECT],
+            debounce_hours=1, now=NOW + timedelta(hours=48),
+        )
+
+        assert first.held_suppressed == 0
+        assert second.attempted == 1

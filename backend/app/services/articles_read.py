@@ -77,6 +77,8 @@ _LIST_SQL = """
            a.applies_when,
            a.learned_in,
            a.superseded_by,
+           a.resynthesis_held_at,
+           a.resynthesis_held_coverage,
            a.synthesized_at,
            a.created_at,
            left(a.content, {excerpt}) AS excerpt
@@ -107,6 +109,8 @@ _DETAIL_SQL = text(
            a.applies_when,
            a.learned_in,
            a.superseded_by,
+           a.resynthesis_held_at,
+           a.resynthesis_held_coverage,
            a.synthesized_at,
            a.created_at
     FROM knowledge_articles a
@@ -249,6 +253,11 @@ def _item(row: Any, *, gate, stale: bool) -> dict[str, Any]:
         "superseded_by": (
             str(row["superseded_by"]) if row["superseded_by"] is not None else None
         ),
+        # Doc 09 §4.4's held marker. Served beside the stale label so a reader
+        # can tell "refresh pending" from "refresh attempted and held", which
+        # the bare stale label cannot express.
+        "resynthesis_held_at": row["resynthesis_held_at"],
+        "resynthesis_held_coverage": row["resynthesis_held_coverage"],
         "applies_when": row["applies_when"],
         "learned_in": list(row["learned_in"] or []),
         "synthesized_at": row["synthesized_at"],

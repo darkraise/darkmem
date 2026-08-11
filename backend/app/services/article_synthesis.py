@@ -70,7 +70,7 @@ from app.services.article_eligibility import (
 from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
 from app.services.articles_read import subject_name_of
 from app.services.embedder_registry import child_table
-from app.services.events import ARTICLE_STALE, record_event
+from app.services.events import ARTICLE_STALE, RESYNTHESIS_HELD, record_event
 from app.services.pin_suggestions import decode_subject_soft_key
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -1299,9 +1299,44 @@ _IS_MEASURED_SQL = text(
     """
 )
 
+# The retirement and the marker clear are ONE statement, the same discipline
+# the ladder uses writing `contradiction_suspected_at` alongside
+# `verification_status`: a superseded row carrying a held marker would list in
+# the review queue's held lane forever, describing an article no reader can
+# reach, and splitting these into two statements is all it takes to get there.
 _SUPERSEDE_SQL = text(
-    "UPDATE knowledge_articles SET status = 'superseded' "
+    "UPDATE knowledge_articles "
+    "SET status = 'superseded', "
+    "    resynthesis_held_at = NULL, "
+    "    resynthesis_held_coverage = NULL, "
+    "    resynthesis_held_hash = NULL "
     "WHERE id = CAST(:id AS uuid)"
+)
+
+# The held marker itself. `_at` uses COALESCE so it names when the hold
+# **opened** — T2.112's `since` semantics — while the measurement and the fact
+# set it was taken against refresh on every attempt, which is what lets a
+# reviewer tell "still failing on the same knowledge" from "failing again on
+# knowledge that has since moved".
+_MARK_HELD_SQL = text(
+    "UPDATE knowledge_articles "
+    "SET resynthesis_held_at = COALESCE(resynthesis_held_at, CAST(:now AS timestamptz)), "
+    "    resynthesis_held_coverage = CAST(:coverage AS real), "
+    "    resynthesis_held_hash = CAST(:hash AS text) "
+    "WHERE id = CAST(:id AS uuid)"
+)
+
+# The third exit, and the only one no re-synthesis performs: the subject's
+# verified set reverted to what the standing article was built from, so the
+# finding no longer describes anything. Cleared by the tick that already
+# computes staleness for every live article, so the marker cannot outlive its
+# condition.
+_CLEAR_HELD_SQL = text(
+    "UPDATE knowledge_articles "
+    "SET resynthesis_held_at = NULL, "
+    "    resynthesis_held_coverage = NULL, "
+    "    resynthesis_held_hash = NULL "
+    "WHERE id = CAST(:id AS uuid) AND resynthesis_held_at IS NOT NULL"
 )
 
 _POINT_SQL = text(
@@ -1454,12 +1489,133 @@ class ResynthesisOutcome:
     attempted: int = 0
     resynthesised: int = 0
     held: int = 0
+    # Attempts not made because this exact verified set already failed to
+    # ground one and a human is already looking at the marker. Its own count
+    # because it is the visible form of a spend that used to be invisible: the
+    # number that used to be a daily draft-plus-entailment bill per chronically
+    # ungroundable subject.
+    held_suppressed: int = 0
+    # Held markers retired because their subject stopped being stale.
+    cleared: int = 0
     protected: int = 0
     skipped: int = 0
     refused: int = 0
     failed: int = 0
     unmeasured: int = 0
     last_project: str | None = None
+
+
+_HELD_MARKED_SQL = text(
+    """
+    SELECT id, resynthesis_held_hash
+    FROM knowledge_articles
+    WHERE project = CAST(:project AS text)
+      AND status <> 'superseded'
+      AND resynthesis_held_at IS NOT NULL
+    """
+)
+
+
+async def _clear_stale_free_markers(
+    session: AsyncSession, *, project: str, still_stale: set[str]
+) -> int:
+    """Clear held markers on articles that are no longer stale. Returns count."""
+    rows = (
+        await session.execute(_HELD_MARKED_SQL, {"project": project})
+    ).mappings().all()
+    cleared = 0
+    for row in rows:
+        if str(row["id"]) in still_stale:
+            continue
+        await session.execute(_CLEAR_HELD_SQL, {"id": str(row["id"])})
+        cleared += 1
+    return cleared
+
+
+async def _held_on_this_fact_set(
+    session: AsyncSession, article: StaleArticle
+) -> bool:
+    """Whether this exact verified set already failed to ground an article.
+
+    Keyed on the hash rather than on time, because the question a retry answers
+    is "can this knowledge be grounded", and the knowledge is what the hash
+    names. A time-based floor would re-roll the same draft against the same
+    facts hoping the model wanders over the bar, which is a lottery paid for
+    daily; the hash resumes attempts exactly when there is something new to
+    attempt.
+    """
+    held_hash = (
+        await session.execute(
+            text(
+                "SELECT resynthesis_held_hash FROM knowledge_articles "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": article.article_id},
+        )
+    ).scalar()
+    return held_hash is not None and held_hash == article.current_hash
+
+
+async def _mark_held(
+    session: AsyncSession,
+    article: StaleArticle,
+    *,
+    result: "CoverageResult",
+    project: str,
+    now: datetime | None = None,
+) -> None:
+    """Route the *subject* to review, and keep the standing article servable.
+
+    Doc 09 §4.4 as amended 2026-08-12. The failed draft is discarded — prose
+    whose own measurement says the verified facts do not entail it has no place
+    in the vault under any status — and what a human is shown instead is the
+    standing article, marked.
+
+    **`review_state` is deliberately not touched.** Doc 13 §5.2 makes an
+    article with `review_state='open'` withheld from the corroborated view, so
+    setting it here would take a *good* article away from readers because a
+    *different* draft could not be grounded — the exact harm §4.4's sentence
+    exists to prevent, reached by trying to obey it.
+
+    Ordinary journal contract (log a `False`, never raise): the marker columns
+    are the primary surface and the next attempt rewrites them, and no doc 17
+    denominator reads this stream — the strict `JournalWriteFailed` contract is
+    for rows whose loss silently shrinks a measurement.
+    """
+    from app.services.claim_entailment import ClaimVerdict, get_coverage_threshold
+
+    stamp = now or datetime.now(timezone.utc)
+    await session.execute(
+        _MARK_HELD_SQL,
+        {
+            "id": article.article_id,
+            "now": stamp,
+            "coverage": result.coverage,
+            "hash": article.current_hash,
+        },
+    )
+    landed = await record_event(
+        session,
+        event_type=RESYNTHESIS_HELD,
+        object_type=ARTICLE_OBJECT_TYPE,
+        object_id=article.article_id,
+        project=project,
+        payload={
+            "subject_key": article.subject_key,
+            "coverage": result.coverage,
+            "threshold": await get_coverage_threshold(session),
+            "claims": len(result.verdicts),
+            "entailed": len(result.entailed),
+            "uncited": result.has_uncited,
+            "fact_set_hash": article.current_hash,
+        },
+    )
+    if not landed:
+        logger.warning(
+            "article_staleness: held marker for %s not journalled; the columns "
+            "carry the finding and the queue still lists it",
+            article.article_id,
+        )
 
 
 async def _article_is_measured(session: AsyncSession, article_id: str) -> bool:
@@ -1525,6 +1681,13 @@ async def resynthesise_subject(
             fact_text={fact.id: fact.fact for fact in facts},
         )
         if result.outcome is CoverageOutcome.HELD:
+            await _mark_held(
+                session,
+                article,
+                result=result,
+                project=project,
+                now=now,
+            )
             return None, "held"
 
     # An unmeasured draft may replace an unmeasured article and nothing else
@@ -1620,8 +1783,30 @@ async def run_article_resynthesis(
             stale = await stale_articles(session, project=project)
             outcome.stale += len(stale)
 
+            # The marker's third exit, and the only one no re-synthesis
+            # performs: a subject whose verified set reverted to what the
+            # standing article was built from is no longer stale, so the held
+            # finding describes nothing. Cleared here because this is the pass
+            # that already knows which live articles are stale — the marker
+            # must not outlive its condition, and nothing else looks.
+            outcome.cleared += await _clear_stale_free_markers(
+                session, project=project, still_stale={a.article_id for a in stale}
+            )
+
             ready: list[StaleArticle] = []
             for article in stale:
+                # The retry policy the routing licenses (§3.5). Before it, a
+                # chronically ungroundable subject re-attempted every tick
+                # forever — one draft call plus one entailment call per claim,
+                # daily, discarded, with an in-memory counter as its only
+                # trace. That loop was defensible only while the tick was the
+                # sole escalation path; with a human now looking at the marker,
+                # re-paying for the same answer about the same fact set is
+                # spend without information. It resumes the moment the set
+                # moves, because the hash it is keyed on changes with it.
+                if await _held_on_this_fact_set(session, article):
+                    outcome.held_suppressed += 1
+                    continue
                 if await staleness_settled(
                     session,
                     article,

@@ -278,6 +278,18 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
         </span>
       </div>
       <p className="text-sm font-semibold">{article.title ?? article.subject_key}</p>
+      {article.resynthesis_held_at && (
+        /* Queued, not withheld. The row says what was measured so a reviewer
+           sees the finding rather than only its name — and says plainly that
+           the article is still being served, because a queue entry that looks
+           like a suppression is the confusion this marker exists to avoid. */
+        <p className="text-warning text-sm">
+          re-synthesis attempted and held
+          {article.resynthesis_held_coverage !== null &&
+            ` at claim-support coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
+          {" — the standing article is still served, labelled stale; its subject's verified facts could not ground a replacement."}
+        </p>
+      )}
       {article.content_preview && (
         <p className="text-muted-foreground text-sm">{article.content_preview}</p>
       )}

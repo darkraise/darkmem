@@ -73,6 +73,8 @@ const ARTICLE = {
   content: CONTENT,
   citations: [CITATION],
   supersedes: null,
+  resynthesis_held_at: null,
+  resynthesis_held_coverage: null,
 }
 
 function serve(article: unknown) {
@@ -211,6 +213,23 @@ describe("ArticleDetailLive", () => {
 
     expect(await screen.findByText(/superseded_by →/)).toBeInTheDocument()
     expect(screen.getByText(/supersedes article 33333333/)).toBeInTheDocument()
+  })
+
+  it("shows a held re-synthesis beside the stale label, in both modes", async () => {
+    // The bare stale label cannot say "we tried and could not re-ground this",
+    // which is the gap doc 09 §4.4's amendment closes. Both modes, because it
+    // is an honesty signal rather than a fingerprint.
+    serve({ ...ARTICLE, stale: true, resynthesis_held_at: "2026-08-12T00:00:00Z", resynthesis_held_coverage: 0.42 })
+    useDetailLevel.setState({ level: "simple" })
+
+    render(<ArticleDetailLive articleId={ARTICLE.id} />, { wrapper })
+
+    expect(
+      await screen.findByText(/a re-synthesis was attempted and held at coverage 0\.42/i),
+    ).toBeInTheDocument()
+    // …and it is not withheld: the prose and the badge are still there.
+    expect(screen.getByText(/It runs in docker/)).toBeInTheDocument()
+    expect(screen.getByText("candidate")).toBeInTheDocument()
   })
 
   it("says an article with no citations has none rather than implying grounding", async () => {

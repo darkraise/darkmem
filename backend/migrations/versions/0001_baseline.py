@@ -772,6 +772,17 @@ def _pass_two() -> None:
             fact_set_hash  TEXT,
             review_state   TEXT,
             superseded_by  UUID REFERENCES knowledge_articles(id),
+            -- The held-re-synthesis marker (doc 09 §4.4 as amended
+            -- 2026-08-12). Attention without withholding: a re-synthesis
+            -- measured below the coverage bar marks the standing article so a
+            -- human sees the subject, and deliberately does NOT touch
+            -- `review_state`, which withholds. `_at` is when the hold opened
+            -- and does not move while it is continuously held (doc 08 §4.2's
+            -- `contradiction_suspected_at` semantics); the coverage and the
+            -- hash it was measured against refresh on every held attempt.
+            resynthesis_held_at       TIMESTAMPTZ,
+            resynthesis_held_coverage REAL,
+            resynthesis_held_hash     TEXT,
             created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
             CONSTRAINT knowledge_articles_pkey PRIMARY KEY (id),
             CONSTRAINT knowledge_articles_status_check
@@ -788,6 +799,15 @@ def _pass_two() -> None:
     op.execute(
         "CREATE INDEX ix_knowledge_articles_review ON knowledge_articles (review_state) "
         "WHERE review_state = 'open'"
+    )
+    # The held lane's own partial index. Deliberately not folded into the
+    # `review_state = 'open'` index above: the queue's two article arms are
+    # separate statements with separate predicates, and widening either
+    # predicate to cover both loses the partial index for the arm it was built
+    # for.
+    op.execute(
+        "CREATE INDEX ix_knowledge_articles_resynthesis_held ON knowledge_articles "
+        "(resynthesis_held_at) WHERE resynthesis_held_at IS NOT NULL"
     )
 
     # fact_id takes a HARD FK — the deliberate contrast with §8.3's soft

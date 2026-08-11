@@ -44,6 +44,11 @@ export interface ArticleRow {
   review_state: string | null
   fact_set_hash: string | null
   stale: boolean
+  /** A re-synthesis of this subject was attempted and held below the coverage
+   *  bar (doc 09 §4.4, amended 2026-08-12). Attention, never suppression: the
+   *  article keeps its status, its badge and its place in retrieval. */
+  resynthesis_held_at: string | null
+  resynthesis_held_coverage: number | null
   superseded_by: string | null
   applies_when: Record<string, unknown> | null
   learned_in: string[]

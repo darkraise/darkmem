@@ -44,6 +44,11 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   // precedes journals `superseded` into this same tab. Nothing about the
   // article's grounding is being asserted.
   article_stale: "consolidation",
+  // A re-synthesis measured below the coverage bar. Verification rather than
+  // consolidation: unlike `article_stale`, which says the knowledge moved,
+  // this row carries a *measurement* of whether prose is entailed by facts,
+  // which is the question the verification tab collects.
+  resynthesis_held: "verification",
   deprecated: "consolidation",
   expired: "consolidation",
   invalidated: "consolidation",

@@ -84,6 +84,11 @@ export interface ReviewArticleRowData {
   title: string | null
   status: string
   reason: string
+  /** The held-re-synthesis finding, when the row is queued for one (doc 09
+   *  §4.4, amended 2026-08-12). Null on an ordinary open-review row, and null
+   *  in demo mode, whose fixture predates the marker. */
+  resynthesis_held_at: string | null
+  resynthesis_held_coverage: number | null
   content_preview: string | null
   synthesized_at: string | null
   created_at: string
@@ -161,6 +166,8 @@ function articleFromApi(item: ReviewQueueArticleItem): ReviewArticleRowData {
     title: item.title,
     status: item.status,
     reason: item.reason,
+    resynthesis_held_at: item.resynthesis_held_at,
+    resynthesis_held_coverage: item.resynthesis_held_coverage,
     content_preview: item.content_preview,
     synthesized_at: item.synthesized_at,
     created_at: item.created_at,
@@ -205,6 +212,10 @@ function articleFromDemo(item: DemoReviewItem): ReviewArticleRowData {
     project: DEMO_PROJECT,
     subject_key: item.title,
     title: item.title,
+    // The demo fixture predates the held marker and mints none: showing a
+    // fabricated held finding would assert a measurement nothing took.
+    resynthesis_held_at: null,
+    resynthesis_held_coverage: null,
     status: item.badge ?? "candidate",
     reason: item.badge === "disputed" ? "disputed" : "unspecified",
     content_preview: item.note ?? item.claim_line ?? null,

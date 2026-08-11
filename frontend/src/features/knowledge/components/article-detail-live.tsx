@@ -176,6 +176,17 @@ function Detail({ article }: { article: ArticleDetail }) {
               synthesised before the latest verified change
             </span>
           )}
+          {/* The bare stale label cannot distinguish "refresh pending" from
+              "refresh attempted and failed", which is the invariant-14 gap the
+              §4.4 amendment names. Rendered in both detail levels: it is an
+              honesty signal about what the system tried, not a fingerprint. */}
+          {article.resynthesis_held_at && (
+            <span className="text-warning text-sm">
+              a re-synthesis was attempted and held
+              {article.resynthesis_held_coverage !== null &&
+                ` at coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
+            </span>
+          )}
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             article {article.id.slice(0, 8)}
           </span>

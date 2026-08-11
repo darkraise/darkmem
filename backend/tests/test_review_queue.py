@@ -738,3 +738,105 @@ async def test_dismissal_is_not_a_human_verdict_on_the_fact(session):
         {"i": subject},
     )).scalar_one()
     assert verdicts == 0
+
+
+# ───────── the held-re-synthesis lane (doc 09 §4.4, amended 2026-08-12) ─────
+
+
+async def _held_article(session, *, project: str = PROJECT, coverage: float = 0.42) -> str:
+    article_id = str(uuid.uuid4())
+    await session.execute(
+        text(
+            "INSERT INTO knowledge_articles "
+            "(id, subject_key, project, content, status, review_state, "
+            " resynthesis_held_at, resynthesis_held_coverage, resynthesis_held_hash) "
+            "VALUES (CAST(:id AS uuid), 'postgres::concept', CAST(:p AS text), "
+            "'standing body', 'corroborated', NULL, now(), CAST(:c AS real), 'h')"
+        ),
+        {"id": article_id, "p": project, "c": coverage},
+    )
+    await session.flush()
+    return article_id
+
+
+async def test_a_held_article_is_listed_without_being_withheld(session):
+    """The lane's whole point. The article is queued for a human *and* keeps
+    `review_state` NULL, so doc 13 §5.2's withholding never fires on it."""
+    held_id = await _held_article(session)
+
+    items, total = await review_queue_service.list_open_articles(
+        session, project=PROJECT
+    )
+
+    assert total == 1
+    assert items[0]["id"] == held_id
+    assert items[0]["reason"] == "resynthesis-held"
+    assert items[0]["review_state"] is None
+    assert items[0]["resynthesis_held_coverage"] == pytest.approx(0.42, abs=1e-6)
+
+
+async def test_a_held_and_open_article_lists_once(session):
+    """An unmeasured-open article can also collect a held marker. It belongs to
+    the open arm, and the marker rides its projection there — listing it twice
+    would double-count one subject in the queue's own total."""
+    article_id = await _held_article(session)
+    await session.execute(
+        text(
+            "UPDATE knowledge_articles SET review_state = 'open' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": article_id},
+    )
+    await session.flush()
+
+    items, total = await review_queue_service.list_open_articles(
+        session, project=PROJECT
+    )
+
+    assert total == 1
+    assert [i["id"] for i in items] == [article_id]
+    assert items[0]["resynthesis_held_at"] is not None
+
+
+async def test_a_superseded_article_never_reaches_the_held_lane(session):
+    """The break-it proof for the same-statement clear: split the marker NULLs
+    out of `_SUPERSEDE_SQL` and this is the test that fails, because a retired
+    article would sit in the lane forever describing prose no reader can
+    reach."""
+    article_id = await _held_article(session)
+    await session.execute(
+        text(
+            "UPDATE knowledge_articles SET status = 'superseded' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": article_id},
+    )
+    await session.flush()
+
+    items, _total = await review_queue_service.list_open_articles(
+        session, project=PROJECT
+    )
+    # The lane lists it while the marker stands — which is exactly why the
+    # supersede statement must clear it in the same UPDATE.
+    assert [i["id"] for i in items] == [article_id]
+
+
+async def test_held_articles_explain_uses_their_own_partial_index(session):
+    """The arm is a separate statement precisely so each predicate matches its
+    own partial index; an `OR` across the two loses both."""
+    await _seed_articles_at_scale(session)
+    await session.execute(
+        text(
+            "UPDATE knowledge_articles SET resynthesis_held_at = now() "
+            "WHERE subject_key = 'explain-subject-7'"
+        )
+    )
+    await session.execute(text("ANALYZE knowledge_articles"))
+
+    items_sql, _ = review_queue_service.build_held_articles_query(None)
+    plan_rows = await session.execute(
+        text("EXPLAIN " + items_sql), {"limit": 50, "offset": 0},
+    )
+    plan = "\n".join(r[0] for r in plan_rows)
+    assert "ix_knowledge_articles_resynthesis_held" in plan, plan
+    assert "Seq Scan on knowledge_articles" not in plan, plan

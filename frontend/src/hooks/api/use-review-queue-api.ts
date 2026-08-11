@@ -144,6 +144,13 @@ export interface ReviewQueueArticleItem {
   fact_set_hash: string | null
   review_state: string | null
   reason: string
+  /** The held-re-synthesis finding (doc 09 §4.4, amended 2026-08-12). Present
+   *  on a row queued *without* being withheld: the article keeps its badge and
+   *  its place in retrieval, and what is queued is the subject. All three null
+   *  on an ordinary open-review row. */
+  resynthesis_held_at: string | null
+  resynthesis_held_coverage: number | null
+  resynthesis_held_hash: string | null
   content_preview: string | null
   synthesized_at: string | null
   created_at: string

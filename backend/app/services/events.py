@@ -88,6 +88,17 @@ CITATION_STALE = "citation_stale"
 # schema holds, and it is one the doc already required to be written.
 ARTICLE_STALE = "article_stale"
 
+# Doc 09 §4.4 as amended 2026-08-12: a re-synthesis measured below the coverage
+# bar. The row is honestly *about* the standing article — "an attempted
+# replacement for this article was held" — and carries measurements only, never
+# the held prose, which is discarded.
+#
+# Its own type rather than a `verified` row, because the standing article's
+# prose was **not** what was measured: a `verified` row here would poison any
+# later article-side metric SQL over that stream, which is the same reasoning
+# that keeps `contradiction_dismissed` out of `HUMAN_VERDICTS`.
+RESYNTHESIS_HELD = "resynthesis_held"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -106,6 +117,7 @@ EVENT_TYPES: list[str] = [
     "sources_changed",
     CITATION_STALE,
     ARTICLE_STALE,
+    RESYNTHESIS_HELD,
     CONTRADICTION_SCANNED,
     CONTRADICTION_DISMISSED,
     "document_filed",

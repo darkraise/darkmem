@@ -114,6 +114,14 @@ class ReviewQueueArticleItem(BaseModel):
     fact_set_hash: str | None
     review_state: str | None
     reason: str
+    # The held-re-synthesis finding (doc 09 §4.4 as amended 2026-08-12), served
+    # so a reviewer sees the measurement and not only its reason string. All
+    # three NULL means no re-synthesis of this subject has been held; a lane
+    # row carrying them is listed *without* being withheld, which is the whole
+    # point of the marker.
+    resynthesis_held_at: datetime | None = None
+    resynthesis_held_coverage: float | None = None
+    resynthesis_held_hash: str | None = None
     content_preview: str | None
     synthesized_at: datetime | None
     created_at: datetime

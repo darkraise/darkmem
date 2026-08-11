@@ -45,6 +45,12 @@ class ArticleRow(BaseModel):
     review_state: str | None
     fact_set_hash: str | None
     stale: bool
+    # A re-synthesis of this subject was attempted and held below the coverage
+    # bar. The article is **not** withheld for it — it keeps its status, badge
+    # and place in retrieval — so this is an attention signal beside the stale
+    # label, never a suppression.
+    resynthesis_held_at: datetime | None = None
+    resynthesis_held_coverage: float | None = None
     superseded_by: str | None
     applies_when: dict[str, Any] | None
     learned_in: list[str]
