@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.auth import require_auth
 from app.database import get_session
 from app.models.config import Config
-from app.services.inject_adapters import get_registry
+from app.services.inject_adapters import REFRESH_WATCH, get_registry
 from app.services.inject_journal import record_inject_curbed
 
 router = APIRouter(prefix="/api/v1/distribution", tags=["distribution"])
@@ -69,6 +69,12 @@ class DistributionTarget(BaseModel):
     context_file: str
     mcp_config: str
     refresh: str
+    # Whether this target is *actually* watched, which `refresh` alone does not
+    # answer: an adapter declaring `watch` while the install has watch off is
+    # refused by `resolve_adapter`, so a screen reading the raw field would
+    # report a cadence the writer would not serve. Computed here, beside the
+    # policy read, so the tab and the door agree by construction.
+    watched: bool = False
 
 
 class RejectedTarget(BaseModel):
@@ -106,6 +112,7 @@ async def get_distribution(
     screen that agrees with itself and not with the system.
     """
     adapters, rejected = await get_registry(session)
+    policy = await _policy(session)
     return DistributionState(
         targets=[
             DistributionTarget(
@@ -113,10 +120,11 @@ async def get_distribution(
                 context_file=adapter.context_file,
                 mcp_config=adapter.mcp_config,
                 refresh=adapter.refresh,
+                watched=policy.watch_enabled and adapter.refresh == REFRESH_WATCH,
             )
             for adapter in sorted(adapters.values(), key=lambda a: a.tool)
         ],
-        policy=await _policy(session),
+        policy=policy,
         rejected=[
             RejectedTarget(tool=tool, reason=reason)
             for tool, reason in sorted(rejected.items())

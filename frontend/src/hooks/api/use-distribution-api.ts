@@ -8,18 +8,30 @@ export interface DistributionTarget {
   context_file: string
   mcp_config: string
   refresh: string
+  /** Whether this target is actually watched. Server-computed, because
+   *  `refresh` alone does not answer it: an adapter declaring `watch` on an
+   *  install with watch off is refused by `resolve_adapter`, so a screen
+   *  reading the raw field would report a cadence the writer would not serve. */
+  watched: boolean
 }
 
 export interface DistributionPolicy {
   token_budget: number
   /**
-   * The curb. One flag, stored server-side, that will stop every target at
-   * once. It has no enforcer yet: the inject writer is T3.10's and is held by
-   * G-D, so the row's only reader today is the GET that serves this shape
-   * back (`backend/app/api/routes/distribution.py` says the same). Setting it
-   * is recorded and journalled; it stops nothing, because nothing pushes.
+   * The curb. One flag, stored server-side, that stops every target at once.
+   *
+   * It **has** an enforcer since T4.06: `inject_watch.watch_refresh` reads it
+   * fresh on every refresh and refuses while it is on, which is what makes
+   * "takes effect immediately" true rather than hopeful. It is enforced
+   * server-side because the client is the thing being curbed. The
+   * session-start path still has no HTTP door, so the curb governs the watch
+   * cadence today and will govern that one the moment it has a caller.
    */
   curbed: boolean
+  /** Watch mode (T4.06, doc 15 §3.5), off by default. Permits the cadence;
+   *  it does not impose it — a target refreshes on watch only if its own
+   *  adapter asks for that cadence. */
+  watch_enabled: boolean
 }
 
 /** A configured tool the registry refused, and why. Served rather than

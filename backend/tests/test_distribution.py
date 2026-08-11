@@ -330,3 +330,55 @@ class TestARefusedTargetIsNamedOnTheWire:
 
         assert "stringly" not in [t["tool"] for t in state["targets"]]
         assert "still in force" not in state["rejected"][0]["reason"]
+
+
+class TestWatchStatePerTarget:
+    """T4.08: the tab shows whether a target is watched, and `refresh` alone
+    does not answer that — an adapter declaring `watch` on an install that has
+    watch off is refused by `resolve_adapter`, so a screen reading the raw
+    field would report a cadence the writer would not serve."""
+
+    async def test_a_target_is_not_watched_while_the_install_has_watch_off(
+        self, client, auth_headers, session
+    ):
+        await _adapters_config(
+            session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
+        )
+
+        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
+
+        target = next(t for t in state["targets"] if t["tool"] == "claude-code")
+        assert target["refresh"] == "watch"
+        assert target["watched"] is False
+
+    async def test_it_is_watched_once_the_install_enables_it(
+        self, client, auth_headers, session
+    ):
+        await _adapters_config(
+            session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
+        )
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 2000, "curbed": False, "watch_enabled": True},
+            headers=auth_headers,
+        )
+
+        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
+
+        target = next(t for t in state["targets"] if t["tool"] == "claude-code")
+        assert target["watched"] is True
+
+    async def test_a_session_start_target_stays_unwatched_with_the_flag_on(
+        self, client, auth_headers
+    ):
+        """The flag permits watch; it does not impose it. A target that never
+        asked for the cadence is still refreshed at session start."""
+        await client.put(
+            "/api/v1/distribution/policy",
+            json={"token_budget": 2000, "curbed": False, "watch_enabled": True},
+            headers=auth_headers,
+        )
+
+        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
+
+        assert all(t["watched"] is False for t in state["targets"])

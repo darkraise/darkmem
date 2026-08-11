@@ -2,6 +2,7 @@ import {
   Bookmark,
   CircleOff,
   Clock,
+  Eye,
   FileText,
   Gauge,
   Plug,
@@ -20,7 +21,8 @@ import {
 } from "@/features/activity/components/module-surface"
 import { DEMO } from "@/lib/demo-flag"
 import { useDetailLevel } from "@/components/darkmem"
-import { useDistribution, useSetDistributionPolicy } from "@/hooks/api"
+import { useDistribution, useEvents, useSetDistributionPolicy } from "@/hooks/api"
+import { relativeTime } from "@/lib/format"
 import { useDemoDistribution } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { DemoDistClient } from "@/demo/types"
@@ -177,6 +179,94 @@ function TokenBudgetField({
   )
 }
 
+const RECENT_INJECT_LIMIT = 10
+
+/** The inject log, inline (T4.08).
+ *
+ * Two server-filtered queries rather than one page filtered here: a client
+ * that fetched every `system` event and kept the inject ones would under-report
+ * the moment the page bound truncated, and this list is the record doc 15 §7
+ * asks push to leave.
+ *
+ * A push and a curb are different facts, which is why they are different event
+ * types; they are merged here for display only, newest first, and each keeps
+ * its own sentence.
+ */
+function RecentInjects() {
+  const pushes = useEvents(
+    { event_type: "inject", limit: RECENT_INJECT_LIMIT },
+    { enabled: !DEMO },
+  )
+  const curbs = useEvents(
+    { event_type: "inject_curbed", limit: RECENT_INJECT_LIMIT },
+    { enabled: !DEMO },
+  )
+
+  const rows = [...(pushes.data?.items ?? []), ...(curbs.data?.items ?? [])]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, RECENT_INJECT_LIMIT)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <SectionHead icon={Clock}>
+        Inject log — which inject happened where
+      </SectionHead>
+      {pushes.isError || curbs.isError ? (
+        <p className="text-muted-foreground text-sm">
+          the inject log could not be read — this says nothing about whether a
+          push happened, only that the journal is unavailable
+        </p>
+      ) : pushes.isLoading || curbs.isLoading ? (
+        <p className="text-muted-foreground text-sm">loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-muted-foreground text-sm">
+          no inject has happened. Nothing else writes this log, so an empty one
+          means no context has been pushed from this instance — not that the
+          record is missing.
+        </p>
+      ) : (
+        rows.map((row) => {
+          const payload = row.payload as Record<string, unknown>
+          const tool = typeof payload.tool === "string" ? payload.tool : "unknown target"
+          const trigger =
+            typeof payload.trigger === "string" ? payload.trigger : null
+          const used =
+            typeof payload.tokens_used === "number" ? payload.tokens_used : null
+          const budget =
+            typeof payload.budget_tokens === "number" ? payload.budget_tokens : null
+          const items = (["fact_ids", "article_ids", "memory_ids"] as const).reduce(
+            (n, key) => n + (Array.isArray(payload[key]) ? (payload[key] as unknown[]).length : 0),
+            0,
+          )
+          return (
+            <div
+              key={row.id}
+              className="border-border flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
+            >
+              <b className="font-semibold">{tool}</b>
+              <span className="text-muted-foreground">
+                {row.event_type === "inject_curbed"
+                  ? "push curbed — nothing was pushed"
+                  : `${items} item${items === 1 ? "" : "s"}${
+                      used !== null && budget !== null
+                        ? ` · ${used.toLocaleString()} / ${budget.toLocaleString()} tokens`
+                        : ""
+                    }`}
+              </span>
+              {trigger && (
+                <span className="text-info">re-injected: {trigger} changed</span>
+              )}
+              <span className="text-muted-foreground ml-auto font-mono text-sm">
+                {relativeTime(row.created_at)}
+              </span>
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+}
+
 /** The live half: the registry's targets, the policy, and the one curb.
  *
  *  Separate from the demo panel below rather than merged, matching the split
@@ -222,12 +312,15 @@ function LiveDistribution() {
             {policy.curbed ? "Push is curbed" : "Push is live"}
           </p>
           <p className="text-muted-foreground text-sm">
-            One control, stored on the server: every target will stop at once.
-            Nothing pushes yet — the inject writer is not built, so this flag
-            has no enforcer to reach and curbing clears no block today. When
-            push lands it will clear each managed block to an empty marker pair
-            rather than deleting it, leaving the human&apos;s own file
-            untouched.
+            One control, stored on the server: every target stops at once. It
+            is <b className="font-semibold">enforced server-side</b> — a watch
+            refresh reads this flag fresh every time and refuses while it is
+            on, so a curb set here stops the next swap rather than the next
+            session. The client is the thing being curbed, which is why it is
+            not the client that decides. The session-start path has no caller
+            yet, so nothing pushes on that cadence to stop. When it lands it
+            will clear each managed block to an empty marker pair rather than
+            deleting it, leaving the human&apos;s own file untouched.
           </p>
         </div>
         <Switch
@@ -236,6 +329,32 @@ function LiveDistribution() {
           disabled={setPolicy.isPending}
           onCheckedChange={(on) =>
             setPolicy.mutate({ ...policy, curbed: !on })
+          }
+        />
+      </div>
+
+      <div className="border-border flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <Eye aria-hidden className="text-muted-foreground h-4 w-4" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold">
+            {policy.watch_enabled ? "Watch is on" : "Watch is off"}
+          </p>
+          <p className="text-muted-foreground text-sm">
+            Off by default. On, a target may re-inject as the project, the open
+            file or the declared context shifts, instead of at session start
+            only — and every refresh journals what shifted, so the swap is
+            visible below rather than silent. It{" "}
+            <b className="font-semibold">permits</b> the cadence and does not
+            impose it: a target watches only if its own adapter row asks for
+            it. The curb above outranks this.
+          </p>
+        </div>
+        <Switch
+          aria-label="Watch mode"
+          checked={policy.watch_enabled}
+          disabled={setPolicy.isPending}
+          onCheckedChange={(on) =>
+            setPolicy.mutate({ ...policy, watch_enabled: on })
           }
         />
       </div>
@@ -256,6 +375,24 @@ function LiveDistribution() {
               <code className="text-muted-foreground font-mono">
                 {target.context_file}
               </code>
+              {/* The effective state, not the declared one, and at both
+                  detail levels: whether a tool is being watched is what the
+                  human curbs, not a technical aside. */}
+              <span
+                className={cn(
+                  "rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
+                  target.watched
+                    ? "border-info/55 text-info"
+                    : "border-border text-muted-foreground",
+                )}
+              >
+                {target.watched ? "watched" : "session start"}
+              </span>
+              {target.refresh === "watch" && !target.watched && (
+                <span className="text-muted-foreground text-sm">
+                  this row asks for watch; the install has it off
+                </span>
+              )}
               {level === "advanced" && (
                 <span className="text-muted-foreground ml-auto font-mono text-sm">
                   mcp: {target.mcp_config} · refresh: {target.refresh}
@@ -279,6 +416,8 @@ function LiveDistribution() {
           ))}
         </div>
       )}
+
+      <RecentInjects />
 
       <div className="flex flex-col gap-2">
         <SectionHead icon={Gauge}>Inject content policy</SectionHead>
@@ -321,12 +460,6 @@ function NoLiveDistributionSignal() {
         connect &lt;tool&gt;</code>, which verifies over{" "}
         <code className="font-mono">/mcp</code> and writes the client&apos;s own
         config.
-      </p>
-      <SectionHead icon={Clock}>Inject log — which inject happened where</SectionHead>
-      <p className="text-muted-foreground text-sm">
-        no inject has happened. The selection and the managed-block writer are
-        T3.10&apos;s and are held by G-D, so there is no delivery to journal
-        yet; a curb you set here is recorded even so.
       </p>
       <SectionHead icon={Bookmark}>Render watermark</SectionHead>
       <p className="text-muted-foreground text-sm">

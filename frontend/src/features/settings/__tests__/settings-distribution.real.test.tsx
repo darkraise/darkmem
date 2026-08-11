@@ -39,15 +39,17 @@ const STATE = {
       context_file: "ALPHA_CONTEXT.md",
       mcp_config: ".alpha/mcp.json",
       refresh: "session_start",
+      watched: false,
     },
     {
       tool: "test-tool-beta",
       context_file: ".beta/rules/darkmem.mdc",
       mcp_config: ".beta/mcp.json",
       refresh: "session_start",
+      watched: false,
     },
   ],
-  policy: { token_budget: 2000, curbed: false },
+  policy: { token_budget: 2000, curbed: false, watch_enabled: false },
   rejected: [],
 }
 
@@ -91,7 +93,10 @@ describe("Distribution tab — live", () => {
     await liveHalfRendered()
 
     expect(screen.getByText(/nothing has completed the handshake/)).toBeInTheDocument()
-    expect(screen.getByText(/no inject has happened/)).toBeInTheDocument()
+    // The inject log moved into the live half with T4.08 — it reads the
+    // journal now, so its empty state is a measured absence rather than a
+    // placeholder, and it is awaited rather than read synchronously.
+    expect(await screen.findByText(/no inject has happened/)).toBeInTheDocument()
     expect(screen.queryByText(/handshake ok/)).not.toBeInTheDocument()
     expect(screen.queryByText(/last inject/)).not.toBeInTheDocument()
   })
@@ -267,5 +272,184 @@ describe("the Distribution tab is one a human can return to", () => {
     // could open and never get back to.
     const { resolveStoredTab } = await import("@/lib/settings-tab")
     expect(resolveStoredTab("distribution")).toBe("distribution")
+  })
+})
+
+// ─────────────── T4.08: watch + curb surfaces ───────────────
+
+describe("Distribution tab — watch and curb (T4.08)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useDetailLevel.setState({ level: "simple" })
+  })
+
+  /** Routes by path so the policy read and the inject log never answer for
+   *  each other — a single `mockResolvedValue` makes the log render the
+   *  distribution state, which is a passing test about nothing. */
+  function route(state: unknown, injects: unknown[] = [], curbs: unknown[] = []) {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.includes("event_type=inject_curbed")) {
+        return { items: curbs, total: curbs.length } as never
+      }
+      if (path.includes("event_type=inject")) {
+        return { items: injects, total: injects.length } as never
+      }
+      return state as never
+    })
+  }
+
+  function injectEvent(over: Record<string, unknown> = {}) {
+    return {
+      id: 41,
+      created_at: "2026-08-11T11:20:00Z",
+      event_type: "inject",
+      object_type: "system",
+      object_id: null,
+      project: "darkmem",
+      actor: null,
+      api_key_id: null,
+      source: null,
+      payload: {
+        tool: "test-tool-alpha",
+        context_file: "ALPHA_CONTEXT.md",
+        fact_ids: ["a", "b"],
+        article_ids: [],
+        memory_ids: ["c"],
+        budget_tokens: 1200,
+        tokens_used: 640,
+      },
+      ...over,
+    }
+  }
+
+  it("shows watch off by default, and per target", async () => {
+    route(STATE)
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(screen.getByText("Watch is off")).toBeInTheDocument()
+    expect(screen.getAllByText("session start").length).toBe(STATE.targets.length)
+  })
+
+  it("names a target as watched from the server's own verdict", async () => {
+    // `refresh` alone does not answer it — the install's flag does too, and
+    // the server is where the two meet.
+    route({
+      ...STATE,
+      policy: { ...STATE.policy, watch_enabled: true },
+      targets: [{ ...STATE.targets[0]!, refresh: "watch", watched: true }],
+    })
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(screen.getByText("Watch is on")).toBeInTheDocument()
+    expect(screen.getByText("watched")).toBeInTheDocument()
+  })
+
+  it("says so when a target asks for watch the install has not enabled", async () => {
+    // Otherwise the row reads `refresh: watch` and the operator concludes it
+    // is being watched, while `resolve_adapter` refuses that adapter.
+    route({
+      ...STATE,
+      targets: [{ ...STATE.targets[0]!, refresh: "watch", watched: false }],
+    })
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(
+      screen.getByText(/this row asks for watch; the install has it off/),
+    ).toBeInTheDocument()
+  })
+
+  it("turning watch on writes the policy without touching the curb", async () => {
+    route(STATE)
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    fireEvent.click(screen.getByLabelText("Watch mode"))
+
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/distribution/policy",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            token_budget: 2000,
+            curbed: false,
+            watch_enabled: true,
+          }),
+        }),
+      ),
+    )
+  })
+
+  it("the curb is one control and says it is enforced server-side", async () => {
+    route(STATE)
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(screen.getByText(/enforced server-side/)).toBeInTheDocument()
+    expect(screen.getAllByLabelText("Allow push").length).toBe(1)
+
+    fireEvent.click(screen.getByLabelText("Allow push"))
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/distribution/policy",
+        expect.objectContaining({
+          body: JSON.stringify({
+            token_budget: 2000,
+            curbed: true,
+            watch_enabled: false,
+          }),
+        }),
+      ),
+    )
+  })
+
+  it("lists recent injects inline with their items and budget", async () => {
+    route(STATE, [injectEvent()])
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(await screen.findByText(/3 items · 640 \/ 1,200 tokens/)).toBeInTheDocument()
+  })
+
+  it("names what shifted on a watch re-inject", async () => {
+    route(STATE, [
+      injectEvent({ payload: { ...injectEvent().payload, trigger: "project_changed" } }),
+    ])
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(
+      await screen.findByText(/re-injected: project_changed changed/),
+    ).toBeInTheDocument()
+  })
+
+  it("merges curbs into the log as curbs, not as pushes of nothing", async () => {
+    route(STATE, [], [
+      injectEvent({ id: 42, event_type: "inject_curbed", payload: { tool: "test-tool-alpha" } }),
+    ])
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(
+      await screen.findByText(/push curbed — nothing was pushed/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/0 items/)).not.toBeInTheDocument()
+  })
+
+  it("an unreadable log says so rather than reading as no push", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.includes("event_type=")) throw new Error("journal down")
+      return STATE as never
+    })
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(
+      await screen.findByText(/the inject log could not be read/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/no inject has happened/)).not.toBeInTheDocument()
   })
 })
