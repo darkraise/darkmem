@@ -1543,7 +1543,7 @@ is no clamp here that refuses a lower value; the row can be edited. The discipli
 a loosening owes a recorded argument in this file, and — the standing rule for every bar
 in this ledger — **it may never be moved to make a run pass**.
 
-### The corpus share: **not stated, and owed before T3.24 runs**
+### The corpus share: **0.90**, stated 2026-08-11 by derivation, owner-ratified
 
 The row above carries two numbers, and they answer different questions. The threshold
 governs one article; G-E asks whether coverage *holds across the corpus*, which needs a
@@ -1564,6 +1564,14 @@ of the corpus clears them.
 above: T3.24's runner does not exist, no production read has happened, and no coverage
 number has ever been produced anywhere in this corpus. The number therefore costs nothing
 to state now and could not have been stated honestly after the first run.
+
+**Pinned by value, not only by this prose** (added 2026-08-12, after the v0.4 branch
+review found it stated here and pinned nowhere — a bar that lives only in a document can
+be moved by editing the document, which is exactly what rule 1 forbids). Both G-E bars sit
+in `backend/scripts/benchlib/coverage_bars.py` beside G-C's, and
+`scripts/benchlib/tests/test_coverage_bars.py` pins each by value — including that the
+threshold equals the one `claim_entailment` actually enforces, so the probe cannot end up
+measuring against a bar the running system does not apply.
 
 **What a failure at this bar would and would not mean.** Below 0.90 the finding is that
 synthesis is producing prose its own facts do not support often enough to matter — a

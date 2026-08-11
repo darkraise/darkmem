@@ -89,7 +89,13 @@ from app.repositories.fact_sources import FactSourceRepository
 from app.repositories.vector import MemoryFilter
 from app.schemas.retrieval_trace import ChannelStatus, RetrievalEnvelope
 from app.services.claim_gates import ungated_mapping, unserved_status
-from app.services.fact_badge import Badge, badges_for_facts, row_labels
+from app.services.fact_badge import (
+    BADGE_BEARING_ID_KINDS,
+    Badge,
+    badges_for_articles,
+    badges_for_facts,
+    row_labels,
+)
 from app.services.facts_channel import (
     KEYWORD_ARM,
     NAME_ARM,
@@ -1291,18 +1297,38 @@ class LayerCompositionService:
         keys on ``id``; two spellings joined by hand is how a page ends up
         one badge short and silently unlabelled.
 
-        Articles carry a badge too (doc 12 §4), and this returns none for them:
-        their channel is ``ARTICLE_CHANNEL_OWNER``'s and nothing mints an L3
-        candidate here yet. That is deliberately a raise in :func:`compose`
-        rather than a shrug — an article served with ``badge: null`` would
-        assert the L0 rule about a row the L0 rule does not govern.
+        **Articles carry a badge too, and this mints it** (doc 12 §4, L3
+        semantics ruled 2026-08-12). Until that ruling this returned facts only
+        while the articles channel fed `compose()`, and a badge-less vault row
+        raises by design — so the first embedded article in a project made
+        every composed read in that project raise, on both doors. The suites
+        did not catch it because the wiring test inspected source rather than
+        executing the path.
+
+        The two producers are separate calls because the two claims are: the
+        fact producer counts independent origins, the article producer counts
+        the citations that ground the prose, and one function serving both
+        would have to decide per row which claim it was making. Neither
+        sentence is spelled here — this module names no part of either claim,
+        which is what the second-producer scan keeps true.
         """
-        facts = [c for c in candidates if c.id_kind == "fact"]
-        if not facts:
+        by_kind: dict[str, list[LayerCandidate]] = {}
+        for candidate in candidates:
+            if candidate.id_kind in BADGE_BEARING_ID_KINDS:
+                by_kind.setdefault(candidate.id_kind, []).append(candidate)
+        if not by_kind:
             return {}
-        rows = [{**dict(ungated_mapping(c.row)), "id": c.id} for c in facts]
-        badges = await badges_for_facts(self.session, rows)
-        return {c.key: badges[c.id] for c in facts}
+
+        out: dict[str, Badge] = {}
+        for kind, group in by_kind.items():
+            rows = [{**dict(ungated_mapping(c.row)), "id": c.id} for c in group]
+            produced = (
+                await badges_for_facts(self.session, rows)
+                if kind == "fact"
+                else await badges_for_articles(self.session, rows)
+            )
+            out.update({c.key: produced[c.id] for c in group})
+        return out
 
     async def derive_support_map(
         self, fact_ids: list[str]

@@ -419,3 +419,75 @@ class TestComposition:
 
         assert trace.channel_status()[ac.SEMANTIC_ARM].ran is False
         assert trace.channel_status()[ac.SEMANTIC_ARM].failed is False
+
+    async def test_a_composed_read_serves_an_article_rather_than_raising(
+        self, session
+    ):
+        """The regression the source-inspection test above could not see.
+
+        A badge-less vault row raises by design, and nothing minted an L3
+        badge — so the *first* embedded article in a project made every
+        composed read in that project raise, on both doors, while every suite
+        stayed green. Executing the path is the only thing that catches that,
+        which is why this test drives `compose` instead of reading it.
+        """
+        from app.services.layer_composition import (
+            LayerCompositionService,
+            article_candidate,
+        )
+
+        await _partition(session)
+        fact_id = await _verified_fact(session, subject_name="kafka")
+        article_id = await _article(
+            session, subject_key="kafka::concept",
+            fact_set_hash=ac.article_fact_set_hash([fact_id]),
+            vector=[1.0, 0.0, 0.0, 0.0],
+        )
+        trace = await ac.ArticlesChannel(session).search_with_trace(
+            [1.0, 0.0, 0.0, 0.0], fingerprint=FINGERPRINT, project=PROJECT
+        )
+        candidates = [
+            article_candidate(row, channel_rank=i)
+            for i, row in enumerate(trace.results, start=1)
+        ]
+
+        # `llm` is unused by the badge path — the producer reads rows and
+        # the vault, never a model.
+        service = LayerCompositionService(None, session)
+        badges = await service.derive_badges(candidates)
+
+        assert len(badges) == 1
+        badge = next(iter(badges.values()))
+        # Doc 12 §4's shape, with the L3 semantics ruled 2026-08-12: the count
+        # is cited facts, and the claim names the coverage measurement rather
+        # than borrowing the corroboration of the facts it cites.
+        assert badge.origin_kinds == ("fact",)
+        assert "grounded by" in badge.claim
+        assert "claim-support coverage not measured" in badge.claim
+        assert str(article_id)
+
+    async def test_the_badge_carries_the_stale_flag_to_the_wire(self, session):
+        """Doc 12 §4 makes `stale` an article-only badge field, and the badge
+        is how it crosses: the composed row's own label map does not declare
+        one, so a stale article was serving as current on both doors."""
+        from app.services.layer_composition import (
+            LayerCompositionService,
+            article_candidate,
+        )
+
+        await _partition(session)
+        await _verified_fact(session, subject_name="redis")
+        await _article(
+            session, subject_key="redis::concept",
+            fact_set_hash="a-hash-from-before", vector=[1.0, 0.0, 0.0, 0.0],
+        )
+        trace = await ac.ArticlesChannel(session).search_with_trace(
+            [1.0, 0.0, 0.0, 0.0], fingerprint=FINGERPRINT, project=PROJECT
+        )
+        assert trace.results[0]["stale"] is True
+
+        badges = await LayerCompositionService(None, session).derive_badges(
+            [article_candidate(trace.results[0], channel_rank=1)]
+        )
+
+        assert next(iter(badges.values())).stale is True

@@ -84,6 +84,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginProfile
@@ -132,6 +133,15 @@ _AS_OF = "as of"
 _NOT_RECOMPUTED = "verification not yet recomputed"
 _HUMAN_RATIFIED = "human-ratified"
 _COUNTERPART_UNRECORDED = "the contradicting claim was not recorded"
+# The L3 claim's own words (doc 12 §4, article semantics ruled 2026-08-12).
+# An article's provenance is its cited facts — never an origin count rolled up
+# from them, which would assert corroboration strength for prose nobody
+# corroborated — and its own measurement is claim-support coverage.
+_GROUNDED_BY = "grounded by"
+_CITED_FACT = "cited fact"
+_CITED_FACTS = "cited facts"
+_COVERAGE = "claim-support coverage"
+_COVERAGE_UNMEASURED = "claim-support coverage not measured"
 
 CLAIM_VOCABULARY: tuple[str, ...] = (
     _ASSERTED_BY,
@@ -147,6 +157,26 @@ CLAIM_VOCABULARY: tuple[str, ...] = (
     _HUMAN_RATIFIED,
     _COUNTERPART_UNRECORDED,
 )
+
+# **The L3 fragments are deliberately not registered above**, and the reason is
+# what registration *does*: two second-producer scans — one over `app/`, one
+# over the frontend — forbid any module outside this one from spelling a
+# registered fragment, so registering a phrase reserves it across the whole
+# tree. That is right for the L2 sentence, whose wording exists only to be
+# rendered verbatim. It is wrong for these:
+#
+# * "claim-support coverage" is what doc 13 §5.2 *requires* the surface to call
+#   the number ("the surface labels it claim-support coverage, not a vague
+#   score"), so reserving it would outlaw the label the design mandates.
+# * "grounded by" and "cited facts" are ordinary domain English that the UI and
+#   this codebase's own prose already use about citations.
+#
+# Nothing is lost by leaving them out. The L3 sentence is assembled in exactly
+# one place — :func:`build_article_claim` — and that function renders through
+# `_render`, so the certainty-word guard still runs over the whole sentence.
+# What the scan protects is that no *second* module composes a claim; the L2
+# fragments still carry that, and a module that assembled an L3 claim would
+# have to reimplement this function to do it.
 
 
 class CertaintyWordError(ValueError):
@@ -284,6 +314,31 @@ def build_claim(
     return _render(sentence, origin_kinds)
 
 
+def build_article_claim(
+    *,
+    cited_facts: int,
+    coverage: float | None,
+    as_of: datetime | None,
+) -> str:
+    """The L3 sentence, in the shape doc 12 fixes for L2 and the semantics
+    ruled for L3 on 2026-08-12.
+
+    Two things it deliberately does not say. It never rolls its cited facts'
+    origins into an origin count: an article is prose *about* corroborated
+    facts, and borrowing their corroboration strength would assert that
+    something adjudicated the article itself. And an unmeasured coverage is
+    said as unmeasured rather than omitted — while the groundedness judge is
+    unqualified that is every article, and a sentence that simply left the
+    number out would read as though grounding were not the point.
+    """
+    noun = _CITED_FACT if cited_facts == 1 else _CITED_FACTS
+    measured = (
+        _COVERAGE_UNMEASURED if coverage is None else f"{_COVERAGE} {coverage:.2f}"
+    )
+    sentence = f"{_GROUNDED_BY} {cited_facts} {noun}, {measured}{_tail(as_of)}"
+    return _render(sentence, ())
+
+
 def counterpart_claim(block: Mapping[str, Any] | None) -> tuple[str | None, str | None]:
     """``(counterpart_id, counterpart triple text)`` from the journal block.
 
@@ -371,6 +426,72 @@ def build_badge(
         stale=stale,
         claim=claim,
     )
+
+
+_CITATION_COUNTS_SQL = text(
+    """
+    SELECT article_id, COUNT(DISTINCT fact_id) AS cited_facts
+    FROM article_citations
+    WHERE article_id = ANY(CAST(:ids AS uuid[]))
+    GROUP BY article_id
+    """
+)
+
+
+async def badges_for_articles(
+    session: AsyncSession, rows: Sequence[Mapping[str, Any]]
+) -> dict[str, Badge]:
+    """One badge per article row, in **one** batched query however long the page.
+
+    Everything but the citation count is already on the channel's own row —
+    status, coverage, `synthesized_at`, the stale flag — so the only thing this
+    reads is how many distinct facts ground the article. Per-row fan-out here
+    would put a query behind every article a search returns.
+
+    `origin_count` counts **cited facts**, and `origin_kinds` is `("fact",)`:
+    an article's provenance is its citations, and doc 09 says so in terms —
+    "its provenance is only its cited facts". Rolling its citations' own
+    origins into the count was considered and rejected when the semantics were
+    ruled (2026-08-12): it would assert corroboration strength for prose that
+    nothing corroborated, and it costs a provenance query per article on a read
+    path.
+
+    `contradiction` is False and `human_ratified` follows the rung, because
+    there is no article-level contradiction detector and `confirmed` is the
+    human-only rung on this axis exactly as on the fact axis.
+    """
+    if not rows:
+        return {}
+    ids = [str(row.get("article_id") or row.get("id")) for row in rows]
+    counts = {
+        str(r["article_id"]): int(r["cited_facts"])
+        for r in (
+            await session.execute(_CITATION_COUNTS_SQL, {"ids": ids})
+        ).mappings().all()
+    }
+
+    badges: dict[str, Badge] = {}
+    for row in rows:
+        article_id = str(row.get("article_id") or row.get("id"))
+        status = row.get("verification_status")
+        cited = counts.get(article_id, 0)
+        coverage = row.get("confidence")
+        as_of = row.get("synthesized_at")
+        badges[article_id] = Badge(
+            verification_status=status,
+            origin_count=cited,
+            origin_kinds=("fact",),
+            as_of=as_of,
+            contradiction=False,
+            human_ratified=status == CONFIRMED,
+            stale=bool(row.get("stale")),
+            claim=build_article_claim(
+                cited_facts=cited,
+                coverage=float(coverage) if coverage is not None else None,
+                as_of=as_of,
+            ),
+        )
+    return badges
 
 
 async def badges_for_facts(
@@ -537,6 +658,8 @@ __all__ = [
     "BADGE_BEARING_ID_KINDS",
     "Badge",
     "CLAIM_VOCABULARY",
+    "badges_for_articles",
+    "build_article_claim",
     "CertaintyWordError",
     "LIFECYCLE_ID_KINDS",
     "VERIFIED_TIER_STATUSES",

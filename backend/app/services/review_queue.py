@@ -588,9 +588,17 @@ async def list_open_articles(
     count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
     total = (await session.execute(text(count_sql), count_params)).scalar_one()
 
+    # Two arms, **one page**. Each arm is its own statement, so each would
+    # honour `limit` on its own and a caller asking for 3 would receive up to 6
+    # — with the next page then reporting none. The window is applied across
+    # the pair: the open arm fills it first, the held arm fills whatever is
+    # left, and the held arm's offset is what remains of the caller's offset
+    # after the open arm's total is consumed.
+    held_offset = max(0, offset - int(total))
+    held_limit = max(0, limit - len(items))
     held_items, held_total = await _list_held_articles(
         session, project=project, gate=gate, threshold=threshold,
-        limit=limit, offset=offset,
+        limit=held_limit, offset=held_offset,
     )
     return items + held_items, int(total) + held_total
 
@@ -654,7 +662,14 @@ async def _list_held_articles(
     if project is not None:
         params["project"] = project
 
-    rows = (await session.execute(text(items_sql), params)).mappings().all()
+    # The count still runs when the page is full: the caller needs the total to
+    # page forward, and a `LIMIT 0` round trip for rows nobody asked for does
+    # not.
+    rows = (
+        (await session.execute(text(items_sql), params)).mappings().all()
+        if limit > 0
+        else []
+    )
     items = [_article_item(row, gate=gate, threshold=threshold) for row in rows]
 
     count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
@@ -676,6 +691,10 @@ async def counts(session: AsyncSession, *, project: str | None = None) -> dict[s
     """
     _, facts_count_sql = build_facts_query(project)
     _, articles_count_sql = build_articles_query(project)
+    # Both article arms, because the badge a human triages by is the lane's
+    # own length: a count that excluded the held arm would send someone to a
+    # queue holding more than the number that sent them.
+    _, held_count_sql = build_held_articles_query(project)
 
     params: dict[str, Any] = {}
     if project is not None:
@@ -684,6 +703,8 @@ async def counts(session: AsyncSession, *, project: str | None = None) -> dict[s
     facts_total = (await session.execute(text(facts_count_sql), params)).scalar_one()
     articles_total = (
         await session.execute(text(articles_count_sql), params)
+    ).scalar_one() + (
+        await session.execute(text(held_count_sql), params)
     ).scalar_one()
     return {"facts": int(facts_total), "articles": int(articles_total)}
 

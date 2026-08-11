@@ -743,17 +743,29 @@ async def test_dismissal_is_not_a_human_verdict_on_the_fact(session):
 # ───────── the held-re-synthesis lane (doc 09 §4.4, amended 2026-08-12) ─────
 
 
-async def _held_article(session, *, project: str = PROJECT, coverage: float = 0.42) -> str:
+async def _held_article(
+    session,
+    *,
+    project: str = PROJECT,
+    coverage: float = 0.42,
+    subject_key: str | None = None,
+) -> str:
+    # One live article per subject, so each fixture needs its own key —
+    # `ux_knowledge_articles_live` refuses a second, which is the constraint
+    # working rather than a fixture inconvenience.
     article_id = str(uuid.uuid4())
     await session.execute(
         text(
             "INSERT INTO knowledge_articles "
             "(id, subject_key, project, content, status, review_state, "
             " resynthesis_held_at, resynthesis_held_coverage, resynthesis_held_hash) "
-            "VALUES (CAST(:id AS uuid), 'postgres::concept', CAST(:p AS text), "
+            "VALUES (CAST(:id AS uuid), CAST(:k AS text), CAST(:p AS text), "
             "'standing body', 'corroborated', NULL, now(), CAST(:c AS real), 'h')"
         ),
-        {"id": article_id, "p": project, "c": coverage},
+        {
+            "id": article_id, "p": project, "c": coverage,
+            "k": subject_key or f"held-{uuid.uuid4().hex[:8]}::concept",
+        },
     )
     await session.flush()
     return article_id
@@ -840,3 +852,38 @@ async def test_held_articles_explain_uses_their_own_partial_index(session):
     plan = "\n".join(r[0] for r in plan_rows)
     assert "ix_knowledge_articles_resynthesis_held" in plan, plan
     assert "Seq Scan on knowledge_articles" not in plan, plan
+
+
+async def test_the_two_article_arms_are_one_page(session):
+    """Each arm is its own statement, so each would honour `limit` alone and a
+    caller asking for 3 would receive 6 — then be told the next page is
+    empty."""
+    for n in range(3):
+        await _article(session, subject_key=f"open-{n}::concept", review_state="open")
+    for _ in range(3):
+        await _held_article(session)
+
+    first, total = await review_queue_service.list_open_articles(
+        session, project=PROJECT, limit=4, offset=0
+    )
+    second, _ = await review_queue_service.list_open_articles(
+        session, project=PROJECT, limit=4, offset=4
+    )
+
+    assert total == 6
+    assert len(first) == 4
+    assert len(second) == 2
+    assert len({i["id"] for i in first} & {i["id"] for i in second}) == 0
+
+
+async def test_the_counts_badge_matches_the_lane(session):
+    """The number that sends a human to the queue is the number they find."""
+    await _article(session, subject_key="open-one::concept", review_state="open")
+    await _held_article(session)
+
+    _items, total = await review_queue_service.list_open_articles(
+        session, project=PROJECT, limit=50
+    )
+    badge = await review_queue_service.counts(session, project=PROJECT)
+
+    assert badge["articles"] == total == 2

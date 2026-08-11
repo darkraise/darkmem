@@ -139,6 +139,36 @@ describe("ArticlesTab on live data", () => {
     expect(screen.getByText(/routed to Knowledge → Review/i)).toBeInTheDocument()
   })
 
+  it("does not default a real install to the demo fixture's project", async () => {
+    // "darkmem" is the demo project. Defaulting to it showed an empty tab to
+    // anyone whose articles live in `default` — a library reading as empty
+    // when it is not.
+    serve([ROW])
+
+    render(<ArticlesTab />, { wrapper })
+
+    await screen.findByText("postgres")
+    const url = vi.mocked(apiFetch).mock.calls[0]?.[0] as string
+    expect(url).not.toContain("project=darkmem")
+  })
+
+  it("does not say nothing is withheld while counting withheld articles", async () => {
+    // The strip and the empty state contradicted each other in exactly the
+    // standing case: every article in review, which is what an open
+    // groundedness gate produces.
+    serve([{ ...ROW, review_state: "open" }])
+
+    render(<ArticlesTab />, { wrapper })
+
+    expect(await screen.findByText(/1 article/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/nothing is being withheld from you here/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/Every article for this scope is in review/i),
+    ).toBeInTheDocument()
+  })
+
   it("says the corpus is empty rather than claiming the feature is unshipped", async () => {
     serve([])
 

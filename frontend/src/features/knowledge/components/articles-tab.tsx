@@ -162,7 +162,12 @@ function ArticleRow({ article }: { article: ArticleView }) {
 
 export function ArticlesTab() {
   const demoArticles = useDemoArticles()
-  const [project, setProject] = useState("darkmem")
+  // "darkmem" is the *demo* fixture's project. Defaulting a real install to it
+  // showed an empty tab to anyone whose articles live in `default` — the
+  // library reading as empty when it is not, which is the one thing a browsing
+  // surface must never do. Real mode starts unscoped and lets the caller
+  // narrow; demo keeps its own project so its fixture still lands.
+  const [project, setProject] = useState(DEMO ? "darkmem" : "all")
 
   const live = useArticles(
     { project: project === "all" ? undefined : project },
@@ -251,7 +256,13 @@ export function ArticlesTab() {
             description={
               DEMO
                 ? "Articles are synthesised once corroborated facts exist for a subject — none do here yet. No corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one."
-                : "No articles have been synthesised for this project yet. Synthesis runs in the background over subjects that hold enough corroborated facts to ground one — nothing is being withheld from you here."
+                : withheld > 0
+                  ? // Saying "nothing is being withheld" directly beneath a
+                    // strip counting withheld articles is the surface calling
+                    // itself a liar. When every article is in review, the empty
+                    // list has a cause and the copy names it.
+                    "Every article for this scope is in review — none is being shown here, and the strip above says how many and why. They are readable in Knowledge → Review; nothing was deleted."
+                  : "No articles have been synthesised for this project yet. Synthesis runs in the background over subjects that hold enough corroborated facts to ground one — nothing is being withheld from you here."
             }
           />
         )}
