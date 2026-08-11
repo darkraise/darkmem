@@ -527,6 +527,16 @@ _JUDGE_REFERENCE_ALLOWLIST = {
     # the_record_and_never_the_purpose` below re-proves the narrow form against
     # the parsed tree, the way the contradiction scan's membership is re-proved.
     "app/services/review_queue.py",
+    # T3.03's claim-entailment pass: the second real consumer of the judge,
+    # and gated the same way the contradiction scan is — by `judge()`'s own
+    # refusal rather than by this list. Re-proved narrowly below.
+    "app/services/claim_entailment.py",
+    # T3.02/T3.03's synthesis tick constructs the judge and hands it down to
+    # the pass. It never calls `judge()` itself and never touches the probe;
+    # the construction is here because the judge is built per tick rather
+    # than held, so a configuration an operator changed takes effect on the
+    # next run. Re-proved narrowly below.
+    "app/services/article_synthesis.py",
 }
 
 # Capture/retrieval-path modules the judge may NEVER be reachable from
@@ -697,3 +707,31 @@ def test_the_article_gate_reads_the_record_and_never_the_purpose():
     )
     assert "judge(" not in source
     assert "qualification_probe" not in source
+
+
+def test_the_entailment_consumers_use_the_gated_door_and_never_the_probe():
+    """Allowlist membership buys the right to *reference* the judge; it must
+    not buy the right to bypass it.
+
+    `claim_entailment` calls `judge()` — the qualification-gated door whose
+    refusal is what makes T3.03 safe to build before G-D clears — and
+    `article_synthesis` only constructs the judge and hands it down. Neither
+    may reach `qualification_probe`, which is scan-pinned to the harness
+    precisely because it is ungated.
+    """
+    root = _Path(__file__).resolve().parents[1]
+
+    entailment = (root / "app/services/claim_entailment.py").read_text(encoding="utf-8")
+    assert "judge.judge(" in entailment, "the pass must enter through the gated door"
+    assert "qualification_probe" not in entailment
+    assert "qualification_state" not in entailment, (
+        "the pass asks the door, never the record — two modules deciding "
+        "whether the judge is qualified is the drift the single door prevents"
+    )
+
+    synthesis = (root / "app/services/article_synthesis.py").read_text(encoding="utf-8")
+    assert "VerificationJudge(llm)" in synthesis
+    assert "qualification_probe" not in synthesis
+    assert ".judge(" not in synthesis, (
+        "the tick hands the judge down; the pass is what asks it"
+    )

@@ -373,10 +373,15 @@ class _StubLLM:
 
 
 def _draft_payload(fact_ids: list[str], *, lead: str = "A subject.", words: int = 0) -> str:
+    """The lead cites facts like any other claim (T3.03 D8).
+
+    It was a bare string until then, which made it permanently uncited and
+    capped every article's coverage at N/(N+1).
+    """
     filler = " ".join(["word"] * words) if words else "It relates to a thing."
     return json.dumps(
         {
-            "lead": lead,
+            "lead": {"text": lead, "fact_ids": fact_ids},
             "sentences": [{"text": filler, "fact_ids": fact_ids}],
         }
     )
@@ -518,7 +523,15 @@ class TestTheDraftCall:
 
     @pytest.mark.parametrize(
         "payload",
-        ["not json at all", "[]", '{"lead": ""}', '{"lead": "x", "sentences": []}'],
+        [
+            "not json at all",
+            "[]",
+            '{"lead": {"text": "", "fact_ids": ["a"]}}',
+            '{"lead": {"text": "x", "fact_ids": ["a"]}, "sentences": []}',
+            # A bare-string lead is the pre-T3.03 shape: uncited, and an
+            # uncited span is by definition ungrounded.
+            '{"lead": "x", "sentences": [{"text": "y", "fact_ids": ["a"]}]}',
+        ],
     )
     async def test_an_unparseable_response_is_refused(self, payload):
         llm = _StubLLM(payload)
@@ -581,7 +594,7 @@ async def _synthesis_events(session, project: str = PROJECT) -> list[dict]:
 
 def _simple_draft(ids: list[str]) -> asyn.DraftArticle:
     return asyn.DraftArticle(
-        lead="A subject is a thing.",
+        lead=asyn.DraftSentence(text="A subject is a thing.", fact_ids=ids),
         sentences=[asyn.DraftSentence(text="It relates.", fact_ids=ids)],
     )
 
@@ -658,7 +671,7 @@ class TestTheWrite:
     async def test_the_body_carries_the_lead_and_every_sentence(self, session):
         subject = f"subj-{uuid4().hex[:8]}"
         draft = asyn.DraftArticle(
-            lead="Postgres is a database.",
+            lead=asyn.DraftSentence(text="Postgres is a database.", fact_ids=["a"]),
             sentences=[
                 asyn.DraftSentence(text="It runs on Linux.", fact_ids=["a"]),
                 asyn.DraftSentence(text="It speaks SQL.", fact_ids=["a"]),
@@ -776,7 +789,9 @@ class TestTheJournal:
         subject = f"subj-{uuid4().hex[:8]}"
         project = f"{PROJECT}-{uuid4().hex[:6]}"
         draft = asyn.DraftArticle(
-            lead="A distinctive lead sentence.",
+            lead=asyn.DraftSentence(
+                text="A distinctive lead sentence.", fact_ids=["a"]
+            ),
             sentences=[
                 asyn.DraftSentence(text="A distinctive body sentence.", fact_ids=["a"])
             ],
@@ -1076,3 +1091,48 @@ class TestTheReviewQueue:
 
         assert items[0]["status"] == "candidate", "withheld, not served"
         assert items[0]["label_suppressed"]
+
+    async def test_a_refusing_judge_leaves_the_article_stored_and_unmeasured(
+        self, session, factory
+    ):
+        """Two regressions in one test, and both were real plan defects.
+
+        The article must survive: the coverage pass runs after the article's
+        own transaction commits, because a raise inside it rolls the article
+        back — work lost for a reason that has nothing to do with whether the
+        article was written correctly.
+
+        And the tick's report must not read as an outage: with G-D open this
+        is *every* article on *every* tick, so folding `unmeasured` into
+        `failed` would make a permanent standing state indistinguishable from
+        a permanent vendor outage.
+        """
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for _ in range(3):
+            await _fact(session, subject_name="postgres", project=project)
+        await session.commit()
+
+        llm = _StubLLM()
+
+        async def _draft(purpose, *, messages, **kw):
+            llm.calls.append({"purpose": purpose, "messages": messages, **kw})
+            return _draft_payload(_ids_in(messages)[:1])
+
+        llm.chat_completion = _draft
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=50
+        )
+
+        assert outcome.written == 1, "the article survived the refusal"
+        assert outcome.unmeasured == 1
+        assert outcome.failed == 0, "a standing state is not an outage"
+
+        stored = (await session.execute(
+            text(
+                "SELECT confidence, status FROM knowledge_articles "
+                "WHERE project = CAST(:p AS text)"
+            ),
+            {"p": project},
+        )).mappings().one()
+        assert stored["confidence"] is None, "unmeasured, not zero"
+        assert stored["status"] == "candidate"

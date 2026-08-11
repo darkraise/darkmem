@@ -57,7 +57,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +70,9 @@ from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.pin_suggestions import decode_subject_soft_key
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from app.services.claim_entailment import Claim, CoverageOutcome
 
 __all__ = [
     "DEFAULT_HUB_CAP",
@@ -319,12 +322,28 @@ class DraftSentence:
 
 @dataclass(frozen=True)
 class DraftArticle:
-    lead: str
+    """The lead is a claim like any other, and it cites facts.
+
+    It was a bare string until T3.03. Under §4.3's rule that an uncited span is
+    ungrounded, an uncited lead is a permanent failure in every article — so
+    coverage would cap at N/(N+1), and at a 0.95 bar a *perfectly grounded*
+    article would need nineteen sentences to pass against a length budget
+    yielding roughly sixteen to twenty-six. Most articles would have routed to
+    review on their length rather than their grounding, and every stub-judge
+    test would still have passed.
+    """
+
+    lead: DraftSentence
     sentences: list[DraftSentence]
 
     @property
+    def claims(self) -> list[DraftSentence]:
+        """Every claim, lead first — the order the body renders in."""
+        return [self.lead, *self.sentences]
+
+    @property
     def body(self) -> str:
-        return "\n".join([self.lead, *(s.text for s in self.sentences)]).strip()
+        return "\n".join(s.text for s in self.claims).strip()
 
     @property
     def word_count(self) -> int:
@@ -401,7 +420,8 @@ def _build_messages(
         "ONLY the facts given. Every sentence must cite at least one fact id "
         "from the list. Never state anything the facts do not say. Never cite "
         "an id that is not in the list.\n"
-        "Respond with JSON: {\"lead\": \"<one definitional sentence>\", "
+        "Respond with JSON: {\"lead\": {\"text\": \"<one definitional "
+        "sentence>\", \"fact_ids\": [\"<id>\"]}, "
         "\"sentences\": [{\"text\": \"<sentence>\", \"fact_ids\": [\"<id>\"]}]}"
     )
     user = (
@@ -423,8 +443,17 @@ def _parse(payload: str, allowed_ids: set[str]) -> DraftArticle:
     if not isinstance(data, dict):
         raise DraftRefused("the synthesis response was not a JSON object")
 
-    lead = data.get("lead")
-    if not isinstance(lead, str) or not lead.strip():
+    lead_raw = data.get("lead")
+    if isinstance(lead_raw, str):
+        # A bare string lead is the pre-T3.03 shape and carries no citation,
+        # which §4.3 makes ungroundable. Refused rather than accepted with an
+        # empty citation list, so the model is told rather than silently
+        # scored down.
+        raise DraftRefused(
+            "the lead must cite facts like any other claim; a bare string lead "
+            "is uncited and an uncited span is by definition ungrounded"
+        )
+    if not isinstance(lead_raw, dict):
         raise DraftRefused("the synthesis response carried no lead sentence")
 
     raw_sentences = data.get("sentences")
@@ -432,7 +461,7 @@ def _parse(payload: str, allowed_ids: set[str]) -> DraftArticle:
         raise DraftRefused("the synthesis response carried no sentences")
 
     sentences: list[DraftSentence] = []
-    for entry in raw_sentences:
+    for entry in [lead_raw, *raw_sentences]:
         if not isinstance(entry, dict):
             raise DraftRefused("a sentence entry was not an object")
         text_value = entry.get("text")
@@ -457,7 +486,7 @@ def _parse(payload: str, allowed_ids: set[str]) -> DraftArticle:
             )
         sentences.append(DraftSentence(text=text_value.strip(), fact_ids=cited))
 
-    return DraftArticle(lead=lead.strip(), sentences=sentences)
+    return DraftArticle(lead=sentences[0], sentences=sentences[1:])
 
 
 async def synthesise_draft(
@@ -716,6 +745,7 @@ async def store_article(
 
 @dataclass
 class SynthesisOutcome:
+    """(see below) — ``unmeasured`` added by T3.03 (D14)."""
     """What one tick did, per the doc's own vocabulary.
 
     ``refused`` and ``failed`` are separate counts because they mean different
@@ -730,6 +760,13 @@ class SynthesisOutcome:
     written: int = 0
     refused: int = 0
     failed: int = 0
+    # Stored successfully, but coverage could not be scored (T3.03). **Not**
+    # `failed` — nothing failed — and **not** `refused`, which already means
+    # the model produced something unstorable. Three counts for three states,
+    # the same discipline that keeps the first two apart: with G-D open this
+    # is every article on every tick, and folding it into `failed` would make
+    # a permanent standing state read as a permanent vendor outage.
+    unmeasured: int = 0
     last_project: str | None = None
 
 
@@ -839,7 +876,12 @@ async def synthesise_subject(
         logger.warning(
             "article_synthesis: %s stored but not embedded: %s", article_id, error
         )
-    return article_id
+    # The draft and its fact set ride back so the caller can measure coverage
+    # **after this transaction commits** (T3.03 D9). Measuring inline would put
+    # the judge call inside the article's own transaction, and a raise there
+    # rolls the article back — work lost for a reason that has nothing to do
+    # with whether the article was written correctly.
+    return article_id, draft, facts
 
 
 async def run_article_synthesis(
@@ -900,8 +942,9 @@ async def run_article_synthesis(
                 outcome.failed += 1
                 continue
             try:
+                measurable = None
                 async with session_factory() as session:
-                    article_id = await synthesise_subject(
+                    written = await synthesise_subject(
                         session,
                         llm,
                         subject_key=candidate.subject_key,
@@ -910,11 +953,24 @@ async def run_article_synthesis(
                         budget_words=budget_words,
                         now=now,
                     )
-                    if article_id is None:
+                    if written is None:
                         outcome.refused += 1
                     else:
                         outcome.written += 1
+                        measurable = written
                     await session.commit()
+
+                # **After the commit, in its own session** (T3.03 D9). The
+                # article is durable before the judge is ever asked, so a
+                # refusal or an outage costs the measurement and never the
+                # article.
+                if measurable is not None:
+                    article_id, draft, facts = measurable
+                    if await _measure(
+                        session_factory, judge_for(llm), article_id=article_id,
+                        draft=draft, facts=facts, project=project,
+                    ):
+                        outcome.unmeasured += 1
             except DraftRefused as refusal:
                 outcome.refused += 1
                 logger.warning(
@@ -934,3 +990,161 @@ async def run_article_synthesis(
                 )
 
     return outcome
+
+
+# ─────────────── coverage write-back (T3.03 Steps 4-6) ───────────────
+
+
+_CITATION_SQL = text(
+    "INSERT INTO article_citations (id, article_id, fact_id, claim_span) "
+    "VALUES (gen_random_uuid(), CAST(:a AS uuid), CAST(:f AS uuid), "
+    "int4range(:lo, :hi))"
+)
+
+
+def draft_claims(draft: DraftArticle) -> list["Claim"]:
+    """Adapt the draft **downward** into the entailment module's own type.
+
+    The direction is invariant 15's, not a preference: ``dream_jobs`` imports
+    this module, so ``claim_entailment`` may not import it back — a hot-path
+    module reaching the entailment pass would otherwise acquire an unpoliced
+    transitive route to the dream family.
+
+    Spans are computed over the same join ``DraftArticle.body`` uses, so a
+    citation's ``claim_span`` indexes the text that was actually stored.
+    """
+    from app.services.claim_entailment import Claim
+
+    claims: list[Claim] = []
+    cursor = 0
+    for sentence in draft.claims:
+        start = cursor
+        cursor += len(sentence.text) + 1  # the join newline
+        claims.append(
+            Claim(
+                text=sentence.text,
+                fact_ids=tuple(sentence.fact_ids),
+                span=(start, start + len(sentence.text)),
+            )
+        )
+    return claims
+
+
+async def apply_coverage(
+    session: AsyncSession,
+    judge,
+    *,
+    article_id: str,
+    draft: DraftArticle,
+    facts: list[GatheredFact],
+    project: str,
+) -> "CoverageOutcome":
+    """Measure the article's coverage and route it. Does not commit.
+
+    Returns the outcome so the caller can count it; **never raises** on a
+    refusing judge, an outage or a below-threshold article (T3.03 D14).
+
+    An unmeasured article gets **no write at all** — not a 0.0 confidence, not
+    a re-opened review state, not a journal row. It is already `candidate` +
+    `review_state='open'` from T3.02, which is the correct serving outcome for
+    something nothing has measured.
+    """
+    from app.services.claim_entailment import CoverageOutcome, measure_coverage
+
+    result = await measure_coverage(
+        session,
+        judge,
+        claims=draft_claims(draft),
+        fact_text={fact.id: fact.fact for fact in facts},
+    )
+    if result.outcome is CoverageOutcome.UNMEASURED:
+        return result.outcome
+
+    promoted = result.outcome is CoverageOutcome.PROMOTED
+    await session.execute(
+        text(
+            "UPDATE knowledge_articles SET confidence = CAST(:c AS real), "
+            "status = CAST(:s AS text), review_state = CAST(:r AS text) "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {
+            "c": result.coverage,
+            # `corroborated` is the machine's ceiling here exactly as it is on
+            # the fact ladder: `confirmed` is human-only and this writer must
+            # not be able to reach it.
+            "s": "corroborated" if promoted else UNMEASURED_STATUS,
+            "r": None if promoted else UNMEASURED_REVIEW_STATE,
+            "id": article_id,
+        },
+    )
+
+    # One row per **entailed** claim — doc 09 §4.3 assigns the write to this
+    # pass, and only a grounded claim earns one.
+    for claim, fact_id in result.entailed:
+        lo, hi = claim.span or (0, 0)
+        await session.execute(
+            _CITATION_SQL, {"a": article_id, "f": fact_id, "lo": lo, "hi": hi}
+        )
+
+    # Every transition journals (doc 09, convention 8). A refusal journals
+    # nothing, because no measurement happened.
+    await record_event(
+        session,
+        event_type="verified",
+        object_type=ARTICLE_OBJECT_TYPE,
+        object_id=article_id,
+        project=project,
+        payload={
+            "outcome": result.outcome.value,
+            "coverage": result.coverage,
+            "claims": len(result.verdicts),
+            "entailed": len(result.entailed),
+            "uncited": result.has_uncited,
+            "reason": result.reason,
+        },
+    )
+    return result.outcome
+
+
+def judge_for(llm):
+    """The gated door, or ``None`` when there is no orchestrator to ask.
+
+    Constructed per tick rather than held: `VerificationJudge` carries the
+    resolved LLM config, and a judge built once at boot would answer for a
+    configuration an operator has since changed.
+    """
+    if llm is None:
+        return None
+    from app.services.verification_judge import VerificationJudge
+
+    return VerificationJudge(llm)
+
+
+async def _measure(
+    session_factory, judge, *, article_id: str, draft: DraftArticle,
+    facts: list[GatheredFact], project: str,
+) -> bool:
+    """Run the coverage pass in its own transaction. Returns "unmeasured".
+
+    Swallows nothing it should not: `apply_coverage` already returns rather
+    than raising for every expected outcome, so a raise here is a real defect
+    and is logged as one — but it still must not take the tick down, because
+    the article it describes is already committed.
+    """
+    from app.services.claim_entailment import CoverageOutcome
+
+    if judge is None:
+        return True
+    try:
+        async with session_factory() as session:
+            outcome = await apply_coverage(
+                session, judge, article_id=article_id, draft=draft,
+                facts=facts, project=project,
+            )
+            await session.commit()
+        return outcome is CoverageOutcome.UNMEASURED
+    except Exception as error:  # noqa: BLE001 - the article is already durable
+        logger.warning(
+            "article_synthesis: coverage pass failed for %s: %s", article_id, error
+        )
+        return True

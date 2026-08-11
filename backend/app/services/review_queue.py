@@ -302,7 +302,11 @@ def _suspicion_block(row: dict, counterparts: dict[str, dict]) -> dict | None:
     }
 
 
-def _article_reason(status: str | None, confidence: float | None = None) -> str:
+def _article_reason(
+    status: str | None,
+    confidence: float | None = None,
+    threshold: float | None = None,
+) -> str:
     """Derived from the article's own columns, never from ``review_state``.
 
     **The unmeasured case is not "unspecified"** (T3.02). Every article
@@ -317,7 +321,15 @@ def _article_reason(status: str | None, confidence: float | None = None) -> str:
         return "disputed"
     if confidence is None:
         return "coverage_unmeasured"
-    return "unspecified"
+    if threshold is not None and confidence < threshold:
+        return "coverage_below_threshold"
+    # Measured, at or above the bar, and still open: the only way to reach here
+    # is T3.03's uncited-claim block, which holds an article whose fraction
+    # would otherwise have promoted. Named rather than left to fall through —
+    # falling through would re-create the `unspecified` defect inside the arm
+    # that exists to prevent it. Unreachable through the wired writer, since
+    # synthesis refuses an uncited draft; it guards articles from any other.
+    return "uncited_claim"
 
 
 def build_facts_query(
@@ -526,6 +538,12 @@ async def list_open_articles(
     rows = result.mappings().all()
 
     gate = await _article_gate(session)
+    # Read here, never by importing the pass: T2.112's lesson is that a read
+    # surface importing a dream-family module is what invariant 15's scan fails
+    # the build on.
+    from app.services.claim_entailment import get_coverage_threshold
+
+    threshold = await get_coverage_threshold(session)
 
     items = []
     for row in rows:
@@ -551,7 +569,7 @@ async def list_open_articles(
                 "confidence": row["confidence"],
                 "fact_set_hash": row["fact_set_hash"],
                 "review_state": row["review_state"],
-                "reason": _article_reason(row["status"], row["confidence"]),
+                "reason": _article_reason(row["status"], row["confidence"], threshold),
                 "content_preview": row["content_preview"],
                 "synthesized_at": row["synthesized_at"],
                 "created_at": row["created_at"],

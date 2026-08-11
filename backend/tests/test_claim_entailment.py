@@ -330,3 +330,256 @@ async def test_this_module_does_not_import_article_synthesis():
 
     assert "app.services.article_synthesis" not in imported
     assert not any("dream_jobs" in m for m in imported)
+
+
+# ─────────────── Steps 4-7b: the write-back, the tick, the queue ──────────
+
+
+class _Judge:
+    def __init__(self, verdict="entailed", raises=None):
+        self.verdict = verdict
+        self.raises = raises
+
+    async def judge(self, session, premise, hypothesis):
+        if self.raises is not None:
+            raise self.raises
+        return ProbeVerdict(
+            verdict=self.verdict, reason=None, raw=self.verdict, valid=True
+        )
+
+
+def _draft(ids):
+    from app.services.article_synthesis import DraftArticle, DraftSentence
+
+    return DraftArticle(
+        lead=DraftSentence(text="A subject is a thing.", fact_ids=ids),
+        sentences=[DraftSentence(text="It relates.", fact_ids=ids)],
+    )
+
+
+def _facts(ids):
+    from app.services.article_synthesis import GatheredFact
+
+    return [
+        GatheredFact(
+            id=i, subject_name="s", rel_type="RELATED_TO", object_name="o",
+            fact=f"fact {i}", applies_when=None, learned_in=[], confidence=0.8,
+            read_heat=0.0, reference_time=None, salience=1.0,
+        )
+        for i in ids
+    ]
+
+
+async def _seed_fact(session, project) -> str:
+    """A real row, because `article_citations.fact_id` takes a hard FK.
+
+    The FK is the point of the table (doc 09 §4.3), so a fixture with invented
+    ids would test the write against a constraint production never has.
+    """
+    from uuid import uuid4
+
+    fact_id = str(uuid4())
+    await session.execute(
+        text(
+            "INSERT INTO knowledge_triples "
+            "(id, subject_name, object_name, rel_type, reference_time, fact, "
+            " triple_key, project) "
+            "VALUES (CAST(:id AS uuid), 's', 'o', 'RELATED_TO', now(), 'f', "
+            "CAST(:id AS text), CAST(:p AS text))"
+        ),
+        {"id": fact_id, "p": project},
+    )
+    await session.flush()
+    return fact_id
+
+
+async def _article(session, project):
+    from uuid import uuid4
+
+    article_id = str(uuid4())
+    await session.execute(
+        text(
+            "INSERT INTO knowledge_articles "
+            "(id, subject_key, project, content, status, review_state) "
+            "VALUES (CAST(:id AS uuid), 's::concept', CAST(:p AS text), "
+            "'A subject is a thing.\nIt relates.', 'candidate', 'open')"
+        ),
+        {"id": article_id, "p": project},
+    )
+    await session.flush()
+    return article_id
+
+
+class TestTheWriteBack:
+    async def test_a_promoted_article_stores_its_coverage_as_confidence(
+        self, session
+    ):
+        """Doc 09 §4.3: coverage *is* the stored confidence, so the number
+        means "the fraction of my sentences a verified fact entails"."""
+        from app.services import article_synthesis as asyn
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+        fact_id = await _seed_fact(session, project)
+
+        await asyn.apply_coverage(
+            session, _Judge("entailed"), article_id=article_id,
+            draft=_draft([fact_id]), facts=_facts([fact_id]), project=project,
+        )
+        await session.flush()
+
+        row = (await session.execute(
+            text("SELECT status, confidence, review_state FROM knowledge_articles "
+                 "WHERE id = CAST(:id AS uuid)"),
+            {"id": article_id},
+        )).mappings().one()
+        assert row["confidence"] == pytest.approx(1.0)
+        assert row["status"] == "corroborated"
+        assert row["review_state"] is None
+
+    async def test_a_held_article_keeps_candidate_and_stays_open(self, session):
+        from app.services import article_synthesis as asyn
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+
+        await asyn.apply_coverage(
+            session, _Judge("unsupported"), article_id=article_id,
+            draft=_draft(["f1"]), facts=_facts(["f1"]), project=project,
+        )
+        await session.flush()
+
+        row = (await session.execute(
+            text("SELECT status, confidence, review_state FROM knowledge_articles "
+                 "WHERE id = CAST(:id AS uuid)"),
+            {"id": article_id},
+        )).mappings().one()
+        assert row["status"] == "candidate"
+        assert row["confidence"] == pytest.approx(0.0)
+        assert row["review_state"] == "open"
+
+    async def test_an_unmeasured_article_gets_no_write_at_all(self, session):
+        """Not a 0.0 confidence, not a re-opened review state, not a journal
+        row. It is already candidate + open, which is the correct serving
+        outcome for something nothing has measured."""
+        from app.services import article_synthesis as asyn
+        from app.services.events import list_events
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+
+        outcome = await asyn.apply_coverage(
+            session, _Judge(raises=JudgeNotQualifiedError("nope")),
+            article_id=article_id, draft=_draft(["f1"]), facts=_facts(["f1"]),
+            project=project,
+        )
+        await session.flush()
+
+        assert outcome is ce.CoverageOutcome.UNMEASURED
+        confidence = (await session.execute(
+            text("SELECT confidence FROM knowledge_articles WHERE id = CAST(:id AS uuid)"),
+            {"id": article_id},
+        )).scalar_one()
+        assert confidence is None
+        items, _ = await list_events(session, project=project, object_type="article")
+        assert items == []
+
+    async def test_a_promotion_journals_and_a_refusal_does_not(self, session):
+        from app.services import article_synthesis as asyn
+        from app.services.events import list_events
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+        fact_id = await _seed_fact(session, project)
+
+        await asyn.apply_coverage(
+            session, _Judge("entailed"), article_id=article_id,
+            draft=_draft([fact_id]), facts=_facts([fact_id]), project=project,
+        )
+        await session.flush()
+
+        items, _ = await list_events(session, project=project, object_type="article")
+        assert len(items) == 1
+        assert items[0]["payload"]["outcome"] == "promoted"
+        assert items[0]["payload"]["coverage"] == pytest.approx(1.0)
+
+    async def test_the_writer_cannot_reach_confirmed(self):
+        """`confirmed` is human-only on the fact ladder and the same rule binds
+        here: this writer's ceiling is `corroborated`."""
+        import inspect
+
+        from app.services import article_synthesis as asyn
+
+        source = inspect.getsource(asyn.apply_coverage)
+        assert '"confirmed"' not in source
+
+
+class TestTheCitationRows:
+    async def test_an_entailed_claim_gets_a_citation_row(self, session):
+        from app.services import article_synthesis as asyn
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+        fact_id = str(__import__("uuid").uuid4())
+        await session.execute(
+            text(
+                "INSERT INTO knowledge_triples "
+                "(id, subject_name, object_name, rel_type, reference_time, fact, "
+                " triple_key, project) "
+                "VALUES (CAST(:id AS uuid), 's', 'o', 'RELATED_TO', now(), 'f', "
+                "CAST(:id AS text), CAST(:p AS text))"
+            ),
+            {"id": fact_id, "p": project},
+        )
+        await session.flush()
+
+        await asyn.apply_coverage(
+            session, _Judge("entailed"), article_id=article_id,
+            draft=_draft([fact_id]), facts=_facts([fact_id]), project=project,
+        )
+        await session.flush()
+
+        count = (await session.execute(
+            text("SELECT COUNT(*) FROM article_citations WHERE article_id = CAST(:a AS uuid)"),
+            {"a": article_id},
+        )).scalar_one()
+        assert count == 2, "one per entailed claim, lead included"
+
+    async def test_an_unentailed_claim_gets_none(self, session):
+        from app.services import article_synthesis as asyn
+
+        project = f"t3-03-{__import__('uuid').uuid4().hex[:6]}"
+        article_id = await _article(session, project)
+
+        await asyn.apply_coverage(
+            session, _Judge("unsupported"), article_id=article_id,
+            draft=_draft(["f1"]), facts=_facts(["f1"]), project=project,
+        )
+        await session.flush()
+
+        count = (await session.execute(
+            text("SELECT COUNT(*) FROM article_citations WHERE article_id = CAST(:a AS uuid)"),
+            {"a": article_id},
+        )).scalar_one()
+        assert count == 0
+
+
+class TestTheQueueReason:
+    async def test_a_measured_hold_names_its_reason(self, session):
+        """Without this arm the headline routing case renders `unspecified` —
+        the T2.112 defect, re-created inside the feature that produces it."""
+        from app.services.review_queue import _article_reason
+
+        assert _article_reason("candidate", 0.5, 0.95) == "coverage_below_threshold"
+
+    async def test_an_unmeasured_article_still_reads_unmeasured(self):
+        from app.services.review_queue import _article_reason
+
+        assert _article_reason("candidate", None, 0.95) == "coverage_unmeasured"
+
+    async def test_a_hold_above_the_bar_names_the_uncited_claim(self):
+        """The residual edge: an article held by the uncited-claim block whose
+        fraction cleared the bar. Named rather than left to fall through."""
+        from app.services.review_queue import _article_reason
+
+        assert _article_reason("candidate", 0.99, 0.95) == "uncited_claim"
