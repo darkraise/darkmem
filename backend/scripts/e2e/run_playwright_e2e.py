@@ -32,7 +32,13 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 
 from e2e import stack  # noqa: E402
 
-PLAYWRIGHT_PORT = 8000
+# The port the disposable stack binds, and the one the vite proxy is
+# pointed at through `E2E_API_TARGET`. Overridable because the default
+# collides with a darkmem instance running on the same machine — including
+# the maintainer's own, which is where this gate runs. On a collision the
+# health check finds the *other* instance and the run seeds an admin
+# against it, so the override is a safety valve rather than a convenience.
+PLAYWRIGHT_PORT = int(os.environ.get("E2E_PLAYWRIGHT_PORT", "8000"))
 
 
 def main() -> int:
@@ -46,6 +52,11 @@ def main() -> int:
             **os.environ,
             "E2E_DISPOSABLE_STACK": "1",
             "E2E_BASE_URL": handle.base_url,
+            # The vite dev server proxies /api, /health and /ws here; left
+            # unset it would proxy to :8000 while the stack listens
+            # elsewhere, and every real-mode spec would talk to whatever
+            # else holds that port.
+            "E2E_API_TARGET": handle.base_url,
             "E2E_ADMIN_PASSWORD": password,
             "VITE_DEMO": "0",
         }
