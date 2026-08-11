@@ -115,7 +115,14 @@ class TestThePolicyAndTheCurb:
             json={"token_budget": 1234, "curbed": False},
             headers=auth_headers,
         )
-        assert response.json() == {"token_budget": 1234, "curbed": False}
+        # Whole-body equality on purpose: a new policy field reaching this
+        # response is a new thing the screen is now asserting, and it should
+        # cost an edit here. `watch_enabled` (T4.06) is the first one to.
+        assert response.json() == {
+            "token_budget": 1234,
+            "curbed": False,
+            "watch_enabled": False,
+        }
 
     async def test_an_out_of_range_budget_is_refused(self, client, auth_headers):
         response = await client.put(

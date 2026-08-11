@@ -100,9 +100,13 @@ class TestWhatThePushRecords:
         # meant to permit -- and a substring check would in any case pass for
         # a payload that carried prose under an unlisted key. Pinning the key
         # set means a new field has to be added here deliberately.
+        # `cadence` and `trigger` (T4.06) are the two additions since. Both
+        # are closed vocabularies — a cadence name and a member of
+        # `WATCH_TRIGGERS` — so neither can carry prose, which is the property
+        # this allowlist exists to keep.
         assert set(payload) == {
             "tool", "context_file", "memory_ids", "fact_ids", "article_ids",
-            "budget_tokens", "tokens_used",
+            "budget_tokens", "tokens_used", "cadence", "trigger",
         }
         # And nothing under those keys is free text: the id lists hold ids.
         for key in ("memory_ids", "fact_ids", "article_ids"):

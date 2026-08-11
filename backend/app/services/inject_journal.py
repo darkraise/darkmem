@@ -43,6 +43,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.events import record_event
+from app.services.inject_adapters import REFRESH_SESSION_START
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,8 @@ async def record_inject(
     tokens_used: int | None = None,
     project: str = "default",
     actor: str | None = None,
+    trigger: str | None = None,
+    cadence: str = REFRESH_SESSION_START,
 ) -> bool:
     """Journal one push, returning whether the row landed. Does not commit.
 
@@ -102,6 +105,12 @@ async def record_inject(
     asking "was a fact injected as corroborated" needs to know which ids are
     facts, and a merged list would make the layer unrecoverable without
     querying every table for each id.
+
+    ``cadence`` and ``trigger`` say *how* and *why*. A session-start push
+    reports its cadence and no trigger, because it had no cause beyond the
+    session beginning; a watch refresh (T4.06) names the shift that caused it,
+    drawn from a closed set for the same reason ``EVENT_TYPES`` is closed — a
+    free-form cause in a journal is a swap nobody can search for.
 
     ``budget_tokens`` and ``tokens_used`` are both recorded, and the pair is
     what makes the record diagnostic rather than decorative — a push that used
@@ -124,6 +133,16 @@ async def record_inject(
             "article_ids": _ids(article_ids),
             "budget_tokens": budget_tokens,
             "tokens_used": tokens_used,
+            # What cadence pushed, and — for a watch refresh — what shifted.
+            # Without them a re-inject is indistinguishable from a session
+            # start in the timeline, and "the human can see the swap" reduces
+            # to seeing that something was pushed twice (T4.06).
+            #
+            # `trigger` stays None on a session-start push rather than
+            # defaulting to the cadence: that push has no cause to report, and
+            # naming one would invent a swap that did not happen.
+            "cadence": cadence,
+            "trigger": trigger,
         },
     )
 

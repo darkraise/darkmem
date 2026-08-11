@@ -206,8 +206,14 @@ class TestTheCadence:
             await resolve_adapter(session, "claude-code", cadence="watch")
 
     async def test_an_adapter_declaring_another_cadence_is_refused(self, session):
-        """A config row cannot switch on an unimplemented feature either — the
-        refusal belongs to the implementation's absence, not to the argument."""
+        """A config row cannot switch watch on by itself.
+
+        The refusal used to belong to watch being unimplemented; since T4.06 it
+        belongs to the policy flag, which is the human's. The two questions are
+        different — "which cadence does this tool want" and "may this install
+        be watched" — and an adapter row answering the second would let an
+        operator editing transport facts start a push cadence nobody enabled.
+        """
         await _config(
             session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
         )

@@ -67,9 +67,11 @@ _ADAPTER_FIELDS = frozenset({"context_file", "mcp_config", "refresh"})
 # serve all four. Enforced on config rows too, not just on the defaults.
 MARKDOWN_SUFFIXES = frozenset({".md", ".mdc", ".markdown"})
 
-# The only cadence v1 implements. `watch` is T4.06's, and a parameter accepted
-# but unimplemented is worse than one refused: the caller believes it took.
+# The cadence every install implements. `watch` (T4.06) is the second, and it
+# is reachable only while `watch_enabled` is on: a parameter accepted but
+# unimplemented is worse than one refused, because the caller believes it took.
 REFRESH_SESSION_START = "session_start"
+REFRESH_WATCH = "watch"
 
 
 @dataclass(frozen=True)
@@ -125,7 +127,13 @@ class UnknownTool(LookupError):
 
 
 class UnsupportedCadence(ValueError):
-    """A refresh cadence v1 does not implement (doc 15 §3.3; T4.06 owns watch)."""
+    """A refresh cadence this install does not serve (doc 15 §3.3).
+
+    Two shapes reach it. A cadence this build has no implementation for is
+    refused outright; `watch` is implemented (T4.06) but refused while the
+    install has not enabled it, so a client cannot obtain a watch-cadence
+    adapter for an install that never asked to be watched.
+    """
 
 
 def reject_reason(context_file: str | None) -> str | None:
@@ -313,13 +321,27 @@ async def get_registry(
 async def resolve_adapter(
     session: AsyncSession, tool: str, *, cadence: str = REFRESH_SESSION_START
 ) -> Adapter:
-    """The adapter for ``tool``, or a refusal naming what is known."""
-    if cadence != REFRESH_SESSION_START:
+    """The adapter for ``tool``, or a refusal naming what is known.
+
+    ``watch`` passes only while the install enabled it. The flag is read here
+    as well as in `inject_watch.watch_refresh` — one flag, two doors, on
+    purpose: this is the door that hands out transport facts, and an adapter
+    obtained at a cadence the install never enabled is a client told it may
+    watch.
+    """
+    if cadence not in (REFRESH_SESSION_START, REFRESH_WATCH):
         raise UnsupportedCadence(
-            f"refresh cadence {cadence!r} is not implemented; v1 refreshes at "
-            f"{REFRESH_SESSION_START!r} only, and watch mode is T4.06's. A "
-            f"cadence accepted here and unimplemented below would report a "
-            f"push that never happens."
+            f"refresh cadence {cadence!r} is not implemented; the cadences are "
+            f"{REFRESH_SESSION_START!r} and {REFRESH_WATCH!r}. A cadence "
+            f"accepted here and unimplemented below would report a push that "
+            f"never happens."
+        )
+    watching = await _watch_enabled(session)
+    if cadence == REFRESH_WATCH and not watching:
+        raise UnsupportedCadence(
+            f"refresh cadence {REFRESH_WATCH!r} is off for this install; doc 15 "
+            f"§3.5 gates it behind `watch_enabled` on the distribution policy. "
+            f"v1 refreshes at {REFRESH_SESSION_START!r} until a human turns it on."
         )
 
     adapters = await get_adapters(session)
@@ -331,9 +353,30 @@ async def resolve_adapter(
             f"config entry rather than guessing a path — a block written into a "
             f"file the tool does not read fails silently."
         )
-    if adapter.refresh != REFRESH_SESSION_START:
+    if adapter.refresh not in (REFRESH_SESSION_START, REFRESH_WATCH):
         raise UnsupportedCadence(
-            f"adapter {tool!r} declares refresh {adapter.refresh!r}, which v1 "
-            f"does not implement"
+            f"adapter {tool!r} declares refresh {adapter.refresh!r}, which this "
+            f"build does not implement"
+        )
+    if adapter.refresh == REFRESH_WATCH and not watching:
+        # A config row must not switch on a mode the policy has off. The two
+        # are different questions — "which cadence does this tool want" and
+        # "may this install be watched" — and the second is the human's.
+        raise UnsupportedCadence(
+            f"adapter {tool!r} declares refresh {REFRESH_WATCH!r}, but watch is "
+            f"off for this install. Turn it on with `watch_enabled` on the "
+            f"distribution policy; an adapter row cannot enable it by itself."
         )
     return adapter
+
+
+async def _watch_enabled(session: AsyncSession) -> bool:
+    """The distribution policy's watch flag, imported late.
+
+    `inject_watch` imports this module for the cadence constants, so a
+    module-scope import back would be a cycle. The flag has one owner and this
+    reads it there rather than growing a second copy of the default.
+    """
+    from app.services.inject_watch import watch_enabled
+
+    return await watch_enabled(session)

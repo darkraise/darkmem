@@ -50,12 +50,18 @@ DEFAULT_POLICY = {
     "token_budget": 2000,
     # The curb. False means push is live; True stops every target at once.
     "curbed": False,
+    # Watch mode (T4.06, doc 15 §3.5): re-inject as the working context
+    # shifts, rather than at session start only. Off, and defaulted off here
+    # rather than only in the service, so an install that never saw this
+    # surface is not watched either.
+    "watch_enabled": False,
 }
 
 
 class DistributionPolicy(BaseModel):
     token_budget: int = Field(default=2000, ge=0, le=100_000)
     curbed: bool = False
+    watch_enabled: bool = False
 
 
 class DistributionTarget(BaseModel):
