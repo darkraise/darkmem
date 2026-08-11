@@ -374,6 +374,68 @@ class TestResynthesis:
         ).scalar_one()
         assert status == "corroborated"
 
+    async def test_an_unmeasured_draft_will_not_retire_a_measured_article(
+        self, session
+    ):
+        """Review finding F2. The freeze argument licenses superseding on an
+        unmeasured outcome only where nothing is lost — candidate over
+        candidate. One transient judge outage must not trade a *measured*
+        article for prose nothing measured, because coverage runs at synthesis
+        only: there is no path that would measure it back."""
+        prior_id, stale, fact_ids = await _standing(session)
+        await session.execute(
+            text(
+                "UPDATE knowledge_articles SET confidence = 0.98 "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": prior_id},
+        )
+        await session.flush()
+
+        new_id, reason = await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge(None), stale,
+            project=PROJECT, now=T0,
+        )
+
+        assert (new_id, reason) == (None, "standing_measured")
+        row = (
+            await session.execute(
+                text(
+                    "SELECT status, confidence FROM knowledge_articles "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": prior_id},
+            )
+        ).mappings().one()
+        assert row["status"] == "corroborated"
+        assert row["confidence"] == pytest.approx(0.98, abs=1e-6)
+
+    async def test_a_measured_draft_may_replace_a_measured_article(self, session):
+        """The narrowing is about *unmeasured* drafts only — a re-synthesis
+        that cleared the gate supersedes exactly as before."""
+        prior_id, stale, fact_ids = await _standing(session)
+        await session.execute(
+            text(
+                "UPDATE knowledge_articles SET confidence = 0.98 "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": prior_id},
+        )
+        await session.flush()
+
+        new_id, _reason = await ast_.resynthesise_subject(
+            session, _StubLLM(fact_ids), _StubJudge("entailed"), stale,
+            project=PROJECT, now=T0,
+        )
+
+        assert new_id is not None
+        assert (
+            await session.execute(
+                text("SELECT status FROM knowledge_articles WHERE id = CAST(:id AS uuid)"),
+                {"id": prior_id},
+            )
+        ).scalar_one() == "superseded"
+
     async def test_a_refusing_judge_still_supersedes_unmeasured(self, session):
         """With G-D open every measurement refuses. Holding on that would
         freeze L3 at its first article on every install, permanently, for a
@@ -438,6 +500,84 @@ class TestResynthesis:
         ).scalars().one()
         assert payload["superseded_by"] == new_id
         assert payload["subject_key"] == SUBJECT_KEY
+
+
+# ─────────────── the window is a config row, and it is wired ───────────────
+
+
+class TestTheConfigRow:
+    """Review finding F3: the done-when's own artifact had no test.
+
+    The field's *existence* and the runner's *forwarding* are asserted apart,
+    because a schema entry nothing reads is exactly the shape that passes a
+    schema test while the knob does nothing.
+    """
+
+    async def test_the_window_is_a_field_on_the_job_schema(self):
+        from app.services.dream_jobs import ARTICLE_SYNTHESIS_CONFIG_SCHEMA
+
+        field = next(
+            f for f in ARTICLE_SYNTHESIS_CONFIG_SCHEMA if f.key == "debounce_hours"
+        )
+        assert field.default == ast_.DEFAULT_DEBOUNCE_HOURS
+        assert field.min == 1
+
+    async def test_the_runner_forwards_it_from_that_row(self):
+        import ast as pyast
+        import inspect
+        import textwrap
+
+        from app.services import dream_jobs
+
+        source = inspect.getsource(dream_jobs._make_article_runner)
+        tree = pyast.parse(textwrap.dedent(source))
+        forwarded = {
+            keyword.arg
+            for node in pyast.walk(tree)
+            if isinstance(node, pyast.Call)
+            and getattr(node.func, "id", None) == "run_article_resynthesis"
+            for keyword in node.keywords
+        }
+        assert "debounce_hours" in forwarded
+
+    async def test_the_default_is_stated_once(self):
+        """Three copies of 24 was the shape review finding F5 named."""
+        from app.services import dream_jobs
+
+        assert dream_jobs.DEFAULT_DEBOUNCE_HOURS is ast_.DEFAULT_DEBOUNCE_HOURS
+
+
+# ─────────────── the window and its own lookback ───────────────
+
+
+class TestTheAnchorLookback:
+    """Review finding F1. The anchor read is bounded so it does not scan every
+    monthly `events` child, and that bound must always exceed the window — a
+    fixed 90 days silently disabled re-synthesis for any longer window, and it
+    failed *quietly*: the `debounced` counter climbing reads exactly like the
+    damping working."""
+
+    async def test_the_lookback_always_exceeds_the_window(self):
+        for hours in (1, 24, 24 * 90, 24 * 365, 8760):
+            assert ast_._anchor_lookback(hours) > timedelta(hours=hours), hours
+
+    async def test_it_holds_the_floor_for_short_windows(self):
+        assert ast_._anchor_lookback(1) == timedelta(days=90)
+
+    async def test_a_year_long_window_still_settles(self, session):
+        """The config admits 8760 hours. Before the fix this could not return
+        True on any path, for any corpus."""
+        await _fact(session)
+        await _article(session, fact_set_hash="a-hash-from-before")
+        article = (await ast_.stale_articles(session, project=PROJECT))[0]
+
+        assert not await ast_.staleness_settled(
+            session, article, project=PROJECT, debounce_hours=8760, now=NOW
+        )
+        assert await ast_.staleness_settled(
+            session, article, project=PROJECT, debounce_hours=8760,
+            now=NOW + timedelta(hours=8761),
+        )
 
 
 # ─────────────── the pass, end to end ───────────────

@@ -89,6 +89,16 @@ describe("event-taxonomy map shape", () => {
     }
   })
 
+  it("puts a stale-article label in the consolidation tab, not verification", () => {
+    // The backend guard only asks that the value be classified *somewhere*;
+    // which tab is the claim. `article_stale` says the knowledge under an
+    // article moved and the re-synthesis it precedes journals `superseded`
+    // into this same tab — nothing about the article's grounding is asserted,
+    // which is what the verification tab is for.
+    expect(categoryOfEventType("article_stale")).toBe("consolidation")
+    expect(isDeliberatelyUntabbed("article_stale")).toBe(false)
+  })
+
   it("an unrecognised event type is neither tabbed nor recorded as excluded", () => {
     expect(categoryOfEventType("not_a_real_event_type")).toBeNull()
     expect(isDeliberatelyUntabbed("not_a_real_event_type")).toBe(false)

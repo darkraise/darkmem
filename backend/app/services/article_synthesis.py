@@ -1249,7 +1249,24 @@ DEFAULT_DEBOUNCE_HOURS = 24
 # would age out before it could mature. An article that has been stale longer
 # than this re-journals and waits one more window: a bounded, self-correcting
 # delay rather than an unbounded scan.
-_ANCHOR_LOOKBACK_DAYS = 90
+#
+# **Derived from the window rather than fixed beside it** (T3.05 review, F1). A
+# constant 90 days silently disabled re-synthesis for any window past it: the
+# newest visible anchor was then always younger than the window, so
+# `staleness_settled` could not return True on any path, and the `debounced`
+# counter climbing read exactly like the damping working. The job's config
+# admits a window up to a year, so the floor must move with it — the invariant
+# the comment above states is now enforced by construction rather than by two
+# numbers agreeing.
+_ANCHOR_LOOKBACK_FLOOR_DAYS = 90
+_ANCHOR_LOOKBACK_WINDOWS = 2
+
+
+def _anchor_lookback(debounce_hours: float) -> timedelta:
+    return max(
+        timedelta(days=_ANCHOR_LOOKBACK_FLOOR_DAYS),
+        timedelta(hours=debounce_hours) * _ANCHOR_LOOKBACK_WINDOWS,
+    )
 
 _LIVE_ARTICLES_SQL = text(
     """
@@ -1270,6 +1287,14 @@ _LAST_ANCHOR_SQL = text(
       AND created_at >= CAST(:since AS timestamptz)
     ORDER BY created_at DESC
     LIMIT 1
+    """
+)
+
+_IS_MEASURED_SQL = text(
+    """
+    SELECT confidence IS NOT NULL
+    FROM knowledge_articles
+    WHERE id = CAST(:id AS uuid)
     """
 )
 
@@ -1361,7 +1386,7 @@ async def staleness_settled(
                 "object_type": ARTICLE_OBJECT_TYPE,
                 "id": article.article_id,
                 "event_type": ARTICLE_STALE,
-                "since": stamp - timedelta(days=_ANCHOR_LOOKBACK_DAYS),
+                "since": stamp - _anchor_lookback(debounce_hours),
             },
         )
     ).mappings().first()
@@ -1408,6 +1433,12 @@ class ResynthesisOutcome:
     ``held`` is its own count and not a failure: a draft measured below the
     coverage threshold is the gate working, and folding it into ``failed``
     would make a corpus of thin subjects read as an outage.
+
+    ``refused`` keeps the meaning its synthesis-side twin has — the model
+    produced something unstorable — so the two other non-writes have their own
+    counts rather than borrowing it (T3.05 review, F4): ``skipped`` is a
+    subject whose verified facts are gone, and ``protected`` is an unmeasured
+    draft declining to retire a measured article.
     """
 
     projects: int = 0
@@ -1416,10 +1447,28 @@ class ResynthesisOutcome:
     attempted: int = 0
     resynthesised: int = 0
     held: int = 0
+    protected: int = 0
+    skipped: int = 0
     refused: int = 0
     failed: int = 0
     unmeasured: int = 0
     last_project: str | None = None
+
+
+async def _article_is_measured(session: AsyncSession, article_id: str) -> bool:
+    """Whether a coverage number was ever written for this article.
+
+    ``confidence`` is the coverage column and `write_coverage` writes it only on
+    a measured outcome — an unmeasured article gets no write at all — so a
+    non-NULL value is exactly "the entailment pass reached a verdict on this
+    prose". Reading the column rather than the rung is deliberate: a human
+    ratification moves the rung without re-measuring, and a measured article
+    held below the threshold keeps `candidate`, so the rung answers a different
+    question.
+    """
+    return bool(
+        (await session.execute(_IS_MEASURED_SQL, {"id": article_id})).scalar()
+    )
 
 
 async def resynthesise_subject(
@@ -1470,6 +1519,20 @@ async def resynthesise_subject(
         )
         if result.outcome is CoverageOutcome.HELD:
             return None, "held"
+
+    # An unmeasured draft may replace an unmeasured article and nothing else
+    # (T3.05 review, F2). The freeze argument that licenses superseding on an
+    # unmeasured outcome only covers that case — candidate replaces candidate,
+    # and no measurement is lost. Wider, it trades a *measured* article for
+    # unmeasured prose on one transient judge outage, and there is no
+    # re-measure path: coverage runs at synthesis only, so the badge would stay
+    # down until the fact set moved again. Under an open G-D both rules behave
+    # identically, because no standing article is measured.
+    if (
+        (result is None or result.outcome is CoverageOutcome.UNMEASURED)
+        and await _article_is_measured(session, article.article_id)
+    ):
+        return None, "standing_measured"
 
     all_ids = await all_verified_fact_ids(session, subject=name, project=project)
     await session.execute(_SUPERSEDE_SQL, {"id": article.article_id})
@@ -1590,8 +1653,10 @@ async def run_article_resynthesis(
                             outcome.unmeasured += 1
                     elif reason == "held":
                         outcome.held += 1
+                    elif reason == "standing_measured":
+                        outcome.protected += 1
                     else:
-                        outcome.refused += 1
+                        outcome.skipped += 1
                     await session.commit()
             except DraftRefused as refusal:
                 outcome.refused += 1

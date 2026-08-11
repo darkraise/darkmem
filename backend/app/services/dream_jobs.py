@@ -59,6 +59,7 @@ from dataclasses import dataclass
 
 
 from app.services.article_synthesis import (
+    DEFAULT_DEBOUNCE_HOURS,
     run_article_resynthesis,
     run_article_synthesis,
 )
@@ -520,7 +521,7 @@ ARTICLE_SYNTHESIS_CONFIG_SCHEMA: list[FieldDescriptor] = [
     ),
     FieldDescriptor(
         key="debounce_hours", label="Re-synthesis Quiet Period (hours)",
-        default=24, min=1, max=8760,
+        default=DEFAULT_DEBOUNCE_HOURS, min=1, max=8760,
         help=(
             "Doc 09 §4.4's quiet period (T3.05). A stale article re-synthesises "
             "only once its fact set has held the same shape for this long, so a "
@@ -567,7 +568,7 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
             registry.session_factory,
             llm_provider,
             projects=outcome.visited,
-            debounce_hours=float(settings_.get("debounce_hours", 24)),
+            debounce_hours=float(settings_.get("debounce_hours", DEFAULT_DEBOUNCE_HOURS)),
             hub_cap=int(settings_.get("hub_cap", 40)),
             budget_words=int(settings_.get("length_budget_words", 400)),
         )
