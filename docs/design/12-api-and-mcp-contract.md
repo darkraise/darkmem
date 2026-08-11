@@ -43,7 +43,7 @@ The current route groups, by router prefix, all under `/api/v1` except `/health`
 
 | Group | Prefix | Representative routes |
 |---|---|---|
-| Auth | `/auth` | `POST /login`, `/logout`, `/refresh`, `/change-password`, `GET /me` |
+| Auth | `/auth` | `POST /login`, `/logout`, `/refresh`, `/change-password`, `GET /me`, `GET /audit`, `GET /security-posture` |
 | Setup (TOFU) | `/setup` | the wizard steps, gated by `require_uninitialized` |
 | Memories | `/memories` | `POST ""`, `/search`, `/search/paginated`, `/batch`, `/delete`, `/reason`, `/{id}/merge`, `GET /{id}`, `/{id}/duplicates`, `PUT`/`DELETE /{id}` |
 | Tags | `/tags` | `GET ""` |
@@ -54,16 +54,62 @@ The current route groups, by router prefix, all under `/api/v1` except `/health`
 | Config | `/config` | `PUT /feature-flags`, `POST /config/llm`, `/system-prompts`, `/theme` (GET unauth) |
 | Analytics | `/analytics` | `/stats`, `/overview`, `/pipeline-logs`, `/reprocess` |
 | Graph, chat, system | `/graph`, `/chat`, `/system` | graph read, chat conversations, `/system/fs/list` |
+| Checkpoints | `/checkpoints` | `POST ""`, `GET /latest` |
+| Memory-buffer triage | `/memory-buffer` | `GET ""`, `/stats`, `DELETE /{id}`, `POST /{id}/requeue` |
+| Distribution | `/distribution` | `GET ""`, `PUT /policy` |
+| Review queue | `/review-queue` | `GET /facts`, `/articles`, `/counts`, `POST /facts/{id}/reject`, `/facts/{id}/dismiss-suspicion` |
+| Hygiene queue | `/hygiene-queue` | `GET /duplicates`, `/low-confidence`, `/expiring-soon`, `/superseded`, `/counts`, `POST /bulk/supersede`, `/bulk/prune`, `/bulk/confirm-dedup` |
+| Dream digest | `/dream-digest` | `GET /cycles`, `/cycles/{cycle_id}`, `POST /actions/{event_id}/undo`, `/cycles/{cycle_id}/undo` |
+| Knowledge topics | `/knowledge/topics` | `GET ""`, `/{label}`, `/pin-suggestions`, `POST /pin-suggestions/accept`, `/pin-suggestions/dismiss` |
 | Health | `/health` | unauthenticated liveness |
+
+*(The Checkpoints through Knowledge-topics rows, and the Auth row's `GET /audit` / `GET /security-posture`, were added by the 2026-08-11 amendment below — all shipped surfaces this table predated.)*
 
 The target's additions and one subtraction (target-new / target-dropped):
 
 | Change | Routes | Note |
 |---|---|---|
-| **Add** knowledge vault | `POST /knowledge/search`, `GET /knowledge/facts/{id}`, `GET /knowledge/articles/{id}`, `GET /knowledge/facts/{id}/dispute`, `GET /knowledge/overview`, `POST /knowledge/context/validate` | the composed four-layer read + fact/article read + dispute inspect + project overview + stateless context validation (§3, §4, §5) |
-| **Add** review & ratify (authenticated, no MCP twin) | `GET /knowledge/review`, `POST /knowledge/facts/{id}/ratify`, `POST /knowledge/articles/{id}/ratify`, `PATCH /knowledge/facts/{id}/review` | the consequence-ranked review queue and human ratification — the single-door asymmetry (§3, §6) |
+| **Add** knowledge vault | `POST /knowledge/search`, `GET /knowledge/facts`, `GET /knowledge/facts/{id}`, `GET /knowledge/articles`, `GET /knowledge/articles/{id}`, `GET /knowledge/facts/{id}/dispute`, `GET /knowledge/overview`, `POST /knowledge/context/validate` | the composed four-layer read + fact/article list and read + dispute inspect + project overview + stateless context validation (§3, §4, §5); the two list doors added 2026-08-11, see the amendment below |
+| **Add** review & ratify (authenticated, no MCP twin) | `GET /knowledge/review`, `POST /knowledge/facts/{id}/ratify`, `POST /knowledge/articles/{id}/ratify`, `PATCH /knowledge/facts/{id}/review` | the consequence-ranked review queue and human ratification — the single-door asymmetry (§3, §6); **amended 2026-08-11: the queue and its resolution shipped at `/review-queue/*` instead, see the note below** |
 | **Add** events read | `GET /events`, `GET /events/calendar`, `GET /events/timeline` | the timeline + contribution calendar over the `events` table (§7) |
 | **Drop** LLM indirection | `PUT /config/llm-providers`, `/llm-profiles`, `/ml-profiles` | removed with the flattening to six inline purpose rows (doc 04 §7, doc 11 §2); `POST /config/llm` stays |
+
+**Amendment, 2026-08-11 (Tier-3, resolved on measurement).** §1 declares this doc fixes *every* REST
+route and MCP tool, and the tables above no longer did. The live surface was derived from the app
+itself — `app.main:app`'s router flattened to its `APIRoute` leaves exactly as
+`backend/tests/test_door_parity.py` enumerates it (HEAD excluded), plus the FastMCP registry via
+`mcp.list_tools()`; never `rg` over route files — giving **135 method-path routes and 27 tools**,
+then diffed against every route this doc names, in both directions. Raised when T3.06 found the
+vault row above named neither `GET /knowledge/facts` (shipped by T2.36a) nor
+`GET /knowledge/articles` (shipped by T3.06); the sweep found the drift systematic, not local:
+
+- **Thirty-four shipped, tested routes appeared nowhere in this doc** (2 checkpoints +
+  4 memory-buffer + 2 distribution + 5 review-queue + 8 hygiene-queue + 4 dream-digest +
+  5 knowledge-topics + 2 auth reads + the 2 vault list doors = 34). The group table above has
+  gained a row per missing group and the vault row its two list doors; each surface's door-count
+  classification and single-door reason live in `docs/two-door-parity.md`, which is generated from
+  the enforced table in `test_door_parity.py` and is where that truth is pinned.
+- **Two of the four routes the review-and-ratify row names are phantoms a client would 404 on**,
+  which is the dangerous direction — an omission costs a reader completeness, a phantom costs a
+  client correctness. `GET /knowledge/review` shipped as the three `/review-queue` reads
+  (facts, articles, counts). `PATCH /knowledge/facts/{id}/review` was never built, and its stated
+  semantics — "clear or set `review_state`" — contradict the settled design: `review_state` is
+  **derived, never written** (`derive_review_state` over the openers, docs 08/09; adding an opener
+  is appending a predicate, never adding a writer), and the shipped human actions are
+  `POST /review-queue/facts/{id}/reject` and `/dismiss-suspicion`, which adjudicate the fact and
+  the finding rather than setting the derived bit. §3's sentence carrying the same claim is
+  amended there. (Doc 13's `/knowledge/review` is a *frontend* route and is not this claim.)
+- **Three named routes remain honest targets, now explicitly so**: `GET /knowledge/facts/{id}/dispute`
+  (with `dispute_inspect`), `POST /knowledge/context/validate` (with `context_validate`), and
+  `POST /knowledge/articles/{id}/ratify` are target-new and still unshipped — said here so the
+  additions table cannot be read as uniformly shipped now that its other rows are.
+- **The rest of the additions table has shipped and reads exists-today**: `POST /knowledge/search`,
+  `GET /knowledge/facts/{id}`, `GET /knowledge/articles/{id}`, `GET /knowledge/overview`,
+  `POST /knowledge/facts/{id}/ratify`, both list doors, and all three `/events` reads are live;
+  the three dropped LLM-indirection routes are measured gone.
+- Arithmetic for the tool surface, so the next reader rechecks instead of trusting: §3's families
+  count 10 memory + 11 code + 4 shipped vault tools = 25 of the 27 live; the two this doc never
+  named are `checkpoint_save` / `checkpoint_latest`, corrected in §3's 2026-08-11 amendment.
 
 **The three documented deviations stay as-is, because fixing them is breaking for marginal benefit.** `POST /config/llm` should be `PUT` for symmetry (it is an idempotent full replace); `DELETE /repos/{id}/tasks/{task_id}` is a cancel that a `POST .../cancel` would model better; `PUT /repos/{id}` is a partial update that `PATCH` fits. All three are used by the frontend and are left until a coordinated client update (`docs/api-rest-conventions.md`). The audit posture — a `GET` never mutates (wiki generation is an explicit `POST /repos/{id}/reindex?generate_wiki=true`, not a `GET` side effect) — is preserved by every new route: `GET /knowledge/*` and `GET /events/*` are strictly read-only.
 
@@ -163,6 +209,19 @@ The new vault & review tools (target-new):
 | `context_validate` *(optional)* | stateless: echo the normalised `applies_when`, warn on unknown axes | `POST /knowledge/context/validate` | no |
 
 **The ratify and review-resolution writes are REST/UI-only, single-door with a stated reason (invariant 17's sanctioned exception).** `POST /knowledge/facts/{id}/ratify` (promote to `confirmed` by writing a `human`-kind `fact_source`, doc 08 §4.4), `PATCH /knowledge/facts/{id}/review` (clear or set `review_state`), and the article equivalents **have no MCP twin**. The reason is the trust model: `/mcp` is unauthenticated on the LAN behind only the Host allowlist (invariant 20), and `confirmed` is the one rung the machine can never reach on its own (spec §2.1) — exposing ratification over the unauthenticated door would let any LAN agent forge the human's imprimatur. This is not an accidental gap; it is the design, and it is recorded here so no future contributor "completes the symmetry" and re-opens it. The review-queue *read* (`GET /knowledge/review`) is authenticated REST too — it is a curation surface (doc 13), not an agent capability — and it likewise has no MCP twin, for the same reason plus the observation that an agent triaging its own truth backlog is a conflict of interest the design declines.
+
+**Amendment, 2026-08-11 (Tier-3, resolved on measurement — the same sweep as §2's).** Two
+corrections to this section's inventory, both verified against the live FastMCP registry and
+router rather than argued. (1) The opening sentence counts ten memory and eleven code tools;
+the live registry serves **27**, and the two this section never named are `checkpoint_save` and
+`checkpoint_latest` — the session-checkpoint pair, two-door with `POST /checkpoints` /
+`GET /checkpoints/latest` (likewise absent from §2's table until its 2026-08-11 amendment).
+(2) The paragraph above names `PATCH /knowledge/facts/{id}/review` ("clear or set
+`review_state`") as the review-resolution write. No such route shipped, and the settled design
+forbids its semantics: `review_state` is derived by `derive_review_state` over the openers and
+has no manual writer — the shipped human actions are `POST /review-queue/facts/{id}/reject` and
+`/dismiss-suspicion` (and `ratify` for the promotion), and this paragraph's single-door
+reasoning carries over to them unchanged: they remain authenticated REST with no MCP twin.
 
 The tool families as a structure, with the epistemic layer each reads, the two-door status, and the one single-door asymmetry:
 
