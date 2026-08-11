@@ -17,5 +17,13 @@
   "options_page": "src/options.html",
   "action": {
     "default_title": "Capture selection to darkmem"
-  }
+  },
+  "optional_permissions": [
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
+  ]
 }

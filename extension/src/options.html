@@ -25,6 +25,29 @@
 <label for="project">Project</label>
 <input id="project" placeholder="default" />
 <p><button id="save">Save</button> <span id="status"></span></p>
+<h2>Auto-capture (off by default)</h2>
+<p class="note">
+  Normally darkmem captures only what you select and click. Auto-capture sends
+  <strong>every new turn</strong> of an AI chat on ChatGPT, Claude.ai and
+  Gemini as it appears, without asking each time. Turning it on asks the
+  browser for permission to read those three sites; until you grant it, this
+  extension has no access to them at all and the switch cannot take effect.
+  Turning it off removes that permission again. While it is on, the toolbar
+  icon carries a <code>REC</code> badge, so the mode is never silent.
+</p>
+<p class="note">
+  Existing messages are not sent — opting in captures the conversation from
+  that point on, not the one you already had. Auto-captured turns carry this
+  install's <code>origin_key</code> exactly as clicked captures do, so a
+  talkative chat cannot make darkmem count one browser as many witnesses.
+</p>
+<p>
+  <label for="autocapture" style="display:inline; font-weight:600;">
+    <input id="autocapture" type="checkbox" style="width:auto;" />
+    Auto-capture AI chats
+  </label>
+  <span id="autocapture-status"></span>
+</p>
 <p class="note">
   This install's <code>origin_key</code> is
   <code id="origin">…</code>. It is minted once and never changes: darkmem

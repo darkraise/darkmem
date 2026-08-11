@@ -16,6 +16,14 @@ import {
 } from "./capture.js";
 import { packageExchange } from "./adapters.js";
 import { alreadyCaptured, fingerprint, remember } from "./dedupe.js";
+import {
+  AUTO_CAPTURE_MESSAGE,
+  AUTO_CAPTURE_SCRIPT_ID,
+  CHAT_HOST_PATTERNS,
+  autoCaptureIndicator,
+  autoCaptureRequest,
+  readAutoCaptureState,
+} from "./autocapture.js";
 
 const MENU_ID = "darkmem-capture-selection";
 const SETTINGS_KEYS = ["darkmem.base_url", "darkmem.token", "darkmem.project"];
@@ -35,6 +43,7 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Capture selection to darkmem",
     contexts: ["selection"],
   });
+  syncAutoCapture();
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -91,6 +100,109 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         : `Not captured — ${error?.message ?? "the request did not complete"}${hint}`,
     );
   }
+});
+
+/**
+ * Bring the registered observer in line with the two gates (T4.07).
+ *
+ * Called on every wakeup and after every opt-in change rather than only when
+ * the human toggles: a host grant can be revoked from Chrome's own extensions
+ * page without this extension being told, and a registration that outlived its
+ * permission is the state the opt-in exists to make impossible.
+ */
+async function syncAutoCapture() {
+  const state = await readAutoCaptureState(
+    chrome.storage.local,
+    (request) => chrome.permissions.contains(request),
+  );
+
+  try {
+    if (state.active) {
+      // Idempotent by removing first: `registerContentScripts` throws on a
+      // duplicate id, and a worker that woke twice would otherwise leave
+      // auto-capture off with an error nobody sees.
+      await chrome.scripting.unregisterContentScripts({
+        ids: [AUTO_CAPTURE_SCRIPT_ID],
+      }).catch(() => {});
+      await chrome.scripting.registerContentScripts([
+        {
+          id: AUTO_CAPTURE_SCRIPT_ID,
+          js: ["src/content-autocapture.js"],
+          matches: [...CHAT_HOST_PATTERNS],
+          runAt: "document_idle",
+        },
+      ]);
+    } else {
+      await chrome.scripting.unregisterContentScripts({
+        ids: [AUTO_CAPTURE_SCRIPT_ID],
+      }).catch(() => {});
+    }
+  } catch {
+    // `scripting` is optional and absent until the opt-in grants it, so its
+    // absence is the ordinary state rather than an error worth reporting.
+  }
+
+  const indicator = autoCaptureIndicator(state.active);
+  await notify(indicator.title);
+  try {
+    await chrome.action.setBadgeText({ text: indicator.badge });
+  } catch {
+    // The badge is a courtesy; the title already carries the mode.
+  }
+  return state;
+}
+
+/**
+ * One auto-captured turn, filed through the ordinary capture door.
+ *
+ * Same door, same `origin_key`, same dedupe as a clicked capture — doc 15 §4's
+ * whole stance is that browser capture is a new *source*, not a new pipeline,
+ * and auto-capture must not become a second one inside the extension either.
+ *
+ * The gates are re-read here rather than trusted from the fact that a message
+ * arrived. A content script registered a moment ago can outlive a revoked
+ * permission by one message, and the door is the last place to stop it.
+ */
+async function captureTurn({ content, pageUrl, pageTitle }) {
+  const state = await readAutoCaptureState(
+    chrome.storage.local,
+    (request) => chrome.permissions.contains(request),
+  );
+  if (!state.active) return;
+
+  const { baseUrl, token, project } = await settings();
+  const originKey = await getOriginKey(chrome.storage.local);
+  const packaged = packageExchange({ selection: content, pageUrl, pageTitle });
+  const body = buildCapture({
+    selection: packaged.content,
+    pageUrl,
+    pageTitle,
+    originKey,
+    project,
+  });
+  body.metadata = { ...body.metadata, ...packaged.metadata, auto_captured: true };
+
+  const digest = await fingerprint(body.content);
+  if (await alreadyCaptured(chrome.storage.local, originKey, digest)) return;
+
+  await postCapture(fetch, baseUrl, body, { token });
+  await remember(chrome.storage.local, originKey, digest);
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type !== AUTO_CAPTURE_MESSAGE) return;
+  // Failures are swallowed here rather than surfaced per turn: auto-capture
+  // runs unattended by definition, and a toolbar that reported every transient
+  // failure would train the human to ignore the one indicator that matters.
+  // The mode's own state stays on the badge.
+  captureTurn(message).catch(() => {});
+});
+
+chrome.permissions.onAdded.addListener(() => {
+  syncAutoCapture();
+});
+chrome.permissions.onRemoved.addListener(() => {
+  syncAutoCapture();
 });
 
 async function notify(message) {
