@@ -553,3 +553,279 @@ class TestTheDraftCall:
             await asyn.synthesise_draft(llm, subject="subj", facts=[])
 
         assert llm.calls == []
+
+
+# ─────────────── Steps 3-4: the write and the journal ───────────────
+
+
+async def _articles_for(session, subject: str) -> list[dict]:
+    rows = await session.execute(
+        text(
+            "SELECT id, status, confidence, review_state, content, fact_set_hash, "
+            "applies_when, learned_in FROM knowledge_articles "
+            "WHERE project = CAST(:p AS text) AND subject_key = CAST(:s AS text)"
+        ),
+        {"p": PROJECT, "s": subject},
+    )
+    return [dict(r) for r in rows.mappings().all()]
+
+
+async def _synthesis_events(session, project: str = PROJECT) -> list[dict]:
+    from app.services.events import list_events
+
+    items, _ = await list_events(
+        session, project=project, object_type="article", limit=50
+    )
+    return items
+
+
+def _simple_draft(ids: list[str]) -> asyn.DraftArticle:
+    return asyn.DraftArticle(
+        lead="A subject is a thing.",
+        sentences=[asyn.DraftSentence(text="It relates.", fact_ids=ids)],
+    )
+
+
+class TestTheWrite:
+    async def test_an_unmeasured_article_is_candidate_and_open(self, session):
+        """Doc 09 §4.3 gates on coverage. An article with none measured is not
+        above the threshold — it is unmeasured, the same serving outcome for a
+        different reason, and the column would happily take `corroborated`."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        facts = [_gathered("a")]
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=facts, all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        rows = await _articles_for(session, subject)
+        assert len(rows) == 1
+        assert rows[0]["status"] == "candidate"
+        assert rows[0]["review_state"] == "open"
+
+    async def test_confidence_stays_null_rather_than_zero(self, session):
+        """Coverage *is* the stored confidence. A 0.0 default would read as
+        "measured, and terrible"; NULL reads as "not measured"."""
+        subject = f"subj-{uuid4().hex[:8]}"
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        assert (await _articles_for(session, subject))[0]["confidence"] is None
+
+    async def test_it_never_writes_a_promoted_status(self, session):
+        subject = f"subj-{uuid4().hex[:8]}"
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        assert (await _articles_for(session, subject))[0]["status"] not in (
+            "corroborated", "confirmed",
+        )
+
+    async def test_a_subject_holding_a_live_article_is_refused(self, session):
+        """Re-synthesis is T3.05's, whole. Splitting it would mean flipping the
+        prior row to `superseded` here while deferring its pointer — and
+        `knowledge_articles` has no `chk_superseded_has_pointer`, so that does
+        not error, it silently loses the lineage."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        with pytest.raises(asyn.LiveArticleExists):
+            await asyn.store_article(
+                session, subject=subject, project=PROJECT,
+                draft=_simple_draft(["a"]), facts=[_gathered("a")],
+                all_verified_ids=["a"],
+            )
+
+        assert len(await _articles_for(session, subject)) == 1
+
+    async def test_the_body_carries_the_lead_and_every_sentence(self, session):
+        subject = f"subj-{uuid4().hex[:8]}"
+        draft = asyn.DraftArticle(
+            lead="Postgres is a database.",
+            sentences=[
+                asyn.DraftSentence(text="It runs on Linux.", fact_ids=["a"]),
+                asyn.DraftSentence(text="It speaks SQL.", fact_ids=["a"]),
+            ],
+        )
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT, draft=draft,
+            facts=[_gathered("a")], all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        content = (await _articles_for(session, subject))[0]["content"]
+        assert "Postgres is a database." in content
+        assert "It runs on Linux." in content
+        assert "It speaks SQL." in content
+
+    async def test_applies_when_keeps_a_conflict_rather_than_picking(self, session):
+        """Doc 09 §4.2 calls the aggregate *displayed provenance*, not a
+        trustworthy scope — so a key two facts disagree on keeps both. Picking
+        one would render a scope no fact asserts."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        facts = [
+            _gathered("a", applies_when={"env": "prod"}),
+            _gathered("b", applies_when={"env": "dev"}),
+        ]
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=facts, all_verified_ids=["a", "b"],
+        )
+        await session.flush()
+
+        assert (await _articles_for(session, subject))[0]["applies_when"] == {
+            "env": ["dev", "prod"]
+        }
+
+
+class TestTheFactSetHash:
+    async def test_it_covers_the_full_verified_set_not_the_capped_input(
+        self, session
+    ):
+        """Doc 09 §4.4: staleness fires when knowledge changed. Hashed over the
+        capped input instead, read-heat drift reorders the cap boundary and
+        flips the hash with no knowledge change — the precise failure §4.4
+        exists to prevent."""
+        capped = [_gathered("a")]
+
+        one = asyn.fact_set_hash(["a", "b", "c"])
+        two = asyn.fact_set_hash([f.id for f in capped])
+
+        assert one != two
+
+    async def test_it_is_order_independent(self):
+        assert asyn.fact_set_hash(["a", "b"]) == asyn.fact_set_hash(["b", "a"])
+
+    async def test_a_changed_set_changes_the_hash(self):
+        assert asyn.fact_set_hash(["a", "b"]) != asyn.fact_set_hash(["a", "b", "c"])
+
+    async def test_the_stored_hash_is_the_uncapped_one(self, session):
+        subject = f"subj-{uuid4().hex[:8]}"
+
+        await asyn.store_article(
+            session, subject=subject, project=PROJECT,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a", "b", "c"],
+        )
+        await session.flush()
+
+        stored = (await _articles_for(session, subject))[0]["fact_set_hash"]
+        assert stored == asyn.fact_set_hash(["a", "b", "c"])
+
+
+class TestTheJournal:
+    async def test_every_run_journals_its_inputs(self, session):
+        subject = f"subj-{uuid4().hex[:8]}"
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        facts = [_gathered("a"), _gathered("b")]
+
+        await asyn.store_article(
+            session, subject=subject, project=project,
+            draft=_simple_draft(["a"]), facts=facts,
+            all_verified_ids=["a", "b", "c"],
+        )
+        await session.flush()
+
+        rows = await _synthesis_events(session, project)
+        assert len(rows) == 1
+        assert rows[0]["payload"]["fact_ids"] == ["a", "b"]
+        assert rows[0]["payload"]["subject_key"] == subject
+        assert rows[0]["payload"]["verified_fact_count"] == 3
+
+    async def test_the_ids_are_in_ranked_order(self, session):
+        """Which facts the cap admitted, and in what priority, is the question
+        a bad article is traced with."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        facts = [_gathered("z"), _gathered("m"), _gathered("a")]
+
+        await asyn.store_article(
+            session, subject=subject, project=project,
+            draft=_simple_draft(["z"]), facts=facts,
+            all_verified_ids=["z", "m", "a"],
+        )
+        await session.flush()
+
+        assert (await _synthesis_events(session, project))[0]["payload"][
+            "fact_ids"
+        ] == ["z", "m", "a"]
+
+    async def test_the_payload_carries_no_draft_prose(self, session):
+        """Write-time minimization: the article row holds the text, the journal
+        answers which facts produced it, and an event payload outlives the
+        deletion of what it describes."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        draft = asyn.DraftArticle(
+            lead="A distinctive lead sentence.",
+            sentences=[
+                asyn.DraftSentence(text="A distinctive body sentence.", fact_ids=["a"])
+            ],
+        )
+
+        await asyn.store_article(
+            session, subject=subject, project=project, draft=draft,
+            facts=[_gathered("a")], all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        blob = json.dumps((await _synthesis_events(session, project))[0]["payload"])
+        assert "A distinctive lead sentence." not in blob
+        assert "A distinctive body sentence." not in blob
+
+    async def test_it_journals_against_the_article_it_wrote(self, session):
+        subject = f"subj-{uuid4().hex[:8]}"
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+
+        article_id = await asyn.store_article(
+            session, subject=subject, project=project,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        # `list_events` hands back a UUID and the writer returns a str — the
+        # id-type drift CLAUDE.md's cross-cutting invariants name. Normalised
+        # at the boundary, which is where that invariant says to do it.
+        assert str((await _synthesis_events(session, project))[0]["object_id"]) == article_id
+
+    async def test_a_refused_write_journals_nothing(self, session):
+        """A run that wrote no article did not synthesise one, and a journal
+        row would put an article in the stream that no reader can open."""
+        subject = f"subj-{uuid4().hex[:8]}"
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        await asyn.store_article(
+            session, subject=subject, project=project,
+            draft=_simple_draft(["a"]), facts=[_gathered("a")],
+            all_verified_ids=["a"],
+        )
+        await session.flush()
+
+        with pytest.raises(asyn.LiveArticleExists):
+            await asyn.store_article(
+                session, subject=subject, project=project,
+                draft=_simple_draft(["a"]), facts=[_gathered("a")],
+                all_verified_ids=["a"],
+            )
+        await session.flush()
+
+        assert len(await _synthesis_events(session, project)) == 1

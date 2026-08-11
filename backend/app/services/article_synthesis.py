@@ -55,12 +55,14 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.article_eligibility import VERIFIED_STATUSES
+from app.services.events import record_event
 
 __all__ = [
     "DEFAULT_HUB_CAP",
@@ -71,10 +73,33 @@ __all__ = [
     "GatheredFact",
     "LENGTH_CEILING_FACTOR",
     "SYNTHESIS_PURPOSE",
+    "SYNTHESIS_EVENT",
+    "UNMEASURED_STATUS",
     "gather_facts",
     "group_facts",
+    "store_article",
     "synthesise_draft",
 ]
+
+# Doc 09 §4.3 makes coverage the gate: an article below the threshold "does not
+# ship as `corroborated`, it sets `review_state='open'`". An article with no
+# *measured* coverage is not above the threshold -- it is unmeasured, which is
+# the same serving outcome for a different reason. Writing `corroborated`
+# because nothing has yet said otherwise is exactly the confident-but-wrong
+# failure Layer 3 exists to prevent, and the column would accept it.
+#
+# This is permanent behaviour for an unmeasured article, not scaffolding T3.03
+# deletes. T3.03 adds the measurement that can raise it, and finds the
+# unmeasured ones by their NULL confidence.
+UNMEASURED_STATUS = "candidate"
+UNMEASURED_REVIEW_STATE = "open"
+
+# `created` + `object_type='article'`, both already in the closed vocabularies,
+# so no taxonomy widening is needed. Deliberately NOT `consolidated`: the dream
+# digest groups that stream by `payload.cycle_id`, and foreign rows would
+# corrupt a cycle's description.
+SYNTHESIS_EVENT = "created"
+ARTICLE_OBJECT_TYPE = "article"
 
 # Doc 11's eighth purpose, seeded inert since day one. T3.02 is its first
 # consumer; nothing else in the tree dispatches on it.
@@ -448,3 +473,165 @@ async def synthesise_draft(
             f"and T3.03 an unbounded per-claim bill."
         )
     return draft
+
+
+# ─────────────── the write and the journal (Steps 3-4) ───────────────
+
+
+def fact_set_hash(fact_ids: list[str]) -> str:
+    """Doc 09 §4.4's staleness basis: a digest of the **full** verified set.
+
+    Two properties, and both are the doc's.
+
+    **Uncapped.** §4.4 hashes "the subject's non-disputed
+    corroborated/confirmed facts only" — the whole set, so staleness fires
+    exactly when knowledge changed. Hashed over the top-K *input* set instead,
+    read-heat drift reorders the cap boundary and flips the hash with no
+    knowledge change at all, which is the precise failure §4.4 exists to
+    prevent ("not when raw signal arrived").
+
+    **Order-independent**, for the same reason: the set is what changed or did
+    not, and a re-ranking is not a change to it.
+    """
+    basis = "|".join(sorted(fact_ids))
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+_LIVE_ARTICLE_SQL = text(
+    "SELECT id FROM knowledge_articles "
+    "WHERE project = CAST(:project AS text) "
+    "AND subject_key = CAST(:subject AS text) "
+    "AND status <> 'superseded' "
+    "LIMIT 1"
+)
+
+_INSERT_ARTICLE_SQL = text(
+    """
+    INSERT INTO knowledge_articles
+        (id, subject_key, project, title, content, status, confidence,
+         applies_when, learned_in, synthesized_at, fact_set_hash, review_state)
+    VALUES
+        (CAST(:id AS uuid), CAST(:subject AS text), CAST(:project AS text),
+         CAST(:title AS text), CAST(:content AS text), CAST(:status AS text),
+         NULL,
+         CAST(:applies_when AS jsonb), CAST(:learned_in AS text[]),
+         CAST(:now AS timestamptz), CAST(:hash AS text), CAST(:review AS text))
+    RETURNING id
+    """
+)
+
+
+class LiveArticleExists(RuntimeError):
+    """This subject already holds a live article, so this task writes none.
+
+    Re-synthesis — supersession, the ``superseded_by`` pointer, the debounce
+    and the staleness gate — is T3.05's, whole. Splitting it would mean
+    flipping the prior row to ``superseded`` here to satisfy
+    ``ux_knowledge_articles_live`` while deferring its pointer, and
+    ``knowledge_articles`` has **no** ``chk_superseded_has_pointer`` (unlike
+    ``memories``), so a deferred pointer does not error — it silently loses the
+    lineage.
+
+    In a wired run this is unreachable: ``select_for_synthesis`` already
+    excludes subjects holding a live article. It is defence in depth for a
+    caller that skipped the selector, which is why the write path is tested
+    directly rather than through the driver.
+    """
+
+
+def _aggregate_applies_when(facts: list[GatheredFact]) -> dict[str, Any] | None:
+    """The article's ``applies_when``, unioned from its supporting facts.
+
+    Doc 04 §8.8 aggregates it, and doc 09 §4.2 calls the result *displayed
+    provenance* rather than a trustworthy scope — so a key two facts disagree
+    on keeps both values rather than picking one. Dropping the conflict would
+    render a scope no fact asserts.
+    """
+    merged: dict[str, set[str]] = {}
+    for fact in facts:
+        for key, value in (fact.applies_when or {}).items():
+            merged.setdefault(str(key), set()).add(str(value))
+    if not merged:
+        return None
+    return {
+        key: (values.pop() if len(values) == 1 else sorted(values))
+        for key, values in ((k, set(v)) for k, v in merged.items())
+    }
+
+
+async def store_article(
+    session: AsyncSession,
+    *,
+    subject: str,
+    project: str,
+    draft: DraftArticle,
+    facts: list[GatheredFact],
+    all_verified_ids: list[str],
+    now: datetime | None = None,
+    actor: str | None = None,
+) -> str:
+    """Write one article and journal its inputs. Does not commit.
+
+    ``facts`` is the capped set the draft was built from; ``all_verified_ids``
+    is the subject's whole verified set, which is what the hash covers.
+
+    The journal names the **fact ids** and never the prose. Write-time
+    minimization is the standing rule, and it binds with its usual force here:
+    the article row holds the text, the journal answers "which facts produced
+    it", and ids stay honest about facts later invalidated in a way a copy of
+    the prose would not.
+    """
+    existing = (
+        await session.execute(
+            _LIVE_ARTICLE_SQL, {"project": project, "subject": subject}
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise LiveArticleExists(
+            f"{subject!r} already holds live article {existing}; re-synthesis "
+            f"is T3.05's, whole."
+        )
+
+    stamp = now or datetime.now(timezone.utc)
+    learned_in = sorted({tag for fact in facts for tag in fact.learned_in})
+    applies_when = _aggregate_applies_when(facts)
+    article_id = (
+        await session.execute(
+            _INSERT_ARTICLE_SQL,
+            {
+                "id": str(uuid4()),
+                "subject": subject,
+                "project": project,
+                "title": subject,
+                "content": draft.body,
+                "status": UNMEASURED_STATUS,
+                "applies_when": (
+                    json.dumps(applies_when) if applies_when is not None else None
+                ),
+                "learned_in": learned_in,
+                "now": stamp,
+                "hash": fact_set_hash(all_verified_ids),
+                "review": UNMEASURED_REVIEW_STATE,
+            },
+        )
+    ).scalar_one()
+
+    await record_event(
+        session,
+        event_type=SYNTHESIS_EVENT,
+        object_type=ARTICLE_OBJECT_TYPE,
+        object_id=article_id,
+        project=project,
+        actor=actor,
+        payload={
+            "subject_key": subject,
+            # Ranked order, because which facts the cap admitted and in what
+            # priority is the question a bad article is traced with.
+            "fact_ids": [fact.id for fact in facts],
+            "verified_fact_count": len(all_verified_ids),
+            "cap": len(facts),
+            "purpose": SYNTHESIS_PURPOSE,
+            "fact_set_hash": fact_set_hash(all_verified_ids),
+        },
+    )
+    return str(article_id)
