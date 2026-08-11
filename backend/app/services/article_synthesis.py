@@ -54,8 +54,8 @@ import json
 import logging
 import re
 from collections import OrderedDict
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from typing import TYPE_CHECKING, Any
 
@@ -69,11 +69,11 @@ from app.services.article_eligibility import (
 )
 from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
 from app.services.embedder_registry import child_table
-from app.services.events import record_event
+from app.services.events import ARTICLE_STALE, record_event
 from app.services.pin_suggestions import decode_subject_soft_key
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from app.services.claim_entailment import Claim, CoverageOutcome
+    from app.services.claim_entailment import Claim, CoverageOutcome, CoverageResult
 
 __all__ = [
     "DEFAULT_HUB_CAP",
@@ -93,6 +93,14 @@ __all__ = [
     "store_article",
     "synthesise_draft",
     "write_article_embedding",
+    "write_coverage",
+    "DEFAULT_DEBOUNCE_HOURS",
+    "ResynthesisOutcome",
+    "StaleArticle",
+    "resynthesise_subject",
+    "run_article_resynthesis",
+    "stale_articles",
+    "staleness_settled",
 ]
 
 # Doc 09 §4.3 makes coverage the gate: an article below the threshold "does not
@@ -769,6 +777,12 @@ class SynthesisOutcome:
     # a permanent standing state read as a permanent vendor outage.
     unmeasured: int = 0
     last_project: str | None = None
+    # The projects this tick actually rotated onto. Carried so T3.05's
+    # re-synthesis pass runs over the *same* batch: a second cursor would let
+    # the two passes drift onto different projects, and a subject would then be
+    # eligible for a first article in one pass and stale in the other on
+    # different ticks, for no reason an operator could see.
+    visited: list[str] = field(default_factory=list)
 
 
 _ALL_VERIFIED_IDS_SQL = text(
@@ -931,6 +945,7 @@ async def run_article_synthesis(
     for project in projects:
         outcome.projects += 1
         outcome.last_project = project
+        outcome.visited.append(project)
         async with session_factory() as session:
             subjects = await select_for_synthesis(session, project=project)
 
@@ -1050,7 +1065,7 @@ async def apply_coverage(
     `review_state='open'` from T3.02, which is the correct serving outcome for
     something nothing has measured.
     """
-    from app.services.claim_entailment import CoverageOutcome, measure_coverage
+    from app.services.claim_entailment import measure_coverage
 
     result = await measure_coverage(
         session,
@@ -1058,6 +1073,29 @@ async def apply_coverage(
         claims=draft_claims(draft),
         fact_text={fact.id: fact.fact for fact in facts},
     )
+    return await write_coverage(
+        session, result, article_id=article_id, project=project
+    )
+
+
+async def write_coverage(
+    session: AsyncSession,
+    result: "CoverageResult",
+    *,
+    article_id: str,
+    project: str,
+) -> "CoverageOutcome":
+    """Apply an already-measured result to a stored article. Does not commit.
+
+    Split out of ``apply_coverage`` by T3.05, which must know the outcome
+    *before* it decides whether to supersede a standing article and therefore
+    cannot measure through the article it might not write. Both paths write
+    through here so there is one writer of the coverage columns, the citation
+    rows and the `verified` journal — the alternative was a second measure call
+    per re-synthesis, paid to the judge, for a number already computed.
+    """
+    from app.services.claim_entailment import CoverageOutcome
+
     if result.outcome is CoverageOutcome.UNMEASURED:
         return result.outcome
 
@@ -1149,3 +1187,423 @@ async def _measure(
             "article_synthesis: coverage pass failed for %s: %s", article_id, error
         )
         return True
+
+
+# ─────────────── the staleness gate and re-synthesis (T3.05) ───────────────
+#
+# **The gate is the verified set, and re-synthesis reuses the writer's own
+# basis.** Staleness is `fact_set_hash` recomputed through
+# `all_verified_fact_ids` — the same function that wrote the stored hash —
+# rather than through a query of its own. Candidate churn therefore cannot
+# trigger a re-synthesis: a candidate fact is not in the basis at all, so no
+# arrival or departure of one can move the digest. That is the done-when's
+# property, and it holds by construction rather than by filtering.
+#
+# **Why the debounce anchors on a journal row.** Doc 09 §4.4 asks for "a config
+# quiet-period so a burst of corroborations produces one re-synthesis", which
+# needs to know *when the verified set last moved* — and nothing in the schema
+# records that. `knowledge_triples` has no `updated_at`, and a promotion (the
+# burst §4.4 names) writes no timestamp on the fact row at all. So this writes
+# the fact down where the doc already required it to be written — §4.4 makes
+# "labelled stale" a journalled transition — and reads its own `article_stale`
+# row back as the clock. A tick that sees a *different* hash from the last
+# journalled one records the new one and waits: the window restarts while the
+# set is still moving, which is what makes a burst produce one re-synthesis
+# rather than one per tick. An anchor on the article's own `synthesized_at` was
+# the cheaper alternative and was rejected on that point: it bounds how often a
+# subject re-synthesises, but starts its window at the *previous* write, so the
+# first tick inside a burst re-synthesises from a half-moved fact set.
+#
+# **Why re-synthesis measures before it stores, inverting T3.03's order.** T3.03
+# measures coverage *after* the article commits so a judge outage cannot destroy
+# a stored article. That order is unavailable here: `ux_knowledge_articles_live`
+# admits one non-superseded article per `(project, subject_key)`, so a
+# re-synthesis cannot be stored beside the standing article and then judged —
+# storing it means superseding the standing one first, which is the outcome §4.4
+# forbids ("a subject never loses a good article to a bad re-synthesis"). So the
+# draft is judged first and stored only if it may stand, and what T3.03's
+# ordering protects is preserved in the form available: a failure costs one
+# model call and never an article.
+#
+# **An unmeasured draft is not a failed one.** With G-D open the judge refuses
+# unconditionally, so every measurement returns `UNMEASURED`. Holding
+# re-synthesis for that would freeze L3 at whatever it first wrote, on every
+# install, permanently, for a gate that governs a *badge*. Only a measured
+# failure holds the supersession.
+#
+# **This lives in the synthesis module rather than beside it**, which is not a
+# filing preference: `dream_jobs`' one-hop derivation makes every module the
+# umbrella imports a family body, and invariant 15's scan fails the build when
+# one family body imports another. Two modules for one job would have needed the
+# gather/draft/store primitives moved to a third, neutral one — a refactor of
+# shipped code to satisfy a layout nobody asked for.
+
+# Doc 09 §4.4's quiet period. A day by default because the job that consumes it
+# is daily: a window shorter than the tick cannot damp anything, since the tick
+# is already the sampling rate.
+DEFAULT_DEBOUNCE_HOURS = 24
+
+# How far back a debounce read looks for its own anchor. It bounds the
+# by-object `events` scan across monthly partitions — a bare `object_id` filter
+# reads every child — and it must exceed the debounce window or the anchor
+# would age out before it could mature. An article that has been stale longer
+# than this re-journals and waits one more window: a bounded, self-correcting
+# delay rather than an unbounded scan.
+_ANCHOR_LOOKBACK_DAYS = 90
+
+_LIVE_ARTICLES_SQL = text(
+    """
+    SELECT id, subject_key, fact_set_hash, status
+    FROM knowledge_articles
+    WHERE project = CAST(:project AS text)
+      AND status <> 'superseded'
+    """
+)
+
+_LAST_ANCHOR_SQL = text(
+    """
+    SELECT created_at, payload
+    FROM events
+    WHERE object_type = CAST(:object_type AS text)
+      AND object_id = CAST(:id AS uuid)
+      AND event_type = CAST(:event_type AS text)
+      AND created_at >= CAST(:since AS timestamptz)
+    ORDER BY created_at DESC
+    LIMIT 1
+    """
+)
+
+_SUPERSEDE_SQL = text(
+    "UPDATE knowledge_articles SET status = 'superseded' "
+    "WHERE id = CAST(:id AS uuid)"
+)
+
+_POINT_SQL = text(
+    "UPDATE knowledge_articles SET superseded_by = CAST(:new AS uuid) "
+    "WHERE id = CAST(:id AS uuid)"
+)
+
+
+@dataclass(frozen=True)
+class StaleArticle:
+    """A live article whose supporting fact set has moved under it."""
+
+    article_id: str
+    subject_key: str
+    stored_hash: str | None
+    current_hash: str
+
+
+async def stale_articles(
+    session: AsyncSession, *, project: str
+) -> list[StaleArticle]:
+    """Every live article in the project whose fact set no longer matches.
+
+    An article whose subject now has *no* verified facts is stale rather than
+    absent: the knowledge it was built on is gone, which is the strongest form
+    of what staleness names. It will not re-synthesise — the gather finds
+    nothing and the standing article keeps standing — but it is labelled, which
+    is the honest outcome and the same one the retrieval channel serves.
+
+    One id query per live article, deliberately: it reuses the writer's own
+    basis (:func:`all_verified_fact_ids`), so the comparison cannot drift from
+    what produced the stored hash. The retrieval channel's grouped query is the
+    right shape for labelling a page of results on a request; this runs once a
+    day, per project, over the articles that exist.
+    """
+    rows = (
+        await session.execute(_LIVE_ARTICLES_SQL, {"project": project})
+    ).mappings().all()
+
+    stale: list[StaleArticle] = []
+    for row in rows:
+        name, _entity_type = decode_subject_soft_key(row["subject_key"])
+        current = fact_set_hash(
+            await all_verified_fact_ids(session, subject=name, project=project)
+        )
+        if current != row["fact_set_hash"]:
+            stale.append(
+                StaleArticle(
+                    article_id=str(row["id"]),
+                    subject_key=row["subject_key"],
+                    stored_hash=row["fact_set_hash"],
+                    current_hash=current,
+                )
+            )
+    return stale
+
+
+async def staleness_settled(
+    session: AsyncSession,
+    article: StaleArticle,
+    *,
+    project: str,
+    debounce_hours: float = DEFAULT_DEBOUNCE_HOURS,
+    now: datetime | None = None,
+) -> bool:
+    """Journal the staleness, and say whether the fact set has settled.
+
+    Returns True only when this exact fact set was already journalled at least
+    ``debounce_hours`` ago — the quiet period. Every other path writes a fresh
+    anchor and returns False, which is both the label §4.4 requires and the
+    restart of the window.
+
+    ``now`` is compared against a timestamp the **database** wrote:
+    ``record_event`` takes no caller clock. In production both are the real
+    clock and they agree; a caller passing a fabricated ``now`` is comparing
+    two clocks and will get an answer about neither.
+    """
+    stamp = now or datetime.now(timezone.utc)
+    anchor = (
+        await session.execute(
+            _LAST_ANCHOR_SQL,
+            {
+                "object_type": ARTICLE_OBJECT_TYPE,
+                "id": article.article_id,
+                "event_type": ARTICLE_STALE,
+                "since": stamp - timedelta(days=_ANCHOR_LOOKBACK_DAYS),
+            },
+        )
+    ).mappings().first()
+
+    payload = anchor["payload"] if anchor is not None else None
+    anchored_hash = payload.get("fact_set_hash") if isinstance(payload, dict) else None
+
+    if anchor is not None and anchored_hash == article.current_hash:
+        observed = anchor["created_at"]
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        return (stamp - observed) >= timedelta(hours=debounce_hours)
+
+    written = await record_event(
+        session,
+        event_type=ARTICLE_STALE,
+        object_type=ARTICLE_OBJECT_TYPE,
+        object_id=article.article_id,
+        project=project,
+        payload={
+            "subject_key": article.subject_key,
+            "fact_set_hash": article.current_hash,
+            "previous_fact_set_hash": article.stored_hash,
+        },
+    )
+    if not written:
+        # `record_event` never raises, and this row is the clock. A lost write
+        # is a stalled re-synthesis rather than a wrong one — the next tick
+        # journals again — so it is logged rather than raised, but it is not
+        # silent: nothing else would ever report it.
+        logger.warning(
+            "article_staleness: anchor not journalled for %s; re-synthesis of "
+            "%s is deferred until one lands",
+            article.article_id,
+            article.subject_key,
+        )
+    return False
+
+
+@dataclass
+class ResynthesisOutcome:
+    """What one re-synthesis pass did.
+
+    ``held`` is its own count and not a failure: a draft measured below the
+    coverage threshold is the gate working, and folding it into ``failed``
+    would make a corpus of thin subjects read as an outage.
+    """
+
+    projects: int = 0
+    stale: int = 0
+    debounced: int = 0
+    attempted: int = 0
+    resynthesised: int = 0
+    held: int = 0
+    refused: int = 0
+    failed: int = 0
+    unmeasured: int = 0
+    last_project: str | None = None
+
+
+async def resynthesise_subject(
+    session: AsyncSession,
+    llm,
+    judge,
+    article: StaleArticle,
+    *,
+    project: str,
+    cap: int = DEFAULT_HUB_CAP,
+    budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
+    now: datetime | None = None,
+) -> tuple[str | None, str | None]:
+    """Draft, judge, and — only if it may stand — supersede. Does not commit.
+
+    Returns ``(article_id, reason)``: an id when the standing article was
+    superseded — with ``"unmeasured"`` as the reason when no coverage number
+    was produced — otherwise ``None`` and the reason it was not (``no_facts``,
+    ``held``).
+
+    The supersession is three statements in one transaction because
+    ``ux_knowledge_articles_live`` admits one live row per subject: the prior is
+    retired first so the insert has room, then pointed at the new id.
+    ``knowledge_articles`` carries no ``chk_superseded_has_pointer``, so a
+    pointer left unwritten would not error — it would silently lose the
+    lineage, which is why the two writes are never separated by a commit.
+    """
+    from app.services.claim_entailment import CoverageOutcome, measure_coverage
+
+    name, _entity_type = decode_subject_soft_key(article.subject_key)
+    facts = await gather_facts(
+        session, subject=name, project=project, cap=cap, now=now
+    )
+    if not facts:
+        return None, "no_facts"
+
+    draft = await synthesise_draft(
+        llm, subject=name, facts=facts, budget_words=budget_words
+    )
+
+    result = None
+    if judge is not None:
+        result = await measure_coverage(
+            session,
+            judge,
+            claims=draft_claims(draft),
+            fact_text={fact.id: fact.fact for fact in facts},
+        )
+        if result.outcome is CoverageOutcome.HELD:
+            return None, "held"
+
+    all_ids = await all_verified_fact_ids(session, subject=name, project=project)
+    await session.execute(_SUPERSEDE_SQL, {"id": article.article_id})
+    new_id = await store_article(
+        session,
+        subject=article.subject_key,
+        project=project,
+        draft=draft,
+        facts=facts,
+        all_verified_ids=all_ids,
+        now=now,
+    )
+    await session.execute(_POINT_SQL, {"id": article.article_id, "new": new_id})
+
+    await record_event(
+        session,
+        event_type="superseded",
+        object_type=ARTICLE_OBJECT_TYPE,
+        object_id=article.article_id,
+        project=project,
+        payload={
+            "subject_key": article.subject_key,
+            "superseded_by": new_id,
+            "fact_set_hash": article.current_hash,
+            "previous_fact_set_hash": article.stored_hash,
+        },
+    )
+
+    measured = None
+    if result is not None:
+        measured = await write_coverage(
+            session, result, article_id=new_id, project=project
+        )
+
+    try:
+        await write_article_embedding(
+            session, llm, article_id=new_id, text_body=draft.body
+        )
+    except Exception as error:  # noqa: BLE001 - retrievability is not storability
+        logger.warning(
+            "article_staleness: %s stored but not embedded: %s", new_id, error
+        )
+    unmeasured = measured is None or measured is CoverageOutcome.UNMEASURED
+    return new_id, ("unmeasured" if unmeasured else None)
+
+
+async def run_article_resynthesis(
+    session_factory,
+    llm_provider=None,
+    *,
+    projects: list[str],
+    debounce_hours: float = DEFAULT_DEBOUNCE_HOURS,
+    hub_cap: int = DEFAULT_HUB_CAP,
+    budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
+    now: datetime | None = None,
+) -> ResynthesisOutcome:
+    """One re-synthesis pass over an already-chosen batch of projects.
+
+    Takes the project list rather than rotating its own cursor: the tick's
+    rotation is `run_article_synthesis`'s, and a second cursor would let the two
+    passes drift onto different projects — a subject could then be re-eligible
+    for a first article in one pass and stale in the other, on different ticks,
+    for no reason an operator could see.
+
+    **Per-subject sessions**, for the reason the synthesis runner states: a
+    model call is seconds long, and one subject's failure must not roll back
+    another's article. The debounce anchor commits with the subject that wrote
+    it, so a crash mid-batch loses at most one tick of the window.
+    """
+    outcome = ResynthesisOutcome()
+    llm = llm_provider() if callable(llm_provider) else llm_provider
+    judge = judge_for(llm)
+
+    for project in projects:
+        outcome.projects += 1
+        outcome.last_project = project
+        async with session_factory() as session:
+            stale = await stale_articles(session, project=project)
+            outcome.stale += len(stale)
+
+            ready: list[StaleArticle] = []
+            for article in stale:
+                if await staleness_settled(
+                    session,
+                    article,
+                    project=project,
+                    debounce_hours=debounce_hours,
+                    now=now,
+                ):
+                    ready.append(article)
+                else:
+                    outcome.debounced += 1
+            await session.commit()
+
+        for article in ready:
+            outcome.attempted += 1
+            if llm is None:
+                # No orchestrator is the job having nothing to run with, not a
+                # draft failure — counted so the tick does not read as a clean
+                # no-op.
+                outcome.failed += 1
+                continue
+            try:
+                async with session_factory() as session:
+                    new_id, reason = await resynthesise_subject(
+                        session,
+                        llm,
+                        judge,
+                        article,
+                        project=project,
+                        cap=hub_cap,
+                        budget_words=budget_words,
+                        now=now,
+                    )
+                    if new_id is not None:
+                        outcome.resynthesised += 1
+                        if reason == "unmeasured":
+                            outcome.unmeasured += 1
+                    elif reason == "held":
+                        outcome.held += 1
+                    else:
+                        outcome.refused += 1
+                    await session.commit()
+            except DraftRefused as refusal:
+                outcome.refused += 1
+                logger.warning(
+                    "article_staleness: %s/%s refused: %s",
+                    project, article.subject_key, refusal,
+                )
+            except Exception as error:  # noqa: BLE001 - one subject must not end the tick
+                outcome.failed += 1
+                logger.warning(
+                    "article_staleness: %s/%s failed: %s",
+                    project, article.subject_key, error,
+                )
+
+    return outcome

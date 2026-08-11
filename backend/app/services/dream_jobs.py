@@ -57,7 +57,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from app.services.article_synthesis import run_article_synthesis
+
+from app.services.article_synthesis import (
+    run_article_resynthesis,
+    run_article_synthesis,
+)
 from app.services.contradiction_scan import (
     CANDIDATE_TOP_K_KEY,
     CONTRADICTION_SCAN_CONFIG_SCHEMA,
@@ -514,6 +518,17 @@ ARTICLE_SYNTHESIS_CONFIG_SCHEMA: list[FieldDescriptor] = [
             "overrun is absorbed, one that ignored the instruction is refused."
         ),
     ),
+    FieldDescriptor(
+        key="debounce_hours", label="Re-synthesis Quiet Period (hours)",
+        default=24, min=1, max=8760,
+        help=(
+            "Doc 09 §4.4's quiet period (T3.05). A stale article re-synthesises "
+            "only once its fact set has held the same shape for this long, so a "
+            "burst of corroborations produces one re-synthesis rather than one "
+            "per tick. A window shorter than the job's own cadence damps "
+            "nothing — the tick is already the sampling rate."
+        ),
+    ),
 ]
 
 
@@ -540,6 +555,19 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
             llm_provider,
             batch_size=int(settings_.get("batch_size", 10)),
             after_project=after_project,
+            hub_cap=int(settings_.get("hub_cap", 40)),
+            budget_words=int(settings_.get("length_budget_words", 400)),
+        )
+        # T3.05's second pass, over the batch the first pass rotated onto — new
+        # articles first, then the standing ones whose knowledge moved. The
+        # order matters only in that a subject cannot be in both: the selector
+        # excludes subjects holding a live article, and this pass reads only
+        # subjects that hold one.
+        await run_article_resynthesis(
+            registry.session_factory,
+            llm_provider,
+            projects=outcome.visited,
+            debounce_hours=float(settings_.get("debounce_hours", 24)),
             hub_cap=int(settings_.get("hub_cap", 40)),
             budget_words=int(settings_.get("length_budget_words", 400)),
         )

@@ -76,6 +76,18 @@ CONTRADICTION_DISMISSED = "contradiction_dismissed"
 # leave behind.
 CITATION_STALE = "citation_stale"
 
+# Doc 09 §4.4's "labelled stale" transition (T3.05), and the debounce's clock.
+# Named here because two things read it back: the tick that decides whether a
+# stale article's fact set has settled long enough to re-synthesise, and a human
+# asking why an article carries the label.
+#
+# It is the debounce anchor because **nothing else records when a subject's
+# verified set last moved**: `knowledge_triples` has no `updated_at`, and a
+# promotion — the burst §4.4 names — writes no timestamp on the fact row at all.
+# The row's `created_at` is therefore the only honest "the set changed at" this
+# schema holds, and it is one the doc already required to be written.
+ARTICLE_STALE = "article_stale"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -93,6 +105,7 @@ EVENT_TYPES: list[str] = [
     "verified",
     "sources_changed",
     CITATION_STALE,
+    ARTICLE_STALE,
     CONTRADICTION_SCANNED,
     CONTRADICTION_DISMISSED,
     "document_filed",

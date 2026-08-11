@@ -39,6 +39,11 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
   consolidated: "consolidation",
   merged: "consolidation",
   superseded: "consolidation",
+  // An article labelled stale (T3.05). Consolidation rather than verification:
+  // it says the knowledge under an article moved, and the re-synthesis it
+  // precedes journals `superseded` into this same tab. Nothing about the
+  // article's grounding is being asserted.
+  article_stale: "consolidation",
   deprecated: "consolidation",
   expired: "consolidation",
   invalidated: "consolidation",
