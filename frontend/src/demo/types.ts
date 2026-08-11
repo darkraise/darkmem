@@ -666,6 +666,11 @@ export interface DemoSessionRun {
     key_decisions: string[]
     touched_files: string[]
     resume_block: string
+    /** What the resume digest costs against `inject_token_budget`, measured
+     *  the way the budget measures (`inject_fill.estimate_tokens`). The real
+     *  branch reads the server's `token_estimate`; the fixture carries one so
+     *  the mockup shows the same field rather than a blank. */
+    token_estimate: number
   } | null
   history: DemoCheckpointEvent[]
 }

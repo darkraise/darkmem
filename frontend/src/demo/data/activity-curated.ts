@@ -636,22 +636,22 @@ export const CURATED_DAY_BUCKETS: DemoDayBucket[] = [
 // always labelled "session digest · not verified knowledge".
 // ---------------------------------------------------------------------------
 
-const RESUME_BLOCK = `<!-- darkmem:resume:begin — project darkmem-core-backend · run cc-run-8f3a2c · saved 03:12 · ~1,850 tokens -->
-## Resume — where you left off
-Applied the Fable review to feature-epics.md (22 findings, committed 5492b20), then added
-two new features behind docs/superpowers/specs/2026-07-25-detail-level-and-session-resume-design.md:
-the Simple/Advanced detail toggle and this server-side session-resume subsystem.
-
-### Next steps
-1. Update the mockups (S03 simple state, C03 detail toggle, S33 checkpoints) and rebuild index.html
-2. Initialise D:\\Repositories\\Personal\\claude-code-plugins with the README + plugin plan
-3. Commit the docs + mockups
-
-### Decisions
-- detail toggle default = advanced; simple hides numbers/jargon, never honesty labels
-- checkpoints = server-side (session_checkpoints table + endpoints + MCP), plugin planned separately
-
-<!-- darkmem:resume:end -->`
+// The markers and the line shape are the shipped ones, not a mockup's own:
+// `inject_block.MARKER_BEGIN` / `MARKER_END` are what the writer recognises,
+// and `resume_inject.render_checkpoint` emits a single `- (resume) …` line
+// that `inject_fill` leads the block with. This fixture spelled its own
+// `darkmem:resume:begin` pair until 2026-08-11, which a reader could
+// reasonably have copied into a CLAUDE.md — where the real writer would not
+// have recognised it and would have appended a second, live pair below.
+// Only the checkpoint's own line, and that is the honest shape: the vault
+// rows that share the block are whatever retrieval fills under the budget at
+// resume time, so a fixture that spelled them would be inventing a ranking.
+// It is also what the guard below requires — the vault's rung vocabulary in a
+// checkpoint fixture is exactly the over-claim T3.18 forbids.
+const RESUME_BLOCK = `<!-- darkmem:begin -->
+generated 2026-07-25T03:12:00Z, project darkmem-core-backend, 1 item, 2000 tokens
+- (resume) Applied the Fable review to feature-epics.md (22 findings, committed 5492b20), then added the Simple/Advanced detail toggle and the server-side session-resume subsystem. Next: update the mockups (S03, C03, S33) and rebuild index.html; initialise the claude-code-plugins repo with the README and plugin plan; commit the docs and mockups
+<!-- darkmem:end -->`
 
 export const CURATED_SESSION_RUNS: DemoSessionRun[] = [
   {
@@ -680,6 +680,7 @@ export const CURATED_SESSION_RUNS: DemoSessionRun[] = [
         "docs/design/mockups/fragments/*",
       ],
       resume_block: RESUME_BLOCK,
+      token_estimate: 1850,
     },
     history: [
       {

@@ -3,13 +3,20 @@ import { Bookmark, ChevronRight, Copy } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
-import { useDemoSessionRuns } from "@/demo/hooks"
-import type { DemoSessionRun } from "@/demo/types"
+import { useDetailLevel } from "@/components/darkmem"
+import {
+  useCheckpointDigest,
+  useCheckpointRuns,
+  type CheckpointDigestData,
+  type CheckpointRunData,
+} from "../use-checkpoint-runs"
 import { SurfaceStateChip } from "./module-surface"
 
 // A checkpoint is an OPERATIONAL session digest, not verified knowledge —
 // it carries NO verification badge anywhere in this tab; the vault's badge
-// vocabulary would over-claim. This label is the whole of its epistemics.
+// vocabulary would over-claim. This label is the whole of its epistemics,
+// which is why it renders at BOTH detail levels: `simple` collapses
+// technical detail and never hides an honesty signal.
 const KIND_LABEL = "session digest · not verified knowledge"
 
 function KindPill() {
@@ -46,16 +53,19 @@ function CopyResumeButton({ block }: { block: string }) {
 function RunCard({
   run,
   selected,
+  advanced,
   onSelect,
 }: {
-  run: DemoSessionRun
+  run: CheckpointRunData
   selected: boolean
+  advanced: boolean
   onSelect: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={selected}
       className={cn(
         "border-border bg-card flex w-full flex-wrap items-center gap-2.5 rounded-md border p-3 text-left",
         selected && "border-primary/45 bg-primary/5",
@@ -65,20 +75,58 @@ function RunCard({
       <span className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
         <span className="text-sm font-semibold">{run.title}</span>
         <span className="text-muted-foreground text-sm">
-          <code className="font-mono">origin_key: {run.origin_key}</code> ·
-          project <b className="text-foreground font-semibold">{run.project}</b>
+          {advanced ? (
+            <>
+              <code className="font-mono">origin_key: {run.originKey}</code> ·{" "}
+            </>
+          ) : null}
+          project{" "}
+          <b className="text-foreground font-semibold">{run.project}</b>
         </span>
       </span>
       <KindPill />
       <span className="text-muted-foreground font-mono text-sm whitespace-nowrap">
-        {run.meta_label}
+        {run.metaLabel}
       </span>
     </button>
   )
 }
 
-function RunDetail({ run }: { run: DemoSessionRun }) {
-  if (!run.latest) {
+function DetailList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="space-y-1.5">
+      <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+        {title}
+      </p>
+      <ul className="space-y-1">
+        {items.map((item) => (
+          <li key={item} className="text-muted-foreground font-mono text-sm">
+            — {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function RunDetail({
+  run,
+  digest,
+  isLoading,
+}: {
+  run: CheckpointRunData
+  digest: CheckpointDigestData | null
+  isLoading: boolean
+}) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
+
+  if (isLoading) {
+    return (
+      <p className="text-muted-foreground text-sm">Loading this run's digest…</p>
+    )
+  }
+  if (!digest) {
     return (
       <EmptyState
         icon={<Bookmark aria-hidden className="h-6 w-6" />}
@@ -87,7 +135,6 @@ function RunDetail({ run }: { run: DemoSessionRun }) {
       />
     )
   }
-  const { latest } = run
 
   return (
     <div className="space-y-4">
@@ -95,18 +142,26 @@ function RunDetail({ run }: { run: DemoSessionRun }) {
         <div className="flex flex-wrap items-center gap-2.5">
           <SurfaceStateChip state="populated" label="latest checkpoint" />
           <span className="text-muted-foreground font-mono text-sm">
-            {latest.saved_label}
+            {digest.savedLabel}
           </span>
-          <CopyResumeButton block={latest.resume_block} />
+          {advanced && digest.tokenEstimate !== null ? (
+            <span className="text-muted-foreground font-mono text-sm">
+              ~{digest.tokenEstimate.toLocaleString()} tokens of the inject
+              budget
+            </span>
+          ) : null}
+          {/* The affordance itself is not technical detail, so it survives
+              `simple`; only the raw block below is collapsed. */}
+          <CopyResumeButton block={digest.resumeLine} />
         </div>
-        <p className="text-sm leading-relaxed">{latest.summary}</p>
+        <p className="text-sm leading-relaxed">{digest.summary}</p>
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
           <div className="space-y-1.5">
             <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
               next steps
             </p>
             <ul className="space-y-1">
-              {latest.next_steps.map((step) => (
+              {digest.nextSteps.map((step) => (
                 <li key={step} className="flex items-start gap-1.5 text-sm">
                   <ChevronRight
                     aria-hidden
@@ -117,36 +172,8 @@ function RunDetail({ run }: { run: DemoSessionRun }) {
               ))}
             </ul>
           </div>
-          <div className="space-y-1.5">
-            <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
-              key decisions
-            </p>
-            <ul className="space-y-1">
-              {latest.key_decisions.map((decision) => (
-                <li
-                  key={decision}
-                  className="text-muted-foreground font-mono text-sm"
-                >
-                  — {decision}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
-              touched files
-            </p>
-            <ul className="space-y-1">
-              {latest.touched_files.map((file) => (
-                <li
-                  key={file}
-                  className="text-muted-foreground font-mono text-sm"
-                >
-                  — {file}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <DetailList title="key decisions" items={digest.keyDecisions} />
+          <DetailList title="touched files" items={digest.touchedFiles} />
         </div>
       </div>
 
@@ -154,58 +181,73 @@ function RunDetail({ run }: { run: DemoSessionRun }) {
         <p className="text-muted-foreground pb-1.5 font-mono text-[10px] uppercase tracking-wide">
           this run's checkpoint history
         </p>
-        <div className="flex flex-col">
-          {run.history.map((event, i) => (
-            <div
-              key={`${event.time_label}-${i}`}
-              className="border-border flex flex-wrap items-center gap-2.5 border-t border-dashed py-2 text-sm first:border-t-0"
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "h-2 w-2 shrink-0 rounded-full",
-                  event.event === "resumed" ? "bg-info" : "bg-primary",
-                )}
-              />
-              <span className="text-muted-foreground w-12 font-mono text-sm">
-                {event.time_label}
-              </span>
-              <span className="font-mono text-sm">{event.event}</span>
-              <span className="text-muted-foreground min-w-0 flex-1 basis-52">
-                {event.detail}
-              </span>
-              <span className="text-muted-foreground font-mono text-sm">
-                {event.tokens_label}
-              </span>
-            </div>
-          ))}
-        </div>
+        {run.history.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Nothing journaled for this run yet.
+          </p>
+        ) : (
+          <div className="flex flex-col">
+            {run.history.map((event) => (
+              <div
+                key={event.id}
+                className="border-border flex flex-wrap items-center gap-2.5 border-t border-dashed py-2 text-sm first:border-t-0"
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    event.event === "resumed" ? "bg-info" : "bg-primary",
+                  )}
+                />
+                <span className="text-muted-foreground w-12 font-mono text-sm">
+                  {event.timeLabel}
+                </span>
+                <span className="font-mono text-sm">{event.event}</span>
+                <span className="text-muted-foreground min-w-0 flex-1 basis-52">
+                  {event.detail}
+                </span>
+                {advanced && event.tokensLabel ? (
+                  <span className="text-muted-foreground font-mono text-sm">
+                    {event.tokensLabel}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="space-y-2">
-        <p className="text-muted-foreground pb-0.5 font-mono text-[10px] uppercase tracking-wide">
-          the CLAUDE.md managed block resume writes
-        </p>
-        <pre className="border-border bg-muted/40 overflow-x-auto whitespace-pre-wrap rounded-md border p-3.5 font-mono text-sm leading-relaxed">
-          {latest.resume_block}
-        </pre>
-        <p className="text-muted-foreground text-sm">
-          The writer may read the whole file but only replaces the bytes
-          between the two sentinel comments, strip-before-rewrite, so a human's
-          own CLAUDE.md rules above or below survive every refresh and a
-          re-resume never duplicates. Every write journals a resumed event, so
-          the history above shows exactly when a fresh session picked the
-          digest up.
-        </p>
-      </div>
+      {advanced ? (
+        <div className="space-y-2">
+          <p className="text-muted-foreground pb-0.5 font-mono text-[10px] uppercase tracking-wide">
+            what resume writes into the managed block
+          </p>
+          <pre className="border-border bg-muted/40 overflow-x-auto whitespace-pre-wrap rounded-md border p-3.5 font-mono text-sm leading-relaxed">
+            {digest.resumeLine}
+          </pre>
+          <p className="text-muted-foreground text-sm">
+            This is the digest served by the resume path itself, not a
+            rendering of it — the copy button hands you these exact bytes. The
+            writer may read the whole file but only replaces what lies between
+            the two sentinel comments, strip-before-rewrite, so a human's own
+            CLAUDE.md rules above or below survive every refresh and a
+            re-resume never duplicates. The rest of the block is whatever the
+            vault fills under the same token budget at resume time. Every
+            write journals a resumed event, so the history above shows exactly
+            when a fresh session picked the digest up.
+          </p>
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export function CheckpointsTab() {
-  const runs = useDemoSessionRuns()
-  const [selectedId, setSelectedId] = useState(runs[0]?.id ?? null)
-  const selected = runs.find((r) => r.id === selectedId)
+  const { runs, isLoading, isError } = useCheckpointRuns()
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = runs.find((r) => r.id === selectedId) ?? runs[0] ?? null
+  const { digest, isLoading: digestLoading } = useCheckpointDigest(selected)
 
   return (
     <div className="space-y-4">
@@ -218,17 +260,40 @@ export function CheckpointsTab() {
         not vault knowledge — they carry no verification badge, and every
         save/resume is journaled to events.
       </p>
-      <div className="space-y-2">
-        {runs.map((run) => (
-          <RunCard
-            key={run.id}
-            run={run}
-            selected={run.id === selectedId}
-            onSelect={() => setSelectedId(run.id)}
-          />
-        ))}
-      </div>
-      {selected && <RunDetail run={selected} />}
+      {isError ? (
+        <p className="text-destructive text-sm">
+          The checkpoint journal could not be read.
+        </p>
+      ) : isLoading ? (
+        <p className="text-muted-foreground text-sm">Loading runs…</p>
+      ) : runs.length === 0 ? (
+        <EmptyState
+          icon={<Bookmark aria-hidden className="h-6 w-6" />}
+          title="No runs have checkpointed yet"
+          description="A run appears here the moment it saves its first digest — over REST or over MCP. Nothing else creates one, so an empty list means no agent has checkpointed against this instance."
+        />
+      ) : (
+        <>
+          <div className="space-y-2">
+            {runs.map((run) => (
+              <RunCard
+                key={run.id}
+                run={run}
+                advanced={advanced}
+                selected={run.id === selected?.id}
+                onSelect={() => setSelectedId(run.id)}
+              />
+            ))}
+          </div>
+          {selected && (
+            <RunDetail
+              run={selected}
+              digest={digest}
+              isLoading={digestLoading}
+            />
+          )}
+        </>
+      )}
     </div>
   )
 }

@@ -80,22 +80,24 @@ describe("DreamTab undo honesty", () => {
 
 describe("CheckpointsTab is operational — no verification badge", () => {
   it("labels every run 'session digest · not verified knowledge'", () => {
-    render(<CheckpointsTab />)
+    render(withQuery(<CheckpointsTab />))
     expect(
       screen.getAllByText("session digest · not verified knowledge").length,
     ).toBeGreaterThan(0)
   })
 
   it("never renders the vault's rung vocabulary", () => {
-    render(<CheckpointsTab />)
+    render(withQuery(<CheckpointsTab />))
     expect(screen.queryByText("corroborated")).not.toBeInTheDocument()
     expect(screen.queryByText("candidate")).not.toBeInTheDocument()
   })
 
   it("shows the marker-bounded CLAUDE.md resume block", () => {
-    render(<CheckpointsTab />)
-    expect(
-      screen.getByText(/darkmem:resume:begin/),
-    ).toBeInTheDocument()
+    // The writer's own sentinels (`inject_block.MARKER_BEGIN` / `MARKER_END`).
+    // This asserted a `darkmem:resume:begin` pair until 2026-08-11 — markers
+    // no shipped code writes, so the demo taught a block the real writer
+    // would not have recognised.
+    render(withQuery(<CheckpointsTab />))
+    expect(screen.getByText(/<!-- darkmem:begin -->/)).toBeInTheDocument()
   })
 })

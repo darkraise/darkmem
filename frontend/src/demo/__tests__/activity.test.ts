@@ -278,9 +278,14 @@ describe("session checkpoints are operational, not knowledge", () => {
   })
 
   it("the resume block is marker-bounded for strip-before-rewrite", () => {
+    // The markers the *writer* recognises (`inject_block.MARKER_BEGIN` /
+    // `MARKER_END`), not a vocabulary of the mockup's own. This assertion
+    // pinned `darkmem:resume:begin` until 2026-08-11 — a pair no shipped code
+    // has ever written, and one that would have made the real writer append a
+    // second live pair beneath a human's pasted copy.
     const run = CURATED_SESSION_RUNS[0]!
-    expect(run.latest?.resume_block).toContain("darkmem:resume:begin")
-    expect(run.latest?.resume_block).toContain("darkmem:resume:end")
+    expect(run.latest?.resume_block).toContain("<!-- darkmem:begin -->")
+    expect(run.latest?.resume_block).toContain("<!-- darkmem:end -->")
   })
 
   it("one run honestly has no checkpoint yet", () => {
