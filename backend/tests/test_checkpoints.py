@@ -664,3 +664,96 @@ class TestBothDoors:
             await mcp_server.checkpoint_save(
                 origin_key=ORIGIN, summary="x" * (cp.MAX_SUMMARY_LENGTH + 1)
             )
+
+
+# ─────────────── T3.21: the resume text the UI copies ───────────────
+
+
+class TestServedResumeText:
+    """The copy-resume affordance must yield the text resume actually injects.
+
+    A UI that re-renders the digest from `summary` + `next_steps` would be a
+    second implementation of `render_checkpoint`, and the drift would be
+    invisible: both sides produce plausible prose, and the operator only finds
+    out when the block they pasted is not the block their session received. So
+    the rendering is served, and these tests pin it to the inject path's own
+    function rather than to a literal.
+    """
+
+    async def test_the_served_line_is_the_one_the_inject_path_leads_with(
+        self, session
+    ):
+        from app.services.resume_inject import render_checkpoint
+
+        await cp.save_checkpoint(
+            session, origin_key=ORIGIN, summary="did the thing",
+            next_steps=["ship it"], project=PROJECT,
+        )
+        await session.flush()
+        row = await cp.latest_checkpoint(session, origin_key=ORIGIN, project=PROJECT)
+
+        assert cp.serialize(row)["resume_line"] == render_checkpoint(row)
+
+    async def test_the_token_estimate_is_the_budget_s_own_estimator(self, session):
+        """Not a character count and not a second approximation — the number
+        shown is the number the budget will charge, so an operator comparing
+        it against `inject_token_budget` is comparing like with like."""
+        from app.services.inject_fill import estimate_tokens
+
+        await cp.save_checkpoint(
+            session, origin_key=ORIGIN, summary="a" * 300,
+            next_steps=["b" * 100], project=PROJECT,
+        )
+        await session.flush()
+        row = await cp.latest_checkpoint(session, origin_key=ORIGIN, project=PROJECT)
+
+        wire = cp.serialize(row)
+        assert wire["token_estimate"] == estimate_tokens(wire["resume_line"])
+
+    async def test_both_doors_serve_it(
+        self, client, auth_headers, mcp_on_the_test_session
+    ):
+        """One wire shape, not one per transport — the plugin reads it over
+        MCP and the SPA over REST, and a field on one door only is how the
+        two grow apart.
+
+        Both doors declare the same client, for the reason
+        `test_the_mcp_door_reads_the_checkpoint_the_rest_door_saved` states:
+        the source is part of the resolved key, so a run that named itself to
+        one door and not the other is asking two different key spaces.
+        """
+        declared = f"both-{uuid4()}"
+        created = await client.post(
+            "/api/v1/checkpoints",
+            json={"origin_key": declared, "summary": "shared", "next_steps": ["go"],
+                  "project": PROJECT},
+            headers={**auth_headers, CLIENT_HEADER: "codex"},
+        )
+        assert created.status_code == 201, created.text
+
+        rest = await client.get(
+            "/api/v1/checkpoints/latest",
+            params={"origin_key": declared, "project": PROJECT},
+            headers={**auth_headers, CLIENT_HEADER: "codex"},
+        )
+        mcp = json.loads(await mcp_checkpoint_latest(
+            origin_key=declared, project=PROJECT, ctx=_ctx({CLIENT_HEADER: "codex"})
+        ))
+
+        assert mcp is not None, "the MCP door missed the REST door's checkpoint"
+        assert rest.json()["resume_line"] == mcp["resume_line"]
+        assert rest.json()["token_estimate"] == mcp["token_estimate"]
+        assert "(resume) shared" in rest.json()["resume_line"]
+
+    async def test_the_served_line_carries_no_verification_vocabulary(self, session):
+        """T3.18: a checkpoint is operational, so the text served for display
+        must not acquire a rung on its way to the wire."""
+        await cp.save_checkpoint(
+            session, origin_key=ORIGIN, summary="operational only", project=PROJECT,
+        )
+        await session.flush()
+        row = await cp.latest_checkpoint(session, origin_key=ORIGIN, project=PROJECT)
+
+        line = cp.serialize(row)["resume_line"]
+        for rung in ("candidate", "corroborated", "confirmed", "disputed"):
+            assert rung not in line

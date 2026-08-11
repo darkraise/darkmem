@@ -44,6 +44,14 @@ CHECKPOINT_SLICE = frozenset({
 # view — not a number that quietly increments.
 OPERATIONAL_FIELDS = {"id", "origin_key", "project", "summary", "next_steps", "created_at"}
 
+# The wire carries two fields the table does not, and they are stated here
+# rather than allowed by a `>=` so the guard keeps its teeth: both are derived
+# at serialization time from the resume path's own functions (T3.21), neither
+# is stored, and neither is a rung. The set is written out for the same reason
+# the one above is — a third derived field is a decision made in this file.
+DERIVED_WIRE_FIELDS = {"resume_line", "token_estimate"}
+SERVED_FIELDS = OPERATIONAL_FIELDS | DERIVED_WIRE_FIELDS
+
 
 def test_no_module_outside_the_checkpoint_slice_reaches_the_table():
     """The fact ladder, the retrieval channels, the dream family and the
@@ -95,12 +103,17 @@ def test_the_checkpoint_response_serves_no_badge():
     "no badge renders" assertion against the DOM would have nothing to render
     against. Enforcing it at the schema means the guard is already standing
     when that surface arrives — and T3.21 inherits the pixel-level half.
+
+    That surface has since arrived and widened this set by exactly the two
+    derived fields it needed (`DERIVED_WIRE_FIELDS`). The guard is unchanged
+    in what it forbids: a status, badge or confidence field on this response
+    still fails here.
     """
     served = set(CheckpointResponse.model_fields)
 
-    assert served == OPERATIONAL_FIELDS, (
+    assert served == SERVED_FIELDS, (
         "CheckpointResponse's fields changed; a verification or badge field "
-        f"here would render on T3.21's surface: {sorted(served ^ OPERATIONAL_FIELDS)}"
+        f"here would render on T3.21's surface: {sorted(served ^ SERVED_FIELDS)}"
     )
 
 

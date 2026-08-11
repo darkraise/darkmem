@@ -252,7 +252,24 @@ async def latest_checkpoint(
 
 
 def serialize(row: SessionCheckpoint) -> dict[str, Any]:
-    """The wire shape both doors serve, so they cannot drift into two."""
+    """The wire shape both doors serve, so they cannot drift into two.
+
+    ``resume_line`` and ``token_estimate`` are **derived, never stored**: they
+    are what the resume path would inject for this checkpoint right now, read
+    out of that path's own functions. A reader that assembled the line itself
+    from ``summary`` and ``next_steps`` would be a second implementation of
+    :func:`render_checkpoint`, and its drift would be invisible — both sides
+    produce plausible prose, and the operator only learns they differ when the
+    block they copied is not the block their session received (T3.21).
+    """
+    # Function-level, and both halves are the reason. `resume_inject` imports
+    # this module, so a module-scope import here is a cycle; and `inject_fill`
+    # pulls the whole retrieval stack in behind it, which a store module has no
+    # business importing at boot.
+    from app.services.inject_fill import estimate_tokens
+    from app.services.resume_inject import render_checkpoint
+
+    resume_line = render_checkpoint(row)
     return {
         "id": str(row.id),
         "origin_key": row.origin_key,
@@ -260,4 +277,9 @@ def serialize(row: SessionCheckpoint) -> dict[str, Any]:
         "summary": row.summary,
         "next_steps": list(row.next_steps or []),
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "resume_line": resume_line,
+        # The estimator the budget charges with, not a second approximation:
+        # this number is comparable with `inject_token_budget` because it is
+        # measured the same way.
+        "token_estimate": estimate_tokens(resume_line),
     }

@@ -87,9 +87,19 @@ class CheckpointCreate(BaseModel):
 
 
 class CheckpointResponse(BaseModel):
+    """What both doors hand back.
+
+    `resume_line` and `token_estimate` are derived at serialization time by
+    the resume path's own functions rather than stored — see
+    `checkpoints.serialize`. They exist so a reader (the SPA's copy-resume
+    affordance, the plugin) never has to re-render the digest itself.
+    """
+
     id: str
     origin_key: str
     project: str
     summary: str
     next_steps: list[str]
     created_at: datetime | None
+    resume_line: str
+    token_estimate: int
