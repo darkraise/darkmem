@@ -66,6 +66,8 @@ from app.services.article_eligibility import (
     VERIFIED_STATUSES,
     select_for_synthesis,
 )
+from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
+from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.pin_suggestions import decode_subject_soft_key
 
@@ -86,6 +88,7 @@ __all__ = [
     "run_article_synthesis",
     "store_article",
     "synthesise_draft",
+    "write_article_embedding",
 ]
 
 # Doc 09 §4.3 makes coverage the gate: an article below the threshold "does not
@@ -580,6 +583,56 @@ def _aggregate_applies_when(facts: list[GatheredFact]) -> dict[str, Any] | None:
     }
 
 
+async def write_article_embedding(
+    session: AsyncSession,
+    llm,
+    *,
+    article_id: str,
+    text_body: str,
+) -> str | None:
+    """Embed the article into ``article_embeddings__<slug>`` (T3.23).
+
+    Returns the fingerprint written, or ``None`` when no embedder is
+    configured — an install without one still synthesises and stores; it just
+    has no L3 retrieval until it has one. Raising here would make the article
+    unwritable on an install whose embedder is merely absent.
+
+    ``_register_fingerprint``'s discipline applies: the partition is created
+    before the insert, through the registry, never by naming a child table
+    here.
+    """
+    if llm is None:
+        return None
+    from app.services.embedder_registry import (
+        EmbedderInfo,
+        embedder_registry,
+        parse_fingerprint,
+    )
+
+    vector, fingerprint = await llm.embed(text_body)
+    if not embedder_registry.is_known(fingerprint):
+        model_id, dims = parse_fingerprint(fingerprint)
+        await embedder_registry.register(
+            session,
+            # `source='llm'` is CHECK-constrained on `embedders`; the column
+            # records how the vectors are produced, not which feature asked.
+            EmbedderInfo(
+                fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"
+            ),
+        )
+    await session.execute(
+        text(
+            f"INSERT INTO {child_table(ARTICLE_EMBEDDINGS_PARENT, fingerprint)} "
+            "(article_id, fingerprint, embedding) VALUES "
+            "(CAST(:id AS uuid), CAST(:fp AS text), CAST(:vec AS vector)) "
+            "ON CONFLICT (article_id, fingerprint) DO UPDATE "
+            "SET embedding = EXCLUDED.embedding"
+        ),
+        {"id": article_id, "fp": fingerprint, "vec": str(vector)},
+    )
+    return fingerprint
+
+
 async def store_article(
     session: AsyncSession,
     *,
@@ -764,7 +817,7 @@ async def synthesise_subject(
         llm, subject=name, facts=facts, budget_words=budget_words
     )
     all_ids = await all_verified_fact_ids(session, subject=name, project=project)
-    return await store_article(
+    article_id = await store_article(
         session,
         subject=subject_key,
         project=project,
@@ -773,6 +826,20 @@ async def synthesise_subject(
         all_verified_ids=all_ids,
         now=now,
     )
+    # The article is written and journalled first; the embedding is what makes
+    # it *retrievable*, and an embedder outage must not un-write an article
+    # that is otherwise complete. A missing embedding is a subject absent from
+    # L3 retrieval until the next run, which is recoverable; a rolled-back
+    # article is work lost.
+    try:
+        await write_article_embedding(
+            session, llm, article_id=article_id, text_body=draft.body
+        )
+    except Exception as error:  # noqa: BLE001 - retrievability is not storability
+        logger.warning(
+            "article_synthesis: %s stored but not embedded: %s", article_id, error
+        )
+    return article_id
 
 
 async def run_article_synthesis(

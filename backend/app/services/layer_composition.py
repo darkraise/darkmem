@@ -1328,6 +1328,35 @@ class LayerCompositionService:
             (fact_id, ref) for fact_id, group in refs.items() for ref in group
         )
 
+    async def _article_channel(self, query: str, project: str, limit: int):
+        """The L3 channel, or an empty trace when nothing can serve it.
+
+        The query has to be embedded to search a vector partition, and the
+        fingerprint that embedding carries is what selects the partition — a
+        vector from one embedder compared against another's rows has no defined
+        cosine distance. An install with no embedder therefore has no L3
+        channel, which is an absence rather than a failure and is reported as
+        one.
+        """
+        from app.services.articles_channel import ArticleChannelTrace, ArticlesChannel
+
+        llm = getattr(self, "llm", None)
+        if llm is None:
+            return ArticleChannelTrace(results=[], semantic_ran=False)
+        try:
+            vector, fingerprint = await llm.embed(query)
+        except Exception:
+            # Could not ask, rather than asked and broke — the same distinction
+            # an absent partition draws. An embedder outage is already reported
+            # by the memory channel's own semantic arm, and reporting it a
+            # second time here would flag L3 degraded for a layer that was
+            # never reached.
+            logger.warning("Layer composition: no embedding for the articles channel")
+            return ArticleChannelTrace(results=[], semantic_ran=False)
+        return await ArticlesChannel(self.session).search_with_trace(
+            vector, fingerprint=fingerprint, project=project, limit=limit
+        )
+
     async def search(
         self,
         query: str,
@@ -1441,7 +1470,29 @@ class LayerCompositionService:
         # partial, which is a different lie. Stamped before the outage raise
         # below so a caller degrading around that raise inherits the same
         # complete channel list a successful call would have carried.
-        channels["article.semantic"] = ChannelStatus(ran=False)
+        # T3.23 fills the slot this line reserved. The channel is asked only
+        # when the request is project-scoped, for the same reason the facts
+        # channel is: an article is project knowledge and a wide request has no
+        # scope to push down, so asking would either leak across projects or
+        # return an arbitrary slice.
+        if not fact_asked:
+            channels["article.semantic"] = ChannelStatus(ran=False)
+        else:
+            try:
+                article_trace = await self._article_channel(query, project, limit)
+            except Exception:
+                logger.error("Layer composition: the articles channel failed outright")
+                channels["article.semantic"] = ChannelStatus(ran=True, failed=True)
+            else:
+                channels.update(_namespaced("article", article_trace.channel_status()))
+                candidates.extend(
+                    article_candidate(row, channel_rank=rank)
+                    for rank, row in enumerate(article_trace.results, start=1)
+                )
+                channel_scores.update({
+                    composition_key("article", _admit_id(row_id)): dict(scores)
+                    for row_id, scores in article_trace.arm_scores.items()
+                })
 
         # A one-sided outage degrades to the surviving layer and says so; both
         # sides down would make an empty result indistinguishable from a
