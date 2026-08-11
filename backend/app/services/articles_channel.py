@@ -246,6 +246,34 @@ class ArticlesChannel:
             )
         ).scalar_one()
 
+    @staticmethod
+    async def live_fact_set_hashes(
+        session: AsyncSession, *, project: str, names: list[str]
+    ) -> dict[str, str]:
+        """Each named subject's current fact-set digest, one statement.
+
+        Public because the articles read door (T3.06) needs exactly this and a
+        second copy of the query is how two surfaces start disagreeing about
+        whether an article is stale. It is *not* the job-side
+        ``stale_articles``: that lives in the synthesis module, and a read
+        surface importing it is what invariant 15's scan fails the build on.
+        """
+        if not names:
+            return {}
+        return {
+            row["name_lower"]: article_fact_set_hash(list(row["fact_ids"]))
+            for row in (
+                await session.execute(
+                    _LIVE_HASHES_SQL,
+                    {
+                        "project": project,
+                        "names": sorted(set(names)),
+                        "statuses": list(VERIFIED_STATUSES),
+                    },
+                )
+            ).mappings().all()
+        }
+
     async def _stale_subjects(
         self, rows: list[dict], *, project: str
     ) -> dict[str, bool]:
@@ -268,19 +296,9 @@ class ArticlesChannel:
             name, _type = decode_subject_soft_key(row["subject_key"])
             names[row["subject_key"]] = name
 
-        live = {
-            r["name_lower"]: article_fact_set_hash(list(r["fact_ids"]))
-            for r in (
-                await self.session.execute(
-                    _LIVE_HASHES_SQL,
-                    {
-                        "project": project,
-                        "names": sorted(set(names.values())),
-                        "statuses": list(VERIFIED_STATUSES),
-                    },
-                )
-            ).mappings().all()
-        }
+        live = await self.live_fact_set_hashes(
+            self.session, project=project, names=list(names.values())
+        )
 
         out: dict[str, bool] = {}
         for row in rows:

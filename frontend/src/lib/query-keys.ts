@@ -52,6 +52,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /knowledge/facts takes an explicit `project` the Facts tab supplies from its own filter (doc 13 §5.1), not yet the global switcher",
   },
+  articles: {
+    kind: "manual",
+    reason:
+      "GET /knowledge/articles takes an explicit `project` the Articles tab supplies from its own filter (doc 13 §5.2), the same posture its Facts sibling carries and for the same reason: a browsing surface silently scoped to one project makes the others read as absent. The detail read is addressed by article id and carries no project param at all",
+  },
   dreamDigest: {
     kind: "manual",
     reason:

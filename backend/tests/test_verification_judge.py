@@ -527,6 +527,12 @@ _JUDGE_REFERENCE_ALLOWLIST = {
     # the_record_and_never_the_purpose` below re-proves the narrow form against
     # the parsed tree, the way the contradiction scan's membership is re-proved.
     "app/services/review_queue.py",
+    # T3.06's articles read door, on exactly the same terms as the review
+    # queue's arm above and for the same reason: it serves a rung, so it must
+    # ask the one door whether the rung may be served. It imports
+    # `article_claim_gate` and nothing else — re-proved narrowly below beside
+    # the queue's.
+    "app/services/articles_read.py",
     # T3.03's claim-entailment pass: the second real consumer of the judge,
     # and gated the same way the contradiction scan is — by `judge()`'s own
     # refusal rather than by this list. Re-proved narrowly below.
@@ -680,18 +686,22 @@ def test_hot_path_scan_flags_a_planted_pipeline_import(tmp_path):
     assert offenders
 
 
-def test_the_article_gate_reads_the_record_and_never_the_purpose():
-    """`review_queue`'s allowlist membership, re-proved narrowly.
+@pytest.mark.parametrize(
+    "module",
+    ["app/services/review_queue.py", "app/services/articles_read.py"],
+)
+def test_the_article_gate_reads_the_record_and_never_the_purpose(module):
+    """Both article-serving surfaces' allowlist membership, re-proved narrowly.
 
     Joining `_JUDGE_REFERENCE_ALLOWLIST` buys a module the right to reference
-    the judge; it must not buy the right to dispatch it. The articles arm may
-    read the qualification record through `article_claim_gate` and nothing
+    the judge; it must not buy the right to dispatch it. An articles surface
+    may read the qualification record through `article_claim_gate` and nothing
     else — no `judge(`, no probe, no `verification` purpose string.
     """
     import ast as _ast
 
     root = _Path(__file__).resolve().parents[1]
-    source = (root / "app/services/review_queue.py").read_text(encoding="utf-8")
+    source = (root / module).read_text(encoding="utf-8")
     tree = _ast.parse(source)
 
     imported: list[str] = []
@@ -702,7 +712,7 @@ def test_the_article_gate_reads_the_record_and_never_the_purpose():
             imported.extend(alias.name for alias in node.names)
 
     assert imported == ["article_claim_gate"], (
-        "the articles arm may read the qualification record and nothing else; "
+        f"{module} may read the qualification record and nothing else; "
         f"it imports {imported}"
     )
     assert "judge(" not in source

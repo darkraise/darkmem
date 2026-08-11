@@ -373,6 +373,45 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
                "the belief window on the response says which it is.",
     ),
     ContentSurface(
+        key="knowledge_articles_browsing",
+        kind=_S,
+        front_doors=("GET /api/v1/knowledge/articles",),
+        crosses=("article_content",),
+        scoping=Scoping.OPERATOR_WIDE,
+        labels=("project",),
+        decided_by="T3.06",
+        reason="Doc 13 §5.2's Articles tab, and the same reasoning its Facts "
+               "sibling carries: `project` is a filter the caller applies "
+               "rather than a scope the door imposes, because a browsing "
+               "surface that silently showed one project makes the others "
+               "read as absent. It crosses an excerpt of the synthesised "
+               "prose — which is derived from verified facts and never from "
+               "a raw memory or a document block (the doc-16 firewall), so "
+               "the content it exposes is the vault's own settled claims. "
+               "Nothing is filtered by verification status: a stale or "
+               "candidate article is listed and labelled, never withheld.",
+    ),
+    ContentSurface(
+        key="knowledge_article_detail",
+        kind=_S,
+        front_doors=(
+            "GET /api/v1/knowledge/articles/{article_id}",
+            "mcp:article_get",
+        ),
+        crosses=("article_content", "fact_content"),
+        scoping=Scoping.ID_ADDRESSED,
+        labels=("project",),
+        decided_by="T3.06",
+        reason="One article by id: the grounded prose plus the fact text "
+               "behind each citation, so a claim's support is readable "
+               "without a second fetch per citation. The caller already names "
+               "the row, so a project predicate would only decide whether a "
+               "known id answers or 404s. It serves a superseded article too "
+               "— lineage that cannot be read is not lineage — and a citation "
+               "whose fact is no longer believed, flagged rather than hidden, "
+               "because hiding it would leave an uncited claim on the page.",
+    ),
+    ContentSurface(
         key="hygiene_queue_duplicates",
         kind=_S,
         front_doors=("GET /api/v1/hygiene-queue/duplicates",),

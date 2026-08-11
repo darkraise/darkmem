@@ -9,28 +9,115 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import { ExclusionStrip, LayerChip, VerificationBadge } from "@/components/darkmem"
+import {
+  ExclusionStrip,
+  LayerChip,
+  VerificationBadge,
+  type VerificationStatus,
+} from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoArticles } from "@/demo/hooks"
 import { liveArticles, withheldArticles } from "@/demo/knowledge"
 import type { DemoArticle } from "@/demo/types"
+import { useArticles, type ArticleRow as LiveArticle } from "@/hooks/api/use-articles-api"
 import { ListSurface } from "./list-surface"
 import { StaleBadge } from "./fact-parts"
 
-/* L3 has no live channel: article synthesis ships behind G-D, which is open.
-   Serving the demo fixture unbranched would put fabricated `confirmed` claims
-   and invented coverage ratios in front of a real reader, under chrome
-   promising every claim links to a verified fact. Stable identity so the
-   memos below do not re-run each render. */
-const NO_ARTICLES: DemoArticle[] = []
+/** What this tab renders, in the one shape both modes can honestly fill.
+ *
+ *  Not `DemoArticle`: that fixture type carries an entailed/total breakdown
+ *  and a stale `since`/`reason` the live door does not serve, and adapting a
+ *  real row into it would mean inventing all four. A view type carries what
+ *  each source actually has, and `coverage: null` is a first-class value —
+ *  with the groundedness gate open an article's coverage is *unmeasured*,
+ *  which is a different statement from 0.00 and must not render as one.
+ */
+interface ArticleView {
+  id: string
+  title: string
+  project: string
+  excerpt: string
+  /** The rung as **served**. Never recomputed here: the backend's label
+   *  producer already gated it, and a fallback would assert a rung nothing
+   *  certified. */
+  status: VerificationStatus
+  /** The backend-authored claim sentence, shown verbatim or not at all. The
+   *  live door serves none today, so it is null there rather than written
+   *  here — a frontend-composed claim is a second, unbacked copy. */
+  claim: string | null
+  stale: boolean
+  staleSince: string | null
+  coverage: number | null
+  reviewState: string | null
+  supersedes: string | null
+  meta: string
+}
 
-function ArticleRow({ article }: { article: DemoArticle }) {
+const NO_ARTICLES: ArticleView[] = []
+
+function fromDemo(article: DemoArticle): ArticleView {
+  return {
+    id: article.id,
+    title: article.title,
+    project: article.project,
+    excerpt: article.excerpt,
+    status: article.verification_status,
+    claim: article.claim,
+    stale: article.stale !== null,
+    staleSince: article.stale?.since ?? null,
+    coverage: article.coverage.ratio,
+    reviewState: article.review_state,
+    supersedes: article.supersedes ?? null,
+    meta: article.meta,
+  }
+}
+
+function fromLive(article: LiveArticle): ArticleView {
+  return {
+    id: article.id,
+    title: article.title ?? article.subject_key,
+    project: article.project,
+    excerpt: article.excerpt ?? "",
+    status: (article.status ?? "candidate") as VerificationStatus,
+    claim: null,
+    stale: article.stale,
+    staleSince: null,
+    coverage: article.coverage,
+    reviewState: article.review_state,
+    // The list carries the pointer *forward* (`superseded_by`) and a live row
+    // has none by construction. The lineage backwards is on the detail read,
+    // which is where a reader who wants history already is.
+    supersedes: null,
+    meta: article.synthesized_at ? article.synthesized_at.slice(0, 10) : "",
+  }
+}
+
+/** The coverage readout. Rendered in **both** detail levels — doc 13 §5.2
+ *  makes it an honesty signal rather than technical detail, which is the same
+ *  distinction that made the raw fact-set fingerprint advanced-only while the
+ *  stale label stayed in both (T1.48). */
+function CoverageReadout({ coverage }: { coverage: number | null }) {
+  if (coverage === null) {
+    return (
+      <span className="text-muted-foreground font-mono text-sm">
+        claim-support coverage not measured
+      </span>
+    )
+  }
+  return (
+    <span className="font-mono text-sm">
+      claim-support coverage {coverage.toFixed(2)}
+    </span>
+  )
+}
+
+function ArticleRow({ article }: { article: ArticleView }) {
   return (
     <div className="border-border flex flex-wrap items-start gap-3 rounded-md border p-2.5">
       <div className="flex shrink-0 flex-col items-start gap-1.5">
         <LayerChip layer={3} />
         <VerificationBadge
-          status={article.verification_status}
+          status={article.status}
           detail={article.claim ?? undefined}
         />
         {article.stale && <StaleBadge />}
@@ -64,9 +151,7 @@ function ArticleRow({ article }: { article: DemoArticle }) {
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5">
-        <span className="font-mono text-sm">
-          claim-support coverage {article.coverage.ratio.toFixed(2)}
-        </span>
+        <CoverageReadout coverage={article.coverage} />
         <span className="text-muted-foreground font-mono text-sm">
           {article.meta}
         </span>
@@ -77,20 +162,40 @@ function ArticleRow({ article }: { article: DemoArticle }) {
 
 export function ArticlesTab() {
   const demoArticles = useDemoArticles()
-  const articles = DEMO ? demoArticles : NO_ARTICLES
   const [project, setProject] = useState("darkmem")
 
-  const projects = useMemo(
-    () => [...new Set(articles.map((a) => a.project))].sort(),
+  const live = useArticles(
+    { project: project === "all" ? undefined : project },
+    { enabled: !DEMO },
+  )
+
+  const articles: ArticleView[] = useMemo(() => {
+    if (DEMO) {
+      return liveArticles(demoArticles, project).map(fromDemo)
+    }
+    return live.data ? live.data.items.map(fromLive) : NO_ARTICLES
+  }, [demoArticles, live.data, project])
+
+  const withheld = useMemo(() => {
+    if (DEMO) return withheldArticles(demoArticles, project).length
+    // The live list serves an open-review article like any other row, so the
+    // count is read off the rows rather than from a second door.
+    return live.data
+      ? live.data.items.filter((a) => a.review_state === "open").length
+      : 0
+  }, [demoArticles, live.data, project])
+
+  const shown = useMemo(
+    () => articles.filter((a) => a.reviewState !== "open"),
     [articles],
   )
-  const live = useMemo(
-    () => liveArticles(articles, project),
-    [articles, project],
-  )
-  const withheld = useMemo(
-    () => withheldArticles(articles, project),
-    [articles, project],
+
+  const projects = useMemo(
+    () =>
+      DEMO
+        ? [...new Set(demoArticles.map((a) => a.project))].sort()
+        : [...new Set((live.data?.items ?? []).map((a) => a.project))].sort(),
+    [demoArticles, live.data],
   )
 
   const projectLabel = project === "all" ? "all projects" : project
@@ -118,18 +223,18 @@ export function ArticlesTab() {
 
       <ListSurface
         title={`Articles — project: ${projectLabel}`}
-        populated={live.length > 0}
-        meta={`${live.length} ${live.length === 1 ? "subject" : "subjects"}`}
+        populated={shown.length > 0}
+        meta={`${shown.length} ${shown.length === 1 ? "subject" : "subjects"}`}
       >
         {/* An ungrounded / disputed article is withheld from this
             corroborated view and routed to Review — counted, never
             silently dropped. */}
-        {withheld.length > 0 && (
+        {withheld > 0 && (
           <ExclusionStrip
             items={[
               {
-                count: withheld.length,
-                unit: withheld.length === 1 ? "article" : "articles",
+                count: withheld,
+                unit: withheld === 1 ? "article" : "articles",
                 reason:
                   "review_state=open — withheld from the corroborated view and routed to Knowledge → Review; nothing was deleted.",
                 tag: "by_review_state",
@@ -137,10 +242,8 @@ export function ArticlesTab() {
             ]}
           />
         )}
-        {live.length > 0 ? (
-          live.map((article) => (
-            <ArticleRow key={article.id} article={article} />
-          ))
+        {shown.length > 0 ? (
+          shown.map((article) => <ArticleRow key={article.id} article={article} />)
         ) : (
           <EmptyState
             icon={<FileText aria-hidden className="h-6 w-6" />}
@@ -148,7 +251,7 @@ export function ArticlesTab() {
             description={
               DEMO
                 ? "Articles are synthesised once corroborated facts exist for a subject — none do here yet. No corroborated or confirmed facts means nothing for the synthesiser to ground a claim in, so it produces no draft rather than an ungrounded one."
-                : "Article synthesis is not shipped yet — it ships behind the groundedness gate, which is still open. Nothing is being withheld from you here: there is no article channel to read."
+                : "No articles have been synthesised for this project yet. Synthesis runs in the background over subjects that hold enough corroborated facts to ground one — nothing is being withheld from you here."
             }
           />
         )}

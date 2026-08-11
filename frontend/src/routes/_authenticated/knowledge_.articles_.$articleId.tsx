@@ -21,6 +21,7 @@ import {
 } from "@/components/darkmem"
 import { useDemoArticle, useDemoFacts } from "@/demo/hooks"
 import type { ArticleCitation, ArticleSection, DemoFact } from "@/demo/types"
+import { ArticleDetailLive } from "@/features/knowledge/components/article-detail-live"
 import { StaleBadge } from "@/features/knowledge/components/fact-parts"
 import { DetailSection } from "@/features/knowledge/components/detail-section"
 
@@ -131,8 +132,10 @@ function MetaRow({
 function ArticleDetailPage() {
   const { articleId } = Route.useParams()
   const demoArticle = useDemoArticle(articleId)
-  // See articles-tab.tsx: L3 has no live channel, so outside DEMO this page has
-  // nothing lawful to render and falls through to the not-found branch below.
+  // Real mode reads the live door (T3.06). The two renderers stay apart
+  // because the fixture type carries an entailed/total breakdown, a stale
+  // reason and pre-sectioned prose the door does not serve — one renderer over
+  // both would have to invent them.
   const article = DEMO ? demoArticle : undefined
   const facts = useDemoFacts()
   const level = useDetailLevel((s) => s.level)
@@ -147,6 +150,10 @@ function ArticleDetailPage() {
       "One L3 article — synthesised, grounded prose whose every claim links to the verified fact that entails it.",
     parent: { label: "Articles", href: "/knowledge/articles" },
   })
+
+  if (!DEMO) {
+    return <ArticleDetailLive articleId={articleId} />
+  }
 
   if (!article) {
     return (

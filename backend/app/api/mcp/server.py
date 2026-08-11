@@ -1202,6 +1202,25 @@ async def fact_get(fact_id: str) -> str:
 
 
 @mcp.tool(
+    description="Read one synthesised article from the knowledge vault by its UUID: the grounded prose, its verification status, the claim-support coverage (the fraction of its sentences a verified fact entails), the citations grounding each claim, whether it is stale, and both directions of its supersession lineage. Use this after knowledge_search surfaces an article id and you need the claims behind the prose. A stale article is still served: the label says its supporting facts changed since it was written, never that it is wrong."
+)
+async def article_get(article_id: str) -> str:
+    """
+    Args:
+        article_id: The UUID of the article to retrieve.
+    """
+    from app.schemas.articles import ArticleDetailResponse
+    from app.services import articles_read
+
+    aid = _validate_uuid(article_id)
+    async with _code_service_context() as session:
+        item = await articles_read.get_article(session, aid)
+        if item is None:
+            raise ValueError(f"Article not found: {article_id}")
+        return ArticleDetailResponse.model_validate(item).model_dump_json()
+
+
+@mcp.tool(
     description="Search the knowledge vault across epistemic layers at once: stored memories (L0) and lifted facts (L2), merged into one ranked list where every fact carries its verification badge and the memories that source it are nested under it. Use this instead of memory_search when you want what is believed rather than what was said, and read the envelope: it names which channels ran, which failed, and how many rows were excluded by a context conflict, so a degraded answer is never mistaken for an empty vault."
 )
 async def knowledge_search(

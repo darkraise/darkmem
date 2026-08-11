@@ -156,6 +156,8 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/dream-digest/cycles/{cycle_id}/undo"): 200,
     ("GET", "/api/v1/knowledge/facts"): 200,
     ("GET", "/api/v1/knowledge/facts/{fact_id}"): 200,
+    ("GET", "/api/v1/knowledge/articles"): 200,
+    ("GET", "/api/v1/knowledge/articles/{article_id}"): 200,
     # A human adjudication verb, the same shape as review-queue's reject: 204,
     # so the verb serves no memory-derived content and never becomes a content
     # surface. 201 would claim a resource was minted at a new location and
@@ -434,6 +436,7 @@ async def test_paginated_list_shapes_are_uniform(client, auth_headers, session):
         "/api/v1/review-queue/facts",
         "/api/v1/review-queue/articles",
         "/api/v1/knowledge/facts",
+        "/api/v1/knowledge/articles",
         "/api/v1/hygiene-queue/duplicates",
         "/api/v1/hygiene-queue/low-confidence",
         "/api/v1/hygiene-queue/expiring-soon",

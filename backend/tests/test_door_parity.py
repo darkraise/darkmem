@@ -238,6 +238,37 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="knowledge.article_detail",
+        status=TWO_DOOR,
+        rest=(("GET", f"{V1}/knowledge/articles/{{article_id}}"),),
+        mcp=("article_get",),
+        note=(
+            "Doc 12 section 2's route table assigns article_get a REST twin at "
+            "exactly this path, and section 3 puts the single-object vault "
+            "reads on tools. Built as its sibling was rather than filed "
+            "single-door: both doors call articles_read.get_article and both "
+            "serialise through ArticleDetailResponse, so the coverage number, "
+            "the citations and the stale label cross byte for byte. The REST "
+            "door is auth-gated and the tool is not, the same posture every "
+            "two-door read here carries."
+        ),
+    ),
+    Surface(
+        name="knowledge.articles_list",
+        status=REST_ONLY,
+        rest=(("GET", f"{V1}/knowledge/articles"),),
+        reason=(
+            "The same reason knowledge.facts_list is REST-only, and it is the "
+            "list/detail split rather than a posture argument: doc 12 section 3 "
+            "assigns the agent one list-shaped vault read and it is "
+            "knowledge_search -- a composed, ranked, badged answer to a query. "
+            "A project-scoped page of articles in synthesis order is a browsing "
+            "surface doc 13 section 5.2 needs and an agent does not; the detail "
+            "half of this surface is knowledge.article_detail, two-door with "
+            "article_get."
+        ),
+    ),
+    Surface(
         name="knowledge.composed_search",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/knowledge/search"),),
