@@ -4,6 +4,53 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v0.3 — 2026-08-11
+
+**Context stays live, and visible.** Push can follow your working context
+instead of only firing at session start — and everything it pushes is on
+screen, per day and per target.
+
+### Added
+- Inject records render in the day timeline and the calendar (`T3.20`). A push
+  names its target, its item count and its budget, and opens to show exactly
+  what was pushed, per layer. The used-against-budget pair is the diagnostic
+  half: a push that spent 40 of 4000 tokens and one that hit its ceiling look
+  identical from the id list alone and mean different things about what the
+  agent was *not* told. `/events/calendar` gained an `event_type` filter so the
+  days holding an inject can be marked without counting rows client-side.
+- Watch mode (`T4.06`): re-inject as the project, the open file or the declared
+  context shifts. Off by default, and the opt-in is a config flag read at two
+  doors. Every refresh journals what shifted — without that, a re-inject is
+  indistinguishable from a session start and "you can see the swap" reduces to
+  seeing that something was pushed twice.
+- Auto-capture in the browser extension (`T4.07`), strictly opt-in. The chat
+  surfaces are optional permissions the browser withholds until you grant them,
+  so an install that never opted in cannot read those pages at all. Opting in
+  captures from that point on; it does not send the conversation you already
+  had. A `REC` badge shows while it is running.
+- The Distribution tab now shows watch state per target, the curb, and a live
+  inject log read from the journal (`T4.08`).
+
+### Changed
+- The curb is enforced server-side. A watch refresh re-reads it every time and
+  refuses while it is on, so curbing stops the next swap rather than the next
+  session — the client is the thing being curbed, which is why the client does
+  not decide. The tab's copy said the flag had no enforcer; that stopped being
+  true with watch mode and now says so.
+
+### Fixed
+- The demo resume block and the demo inject record were prose where the real
+  branch reads a payload, so the mockups could not be expanded and could
+  disagree with the live surfaces without any test noticing.
+
+### Known limits
+- Nothing drives watch mode yet: the client-side loop that would call it is the
+  Claude Code plugin, outside this repo. The session-start inject still has no
+  HTTP door, so the curb governs the watch cadence today and will govern that
+  one the moment it has a caller.
+- Verification, groundedness and coverage labels remain withheld pending G-C,
+  G-D and G-E.
+
 ## v0.2 — 2026-08-11
 
 **Your agent can resume.** A run saves a compact digest, and the next session
