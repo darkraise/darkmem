@@ -1936,12 +1936,16 @@ _SQL_STATEMENT = re.compile(r"\bfrom\b", re.IGNORECASE)
 #   selects `disputed`, which is ungated and its own preimage, so no
 #   aggregate downstream of it can separate a withheld rung from a candidate.
 #
-# **Reach, stated rather than implied.** This reads one string constant at a
-# time, so an aggregate and a rung filter assembled into separate fragments
-# and joined later are invisible to it — `KnowledgeTripleRepository.list_live`
-# builds its `COUNT(*)` exactly that way, and that count is gated only because
-# `facts_read` hands it a served-inverted set. Neither this scan nor the label
-# scan sees that shape. What covers it is a door drive with the gate closed.
+# **Reach, stated rather than implied.** This reads one string *expression* at
+# a time: a plain constant, or an f-string rejoined across its interpolations
+# (widened 2026-08-11, after a shared predicate turned `article_eligibility`'s
+# counting CTE into two fragments neither of which carried both signals — the
+# scan lost a site it had been reporting, and lost it silently). Fragments
+# assembled by concatenation or `.format` and joined later are still invisible
+# — `KnowledgeTripleRepository.list_live` builds its `COUNT(*)` exactly that
+# way, and that count is gated only because `facts_read` hands it a
+# served-inverted set. Neither this scan nor the label scan sees that shape.
+# What covers it is a door drive with the gate closed.
 # - `article_eligibility` counts a subject's verified facts to decide whether
 #   it clears doc 09 §4.1's synthesis floor. **Ungated on purpose, and the
 #   reason is that it serves nobody**: the module has no route, no door and no
@@ -1984,17 +1988,62 @@ def _docstrings(tree: ast.AST) -> set[int]:
     return seen
 
 
+def _module_string_constants(tree: ast.AST) -> dict[str, str]:
+    """Module-level ``NAME = "literal"``, for resolving f-string SQL."""
+    out: dict[str, str] = {}
+    for node in getattr(tree, "body", []):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        value = node.value
+        if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                out[target.id] = value.value
+    return out
+
+
+def _sql_strings(tree: ast.AST, prose: set[int]) -> list[str]:
+    """Every string an SQL query could be spelled as, joined where f-strung.
+
+    A query interpolating a shared predicate is one `JoinedStr` whose pieces
+    are separate `Constant` nodes, so reading constants alone splits the query
+    at the interpolation point and loses any signal that does not survive in
+    one fragment — which is how `article_eligibility`'s counting CTE dropped
+    out of this scan the day its predicate became shared. Interpolated
+    module-level literals are substituted; anything else becomes a space, so
+    the join can only widen what is seen, never fabricate it.
+    """
+    constants = _module_string_constants(tree)
+    out: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            parts: list[str] = []
+            for piece in node.values:
+                if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                    parts.append(piece.value)
+                elif isinstance(piece, ast.FormattedValue):
+                    name = piece.value
+                    parts.append(
+                        constants.get(name.id, " ")
+                        if isinstance(name, ast.Name)
+                        else " "
+                    )
+            out.append("".join(parts))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if node.lineno not in prose:
+                out.append(node.value)
+    return out
+
+
 def sql_aggregates_over_the_rung(sources) -> set[str]:
     found: set[str] = set()
     for relpath, source in sources:
         tree = ast.parse(source)
         prose = _docstrings(tree)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-                continue
-            if node.lineno in prose:
-                continue
-            text_ = " ".join(node.value.split())
+        for raw in _sql_strings(tree, prose):
+            text_ = " ".join(raw.split())
             if (
                 CLAIM_LABEL_KEY in text_
                 and _SQL_AGGREGATE.search(text_)
@@ -2052,6 +2101,22 @@ def test_the_one_swept_aggregate_binds_the_rungs_the_gate_allows():
         ('Q = text("SELECT verification_status FROM knowledge_triples")', False),
         # Prose describing a count is not a count.
         ('"""COUNT(*) over verification_status, from the ladder."""', False),
+        # The shape that went dark: the two signals land on opposite sides of
+        # an interpolation, so neither fragment carries both.
+        (
+            'P = "t.expired_at IS NULL"\n'
+            'Q = text(f"SELECT verification_status FROM knowledge_triples '
+            'WHERE {P} GROUP BY count(id)")',
+            True,
+        ),
+        # …and the join may not invent one: an f-string with no aggregate
+        # anywhere still does not fire.
+        (
+            'P = "t.expired_at IS NULL"\n'
+            'Q = text(f"SELECT verification_status FROM knowledge_triples '
+            'WHERE {P}")',
+            False,
+        ),
     ],
 )
 def test_the_aggregate_sweep_fires_on_what_it_claims(tmp_path, snippet, fires):
