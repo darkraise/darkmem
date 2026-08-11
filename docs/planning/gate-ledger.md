@@ -27,7 +27,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
 | G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
-| G-E | L3 → F7 | **open** (runtime coverage threshold stated 2026-08-11 by derivation and owner-ratified at **0.95**, before any coverage number exists anywhere; the corpus **share** is still unstated and is owed before T3.24's runner reads production — see "G-E") | — | — |
+| G-E | L3 → F7 | **open** (both bars stated 2026-08-11 by derivation and owner-ratified before any coverage number exists anywhere: runtime threshold **0.95**, corpus share **0.90**. Nothing is measured until T3.24's runner reads production — see "G-E") | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
 
@@ -1498,7 +1498,7 @@ Measured by T3.24's runner. The production read is the one sanctioned exception 
 | Probe | Bar | Measured | Artifact | Verdict |
 |---|---|---|---|---|
 | L3 shipped | Articles live in production | — | — | — |
-| Per-article claim-support coverage **distribution** above the runtime threshold | runtime threshold **0.95** (stated below); corpus share **not yet stated** | — | — | — |
+| Per-article claim-support coverage **distribution** above the runtime threshold | runtime threshold **0.95**; corpus share **0.90** (both stated below, by derivation) | — | — | — |
 
 **A distribution, not a mean.** One well-covered article does not clear this gate; the
 question is whether coverage holds across the corpus in production.
@@ -1545,18 +1545,32 @@ in this ledger — **it may never be moved to make a run pass**.
 
 ### The corpus share: **not stated, and owed before T3.24 runs**
 
-The row above has two numbers and only one of them exists. The threshold governs one
-article; G-E asks whether coverage *holds across the corpus*, which needs a share — what
-fraction of live articles must sit at or above the threshold for the layer to have
-shipped. Left unstated deliberately rather than overlooked: it is the owner's to state,
-and stating it after the first production read would be fitting.
+The row above carries two numbers, and they answer different questions. The threshold
+governs one article; G-E asks whether coverage *holds across the corpus*, which needs a
+share — what fraction of live articles must sit at or above the threshold for the layer to
+have shipped.
 
-Recommendation, by the same rule and offered for ratification: **0.90**, the non-truth-critical
-side. An article below the threshold is *handled* — it routes to review labelled and never
-reaches a reader as corroborated — so the share does not price truth, it prices whether
-the layer is viable enough to be worth shipping, exactly as contradiction-precision became
-a review-load floor when its consumer changed. Nothing measures this until T3.24's runner
-exists, so the number costs nothing to state now and cannot be stated honestly later.
+**Stated 2026-08-11 by derivation, owner-ratified: 0.90.** The non-truth-critical side of
+doc 17 §6's rule, and the derivation is the reason it sits there rather than at 0.95: an
+article below the threshold is *handled* — it routes to review labelled and never reaches
+a reader as corroborated — so the share does not price truth at all. It prices whether the
+layer is viable enough to be worth shipping. That is the same move contradiction-precision
+made when its consumer changed from deciding to surfacing, and it is the honest reading
+here for the same reason: the truth guarantee is carried by the per-article threshold and
+by §4.3's uncited-span rule, both of which hold on every article regardless of what share
+of the corpus clears them.
+
+**Unfittable in principle at the time of stating**, on the same footing as the threshold
+above: T3.24's runner does not exist, no production read has happened, and no coverage
+number has ever been produced anywhere in this corpus. The number therefore costs nothing
+to state now and could not have been stated honestly after the first run.
+
+**What a failure at this bar would and would not mean.** Below 0.90 the finding is that
+synthesis is producing prose its own facts do not support often enough to matter — a
+statement about the *generator*, not about the reader's safety, since every below-threshold
+article was already withheld from the corroborated view. The remedy space is the hub cap,
+the length budget and the prompt, not the bar. As with every bar in this ledger it is the
+owner's to move with a recorded argument, and it may never be moved to make a run pass.
 
 ---
 

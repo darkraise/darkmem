@@ -279,6 +279,26 @@ class TestTheThresholdConfig:
     async def test_the_default_is_the_committed_constant(self, session):
         assert await ce.get_coverage_threshold(session) == ce.DEFAULT_COVERAGE_THRESHOLD
 
+    async def test_the_bar_is_the_derived_value_and_not_the_other_side(self):
+        """G-E's runtime bar, pinned the way the verification bars are.
+
+        Until this existed the getter's fallback was asserted but the *value*
+        was not, so moving 0.95 was a one-file edit nobody would see in review.
+        Now it is a two-file diff against a recorded derivation (gate ledger,
+        "G-E"): doc 17 §6 bars the truth-critical metric at 0.95, and coverage
+        is truth-critical on the same argument that made *entailed* precision
+        so — a false pass ships an ungrounded sentence under a corroborated
+        badge.
+
+        The second assertion is the one that bites. 0.90 is where this bar
+        would sit if coverage were re-read as *not* truth-critical, which is
+        the one move that could lower it without anyone having to argue the
+        number itself. Pinning against that value is how this file records
+        which side of §6's rule coverage was placed on.
+        """
+        assert ce.DEFAULT_COVERAGE_THRESHOLD == 0.95
+        assert ce.DEFAULT_COVERAGE_THRESHOLD != 0.90
+
     async def test_the_config_row_overrides_it(self, session):
         await session.execute(
             text(
