@@ -18,8 +18,8 @@ staleness a property of the fact set, and doc 13 makes it a label: a stale
 article is still the best write-up of that subject and hiding it leaves the
 reader with nothing while a fresher-looking absence implies the subject is
 unknown. The label is derived by comparing the article's stored
-``fact_set_hash`` against the subject's live verified set, computed for the
-returned page only.
+``fact_set_hash`` against the subject's live verified set — verified *and still
+believed*, per §4.4 as amended 2026-08-11 — computed for the returned page only.
 
 **Composed, never fused here.** The channel returns candidates; doc 07 §5's
 composition (T2.43) is what merges layers, and this module holds no ranking of
@@ -35,7 +35,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.retrieval_trace import ChannelStatus
-from app.services.article_eligibility import VERIFIED_STATUSES
+from app.services.article_eligibility import (
+    SUPPORTING_BELIEF_PREDICATE,
+    VERIFIED_STATUSES,
+)
 from app.services.embedder_registry import child_table
 from app.services.pin_suggestions import decode_subject_soft_key
 
@@ -134,14 +137,14 @@ _SEARCH_SQL = """
 # small but the query is not free, and N round trips to label N rows is the
 # shape that turns a cheap label into a per-result cost.
 _LIVE_HASHES_SQL = text(
-    """
+    f"""
     SELECT lower(t.subject_name) AS name_lower,
            array_agg(CAST(t.id AS text) ORDER BY CAST(t.id AS text)) AS fact_ids
     FROM knowledge_triples t
     WHERE t.project = CAST(:project AS text)
       AND lower(t.subject_name) = ANY(CAST(:names AS text[]))
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
-      AND t.expired_at IS NULL
+      AND {SUPPORTING_BELIEF_PREDICATE}
     GROUP BY lower(t.subject_name)
     """
 )
@@ -252,6 +255,10 @@ class ArticlesChannel:
         verified set. An article whose subject now has *no* verified facts is
         stale rather than absent-from-the-map: the knowledge it was built on is
         gone, which is the strongest form of the thing staleness names.
+
+        The basis is ``SUPPORTING_BELIEF_PREDICATE``, shared with the write side
+        so the two can never disagree — a read basis narrower than the write
+        basis makes every article read stale from the moment it is written.
         """
         if not rows:
             return {}

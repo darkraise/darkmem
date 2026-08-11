@@ -11,6 +11,13 @@ So the property under test is a conjunction, and both halves have to hold at
 once: the FK is enforced *and* nothing in the tree ever hard-deletes a fact. A
 suite that checked only the first would pass on a system that deletes facts and
 takes their citations with them.
+
+The third clause — "and the article marked stale" — was blocked on a doc 09
+§4.4 contradiction and is covered here since the ruling landed (2026-08-11):
+§4.4 named `invalidated` as a staleness trigger while its own hash predicate
+carried `expired_at` alone, and invalidation sets `invalid_at` only. The
+enumeration won, so the L3 supporting set is the verified *and still believed*
+one.
 """
 
 from __future__ import annotations
@@ -22,6 +29,10 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+
+from app.repositories.knowledge_triples import OPEN_BELIEF_PREDICATE
+from app.services import article_eligibility, article_synthesis, articles_channel
+from app.services.article_eligibility import SUPPORTING_BELIEF_PREDICATE
 
 pytestmark = pytest.mark.asyncio
 
@@ -192,6 +203,101 @@ class TestInvalidateNotDelete:
                 {"f": fact_id},
             )
         ).scalar_one() == 1
+
+
+# ─────────────── …and the article marked stale (doc 09 §4.4, as ruled) ─────
+
+
+async def _subject_hash(session, *, subject: str = "s", project: str = PROJECT) -> str:
+    return article_synthesis.fact_set_hash(
+        await article_synthesis.all_verified_fact_ids(
+            session, subject=subject, project=project
+        )
+    )
+
+
+class TestStalenessOnInvalidation:
+    async def test_invalidating_a_cited_fact_moves_the_subjects_hash(self, session):
+        """T3.04's third clause, and the whole reason the ruling was needed.
+
+        Under §4.4's pre-amendment predicate this assertion failed: invalidation
+        touches neither `verification_status` nor `expired_at`, so the hash sat
+        still and the article was never labelled stale — a trigger the doc
+        enumerated that its own predicate could not fire.
+        """
+        article_id = await _article(session)
+        fact_id = await _fact(session)
+        await _cite(session, article_id, fact_id)
+        before = await _subject_hash(session)
+
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET invalid_at = now() "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": fact_id},
+        )
+        await session.flush()
+
+        assert await _subject_hash(session) != before
+        # The conjunction, not two separate properties: the article goes stale
+        # *while* the citation survives. A design that deleted the fact would
+        # also move the hash, and would be the failure this FK exists to refuse.
+        assert (
+            await session.execute(
+                text(
+                    "SELECT COUNT(*) FROM article_citations "
+                    "WHERE fact_id = CAST(:f AS uuid)"
+                ),
+                {"f": fact_id},
+            )
+        ).scalar_one() == 1
+
+    async def test_the_write_and_read_bases_are_one_predicate(self):
+        """Two spellings would make every article read stale from birth.
+
+        The statuses half is already pinned in `test_article_synthesis`; this is
+        the belief half, and it is the one that just moved.
+        """
+        sql = [
+            str(article_synthesis._ALL_VERIFIED_IDS_SQL),
+            str(articles_channel._LIVE_HASHES_SQL),
+            str(article_synthesis._FACTS_SQL),
+            str(article_eligibility._CANDIDATES_SQL),
+        ]
+        assert all(SUPPORTING_BELIEF_PREDICATE in q for q in sql)
+
+    async def test_no_L3_query_keeps_the_old_narrower_basis(self):
+        """The four were found by reading; a fifth would be found by this.
+
+        Scanned line-wise rather than by parsing SQL: the failure mode of the
+        old basis is not an error but a hash that sits still, which no runtime
+        check can see.
+        """
+        offenders: list[str] = []
+        for mod in (article_eligibility, article_synthesis, articles_channel):
+            path = Path(mod.__file__)
+            for lineno, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), 1
+            ):
+                if "expired_at IS NULL" in line and "invalid_at IS NULL" not in line:
+                    offenders.append(f"{path.name}:{lineno}")
+
+        assert offenders == [], (
+            "an L3 query carries the belief window's expiry half alone. Doc 09 "
+            "§4.4 as amended makes the supporting set verified *and believed*, "
+            f"and a half-applied basis goes stale on nothing: {offenders}"
+        )
+
+    async def test_the_basis_is_the_repos_canonical_belief_window(self):
+        """Derived by hand rather than by string surgery, so a new column on the
+        canonical predicate fails here instead of quietly leaving L3 behind."""
+        canonical = {c.strip() for c in OPEN_BELIEF_PREDICATE.split(" AND ")}
+        mine = {
+            c.strip().removeprefix("t.")
+            for c in SUPPORTING_BELIEF_PREDICATE.split(" AND ")
+        }
+        assert mine == canonical
 
 
 # ─────────────── a hard delete is impossible, in the tree as well ──────────

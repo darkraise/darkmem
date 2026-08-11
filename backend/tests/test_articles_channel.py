@@ -278,6 +278,39 @@ class TestStaleness:
 
         assert trace.results[0]["stale"] is True
 
+    async def test_an_invalidated_fact_labels_the_article_stale(self, session):
+        """Doc 09 §4.4's fourth trigger, servable since the 2026-08-11 ruling.
+
+        The end-to-end half of the property `test_article_citations` pins on the
+        hash: what the reader is actually handed is the label.
+        """
+        await _partition(session)
+        fact_id = await _verified_fact(session, subject_name="kafka")
+        await _article(
+            session, subject_key="kafka::concept",
+            fact_set_hash=ac.article_fact_set_hash([fact_id]),
+            vector=[1.0, 0.0, 0.0, 0.0],
+        )
+
+        fresh = await ac.ArticlesChannel(session).search_with_trace(
+            [1.0, 0.0, 0.0, 0.0], fingerprint=FINGERPRINT, project=PROJECT
+        )
+        assert fresh.results[0]["stale"] is False
+
+        await session.execute(
+            text(
+                "UPDATE knowledge_triples SET invalid_at = now() "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
+            {"id": fact_id},
+        )
+        await session.flush()
+
+        trace = await ac.ArticlesChannel(session).search_with_trace(
+            [1.0, 0.0, 0.0, 0.0], fingerprint=FINGERPRINT, project=PROJECT
+        )
+        assert trace.results[0]["stale"] is True
+
     async def test_the_hash_is_the_one_synthesis_stores(self):
         """Two spellings of "the fact set" would make every article read stale
         forever, or none of them ever."""

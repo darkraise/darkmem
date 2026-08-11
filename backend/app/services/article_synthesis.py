@@ -63,6 +63,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.article_eligibility import (
+    SUPPORTING_BELIEF_PREDICATE,
     VERIFIED_STATUSES,
     select_for_synthesis,
 )
@@ -198,7 +199,7 @@ class GatheredFact:
 # hub's several hundred facts across the wire to drop all but forty would make
 # the cap a readability knob only, and §4.2 makes it a cost knob too.
 _FACTS_SQL = text(
-    """
+    f"""
     SELECT t.id,
            t.subject_name,
            t.rel_type,
@@ -225,7 +226,7 @@ _FACTS_SQL = text(
     WHERE t.project = CAST(:project AS text)
       AND lower(t.subject_name) = CAST(:subject AS text)
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
-      AND t.expired_at IS NULL
+      AND {SUPPORTING_BELIEF_PREDICATE}
     ORDER BY salience DESC, t.id
     LIMIT :cap
     """
@@ -771,13 +772,13 @@ class SynthesisOutcome:
 
 
 _ALL_VERIFIED_IDS_SQL = text(
-    """
+    f"""
     SELECT t.id
     FROM knowledge_triples t
     WHERE t.project = CAST(:project AS text)
       AND lower(t.subject_name) = CAST(:subject AS text)
       AND t.verification_status = ANY(CAST(:statuses AS text[]))
-      AND t.expired_at IS NULL
+      AND {SUPPORTING_BELIEF_PREDICATE}
     """
 )
 

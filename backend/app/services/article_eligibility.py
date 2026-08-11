@@ -99,6 +99,21 @@ ARTICLE_SELECTION_CONFIG_KEY = "article_selection"
 # than the served one.
 VERIFIED_STATUSES: tuple[str, ...] = ("corroborated", "confirmed")
 
+# The belief half of the same set, added when doc 09 §4.2/§4.4 were amended
+# (2026-08-11, owner-ruled). §4.4 named `invalidated` as a staleness trigger
+# while its own predicate carried `expired_at` alone — and invalidation sets
+# `invalid_at` only, so the trigger could never fire. The ruling made the
+# enumeration authoritative: a fact whose belief window has closed is no longer
+# a supporting fact, on all four L3 queries and not the hash alone. A basis
+# stricter than the gather's would go stale on a change re-synthesis cannot act
+# on, leaving the disbelieved claim in the rewritten prose.
+#
+# Qualified `t.` because all four queries alias `knowledge_triples` as `t`, and
+# two of them join a second table. Pinned column-for-column against
+# `OPEN_BELIEF_PREDICATE` by test, so widening the canonical belief window
+# fails the build here rather than silently leaving L3 on the old one.
+SUPPORTING_BELIEF_PREDICATE = "t.expired_at IS NULL AND t.invalid_at IS NULL"
+
 DEFAULT_MIN_VERIFIED_FACTS = 3
 DEFAULT_SYNTHESIS_BUDGET = 5
 
@@ -246,7 +261,7 @@ async def get_synthesis_config(session: AsyncSession) -> SynthesisConfig:
 # having many sources, while this one asks how much of a subject's knowledge
 # gets read at all.
 _CANDIDATES_SQL = text(
-    """
+    f"""
     WITH verified AS (
         SELECT t.id,
                t.subject_id,
@@ -254,7 +269,7 @@ _CANDIDATES_SQL = text(
         FROM knowledge_triples t
         WHERE t.project = CAST(:project AS text)
           AND t.verification_status = ANY(CAST(:statuses AS text[]))
-          AND t.expired_at IS NULL
+          AND {SUPPORTING_BELIEF_PREDICATE}
     ),
     subjects AS (
         -- Grouped on the whole soft key, never the name alone. Uniqueness on
