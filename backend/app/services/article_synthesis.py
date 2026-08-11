@@ -68,6 +68,7 @@ from app.services.article_eligibility import (
     select_for_synthesis,
 )
 from app.services.articles_channel import ARTICLE_EMBEDDINGS_PARENT
+from app.services.articles_read import subject_name_of
 from app.services.embedder_registry import child_table
 from app.services.events import ARTICLE_STALE, record_event
 from app.services.pin_suggestions import decode_subject_soft_key
@@ -1342,7 +1343,13 @@ async def stale_articles(
 
     stale: list[StaleArticle] = []
     for row in rows:
-        name, _entity_type = decode_subject_soft_key(row["subject_key"])
+        # Tolerant on the *scan* for the reason the read door is: one row whose
+        # key never carried a type half would otherwise raise out of the loop
+        # and take the whole project's pass with it, and a sweep that stops on
+        # its first odd row is a sweep that silently stops sweeping. The
+        # fallback name matches no fact set, so such an article reads stale —
+        # a re-synthesis attempt, never a false claim of currency.
+        name = subject_name_of(row["subject_key"])
         current = fact_set_hash(
             await all_verified_fact_ids(session, subject=name, project=project)
         )

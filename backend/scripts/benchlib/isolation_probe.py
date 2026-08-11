@@ -1968,6 +1968,102 @@ async def _drive_knowledge_fact_detail(ctx: ProbeContext) -> list[Sighting]:
     return out
 
 
+async def _drive_knowledge_articles_browsing(ctx: ProbeContext) -> list[Sighting]:
+    """Doc 13 §5.2's Articles tab (T3.06), on the same terms as its Facts
+    sibling: `project` is a filter the caller applies rather than a scope the
+    door imposes, so the wide read must hand back the foreign article *naming*
+    its project and the filtered read must not include it at all.
+
+    The declared crossing is an excerpt, not the body, so the tail-marker
+    assertion `review_queue_articles` makes is repeated here for the same
+    reason: the sentinel sits inside the excerpt and crosses legitimately
+    either way, so only the tail can tell a truncated preview from a whole
+    article on the wire.
+    """
+    surface = "knowledge_articles_browsing"
+    door = "GET /api/v1/knowledge/articles"
+    out: list[Sighting] = []
+    ids_to_fx = {
+        str(aid): ARTICLE_FIXTURES_BY_KEY[key] for key, aid in ctx.article_ids.items()
+    }
+
+    async def one_case(params: str, case: str, req_p: str | None):
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/articles{params}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        accounted: set[str] = set()
+        for row in response.json()["items"]:
+            fx = ids_to_fx.get(str(row.get("id")))
+            if fx is None:
+                continue
+            accounted.add(fx.key)
+            out.append(Sighting(
+                surface=surface, door=door, case=case, row=fx.key, kind="preview",
+                true_project=fx.project, true_status=None, requested_project=req_p,
+                label_project=row.get("project") == fx.project,
+            ))
+        out.extend(_account_body(surface, door, case, response.text, accounted))
+        for fx in ARTICLE_FIXTURES:
+            if fx.tail_marker in response.text:
+                out.append(Sighting(
+                    surface=surface, door=door,
+                    case=f"{case} [past preview boundary]", row=fx.key,
+                    true_project=fx.project, true_status=None,
+                    forced_v1_reason=(
+                        "article content crossed past its declared excerpt"
+                    ),
+                ))
+
+    await one_case("", "deployment-wide browse (operator-wide, labelled)", None)
+    await one_case(
+        f"?project={OBSERVER}", f"browse filtered to {OBSERVER}", OBSERVER,
+    )
+    return out
+
+
+async def _drive_knowledge_article_detail(ctx: ProbeContext) -> list[Sighting]:
+    """One article by id, over both doors the declaration names.
+
+    Id-addressed, so nothing here can be a scope violation on the project axis
+    — what the surface owes instead is a label, and the foreign fixture is what
+    proves it pays. Both doors are driven because the MCP tool is
+    unauthenticated where the route is not, so a scope imposed only in the
+    route's dependency would be reachable past it.
+
+    The whole `content` is declared here, so the tail marker crossing is
+    lawful and is not asserted against; what the list door owes is the
+    truncation, and that is asserted there.
+    """
+    surface = "knowledge_article_detail"
+    out: list[Sighting] = []
+
+    def one_body(door: str, case: str, body: str, fx: ArticleFixture) -> None:
+        row = json.loads(body)
+        out.append(Sighting(
+            surface=surface, door=door, case=case, row=fx.key, kind="content",
+            true_project=fx.project, true_status=None,
+            label_project=row.get("project") == fx.project,
+        ))
+        out.extend(_account_body(surface, door, case, body, {fx.key}))
+
+    for fx in ARTICLE_FIXTURES:
+        case = f"article addressed by id, seeded in {fx.project}"
+        article_id = str(ctx.article_ids[fx.key])
+        response = await ctx.client.get(
+            f"/api/v1/knowledge/articles/{article_id}", headers=ctx.headers,
+        )
+        response.raise_for_status()
+        one_body(
+            "GET /api/v1/knowledge/articles/{article_id}", case, response.text, fx,
+        )
+        one_body(
+            "mcp:article_get", case,
+            await _call_mcp("article_get", {"article_id": article_id}), fx,
+        )
+    return out
+
+
 async def _drive_knowledge_topics_browsing(ctx: ProbeContext) -> list[Sighting]:
     """T2.39a's browsing door over the same `memory_communities` rows
     `memory_overview` reads (T2.21) -- a required `project` bind parameter
@@ -2545,6 +2641,8 @@ DRIVERS = {
     "review_queue_articles": _drive_review_queue_articles,
     "knowledge_facts_browsing": _drive_knowledge_facts_browsing,
     "knowledge_fact_detail": _drive_knowledge_fact_detail,
+    "knowledge_articles_browsing": _drive_knowledge_articles_browsing,
+    "knowledge_article_detail": _drive_knowledge_article_detail,
     "knowledge_topics_browsing": _drive_knowledge_topics_browsing,
     "knowledge_pin_suggestions": _drive_knowledge_pin_suggestions,
     "hygiene_queue_duplicates": _drive_hygiene_queue_duplicates,

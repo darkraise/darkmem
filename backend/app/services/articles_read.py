@@ -58,7 +58,12 @@ ARTICLE_ID_KIND = "article"
 
 # Enough prose to recognise an article by, never the whole body: the list is a
 # browsing surface, and a page of full articles is a page of unbounded text.
-EXCERPT_CHARS = 280
+#
+# 200 to match the review queue's own article boundary, which is what makes the
+# isolation probe's over-length article fixture load-bearing here too: its tail
+# marker begins past 260 characters, so a boundary beyond that would let an
+# untruncated `content` reach the wire while the probe still reported clean.
+EXCERPT_CHARS = 200
 
 _LIST_SQL = """
     SELECT a.id,
@@ -166,6 +171,29 @@ async def _gate(session: AsyncSession):
         return groundedness_gate()
 
 
+def subject_name_of(subject_key: str) -> str:
+    """The subject half of a soft key, tolerating a key that has no type half.
+
+    ``decode_subject_soft_key`` raises on a key without ``::``, which is right
+    for a caller that minted the key itself. It is wrong for a *read* over
+    whatever the table holds: one row written by an older path — or by hand —
+    would take down the whole page with a 500, and a browsing surface that
+    cannot render its list is strictly worse than one that renders a row
+    conservatively.
+
+    Conservatively means stale: the fallback name will not match any grouped
+    hash, so the article reads as "its knowledge moved" rather than as current.
+    Labelling an article stale when it may not be costs a re-synthesis;
+    labelling it current when it is not is the claim this layer exists to
+    avoid making.
+    """
+    try:
+        name, _entity_type = decode_subject_soft_key(subject_key)
+    except ValueError:
+        return subject_key.lower()
+    return name
+
+
 async def _stale_flags(
     session: AsyncSession, rows: list[Any]
 ) -> dict[str, bool]:
@@ -178,9 +206,8 @@ async def _stale_flags(
     by_project: dict[str, list[str]] = {}
     names: dict[str, str] = {}
     for row in rows:
-        name, _entity_type = decode_subject_soft_key(row["subject_key"])
-        names[str(row["id"])] = name
-        by_project.setdefault(row["project"], []).append(name)
+        names[str(row["id"])] = subject_name_of(row["subject_key"])
+        by_project.setdefault(row["project"], []).append(names[str(row["id"])])
 
     live: dict[tuple[str, str], str] = {}
     for project, project_names in by_project.items():
