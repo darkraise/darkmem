@@ -4,6 +4,71 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v0.4 — 2026-08-12
+
+**The vault writes articles about your subjects, and every sentence has to earn
+its place.** A subject with enough corroborated facts gets a synthesised
+write-up whose claims each link to the fact that entails them. Nothing about
+those articles is badged as verified yet — the groundedness gate is still open,
+so they ship labelled `candidate`, which is what the label means rather than a
+placeholder for it.
+
+### Added
+- Article synthesis runs for real (`T3.02`). A daily Tier-C pass picks eligible
+  subjects, gathers only their non-disputed corroborated/confirmed facts, and
+  stores one article per subject with the fact ids it was built from
+  journalled, so a bad article is traceable to its inputs. Disputed and
+  candidate facts are excluded at the query, never filtered out of a draft the
+  model already saw.
+- Claim-level entailment and coverage routing (`T3.03`). Every sentence is
+  checked against the facts it cites, and an article below the coverage
+  threshold routes to review instead of shipping. Coverage is served as
+  "claim-support coverage" — the fraction of sentences a verified fact entails
+  — because that is what the number is.
+- The one hard foreign key (`T3.04`). A citation can never dangle, which is
+  safe only because facts are invalidate-not-delete; both halves are now
+  pinned by test, including two scans proving nothing in the tree deletes a
+  fact.
+- Staleness and debounced re-synthesis (`T3.05`). An article whose supporting
+  facts moved is *labelled* stale and stays readable; re-synthesis waits for a
+  quiet period so a burst of corroborations produces one rewrite rather than
+  one per tick, then supersedes the old article and keeps the lineage.
+- The Articles tab and article detail on live data (`T3.06`), with a read door
+  the API contract named and nothing had built (`GET /knowledge/articles`,
+  `/articles/{id}`, and MCP's `article_get`). Every claim's citation is one
+  click away, and the coverage number shows in Simple as well as Advanced,
+  because it is an honesty signal rather than technical detail.
+- Articles joined retrieval as their own channel (`T3.23`), stale label
+  included — a stale article is returned labelled, never withheld.
+- A held re-synthesis now reaches a human. When a rewrite cannot be grounded,
+  the *subject* is routed to review while the standing article keeps its badge
+  and its place in retrieval; before this, a subject whose knowledge could no
+  longer be grounded was visible only as a counter on a job tick.
+
+### Changed
+- An invalidated fact now makes its article stale. The staleness gate reads the
+  verified **and still believed** set, so a fact whose belief window closed
+  stops propping up an article that cites it (doc 09 §4.4, ruled and amended).
+- A chronically ungroundable subject is no longer re-attempted every tick. It
+  costs one attempt per change to its facts instead of one per day, and the
+  attempts it skips are counted rather than silently not happening.
+
+### Fixed
+- The Playwright leg of the merge gate collided with any darkmem already
+  running on `:8000` — and did not fail cleanly: it health-checked the other
+  instance and aimed its admin-setup at it.
+- A `subject_key` written without its type half took down the whole articles
+  listing with a 500, and stopped the staleness sweep at its first odd row.
+
+### Known limits
+- **Articles ship unlabelled, deliberately.** Coverage cannot be measured until
+  a verification judge qualifies (G-D), so every article reads `candidate` with
+  its coverage shown as "not measured" — a measured absence, not a zero.
+- G-E's two bars are stated and pinned but nothing has measured them: the
+  runner that reads production coverage is still to come.
+- Synthesis needs corroborated facts, and no fact has ever left `candidate` on
+  this machine. A fresh install will correctly show no articles at all.
+
 ## v0.3 — 2026-08-11
 
 **Context stays live, and visible.** Push can follow your working context
