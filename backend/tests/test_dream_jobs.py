@@ -812,6 +812,16 @@ def test_the_import_parser_covers_every_import_style():
 
 @pytest.mark.asyncio
 async def test_unshipped_family_members_are_marked_placeholders():
+    """**Vacuous by construction since T3.02, and deliberately kept.**
+
+    `article_synthesis` was the last placeholder; with its runner landed,
+    `DREAM_JOB_KEYS - SHIPPED_DREAM_JOBS` is the empty set and this loop makes
+    no assertion at all. Said out loud so the next reader does not mistake an
+    empty loop for a proven property — the sibling test over
+    `SHIPPED_DREAM_JOBS` is what covers the family today. It stays because a
+    seventh member landing inert would need exactly this guard, and re-deriving
+    it then is harder than leaving it.
+    """
     registry, engine = _fresh_registry()
     try:
         for key in DREAM_JOB_KEYS:
@@ -1067,3 +1077,21 @@ async def test_the_rotation_wraps_and_the_real_composition_succeeds():
             await session.commit()
         await registry.stop_all()
         await engine.dispose()
+
+
+async def test_the_family_holds_no_placeholders_left():
+    """The count, asserted rather than implied by an empty loop above.
+
+    T3.02 shipped the sixth and last runner. If a future member lands inert,
+    this is the test that fails and points at the vacuous sibling.
+    """
+    registry, engine = _fresh_registry()
+    try:
+        assert set(DREAM_JOB_KEYS) == set(SHIPPED_DREAM_JOBS), (
+            "every dream-job family member should now carry a real runner; "
+            f"unshipped={sorted(set(DREAM_JOB_KEYS) - set(SHIPPED_DREAM_JOBS))}"
+        )
+        for key in DREAM_JOB_KEYS:
+            assert not isinstance(registry.get(key).runner, PlaceholderJobRunner)
+    finally:
+        await registry.stop_all()

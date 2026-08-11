@@ -829,3 +829,194 @@ class TestTheJournal:
         await session.flush()
 
         assert len(await _synthesis_events(session, project)) == 1
+
+
+# ─────────────── Step 5: the run ───────────────
+
+
+@pytest.fixture
+async def factory(session):
+    """A session factory bound to the `session` fixture's own connection.
+
+    The run driver opens a session per subject on purpose — a model call is
+    measured in seconds, and one shared transaction would hold locks across the
+    whole batch while making per-subject failure isolation a fiction. So it
+    needs a factory rather than the request-scoped session.
+
+    Bound to the same connection rather than a fresh engine: conftest wraps
+    each test in an outer transaction it rolls back, so a second engine sees an
+    empty database and every one of these tests would pass vacuously against
+    zero projects. SQLAlchemy's conditional-savepoint join mode gives each
+    session its own savepoint on that connection, so the driver's per-subject
+    commits behave as they do in production without escaping the isolation.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    # `get_bind()` hands back the *sync* Connection; the async one comes from
+    # the session itself.
+    connection = await session.connection()
+    return async_sessionmaker(bind=connection, expire_on_commit=False)
+
+
+class TestTheRun:
+    async def test_the_budget_is_t3_01_s_and_bounds_subjects(
+        self, session, factory
+    ):
+        """`select_for_synthesis` applies `synthesis_budget` itself; the job's
+        own `batch_size` bounds *projects*. The two knobs sit at different
+        levels, so neither is a second budget for the other."""
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for n in range(4):
+            for _ in range(3):
+                await _fact(session, subject_name=f"s{n}", project=project)
+        await session.execute(
+            text(
+                "INSERT INTO config (key, value) VALUES "
+                "('article_selection', CAST(:v AS jsonb)) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+            ),
+            {"v": json.dumps({"synthesis_budget": 2, "min_verified_facts": 3})},
+        )
+        await session.commit()
+
+        llm = _StubLLM(_draft_payload(["x"]))
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=50
+        )
+
+        assert outcome.attempted <= 2, "the run spends T3.01's budget, not more"
+
+    async def test_one_subject_s_failure_leaves_the_others_written(
+        self, session, factory
+    ):
+        """Per-subject sessions are what make this real rather than a `try`
+        around one shared transaction."""
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for n in range(3):
+            for _ in range(3):
+                await _fact(session, subject_name=f"s{n}", project=project)
+        await session.commit()
+
+        class _FlakyLLM:
+            """Fails the first subject outright, drafts the rest.
+
+            Cites whatever ids the prompt actually listed, so the later
+            subjects produce a storable draft rather than refusing for an
+            unrelated reason and hiding what this test is about.
+            """
+
+            def __init__(self):
+                self.calls = 0
+
+            async def chat_completion(self, purpose, *, messages, **kw):
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("vendor outage")
+                ids = _ids_in(messages)
+                return _draft_payload(ids[:1])
+
+        llm = _FlakyLLM()
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=50
+        )
+
+        assert outcome.failed == 1
+        assert outcome.written >= 1, "the failure did not take the batch with it"
+
+    async def test_a_refusal_and_a_failure_are_counted_apart(
+        self, session, factory
+    ):
+        """A vendor outage and an unusable draft mean different things to an
+        operator; one count for both would hide an outage."""
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for _ in range(3):
+            await _fact(session, subject_name="only", project=project)
+        await session.commit()
+
+        llm = _StubLLM(_draft_payload(["not-an-input"]))
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=50
+        )
+
+        assert outcome.refused >= 1
+        assert outcome.failed == 0
+
+    async def test_no_orchestrator_reads_as_failed_not_as_a_clean_tick(
+        self, session, factory
+    ):
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for _ in range(3):
+            await _fact(session, subject_name="only", project=project)
+        await session.commit()
+
+        outcome = await asyn.run_article_synthesis(
+            factory, None, batch_size=50
+        )
+
+        assert outcome.written == 0
+        assert outcome.failed >= 1
+
+    async def test_the_cursor_names_the_last_project_visited(
+        self, session, factory
+    ):
+        """Visited, not succeeded — a project failing deterministically would
+        otherwise pin the rotation and starve everything behind it."""
+        for suffix in ("aaa", "bbb"):
+            for _ in range(3):
+                await _fact(
+                    session, subject_name="s", project=f"{PROJECT}-cursor-{suffix}"
+                )
+        await session.commit()
+
+        llm = _StubLLM(raises=RuntimeError("always fails"))
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=200
+        )
+
+        assert outcome.last_project is not None
+        assert outcome.projects >= 2
+
+    async def test_the_soft_key_is_split_at_the_right_boundary(
+        self, session, factory
+    ):
+        """The failure this pins is silent, which is why it gets its own test.
+
+        `select_for_synthesis` hands back `name::entity_type`. Passed whole
+        into the fact query — which matches `lower(subject_name)` — it matches
+        nothing, so every subject "refuses" for want of facts: the tick reports
+        subjects attempted and none written, and nothing raises. Meanwhile the
+        *article* must be stored under the whole soft key, because that is what
+        `ux_knowledge_articles_live` is unique on.
+        """
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for _ in range(3):
+            await _fact(session, subject_name="postgres", project=project)
+        await session.commit()
+
+        llm = _StubLLM()
+
+        async def _draft(purpose, *, messages, **kw):
+            llm.calls.append({"purpose": purpose, "messages": messages, **kw})
+            return _draft_payload(_ids_in(messages)[:1])
+
+        llm.chat_completion = _draft
+        outcome = await asyn.run_article_synthesis(
+            factory, lambda: llm, batch_size=50
+        )
+
+        assert outcome.written == 1, "the name half must reach the fact query"
+        rows = await session.execute(
+            text(
+                "SELECT subject_key FROM knowledge_articles "
+                "WHERE project = CAST(:p AS text)"
+            ),
+            {"p": project},
+        )
+        stored = rows.scalar_one()
+        assert stored.startswith("postgres::"), "the whole soft key is stored"
+
+def _ids_in(messages) -> list[str]:
+    import re as _re
+
+    joined = "\n".join(m["content"] for m in messages)
+    return _re.findall(r"\[([0-9a-f-]{36})\]", joined)

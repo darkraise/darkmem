@@ -57,6 +57,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from app.services.article_synthesis import run_article_synthesis
 from app.services.contradiction_scan import (
     CANDIDATE_TOP_K_KEY,
     CONTRADICTION_SCAN_CONFIG_SCHEMA,
@@ -148,6 +149,7 @@ DREAM_JOB_KEYS: tuple[str, ...] = tuple(DREAM_JOB_OWNERS)
 # instead of quietly losing it. A later member adds its key and its module here
 # in the same edit that replaces its `PlaceholderJobRunner`.
 SHIPPED_DREAM_JOBS: dict[str, str] = {
+    ARTICLE_SYNTHESIS_JOB_KEY: "article_synthesis",
     FACT_LIFT_JOB_KEY: "fact_lift",
     VERIFICATION_RECOMPUTE_JOB_KEY: "verification_recompute",
     CONTRADICTION_SCAN_JOB_KEY: "contradiction_scan",
@@ -484,6 +486,112 @@ def _generic_batch_schema(default: int, maximum: int) -> list[FieldDescriptor]:
     )]
 
 
+ARTICLE_SYNTHESIS_CONFIG_SCHEMA: list[FieldDescriptor] = [
+    FieldDescriptor(
+        key="batch_size", label="Projects Per Run", default=10, min=1, max=200,
+        help=(
+            "How many projects one tick rotates over. Bounds *projects*, not "
+            "subjects — the per-project subject budget is `synthesis_budget` "
+            "on the `article_selection` config row (T3.01), so the two knobs "
+            "compose rather than contradict. Keeps the placeholder's key, "
+            "default and ceiling so no persisted value is orphaned."
+        ),
+    ),
+    FieldDescriptor(
+        key="hub_cap", label="Facts Per Article", default=40, min=1, max=200,
+        help=(
+            "Doc 09 §4.2's top-K cap. A cost knob as much as a length one: an "
+            "article's claim count is bounded by its fact count, so this "
+            "bounds T3.03's per-claim entailment bill too."
+        ),
+    ),
+    FieldDescriptor(
+        key="length_budget_words", label="Length Budget (words)",
+        default=400, min=50, max=5000,
+        help=(
+            "Doc 09 §4.2's length budget, asked for in the prompt. The hard "
+            "ceiling the response is held to is 1.5x this; an ordinary "
+            "overrun is absorbed, one that ignored the instruction is refused."
+        ),
+    ),
+]
+
+
+def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRunner:
+    """The article-synthesis tick (T3.02), bound to the registry's factory.
+
+    Config is re-read every tick rather than closed over, so an operator's edit
+    takes effect on the next run without a restart — the shape every sibling
+    runner here carries.
+
+    **The cursor advances over projects visited, not projects that succeeded**,
+    for the reason `_make_topic_runner` states: a project failing
+    deterministically would otherwise pin the rotation and starve every project
+    behind it.
+    """
+    async def run() -> None:
+        cfg = await registry.load_config(key)
+        settings_ = {**registry.get(key).default_config, **cfg.config}
+        async with registry.session_factory() as session:
+            after_project = await _load_article_cursor(session)
+
+        outcome = await run_article_synthesis(
+            registry.session_factory,
+            llm_provider,
+            batch_size=int(settings_.get("batch_size", 10)),
+            after_project=after_project,
+            hub_cap=int(settings_.get("hub_cap", 40)),
+            budget_words=int(settings_.get("length_budget_words", 400)),
+        )
+        async with registry.session_factory() as session:
+            await _save_article_cursor(session, outcome.last_project)
+            await session.commit()
+
+    return run
+
+
+_ARTICLE_STATE_CONFIG_KEY = "article_synthesis_state"
+
+
+async def _load_article_cursor(session) -> str | None:
+    from sqlalchemy import select
+
+    from app.models.config import Config
+
+    row = (
+        await session.execute(
+            select(Config).where(Config.key == _ARTICLE_STATE_CONFIG_KEY)
+        )
+    ).scalar_one_or_none()
+    if row is None or not isinstance(row.value, dict):
+        return None
+    cursor = row.value.get("last_project")
+    return cursor if isinstance(cursor, str) and cursor else None
+
+
+async def _save_article_cursor(session, last_project: str | None) -> None:
+    """Persist the rotation cursor, wrapping when a batch came back short.
+
+    ``None`` means the sweep found no projects past the cursor, which is the
+    end of the rotation — reset so the next tick starts from the beginning
+    rather than sitting past the last project forever.
+    """
+    from sqlalchemy import select
+
+    from app.models.config import Config
+
+    row = (
+        await session.execute(
+            select(Config).where(Config.key == _ARTICLE_STATE_CONFIG_KEY)
+        )
+    ).scalar_one_or_none()
+    value = {"last_project": last_project}
+    if row is None:
+        session.add(Config(key=_ARTICLE_STATE_CONFIG_KEY, value=value))
+    else:
+        row.value = value
+
+
 def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
     """Register the six-member consolidation family (doc 08 §5).
 
@@ -580,13 +688,24 @@ def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:
         # have been rejected as an unknown key by the placeholder's schema.
         config_schema=TOPIC_DETECTION_CONFIG_SCHEMA,
     ))
-    registry.register(_placeholder_job(
-        ARTICLE_SYNTHESIS_JOB_KEY, "Article Synthesis",
-        "Re-synthesises stale articles on fact_set_hash change, debounced "
-        "(doc 09 mechanics, triggered under this umbrella per doc 08 §5.6). "
-        f"Placeholder inert (T2.14) — productive runs land in "
-        f"{DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]}.",
+    registry.register(Job(
+        key=ARTICLE_SYNTHESIS_JOB_KEY,
+        display_name="Article Synthesis",
+        description=(
+            "Synthesises a Layer-3 article per eligible subject from its "
+            "verified facts only (doc 09 §4.2, triggered under this umbrella "
+            "per doc 08 §5.6). Rotates over a bounded batch of projects; each "
+            "subject is drafted and written in its own transaction, so one "
+            "subject's failure costs that subject and not the batch. Articles "
+            "land unmeasured — `candidate`, review-open, NULL confidence — "
+            "because coverage is T3.03's to measure."
+        ),
         default_cron="0 5 * * *", min_interval_seconds=300,
+        runner=_make_article_runner(registry, ARTICLE_SYNTHESIS_JOB_KEY, llm_provider),
         max_run_seconds=900,
-        config_schema=_generic_batch_schema(default=10, maximum=200),
+        # T3.02's own schema. `batch_size` keeps the placeholder's key, default
+        # (10) and ceiling (200) verbatim — `set_config` merges and never drops
+        # a key, so a renamed or removed field would orphan a persisted value
+        # silently. The two additions are additions, not renames.
+        config_schema=ARTICLE_SYNTHESIS_CONFIG_SCHEMA,
     ))

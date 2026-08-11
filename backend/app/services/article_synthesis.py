@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -61,8 +62,12 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.article_eligibility import VERIFIED_STATUSES
+from app.services.article_eligibility import (
+    VERIFIED_STATUSES,
+    select_for_synthesis,
+)
 from app.services.events import record_event
+from app.services.pin_suggestions import decode_subject_soft_key
 
 __all__ = [
     "DEFAULT_HUB_CAP",
@@ -75,8 +80,10 @@ __all__ = [
     "SYNTHESIS_PURPOSE",
     "SYNTHESIS_EVENT",
     "UNMEASURED_STATUS",
+    "SynthesisOutcome",
     "gather_facts",
     "group_facts",
+    "run_article_synthesis",
     "store_article",
     "synthesise_draft",
 ]
@@ -103,7 +110,21 @@ ARTICLE_OBJECT_TYPE = "article"
 
 # Doc 11's eighth purpose, seeded inert since day one. T3.02 is its first
 # consumer; nothing else in the tree dispatches on it.
+logger = logging.getLogger(__name__)
+
 SYNTHESIS_PURPOSE = "synthesis"
+
+# **Per-subject failures are counted and logged, not written to
+# `pipeline_failures`, and that is a discovery rather than a preference.**
+# The plan's Step 5 named that table on the `code_deriver` precedent, but
+# `PipelineFailureService.record` takes a **required UUID `entity_id`** and a
+# failed synthesis has no candidate for one: no article was written, and
+# `SubjectCandidate` carries only a `subject_key` — a pinned subject need not
+# have an `entities` row at all. Minting a UUID to satisfy the column, or
+# looking up an entity that may not exist, would put a row in triage keyed to
+# something that is not the thing that failed. The outcome's `refused`/`failed`
+# counts are what a tick reports, and they are separate because a vendor outage
+# and an unusable draft mean different things to an operator.
 
 # Doc 09 §4.2's length budget: "a config word/token cap, defaulting to a few
 # hundred words". It is the second of the two knobs the doc calls "two knobs on
@@ -635,3 +656,214 @@ async def store_article(
         },
     )
     return str(article_id)
+
+
+# ─────────────── the run (Step 5) ───────────────
+
+
+@dataclass
+class SynthesisOutcome:
+    """What one tick did, per the doc's own vocabulary.
+
+    ``refused`` and ``failed`` are separate counts because they mean different
+    things to an operator: a refusal is the model producing something this
+    module will not store, a failure is everything else — an outage, a bad
+    config, a bug. Collapsing them would make a vendor outage read as a run of
+    unusable drafts.
+    """
+
+    projects: int = 0
+    attempted: int = 0
+    written: int = 0
+    refused: int = 0
+    failed: int = 0
+    last_project: str | None = None
+
+
+_ALL_VERIFIED_IDS_SQL = text(
+    """
+    SELECT t.id
+    FROM knowledge_triples t
+    WHERE t.project = CAST(:project AS text)
+      AND lower(t.subject_name) = CAST(:subject AS text)
+      AND t.verification_status = ANY(CAST(:statuses AS text[]))
+      AND t.expired_at IS NULL
+    """
+)
+
+_NEXT_PROJECTS_SQL = text(
+    """
+    SELECT DISTINCT project FROM knowledge_triples
+    -- Both sides cast. An uncast bind on the left of IS NULL has no type
+    -- asyncpg can infer -- CLAUDE.md's raw-SQL CAST invariant. (Written
+    -- without a colon-prefixed name here because text() parses bind params
+    -- inside SQL comments too, and naming one turns this into a required
+    -- parameter nobody passes.)
+    WHERE (CAST(:after_project AS text) IS NULL
+           OR project > CAST(:after_project AS text))
+    ORDER BY project
+    LIMIT CAST(:batch_size AS int)
+    """
+)
+
+
+async def all_verified_fact_ids(
+    session: AsyncSession, *, subject: str, project: str
+) -> list[str]:
+    """Every verified fact id for the subject — the hash's basis, uncapped.
+
+    Deliberately a second query rather than a wider first one: the gather is
+    ``LIMIT``ed because the cap is a cost knob, and lifting that limit to get
+    the hash would spend on the wire exactly what the cap exists to save. This
+    reads ids alone.
+    """
+    rows = await session.execute(
+        _ALL_VERIFIED_IDS_SQL,
+        {
+            "project": project,
+            "subject": subject.lower(),
+            "statuses": list(VERIFIED_STATUSES),
+        },
+    )
+    return [str(row[0]) for row in rows.all()]
+
+
+async def synthesise_subject(
+    session: AsyncSession,
+    llm,
+    *,
+    subject_key: str,
+    project: str,
+    cap: int = DEFAULT_HUB_CAP,
+    budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
+    now: datetime | None = None,
+) -> str | None:
+    """Gather, draft, store. Returns the article id, or ``None`` on a refusal.
+
+    ``subject_key`` is the **soft key** ``name::entity_type`` that
+    ``select_for_synthesis`` hands back, and the two halves go to different
+    places: the *name* is what the fact queries match on
+    (``lower(subject_name)``), and the *whole key* is what
+    ``knowledge_articles.subject_key`` stores and what
+    ``ux_knowledge_articles_live`` is unique on.
+
+    Passing the soft key into the name match is the bug this signature exists
+    to prevent: it matches nothing, so every subject "refuses" with no facts,
+    the tick reports work attempted and none written, and nothing raises.
+
+    Raises on anything that is not a refusal, so the caller can tell an outage
+    from an unusable draft.
+    """
+    name, _entity_type = decode_subject_soft_key(subject_key)
+    facts = await gather_facts(
+        session, subject=name, project=project, cap=cap, now=now
+    )
+    if not facts:
+        return None
+    draft = await synthesise_draft(
+        llm, subject=name, facts=facts, budget_words=budget_words
+    )
+    all_ids = await all_verified_fact_ids(session, subject=name, project=project)
+    return await store_article(
+        session,
+        subject=subject_key,
+        project=project,
+        draft=draft,
+        facts=facts,
+        all_verified_ids=all_ids,
+        now=now,
+    )
+
+
+async def run_article_synthesis(
+    session_factory,
+    llm_provider=None,
+    *,
+    batch_size: int = 5,
+    after_project: str | None = None,
+    hub_cap: int = DEFAULT_HUB_CAP,
+    budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
+    now: datetime | None = None,
+) -> SynthesisOutcome:
+    """One tick: a rotating batch of projects, each subject in its own session.
+
+    **Per-subject sessions, not one per tick.** A model call is measured in
+    seconds and there is one per subject; holding a write transaction open
+    across all of them would keep locks for the length of the whole batch, and
+    one subject's failure would roll back every article written before it. Each
+    subject commits on its own, which is also what makes the per-subject
+    failure isolation real rather than a `try` around a shared transaction.
+
+    **The budget is T3.01's, not a second one.** ``select_for_synthesis``
+    applies ``synthesis_budget`` from the ``article_selection`` config row and
+    already excludes subjects that hold a live article. ``batch_size`` bounds
+    *projects* per tick, a different level — so the two knobs compose rather
+    than contradict.
+
+    **The cursor advances over projects visited, not projects that succeeded.**
+    A project failing deterministically would otherwise pin the rotation and
+    starve every project behind it.
+    """
+    outcome = SynthesisOutcome(last_project=after_project)
+    llm = llm_provider() if callable(llm_provider) else llm_provider
+
+    async with session_factory() as session:
+        projects = [
+            row[0]
+            for row in (
+                await session.execute(
+                    _NEXT_PROJECTS_SQL,
+                    {"after_project": after_project, "batch_size": max(1, batch_size)},
+                )
+            ).all()
+        ]
+
+    for project in projects:
+        outcome.projects += 1
+        outcome.last_project = project
+        async with session_factory() as session:
+            subjects = await select_for_synthesis(session, project=project)
+
+        for candidate in subjects:
+            outcome.attempted += 1
+            if llm is None:
+                # No orchestrator configured is not a draft failure; it is the
+                # job having nothing to run with. Counted as failed so the tick
+                # does not read as a clean no-op.
+                outcome.failed += 1
+                continue
+            try:
+                async with session_factory() as session:
+                    article_id = await synthesise_subject(
+                        session,
+                        llm,
+                        subject_key=candidate.subject_key,
+                        project=project,
+                        cap=hub_cap,
+                        budget_words=budget_words,
+                        now=now,
+                    )
+                    if article_id is None:
+                        outcome.refused += 1
+                    else:
+                        outcome.written += 1
+                    await session.commit()
+            except DraftRefused as refusal:
+                outcome.refused += 1
+                logger.warning(
+                    "article_synthesis: %s/%s refused: %s",
+                    project, candidate.subject_key, refusal,
+                )
+            except LiveArticleExists:
+                # Unreachable through the selector, which already excludes
+                # these. Counted rather than raised so a caller that skipped
+                # the selector degrades instead of aborting the batch.
+                outcome.refused += 1
+            except Exception as error:  # noqa: BLE001 - one subject must not end the tick
+                outcome.failed += 1
+                logger.warning(
+                    "article_synthesis: %s/%s failed: %s",
+                    project, candidate.subject_key, error,
+                )
+
+    return outcome
