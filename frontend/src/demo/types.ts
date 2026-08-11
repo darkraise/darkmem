@@ -652,6 +652,8 @@ export interface DemoInjectDetail {
   memory_ids: string[]
   budget_tokens: number
   tokens_used: number
+  cadence?: string
+  trigger?: string
 }
 
 export interface DemoDayBucket {

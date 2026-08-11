@@ -42,6 +42,11 @@ export interface InjectRecordData {
   tokensUsed: number | null
   /** The human's stated reason on a curb; null on a push. */
   reason: string | null
+  /** `session_start` or `watch` (T4.06). */
+  cadence: string | null
+  /** What shifted, on a watch refresh; null on a session-start push, which
+   *  had no cause beyond the session beginning. */
+  trigger: string | null
 }
 
 function fromDemo(event: DemoDayEvent, index: number): DayRowData {
@@ -66,6 +71,8 @@ function fromDemo(event: DemoDayEvent, index: number): DayRowData {
           budgetTokens: event.inject.budget_tokens,
           tokensUsed: event.inject.tokens_used,
           reason: null,
+          cadence: event.inject.cadence ?? null,
+          trigger: event.inject.trigger ?? null,
         }
       : undefined,
     badge: event.badge,
@@ -125,6 +132,8 @@ function injectOf(entry: EventLogEntry): InjectRecordData | undefined {
     budgetTokens: numberOrNull(payload.budget_tokens),
     tokensUsed: numberOrNull(payload.tokens_used),
     reason: stringOrNull(payload.reason),
+    cadence: stringOrNull(payload.cadence),
+    trigger: stringOrNull(payload.trigger),
   }
 }
 

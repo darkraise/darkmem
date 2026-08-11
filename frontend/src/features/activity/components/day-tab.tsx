@@ -66,6 +66,18 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
         {inject.itemCount} item{inject.itemCount === 1 ? "" : "s"} pushed ·{" "}
         {budgetLine}
       </p>
+      {inject.trigger && (
+        // A watch refresh (T4.06). Without the cause, a re-inject is
+        // indistinguishable from a session start and "the human can see the
+        // swap" reduces to seeing that something was pushed twice.
+        <p className="text-sm">
+          re-injected because the{" "}
+          <b className="font-semibold">
+            {TRIGGER_LABELS[inject.trigger] ?? inject.trigger}
+          </b>{" "}
+          changed
+        </p>
+      )}
       <Button
         size="sm"
         variant="ghost"
@@ -120,6 +132,16 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
       )}
     </div>
   )
+}
+
+// Watch's closed trigger vocabulary (`inject_watch.WATCH_TRIGGERS`), read out
+// in words. An unknown value renders verbatim rather than being dropped: the
+// swap happened, and hiding its cause because this map is stale is worse than
+// showing a raw token.
+const TRIGGER_LABELS: Record<string, string> = {
+  project_changed: "project",
+  file_opened: "open file",
+  context_changed: "declared context",
 }
 
 function DayEventRow({ event }: { event: DayRowData }) {

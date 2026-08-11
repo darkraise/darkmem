@@ -136,6 +136,75 @@ describe("inject records in the day timeline", () => {
     expect(screen.queryByText(/0 items pushed/)).not.toBeInTheDocument()
   })
 
+  it("a watch refresh names what shifted; a session start names no cause", async () => {
+    // T4.06. A re-inject with no cause is indistinguishable from a session
+    // start in this timeline.
+    renderDay([
+      injectRow({
+        id: 2,
+        payload: {
+          tool: "claude-code",
+          context_file: "CLAUDE.md",
+          fact_ids: [FACT_A],
+          article_ids: [],
+          memory_ids: [],
+          budget_tokens: 1200,
+          tokens_used: 90,
+          cadence: "watch",
+          trigger: "file_opened",
+        },
+      }),
+    ])
+
+    expect(
+      await screen.findByText(/re-injected because the/),
+    ).toBeInTheDocument()
+    expect(screen.getByText("open file")).toBeInTheDocument()
+  })
+
+  it("a session-start push claims no trigger", async () => {
+    renderDay([
+      injectRow({
+        payload: {
+          tool: "claude-code",
+          context_file: "CLAUDE.md",
+          fact_ids: [FACT_A],
+          article_ids: [],
+          memory_ids: [],
+          budget_tokens: 1200,
+          tokens_used: 90,
+          cadence: "session_start",
+          trigger: null,
+        },
+      }),
+    ])
+
+    await screen.findByText(/1 item pushed/)
+    expect(screen.queryByText(/re-injected because/)).not.toBeInTheDocument()
+  })
+
+  it("an unrecognised trigger renders verbatim rather than vanishing", async () => {
+    // The swap happened; hiding its cause because this map is stale is worse
+    // than showing a raw token.
+    renderDay([
+      injectRow({
+        payload: {
+          tool: "claude-code",
+          context_file: "CLAUDE.md",
+          fact_ids: [],
+          article_ids: [],
+          memory_ids: [FACT_A],
+          budget_tokens: 1200,
+          tokens_used: 90,
+          cadence: "watch",
+          trigger: "branch_switched",
+        },
+      }),
+    ])
+
+    expect(await screen.findByText("branch_switched")).toBeInTheDocument()
+  })
+
   it("a non-inject event grows no inject panel", async () => {
     renderDay([
       injectRow({
