@@ -42,6 +42,12 @@ function CellPopover({ day }: { day: ContributionDay }) {
       {day.verified > 0 && (
         <p className="text-success text-sm">{day.verified} verified</p>
       )}
+      {day.injects > 0 && (
+        <p className="text-info text-sm">
+          {day.injects} inject{day.injects === 1 ? "" : "s"} — see the day
+          timeline for what was pushed
+        </p>
+      )}
       {day.count > 0 && (
         <p className="text-muted-foreground text-[10px]">
           click to open this day on the Memories timeline
@@ -97,7 +103,10 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                         <HoverCardTrigger asChild>
                           <button
                             type="button"
-                            aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}`}
+                            // The inject count rides the label rather than a
+                            // colour alone: a coloured dot nobody can read out
+                            // is not a surface a human can check push against.
+                            aria-label={`${formatDayKey(day.date)} — ${day.count} memor${day.count === 1 ? "y" : "ies"}${day.injects > 0 ? `, ${day.injects} inject${day.injects === 1 ? "" : "s"}` : ""}`}
                             onClick={() =>
                               navigate({
                                 to: "/memories",
@@ -110,6 +119,8 @@ export function YearHeatmap({ days }: { days: ContributionDay[] }) {
                               "hover:ring-ring focus-visible:ring-ring outline-none hover:ring-1 focus-visible:ring-1",
                               day.date === todayKey &&
                                 "ring-primary/60 ring-1",
+                              day.injects > 0 &&
+                                "ring-info/70 ring-1 ring-offset-0",
                             )}
                           />
                         </HoverCardTrigger>

@@ -49,6 +49,7 @@ describe("intensity ramp", () => {
       count: i,
       types: [],
       verified: 0,
+      injects: 0,
     }))
     const [t1, t2, t3] = intensityThresholds(days)
     expect(t1).toBeLessThan(t2)

@@ -581,11 +581,19 @@ export const CURATED_DAY_BUCKETS: DemoDayBucket[] = [
         time_label: "11:20 UTC",
         type: "inject",
         link_label: "distribution target: claude-code (managed block)",
-        inject_detail: [
-          "3 facts injected (2 corroborated, 1 human-ratified)",
-          "640 / 1200 token budget",
-          "curb: none applied",
-        ],
+        inject: {
+          tool: "claude-code",
+          context_file: "CLAUDE.md",
+          fact_ids: [
+            "0f2c1a5e-0000-4000-8000-000000000001",
+            "0f2c1a5e-0000-4000-8000-000000000002",
+            "0f2c1a5e-0000-4000-8000-000000000003",
+          ],
+          article_ids: [],
+          memory_ids: [],
+          budget_tokens: 1200,
+          tokens_used: 640,
+        },
         note: "verification status and layer survived the injection — a corroborated fact renders as corroborated inside the tool, never re-labelled",
       },
       {

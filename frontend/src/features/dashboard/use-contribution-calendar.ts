@@ -5,6 +5,8 @@ import type { ContributionDay } from "@/features/dashboard/types"
 import { useEventsCalendar } from "@/hooks/api"
 import { calendarWindow, fillCalendarDays } from "./calendar"
 
+const INJECT_EVENT_TYPE = "inject"
+
 export interface ContributionCalendarState {
   days: ContributionDay[]
   isLoading: boolean
@@ -31,13 +33,24 @@ export function useContributionCalendar(
     { since: window.since, until: window.until },
     { enabled: !DEMO },
   )
+  // A second aggregate rather than a client-side split of the first: the
+  // endpoint returns counts, not rows, so there is nothing here to slice
+  // (T3.20). Its failure is deliberately not folded into `isError` — a
+  // calendar that refused to draw because the inject overlay was unavailable
+  // would hide the activity it does know about.
+  const injectQuery = useEventsCalendar(
+    { since: window.since, until: window.until, event_type: INJECT_EVENT_TYPE },
+    { enabled: !DEMO },
+  )
 
   if (DEMO) {
     return { days: demoDays, isLoading: false, isError: false }
   }
 
   return {
-    days: query.data ? fillCalendarDays(query.data.buckets, now) : [],
+    days: query.data
+      ? fillCalendarDays(query.data.buckets, now, injectQuery.data?.buckets ?? [])
+      : [],
     isLoading: query.isLoading,
     isError: query.isError,
   }

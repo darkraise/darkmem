@@ -17,4 +17,9 @@ export interface ContributionDay {
   types: ContributionTypeCount[]
   /** Rows carrying a corroborated/confirmed verification badge. */
   verified: number
+  /** Inject records journalled on this day (T3.20, doc 13 §6.5). A separate
+   *  server-side series rather than a slice of `count`: the human can always
+   *  see what the agent was told, and the calendar is the entry point to the
+   *  day where it is shown in full. */
+  injects: number
 }

@@ -11,10 +11,116 @@ import {
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { EmptyState } from "darkraise-ui/components/empty-state"
-import { VerificationBadge } from "@/components/darkmem"
+import { useState } from "react"
+import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { shiftDay } from "@/demo/activity"
 import { SurfaceStateChip } from "./module-surface"
-import { useDayEvents, type DayRowData } from "../use-day-events"
+import {
+  useDayEvents,
+  type DayRowData,
+  type InjectRecordData,
+} from "../use-day-events"
+
+/** One inject record's summary line and its expandable detail.
+ *
+ * The summary always carries the item count and the budget: a push that spent
+ * 40 of 4000 tokens and one that hit its ceiling are indistinguishable from
+ * the id list alone, and they mean different things about what the agent was
+ * *not* told.
+ *
+ * Simple/Advanced (invariant 14): `simple` collapses the raw ids and the
+ * per-layer breakdown, and keeps the count, the budget line and the target —
+ * "what was I told, and how much of it" is the honesty signal here, not a
+ * technical detail.
+ */
+function InjectDetail({ inject }: { inject: InjectRecordData }) {
+  const advanced = useDetailLevel((s) => s.level) === "advanced"
+  const [open, setOpen] = useState(false)
+
+  if (inject.curbed) {
+    return (
+      <div className="space-y-1">
+        <p className="text-sm">
+          Push curbed for{" "}
+          <b className="font-semibold">{inject.tool}</b>
+          {inject.contextFile ? ` — ${inject.contextFile}` : ""}: the managed
+          block is cleared to an empty marker pair. Nothing was pushed.
+        </p>
+        {inject.reason && (
+          <p className="text-muted-foreground text-sm">
+            reason: {inject.reason}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  const budgetLine =
+    inject.tokensUsed !== null && inject.budgetTokens !== null
+      ? `${inject.tokensUsed.toLocaleString()} / ${inject.budgetTokens.toLocaleString()} token budget`
+      : "token budget not recorded"
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm">
+        {inject.itemCount} item{inject.itemCount === 1 ? "" : "s"} pushed ·{" "}
+        {budgetLine}
+      </p>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-auto px-0 text-sm"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "hide what was pushed" : "show exactly what was pushed"}
+      </Button>
+      {open && (
+        <div className="border-border space-y-1.5 rounded-md border border-dashed p-2.5">
+          <p className="text-muted-foreground text-sm">
+            {inject.factIds.length} fact
+            {inject.factIds.length === 1 ? "" : "s"} ·{" "}
+            {inject.articleIds.length} article
+            {inject.articleIds.length === 1 ? "" : "s"} ·{" "}
+            {inject.memoryIds.length} memor
+            {inject.memoryIds.length === 1 ? "y" : "ies"}
+          </p>
+          {advanced &&
+            (
+              [
+                ["facts", inject.factIds],
+                ["articles", inject.articleIds],
+                ["memories", inject.memoryIds],
+              ] as const
+            ).map(([label, ids]) =>
+              ids.length === 0 ? null : (
+                <div key={label} className="space-y-0.5">
+                  <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+                    {label}
+                  </p>
+                  <ul className="space-y-0.5">
+                    {ids.map((id) => (
+                      <li
+                        key={id}
+                        className="text-muted-foreground font-mono text-sm break-all"
+                      >
+                        {id}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ),
+            )}
+          <p className="text-muted-foreground text-sm">
+            The journal records ids and counts, never the injected text — so
+            this names what was pushed, and stays honest about rows that have
+            since been deleted.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function DayEventRow({ event }: { event: DayRowData }) {
   return (
@@ -51,6 +157,7 @@ function DayEventRow({ event }: { event: DayRowData }) {
         {event.note && (
           <span className="text-muted-foreground text-sm">{event.note}</span>
         )}
+        {event.inject && <InjectDetail inject={event.inject} />}
       </div>
     </div>
   )

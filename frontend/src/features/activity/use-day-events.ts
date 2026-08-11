@@ -16,6 +16,32 @@ export interface DayRowData {
   note?: string
   badge?: VerificationStatus
   transition?: { from: VerificationStatus; to: VerificationStatus; toLabel?: string }
+  /** Set on `inject` / `inject_curbed` rows only (T3.20, doc 13 §6.5). */
+  inject?: InjectRecordData
+}
+
+/** One inject record, normalised from the journal payload.
+ *
+ * The three id lists stay separate exactly as `inject_journal` writes them:
+ * a reader asking whether a *fact* was pushed cannot recover the layer from a
+ * merged list without querying every table for every id.
+ *
+ * Ids and counts, never the injected text — the journal records no content by
+ * design (write-time minimization), so "exactly what was pushed" is answerable
+ * as identity, and honest about rows that have since been deleted.
+ */
+export interface InjectRecordData {
+  curbed: boolean
+  tool: string
+  contextFile: string | null
+  factIds: string[]
+  articleIds: string[]
+  memoryIds: string[]
+  itemCount: number
+  budgetTokens: number | null
+  tokensUsed: number | null
+  /** The human's stated reason on a curb; null on a push. */
+  reason: string | null
 }
 
 function fromDemo(event: DemoDayEvent, index: number): DayRowData {
@@ -24,7 +50,24 @@ function fromDemo(event: DemoDayEvent, index: number): DayRowData {
     timeLabel: event.time_label,
     type: event.type,
     linkLabel: event.link_label,
-    note: event.note ?? event.inject_detail?.join(" · "),
+    note: event.note,
+    inject: event.inject
+      ? {
+          curbed: event.type === "inject_curbed",
+          tool: event.inject.tool,
+          contextFile: event.inject.context_file,
+          factIds: event.inject.fact_ids,
+          articleIds: event.inject.article_ids,
+          memoryIds: event.inject.memory_ids,
+          itemCount:
+            event.inject.fact_ids.length +
+            event.inject.article_ids.length +
+            event.inject.memory_ids.length,
+          budgetTokens: event.inject.budget_tokens,
+          tokensUsed: event.inject.tokens_used,
+          reason: null,
+        }
+      : undefined,
     badge: event.badge,
     transition: event.transition
       ? {
@@ -44,20 +87,74 @@ function utcTimeLabel(iso: string): string {
   return `${iso.slice(11, 16)} UTC`
 }
 
+function idList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : []
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" ? value : null
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null
+}
+
+const INJECT_TYPES = new Set(["inject", "inject_curbed"])
+
+/** An inject record's payload, or `undefined` for every other event type.
+ *
+ * `tool` falls back to a plain "unknown target" rather than being dropped:
+ * the row exists because a push or a curb happened, and hiding it because one
+ * payload field is missing would remove the record doc 13 §6.5 exists to
+ * guarantee — the human seeing what the agent was told.
+ */
+function injectOf(entry: EventLogEntry): InjectRecordData | undefined {
+  if (!INJECT_TYPES.has(entry.event_type)) return undefined
+  const payload = entry.payload
+  const factIds = idList(payload.fact_ids)
+  const articleIds = idList(payload.article_ids)
+  const memoryIds = idList(payload.memory_ids)
+  return {
+    curbed: entry.event_type === "inject_curbed",
+    tool: stringOrNull(payload.tool) ?? "unknown target",
+    contextFile: stringOrNull(payload.context_file),
+    factIds,
+    articleIds,
+    memoryIds,
+    itemCount: factIds.length + articleIds.length + memoryIds.length,
+    budgetTokens: numberOrNull(payload.budget_tokens),
+    tokensUsed: numberOrNull(payload.tokens_used),
+    reason: stringOrNull(payload.reason),
+  }
+}
+
 function fromEventLog(entry: EventLogEntry): DayRowData {
-  const linkLabel = [
-    entry.object_type,
-    shortId(entry.object_id),
-    entry.project ? `· project ${entry.project}` : null,
-  ]
-    .filter(Boolean)
-    .join(" ")
+  const inject = injectOf(entry)
+  // An inject targets a tool's context file, so `object_type` is `system` and
+  // `object_id` is null — the generic label would read "system" and name
+  // nothing. The target is the honest link label here.
+  const linkLabel = inject
+    ? [
+        `distribution target: ${inject.tool}`,
+        inject.contextFile ? `(${inject.contextFile})` : null,
+        entry.project ? `· project ${entry.project}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : [
+        entry.object_type,
+        shortId(entry.object_id),
+        entry.project ? `· project ${entry.project}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
   return {
     id: String(entry.id),
     timeLabel: utcTimeLabel(entry.created_at),
     type: entry.event_type,
     linkLabel: linkLabel || entry.event_type,
     badge: entry.event_type === "superseded" ? "superseded" : undefined,
+    inject,
   }
 }
 

@@ -71,16 +71,33 @@ export interface EventCalendarResponse {
 }
 
 export function useEventsCalendar(
-  params: { since?: string; until?: string; project?: string } = {},
+  params: {
+    since?: string
+    until?: string
+    project?: string
+    /** Narrows the same buckets to one kind — how a caller asks which days
+     *  hold an inject without fetching those days' rows and counting them. */
+    event_type?: string
+  } = {},
   options?: { enabled?: boolean },
 ) {
   const qs = new URLSearchParams()
   if (params.since) qs.set("since", params.since)
   if (params.until) qs.set("until", params.until)
   if (params.project) qs.set("project", params.project)
+  if (params.event_type) qs.set("event_type", params.event_type)
   const query = qs.toString()
   return useQuery<EventCalendarResponse>({
-    queryKey: ["eventsCalendar", params.since ?? null, params.until ?? null, params.project ?? null],
+    // The event type belongs in the key: without it the filtered and
+    // unfiltered series share one cache entry, and whichever resolved first
+    // would answer for both.
+    queryKey: [
+      "eventsCalendar",
+      params.since ?? null,
+      params.until ?? null,
+      params.project ?? null,
+      params.event_type ?? null,
+    ],
     queryFn: () => apiFetch(`/events/calendar${query ? `?${query}` : ""}`),
     enabled: options?.enabled ?? true,
   })

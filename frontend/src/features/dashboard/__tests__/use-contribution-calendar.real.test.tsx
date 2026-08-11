@@ -51,3 +51,66 @@ describe("useContributionCalendar (DEMO off — real /events/calendar)", () => {
     expect(result.current.days).toEqual([])
   })
 })
+
+describe("the inject overlay (T3.20, doc 13 §6.5)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  function routeCalendar(all: unknown[], injects: unknown[]) {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) =>
+      (path.includes("event_type=inject")
+        ? { buckets: injects }
+        : { buckets: all }) as never,
+    )
+  }
+
+  it("asks the server for the inject series rather than splitting the total", async () => {
+    // The endpoint returns counts, not rows — there is nothing client-side to
+    // slice, and a subtraction would be inventing a breakdown.
+    routeCalendar([{ day: "2026-07-25", count: 4 }], [{ day: "2026-07-25", count: 2 }])
+    const { result } = renderHook(() => useContributionCalendar(NOW), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await waitFor(() =>
+      expect(result.current.days[result.current.days.length - 1]!.count).toBe(4),
+    )
+    expect(
+      vi.mocked(apiFetch).mock.calls.some(([path]) =>
+        (path as string).includes("event_type=inject"),
+      ),
+    ).toBe(true)
+  })
+
+  it("marks the days that hold an inject, and only those", async () => {
+    routeCalendar(
+      [
+        { day: "2026-07-24", count: 3 },
+        { day: "2026-07-25", count: 4 },
+      ],
+      [{ day: "2026-07-25", count: 2 }],
+    )
+    const { result } = renderHook(() => useContributionCalendar(NOW), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await waitFor(() =>
+      expect(
+        result.current.days.find((d) => d.date === "2026-07-25")!.injects,
+      ).toBe(2),
+    )
+
+    expect(result.current.days.find((d) => d.date === "2026-07-24")!.injects).toBe(0)
+  })
+
+  it("draws the calendar it does have when only the overlay fails", async () => {
+    // A calendar that refused to render because the inject series was
+    // unavailable would hide the activity it does know about.
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.includes("event_type=inject")) throw new Error("overlay down")
+      return { buckets: [{ day: "2026-07-25", count: 4 }] } as never
+    })
+    const { result } = renderHook(() => useContributionCalendar(NOW), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.isError).toBe(false)
+    expect(result.current.days[result.current.days.length - 1]!.count).toBe(4)
+    expect(result.current.days[result.current.days.length - 1]!.injects).toBe(0)
+  })
+})

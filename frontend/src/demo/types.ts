@@ -636,7 +636,22 @@ export interface DemoDayEvent {
     to_label?: string
   }
   badge?: VerificationStatus
-  inject_detail?: string[]
+  /** An inject record's structured payload (T3.20). It was three lines of
+   *  prose until 2026-08-11, which meant the mockup and the real branch
+   *  rendered the same event from different shapes — the demo could only be
+   *  read, never expanded, and the two could disagree without any test
+   *  noticing. The fields mirror `inject_journal`'s payload. */
+  inject?: DemoInjectDetail
+}
+
+export interface DemoInjectDetail {
+  tool: string
+  context_file: string
+  fact_ids: string[]
+  article_ids: string[]
+  memory_ids: string[]
+  budget_tokens: number
+  tokens_used: number
 }
 
 export interface DemoDayBucket {

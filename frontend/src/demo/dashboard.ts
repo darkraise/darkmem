@@ -77,6 +77,9 @@ export function buildContributions(
             .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
         : [],
       verified: agg?.verified ?? 0,
+      // The demo fixture models captures, not pushes: no inject has ever run
+      // in demo mode, so the honest count is zero rather than a sprinkle.
+      injects: 0,
     })
     cursor.setDate(cursor.getDate() + 1)
   }

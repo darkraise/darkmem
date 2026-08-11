@@ -48,14 +48,25 @@ export function calendarWindow(now = Date.now()): CalendarWindow {
 export function fillCalendarDays(
   buckets: CalendarBucket[],
   now = Date.now(),
+  injectBuckets: CalendarBucket[] = [],
 ): ContributionDay[] {
   const { start, end } = calendarWindow(now)
   const byDay = new Map(buckets.map((b) => [b.day, b.count]))
+  // A second server-side series over the same buckets, never a share of the
+  // first: `count` is every event that day, and subtracting or slicing it
+  // would be inventing a breakdown the endpoint does not return.
+  const injectsByDay = new Map(injectBuckets.map((b) => [b.day, b.count]))
   const days: ContributionDay[] = []
   const cursor = new Date(start)
   while (cursor.getTime() <= end.getTime()) {
     const key = utcDayKey(cursor)
-    days.push({ date: key, count: byDay.get(key) ?? 0, types: [], verified: 0 })
+    days.push({
+      date: key,
+      count: byDay.get(key) ?? 0,
+      types: [],
+      verified: 0,
+      injects: injectsByDay.get(key) ?? 0,
+    })
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   return days
