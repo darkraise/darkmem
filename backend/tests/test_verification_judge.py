@@ -518,6 +518,15 @@ _JUDGE_REFERENCE_ALLOWLIST = {
     # T2.11's Tier-C contradiction scan: the first consumer, and gated by the
     # judge's own refusal rather than by this list.
     "app/services/contradiction_scan.py",
+    # T3.02's review-queue articles arm. It imports `article_claim_gate` — the
+    # judge's *qualification-record* accessor — and never the purpose, the
+    # probe or `judge()`. It is here rather than exempted because the reason
+    # the single door exists is that two modules must not decide whether the
+    # judge is qualified: the queue asks this module and serves the answer, so
+    # the door is honoured rather than bypassed. `test_the_article_gate_reads_
+    # the_record_and_never_the_purpose` below re-proves the narrow form against
+    # the parsed tree, the way the contradiction scan's membership is re-proved.
+    "app/services/review_queue.py",
 }
 
 # Capture/retrieval-path modules the judge may NEVER be reachable from
@@ -659,3 +668,32 @@ def test_hot_path_scan_flags_a_planted_pipeline_import(tmp_path):
     offending.write_text("from app.services import verification_judge\n")
     offenders = _hot_path_offenders([offending], tmp_path)
     assert offenders
+
+
+def test_the_article_gate_reads_the_record_and_never_the_purpose():
+    """`review_queue`'s allowlist membership, re-proved narrowly.
+
+    Joining `_JUDGE_REFERENCE_ALLOWLIST` buys a module the right to reference
+    the judge; it must not buy the right to dispatch it. The articles arm may
+    read the qualification record through `article_claim_gate` and nothing
+    else — no `judge(`, no probe, no `verification` purpose string.
+    """
+    import ast as _ast
+
+    root = _Path(__file__).resolve().parents[1]
+    source = (root / "app/services/review_queue.py").read_text(encoding="utf-8")
+    tree = _ast.parse(source)
+
+    imported: list[str] = []
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.ImportFrom) and node.module == (
+            "app.services.verification_judge"
+        ):
+            imported.extend(alias.name for alias in node.names)
+
+    assert imported == ["article_claim_gate"], (
+        "the articles arm may read the qualification record and nothing else; "
+        f"it imports {imported}"
+    )
+    assert "judge(" not in source
+    assert "qualification_probe" not in source

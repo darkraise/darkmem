@@ -229,7 +229,12 @@ async def test_article_reason_derives_from_status(session):
     items, _ = await review_queue_service.list_open_articles(session, project=PROJECT)
     by_id = {item["id"]: item for item in items}
     assert by_id[disputed_id]["reason"] == "disputed"
-    assert by_id[other_id]["reason"] == "unspecified"
+    # T3.02: an article with no measured coverage derives
+    # `coverage_unmeasured` rather than `unspecified`. Every article synthesis
+    # opens carries a NULL confidence until T3.03 measures one, so without that
+    # arm the whole queue would render reasonless — the defect class T2.112
+    # closed on the fact side.
+    assert by_id[other_id]["reason"] == "coverage_unmeasured"
 
 
 async def test_article_content_preview_is_actually_truncated(session):

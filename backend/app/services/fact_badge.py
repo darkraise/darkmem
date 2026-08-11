@@ -87,7 +87,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginProfile
-from app.services.claim_gates import served_status
+from app.services.claim_gates import ClaimGate, served_status
 from app.services.verified_evidence import (
     CONTRADICTION_EVIDENCE_KEY,
     latest_verified_evidence,
@@ -446,6 +446,7 @@ def row_labels(
     verification_status: str | None = None,
     lifecycle: str | None = None,
     badge: Badge | None = None,
+    gate: "ClaimGate | None" = None,
 ) -> dict[str, Any]:
     """Doc 12 §4's label triplet, with the L0 rule made unrepresentable.
 
@@ -507,7 +508,17 @@ def row_labels(
     # is certified by G-C's promotion audit and an article's by G-D's judge
     # qualification. Gating both against one record would let the fact record
     # light an article's label.
-    served, suppression = served_status(verification_status, id_kind=id_kind)
+    # `gate` is forwarded rather than resolved here (T3.02). `served_status`
+    # has always taken one; nothing passed it, so every caller fell through to
+    # the module's own default -- for articles, an unconditionally closed
+    # groundedness gate. That made opening the label a *code* change, which is
+    # exactly the code-gated label T2.95 forbids. The gate now comes from the
+    # judge's single door and rides in; a caller that passes none still gets
+    # the fail-closed default, so an unwired path cannot serve a promoted
+    # status by omission.
+    served, suppression = served_status(
+        verification_status, id_kind=id_kind, gate=gate
+    )
     return {
         "verification_status": served,
         "lifecycle": None,

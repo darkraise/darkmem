@@ -302,10 +302,21 @@ def _suspicion_block(row: dict, counterparts: dict[str, dict]) -> dict | None:
     }
 
 
-def _article_reason(status: str | None) -> str:
-    """Derived from the article's own column, never from ``review_state``."""
+def _article_reason(status: str | None, confidence: float | None = None) -> str:
+    """Derived from the article's own columns, never from ``review_state``.
+
+    **The unmeasured case is not "unspecified"** (T3.02). Every article
+    synthesis writes is opened with a NULL ``confidence``, because coverage
+    *is* the confidence (doc 09 §4.3) and nothing has measured it until
+    T3.03's entailment pass runs — so without this arm 100% of the queue's
+    article rows would render reasonless. That is the defect class T2.112
+    closed on the fact side: a reason that says "unspecified" because nothing
+    derives it from the row's own columns.
+    """
     if status == "disputed":
         return "disputed"
+    if confidence is None:
+        return "coverage_unmeasured"
     return "unspecified"
 
 
@@ -505,21 +516,42 @@ async def list_open_articles(
         params["project"] = project
 
     result = await session.execute(text(items_sql), params)
-    rows = [dict(ungated_mapping(row)) for row in result.mappings().all()]
+    # NOT `ungated_mapping` any more (T3.02): that wrapper declares "carries no
+    # served label", which stopped being true the moment this arm's `status`
+    # became claim vocabulary a reader sees. And not a wholesale `dict(row)`
+    # either -- the enforcement scan flags an unaccounted copy inside a module
+    # that uses `row_labels`, and it is right to: a copy is how a raw status
+    # reaches an emission without passing the producer. Keys are read
+    # individually below.
+    rows = result.mappings().all()
+
+    gate = await _article_gate(session)
 
     items = []
     for row in rows:
+        # Through `row_labels`, the one producer of the claim surface. This arm
+        # emitted `row["status"]` raw, and `knowledge_articles`' CHECK admits
+        # `corroborated` -- so an article promoted by a future writer would
+        # have reached a reader here without passing the gate at all. T2.95's
+        # gate keys on `id_kind`, which cannot protect a path that never asks
+        # it.
+        labels = row_labels(
+            id_kind="article",
+            verification_status=row["status"],
+            gate=gate,
+        )
         items.append(
             {
                 "id": str(row["id"]),
                 "subject_key": row["subject_key"],
                 "project": row["project"],
                 "title": row["title"],
-                "status": row["status"],
+                "status": labels["verification_status"],
+                "label_suppressed": labels["label_suppressed"],
                 "confidence": row["confidence"],
                 "fact_set_hash": row["fact_set_hash"],
                 "review_state": row["review_state"],
-                "reason": _article_reason(row["status"]),
+                "reason": _article_reason(row["status"], row["confidence"]),
                 "content_preview": row["content_preview"],
                 "synthesized_at": row["synthesized_at"],
                 "created_at": row["created_at"],
@@ -555,3 +587,26 @@ async def counts(session: AsyncSession, *, project: str | None = None) -> dict[s
         await session.execute(text(articles_count_sql), params)
     ).scalar_one()
     return {"facts": int(facts_total), "articles": int(articles_total)}
+
+
+async def _article_gate(session):
+    """The article claim gate, from the judge's own door.
+
+    Resolved once per listing rather than per row: it is one record read and
+    every row on the page is gated against the same answer, so asking per row
+    would be the same question asked N times.
+
+    A failure to resolve it is not a licence to serve: the fail-closed default
+    is what a caller gets, which is the same thing an unwired caller gets.
+    """
+    from app.services.config import get_llm_config
+    from app.services.verification_judge import article_claim_gate
+
+    try:
+        llm_config = await get_llm_config(session)
+        return await article_claim_gate(session, llm_config)
+    except Exception:  # noqa: BLE001 - an unresolvable gate serves nothing
+        logger.warning("review_queue: article gate unresolved; serving closed")
+        from app.services.claim_gates import groundedness_gate
+
+        return groundedness_gate()

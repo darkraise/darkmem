@@ -1020,3 +1020,59 @@ def _ids_in(messages) -> list[str]:
 
     joined = "\n".join(m["content"] for m in messages)
     return _re.findall(r"\[([0-9a-f-]{36})\]", joined)
+
+
+# ─────────────── Step 6: the article reaches the review queue ───────────────
+
+
+class TestTheReviewQueue:
+    async def test_a_synthesised_article_appears_with_a_derived_reason(
+        self, session, factory
+    ):
+        """Every article synthesis opens carries a NULL confidence until T3.03
+        measures one, so without a derived reason 100% of this queue's article
+        rows would render `unspecified` — the defect class T2.112 closed."""
+        from app.services.review_queue import list_open_articles
+
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        for _ in range(3):
+            await _fact(session, subject_name="postgres", project=project)
+        await session.commit()
+
+        llm = _StubLLM()
+
+        async def _draft(purpose, *, messages, **kw):
+            llm.calls.append({"purpose": purpose, "messages": messages, **kw})
+            return _draft_payload(_ids_in(messages)[:1])
+
+        llm.chat_completion = _draft
+        await asyn.run_article_synthesis(factory, lambda: llm, batch_size=50)
+
+        items, total = await list_open_articles(session, project=project)
+        assert total == 1
+        assert items[0]["reason"] == "coverage_unmeasured"
+
+    async def test_the_queue_serves_the_gated_status_not_the_raw_column(
+        self, session
+    ):
+        """The arm emitted `row["status"]` raw, and the articles CHECK admits
+        `corroborated` — so an article promoted by any future writer would have
+        reached a reader without passing the gate at all."""
+        from app.services.review_queue import list_open_articles
+
+        project = f"{PROJECT}-{uuid4().hex[:6]}"
+        await session.execute(
+            text(
+                "INSERT INTO knowledge_articles "
+                "(id, subject_key, project, content, status, review_state) "
+                "VALUES (gen_random_uuid(), 'x::concept', CAST(:p AS text), "
+                "'body', 'corroborated', 'open')"
+            ),
+            {"p": project},
+        )
+        await session.flush()
+
+        items, _total = await list_open_articles(session, project=project)
+
+        assert items[0]["status"] == "candidate", "withheld, not served"
+        assert items[0]["label_suppressed"]

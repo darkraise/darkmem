@@ -253,6 +253,39 @@ def load_qualification_record(path: Path) -> dict | None:
     return record if isinstance(record, dict) else None
 
 
+async def article_claim_gate(
+    session: AsyncSession,
+    llm_config: dict,
+    record_path: Path = QUALIFICATION_RECORD_PATH,
+) -> "ClaimGate":
+    """Whether a promoted **article** status may reach a reader (T3.02).
+
+    The judge's door, deliberately — ``claim_gates.groundedness_gate()`` is
+    unconditionally closed because that module may not read this record, and
+    two modules deciding whether the judge is qualified is the drift this
+    module's single-door scan exists to prevent. So the question is answered
+    here and the answer is handed out.
+
+    **This is the T2.95 principle applied to L3: an evidence record gates the
+    label, never the code.** Before this existed, opening the article gate
+    needed a code change — which is a code-gated label wearing a gate's name.
+    Now minting a cleared qualification record opens it with no edit anywhere,
+    exactly as minting the promotion record lights a fact's.
+
+    It lands **inert**, by two independent constructions: no qualification
+    record exists (G-D is not cleared), and even with one, T3.02 writes only
+    `candidate` articles — the only path that could raise one is T3.03's
+    coverage routing, itself behind G-E.
+    """
+    from app.services.claim_gates import ClaimGate, REASON_NO_QUALIFICATION_RECORD
+
+    state = await qualification_state(session, llm_config, record_path)
+    if state.qualified:
+        return ClaimGate(True, None)
+    reason = "; ".join(state.reasons) if state.reasons else REASON_NO_QUALIFICATION_RECORD
+    return ClaimGate(False, reason)
+
+
 async def qualification_state(
     session: AsyncSession,
     llm_config: dict,

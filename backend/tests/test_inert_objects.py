@@ -274,14 +274,22 @@ async def test_inert_purposes_resolve_without_a_row(session):
 
 
 def test_no_app_code_dispatches_the_inert_purposes():
-    """The inertness itself. `synthesis` awaits its first writer (T3.02);
-    until then no call site may name it. `verification` left this guard on
-    2026-07-31 when its declared first writer landed (T2.26): the judge in
-    `app/services/verification_judge.py` dispatches on it, and the
-    single-door discipline is now owned by the STRICTER scan in
-    `tests/test_verification_judge.py` — the quoted purpose token is lawful
-    only in the judge module beyond the same three files allowed here, and
-    every consumer must enter through the qualification-gated `judge()`."""
+    """**There are no inert purposes left**, and this guard is the record of
+    how each one left.
+
+    `verification` left on 2026-07-31 with T2.26, its declared first writer:
+    the judge dispatches on it, and the single-door discipline moved to the
+    stricter scan in `tests/test_verification_judge.py`. `synthesis` left on
+    2026-08-11 with T3.02, exactly as this test's own instructions said it
+    should — `app/services/article_synthesis.py` is the article writer, the
+    last of doc 11's eight purposes to gain a consumer.
+
+    The loop below now quantifies over an empty tuple and so asserts nothing.
+    It is kept, and kept empty rather than deleted, because a ninth purpose
+    seeded inert would need exactly this guard and re-deriving it then is
+    harder than leaving it — the same reasoning the dream-job family's
+    unshipped-members test carries. `test_every_seeded_purpose_has_a_consumer`
+    below is what has teeth today."""
     allowed = {
         "app/config.py",              # the Settings defaults
         "app/services/config.py",     # PURPOSES + the defaults map
@@ -296,7 +304,7 @@ def test_no_app_code_dispatches_the_inert_purposes():
             stripped = line.strip()
             if stripped.startswith("#"):
                 continue
-            for purpose in ("synthesis",):
+            for purpose in ():
                 if f'"{purpose}"' in line or f"'{purpose}'" in line:
                     offenders.append(f"{rel}:{lineno}: {stripped}")
     assert not offenders, (
@@ -311,17 +319,18 @@ def test_no_app_code_dispatches_the_inert_purposes():
 
 
 def test_article_synthesis_job_is_inert():
-    """T2.14: article_synthesis lands as an inert placeholder.
+    """**No longer inert, and this is where that is recorded.**
 
-    Its productive runs ship in T3.02 (doc 08 §5.6), behind gate G-D.
-    The PlaceholderJobRunner marker (not a comment or convention) ensures
-    a shipped runner cannot silently keep wearing the placeholder type.
+    T2.14 registered the job with a `PlaceholderJobRunner` and this test held
+    it there until its owning task landed. T3.02 landed it on 2026-08-11, so
+    the assertion is inverted rather than deleted: the job must now carry a
+    real runner, and a regression to a placeholder — which is what a bad merge
+    of this file would look like — fails here.
     """
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
     from app.services.dream_jobs import (
         ARTICLE_SYNTHESIS_JOB_KEY,
-        DREAM_JOB_OWNERS,
         PlaceholderJobRunner,
         register_dream_jobs,
     )
@@ -329,21 +338,40 @@ def test_article_synthesis_job_is_inert():
 
     from .conftest import test_engine
 
-    # Registration never touches the database, so this reuses conftest's
-    # engine rather than opening one this test would have to dispose.
     registry = JobRegistry(async_sessionmaker(test_engine, expire_on_commit=False))
     register_dream_jobs(registry)
-
     job = registry.get(ARTICLE_SYNTHESIS_JOB_KEY)
     assert job is not None, f"{ARTICLE_SYNTHESIS_JOB_KEY} not registered"
-    assert isinstance(job.runner, PlaceholderJobRunner), (
-        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s runner must remain a PlaceholderJobRunner "
-        f"until {DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY]} lands the productive run"
+    assert not isinstance(job.runner, PlaceholderJobRunner), (
+        "article_synthesis carries T3.02's real runner; a placeholder here is "
+        "a regression, not a pending task"
     )
-    assert job.runner.owner_task == "T3.02", (
-        f"{ARTICLE_SYNTHESIS_JOB_KEY}'s first productive owner must be T3.02, "
-        f"not {job.runner.owner_task}"
+
+
+def test_every_seeded_purpose_has_a_consumer():
+    """The inverse of the guard above, and the one with teeth now.
+
+    Doc 11 seeds eight purposes. Each was resolvable from day one and each was
+    to gain a dispatcher when its owning task landed; `synthesis` was the last
+    outstanding one and T3.02 is its consumer. If a ninth is seeded inert, this
+    fails and points at the now-empty loop above as the guard to re-arm.
+    """
+    from app.services.config import PURPOSES
+
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in _app_sources()
+        if str(path.relative_to(BACKEND)) not in {
+            "app/config.py", "app/services/config.py", "app/services/llm_seed.py",
+        }
     )
-    assert DREAM_JOB_OWNERS[ARTICLE_SYNTHESIS_JOB_KEY] == "T3.02", (
-        f"DREAM_JOB_OWNERS[{ARTICLE_SYNTHESIS_JOB_KEY}] must name T3.02"
+    missing = [
+        purpose for purpose in PURPOSES
+        if f'"{purpose}"' not in sources and f"'{purpose}'" not in sources
+    ]
+
+    assert missing == [], (
+        "these seeded purposes have no consumer anywhere in app/: "
+        f"{missing}. A purpose landing inert is lawful — re-arm the loop in "
+        "`test_no_app_code_dispatches_the_inert_purposes` with its name."
     )

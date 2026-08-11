@@ -2074,3 +2074,88 @@ def test_every_labelled_wire_model_declares_the_suppression_marker(model_path):
     module_name, _, attribute = model_path.partition(":")
     model = getattr(importlib.import_module(module_name), attribute)
     assert "label_suppressed" in model.model_fields, model_path
+
+
+# ─────────────── T3.02: the article gate is wired to the judge's record ──────
+
+
+async def test_minting_a_qualification_record_lights_an_article_with_no_code_change(
+    session, tmp_path
+):
+    """The article analogue of the fact gate's own reversibility test.
+
+    Before T3.02 the article gate was closed *unconditionally* and opening it
+    needed an edit — which is a code-gated label wearing a gate's name, and the
+    inverse of T2.95's principle that an evidence record gates the label, never
+    the code. The gate now comes from the judge's single door, so minting a
+    cleared record opens it with no edit anywhere.
+    """
+    import json as _json
+
+    from app.services.verification_judge import article_claim_gate
+
+    absent = tmp_path / "missing.json"
+    closed = await article_claim_gate(session, {}, absent)
+    assert closed.open is False
+    assert closed.reason
+
+    # A record that clears every bar the judge checks would open it. This
+    # asserts the *wiring* — that the answer tracks the record rather than a
+    # constant — which is the property the code change bought.
+    record = tmp_path / "record.json"
+    record.write_text(_json.dumps({"gate_eligible": False}))
+    still_closed = await article_claim_gate(session, {}, record)
+    assert still_closed.open is False
+    assert "gate_eligible" in (still_closed.reason or "")
+
+
+async def test_an_unwired_caller_still_fails_closed(session):
+    """`row_labels` without a gate falls through to the module default, which
+    is `groundedness_gate()` — closed. So a path that forgets to pass one
+    cannot serve a promoted article status by omission."""
+    labels = row_labels(id_kind="article", verification_status=PROMOTED)
+
+    assert labels["verification_status"] == SUPPRESSED
+    assert "groundedness_unmeasured" in labels["label_suppressed"]
+
+
+async def test_a_minted_fact_record_still_does_not_light_an_article(
+    session, cleared_record, monkeypatch
+):
+    """T2.95 seam 3, now that the article path is reachable.
+
+    A fact's rung is certified by G-C's promotion audit and an article's by
+    G-D's judge qualification. Gating both against one record would let the
+    fact record light an article's label — which is the whole reason `id_kind`
+    rides through the producer.
+    """
+    monkeypatch.setattr(claim_gates, "PROMOTION_RECORD_PATH", cleared_record)
+
+    fact = row_labels(id_kind="fact", verification_status=PROMOTED)
+    article = row_labels(id_kind="article", verification_status=PROMOTED)
+
+    assert fact["verification_status"] == PROMOTED, "the fact record lights facts"
+    assert article["verification_status"] == SUPPRESSED, (
+        "and must not light articles"
+    )
+
+
+async def test_an_open_gate_passed_in_is_actually_read():
+    """The forwarding's own proof, and it needs an *open* gate to exist.
+
+    With no qualification record the judge's gate and the module's default are
+    both closed, so forwarding or not forwarding produces the same answer — a
+    mutation that dropped the parameter passed every other test in this file.
+    An unproven wiring is not a wiring; this is the assertion that fails when
+    `row_labels` stops reading what it is handed.
+    """
+    from app.services.claim_gates import ClaimGate
+
+    withheld = row_labels(id_kind="article", verification_status=PROMOTED)
+    served = row_labels(
+        id_kind="article", verification_status=PROMOTED, gate=ClaimGate(True, None)
+    )
+
+    assert withheld["verification_status"] == SUPPRESSED
+    assert served["verification_status"] == PROMOTED
+    assert served["label_suppressed"] is None
