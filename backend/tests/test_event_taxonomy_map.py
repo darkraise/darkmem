@@ -89,6 +89,10 @@ _EXPECTED_UNRESOLVED = {
     # `list_events`'s `event_type` is a read-side query filter parameter,
     # not a value being emitted — same keyword name, unrelated concept.
     ("app/api/routes/events.py", "list_events"),
+    # `calendar_counts` gained the same read-side filter with T3.20, so the
+    # calendar can say which days hold an inject. Identical reasoning to its
+    # sibling above: a query argument, never an emitted value.
+    ("app/api/routes/events.py", "calendar_counts"),
     # `_journal`'s own inner `record_event` call forwards its caller's
     # `event_type` parameter unresolved; the literals ("superseded",
     # "deprecated") are captured at `_journal`'s two call sites instead.

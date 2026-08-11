@@ -226,6 +226,48 @@ async def test_calendar_buckets_by_day_not_rows(client, auth_headers, session):
     ]
 
 
+async def test_calendar_can_be_scoped_to_one_event_type(client, auth_headers, session):
+    """T3.20: the calendar is the entry point to a day's inject records, so it
+    has to be able to say which days hold one.
+
+    Unfiltered it counts every row, which is what the heatmap's own density
+    means; the filtered series is a second, narrower question asked of the
+    same buckets. Both are server-side aggregates — a client that fetched the
+    day's rows and counted injects itself would be deriving a count the
+    endpoint exists to give, and would silently under-count the moment the
+    page bound truncated.
+    """
+    project = f"cal-{uuid.uuid4().hex[:8]}"
+    day = datetime(2030, 5, 4, tzinfo=timezone.utc)
+    await _seed_at(session, created_at=day + timedelta(hours=1), project=project)
+    await _seed_at(
+        session, created_at=day + timedelta(hours=2), project=project,
+        event_type="inject", object_type="system",
+    )
+    await _seed_at(
+        session, created_at=day + timedelta(days=1, hours=3), project=project,
+        event_type="inject", object_type="system",
+    )
+
+    everything = await client.get(
+        "/api/v1/events/calendar", params={"project": project}, headers=auth_headers
+    )
+    injects = await client.get(
+        "/api/v1/events/calendar",
+        params={"project": project, "event_type": "inject"},
+        headers=auth_headers,
+    )
+
+    assert everything.json()["buckets"] == [
+        {"day": "2030-05-04", "count": 2},
+        {"day": "2030-05-05", "count": 1},
+    ]
+    assert injects.json()["buckets"] == [
+        {"day": "2030-05-04", "count": 1},
+        {"day": "2030-05-05", "count": 1},
+    ]
+
+
 async def test_calendar_bucket_is_utc_not_session_timezone(client, auth_headers, session):
     """Invariant-bearing (doc 04 §8.1): the bucket expression must be
     `(created_at AT TIME ZONE 'UTC')::date`, not a bare `created_at::date`.
