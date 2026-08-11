@@ -30,6 +30,15 @@ which a false positive silently drops a *true* corroborated fact from its
 article. Adding the exclusion is a Tier-3 amendment to §4.2, not a tightening
 anyone may make at a call site.
 
+**The model proposes citations; nothing here trusts them.** Doc 09 §4.2 has
+the ``synthesis`` call emit prose "with per-sentence candidate fact ids
+attached" so T3.03's entailment pass verifies proposed citations rather than
+searching for support. A proposal is not a grounding: a sentence citing an id
+that was not in the input set is refused outright rather than dropped, because
+an id the model invented means the response is describing a fact set that was
+never handed to it, and keeping the rest would keep prose written under that
+misapprehension.
+
 **Recency's basis is the belief window, then the clock.** §4.2 fixes the
 ranking as ``confidence × read-heat × recency`` and does not say what recency
 is measured from. A fact's ``reference_time`` is when the claim is *about*,
@@ -40,6 +49,10 @@ basis, and the fallback exists only for defence.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -51,9 +64,34 @@ from app.services.article_eligibility import VERIFIED_STATUSES
 
 __all__ = [
     "DEFAULT_HUB_CAP",
+    "DEFAULT_LENGTH_BUDGET_WORDS",
+    "DraftArticle",
+    "DraftRefused",
+    "DraftSentence",
     "GatheredFact",
+    "LENGTH_CEILING_FACTOR",
+    "SYNTHESIS_PURPOSE",
     "gather_facts",
+    "group_facts",
+    "synthesise_draft",
 ]
+
+# Doc 11's eighth purpose, seeded inert since day one. T3.02 is its first
+# consumer; nothing else in the tree dispatches on it.
+SYNTHESIS_PURPOSE = "synthesis"
+
+# Doc 09 §4.2's length budget: "a config word/token cap, defaulting to a few
+# hundred words". It is the second of the two knobs the doc calls "two knobs on
+# the same lever" -- with K it bounds both readability and the cost of T3.03's
+# per-claim entailment pass.
+DEFAULT_LENGTH_BUDGET_WORDS = 400
+
+# ...with a hard ceiling. The budget is what the prompt asks for; the ceiling is
+# what the response is held to. A model that overruns by a little is ordinary
+# and the budget absorbs it; one that overruns by this much has ignored the
+# instruction, and storing that article would hand T3.23 a chunking problem and
+# T3.03 an unbounded bill.
+LENGTH_CEILING_FACTOR = 1.5
 
 # Doc 09 §4.2's hub cap: "top-K facts by fact-salience", K a `config` row
 # "defaulting modest, e.g. 40". The cap does three jobs — it keeps a hub like
@@ -202,3 +240,211 @@ async def gather_facts(
         )
         for row in rows
     ]
+
+
+# ─────────────── grouping and the draft (Step 2) ───────────────
+
+
+class DraftRefused(RuntimeError):
+    """The synthesis call produced nothing this module will store.
+
+    Raised rather than returning a partial draft. Every refusal here is a
+    response that misdescribes its own inputs — an invented citation, an
+    overrun, unparseable JSON — and the honest outcome for the run is that no
+    article was written, which the caller journals. A partial article stored
+    under any of them would be prose nobody can account for.
+    """
+
+
+@dataclass(frozen=True)
+class DraftSentence:
+    """One sentence and the fact ids the model proposes ground it.
+
+    ``fact_ids`` is a *proposal*. T3.03 verifies it; nothing here does, and
+    nothing here may treat it as grounding.
+    """
+
+    text: str
+    fact_ids: list[str]
+
+
+@dataclass(frozen=True)
+class DraftArticle:
+    lead: str
+    sentences: list[DraftSentence]
+
+    @property
+    def body(self) -> str:
+        return "\n".join([self.lead, *(s.text for s in self.sentences)]).strip()
+
+    @property
+    def word_count(self) -> int:
+        return len(self.body.split())
+
+
+def group_facts(
+    facts: list[GatheredFact],
+) -> "OrderedDict[tuple[str, str], list[GatheredFact]]":
+    """Doc 09 §4.2's grouping: by relation type, then by ``applies_when``.
+
+    Ordered, and the order is the salience order the gather returned — a group
+    is keyed by the first fact that reached it, so the article's sections lead
+    with its most load-bearing knowledge rather than with whatever relation
+    sorts first alphabetically.
+
+    The ``applies_when`` half is what keeps a scoped claim from reading as a
+    universal one: "a fact that holds only in `env=prod` reads as a scoped
+    claim, not a universal one". A fact with none groups under the empty
+    context, which is the honest rendering of "no context restriction".
+    """
+    groups: OrderedDict[tuple[str, str], list[GatheredFact]] = OrderedDict()
+    for fact in facts:
+        context = (
+            json.dumps(fact.applies_when, sort_keys=True) if fact.applies_when else ""
+        )
+        groups.setdefault((fact.rel_type, context), []).append(fact)
+    return groups
+
+
+def _draft_seed(facts: list[GatheredFact]) -> int:
+    """A deterministic seed over the *ranked fact-id set*.
+
+    Synthesis has no single ``content`` to hash the way extraction does, and
+    the reproducibility rule still applies: the same subject over the same
+    facts in the same order must produce the same article across calls. The
+    ranked ids are exactly that input, and they are order-sensitive on purpose
+    — a reordered fact set is a different prompt.
+    """
+    basis = "|".join(fact.id for fact in facts)
+    return int(hashlib.sha256(basis.encode("utf-8")).hexdigest()[:8], 16)
+
+
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_fences(text: str) -> str:
+    match = _FENCE_RE.search((text or "").strip())
+    return match.group(1).strip() if match else (text or "").strip()
+
+
+def _build_messages(
+    subject: str,
+    groups: "OrderedDict[tuple[str, str], list[GatheredFact]]",
+    budget_words: int,
+) -> list[dict]:
+    """The prompt: the subject, its grouped facts, and the budget.
+
+    **Only the gathered facts reach it.** The prompt is built from the grouped
+    input and nothing else — no retrieval, no memory content, no prior article.
+    An article's "only inputs are verified facts" (doc 09 §4.2), and a prompt
+    that reached for context would make that false at the one place it is
+    checkable.
+    """
+    lines: list[str] = []
+    for (rel_type, context) in groups:
+        scope = f" (applies when {context})" if context else ""
+        lines.append(f"## {rel_type}{scope}")
+        for fact in groups[(rel_type, context)]:
+            lines.append(f"- [{fact.id}] {fact.fact}")
+
+    system = (
+        "You write short, factual reference articles about one subject, using "
+        "ONLY the facts given. Every sentence must cite at least one fact id "
+        "from the list. Never state anything the facts do not say. Never cite "
+        "an id that is not in the list.\n"
+        "Respond with JSON: {\"lead\": \"<one definitional sentence>\", "
+        "\"sentences\": [{\"text\": \"<sentence>\", \"fact_ids\": [\"<id>\"]}]}"
+    )
+    user = (
+        f"Subject: {subject}\n"
+        f"Length budget: about {budget_words} words in total.\n\n"
+        f"Facts:\n" + "\n".join(lines)
+    )
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+
+def _parse(payload: str, allowed_ids: set[str]) -> DraftArticle:
+    try:
+        data = json.loads(_strip_fences(payload))
+    except (json.JSONDecodeError, TypeError) as error:
+        raise DraftRefused(f"the synthesis response was not JSON: {error}") from error
+    if not isinstance(data, dict):
+        raise DraftRefused("the synthesis response was not a JSON object")
+
+    lead = data.get("lead")
+    if not isinstance(lead, str) or not lead.strip():
+        raise DraftRefused("the synthesis response carried no lead sentence")
+
+    raw_sentences = data.get("sentences")
+    if not isinstance(raw_sentences, list) or not raw_sentences:
+        raise DraftRefused("the synthesis response carried no sentences")
+
+    sentences: list[DraftSentence] = []
+    for entry in raw_sentences:
+        if not isinstance(entry, dict):
+            raise DraftRefused("a sentence entry was not an object")
+        text_value = entry.get("text")
+        ids = entry.get("fact_ids")
+        if not isinstance(text_value, str) or not text_value.strip():
+            raise DraftRefused("a sentence carried no text")
+        if not isinstance(ids, list) or not ids:
+            # Doc 09 §4.3: "a claim with no citation fails outright (no
+            # search-for-support fallback -- an uncited span is by definition
+            # ungrounded)". Refused at the draft rather than deferred to
+            # T3.03, because an uncited sentence is not a claim the entailment
+            # pass can evaluate.
+            raise DraftRefused(f"a sentence cited no fact: {text_value[:60]!r}")
+        cited = [str(i) for i in ids]
+        invented = [i for i in cited if i not in allowed_ids]
+        if invented:
+            raise DraftRefused(
+                f"the synthesis response cited {len(invented)} fact id(s) that "
+                f"were not in its input set ({invented[0]!r}). The response is "
+                f"describing a fact set it was never handed; keeping the rest "
+                f"would keep prose written under that misapprehension."
+            )
+        sentences.append(DraftSentence(text=text_value.strip(), fact_ids=cited))
+
+    return DraftArticle(lead=lead.strip(), sentences=sentences)
+
+
+async def synthesise_draft(
+    llm,
+    *,
+    subject: str,
+    facts: list[GatheredFact],
+    budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
+) -> DraftArticle:
+    """One ``synthesis``-purpose call producing a draft, or a refusal.
+
+    Raises :class:`DraftRefused` on anything this module will not store, and
+    lets an orchestrator failure propagate untouched — the caller distinguishes
+    "the model produced something unusable" from "the model could not be
+    reached", and collapsing them would hide an outage behind a content error.
+    """
+    if not facts:
+        raise DraftRefused("no verified facts to synthesise from")
+
+    groups = group_facts(facts)
+    messages = _build_messages(subject, groups, budget_words)
+    payload = await llm.chat_completion(
+        SYNTHESIS_PURPOSE,
+        messages=messages,
+        response_format={"type": "json_object"},
+        seed=_draft_seed(facts),
+    )
+    draft = _parse(payload or "", {fact.id for fact in facts})
+
+    ceiling = int(budget_words * LENGTH_CEILING_FACTOR)
+    if draft.word_count > ceiling:
+        raise DraftRefused(
+            f"the synthesis response ran to {draft.word_count} words against a "
+            f"{budget_words}-word budget and a {ceiling}-word ceiling. The "
+            f"budget absorbs an ordinary overrun; this one ignored the "
+            f"instruction, and storing it would hand T3.23 a chunking problem "
+            f"and T3.03 an unbounded per-claim bill."
+        )
+    return draft

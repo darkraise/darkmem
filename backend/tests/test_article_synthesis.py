@@ -16,6 +16,7 @@ touches.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -334,3 +335,221 @@ async def test_the_verified_set_is_the_eligibility_module_s(session):
 
     assert asyn.VERIFIED_STATUSES is article_eligibility.VERIFIED_STATUSES
     assert set(asyn.VERIFIED_STATUSES) == {"corroborated", "confirmed"}
+
+
+# ─────────────── Step 2: grouping and the draft ───────────────
+
+
+class _StubLLM:
+    """Records what it was asked and answers what the test wants.
+
+    A stub rather than a mock of `chat_completion`'s signature, because the
+    prompt's *content* is one of the properties under test: doc 09 §4.2 says an
+    article's "only inputs are verified facts", and the prompt is where that
+    stops being checkable if nothing looks.
+    """
+
+    def __init__(self, payload: str = "", raises: Exception | None = None):
+        self.payload = payload
+        self.raises = raises
+        self.calls: list[dict] = []
+
+    async def chat_completion(self, purpose, *, messages, response_format=None, seed=None):
+        self.calls.append(
+            {
+                "purpose": purpose,
+                "messages": messages,
+                "response_format": response_format,
+                "seed": seed,
+            }
+        )
+        if self.raises is not None:
+            raise self.raises
+        return self.payload
+
+    @property
+    def prompt(self) -> str:
+        return "\n".join(m["content"] for m in self.calls[-1]["messages"])
+
+
+def _draft_payload(fact_ids: list[str], *, lead: str = "A subject.", words: int = 0) -> str:
+    filler = " ".join(["word"] * words) if words else "It relates to a thing."
+    return json.dumps(
+        {
+            "lead": lead,
+            "sentences": [{"text": filler, "fact_ids": fact_ids}],
+        }
+    )
+
+
+def _gathered(ident: str, **kw) -> asyn.GatheredFact:
+    base = dict(
+        id=ident,
+        subject_name="subj",
+        rel_type="RELATED_TO",
+        object_name="obj",
+        fact=f"fact {ident}",
+        applies_when=None,
+        learned_in=[],
+        confidence=0.8,
+        read_heat=0.0,
+        reference_time=T0,
+        salience=1.0,
+    )
+    base.update(kw)
+    return asyn.GatheredFact(**base)
+
+
+class TestGrouping:
+    async def test_facts_group_by_relation_then_context(self):
+        groups = asyn.group_facts(
+            [
+                _gathered("a", rel_type="RUNS_ON"),
+                _gathered("b", rel_type="RUNS_ON", applies_when={"env": "prod"}),
+                _gathered("c", rel_type="RUNS_ON"),
+            ]
+        )
+
+        assert len(groups) == 2
+        assert [f.id for f in groups[("RUNS_ON", "")]] == ["a", "c"]
+
+    async def test_a_scoped_fact_does_not_share_a_group_with_an_unscoped_one(self):
+        """Doc 09 §4.2: a fact that holds only in `env=prod` must read as a
+        scoped claim, not a universal one. Pooling them is how it stops."""
+        groups = asyn.group_facts(
+            [
+                _gathered("a", applies_when={"env": "prod"}),
+                _gathered("b"),
+            ]
+        )
+
+        assert len(groups) == 2
+
+    async def test_group_order_follows_salience_not_the_alphabet(self):
+        """A group is keyed by the first fact that reached it, so the article's
+        sections lead with its most load-bearing knowledge."""
+        groups = asyn.group_facts(
+            [_gathered("a", rel_type="ZETA"), _gathered("b", rel_type="ALPHA")]
+        )
+
+        assert [key[0] for key in groups] == ["ZETA", "ALPHA"]
+
+
+class TestTheDraftCall:
+    async def test_it_dispatches_on_the_synthesis_purpose(self):
+        """The eighth purpose, seeded inert since day one; this is its first
+        consumer anywhere in the tree."""
+        llm = _StubLLM(_draft_payload(["a"]))
+
+        await asyn.synthesise_draft(llm, subject="subj", facts=[_gathered("a")])
+
+        assert llm.calls[0]["purpose"] == asyn.SYNTHESIS_PURPOSE
+
+    async def test_the_prompt_carries_only_the_gathered_facts(self):
+        llm = _StubLLM(_draft_payload(["a"]))
+
+        await asyn.synthesise_draft(
+            llm, subject="subj", facts=[_gathered("a", fact="the only fact")]
+        )
+
+        assert "the only fact" in llm.prompt
+        assert llm.prompt.count("[a]") == 1
+
+    async def test_the_seed_is_the_ranked_fact_id_set(self):
+        """Same subject, same facts, same order -> same article. Reordering is
+        a different prompt and must be a different seed."""
+        one = _StubLLM(_draft_payload(["a", "b"]))
+        two = _StubLLM(_draft_payload(["a", "b"]))
+        three = _StubLLM(_draft_payload(["a", "b"]))
+        facts = [_gathered("a"), _gathered("b")]
+
+        await asyn.synthesise_draft(one, subject="subj", facts=facts)
+        await asyn.synthesise_draft(two, subject="subj", facts=list(facts))
+        await asyn.synthesise_draft(three, subject="subj", facts=list(reversed(facts)))
+
+        assert one.calls[0]["seed"] == two.calls[0]["seed"]
+        assert one.calls[0]["seed"] != three.calls[0]["seed"]
+
+    async def test_a_cited_id_outside_the_input_set_is_refused(self):
+        """An invented id means the response describes a fact set it was never
+        handed — keeping the rest would keep prose written under that
+        misapprehension."""
+        llm = _StubLLM(_draft_payload(["a", "not-an-input"]))
+
+        with pytest.raises(asyn.DraftRefused, match="not in its input set"):
+            await asyn.synthesise_draft(llm, subject="subj", facts=[_gathered("a")])
+
+    async def test_an_uncited_sentence_is_refused(self):
+        """Doc 09 §4.3: a claim with no citation fails outright, no
+        search-for-support fallback."""
+        llm = _StubLLM(_draft_payload([]))
+
+        with pytest.raises(asyn.DraftRefused, match="cited no fact"):
+            await asyn.synthesise_draft(llm, subject="subj", facts=[_gathered("a")])
+
+    async def test_a_response_over_the_hard_ceiling_is_refused(self):
+        llm = _StubLLM(_draft_payload(["a"], words=200))
+
+        with pytest.raises(asyn.DraftRefused, match="ceiling"):
+            await asyn.synthesise_draft(
+                llm, subject="subj", facts=[_gathered("a")], budget_words=50
+            )
+
+    async def test_an_ordinary_overrun_is_absorbed_by_the_budget(self):
+        """The budget is what the prompt asks for; the ceiling is what the
+        response is held to. Refusing at the budget would reject every article
+        that ran a little long."""
+        llm = _StubLLM(_draft_payload(["a"], words=60))
+
+        draft = await asyn.synthesise_draft(
+            llm, subject="subj", facts=[_gathered("a")], budget_words=50
+        )
+
+        assert draft.word_count > 50
+
+    async def test_the_budget_reaches_the_prompt(self):
+        llm = _StubLLM(_draft_payload(["a"]))
+
+        await asyn.synthesise_draft(
+            llm, subject="subj", facts=[_gathered("a")], budget_words=123
+        )
+
+        assert "123 words" in llm.prompt
+
+    @pytest.mark.parametrize(
+        "payload",
+        ["not json at all", "[]", '{"lead": ""}', '{"lead": "x", "sentences": []}'],
+    )
+    async def test_an_unparseable_response_is_refused(self, payload):
+        llm = _StubLLM(payload)
+
+        with pytest.raises(asyn.DraftRefused):
+            await asyn.synthesise_draft(llm, subject="subj", facts=[_gathered("a")])
+
+    async def test_a_fenced_response_still_parses(self):
+        """Reasoning-by-default vendors wrap JSON in a markdown fence, often
+        after prose — the same salvage `extraction_clean` needs."""
+        llm = _StubLLM("Sure:\n```json\n" + _draft_payload(["a"]) + "\n```")
+
+        draft = await asyn.synthesise_draft(
+            llm, subject="subj", facts=[_gathered("a")]
+        )
+
+        assert draft.sentences[0].fact_ids == ["a"]
+
+    async def test_an_orchestrator_failure_propagates_rather_than_refusing(self):
+        """"The model produced something unusable" and "the model could not be
+        reached" are different outcomes; collapsing them hides an outage behind
+        a content error."""
+        llm = _StubLLM(raises=RuntimeError("connection refused"))
+
+        with pytest.raises(RuntimeError, match="connection refused"):
+            await asyn.synthesise_draft(llm, subject="subj", facts=[_gathered("a")])
+
+    async def test_no_facts_refuses_without_calling_the_model(self):
+        llm = _StubLLM(_draft_payload(["a"]))
+
+        with pytest.raises(asyn.DraftRefused):
+            await asyn.synthesise_draft(llm, subject="subj", facts=[])
+
+        assert llm.calls == []
