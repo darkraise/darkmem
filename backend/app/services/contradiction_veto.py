@@ -28,8 +28,9 @@ closed relation vocabulary alone, with no model and no judgment:
 1. ``single_valued`` — two live facts in one project sharing ``subject_name``
    and ``rel_type`` but naming different objects, where the relation admits at
    most one object per subject. ``SINGLE_VALUED_RELATIONS`` is **empty today**
-   and the reasoning is below; the rule is live and its precondition is not
-   currently met by any relation the taxonomy stores.
+   — a recorded per-relation pass over the whole vocabulary admitted none, and
+   the per-relation reasons are below — so the rule is live and its
+   precondition is not met by any relation the taxonomy stores.
 2. ``inverse_replacement`` — a REPLACES-family edge asserted in both directions
    between the same two names. Directed succession cannot run both ways over one
    window. ``REPLACES_FAMILY`` is imported rather than re-typed, because the
@@ -83,11 +84,51 @@ logger = logging.getLogger(__name__)
 # object over the same window is a genuine conflict rather than a second true
 # statement.
 #
-# **Empty, and that is the finding rather than an omission.** Most of
-# RELATIONSHIP_TYPES is plainly multi-valued — a project USES many tools, a
-# service is DEPLOYED_ON many hosts — and telling an additional truth from a
-# replacement there needs the model T2.11 wires. `HAPPENED_ON` looked like the
-# one exception (an event happens on one date) and it is not, because
+# **Empty after a recorded per-relation pass over all sixteen members of
+# RELATIONSHIP_TYPES, and that is the finding rather than an omission.**
+# Admission requires the taxonomy to *guarantee* at most one object per
+# subject — this arm feeds an unappealable veto whose precision is by
+# construction, so "usually one" admits nothing. Two mechanisms defeat every
+# member.
+#
+# Rejected as plural by construction — a second object is a second true
+# statement, held simultaneously:
+#
+#   USES         a project uses many tools at once; also absorbs CONFIGURES /
+#                APPLIES_TO / COMMUNICATES_WITH, and the rescue layer mints it
+#                from "via" / "with" / "to" at 0.55–0.7 confidence
+#   DEPENDS_ON   many dependencies at once
+#   HAS_PART     a whole has many parts; plurality is the relation's point
+#   IMPLEMENTS   one implementer, many protocols and interfaces
+#   EXTENDS      specs, languages and frameworks extend several bases; the
+#                taxonomy stores no single-inheritance guarantee
+#   REPLACES     one successor retires several predecessors at once; the
+#                rescue layer also mints it from "instead of" / "builds on"
+#                at 0.7–0.75
+#   IMPROVES_ON  rust IMPROVES_ON c and IMPROVES_ON c++, both true; BUILDS_ON,
+#                plainly plural, also folds in via LEGACY_RELATION_TYPE_MAP
+#   IS_A         classification is a lattice, not a function: redis IS_A
+#                database and IS_A tool
+#   CAUSES       one cause, many effects; PRODUCES and FIXES fold in
+#   MENTIONS     a document mentions many things
+#   CITES        a paper cites many papers
+#   INSPIRED_BY  many inspirations
+#
+# Rejected because legacy folding stores several senses under one rel_type
+# with no discriminator, so a stored row's rel_type never certifies the
+# single-valued sense even where one exists:
+#
+#   DEPLOYED_ON  absorbs RUNS_ON and LOCATED_IN, and the rescue layer routes a
+#                bare "on" into it at 0.6 confidence — host, OS, container and
+#                platform are all "on" and all true at once
+#   AUTHORED_BY  co-authorship is plural on its own, and PUBLISHED_IN (a
+#                venue) and WORKS_AT (an employer) fold two more senses in
+#   HAPPENED_ON  three senses, detailed below
+#   RELATED_TO   the normaliser's own fallback; collects every unrecognised
+#                emission plus seven aliases — maximally polyvalent by design
+#
+# `HAPPENED_ON` is the instructive rejection because it once looked like the
+# one admission (an event happens on one date) and had to be withdrawn:
 # `normalize_relation_type` folds three different senses into it and stores no
 # discriminator between them:
 #
@@ -100,17 +141,23 @@ logger = logging.getLogger(__name__)
 # A relation is single-valued only when *every* sense it stores is, and no
 # deterministic predicate over (subject_name, rel_type, object_name) recovers
 # sense 1: senses 1 and 2 are both date-shaped, so neither a date parse nor an
-# ISO-shape gate separates them. Admitting it anyway would manufacture disputes
-# out of true claims, which is precisely the failure doc 08 §5.3's asymmetry
-# forbids. So the set stays empty until the taxonomy separates the senses, which
-# is a taxonomy-first change (doc 06 §3.1) and not something the veto may work
-# around. The cost is that the scan's whole reach today is the
-# inverse-replacement rule; undercounting only delays a dispute.
+# ISO-shape gate separates them.
+#
+# The exclusive slots the LLM judge measurably misses — a port, a version, a
+# TTL, a scrape interval, a bucket name — are *attribute* slots this taxonomy
+# does not store as relations at all, so that detection capacity cannot be
+# added by widening this set: it needs taxonomy-first single-valued relations
+# minted for those slots (doc 06 §3.1), never a veto workaround. Admitting the
+# nearest existing relation instead would manufacture disputes out of true
+# claims, which is precisely the failure doc 08 §5.3's asymmetry forbids. The
+# cost is unchanged: the scan's whole reach today is the inverse-replacement
+# rule, and undercounting only delays a dispute.
 #
 # Widening this is a semantic claim about a relation, never a tuning edit, and
 # `tests/test_contradiction_veto.py` fails the build if a member is also a
 # target of LEGACY_RELATION_TYPE_MAP — the exact mechanism that made
-# `HAPPENED_ON` polyvalent.
+# `HAPPENED_ON` polyvalent — or is not itself in RELATIONSHIP_TYPES, which
+# would arm the rule against a rel_type no stored row can carry.
 SINGLE_VALUED_RELATIONS: frozenset[str] = frozenset()
 
 RULE_SINGLE_VALUED = "single_valued"
