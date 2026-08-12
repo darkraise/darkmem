@@ -130,6 +130,14 @@ def score(
         "seed": manifest["seed"],
         "performed_by": performed_by,
         "date": date,
+        # The content basis (T2.116). Stamped here rather than at write
+        # time because *here* is where the pairs are provably the certified
+        # ones: the gold_sha256 refusal above has already established that
+        # `gold_pairs` is the file the draw was pinned to. Computing it in
+        # `write_resample` would hash whatever is on disk at persist time,
+        # which is the very substitution this field exists to detect.
+        "pairs_sha256": entailment_gold.pairs_content_hash(gold_pairs),
+        "pair_digests": entailment_gold.pair_digests(gold_pairs),
     }
     return resample_block, disagreements
 

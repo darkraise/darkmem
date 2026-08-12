@@ -170,7 +170,95 @@ RESAMPLE_N = 93
 RESAMPLE_MAX_DISAGREEMENTS = 1
 
 
-def _resample_reasons(resample: object) -> list[str]:
+# How many moved ids a refusal spells out before it summarises. A label
+# flip is one or two pairs and must be named exactly; a re-authored gold
+# moves hundreds and the list stops being the message.
+_NAMED_MOVED_LIMIT = 12
+
+
+def _describe_moved(recorded: dict, derived: dict) -> list[str]:
+    """Name *which* pairs moved, not merely that something did.
+
+    Split three ways because the three mean different things to a reader:
+    a changed digest is a label (or premise, or hypothesis) flip on a pair
+    the certification saw; a missing id is a pair deleted out from under
+    it; a new id is a pair the sitting never judged.
+    """
+    changed = sorted(
+        pid for pid, digest in recorded.items()
+        if pid in derived and derived[pid] != digest
+    )
+    removed = sorted(set(recorded) - set(derived))
+    added = sorted(set(derived) - set(recorded))
+
+    out: list[str] = []
+    for label, ids in (
+        ("changed since certification", changed),
+        ("removed since certification", removed),
+        ("added since certification", added),
+    ):
+        if not ids:
+            continue
+        shown = ", ".join(ids[:_NAMED_MOVED_LIMIT])
+        if len(ids) > _NAMED_MOVED_LIMIT:
+            shown += f", … and {len(ids) - _NAMED_MOVED_LIMIT} more"
+        out.append(f"{len(ids)} {label}: {shown}")
+    return out
+
+
+def _content_hash_reasons(resample: dict, pairs: list[dict]) -> list[str]:
+    """Re-derive the certification's content basis and refuse a mismatch.
+
+    This is the half D-7 was missing. The other resample checks read what
+    the block *says*; this one reads what the gold *is* and asks whether
+    the two describe the same pair set.
+    """
+    recorded_hash = resample.get("pairs_sha256")
+    recorded_digests = resample.get("pair_digests")
+
+    if not isinstance(recorded_hash, str) or not recorded_hash:
+        return [
+            "resample: 'pairs_sha256' missing — the block certifies a label "
+            "error rate without naming the labels it saw, so a verdict "
+            "flipped after the sitting would leave this lock green "
+            "(T2.116). Re-score the sitting, or re-stamp the basis only if "
+            "the current pairs are demonstrably the certified ones"
+        ]
+    if not isinstance(recorded_digests, dict) or not recorded_digests:
+        return [
+            "resample: 'pair_digests' missing — without the per-pair map a "
+            "mismatch could say only that something moved, never which "
+            "pairs did"
+        ]
+
+    # The aggregate is the authority and the map is diagnostic, so the map
+    # deriving the aggregate is checked before the map is trusted to
+    # explain anything. Editing one to match the pairs while leaving the
+    # other stale lands here rather than passing.
+    if entailment_gold.digest_map_hash(recorded_digests) != recorded_hash:
+        return [
+            "resample: the block's own 'pair_digests' do not derive its "
+            "'pairs_sha256' — the certification is internally inconsistent "
+            "and certifies nothing. Re-score the sitting rather than "
+            "repairing either field by hand"
+        ]
+
+    derived_digests = entailment_gold.pair_digests(pairs)
+    derived_hash = entailment_gold.pairs_content_hash(pairs)
+    if derived_hash == recorded_hash:
+        return []
+
+    detail = _describe_moved(recorded_digests, derived_digests)
+    return [
+        "resample: the gold's pairs have moved since this sitting certified "
+        f"them — certified {recorded_hash[:8]}, current {derived_hash[:8]}. "
+        "A certification describes one pair set and this is a different "
+        "one; the recorded disagreement count says nothing about the "
+        "labels now on disk. " + "; ".join(detail)
+    ]
+
+
+def _resample_reasons(resample: object, pairs: list[dict]) -> list[str]:
     if not isinstance(resample, dict):
         return [
             "resample: absent — LABELLING.md Layer 3 requires a seeded blind "
@@ -192,6 +280,7 @@ def _resample_reasons(resample: object) -> list[str]:
     for field in ("seed", "performed_by", "date"):
         if not resample.get(field):
             out.append(f"resample: {field!r} missing — an uncitable resample certifies nothing")
+    out.extend(_content_hash_reasons(resample, pairs))
     return out
 
 
@@ -222,7 +311,7 @@ def gate_eligibility(gold_doc: dict) -> Eligibility:
             f"author-labelled: {n_author}/{n_live} live pairs await "
             "adjudication (doc 17 §11; T2.54's re-adjudication flips them)"
         )
-    reasons.extend(_resample_reasons(resample))
+    reasons.extend(_resample_reasons(resample, gold_doc["pairs"]))
 
     eligible = len(reasons) == 1
     return Eligibility(
