@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -134,6 +135,58 @@ def score_judgments(
         per_slice=per_slice,
         majority_class_floor=max(gold_counts.values()) / n_pairs if n_pairs else 0.0,
     )
+
+
+# ── census independence, disclosed per run (2026-08-12) ──────────────────
+
+
+def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
+    """What a verdict class's census can actually express against ``bar``.
+
+    A recall bar is a fraction of *propositions*, and this gold counts rows.
+    Where two rows assert one proposition the two diverge, and the gap runs
+    the dangerous way: a judge that catches a correlated pair banks two
+    correlated hits, so the per-item tolerance is wider than the bar says.
+
+    Disclosed on every run because the 2026-08-10 attempt was spent against
+    a contradicted census of 80 rows over 78 independent propositions and
+    **no artifact said so** — the finding arrived afterwards, in review, by
+    which point the attempt was gone. `duplicate_propositions` existed and
+    was wired into nothing but its own test.
+
+    Reports rather than judges: no number here changes a score or a verdict.
+    """
+    from benchlib.duplicate_propositions import find_duplicate_propositions
+
+    rows = [p for p in pairs if p.get("verdict") == verdict]
+    row_ids = {p["id"] for p in rows}
+    dupes = [
+        f for f in find_duplicate_propositions(pairs)
+        if f.left in row_ids and f.right in row_ids
+    ]
+    # Each duplicate finding collapses one row into an existing proposition.
+    independent = len(rows) - len(dupes)
+
+    def _min_passing(n: int) -> tuple[int, float]:
+        if n <= 0:
+            return 0, 0.0
+        need = math.ceil(bar * n)
+        return need, need / n
+
+    need_rows, eff_rows = _min_passing(len(rows))
+    need_ind, eff_ind = _min_passing(independent)
+    return {
+        "verdict": verdict,
+        "bar": bar,
+        "rows": len(rows),
+        "independent_propositions": independent,
+        "duplicate_pairs": [[f.left, f.right] for f in dupes],
+        "min_passing_rows": need_rows,
+        "effective_bar_on_rows": round(eff_rows, 4),
+        "min_passing_independent": need_ind,
+        "effective_bar_on_independent": round(eff_ind, 4),
+        "bar_expressible_on_rows": abs(eff_rows - bar) < 1e-9,
+    }
 
 
 # ── gate eligibility (doc 17 §11) ────────────────────────────────────────
@@ -541,9 +594,31 @@ def render_report(
         "gold CONTACTS for this gold_sha256 across all judge identities, "
         "including warm cache replays (a verification rerun increments it on "
         "one live pass); live-vs-replay per contact is reconstructible from "
-        "each scored row's twin. Resets only when the gold file itself "
-        "changes (T2.54 growth)."
+        "each scored row's twin. Keyed on the gold's PAIRS since 2026-08-12, "
+        "so an edit to something no judge was shown cannot reset it."
     )
+    ci = meta.get("census_independence")
+    if ci:
+        note = (
+            "rows == propositions"
+            if ci["rows"] == ci["independent_propositions"]
+            else f"{ci['rows'] - ci['independent_propositions']} duplicated "
+                 f"proposition(s): {ci['duplicate_pairs']}"
+        )
+        lines.append(
+            f"- census independence ({ci['verdict']}): {ci['rows']} rows over "
+            f"{ci['independent_propositions']} independent propositions — {note}. "
+            f"Against a bar of {ci['bar']}, the minimum passing score is "
+            f"{ci['min_passing_rows']}/{ci['rows']} = "
+            f"{ci['effective_bar_on_rows']} on rows and "
+            f"{ci['min_passing_independent']}/{ci['independent_propositions']} = "
+            f"{ci['effective_bar_on_independent']} on independent propositions. "
+            + ("The bar is expressible on this census."
+               if ci["bar_expressible_on_rows"] else
+               "**The bar is NOT expressible on this census** — the effective "
+               "bar differs from the stated one by quantisation alone, which "
+               "is a bar nobody argued for.")
+        )
     lines.append("")
 
     lines.append("## Bars (stated before the run; config defaults)")
