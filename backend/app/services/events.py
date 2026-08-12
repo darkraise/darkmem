@@ -153,6 +153,10 @@ EVENT_TYPES: list[str] = [
     # is indistinguishable from one whose writer was deleted — so the value
     # lands *with* the writer, not ahead of it.
     "resumed",
+    # T3.07's research run, landed with its emitter on the same reasoning.
+    # `object_type='system'`: a run is not any one memory, and the memories it
+    # filed are named in the payload.
+    "research_run",
 ]
 
 OBJECT_TYPES: list[str] = [

@@ -108,6 +108,13 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // belongs on T3.21's session-checkpoints / resume view, beside the
   // checkpoint it resumed from, not scattered through the feed.
   "resumed",
+  // A research run's own row (T3.07). Excluded rather than tabbed under
+  // capture: every memory the run filed journals its own `created` row, so
+  // tabbing the run alongside them would show one research run twice in the
+  // capture feed. The run row exists for the manufactured-origin audit — how
+  // many rows this installation researched into itself, and when — which is a
+  // measurement surface, not a lifecycle step.
+  "research_run",
   // Generic system housekeeping (re-embed sweeps, maintenance jobs) —
   // not a memory/fact/repo lifecycle step any of the five tabs models.
   "maintenance_run",
