@@ -804,6 +804,190 @@ tables and the new jobs H1 ships; a miss leaves H1 unshipped.
 
 ---
 
+## Lane M — the per-role qualification split (v0.5)
+
+Minted 2026-08-12 from
+[`docs/superpowers/specs/2026-08-12-v0.5-per-role-qualification-and-corpus-design.md`](../../superpowers/specs/2026-08-12-v0.5-per-role-qualification-and-corpus-design.md),
+owner-ratified rulings R1–R4, after an independent Fable review of the spec.
+
+#### T2.121 — Correct the contradiction-recall derivation in the ledger
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
+
+**What.** Ruling R3. A session proposed re-deriving `contradiction_recall_bar` from 0.95
+to 0.90 on the argument that a post-T2.109 recall miss costs an unopened review item
+rather than a wrong belief. **That derivation is wrong and is rejected.** A recall miss is
+a genuinely contradicted fact keeping `corroborated`, keeping a badge asserting no known
+contradiction, and staying citable by articles — a standing wrong belief with no backstop,
+since the human-verdict arm is the scan's only route into the audit and the deterministic
+arm is corpus-vacuous. A precision miss is bounded by a reviewer's dismissal.
+
+Record it rather than dropping it quietly, because at 0.90 the 2026-08-10 deepseek
+attempt clears **all four bars on both populations** (contradiction recall 0.9375 pooled /
+0.9500 Rule B; `gate-ledger.md:1123-1127`) — the proposal would have converted a recorded
+miss into a retroactive pass, and the same derivation must not resurface at the next gold
+looking new.
+
+**Done when:** the gate ledger carries the rejection with the retroactive-pass arithmetic
+shown; `gate-ledger.md:1344`'s loose phrase (*"the amendment is what made recall
+truth-critical"*) is refined to what actually changed — **precision left** the
+truth-critical class, leaving recall the only truth-side metric on that arm, same bar,
+cleaner reason; no bar value moves anywhere.
+**Verify.** `cd backend && python -m pytest tests/test_planning_docs.py -q`
+
+---
+
+#### T2.122 — The verdicts directory leaks synthetic files under real identities
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (precondition)`
+
+**What.** Measured 2026-08-12: `backend/scripts/benchlib/entailment/verdicts/` holds 80
+files and **79 are synthetic residue**. Seven carry the real gold's exact shape (173
+entailed / 80 contradicted), the real deepseek identity `4d886440`, and real gold shas
+including the current `6eadba73` — one is named `2026-08-12-4d886440-6eadba73.json`,
+precisely how a genuine deepseek run on today's gold would be named — with entailed
+precision 0.3731 against deepseek's published 0.9938. Files accumulate across 08-10 (25),
+08-11 (20) and 08-12 (36), so the leak is **active**. `VERDICTS_DIR` is a module-level
+constant used directly at `run_judge_qualification.py:397` with no override, so anything
+driving the runner to scoring completion writes into the live artifact directory under
+real identities. The directory is gitignored (`.gitignore:29`) and no checksum of the
+genuine artifact is recorded anywhere.
+
+This is a precondition for T2.119, not housekeeping: a mint path whose input directory
+cannot distinguish evidence from residue puts *"minted only by a cleared run, never by
+hand"* one text-editor session from being violated undetectably.
+
+**Done when:** the writer takes an output-directory override and every test path uses a
+temporary one; a regression test fails if a test run can write into the real directory;
+the 79 residue files are removed with their identification recorded (identity, gold sha,
+pair count, measured metrics) so the deletion is auditable; the genuine artifact's sha256
+is recorded outside the artifact — in its eval report and the ledger.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py -q`
+
+---
+
+#### T2.118 — Duplicate/independence pass over the non-contradicted census
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (precondition)`
+
+**What.** Every census scrutiny this gold has received — Rule B, the duplicate findings
+(`eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`), the reproduced-retirement defect — examined
+the **contradicted** side. Whether the 322 entailed/unsupported pairs (173 + 149, counted
+from the per-pair artifact) carry comparable duplicate or independence defects is
+**unknown**. R1 makes the entailment pair the thing G-D gates on, so that unknown moves
+from a footnote onto the gate's critical path.
+
+**Independence is a hard requirement:** this must be executed by an agent that did not
+author the census. Run the same duplicate-detection pass the contradicted side received.
+
+**Done when:** the 322 pairs are checked for full-text and near-duplicate reproduction and
+for independent-proposition count the way the contradicted census was; the minimum passing
+fraction is stated on both the rows reading and the independent-propositions reading, as
+the ruled disclosure requires; findings are recorded in `gate-ledger.md` whether clean or
+not — a clean report is the result that unblocks T2.119, and a defective one is a finding,
+not a failure to finish.
+**Verify.** the report lands in `gate-ledger.md` with per-pair evidence; no gold file is
+edited by this task.
+
+---
+
+#### T2.120 — `SINGLE_VALUED_RELATIONS`: the per-relation argument
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: —` · `Doc: 08 §4.2` · `Tag: target-new` · `Gate: —`
+
+**What.** Ruling R4. Eight of the nine pooled contradiction-recall misses are
+`value-swap` — *a different value in a slot the premise fills exclusively* — at slice
+recall 0.810. That is exactly the class the deterministic `single_valued` detector exists
+for, disarmed today only because `SINGLE_VALUED_RELATIONS` is an empty frozenset
+(`contradiction_veto.py:114`, reasoning at `:28-31`). Populating it adds true detection
+capacity where the LLM judge measurably fails, with no model, no gold, no bar and no judge.
+
+**That is also the whole risk.** This arm feeds the **absolute veto**, sanctioned only
+because its precision is by construction. A relation belongs in the tuple only if the
+taxonomy guarantees at most one object per subject; a wrong inclusion manufactures
+near-permanent disputes on an unappealable instrument.
+
+**Done when:** every relation in `RELATIONSHIP_TYPES` carries a recorded admit/reject
+argument against the at-most-one-object-per-subject test; only survivors enter the
+frozenset; rejections and their reasons are recorded with them;
+**empty-after-analysis is a legitimate outcome** and must not be argued around; the
+detector's existing guards are re-read before any admission.
+**Verify.** `cd backend && python -m pytest tests/test_contradiction_veto.py -q`
+
+---
+
+#### T2.117 — Per-role qualification records
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: the owner's holdings on spec open questions 3 and 4` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D (redefines)`
+
+**What.** Ruling R1. `VerificationJudge.judge()` is one gate over all four `BAR_METRICS`
+(`verification_judge.py:222-227`, refusal at `:135-161`, bar loop at `:324-333`) serving
+two consumers that ask different questions: claim entailment for articles
+(`claim_entailment.py:222`, branching on `ENTAILED` alone at `:251`) and the Tier-C
+contradiction scan (`contradiction_scan.py:754`, branching on `contradicted` alone at
+`:774`). Each consumer's gate depends on a discrimination it never makes, in both
+directions. Split the **record** by consumer role, keeping one judge identity.
+
+The grounds are doc 20 §4's ratified registry — which already defines G-D as *"the
+groundedness judge's precision/recall at distinguishing grounded from ungrounded
+sentences"*, the contradiction pair having entered through one inheritance sentence at
+`17-test-and-eval-harness.md:147` — and the code-forced pairing. **The amendment must be
+writable from those two inputs alone**; if it reaches for a measured value it is not a
+derivation.
+
+**Waits on the owner, not on work.** Q3: is this a distinct structural move rather than a
+third attempt in disguise? Q4: R1 composed with R2 makes the run recorded NOT CLEARED the
+run whose verdicts mint the redefined gate's record — is that composition intended? Both
+holdings are recorded *in* the amendment.
+
+**Done when:** the split is symmetric — each role gated on the discrimination its consumer
+makes; contradiction bars unchanged at 0.95 / 0.70 and that role left unqualified, so the
+Tier-C scan keeps dead-ending; doc 17 §6 and doc 20 §4 amended, with §6's
+rejected-alternatives clause (*"Per-consumer judges (three purposes, three models) … three
+drift independently"*, `:161`) **named and distinguished** — R1 keeps one identity and
+splits the record, but roles do now hold qualification state independently, and an
+amendment silent on that is not honest; a **scan-enforced pin** that `claim_entailment`
+consumes only the entailed discrimination and `contradiction_scan` only the contradicted
+one, machine-checking the derivation's premise the way the second-RRF-constant scan does;
+the owner's Q3/Q4 holdings recorded; the T2.114 stopping rule left intact — no model
+touches pair set `4975c5cc`.
+**Verify.** `cd backend && python -m pytest tests/test_verification_judge.py tests/test_claim_entailment.py -q`
+
+---
+
+#### T2.119 — Offline per-role re-score and mint
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: T2.117, T2.118, T2.122` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
+
+**What.** Ruling R2. An evidence record is *"minted only by a cleared run, never by hand"*
+(T2.95/T2.100), so R1 alone strands the entailment role. Amend
+`run_judge_qualification.py` to re-score a recorded per-pair verdict artifact under a
+named role and mint that role's record if its bars clear — zero live calls, zero gold
+contact, the offline-replay precedent the G-D resolution spike set.
+
+**Only one input is admissible.** No genuine deepseek per-pair artifact exists; every
+deepseek-identity file in the directory is residue (T2.122). The admissible input is
+`2026-08-12-fd39e7b2-6eadba73.json` (`gpt-5.5`, `fd39e7b2c47fa375`), and production's
+`verification` purpose must carry that identity or `qualification_state` fails closed on
+mismatch — doc 17 §6: *"re-qualification after a `verification`-purpose model swap is
+mandatory."*
+
+**Executed by a fresh session that did not author T2.117's split** — the separation-of-
+powers norm binds a mint harder than a census pass — and reviewed adversarially at Fable
+tier under runbook §6, since it feeds a gate claim.
+
+**Done when:** the input is **authenticated** — admissible only if it reproduces the
+ledger's published metrics for that identity and gold (0.9884 entailed precision / 0.8875
+contradiction recall), which every residue file fails by orders of magnitude; the minted
+record names its input's sha256; the warm-replay caveat rides the record where the number
+lives (338 of 402 verdicts are replays of the 2026-08-08 contact; only the 64 live ones
+are a genuine 2026-08-12 sitting); the run makes zero live model calls; and the verdict —
+G-D as redefined, cleared or not — lands in `gate-ledger.md` with the composed-question
+holding cited.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py -q`
+
+---
+
 ## Lane D — proposition lifting (the vault bridge)
 
 ## Amendment log

@@ -120,6 +120,25 @@ demonstration, not by assertion.
 - `T3.06` — Articles tab
 - `T3.23` — Articles retrieval channel + `article_embeddings` writer
 
+### v0.5 — The judge is admitted for the question it was measured on
+
+Design:
+`docs/superpowers/specs/2026-08-12-v0.5-per-role-qualification-and-corpus-design.md`.
+Two halves. Half A splits the qualification record by consumer role, so the article
+consumer stops being gated on a discrimination it never makes; **it clears G-D as
+redefined** if `T2.118` reports clean and the owner's holdings land. Half B is the corpus
+— production holds one distinct `origin_key`, so no machine path can promote a fact off
+`candidate`, and that, not the judge, is what holds G-C shut. `T1.54` is owner-gated and
+is the version's true critical path: the 7-day origin-spacing clause cannot start
+counting until capture does.
+
+- `T2.117` — Per-role qualification records
+- `T2.118` — Duplicate/independence pass over the non-contradicted census
+- `T2.119` — Offline per-role re-score and mint
+- `T2.120` — `SINGLE_VALUED_RELATIONS`: the per-relation argument
+- `T2.121` — Correct the contradiction-recall derivation in the ledger
+- `T2.122` — The verdicts directory leaks synthetic files under real identities
+
 ### Gate track
 
 Not parked and not a version: these produce gates, which unlock labels. Clearing

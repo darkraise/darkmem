@@ -100,9 +100,9 @@ green.
 | E3 — Synthesis & reach | 24 | 2 | 0 | 0 | 0 | 22 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 17 | 3 | 0 | 0 | 0 | 14 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 23 | 9 | 0 | 0 | 0 | 14 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **278** | **28** | **0** | **0** | **0** | **249** | **1** | |
+| **Total** | **284** | **34** | **0** | **0** | **0** | **249** | **1** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
@@ -459,7 +459,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | TH1.15 | Emergent cross-document connections | M | Sonnet | high | — | | todo | | | |
 | TH1.16 | Documents UI, horizon-labelled | M | Sonnet | high | — | | todo | | | |
 
-## M1 — Measurement phase (17 tasks)
+## M1 — Measurement phase (23 tasks)
 
 | Task | Title | Size | Model | Effort | Version | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -480,3 +480,9 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | T3.22 | G-E evidence run | M | Fable | xhigh | gate | | todo | | | |
 | TH1.17 | Faithfulness-gate runner | S | Sonnet | high | gate | | todo | | | |
 | TH1.10 | Faithfulness ship gate (G-F evidence) | M | Fable | xhigh | gate | | todo | | | |
+| T2.121 | Correct the contradiction-recall derivation in the ledger | S | Sonnet | high | v0.5 | | todo | | | |
+| T2.122 | The verdicts directory leaks synthetic files under real identities | S | Sonnet | high | v0.5 | | todo | | | |
+| T2.118 | Duplicate/independence pass over the non-contradicted census | S | Fable | xhigh | v0.5 | | todo | | | |
+| T2.120 | `SINGLE_VALUED_RELATIONS`: the per-relation argument | M | Fable | xhigh | v0.5 | | todo | | | |
+| T2.117 | Per-role qualification records | M | Opus | high | v0.5 | | todo | | | |
+| T2.119 | Offline per-role re-score and mint | S | Fable | xhigh | v0.5 | | todo | | | |
