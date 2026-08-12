@@ -898,6 +898,25 @@ counts as unspecified) > `X-Darkmem-Client` header > User-Agent product
 map > `mcp`; `memory_batch_add` resolves on the raw entry dicts before
 validation. `source_agent` defaults to the caller's raw User-Agent.
 
+**The F7 research loop's one door is here too, and deliberately not on REST**
+(T3.27, doc 09 §6). `research_run` files evidence the *caller* gathered:
+`ResearchGatherer` has no in-tree implementation by design, so the door cannot
+call a gatherer and the caller has to be one — which is true of an MCP agent
+and of neither REST caller (the SPA nor the generated three-verb SDK), where
+the honest shape of "research subject S" would be a route that gathers
+server-side. A cron is excluded separately: it carries no per-request subject
+and `FieldDescriptor.default` is typed `int`, so a `config_schema` cannot
+carry one either. The tool takes **no `source`, no `origin_key` and no `ctx`**,
+so the header ladder that steers every other MCP capture's identity has no
+route into a research run: every row it files carries `RESEARCH_SOURCE` and an
+`is_researched_origin` key, and a finding naming either field is a validation
+error rather than a silently dropped key. It refuses while the `auto_research`
+row is not enabled (the default) — building the door is not arming the loop.
+`tests/test_auto_research.py`'s blanket invariant-15 scan records this as the
+one **sanctioned** crossing through `exempt_node_ids`, scoped to nodes inside
+the tool's own body, so the same import at module level or inside `memory_add`
+still fails the build.
+
 **Why raw-dict resolution still matters after T1.42a** (updated 2026-07-28).
 The original reason — `MemoryCreate` stamping an `api` default that erased
 the absent-vs-explicit distinction — is gone: T1.42a removed that default,

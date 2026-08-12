@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**58 surfaces: 20 two-door, 38 single-door with a stated reason (32 REST-only, 6 MCP-only), 0 divergent.**
+**59 surfaces: 20 two-door, 39 single-door with a stated reason (32 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -44,6 +44,7 @@ the test rather than quietly joining the surface.
 ## The parity table
 
 <!-- BEGIN GENERATED PARITY TABLE -->
+
 | Surface | REST | MCP | Status | Reason / note |
 |---|---|---|---|---|
 | `distribution.config` | `GET /api/v1/distribution`<br>`PUT /api/v1/distribution/policy` | — | REST single-door | Configures what agents are *told*, and the curb stops push entirely. Exposing 'stop telling agents things' to an agent inverts the control it exists to give a human, so this is single-door on purpose rather than by omission. |
@@ -103,7 +104,9 @@ the test rather than quietly joining the surface.
 | `code.communities` | — | `code_communities` | MCP single-door | The Leiden community nodes for one repo, filtered out of the same code_graph_nodes rows GET /code/graph/{repo_id} ships whole. The UI renders communities as clusters on the canvas; the agent wants them as a list. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.processes` | — | `code_processes` | MCP single-door | The traced execution flows for one repo with their ordered steps, filtered out of the same code_graph_nodes and code_edges rows GET /code/graph/{repo_id} ships whole. Single-door in shape, not in capability. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
 | `code.rename` | — | `code_rename` | MCP single-door | A cross-file reference sweep with a per-reference confidence, assembled from the definition rows and the call, heritage and import edges the REST door serves whole. It exists to drive an agent's edit; the UI has no rename view for a twin to feed. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. No route answers this query; the claim is true of the underlying rows, not of the query. Escalated by T1.42d, not resolved. |
+| `research.run` | — | `research_run` | MCP single-door | The door files evidence its caller gathered, and darkmem has no evidence gatherer by design -- a model without web access would invent its sources. So the caller has to be the gatherer, which an MCP agent is and neither REST caller is: the SPA and the generated three-verb SDK cannot search the web, so the honest REST shape of 'research subject S into project P' is a route that gathers server-side, i.e. the in-tree gatherer the design refuses. A second door would also be the second ingestion path T3.07 was built to avoid. Not a capture twin either: the tool takes no source, no origin_key and no ctx, so a caller cannot file through it while looking like ordinary capture, and it refuses until the owner enables the research config row (T3.27, doc 09 section 6). |
 | `code.changes` | — | `code_changes` | MCP single-door | The only genuinely single-door capability in the code family: it shells out to git in the repo working directory and reports the uncommitted diff against the indexed symbols. Every REST read and the whole indexed graph are commit-based, so no route carries this state and the UI has no working-tree view. It serves the agent editing the tree right now. Doc 12 section 3 lists this tool as having a REST twin under /code or /repos today. It has none, and unlike its five siblings the underlying state is not REST-reachable either. Escalated by T1.42d, not resolved. |
+
 <!-- END GENERATED PARITY TABLE -->
 
 ## Findings this audit raises

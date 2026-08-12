@@ -1,4 +1,5 @@
-"""T3.07 — the research loop's three done-when clauses, plus the seam T3.08 needs.
+"""T3.07 — the research loop's three done-when clauses, the seam T3.08 needs,
+and (T3.27) the one door that reaches it.
 
 The clauses are each asserted structurally where a behavioural test alone
 would rot:
@@ -27,6 +28,9 @@ against a real human-shaped key, not only against itself.
 from __future__ import annotations
 
 import ast
+import inspect
+import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -34,6 +38,7 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.api.mcp.server as mcp_server
 from app.api.mcp.client_identity import resolve_origin_key
 from app.models.config import Config
 from app.models.memory import MemoryBuffer
@@ -53,6 +58,7 @@ from app.services.auto_research import (
     research_origin_key,
     run_research,
 )
+from app.schemas.research import ResearchFindingInput
 from app.services.memory import CaptureResult, MemoryService
 from tests._reachability_scan import ReachabilityRules, app_sources, find_forbidden_reach
 
@@ -235,35 +241,146 @@ async def test_the_gatherer_is_bounded_by_the_budget(session):
 # --------------------------------------------------------------------------
 
 
+_LOOP_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({"app.services.auto_research"}),
+    forbidden_attrs=frozenset({"auto_research"}),
+    forbidden_literals=frozenset({"auto_research"}),
+)
+
+RESEARCH_DOOR = "app/api/mcp/server.py"
+RESEARCH_TOOL = "research_run"
+
+
+def _research_door_exempt_node_ids(rel: str, tree: ast.Module) -> set[int]:
+    """T3.27's one sanctioned crossing, found by structural role, not by text.
+
+    The scan below stays blanket over `app/`, which means the door T3.27
+    landed trips it exactly as an unsanctioned reach would — deliberately, so
+    that reaching this loop is an argued act. This is the argument, expressed
+    the way `tests/test_dream_jobs.py` expresses the dream-job family's one
+    boot registration: the exemption is scoped to nodes *inside the research
+    tool's own body*, so the same import copied to module level, or into
+    `memory_add`, or into any other tool in the same file, is still an
+    offender. A text-matching allowlist could not tell those apart — the two
+    statements render identically.
+
+    The `Call` arm suppresses nothing: `run_research(...)` matches no route
+    this scanner checks (the loader-call route only fires on
+    `import_module`/`__import__` with a relative literal name). It is
+    collected because `test_the_door_is_the_sanctioned_crossing` reuses this
+    same walk as its presence witness, and a second copy of the walk would
+    drift from this one.
+    """
+    if rel != RESEARCH_DOOR:
+        return set()
+    tool = next(
+        (
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == RESEARCH_TOOL
+        ),
+        None,
+    )
+    if tool is None:
+        return set()
+    exempt: set[int] = set()
+    for node in ast.walk(tool):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 0
+            and node.module == "app.services.auto_research"
+        ):
+            exempt.add(id(node))
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "run_research"
+        ):
+            exempt.add(id(node))
+    return exempt
+
+
+def _loop_reach_offenders(paths: list[Path], root: Path) -> list[str]:
+    return find_forbidden_reach(
+        paths, root, _LOOP_RULES,
+        skip_files=frozenset({LOOP_MODULE}),
+        exempt_node_ids=_research_door_exempt_node_ids,
+    )
+
+
 def test_no_app_code_reaches_the_research_loop():
     """Invariant 15's direction: nothing on capture or retrieval may reach a
     Tier-C consumer to accelerate a gate.
 
-    Vacuous today by construction — no module imports the loop — and that is
-    the point of running it: the day someone wires a research run into the
-    pipeline or a search route to fill the corpus faster, this goes red. The
-    scan is the dream-job family's own, so an import spelled across lines, an
-    attribute reach through the package, or the dotted path inside a string
-    literal are all covered.
+    It was vacuous until T3.27 — no module imported the loop at all — and it
+    is not any more: the MCP research door reaches it, and the scan records
+    that crossing through `exempt_node_ids` rather than being widened, given a
+    whole-file pass, or deleted. Everything else still goes red on contact:
+    the day someone wires a research run into the pipeline or a search route
+    to fill the corpus faster, this fails. The scan is the dream-job family's
+    own, so an import spelled across lines, an attribute reach through the
+    package, or the dotted path inside a string literal are all covered.
 
-    Note it is blanket over `app/` with no exemption in use, so a **sanctioned**
-    driver — a jobs registration, a research route, an MCP tool — trips it too,
-    and must visibly invoke the `exempt_node_ids` machinery the dream-job scan
-    already uses. That is the intended default: reaching this loop should be an
-    argued act, never an incidental import.
+    That the exemption is genuinely narrow — and not a whole-file pass in
+    disguise — is proven by `test_a_reach_outside_the_research_tool_is_still_
+    flagged`, which puts the identical import in the same file outside the
+    tool and watches this scan flag it.
     """
     paths = app_sources(BACKEND)
-    offenders = find_forbidden_reach(
-        paths, BACKEND,
-        ReachabilityRules(
-            forbidden_modules=frozenset({"app.services.auto_research"}),
-            forbidden_attrs=frozenset({"auto_research"}),
-            forbidden_literals=frozenset({"auto_research"}),
-        ),
-        skip_files=frozenset({LOOP_MODULE}),
-    )
+    offenders = _loop_reach_offenders(paths, BACKEND)
     assert not offenders, (
         "app code reaches the Tier-C research loop: " + "; ".join(offenders)
+    )
+
+
+def test_the_door_is_the_sanctioned_crossing():
+    """Exempting a crossing is not the same as having one.
+
+    Every door test below drives `research_run` directly, so none of them
+    would notice if the tool stopped importing the loop and started calling
+    something else — the exemption would go quiet and the scan would pass on
+    a door that no longer reaches anything. This asserts the two nodes the
+    exemption resolves actually exist, by the same structural predicate the
+    exemption itself uses rather than by reading the file's text.
+    """
+    tree = ast.parse((BACKEND / RESEARCH_DOOR).read_text(), filename=RESEARCH_DOOR)
+    exempt = _research_door_exempt_node_ids(RESEARCH_DOOR, tree)
+    kinds = {type(node).__name__ for node in ast.walk(tree) if id(node) in exempt}
+    assert kinds == {"ImportFrom", "Call"}, (
+        f"{RESEARCH_DOOR} no longer crosses to the research loop inside "
+        f"{RESEARCH_TOOL}(): found {kinds!r}"
+    )
+
+
+def test_a_reach_outside_the_research_tool_is_still_flagged(tmp_path):
+    """The node-addressable exemption's own negative control.
+
+    A second, textually identical copy of the door's one sanctioned import,
+    placed at module level and inside a capture tool in the same file, has the
+    same *text* as the exempted node and not the same *structural role*. A
+    whole-file `skip_files` pass — or a text-matching allowlist — would let
+    both through; this must not.
+    """
+    offending = tmp_path / "app" / "api" / "mcp" / "server.py"
+    offending.parent.mkdir(parents=True)
+    offending.write_text(
+        "from app.services.auto_research import run_research\n"
+        "\n"
+        "\n"
+        "async def memory_add(content):\n"
+        "    from app.services.auto_research import run_research\n"
+        "    return run_research\n"
+        "\n"
+        "\n"
+        "async def research_run(subject, project, findings):\n"
+        "    from app.services.auto_research import run_research\n"
+        "    return await run_research(None, subject=subject, project=project)\n",
+        encoding="utf-8",
+    )
+    offenders = _loop_reach_offenders([offending], tmp_path)
+    lines = {int(offender.split(":")[1]) for offender in offenders}
+    assert lines == {1, 5}, (
+        f"expected the module-level copy and the one inside memory_add to be "
+        f"flagged and only the tool's own to be exempt, got {offenders}"
     )
 
 
@@ -616,3 +733,223 @@ def test_research_run_is_in_the_closed_event_vocabulary():
 
     assert "research_run" in EVENT_TYPES
     assert "system" in OBJECT_TYPES
+
+
+# --------------------------------------------------------------------------
+# T3.27 — the door
+#
+# The loop was reachable from tests alone: no job, no route, no MCP tool, no
+# script, and an in-process `AsyncSession` in its signature, so the one actor
+# that could honestly drive it — a web-capable agent outside the box — could
+# not call it even in principle. The door is `research_run` on `/mcp`; the
+# argument for that shape over a route or a job is recorded above the tool in
+# `app/api/mcp/server.py`. What is asserted here is the part a reviewer cannot
+# take on trust: that the door files through the loop and not past it, that
+# `enabled` still governs it, and that nothing a caller sends can shed the
+# manufactured-origin disclosure.
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def door(session, monkeypatch):
+    """The MCP tools' module-level session factory, pointed at the test session."""
+    @asynccontextmanager
+    async def _fake_ctx():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _fake_ctx())
+    monkeypatch.setattr(mcp_server, "_pipeline", None)
+    return session
+
+
+async def _arm(session, **overrides) -> None:
+    await session.execute(delete(Config).where(Config.key == AUTO_RESEARCH_CONFIG_KEY))
+    session.add(Config(key=AUTO_RESEARCH_CONFIG_KEY, value={
+        "enabled": True, **overrides,
+    }))
+    await session.flush()
+
+
+async def test_the_door_is_registered_as_an_mcp_tool():
+    """A tool nothing registers is the gap T3.27 exists to close, one layer up."""
+    registered = {tool.name for tool in await mcp_server.mcp.list_tools()}
+    assert RESEARCH_TOOL in registered
+
+
+@pytest.mark.asyncio
+async def test_the_door_files_a_run_through_the_ordinary_capture_buffer(door):
+    """End to end through the door: the same buffered 202 path every capture
+    door funnels into, with the run's identity reported back to the caller."""
+    await _arm(door)
+
+    body = json.loads(await mcp_server.research_run(
+        subject="pgvector",
+        project="research-lane",
+        findings=[
+            {"content": "pgvector stores fixed-dimension vectors.",
+             "source_id": "https://example.test/a"},
+            {"content": "HNSW is pgvector's graph index.",
+             "source_id": "https://example.test/b"},
+        ],
+    ))
+
+    assert body["status"] == "filed"
+    assert body["filed"] == 2
+    assert body["origins_manufactured"] is True
+    assert body["project"] == "research-lane"
+
+    rows = await _buffer_rows(door)
+    assert len(rows) == 2
+    assert {row.project for row in rows} == {"research-lane"}
+    assert {str(row.metadata_["memory_id"]) for row in rows} == set(body["memory_ids"])
+    # Two identified sources, two origins — the door does not collapse what
+    # T3.08 separated.
+    assert len({row.metadata_["origin_key"] for row in rows}) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_door_refuses_while_the_loop_is_disabled(door):
+    """Building a door is not arming the loop.
+
+    The default is off and the refusal is the loop's own, reached before
+    anything is written — so an install that has never made the owner's
+    decision cannot be made to file by calling the tool.
+    """
+    await door.execute(delete(Config).where(Config.key == AUTO_RESEARCH_CONFIG_KEY))
+
+    body = json.loads(await mcp_server.research_run(
+        subject="pgvector", project="p",
+        findings=[{"content": "evidence", "source_id": "https://example.test/a"}],
+    ))
+
+    assert body["status"] == "unavailable"
+    assert body.get("filed") == 0
+    assert "memory_ids" not in body
+    assert await _buffer_count(door) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_door_cannot_file_a_row_that_looks_like_ordinary_capture(door):
+    """The disclosure has to survive a caller trying to shed it.
+
+    `metadata` is the one free-form field the door forwards, and it is spread
+    *under* the loop's own keys — so a caller who names `source` or
+    `origin_key` in it changes nothing about the row that lands. Both markers
+    are the machine-enforced slice a later measurement uses to separate
+    manufactured origins from observed ones; a row that shed either would be
+    pooled with real capture and nothing downstream could tell.
+    """
+    await _arm(door)
+
+    await mcp_server.research_run(
+        subject="pgvector", project="research-lane",
+        findings=[{
+            "content": "a finding that would rather look human",
+            "source_id": "https://example.test/a",
+            "metadata": {
+                "source": "claude-code",
+                "origin_key": "claude-code:boot-uuid",
+                "research": {"subject": "something else"},
+            },
+        }],
+    )
+
+    rows = await _buffer_rows(door)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.source == RESEARCH_SOURCE
+    assert is_researched_origin(row.metadata_["origin_key"])
+    assert row.metadata_["metadata"]["research"]["subject"] == "pgvector"
+
+
+def test_the_door_offers_no_way_to_declare_an_identity():
+    """The structural half of the same claim, which the behavioural test above
+    cannot make: not that a declared identity is overridden, but that there is
+    nowhere to declare one.
+
+    No `source`, no `origin_key`, and — the one a reviewer would miss — no
+    `ctx`, so the `X-Darkmem-Client` and `X-Darkmem-Origin` headers that steer
+    every other MCP capture's identity have no route into a research run at
+    all. `extra="forbid"` on the finding model makes a caller that tries
+    anyway fail loudly instead of watching a key be dropped.
+    """
+    parameters = set(inspect.signature(mcp_server.research_run).parameters)
+    assert parameters == {"subject", "project", "findings"}
+
+    fields = set(ResearchFindingInput.model_fields)
+    assert fields == {"content", "source_id", "metadata"}
+    assert ResearchFindingInput.model_config.get("extra") == "forbid"
+    with pytest.raises(ValidationError):
+        ResearchFindingInput.model_validate({"content": "x", "source": "claude-code"})
+
+
+@pytest.mark.asyncio
+async def test_a_source_id_shaped_like_another_doors_key_stays_researched(door):
+    """A declared id cannot forge its way out of the research prefix.
+
+    `resolve_origin_key` composes `<source>:<declared>` and the loop's own
+    bounding strips `:` from the declared half, so the most obvious attempt —
+    handing the door another door's whole key as a locator — still lands under
+    `research:` and stays inside the slice.
+    """
+    await _arm(door)
+
+    await mcp_server.research_run(
+        subject="s", project="p",
+        findings=[{"content": "evidence", "source_id": "mcp:boot-uuid"}],
+    )
+
+    rows = await _buffer_rows(door)
+    key = rows[0].metadata_["origin_key"]
+    assert key.startswith(f"{RESEARCH_SOURCE}:")
+    assert is_researched_origin(key)
+
+
+@pytest.mark.asyncio
+async def test_the_door_refuses_an_over_budget_run_rather_than_trimming(door):
+    """The budget bounds what the door may file, and the refusal is whole-run.
+
+    A door that sliced the supplied findings down to the budget would file a
+    partial run and report it filed — a corpus whose origin story is untrue in
+    a way nothing downstream could detect. The gatherer adapter hands every
+    supplied finding to the loop precisely so the budget can refuse them all.
+    """
+    await _arm(door, max_findings_per_run=2)
+
+    with pytest.raises(ResearchBudgetExceeded):
+        await mcp_server.research_run(
+            subject="s", project="p",
+            findings=[
+                {"content": f"finding {i}", "source_id": f"https://example.test/{i}"}
+                for i in range(3)
+            ],
+        )
+    assert await _buffer_count(door) == 0
+
+
+@pytest.mark.asyncio
+async def test_the_door_refuses_a_run_with_nothing_in_it(door):
+    """An empty run would come back filed-shaped with `filed: 0`, which reads
+    to an agent as "stored" — the same reason the batch cap refuses an empty
+    batch instead of accepting it as a successful no-op."""
+    await _arm(door)
+
+    with pytest.raises(ValueError):
+        await mcp_server.research_run(subject="s", project="p", findings=[])
+    assert await _buffer_count(door) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("subject,project", [("", "p"), ("   ", "p"), ("s", ""), ("s", " ")])
+async def test_the_door_requires_a_subject_and_a_project(door, subject, project):
+    """Neither is defaulted. A blank project would land manufactured origins in
+    whatever the write path treats as the fallback scope, which is the one
+    project a reader is least likely to be auditing for them."""
+    await _arm(door)
+
+    with pytest.raises(ValueError):
+        await mcp_server.research_run(
+            subject=subject, project=project,
+            findings=[{"content": "evidence", "source_id": "https://example.test/a"}],
+        )
+    assert await _buffer_count(door) == 0

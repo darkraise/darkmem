@@ -721,6 +721,11 @@ MCP_TOOLS_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "mcp:memory_delete",
     "mcp:memory_stats",
     "mcp:memory_tags",
+    # T3.27. A write door whose response is counts and ids only: the content
+    # crossing it came *from* the caller, so nothing memory-derived crosses
+    # back. Unlike `memory_add` it has no wait_process settle re-read, so
+    # there is no shape in which it echoes a stored row.
+    "mcp:research_run",
 })
 
 

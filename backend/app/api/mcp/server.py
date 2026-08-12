@@ -21,6 +21,7 @@ from app.config import settings
 from app.database import async_session_factory
 from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
+from app.schemas.research import ResearchFindingInput
 from app.services.memory import MemoryService
 from app.utils.graph_keys import compose_key, decompose_key
 
@@ -1274,3 +1275,122 @@ async def knowledge_search(
                 **knowledge_search_unavailable(exc).model_dump(mode="json"),
             })
         return knowledge_search_response(result, fuse=fuse).model_dump_json()
+
+
+# ── The research door (doc 09 §6, T3.27) ──────────────────────────────────
+#
+# Why the F7 loop's one door is an MCP tool, and not a route, a job or a
+# script.
+#
+# Doc 09 §6's flow is demand-driven — `Human->>Agent: research subject S into
+# project P` — so the door has to carry a per-request subject. That rules out
+# a job on its own: a cron expression carries no subject, and
+# `job_registry.FieldDescriptor.default` is typed `int`, so a job's
+# `config_schema` cannot carry one either.
+#
+# What picks MCP over REST is the gatherer. `ResearchGatherer` has no in-tree
+# implementation by design, because a model without web access would invent
+# its sources — so the door cannot *call* a gatherer, the caller has to *be*
+# one. On MCP the caller is the web-capable agent that did the searching a
+# moment ago: it hands over its own findings and their per-source locators,
+# and the tool description delivers the origin-identity contract to the exact
+# actor that can violate it. REST's callers are the SPA and the generated
+# three-verb SDK, neither of which can gather, so the honest REST shape of
+# "research subject S into project P" is a route that gathers server-side —
+# the in-tree gatherer this design refuses — and the other REST shape, a body
+# carrying findings someone else gathered, is a second capture door wearing a
+# research label.
+#
+# The door adds no capability `/mcp` did not already have. Every row it files
+# is *more* disclosed than one filed through `memory_add`, not less: the
+# source is the reserved research kind and the origin_key is one
+# `is_researched_origin` recognises, and neither is a parameter here, so a
+# caller cannot file through this door while looking like ordinary capture.
+# Building the door is not arming the loop either — it stays refused until
+# the owner enables the config row.
+
+
+class _SuppliedFindings:
+    """The gatherer for a caller that has already gathered.
+
+    Deliberately not a slice to ``limit``. A door that trimmed an over-budget
+    call would file part of a research run and report it as filed, which is
+    the truncated filing the loop refuses outright; handing every supplied
+    finding back is what lets the budget refuse the whole run instead.
+    """
+
+    def __init__(self, findings: list):
+        self._findings = findings
+
+    async def gather(self, subject: str, *, limit: int) -> list:
+        return self._findings
+
+
+@mcp.tool(
+    description="File research evidence YOU have already gathered into this project as one research run. This tool does not search or fetch anything: evidence gathering is your capability, not darkmem's, so do the searching with your own tools and hand the findings here. Give every finding the canonical locator of the source it actually came from in 'source_id' — corroboration counts distinct sources, so two findings from one page must carry the same source_id and two independent pages must carry different ones, and a finding whose source you cannot identify must leave it null so it merges into one anonymous origin rather than counting twice. Never split one page into several source_ids or paraphrase one page into two findings with different ones: that manufactures corroboration for a claim only one source made. Every row filed here is marked research-originated and cannot be filed as ordinary capture. Disabled by default — an install whose research config row is not enabled refuses the run and files nothing."
+)
+async def research_run(
+    subject: str, project: str, findings: list[ResearchFindingInput],
+) -> str:
+    """
+    Args:
+        subject: What the evidence was gathered about. Recorded on every filed row and on the run's journal entry; it is not a search query and nothing is fetched for it.
+        project: The project to file into. Required and never defaulted, so manufactured origins land where the caller asked for them rather than in "default" by omission.
+        findings: The evidence you gathered, one entry per finding. Each is {"content": the finding's text, "source_id": the canonical URL or document id of the source it came from (null when you cannot establish it), "metadata": optional extra fields}. There is no 'source' or 'origin_key' field: this door stamps both, and sending either is an error rather than a silently ignored key.
+    """
+    from app.services.auto_research import (
+        ResearchDisabled,
+        ResearchFinding,
+        run_research,
+    )
+
+    subject = (subject or "").strip()
+    project = (project or "").strip()
+    if not subject:
+        raise ValueError("subject is required")
+    if not project:
+        raise ValueError("project is required")
+
+    parsed = [ResearchFindingInput.model_validate(finding) for finding in findings]
+    if not parsed:
+        # An empty run would return a filed-shaped result with filed=0, which
+        # reads to an agent as "stored" — the same reason the batch cap
+        # refuses an empty batch rather than accepting it as a no-op.
+        raise ValueError("findings must not be empty")
+
+    gatherer = _SuppliedFindings([
+        ResearchFinding(
+            content=finding.content,
+            source_id=finding.source_id,
+            metadata=dict(finding.metadata),
+        )
+        for finding in parsed
+    ])
+    async with _memory_service_context() as service:
+        try:
+            result = await run_research(
+                service.session,
+                subject=subject,
+                project=project,
+                gatherer=gatherer,
+                service=service,
+            )
+        except ResearchDisabled as exc:
+            # An install that has not armed the loop is unavailability the
+            # owner can recover, not a caller mistake: doc 12 §3's envelope
+            # says so without teaching the agent it called wrong. A budget
+            # refusal is the caller's mistake and still raises.
+            return json.dumps(
+                _degraded(str(exc), subject=subject, project=project, filed=0)
+            )
+        return json.dumps({
+            "schema_version": ENVELOPE_SCHEMA_VERSION,
+            "status": "filed",
+            "run_id": str(result.run_id),
+            "subject": result.subject,
+            "project": result.project,
+            "filed": result.filed,
+            "memory_ids": [str(memory_id) for memory_id in result.memory_ids],
+            "origins_manufactured": True,
+            "journalled": result.journalled,
+        })

@@ -924,6 +924,28 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="research.run",
+        status=MCP_ONLY,
+        mcp=("research_run",),
+        reason=(
+            "The door files evidence its caller gathered, and darkmem has no "
+            "evidence gatherer by design -- a model without web access would "
+            "invent its sources. So the caller has to be the gatherer, which "
+            "an MCP agent is and neither REST caller is: the SPA and the "
+            "generated three-verb SDK cannot search the web, so the honest "
+            "REST shape of 'research subject S into project P' is a route "
+            "that gathers server-side, i.e. the in-tree gatherer the design "
+            "refuses. A second door would also be the second ingestion path "
+            "T3.07 was built to avoid."
+        ),
+        note=(
+            "Not a capture twin either: the tool takes no source, no "
+            "origin_key and no ctx, so a caller cannot file through it while "
+            "looking like ordinary capture, and it refuses until the owner "
+            "enables the research config row (T3.27, doc 09 section 6)."
+        ),
+    ),
+    Surface(
         name="code.changes",
         status=MCP_ONLY,
         mcp=("code_changes",),
