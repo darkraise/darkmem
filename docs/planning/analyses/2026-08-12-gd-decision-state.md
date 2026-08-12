@@ -140,17 +140,83 @@ the ledger is what carries the history, and it should be restated in the same
 breath as any post-retirement run so a reader never takes a fresh 0 for a fresh
 gold.
 
+## Addendum, same day: R-B cannot be executed as written
+
+I went to execute step 1 and stopped. **Retiring the duplicates silently
+raises the contradiction-recall bar, and that is a property of R-B itself
+rather than of how it is carried out.**
+
+The duplicates are confirmed by the committed check
+(`duplicate_propositions.find_duplicate_propositions`, which reports and never
+retires). Exactly two contradicted propositions are duplicated, and both
+straddle the populations as the adjudication said:
+
+| Proposition | Contacted | Rule B (≥ `eg-0242`) |
+|---|---|---|
+| `hv-27 has part scratch partition` (direction) | `eg-0093` | `eg-0367` |
+| `github actions replaces jenkins` (direction) | `eg-0194` | `eg-0251` |
+
+Retiring one of each — the only reading of "the two contradicted duplicates
+are retired" — takes the contradicted census down by two. Measured:
+
+| Population | Now | Min passing | After retiring 2 | Min passing |
+|---|---|---|---|---|
+| Pooled contradicted | 80 | 76/80 = **0.9500** | 78 | 75/78 = **0.9615** |
+| Rule B contradicted | 40 | 38/40 = **0.9500** | 38 | 37/38 = **0.9737** |
+
+**0.95 stops being expressible on either lattice, and the effective bar rises
+to 0.9615 pooled and 0.9737 on Rule B.** Rule B requires the verdict to hold
+on both, so the binding number becomes **0.9737** — a bar 2.37 points above
+the one the owner ratified, arrived at by arithmetic rather than by argument.
+
+This is the exact defect **T2.115 was minted to fix**, reintroduced by the
+ruling meant to fix a different one, and more severely: T2.115's complaint was
+that a 25-pair subset "silently gates it at ≥ 0.96", and this lands at 0.9737.
+
+Three things follow:
+
+1. **It is not a choice of which pair to retire.** Any two-row reduction does
+   it; retiring one from each population instead of two from Rule B lands on
+   39 (37/39 = 0.9487, also inexact). There is no lawful retirement that
+   preserves the property.
+2. **It moves a ratified bar without a recorded argument.** The ledger's
+   standing rule is that a bar may never be moved to make a run pass; a bar
+   that moves *upward* by census arithmetic is the same violation with the
+   sign flipped, and nobody decided it.
+3. **Executing now probably costs a human sitting for nothing.** Under the
+   strict certification rule the retirement voids `58ac1a90` and demands a
+   fresh n = 93 blind sitting. If the answer to the lattice problem is another
+   resize, that is a *second* sitting — and the sitting is the scarcest
+   resource in this project.
+
+**So R-B and T2.115's ratified purpose cannot both hold as written**, which is
+runbook §5's Tier-3 test verbatim. I have executed nothing and retired nothing.
+The gold is untouched.
+
+The owner's options, none of which an agent may pick: amend R-B to pair the
+retirement with a compensating resize that restores lattice-exactness (gold
+surgery, with clause 1's contamination rules governing any authoring); accept
+the raised bar and record it as a deliberate tightening with its arithmetic;
+or rule that independence is handled by *reporting* the duplicate rather than
+retiring it, so the census keeps 80 rows and the reader is told 78 are
+independent.
+
 ## The queue, in order
 
-1. **Retire the two contradicted duplicates** (R-B, already ruled, unowned,
-   content-forced — no decision needed).
-2. **Rule the re-certification question** above: strict void, or narrowing for
-   content-forced removals. Tier 3, owner's.
-3. **Re-certify the gold** per that ruling — a fresh n = 93 sitting if strict.
+**Revised by the addendum above.** The first step is no longer executable.
+
+1. **Rule the R-B lattice conflict** — amend R-B with a compensating resize,
+   accept the raised bar and record it, or replace retirement with reporting.
+   Tier 3, owner's. *Nothing proceeds past this.*
+2. **Rule the re-certification question** — strict void, or narrowing for
+   content-forced removals. Tier 3, owner's. Worth ruling **with** step 1,
+   because together they decide whether the repair costs one human sitting,
+   two, or none.
+3. **Execute whatever step 1 rules**, then re-certify per step 2.
 4. **Write R-C's three sentences** from an uncontaminated session.
 5. **Run the final sanctioned attempt.**
 
-Steps 1 and 3 are work; steps 2 and 4 are yours and nothing can proceed past
-them. Step 5 is the only one that can clear G-D, and it can also record a
-measured miss — which doc 17 and runbook §7 both treat as an outcome, not a
-failure to finish.
+Step 3 is work an agent can do once 1 and 2 are ruled. Steps 1, 2 and 4 are
+yours. Step 5 is the only one that can clear G-D, and it can equally record a
+measured miss — which doc 17 and runbook §7 both treat as an outcome rather
+than a failure to finish.
