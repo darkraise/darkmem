@@ -508,7 +508,12 @@ the same limit — what changes is that a loosening is no longer a single number
 edit with no trace. Note the qualification *runner* stamps
 `VERIFICATION_BAR_DEFAULTS` directly and was never on the config surface, and
 G-C's `scripts/benchlib/promotion_bars.py` inherited the pre-clamp posture
-verbatim and still carries it. Each purpose is
+verbatim **until T2.127 closed it on 2026-08-13** (doc 17 §6 amended, owner-ruled)
+— same licence shape under the key `promotion_bar_licences`, but the conservative
+direction is carried **per bar** there, because five of G-C's six are floors and
+`verification_false_promotion_bar` (scored with a strict `<`) is a **ceiling**
+whose laundering move is *upward*. A direction-blind clamp would have read that
+one's abuse as a tightening. Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
