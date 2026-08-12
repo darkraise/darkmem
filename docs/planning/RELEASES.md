@@ -137,9 +137,20 @@ that produces a gate carries `Version: gate` by this file's own contract, and
 `test_the_gate_track_is_qualified_produces` binds the two spellings. v0.5 ships the split
 and its preconditions; the verdict ships where every other verdict does.
 
+**Half B is the corpus, and the research agent joined it on the owner's instruction
+(2026-08-12)** — `T3.07` and `T3.08` were parked and are now v0.5. The evidence cost is
+stated where it will be read: origins a loop mints for itself are weaker corroboration than
+origins independent capture produces, so `T3.08`'s stamping must make the two
+machine-distinguishable and G-C's eventual verdict owes the slice. **Building them is not
+running them** — pointing the loop at production is a separate decision and remains the
+owner's.
+
 - `T2.117` — Per-role qualification records
 - `T2.118` — Duplicate/independence pass over the non-contradicted census
 - `T2.120` — `SINGLE_VALUED_RELATIONS`: the per-relation argument
+- `T2.123` — The independence disclosure counts findings, not propositions
+- `T3.07` — Research-agent loop through the ordinary capture door
+- `T3.08` — Distinct-origin stamping for researched sources
 - `T2.121` — Correct the contradiction-recall derivation in the ledger
 - `T2.122` — The verdicts directory leaks synthetic files under real identities
 
@@ -158,7 +169,7 @@ G-C and G-D ships as its own version whose headline is "badges go live".
 
 ## Parked — kept, not dropped, no version assigned
 
-EH1 documents/PKM (15 tasks), the research agent (`T3.07`, `T3.08`), API keys
+EH1 documents/PKM (15 tasks), API keys
 and webhooks (`T4.01`–`T4.05`), the two audit records (`T4.09`, `T4.10`), and
 `T1.54`. Parked work stops implying imminent effort; it is not dropped, and a
 drop is a different status with a different obligation (`progress.md`'s status
