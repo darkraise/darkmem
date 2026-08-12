@@ -1005,10 +1005,21 @@ governs a gate verdict a human writes up. The case may still carry — an unclam
 number that can move without a trace either way — but this task must state which failure
 it prevents, not inherit T2.126's.
 
+**T2.126's shape cannot be copied verbatim, and this is the task's real design
+constraint** (found 2026-08-13, before dispatch). The judge's four bars are uniformly
+*higher is stricter*, so a floor plus a clamp-upward is the whole story. These six are
+not: `verification_false_promotion_bar` (0.01, scored with a **strict `<`**) is a
+**ceiling** — raising it to 0.05 tolerates five times the false-promotion rate — while the
+other five are floors. A guard that only refuses downward moves would dutifully protect
+five bars and leave the single most abusable one wide open, pointing the wrong way. So the
+conservative direction must be a **per-bar property** carried beside each default, not an
+assumption baked into the comparison.
+
 **Done when:** the decision is made and recorded either way; if clamped, it reuses
-T2.126's licence shape (bounded per parameter, clamped to the **floor** rather than the
-licensed bound, citation checked for presence and never for truth) rather than a third
-mechanism; tightening stays free; unreadable rows keep raising; and the clamp is proven by
+T2.126's licence shape (bounded per parameter, clamped to the conservative bound rather
+than the licensed value, citation checked for presence and never for truth) rather than a
+third mechanism, with the per-bar direction made explicit; tightening — meaning a move in
+each bar's own conservative direction — stays free; unreadable rows keep raising; and the clamp is proven by
 test plus a negative control that a tightening row survives. **Leaving it unclamped is a
 legitimate outcome**, recorded beside the bars with the reason.
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_promotion_bars.py -q`
