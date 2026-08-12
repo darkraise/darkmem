@@ -55,7 +55,11 @@ from app.services.events import (
     record_event,
 )
 from app.services.relations import REPLACES_FAMILY
-from app.taxonomy import LEGACY_RELATION_TYPE_MAP, normalize_relation_type
+from app.taxonomy import (
+    LEGACY_RELATION_TYPE_MAP,
+    RELATIONSHIP_TYPES,
+    normalize_relation_type,
+)
 from app.services.verification_ladder import (
     LADDER_CONFIG_KEY,
     LADDER_MEASUREMENTS_KEY,
@@ -1012,12 +1016,29 @@ class TestSingleValuedRelationsIsEmpty:
     through `LEGACY_RELATION_TYPE_MAP`'s `VISITED` and `LIVES_IN` -- a *location*.
     A relation is single-valued only when every sense it stores is, so admitting
     it manufactured disputes out of claims that are all true at once.
+
+    The emptiness no longer rests on that one incident: every member of
+    `RELATIONSHIP_TYPES` now carries a recorded admit/reject argument beside
+    the frozenset, and all sixteen are rejections -- plural by construction,
+    or polyvalent through legacy folding.
     """
 
     def test_the_set_is_empty_and_stated(self):
         assert SINGLE_VALUED_RELATIONS == frozenset(), (
             "no relation in the closed vocabulary is single-valued across every "
             "sense it stores; widening this needs a taxonomy change, not an edit"
+        )
+
+    def test_a_member_must_be_a_stored_relation_type(self):
+        """A member outside the closed vocabulary can never match a stored
+        `rel_type`, so the arm would read as armed while being unreachable --
+        silence that looks like coverage. Vacuously true while the set is
+        empty; binding on the first admission."""
+        unknown = SINGLE_VALUED_RELATIONS - frozenset(RELATIONSHIP_TYPES)
+        assert not unknown, (
+            f"{sorted(unknown)} are not in RELATIONSHIP_TYPES, so no "
+            "knowledge_triples row can ever carry them and the single-valued "
+            "arm would be armed against rows that cannot exist"
         )
 
     def test_no_member_may_be_a_target_of_the_legacy_map(self):
