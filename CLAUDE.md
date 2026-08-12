@@ -510,10 +510,19 @@ edit with no trace. Note the qualification *runner* stamps
 G-C's `scripts/benchlib/promotion_bars.py` inherited the pre-clamp posture
 verbatim **until T2.127 closed it on 2026-08-13** (doc 17 §6 amended, owner-ruled)
 — same licence shape under the key `promotion_bar_licences`, but the conservative
-direction is carried **per bar** there, because five of G-C's six are floors and
+direction is carried **per bar** there, because G-C's six do not share one:
 `verification_false_promotion_bar` (scored with a strict `<`) is a **ceiling**
-whose laundering move is *upward*. A direction-blind clamp would have read that
-one's abuse as a tightening. Each purpose is
+whose laundering move is *upward*, and a direction-blind clamp would have read
+its abuse as a tightening. **`promotion_rate_min_eligible` has no conservative
+direction at all** — higher is stricter at its own comparison site, but its
+negation is the domain of the composed "every powered bucket must clear the
+floor" rule, so raising it silences buckets and can flip a failing axis to
+cleared; it takes a licence in **either** direction. Two limits worth knowing
+before quoting that module as G-C's floor: `promotion_journal_completeness_bar`
+is read by no predicate, so its clamp is prophylactic rather than live; and a
+clamped run's report body is currently byte-identical to an unclamped one
+(T2.128), so the clamp is real but presently invisible in the artifact the
+ledger quotes. Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The

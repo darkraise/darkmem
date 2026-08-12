@@ -193,13 +193,23 @@ is spelled as its only satisfiable form, zero unexplained rows — so a
 stated and its clamp holds for a future consumer; it is prophylactic, and
 calling it a live protection would overstate what is here.
 
-*Two:* tightening is free, and for ``promotion_rate_min_eligible`` free
-is not the same as harmless. That default is imported from the harness's
-``UNDER_POWERED_THRESHOLD`` precisely so the report's "powered" and this
-module's "decidable" cannot become two claims; a ``config`` row raising
-it is conservative for the verdict and still splits those two numbers.
-That belongs in a source diff, where the import can move with it, not in
-a row this clamp waves through.
+*Two:* tightening is free **except where a bar has no conservative
+direction**, and this module has one such bar. The first version of this
+paragraph said a ``config`` row raising ``promotion_rate_min_eligible``
+was "conservative for the verdict", waved it through, and was **wrong** —
+corrected 2026-08-13 after T2.127's review found it and it was
+reproduced against these predicates. At its own comparison site
+(``slice_powered``) higher *is* stricter. But the bar's **negation**
+defines the domain of the composed rule "every powered bucket must clear
+``promotion_rate_floor``": raising it silences buckets, and a silenced
+bucket cannot fail. Axis ``[(6, 10), (2, 7)]`` with 8 promotions fails at
+the committed 5 and **clears** at 8 — a config write with no source diff
+turning a non-clearing gate into a clearing one, which is the exact
+threat this clamp exists to close. So that bar is ``Conservative.NEITHER``
+and **every** move takes a licence naming the value. Its default is still
+imported from ``UNDER_POWERED_THRESHOLD`` so the report's "powered" and
+this module's "decidable" stay one number, and a move still belongs in a
+source diff where the import can move with it.
 
 **The honest limit is the same as T2.126's.** An operator with
 config-write access can write the bar row and the licence row together,
@@ -226,6 +236,11 @@ class Conservative(Enum):
 
     HIGHER = "higher"
     LOWER = "lower"
+    # A bar with no free direction: *every* move needs a licence. Reserved
+    # for a bar that is non-monotone at the composed verdict, where a move
+    # that is conservative at its own comparison site loosens the gate
+    # somewhere else — see `promotion_rate_min_eligible`.
+    NEITHER = "neither"
 
 
 @dataclass(frozen=True)
@@ -245,11 +260,17 @@ class BarSpec:
     licence_limit: float
 
     def loosens(self, candidate: float) -> bool:
+        if self.conservative is Conservative.NEITHER:
+            return candidate != self.default
         if self.conservative is Conservative.HIGHER:
             return candidate < self.default
         return candidate > self.default
 
     def beyond(self, candidate: float, bound: float) -> bool:
+        if self.conservative is Conservative.NEITHER:
+            # A licence names the one value its argument reaches, so anything
+            # else is past it in the only sense this bar has.
+            return candidate != bound
         if self.conservative is Conservative.HIGHER:
             return candidate < bound
         return candidate > bound
@@ -257,6 +278,10 @@ class BarSpec:
     def bound_is_coherent(self, bound: float) -> bool:
         if not math.isfinite(bound):
             return False
+        if self.conservative is Conservative.NEITHER:
+            # The bound *is* the licensed value, so the only incoherent one
+            # is the committed number itself — a licence to change nothing.
+            return bound != self.default
         if self.conservative is Conservative.HIGHER:
             return bound > self.licence_limit
         return bound < self.licence_limit
@@ -280,8 +305,22 @@ PROMOTION_BARS: dict[str, BarSpec] = {
     # Imported, never re-typed: the harness's reporting floor and the gate's
     # per-bucket power floor must be one number or the ledger's "powered"
     # and this module's "decidable" drift into two claims.
+    # **No free direction, and the reason is the one defect T2.127's review
+    # found.** At its own comparison site (`slice_powered`) higher is
+    # stricter, so a raise reads as a tightening — but the bar's *negation*
+    # defines the domain of the composed rule "every powered bucket must
+    # clear `promotion_rate_floor`". Raising it shrinks that domain and
+    # silences buckets, so a raise can flip an axis whose powered bucket was
+    # failing into one where every powered bucket clears. Reproduced against
+    # the real predicates: axis [(6,10),(2,7)] with 8 promotions fails at the
+    # committed 5 and clears at 8. It is non-monotone at the verdict, so
+    # neither direction is free and every move takes a licence. Its default is
+    # imported from `UNDER_POWERED_THRESHOLD` so the harness's "powered" and
+    # the gate's "decidable" stay one number; a move belongs in a source diff
+    # where the import can move with it.
     "promotion_rate_min_eligible": BarSpec(
-        UNDER_POWERED_THRESHOLD, Conservative.HIGHER, licence_limit=0.0
+        UNDER_POWERED_THRESHOLD, Conservative.NEITHER,
+        licence_limit=float(UNDER_POWERED_THRESHOLD),
     ),
     "promotion_rate_min_promotions": BarSpec(
         1, Conservative.HIGHER, licence_limit=0.0

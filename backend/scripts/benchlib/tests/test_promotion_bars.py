@@ -52,6 +52,18 @@ LIVE_PROBES = {
     ),
 }
 
+# The bars that genuinely have a free direction. `promotion_rate_min_eligible`
+# is deliberately not one: it is non-monotone at the *composed* verdict, so
+# both of its moves take a licence and the per-direction suites below would
+# assert a contract it no longer has. Its own behaviour is pinned by
+# `TestTheNonMonotoneBar`.
+MONOTONE_PROBES = {
+    key: probe for key, probe in LIVE_PROBES.items()
+    if pb.PROMOTION_BARS[key].conservative is not pb.Conservative.NEITHER
+}
+assert set(MONOTONE_PROBES) == set(LIVE_PROBES) - {"promotion_rate_min_eligible"}
+
+
 
 class TestDefaultsArePinned:
     def test_exact_values(self):
@@ -116,7 +128,14 @@ class TestDirectionIsDerivedNotDeclared:
     """
 
     def test_every_bar_states_a_direction_and_a_coherent_limit(self):
-        assert set(pb.PROMOTION_BARS) == set(pb.PROMOTION_BAR_DEFAULTS)
+        # `PROMOTION_BAR_DEFAULTS` is a comprehension over `PROMOTION_BARS`, so
+        # comparing the two can never fail. Pin what can: every live bar must
+        # carry a probe, so a seventh cannot arrive without its direction
+        # being re-derived from the predicate that consults it.
+        assert set(MONOTONE_PROBES) | {"promotion_rate_min_eligible"} == {
+            key for key in pb.PROMOTION_BARS
+            if key != "promotion_journal_completeness_bar"
+        }
         for key, spec in pb.PROMOTION_BARS.items():
             loosening_side_is_below = spec.conservative is pb.Conservative.HIGHER
             assert (spec.licence_limit < spec.default) is loosening_side_is_below, (
@@ -124,7 +143,7 @@ class TestDirectionIsDerivedNotDeclared:
                 f"bar's own loosening direction"
             )
 
-    @pytest.mark.parametrize("key", sorted(LIVE_PROBES))
+    @pytest.mark.parametrize("key", sorted(MONOTONE_PROBES))
     def test_declared_direction_matches_the_verdict(self, key):
         probe, loosens, tightens = LIVE_PROBES[key]
         spec = pb.PROMOTION_BARS[key]
@@ -156,7 +175,7 @@ class TestDirectionIsDerivedNotDeclared:
 
 
 class TestClampDirectionPerBar:
-    @pytest.mark.parametrize("key", sorted(LIVE_PROBES))
+    @pytest.mark.parametrize("key", sorted(MONOTONE_PROBES))
     def test_an_unlicensed_loosening_clamps_back(self, key, caplog):
         _, loosens, _ = LIVE_PROBES[key]
         with caplog.at_level(logging.WARNING):
@@ -164,13 +183,13 @@ class TestClampDirectionPerBar:
         assert bars[key] == float(pb.PROMOTION_BAR_DEFAULTS[key])
         assert pb.PROMOTION_BAR_LICENCES_KEY in caplog.text
 
-    @pytest.mark.parametrize("key", sorted(LIVE_PROBES))
+    @pytest.mark.parametrize("key", sorted(MONOTONE_PROBES))
     def test_the_clamped_run_still_cannot_clear(self, key):
         """The negative of the clamp: the verdict the moved bar bought."""
         probe, loosens, _ = LIVE_PROBES[key]
         assert not probe(pb.resolve_promotion_bars({key: loosens}))
 
-    @pytest.mark.parametrize("key", sorted(LIVE_PROBES))
+    @pytest.mark.parametrize("key", sorted(MONOTONE_PROBES))
     def test_a_tightening_row_survives_untouched(self, key, caplog):
         """The negative control: moving a bar its own conservative way is
         free, needs no licence, and is honoured exactly as written."""
@@ -354,3 +373,60 @@ class TestPredicates:
     def test_journal_completeness_is_zero_violations(self):
         assert pb.journal_completeness_clears(0)
         assert not pb.journal_completeness_clears(1)
+
+
+class TestTheNonMonotoneBar:
+    """`promotion_rate_min_eligible` has no conservative direction.
+
+    At its own comparison site (`slice_powered`) higher is stricter, so a
+    raise reads as a tightening and the first implementation waved it
+    through silently. But the bar's *negation* defines the domain of the
+    composed rule "every powered bucket must clear `promotion_rate_floor`":
+    raising it silences buckets, and a silenced bucket cannot fail. Found by
+    T2.127's review and reproduced here against the real predicates.
+    """
+
+    KEY = "promotion_rate_min_eligible"
+    AXIS = [(6, 10), (2, 7)]
+
+    def _composed_verdict_clears(self, bars):
+        powered = [(p, e) for p, e in self.AXIS if pb.slice_powered(e, bars)]
+        return all(pb.slice_clears(p, e, bars) for p, e in powered)
+
+    def test_the_raise_this_bar_used_to_wave_through_flips_the_verdict(self):
+        """The defect itself, pinned so it cannot come back as a 'tightening'."""
+        committed = pb.resolve_promotion_bars({})
+        assert not self._composed_verdict_clears(committed), (
+            "the fixture must fail at the committed bar, or it proves nothing"
+        )
+        raised = {**committed, self.KEY: 8.0}
+        assert self._composed_verdict_clears(raised), (
+            "raising the bar must silence the failing bucket — this is the "
+            "hazard, and if it stops being true this test is measuring nothing"
+        )
+
+    @pytest.mark.parametrize("candidate", [8.0, 2.0])
+    def test_every_move_needs_a_licence(self, candidate, caplog):
+        """Both directions, because neither is safe."""
+        with caplog.at_level(logging.WARNING):
+            bars = pb.resolve_promotion_bars({self.KEY: candidate})
+        assert bars[self.KEY] == float(UNDER_POWERED_THRESHOLD)
+        assert self.KEY in caplog.text
+
+    def test_a_licence_naming_the_value_is_honoured(self):
+        bars = pb.resolve_promotion_bars(
+            {self.KEY: 8.0,
+             pb.PROMOTION_BAR_LICENCES_KEY: {"licensed": {
+                 self.KEY: {"value": 8.0, "argument": "gate-ledger.md, G-C"}}}},
+        )
+        assert bars[self.KEY] == 8.0
+
+    def test_a_licence_does_not_license_a_different_value(self):
+        bars = pb.resolve_promotion_bars(
+            {self.KEY: 9.0,
+             pb.PROMOTION_BAR_LICENCES_KEY: {"licensed": {
+                 self.KEY: {"value": 8.0, "argument": "gate-ledger.md, G-C"}}}},
+        )
+        assert bars[self.KEY] == float(UNDER_POWERED_THRESHOLD), (
+            "a licence names one value; anything else is unlicensed"
+        )
