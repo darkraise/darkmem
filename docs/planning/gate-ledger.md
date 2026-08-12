@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open** (re-measured 2026-08-08 under the ratified redesign, on the grown+certified gold: NOT CLEARED — contradiction-**recall** 0.9125 pooled / 0.9200 never-contacted, both vs 0.95; the other three bars pass on both populations. The failure is one slice: all 7 recall misses are `value-swap`. Prior runs under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.41 — this file, "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
+| G-D | L2 → L3 | **open — the final sanctioned attempt is spent** (2026-08-12, T2.114, owner-ruled `gpt-5.5`: NOT CLEARED — contradiction-**recall** 0.8875 pooled / 0.8500 Rule B, both vs 0.95; the other six bar readings pass. The stopping rule has fired: no further model is tried on pair set `4975c5cc`, and the remaining moves — a new gold or a bar argument — must stand on grounds that do not cite this result. Prior runs: 0.9375 deepseek on the resized gold (2026-08-10, missed by one pair), 0.9125/0.9200 gpt-5.5 on the grown gold (2026-08-08); under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.114 — this file, "G-D final attempt"; T2.41 — "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-12-judge-qualification-fd39e7b2.md`, `docs/eval/2026-08-10-judge-qualification-4d886440.md`, `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
 | G-E | L3 → F7 | **open** (both bars stated 2026-08-11 by derivation and owner-ratified before any coverage number exists anywhere: runtime threshold **0.95**, corpus share **0.90**. Nothing is measured until T3.24's runner reads production — see "G-E") | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -1220,6 +1220,114 @@ gives a controller the join without giving an author the census. Until it
 exists, **a re-measure on the resized gold cannot separate a census-content
 delta from a judge delta**, and any comparison against the 0.9125 recorded on
 2026-08-08 must say so.
+
+### G-D final attempt (2026-08-12, T2.114): **NOT CLEARED — contradiction recall, both populations. The stopping rule has fired.**
+
+Attempt **2 of 2** on pair set `4975c5cc` — the counter keys on the pairs since
+T2.116's ruling, and it read **1** (deepseek-v4-flash's 2026-08-10 contact)
+before this run. The file sha is `6eadba73`, moved from `98fc4b49` by T2.116's
+certification stamp; the pairs did not move. Run under the owner's ruling
+(2026-08-10, re-affirmed 2026-08-12): **the model is `gpt-5.5`**, chosen by the
+party that had not been reasoning from the scoreboard, executed by a fresh
+session that read no prior G-D number before its own existed. Judge identity
+`fd39e7b2c47fa375` (`gpt-5.5`, `base_url=https://api.openai.com/v1`,
+`api_kind=openai`, `params={"reasoning_effort":"high"}`, prompt v1
+`f99151e4add69b31` — byte-identical to every recorded attempt), the same
+identity as the 2026-08-08 grown-gold contact, which is what the ruling's
+"attempt on gpt-5.5" required. Runner, gold and bars unmodified; tree clean at
+`1b4b190d`; intent row `f571aaac-8490-4f12-baac-6e2b6b73c82d` durable before
+first gold contact. Preflight: `/v1/models` 200 with `gpt-5.5` listed; fixture
+stage 9/9 valid, all replayed warm — the full warm replay is itself the
+identity check, since only the recorded identity's cache keys could serve it.
+Report: `docs/eval/2026-08-12-judge-qualification-fd39e7b2.md`.
+
+| Bar | Required | Pooled (402) | Rule B population (176) |
+|---|---|---|---|
+| `groundedness_gate_precision_bar` | 0.95 | 0.9884 **PASS** | 0.9857 **PASS** |
+| `groundedness_gate_recall_bar` | 0.90 | 0.9827 **PASS** | 0.9583 **PASS** |
+| `contradiction_precision_bar` | 0.70 | 0.8875 **PASS** | 0.9189 **PASS** |
+| `contradiction_recall_bar` | 0.95 | **0.8875 FAIL** | **0.8500 FAIL** |
+
+**Verdict: NOT CLEARED.** Pooled contradiction-recall is 71/80 — nine misses
+where the bar permits four. Rule B's population scored 34/40 — six where its
+lattice permits two. Neither is an edge case, and the two populations agree, so
+no pooling question arises. Six of eight bar readings pass. Invalid responses
+0/402. No qualification record was minted — the runner printed "G-D stays
+closed" and wrote nothing, which is the miss path working as specified.
+
+**The stopping rule has now fired, and it forecloses every branch equally.**
+T2.114's rule, written before the run and binding regardless of outcome: this
+was the **final** judge attempt on this gold. G-D is recorded NOT CLEARED, no
+further model is tried on this pair set, and a miss does not authorise a fourth
+attempt. The only remaining moves are the owner's, and each must stand on
+grounds that do not cite this result: a new gold justified independently, or a
+bar argument likewise independent. "One bar missed" is not an invitation to try
+again — `gold_touching_attempts` reads **2** and the budget on `4975c5cc` is
+spent. The task's stopping condition is stated as **met**.
+
+**Most of this attempt replayed warm, and that is the most important caveat in
+it.** The twin: `judge_call` live n=64, cache n=338 (fixtures 0 live / 9
+cache); the disk cache grew by exactly 64 entries. Because the invocation
+matched the 2026-08-08 identity byte-for-byte, every pair shared with that
+contact returned its stored verdict. That cuts both ways. It means the pooled
+0.8875 against that run's 0.9125 is **not** judge drift — the judge cannot have
+moved on pairs whose verdicts are literal replays — so the delta is census
+composition (T2.115's retirements, whose overlap with the old misses the
+section above records as uncomputable backward) plus 64 fresh verdicts, in
+proportions no artifact can decompose backward. It also means this is not an
+independent second sitting of the judge on the shared material. Forward, the
+gap the 2026-08-10 entry named is closed: this run emitted the per-pair
+`{pair_id: verdict}` artifact beside the cache (`entailment/verdicts/`, same
+contaminated category, never published), so the next comparison **against this
+run** is attributable.
+
+**The warm-replay decomposition surfaced a census defect, recorded for the
+owner rather than adjudicated here.** The 338 warm hits decompose as 226
+(the contacted population) + 110 (Rule B's growth pairs, first contacted by
+this same identity on 2026-08-08) + **2 pairs the census counts as new**:
+`eg-0367` and `eg-0404`, whose cache entries date to 2026-08-08 15:52–15:57
+UTC. Both are **byte-identical reproductions — premise and hypothesis — of
+pairs their own authoring round retired**: `eg-0367` reproduces retired
+`eg-0155` (direction/contradicted), `eg-0404` reproduces retired `eg-0048`
+(value-swap/contradicted), both `retirement_kind: "lattice"`. Two consequences,
+neither of which moves a measured number: Rule B's "not contacted before"
+property is dented in substance for 2 of its 40 contradicted pairs — beyond
+C-1's premise-overlap note for `eg-0367`, this is full-text identity, and the
+judge was served its stored verdicts for both — and the retirement did not
+retire the content, since the round's authoring reproduced it verbatim under
+new ids. The verdict does not turn on this: recall fails on both populations
+with or without the two pairs. Their hit/miss status is deliberately not
+recorded here. Owner-adjudication item, beside C-1/C-2.
+
+**Census independence was disclosed and its flag was silent for the right
+reason.** The report carries the ruled disclosure: 80 contradicted rows over 78
+independent propositions (duplicates `eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`);
+against 0.95 the minimum pass is 76/80 on rows and 75/78 on independent
+propositions, and the bar is expressible on this census. The robustness flag
+exists for one case only — a rows-**pass** the independent reading would fail —
+and this run is a fail on both readings (0.8875 on rows; worst-case independent
+69/78 = 0.8846), so the flag correctly did not fire. Present and silent, not
+absent.
+
+**The failure is the same rule as 2026-08-08, now measured through a mostly
+replayed lens.** Pooled recall misses by slice: **value-swap 8, overreach 1**
+(the census's single overreach-contradicted pair, added by the resize); Rule
+B's six: value-swap 5, overreach 1. The precision errors sit on disjoint
+material — temporal 7, direction 2 — the same structure as that run (whose
+seven misses were all value-swap, judged `unsupported`). The weak slices are
+value-swap 0.810 and temporal 0.825 against 0.96–1.00 elsewhere. The
+exclusive-slot rule remains what this judge declines to apply, and the prompt
+already states it — editing it would be tuning against the set that measured
+the failure, barred by doc 17 §6 and now moot under the stopping rule.
+
+**Cost twin.** Gold pass 402 calls, 196,843 tokens → **489.7 tokens/claim**;
+fixture overhead 9 calls / 4,088 tokens. Latency: live p50 3.34 s / p95 7.21 s
+(n=64); cache p50 ≈ 0.1 ms (n=338).
+
+**What stays closed.** No qualification record exists;
+`VerificationJudge.judge()` still refuses; the Tier-C scan still dead-ends;
+Phase 3 (L3 articles) stays closed and `article_synthesis` stays a placeholder.
+G-D remains open with no further attempt sanctioned on this gold.
 
 ### G-D redesign: **RATIFIED by the owner, 2026-08-08**
 
