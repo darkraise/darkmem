@@ -1,11 +1,13 @@
-"""Boot a disposable stack on :8000, run `npm run test:e2e` against it, tear
-it down. The `scripts/gate.sh --full` "playwright e2e" step's own script
-(T1.64 plan §6.2) — one command so `run_gate`'s process-group teardown wraps
-the whole sequence, not just the npm subprocess.
+"""Boot a disposable stack on its own port, run `npm run test:e2e` against
+it, tear it down. The `scripts/gate.sh --full` "playwright e2e" step's own
+script (T1.64 plan §6.2) — one command so `run_gate`'s process-group
+teardown wraps the whole sequence, not just the npm subprocess.
 
-`vite.config.ts`'s dev proxy hardcodes `http://localhost:8000` (measured,
-unchanged), so the disposable stack must bind that exact port — this script
-does not take a `--port` option for that reason. `E2E_DISPOSABLE_STACK=1` is
+`vite.config.ts`'s dev proxy reads `E2E_API_TARGET` and only falls back to
+`http://localhost:8000`, so the stack does **not** have to bind 8000 — this
+script exports the target it actually booted. (This docstring claimed the
+opposite until 2026-08-12, which is how the colliding default outlived the
+override that was added to escape it.) `E2E_DISPOSABLE_STACK=1` is
 exported into the `npm test:e2e` subprocess's environment so `auth.spec.ts` /
 `code-real-mode.spec.ts` take the disposable-stack branch of their
 `beforeAll` guard and never call `seedAdminPassword()` against `darkmem`.
@@ -33,12 +35,23 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
 from e2e import stack  # noqa: E402
 
 # The port the disposable stack binds, and the one the vite proxy is
-# pointed at through `E2E_API_TARGET`. Overridable because the default
-# collides with a darkmem instance running on the same machine — including
-# the maintainer's own, which is where this gate runs. On a collision the
-# health check finds the *other* instance and the run seeds an admin
-# against it, so the override is a safety valve rather than a convenience.
-PLAYWRIGHT_PORT = int(os.environ.get("E2E_PLAYWRIGHT_PORT", "8000"))
+# pointed at through `E2E_API_TARGET`.
+#
+# **Dedicated, not 8000.** The default was 8000 until 2026-08-12, which is
+# the port a running darkmem holds — so on any machine actually running the
+# product (the homelab cutover being the whole point) uvicorn failed to
+# bind, `_wait_for_health` got its 200 from the *live* instance, and the run
+# POSTed `/api/v1/setup` at production. It surfaced as a `GATE RED` with
+# "Setup already completed", which is the benign outcome: against an
+# instance that had *not* completed setup, this leg would have seeded an
+# admin password into a live install and then driven a browser suite
+# through it.
+#
+# The env override was added earlier as a safety valve for exactly this and
+# left the default colliding, which made the valve the only thing standing
+# between the gate and a live instance. `run_e2e.py` had it right all along
+# with a hardcoded 8321; this is its neighbour.
+PLAYWRIGHT_PORT = int(os.environ.get("E2E_PLAYWRIGHT_PORT", "8322"))
 
 
 def main() -> int:

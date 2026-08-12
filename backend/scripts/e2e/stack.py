@@ -24,7 +24,7 @@ any e2e assertion can run:
 
 Run directly for the manual, disposable-Playwright recipe (T1.64 plan §2.2):
 
-    python -m backend.scripts.e2e.stack --keep-running --port 8000 --password <pw>
+    python -m backend.scripts.e2e.stack --keep-running --port 8322 --password <pw>
 
 which does steps 1-4 and then blocks, writing ``.env-e2e`` beside this file
 so a human running Playwright against it can ``source`` the
@@ -36,6 +36,7 @@ import argparse
 import asyncio
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -139,6 +140,34 @@ async def _seed_facts_async() -> SeededFact:
         return await seed_fact_fixture(session)
 
 
+def _assert_port_free(port: int) -> None:
+    """Refuse to boot onto a port something already holds.
+
+    Without this the failure is silent and dangerous rather than loud:
+    ``subprocess.Popen`` does not raise when uvicorn cannot bind, so the
+    spawned server dies while ``_wait_for_health`` cheerfully gets its 200
+    from whatever *else* is listening. The run then treats a live instance
+    as its own disposable stack — seeding an admin against it and driving a
+    browser suite through it.
+
+    That is not hypothetical: it is how the 2026-08-12 ``GATE RED``
+    happened, with the Playwright leg defaulting to 8000 on a machine
+    running darkmem. Checked before the schema reset so a collision costs
+    nothing and cannot be mistaken for a test failure.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1.0)
+        if probe.connect_ex(("127.0.0.1", port)) == 0:
+            raise RuntimeError(
+                f"port {port} is already in use — refusing to boot a "
+                f"disposable stack onto it. Something is listening there, "
+                f"and this harness cannot tell it apart from its own server "
+                f"once it starts polling /health: it would seed an admin "
+                f"against that instance and run the suite through it. Stop "
+                f"the other process, or set the port override for this leg."
+            )
+
+
 def boot(
     *,
     port: int,
@@ -146,6 +175,7 @@ def boot(
     health_timeout_s: float = HEALTH_POLL_TIMEOUT_S,
     seed_facts: bool = False,
 ) -> StackHandle:
+    _assert_port_free(port)
     asyncio.run(e2e_db.reset_e2e_db())
 
     env = {**os.environ, "DATABASE_URL": e2e_db.TEST_DATABASE_URL}
