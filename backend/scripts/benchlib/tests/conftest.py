@@ -36,18 +36,26 @@ def _no_test_may_mint_the_qualification_record():
 
     So this is structural rather than a fix to the one test: no test in this
     suite may leave that file behind, whatever it points at.
+
+    Since the 2026-08-12 per-role split there are two such files, and the guard
+    covers every role's rather than a named path: a role added to
+    ``JUDGE_ROLES`` without a line here would be the one record a test could
+    mint unnoticed.
     """
     from app.services import verification_judge as vj
 
-    existed = vj.QUALIFICATION_RECORD_PATH.exists()
+    paths = [vj.qualification_record_path(role) for role in vj.JUDGE_ROLES]
+    existed = {path for path in paths if path.exists()}
     yield
-    if vj.QUALIFICATION_RECORD_PATH.exists() and not existed:
-        vj.QUALIFICATION_RECORD_PATH.unlink()
+    minted = [path for path in paths if path.exists() and path not in existed]
+    for path in minted:
+        path.unlink()
+    if minted:
         raise AssertionError(
-            "this test minted the production qualification record at "
-            f"{vj.QUALIFICATION_RECORD_PATH} -- it has been removed. A test must "
-            "pass an explicit record_path; only a real cleared gate run may "
-            "write the canonical one."
+            "this test minted the production qualification record(s) at "
+            f"{[str(p) for p in minted]} -- they have been removed. A test must "
+            "pass an explicit record path; only a real cleared gate run may "
+            "write a canonical one."
         )
 
 

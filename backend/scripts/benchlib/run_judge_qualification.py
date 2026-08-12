@@ -11,10 +11,12 @@ in-memory, and the bars are the code defaults
 
 Stage order, and why it is load-bearing:
 
-1. **``--gate`` eligibility refusal first, before any model call.** G-D's
-   gate mode refuses a gold that fails doc 17 §11's composition rule
-   (< 200 live pairs, zero ``l2-fact`` premises, or unadjudicated pairs), so
-   the gate structurally cannot be claimed on an ineligible gold.
+1. **The retired-pair-set refusal and ``--gate`` eligibility, both before any
+   model call.** A gold whose ``pairs_sha256`` is retired is refused outright
+   for every role and every mode (``refuse_retired_pair_set``); gate mode then
+   refuses a gold that fails doc 17 §11's composition rule (< 200 live pairs,
+   zero ``l2-fact`` premises, or unadjudicated pairs), so the gate structurally
+   cannot be claimed on an ineligible gold.
 2. **The fixture sanity stage** probes ``entailment/sanity_pairs.json``
    (never gold material) and aborts on an invalid-rate >= 10% or a
    single-verdict-class collapse — live plumbing shakeout happens here, and
@@ -36,9 +38,16 @@ Stage order, and why it is load-bearing:
 
 The default (no ``--gate``) run is an **interim** measurement: its report and
 ledger row are stamped with the eligibility refusal, and it can never write
-the app-side qualification record — only a ``--gate`` run against the
+an app-side qualification record — only a ``--gate`` run against the
 canonical gold can, which is what keeps "qualified" unreachable from this
 gold no matter what the numbers say.
+
+**The mint is per consumer role** since doc 17 §6's 2026-08-12 amendment: a
+gate run scores every bar as before and then writes a record for each role
+whose *own* bars cleared on both populations, so a run can qualify the
+entailment role while leaving the contradiction role exactly as unqualified as
+a fully-missed run would. Nothing about the judge, the gold or the bars is
+per-role — one identity, one sitting, one set of numbers.
 """
 from __future__ import annotations
 
@@ -146,6 +155,30 @@ def count_gold_touching_attempts(
     return total
 
 
+def refuse_retired_pair_set(gold_doc: dict) -> None:
+    """The stopping rule, enforced before a pair reaches a model.
+
+    T2.114 was the final attempt on pair set ``4975c5cc``: the budget is spent,
+    and the owner's 2026-08-12 ruling retires those pairs from qualification for
+    **every** role — a fresh sitting would be served warm-cache verdicts
+    byte-for-byte at the frozen identity, so only a new gold can produce an
+    independent number. Splitting the record by role (R1) is precisely the move
+    that could be read as licensing one more attempt, which is why the refusal
+    is executable rather than a paragraph. It refuses interim runs too: an
+    interim run sends the same pairs to the same model, and "no model touches
+    this pair set again" is not a claim about which flag was passed.
+    """
+    pairs_sha = entailment_gold.pairs_content_hash(gold_doc["pairs"])
+    if vj.is_retired_pair_set(pairs_sha):
+        raise RuntimeError(
+            f"refused before any gold contact: pair set {pairs_sha[:8]} is "
+            "retired from qualification use for every role (T2.114's stopping "
+            "rule; owner ruling 2026-08-12). The remaining moves are the "
+            "stopping rule's two — a new gold justified independently, or a "
+            "bar argument likewise independent — and neither is a re-run."
+        )
+
+
 SANITY_INVALID_RATE_MAX = 0.10
 DECLARED_CHANNELS = ("fixture_call", "judge_call")
 
@@ -251,7 +284,7 @@ async def run_qualification(
     report_dir: str | Path = REPORT_DIR,
     verdicts_dir: str | Path = VERDICTS_DIR,
     ledger_path: str | Path = ledger.DEFAULT_PATH,
-    record_path: str | Path | None = None,
+    record_dir: str | Path | None = None,
     gate: bool = False,
     judge_model: str | None = None,
     judge_base_url: str | None = None,
@@ -266,7 +299,9 @@ async def run_qualification(
     ledger_path = Path(ledger_path)
 
     if gate:
-        eligibility = jq.gate_eligibility(entailment_gold.load_entailment_gold(gold_path))
+        gate_gold_doc = entailment_gold.load_entailment_gold(gold_path)
+        refuse_retired_pair_set(gate_gold_doc)
+        eligibility = jq.gate_eligibility(gate_gold_doc)
         if not eligibility.eligible:
             raise RuntimeError(
                 "--gate refused before any model call — the gold fails doc 17 "
@@ -295,6 +330,11 @@ async def run_qualification(
         return None
 
     gold_doc = entailment_gold.load_entailment_gold(gold_path)
+    # Interim runs reach here without passing the gate block's copy. Placed
+    # after the fixture stage so `--fixtures-only`'s "the gold was never opened"
+    # stays literally true, and before the intent row so a refused run is not
+    # counted as a contact it never made.
+    refuse_retired_pair_set(gold_doc)
     live_pairs = [p for p in gold_doc["pairs"] if not p.get("retired")]
     eligibility = jq.gate_eligibility(gold_doc)
     gold_sha256 = hashlib.sha256(gold_path.read_bytes()).hexdigest()
@@ -439,6 +479,7 @@ async def run_qualification(
             print(f"  {bar_key}: measured={result['measured']} bar={result['bar']} "
                   f"-> {'PASS' if result['passed'] else 'FAIL'}")
         missed = [k for k, r in results.items() if not r["passed"]]
+        missed_bars = {k for k, r in results.items() if not r["passed"]}
         # Rule B: "the gate verdict required to hold on both". A bar cleared on
         # the pool and missed on Rule B's second population is a bar cleared on
         # pairs the judge had already been measured against, which is the one
@@ -451,28 +492,54 @@ async def run_qualification(
                       f"-> {'PASS' if result['passed'] else 'FAIL'}")
             missed += [f"{k} (Rule B population)"
                        for k, r in nc_results.items() if not r["passed"]]
-        if missed:
-            # A failed gate leaves its report and its ledger rows, and nothing
-            # else. Until 2026-08-08 it also wrote the qualification record --
-            # the very artifact that opens G-D -- carrying its own failing
-            # numbers. `qualification_state` re-checks every metric at read
-            # time, so nothing was qualified by it; but it left a key in the
-            # door that turns the moment a bar is loosened, and a bar is a
-            # config row. The G-C driver states the opposite rule for its own
-            # record ("written only by a run whose verdict cleared, and only by
-            # the gate owner deliberately, never as a side effect of
-            # measuring"); the two gates now agree.
-            print(f"[4/4] gate run MISSED {len(missed)} bar(s): "
-                  f"{', '.join(missed)} — no qualification record written. "
-                  f"G-D stays closed.")
-        else:
-            target = Path(record_path) if record_path is not None else vj.QUALIFICATION_RECORD_PATH
-            jq.write_qualification_record(
-                target, gold_path=gold_path, identity=identity, score=score,
-                gold_doc=gold_doc, ledger_run_id=run_id, bars=meta["bars"],
-                git_sha=meta["git_sha"], timestamp=timestamp,
+            missed_bars |= {k for k, r in nc_results.items() if not r["passed"]}
+
+        # The mint is per role since doc 17 §6's 2026-08-12 amendment: a role
+        # whose own bars cleared on **both** populations mints its record, and a
+        # role that missed one mints nothing. The verdict printed per role is
+        # what "G-D as redefined" now means — two verdicts, not one — and a run
+        # that clears neither is the same NOT CLEARED it always was.
+        cleared_roles = [
+            role for role, bar_keys in vj.JUDGE_ROLES.items()
+            if not (set(bar_keys) & missed_bars)
+        ]
+        for role in sorted(vj.JUDGE_ROLES):
+            verdict = "CLEARED" if role in cleared_roles else "NOT CLEARED"
+            print(f"  role {role}: {verdict} "
+                  f"({', '.join(vj.JUDGE_ROLES[role])})")
+
+        for role in sorted(cleared_roles):
+            target = (
+                Path(record_dir) / f"verification_qualification.{role}.json"
+                if record_dir is not None
+                else vj.qualification_record_path(role)
             )
-            print(f"[4/4] gate run CLEARED every bar: record written to {target}")
+            jq.write_qualification_record(
+                target, role=role, gold_path=gold_path, identity=identity,
+                score=score, gold_doc=gold_doc, ledger_run_id=run_id,
+                bars=meta["bars"], git_sha=meta["git_sha"], timestamp=timestamp,
+            )
+            print(f"[4/4] role {role} CLEARED every one of its bars: "
+                  f"record written to {target}")
+
+        if missed:
+            # A failed bar leaves its report and its ledger rows, and no record
+            # for the role it belongs to. Until 2026-08-08 a missed run wrote
+            # the qualification record anyway -- the very artifact that opens
+            # G-D -- carrying its own failing numbers. `qualification_state`
+            # re-checks every metric at read time, so nothing was qualified by
+            # it; but it left a key in the door that turns the moment a bar is
+            # loosened, and a bar is a config row. The G-C driver states the
+            # opposite rule for its own record ("written only by a run whose
+            # verdict cleared, and only by the gate owner deliberately, never as
+            # a side effect of measuring"); the two gates now agree. The split
+            # narrows *which* record a miss withholds; it does not soften that.
+            print(f"[4/4] gate run MISSED {len(missed)} bar(s): "
+                  f"{', '.join(missed)} — no record written for the role(s) "
+                  f"they gate. G-D stays closed for "
+                  f"{', '.join(sorted(set(vj.JUDGE_ROLES) - set(cleared_roles)))}.")
+        if not cleared_roles:
+            print("[4/4] no role cleared — nothing was minted.")
     else:
         print("[4/4] interim run complete — not a qualification verdict; "
               "no app-side record written.")
@@ -516,9 +583,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "would be comparing api_kind to a vendor name, which this codebase "
         "forbids at call sites."
     ))
-    parser.add_argument("--record-path", default=None, metavar="PATH", help=(
-        "Where --gate writes the qualification record (default: the "
-        "canonical app-side path; rehearsals must point elsewhere)."
+    parser.add_argument("--record-dir", default=None, metavar="DIR", help=(
+        "Where --gate writes the per-role qualification records (default: "
+        "the canonical app-side directory; rehearsals must point elsewhere). "
+        "One file per cleared role, named for that role."
     ))
     return parser
 
@@ -528,7 +596,7 @@ async def main(argv: list[str] | None = None) -> int:
     result = await run_qualification(
         gold_path=args.gold or entailment_gold.GOLD_PATH,
         cache_dir=args.cache_dir or CACHE_DIR,
-        record_path=args.record_path,
+        record_dir=args.record_dir,
         gate=args.gate,
         judge_model=args.judge_model,
         judge_base_url=args.judge_base_url,

@@ -118,10 +118,15 @@ async def qualified_judge_record(session, tmp_path, monkeypatch):
     that metric with no default: the fixture has to state the bar for the same
     reason a deployment does, and a test that qualified without one would be
     exercising a gate no operator can reach.
+
+    Since the 2026-08-12 split it mints the **contradiction** role's record —
+    the only one that can open this consumer's door, and the one that is
+    unqualified in production and stays so.
     """
     identity = vj.judge_identity(_judge_config()["verification"])
-    record = tmp_path / "verification_qualification.json"
+    record = tmp_path / f"verification_qualification.{vj.CONTRADICTION_ROLE}.json"
     record.write_text(json.dumps({
+        "role": vj.CONTRADICTION_ROLE,
         "judge_identity": {
             **identity,
             "identity_hash": vj.judge_identity_hash(identity),
@@ -133,9 +138,12 @@ async def qualified_judge_record(session, tmp_path, monkeypatch):
             "contradiction_recall": 1.0,
         },
         "gate_eligible": True,
+        "gold_pairs_sha256": "f" * 64,
         "recorded_at": "2026-08-06T00:00:00+00:00",
     }), encoding="utf-8")
-    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", record)
+    monkeypatch.setitem(
+        vj.QUALIFICATION_RECORD_PATHS, vj.CONTRADICTION_ROLE, record,
+    )
     session.add(Config(key="contradiction_recall_bar", value={"value": 0.9}))
     await session.commit()
     return record

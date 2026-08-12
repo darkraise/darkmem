@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
 from app.services.verification_judge import (
+    ENTAILMENT_ROLE,
     JudgeNotQualifiedError,
     VerificationJudge,
 )
@@ -74,6 +75,10 @@ COVERAGE_THRESHOLD_FIELD = "threshold"
 # requires *every* claim entailed.
 DEFAULT_COVERAGE_THRESHOLD = 0.95
 
+# The one judge verdict this pass discriminates — `contradicted` and
+# `unsupported` are one bucket to it. That is why the pass asks the judge as
+# the `entailment` role, and a scan fails the build if this module ever names a
+# second judge verdict while claiming that role's qualification.
 ENTAILED = "entailed"
 
 
@@ -219,7 +224,9 @@ async def measure_coverage(
                 # caller that did not hand over what it cited.
                 continue
             try:
-                verdict = await judge.judge(session, premise, claim.text)
+                verdict = await judge.judge(
+                    session, premise, claim.text, role=ENTAILMENT_ROLE,
+                )
             except JudgeNotQualifiedError as refusal:
                 # The whole article is unmeasurable, and asking the remaining
                 # claims cannot change that — so stop, rather than spending

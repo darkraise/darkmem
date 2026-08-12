@@ -6,6 +6,18 @@ faithfulness (doc 16 §4, horizon). The judge lives here — not in the harness 
 so the qualification run measures the exact prompt, parser and call
 construction every consumer will run.
 
+**One judge identity, one qualification record per consumer role** (R1,
+doc 17 §6 amended 2026-08-12, owner-ratified). A consumer is admitted for the
+discrimination it actually makes: the entailment role branches on ``entailed``
+and gates on the entailed pair, the contradiction role branches on
+``contradicted`` and gates on the contradiction pair. Nothing about the judge
+splits — one purpose, one prompt, one identity hash, one measurement run — only
+the *record* does, so `judge()` takes the role the caller is asking as. The
+rejected alternative in §6 is per-consumer *judges* (three purposes, three
+models, drifting independently); this is not that, but the roles do now hold
+qualification state independently, which is that alternative's nearest
+neighbour and is why the amendment says so out loud.
+
 The prompt encodes the task semantics from
 ``scripts/benchlib/entailment/LABELLING.md`` (verdict definitions,
 implicature-is-not-contradiction, the evaluation-time rule, entailment's
@@ -137,11 +149,17 @@ class VerificationJudge:
         session: AsyncSession,
         premise: str,
         hypothesis: str,
+        *,
+        role: str,
     ) -> ProbeVerdict:
         """The gated door — the only entry a consumer may use. Refuses with
-        ``JudgeNotQualifiedError`` unless the recorded qualification matches
-        the currently resolved judge identity and clears the currently
+        ``JudgeNotQualifiedError`` unless the record for ``role`` matches the
+        currently resolved judge identity and clears that role's currently
         merged bars, recomputed on every call (detected, never remembered).
+
+        ``role`` is keyword-only and has no default, so a new consumer has to
+        name the discrimination it makes rather than inherit whichever record
+        happens to exist. A scan re-proves each consumer passes its own.
 
         Deliberately takes no record path: only the canonical, minting-locked
         record can qualify a consumer call. A caller-supplied path here would
@@ -150,13 +168,13 @@ class VerificationJudge:
         record to any non-default path — that record must never be loadable
         through this door). Tests point the module constant elsewhere."""
         state = await qualification_state(
-            session, self.llm.config, record_path=QUALIFICATION_RECORD_PATH,
+            session, self.llm.config, role=role,
         )
         if not state.qualified:
             raise JudgeNotQualifiedError(
-                "the verification judge is not qualified for its current "
-                "identity and bars; no consumer may ship on its verdicts "
-                "(doc 17 §6). Reasons: " + "; ".join(state.reasons)
+                f"the verification judge is not qualified for the {role!r} "
+                "role at its current identity and bars; no consumer may ship "
+                "on its verdicts (doc 17 §6). Reasons: " + "; ".join(state.reasons)
             )
         return await self.qualification_probe(premise, hypothesis)
 
@@ -193,9 +211,90 @@ def judge_identity_hash(identity: dict) -> str:
 
 # ── the qualification record and the computed state ──────────────────────
 
-QUALIFICATION_RECORD_PATH = Path(__file__).resolve().parent / "verification_qualification.json"
+# ── the two consumer roles (R1, doc 17 §6 amended 2026-08-12) ────────────
 
-# Bar config-row key -> the recorded metric it governs.
+ENTAILMENT_ROLE = "entailment"
+CONTRADICTION_ROLE = "contradiction"
+
+# The judge verdict each role's consumer branches on. This is the premise the
+# amendment derives from — "each consumer's gate depends on a discrimination it
+# never makes" — so it is machine-checked rather than asserted: a scan in
+# tests/test_verification_judge.py fails the build if either consumer module
+# compares against any other judge verdict, or asks for the other role.
+ROLE_VERDICTS = {
+    ENTAILMENT_ROLE: "entailed",
+    CONTRADICTION_ROLE: "contradicted",
+}
+
+# role -> the bar keys that role's discrimination is measured by. The split is
+# symmetric by construction and pinned by test: the two role bar sets partition
+# BAR_METRICS exactly, so no bar is orphaned into no role's gate and none is
+# double-counted into both.
+JUDGE_ROLES: dict[str, tuple[str, ...]] = {
+    ENTAILMENT_ROLE: (
+        "groundedness_gate_precision_bar",
+        "groundedness_gate_recall_bar",
+    ),
+    CONTRADICTION_ROLE: (
+        "contradiction_precision_bar",
+        "contradiction_recall_bar",
+    ),
+}
+
+# The pair sets retired from qualification use, in full. `4975c5cc…` is the gold
+# T2.114 spent its final attempt on: the stopping rule fired, and the owner's
+# 2026-08-12 ruling retires the pairs from qualification for **any** role —
+# refusing both a fresh sitting (the frozen identity would be served warm-cache
+# verdicts byte-for-byte) and the composed mint (the run recorded NOT CLEARED
+# minting the redefined gate's record). A record naming one of these is inert
+# here no matter what it measured, and the harness refuses to contact them at
+# all. Splitting the record by role is exactly the move that could be misread as
+# licensing another attempt, so the refusal is code rather than protocol.
+RETIRED_PAIR_SETS = frozenset({
+    "4975c5cc6d57faa97115b624cafb2982600c7c4b00bbcc6dabe4440109bb485f",
+})
+
+# The ledger and every report name these sets by their first 8 hex characters,
+# so a record carrying the abbreviated form must be caught too. A collision at
+# 8 hex refuses a lawful pair set rather than admitting a retired one, which is
+# the direction an anti-tuning guard must fail in.
+RETIRED_PREFIX_LENGTH = 8
+
+_RETIRED_PREFIXES = frozenset(s[:RETIRED_PREFIX_LENGTH] for s in RETIRED_PAIR_SETS)
+
+
+def is_retired_pair_set(value: object) -> bool:
+    if not isinstance(value, str) or len(value) < RETIRED_PREFIX_LENGTH:
+        return False
+    return value[:RETIRED_PREFIX_LENGTH].lower() in _RETIRED_PREFIXES
+
+
+# One record per role, minted only by a cleared run for that role. Both are
+# absent on this branch and a test pins that: the contradiction role is
+# unqualified because its bar was missed and stays missed, and the entailment
+# role is unqualified because its record is owed to a fresh gold (T2.124/T2.125)
+# and was NOT minted from the spent run's artifact.
+QUALIFICATION_RECORD_PATHS: dict[str, Path] = {
+    role: Path(__file__).resolve().parent / f"verification_qualification.{role}.json"
+    for role in JUDGE_ROLES
+}
+
+
+def qualification_record_path(role: str) -> Path:
+    try:
+        return QUALIFICATION_RECORD_PATHS[role]
+    except KeyError:
+        raise ValueError(
+            f"unknown judge role {role!r}; the roles are "
+            f"{sorted(JUDGE_ROLES)} (doc 17 §6)"
+        ) from None
+
+
+# Bar config-row key -> the recorded metric it governs. Judge-wide: this is the
+# full set of metrics anything is barred on, and ``JUDGE_ROLES`` above is what
+# says which role's gate each one enters. The two stay in step by test (the
+# roles partition this mapping) and at runtime (a bar in no role fails every
+# role closed).
 #
 # **``contradiction_recall_bar`` is why this mapping exists as a separate
 # thing from the defaults** (doc 17 §6's 2026-08-08 amendment, T2.109).
@@ -256,9 +355,16 @@ def load_qualification_record(path: Path) -> dict | None:
 async def article_claim_gate(
     session: AsyncSession,
     llm_config: dict,
-    record_path: Path = QUALIFICATION_RECORD_PATH,
+    record_path: Path | None = None,
 ) -> "ClaimGate":
     """Whether a promoted **article** status may reach a reader (T3.02).
+
+    Asks the **entailment** role, because that is the discrimination the
+    article path makes: a claim is grounded or it is not, and `contradicted`
+    and `unsupported` are one bucket to it. Since R1 that means an article
+    surface can open while the contradiction role stays unqualified — a real
+    weakening, named as a cost in doc 17 §6's amendment rather than left for a
+    reader to discover.
 
     The judge's door, deliberately — ``claim_gates.groundedness_gate()`` is
     unconditionally closed because that module may not read this record, and
@@ -279,23 +385,103 @@ async def article_claim_gate(
     """
     from app.services.claim_gates import ClaimGate, REASON_NO_QUALIFICATION_RECORD
 
-    state = await qualification_state(session, llm_config, record_path)
+    state = await qualification_state(
+        session, llm_config, role=ENTAILMENT_ROLE, record_path=record_path,
+    )
     if state.qualified:
         return ClaimGate(True, None)
     reason = "; ".join(state.reasons) if state.reasons else REASON_NO_QUALIFICATION_RECORD
     return ClaimGate(False, reason)
 
 
+# The field an entailment-role record must carry to be honoured: how many
+# contradicted pairs the judge called entailed.
+#
+# **It is required because R1 removed the only bound on that cell.** Under one
+# bundled record, contradiction-recall >= 0.95 bounded every contradicted miss
+# at 5%, including the ones judged `entailed` — which are exactly the ones that
+# ship contradicted material as grounded. After the split, that leak is priced
+# only by entailed precision at the pooled base rate, where a handful of
+# contradicted-judged-entailed pairs barely move the number while corrupting a
+# large fraction of the contradicted material. Nothing bounds it now, so the
+# record must at minimum *state* it: an undisclosed leak fails the role closed
+# rather than passing on a number the reader cannot see.
+LEAK_DISCLOSURE_METRIC = "contradicted_judged_entailed"
+
+ROLE_REQUIRED_DISCLOSURES: dict[str, tuple[str, ...]] = {
+    ENTAILMENT_ROLE: (LEAK_DISCLOSURE_METRIC,),
+    CONTRADICTION_ROLE: (),
+}
+
+
 async def qualification_state(
     session: AsyncSession,
     llm_config: dict,
-    record_path: Path = QUALIFICATION_RECORD_PATH,
+    *,
+    role: str,
+    record_path: Path | None = None,
 ) -> QualificationState:
+    """Whether the judge is qualified **for one consumer role**.
+
+    Every check below is per-role by construction: which record is read, which
+    bars are compared, and which disclosures the record owes. What is not
+    per-role is bar *resolution* — an unstated or unreadable bar anywhere in
+    ``BAR_METRICS`` fails every role closed, because a bar nobody has stated a
+    number for is a question about the instrument, not about one consumer.
+    """
+    if role not in JUDGE_ROLES:
+        raise ValueError(
+            f"unknown judge role {role!r}; the roles are "
+            f"{sorted(JUDGE_ROLES)} (doc 17 §6)"
+        )
+    if record_path is None:
+        record_path = qualification_record_path(role)
+
     record = load_qualification_record(record_path)
     if record is None:
-        return QualificationState(False, ("no qualification record",), None)
+        return QualificationState(
+            False, (f"no qualification record for the {role!r} role",), None,
+        )
 
     reasons: list[str] = []
+
+    # A record qualifies the role it was minted for and no other. Without this
+    # the split is cosmetic: copying one role's file onto the other's path, or
+    # keeping a pre-R1 bundled record that names no role at all, would qualify a
+    # consumer on a discrimination nobody measured it for.
+    recorded_role = record.get("role")
+    if recorded_role != role:
+        reasons.append(
+            f"the record names role {recorded_role!r}, not {role!r} — a "
+            "qualification is per-role since doc 17 §6's 2026-08-12 amendment, "
+            "and a record without a role is a pre-amendment bundle that "
+            "qualifies nothing"
+        )
+
+    # Which pairs produced the number. A record that does not say cannot be
+    # checked against the retired sets, and unverifiable provenance on the one
+    # artifact that opens a gate fails closed.
+    pairs_sha = record.get("gold_pairs_sha256")
+    if not isinstance(pairs_sha, str) or not pairs_sha:
+        reasons.append(
+            "the record carries no gold_pairs_sha256 — the pair set behind a "
+            "qualification must be nameable to be checkable (doc 17 §6)"
+        )
+    elif is_retired_pair_set(pairs_sha):
+        reasons.append(
+            f"the record was measured on retired pair set {pairs_sha[:8]} — "
+            "the T2.114 stopping rule retires it from qualification for every "
+            "role, and the 2026-08-12 ruling refused minting from it"
+        )
+
+    for metric_key in ROLE_REQUIRED_DISCLOSURES.get(role, ()):
+        value = (record.get("metrics") or {}).get(metric_key)
+        if not isinstance(value, int) or isinstance(value, bool):
+            reasons.append(
+                f"the {role!r} record does not disclose {metric_key} — the "
+                "split left this confusion cell unbounded, so a record that "
+                "does not state it fails closed"
+            )
 
     if not record.get("gate_eligible"):
         reasons.append("the record is not gate_eligible (interim or rehearsal output)")
@@ -320,8 +506,31 @@ async def qualification_state(
         reasons.append(f"bars unreadable — failing closed: {exc}")
         return QualificationState(False, tuple(reasons), record)
 
+    # The runtime half of the partition pin. A barred metric assigned to no
+    # role gates nothing at all, which is a silently weaker gate than the one
+    # before the split — so it fails every role closed, exactly as an unstated
+    # bar does, rather than quietly dropping out of the comparison.
+    unassigned = sorted(
+        set(BAR_METRICS) - {key for keys in JUDGE_ROLES.values() for key in keys}
+    )
+    if unassigned:
+        reasons.append(
+            f"barred metric(s) {', '.join(unassigned)} belong to no judge role "
+            "— failing closed rather than gating on a subset nobody chose"
+        )
+
     metrics = record.get("metrics") or {}
-    for bar_key, metric_key in BAR_METRICS.items():
+    for bar_key in JUDGE_ROLES[role]:
+        # Total rather than indexed: this is the enforcement path, and a role
+        # naming a bar the judge does not declare must fail closed rather than
+        # raise out of a consumer's call.
+        if bar_key not in BAR_METRICS or bar_key not in bars:
+            reasons.append(
+                f"the {role!r} role names bar {bar_key} which the judge does "
+                "not declare — failing closed"
+            )
+            continue
+        metric_key = BAR_METRICS[bar_key]
         value = metrics.get(metric_key)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             reasons.append(

@@ -81,6 +81,7 @@ from app.repositories.fact_sources import FactSourceRepository
 from app.services.events import CONTRADICTION_SCANNED, record_event
 from app.services.job_registry import FieldDescriptor
 from app.services.verification_judge import (
+    CONTRADICTION_ROLE,
     JudgeNotQualifiedError,
     VerificationJudge,
 )
@@ -90,6 +91,11 @@ logger = logging.getLogger(__name__)
 # The verdict this consumer is qualified on. Spelled once, and pinned to the
 # judge's own vocabulary by test rather than by hope — a typo here would read
 # as "no contradiction ever found" and pass every happy-path assertion.
+#
+# It is also the whole of this module's discrimination, which is why the scan
+# asks the judge as the `contradiction` role: `entailed` and `unsupported` are
+# one bucket here, and that role is unqualified and stays so, so every call
+# below still refuses (doc 17 §6, amended 2026-08-12).
 CONTRADICTED_VERDICT = "contradicted"
 
 # ── config (operator-facing, validated by JobRegistry.set_config) ─────────
@@ -752,7 +758,8 @@ async def run_contradiction_scan(
             try:
                 async with session_factory() as probe_session:
                     verdict = await judge.judge(
-                        probe_session, candidate.fact, fact["fact"]
+                        probe_session, candidate.fact, fact["fact"],
+                        role=CONTRADICTION_ROLE,
                     )
             except JudgeNotQualifiedError:
                 refused = True

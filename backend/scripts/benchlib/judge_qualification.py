@@ -815,6 +815,7 @@ def render_report(
 def write_qualification_record(
     record_path: Path,
     *,
+    role: str,
     gold_path: Path,
     identity: dict,
     score: QualificationScore,
@@ -827,9 +828,22 @@ def write_qualification_record(
     """``gold_sha256`` is computed here from ``gold_path``'s bytes — never
     caller-supplied — and the canonical record path is refused unless the
     gold is the canonical one, so a rehearsal ``--gate`` run against an
-    easy gold cannot mint a record the app-side guard honours."""
+    easy gold cannot mint a record the app-side guard honours.
+
+    ``role`` is the consumer role this record qualifies, and it is required
+    (doc 17 §6, amended 2026-08-12): a record that names no role qualifies
+    nothing on the reading side, so minting one would produce an artifact that
+    silently opens no gate. ``gold_pairs_sha256`` is likewise computed here and
+    a retired pair set is refused outright — the reader also refuses it, and the
+    two are deliberately not one check, because the writer's job is to never
+    create the artifact and the reader's is to never honour one that exists."""
     record_path = Path(record_path)
-    canonical_record = verification_judge.QUALIFICATION_RECORD_PATH.resolve()
+    if role not in verification_judge.JUDGE_ROLES:
+        raise ValueError(
+            f"unknown judge role {role!r}; the roles are "
+            f"{sorted(verification_judge.JUDGE_ROLES)}"
+        )
+    canonical_record = verification_judge.qualification_record_path(role).resolve()
     if record_path.resolve() == canonical_record \
             and Path(gold_path).resolve() != entailment_gold.GOLD_PATH.resolve():
         raise ValueError(
@@ -838,14 +852,31 @@ def write_qualification_record(
             "non-default record path"
         )
 
+    gold_pairs_sha256 = entailment_gold.pairs_content_hash(gold_doc["pairs"])
+    if verification_judge.is_retired_pair_set(gold_pairs_sha256):
+        raise ValueError(
+            f"refusing to write a qualification record for pair set "
+            f"{gold_pairs_sha256[:8]}: it is retired from qualification for "
+            "every role (T2.114's stopping rule; the 2026-08-12 ruling refused "
+            "minting from it)"
+        )
+
     eligibility = gate_eligibility(gold_doc)
     record = {
+        "role": role,
         "judge_identity": {**identity, "identity_hash": judge_identity_hash(identity)},
         "metrics": {
             "entailed_precision": score.entailed_precision,
             "entailed_recall": score.entailed_recall,
             "contradiction_precision": score.contradiction_precision,
             "contradiction_recall": score.contradiction_recall,
+            # The confusion cell R1 left unbounded: contradicted pairs the
+            # judge called entailed, which is the leak that ships contradicted
+            # material as grounded. Written for both roles, required by the
+            # reader for the entailment one.
+            verification_judge.LEAK_DISCLOSURE_METRIC: int(
+                score.confusion.get("contradicted", {}).get("entailed", 0)
+            ),
             "invalid": score.invalid,
             "n_pairs": score.n_pairs,
         },
@@ -857,7 +888,12 @@ def write_qualification_record(
             "reasons": list(eligibility.reasons),
         },
         "bars_in_effect": bars,
+        "bars_gating_this_role": {
+            bar_key: bars.get(bar_key)
+            for bar_key in verification_judge.JUDGE_ROLES[role]
+        },
         "gold_sha256": hashlib.sha256(Path(gold_path).read_bytes()).hexdigest(),
+        "gold_pairs_sha256": gold_pairs_sha256,
         "ledger_run_id": ledger_run_id,
         "git_sha": git_sha,
         "recorded_at": timestamp,

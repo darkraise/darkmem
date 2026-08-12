@@ -27,7 +27,7 @@ from sqlalchemy import text
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
 from app.services import article_synthesis as ast_
 from app.services import article_synthesis as asyn
-from app.services.verification_judge import ProbeVerdict
+from app.services.verification_judge import ENTAILMENT_ROLE, ProbeVerdict
 
 pytestmark = pytest.mark.asyncio
 
@@ -138,7 +138,13 @@ class _StubJudge:
     def __init__(self, verdict: str | None):
         self.verdict = verdict
 
-    async def judge(self, session, premise, hypothesis):
+    async def judge(self, session, premise, hypothesis, *, role):
+        # Enforced, not merely accepted: the resynthesis path measures article
+        # coverage, so it must ask as the entailment role (doc 17 §6, amended
+        # 2026-08-12). A stub that shrugged at the role would let a wrong-role
+        # call read as a vendor outage here — `measure_coverage` turns any
+        # exception into UNMEASURED, which is exactly how this went unnoticed.
+        assert role == ENTAILMENT_ROLE
         if self.verdict is None:
             return ProbeVerdict(verdict=None, reason=None, raw="", valid=False)
         return ProbeVerdict(

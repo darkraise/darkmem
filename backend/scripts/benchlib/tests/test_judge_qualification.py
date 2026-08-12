@@ -745,10 +745,12 @@ def test_record_writer_schema_and_handshake(tmp_path, monkeypatch):
     identity = vj.judge_identity(cfg)
     record_path = tmp_path / "record.json"
     gold_path = entailment_gold.GOLD_PATH
+    gold_doc = _synthetic_gold(200, 100, 0)
 
     jq.write_qualification_record(
-        record_path, gold_path=gold_path, identity=identity, score=perfect,
-        gold_doc=_synthetic_gold(200, 100, 0), ledger_run_id="run-1",
+        record_path, role=vj.ENTAILMENT_ROLE, gold_path=gold_path,
+        identity=identity, score=perfect,
+        gold_doc=gold_doc, ledger_run_id="run-1",
         bars=dict(vj.VERIFICATION_BAR_DEFAULTS), git_sha="deadbeef",
         timestamp="2026-07-31T00:00:00+00:00",
     )
@@ -758,6 +760,20 @@ def test_record_writer_schema_and_handshake(tmp_path, monkeypatch):
     assert record["gate_eligible"] is True
     assert record["judge_identity"]["identity_hash"] == vj.judge_identity_hash(identity)
 
+    # The three fields the reader demands of a post-split record, written by
+    # the one writer that may mint one: which role it qualifies, which pairs
+    # produced it, and the confusion cell nothing bounds any more.
+    assert record["role"] == vj.ENTAILMENT_ROLE
+    assert record["gold_pairs_sha256"] == entailment_gold.pairs_content_hash(
+        gold_doc["pairs"])
+    assert record["metrics"][vj.LEAK_DISCLOSURE_METRIC] == (
+        perfect.confusion.get("contradicted", {}).get("entailed", 0)
+    )
+    assert record["bars_gating_this_role"] == {
+        bar: vj.VERIFICATION_BAR_DEFAULTS[bar]
+        for bar in vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE]
+    }
+
     async def default_bars(_session):
         # `contradiction_recall_bar` is barred with no default (T2.109), so a
         # complete bar set has to state it — the resolver's own contract.
@@ -766,9 +782,62 @@ def test_record_writer_schema_and_handshake(tmp_path, monkeypatch):
     monkeypatch.setattr(vj, "get_verification_bars", default_bars)
     import asyncio
     state = asyncio.run(vj.qualification_state(
-        None, {"verification": cfg}, record_path=record_path,
+        None, {"verification": cfg}, role=vj.ENTAILMENT_ROLE,
+        record_path=record_path,
     ))
     assert state.qualified is True, state.reasons
+
+    # And the same record admits nothing as the other role: the writer's role
+    # field is what the reader checks, so a minted entailment record leaves the
+    # veto's consumer exactly as unqualified as it was.
+    other = asyncio.run(vj.qualification_state(
+        None, {"verification": cfg}, role=vj.CONTRADICTION_ROLE,
+        record_path=record_path,
+    ))
+    assert other.qualified is False
+
+
+def test_the_writer_refuses_a_retired_pair_set_for_every_role(tmp_path):
+    """The stopping rule at the writer, not only at the runner's front door.
+
+    The runner refuses before any gold contact; this is the second leg, so a
+    future caller that reaches the writer by another route still cannot mint a
+    record on the pairs whose budget is spent.
+    """
+    score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
+    identity = vj.judge_identity(_fake_cfg())
+    retired_doc = entailment_gold.load_entailment_gold()
+    assert vj.is_retired_pair_set(
+        entailment_gold.pairs_content_hash(retired_doc["pairs"])
+    ), "the canonical gold is the retired pair set; this test is about that"
+
+    for role in sorted(vj.JUDGE_ROLES):
+        with pytest.raises(ValueError, match="retired"):
+            jq.write_qualification_record(
+                tmp_path / f"{role}.json", role=role,
+                gold_path=entailment_gold.GOLD_PATH, identity=identity,
+                score=score, gold_doc=retired_doc, ledger_run_id="run-1",
+                bars=dict(vj.VERIFICATION_BAR_DEFAULTS), git_sha="deadbeef",
+                timestamp="2026-08-12T00:00:00+00:00",
+            )
+        assert not (tmp_path / f"{role}.json").exists()
+
+
+def test_the_runner_refuses_the_retired_pair_set_in_every_mode(tmp_path):
+    """No model touches pair set `4975c5cc` again — gate or interim.
+
+    An interim run sends the same pairs to the same model, so "the budget is
+    spent" is not a claim about which flag was passed. The refusal lands before
+    the intent row, so a refused run is not counted as a contact it never made.
+    """
+    for gate in (True, False):
+        run_dir = tmp_path / f"gate-{gate}"
+        stub_cls, seen = make_stub(cycling_script())
+        with pytest.raises(RuntimeError, match="retired from qualification"):
+            _run(run_dir, stub_cls, gate=gate,
+                 gold_path=entailment_gold.GOLD_PATH)
+        assert not (run_dir / "ledger.jsonl").exists()
+        assert {_premise_of(u) for u in seen} <= SANITY_PREMISES
 
 
 def test_minting_lock_four_legs(tmp_path, monkeypatch):
@@ -782,32 +851,44 @@ def test_minting_lock_four_legs(tmp_path, monkeypatch):
         git_sha="deadbeef", timestamp="2026-07-31T00:00:00+00:00",
     )
 
+    role = vj.ENTAILMENT_ROLE
+    canonical = vj.qualification_record_path(role)
+    common["role"] = role
+
     # Leg 1: the canonical record path refuses a non-canonical gold.
     with pytest.raises(ValueError):
         jq.write_qualification_record(
-            vj.QUALIFICATION_RECORD_PATH, gold_path=fixture_gold, **common,
+            canonical, gold_path=fixture_gold, **common,
         )
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+    assert not canonical.exists()
 
     # Leg 2: a relative-path spelling of the canonical location refuses too.
-    dodged = vj.QUALIFICATION_RECORD_PATH.parent / ".." / "services" / \
-        vj.QUALIFICATION_RECORD_PATH.name
+    dodged = canonical.parent / ".." / "services" / canonical.name
     with pytest.raises(ValueError):
         jq.write_qualification_record(dodged, gold_path=fixture_gold, **common)
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+    assert not canonical.exists()
 
     # Leg 3: a rehearsal record path accepts any gold.
     rehearsal = tmp_path / "rehearsal-record.json"
     jq.write_qualification_record(rehearsal, gold_path=fixture_gold, **common)
     assert rehearsal.exists()
 
-    # Leg 4: the canonical pairing works (canonical constant pointed at tmp).
-    tmp_canonical = tmp_path / "verification_qualification.json"
-    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", tmp_canonical)
+    # Leg 4: the canonical pairing works (canonical path pointed at tmp).
+    tmp_canonical = tmp_path / f"verification_qualification.{role}.json"
+    monkeypatch.setitem(vj.QUALIFICATION_RECORD_PATHS, role, tmp_canonical)
     jq.write_qualification_record(
         tmp_canonical, gold_path=entailment_gold.GOLD_PATH, **common,
     )
     assert tmp_canonical.exists()
+
+    # Leg 5: an unknown role refuses before anything is written — the record's
+    # role is what the reader gates on, so it may not be free-form.
+    with pytest.raises(ValueError, match="unknown judge role"):
+        jq.write_qualification_record(
+            tmp_path / "faithfulness.json",
+            **{**common, "role": "faithfulness", "gold_path": fixture_gold},
+        )
+    assert not (tmp_path / "faithfulness.json").exists()
 
 
 # ── the runner (Task 6): stub-driven, no live LLM, no DB ─────────────────
@@ -894,6 +975,17 @@ def _premise_of(user_content):
 
 
 def _run(tmp_path, stub_cls, **kwargs):
+    """Drive the runner against a **synthetic** gold unless a test says
+    otherwise.
+
+    It used to default to the runner's own default, which is the canonical
+    gold — so the plumbing tests drove a stub judge over the real pairs. That
+    was already the shape of the 2026-08-08 leak (a stub run reaching gate mode
+    on the real gold and minting a record), and since the 2026-08-12 retirement
+    it is refused outright: `4975c5cc` may not be contacted for any role, and
+    the refusal cannot tell a stub from a model. Defaulting to a fixture gold is
+    what the suite wanted anyway — none of these tests is about the real pairs.
+    """
     defaults = dict(
         deepseek_api_key="sk-test",
         report_dir=tmp_path / "reports",
@@ -902,6 +994,8 @@ def _run(tmp_path, stub_cls, **kwargs):
         verdicts_dir=tmp_path / "verdicts",
         orchestrator_cls=stub_cls,
     )
+    if "gold_path" not in kwargs:
+        defaults["gold_path"] = _write_eligible_gold(tmp_path)
     defaults.update(kwargs)
     return asyncio.run(rjq.run_qualification(**defaults))
 
@@ -1012,7 +1106,8 @@ def test_happy_path_two_ledger_rows_and_report(tmp_path):
     assert scored["kind"] == "judge_qualification"
     assert scored["intent_row_id"] == intent["intent_row_id"]
     assert scored["gold_touching_attempts"] == 1
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+    for role in vj.JUDGE_ROLES:
+        assert not vj.qualification_record_path(role).exists()
 
     assert result.report_path.exists()
     text = result.report_path.read_text()
@@ -1066,7 +1161,10 @@ def test_gold_backstop_aborts_leaving_the_intent_row(tmp_path):
 
 def test_attempts_count_per_gold_across_identities(tmp_path):
     ledger_path = tmp_path / "ledger.jsonl"
-    gold_sha = hashlib.sha256(entailment_gold.GOLD_PATH.read_bytes()).hexdigest()
+    # Keyed to the fixture gold this run actually contacts. It used to key to
+    # the canonical gold, which the runner no longer opens under test.
+    gold_path = _write_eligible_gold(tmp_path)
+    gold_sha = hashlib.sha256(gold_path.read_bytes()).hexdigest()
     ledger.record({"kind": "judge_qualification_attempt", "intent_row_id": "a1",
                    "identity_hash": "aaaa", "gold_sha256": gold_sha}, path=ledger_path)
     ledger.record({"kind": "judge_qualification_attempt", "intent_row_id": "a2",
@@ -1075,7 +1173,7 @@ def test_attempts_count_per_gold_across_identities(tmp_path):
                    "identity_hash": "cccc", "gold_sha256": "other"}, path=ledger_path)
 
     stub_cls, _seen = make_stub(cycling_script())
-    result = _run(tmp_path, stub_cls)
+    result = _run(tmp_path, stub_cls, gold_path=gold_path)
 
     scored = ledger.read_runs(ledger_path)[-1]
     assert scored["gold_touching_attempts"] == 3
@@ -1171,7 +1269,7 @@ def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
     expired. So the ineligible gold is now constructed here rather than
     borrowed, and the record path is explicit rather than defaulted.
     """
-    doc = entailment_gold.load_entailment_gold()
+    doc = json.loads(_write_eligible_gold(tmp_path).read_text(encoding="utf-8"))
     doc.pop("resample", None)          # the one condition, removed deliberately
     gold_path = tmp_path / "no-resample-gold.json"
     gold_path.write_text(json.dumps(doc), encoding="utf-8")
@@ -1179,17 +1277,19 @@ def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
     stub_cls, seen = make_stub(cycling_script())
     with pytest.raises(RuntimeError) as excinfo:
         _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
-             record_path=tmp_path / "must-not-be-written.json")
+             record_dir=tmp_path / "must-not-be-written")
     message = str(excinfo.value)
     assert "resample" in message
     assert seen == [], "eligibility refusal must precede any model call"
-    assert not (tmp_path / "must-not-be-written.json").exists()
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+    assert not (tmp_path / "must-not-be-written").exists()
+    for role in vj.JUDGE_ROLES:
+        assert not vj.qualification_record_path(role).exists()
 
 
 def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path, monkeypatch):
     gold_path = _write_eligible_gold(tmp_path)
-    record_path = tmp_path / "rehearsal-record.json"
+    record_dir = tmp_path / "rehearsal-records"
+    record_dir.mkdir()
     # A clearing judge: since 2026-08-08 a gate run that misses a bar writes no
     # record at all, so exercising the write path needs one that passes. The
     # runner resolves bars from the code defaults alone, so the owner stating
@@ -1200,20 +1300,30 @@ def test_gate_rehearsal_writes_only_a_non_default_record(tmp_path, monkeypatch):
     })
     stub_cls, _seen = make_stub(perfect_script(gold_path))
     result = _run(tmp_path, stub_cls, gate=True, gold_path=gold_path,
-                  record_path=record_path)
+                  record_dir=record_dir)
 
-    record = json.loads(record_path.read_text())
-    assert record["gate_eligible"] is True
-    assert record["gold_sha256"] == hashlib.sha256(gold_path.read_bytes()).hexdigest()
-    assert record["ledger_run_id"] == result.meta["run_id"]
+    # One file per role, because a clearing run clears both roles' bars.
+    written = sorted(p.name for p in record_dir.iterdir())
+    assert written == sorted(
+        f"verification_qualification.{role}.json" for role in vj.JUDGE_ROLES
+    )
+    for role in vj.JUDGE_ROLES:
+        record = json.loads(
+            (record_dir / f"verification_qualification.{role}.json").read_text())
+        assert record["role"] == role
+        assert record["gate_eligible"] is True
+        assert record["gold_sha256"] == hashlib.sha256(
+            gold_path.read_bytes()).hexdigest()
+        assert record["ledger_run_id"] == result.meta["run_id"]
 
-    # The same rehearsal aimed at the real canonical record path refuses —
+    # The same rehearsal aimed at the real canonical record directory refuses —
     # the minting lock, exercised through the runner surface.
     stub_cls2, _ = make_stub(perfect_script(gold_path))
     with pytest.raises(ValueError):
         _run(tmp_path / "second", stub_cls2, gate=True, gold_path=gold_path,
-             record_path=vj.QUALIFICATION_RECORD_PATH)
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+             record_dir=vj.qualification_record_path(vj.ENTAILMENT_ROLE).parent)
+    for role in vj.JUDGE_ROLES:
+        assert not vj.qualification_record_path(role).exists()
 
 
 def test_fixtures_only_never_touches_the_gold(tmp_path):
@@ -1231,7 +1341,8 @@ def test_latency_channels_are_split_fixture_vs_gold(tmp_path):
     fixture = result.twin.channels["fixture_call"]
     gold = result.twin.channels["judge_call"]
     assert fixture.live.n == len(SANITY_PREMISES)
-    assert gold.live.n == result.score.n_pairs == 402
+    assert gold.live.n == result.score.n_pairs
+    assert result.score.n_pairs > len(SANITY_PREMISES)
 
 
 # ── the resample condition (T2.54 Step 6, 2026-08-06) ───────────────────

@@ -207,6 +207,270 @@ async def test_a_malformed_bar_row_raises_not_silently_defaults(session):
         await vj.get_verification_bars(session)
 
 
+# ── R1: the roles, their bars, and the two tripwires (2026-08-12) ────────
+
+
+def test_the_roles_partition_the_barred_metrics():
+    """Symmetry, machine-checked: every barred metric enters exactly one
+    role's gate.
+
+    A bar in **no** role gates nothing, which is a quietly weaker instrument
+    than the one before the split; a bar in **both** re-couples the two roles
+    through the back door, which is the split undone. Neither can be spotted by
+    reading a passing test suite, so the partition is asserted rather than
+    intended.
+    """
+    assigned = [key for keys in vj.JUDGE_ROLES.values() for key in keys]
+    assert sorted(assigned) == sorted(set(assigned)), "a bar gates two roles"
+    assert set(assigned) == set(vj.BAR_METRICS), (
+        "the role bar tuples and BAR_METRICS have drifted apart"
+    )
+    assert vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE] == (
+        "groundedness_gate_precision_bar", "groundedness_gate_recall_bar",
+    )
+    assert vj.JUDGE_ROLES[vj.CONTRADICTION_ROLE] == (
+        "contradiction_precision_bar", "contradiction_recall_bar",
+    )
+    # Every role-keyed table covers every role. A role missing from one of them
+    # would read as "this role owes no disclosure" or "this role has no record",
+    # both of which are quieter than they should be.
+    assert set(vj.ROLE_REQUIRED_DISCLOSURES) == set(vj.JUDGE_ROLES)
+    assert set(vj.QUALIFICATION_RECORD_PATHS) == set(vj.JUDGE_ROLES)
+
+
+async def test_a_role_is_gated_on_its_own_bars_and_not_the_others(
+    session, tmp_path,
+):
+    """The split's behavioural content, in the direction a revert would break.
+
+    One measurement, two verdicts: a judge that discriminates entailment
+    perfectly and contradiction near not at all qualifies the entailment role
+    and not the contradiction role, and the mirror case holds the other way.
+    Restoring the bar loop to sweep all four bars — the pre-amendment shape —
+    reddens both halves.
+    """
+    cfg = _judge_config()
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    entailment_only = {
+        "entailed_precision": 1.0,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1 / 55,
+    }
+    entailment_record = _write_record(tmp_path / "a", _record(
+        cfg, metrics=dict(entailment_only), role=vj.ENTAILMENT_ROLE,
+    ))
+    assert (await vj.qualification_state(
+        session, cfg, role=vj.ENTAILMENT_ROLE, record_path=entailment_record,
+    )).qualified is True
+
+    contradiction_only = {
+        "entailed_precision": 0.10,
+        "entailed_recall": 0.10,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
+    }
+    contradiction_record = _write_record(tmp_path / "b", _record(
+        cfg, metrics=dict(contradiction_only), role=vj.CONTRADICTION_ROLE,
+    ))
+    assert (await vj.qualification_state(
+        session, cfg, role=vj.CONTRADICTION_ROLE, record_path=contradiction_record,
+    )).qualified is True
+
+
+async def test_a_role_naming_an_undeclared_bar_fails_closed(
+    session, tmp_path, monkeypatch,
+):
+    """The enforcement path stays total. A role tuple naming a bar the judge
+    does not declare is a mistake, and a consumer call must refuse rather than
+    raise a KeyError out of the gate."""
+    monkeypatch.setitem(
+        vj.JUDGE_ROLES, vj.ENTAILMENT_ROLE,
+        vj.JUDGE_ROLES[vj.ENTAILMENT_ROLE] + ("a_bar_nobody_declared",),
+    )
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg))
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path,
+    )
+    assert state.qualified is False
+    assert any("does not declare" in r for r in state.reasons)
+
+
+def test_each_role_is_gated_on_the_discrimination_its_consumer_makes():
+    """The derivation's premise, stated as data.
+
+    The entailment consumer branches on `entailed` and gates on the entailed
+    pair; the contradiction consumer branches on `contradicted` and gates on
+    the contradiction pair. The consumer scan below proves the branching half
+    against the parsed source; this pins the mapping the scan compares against.
+    """
+    assert vj.ROLE_VERDICTS == {
+        vj.ENTAILMENT_ROLE: "entailed",
+        vj.CONTRADICTION_ROLE: "contradicted",
+    }
+    assert set(vj.ROLE_VERDICTS) == set(vj.JUDGE_ROLES)
+    assert set(vj.ROLE_VERDICTS.values()) <= vj.JUDGE_VERDICTS
+    for role, verdict in vj.ROLE_VERDICTS.items():
+        gated = {vj.BAR_METRICS[bar] for bar in vj.JUDGE_ROLES[role]}
+        assert all(metric.startswith(("entailed", "contradiction")) for metric in gated)
+        stem = "entailed" if verdict == "entailed" else "contradiction"
+        assert all(metric.startswith(stem) for metric in gated), (
+            f"the {role!r} role is gated on metrics that do not measure "
+            f"{verdict!r}, which is the pairing R1 exists to undo"
+        )
+
+
+def test_tripwire_the_contradiction_roles_bars_were_not_relaxed():
+    """**R1's first post-hoc tripwire, from the spec: the split is proven a
+    fit if the contradiction role's bars are later relaxed.**
+
+    The ratification rests on one distinction — re-cutting *to scope* rather
+    than *to pass* — and the evidence for it is that the failed bar never
+    moved. A later relaxation would retroactively convert the split into the
+    third attempt the owner ruled it was not, so it fails the build here rather
+    than being noticed in a review.
+
+    Both values are the owner's to move with a recorded argument; moving one
+    means editing this test, which is the visible diff that argument needs. The
+    0.95 is pinned *against* 0.90 for the same reason it always was: a bar
+    fitted to the measured judge (contradiction-recall 0.945) would sit there.
+    """
+    for bar_key in vj.JUDGE_ROLES[vj.CONTRADICTION_ROLE]:
+        assert bar_key in vj.BAR_METRICS
+        assert bar_key in vj.VERIFICATION_BAR_DEFAULTS
+    assert vj.VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"] == 0.95
+    assert vj.VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"] != 0.90
+    assert vj.VERIFICATION_BAR_DEFAULTS["contradiction_precision_bar"] == 0.70
+
+
+def test_tripwire_the_retired_pair_set_is_refused_for_every_role():
+    """**R1's second post-hoc tripwire: the split is proven a fit if it is used
+    to license another model attempt on pair set `4975c5cc`.**
+
+    The predicate is role-blind on purpose. A per-role reading of the stopping
+    rule — "those pairs are spent for the contradiction role, so the entailment
+    role may sit on them once" — is the single most available misuse of this
+    amendment, and it is refused in code rather than in prose.
+    """
+    retired = next(iter(vj.RETIRED_PAIR_SETS))
+    assert retired.startswith("4975c5cc")
+    assert vj.is_retired_pair_set(retired)
+    assert vj.is_retired_pair_set(retired[:8]), "the abbreviated form must match"
+    assert vj.is_retired_pair_set(retired.upper()), "case must not evade it"
+    assert not vj.is_retired_pair_set("b" * 64)
+    assert not vj.is_retired_pair_set(None)
+    assert not vj.is_retired_pair_set("4975c5c")  # shorter than a prefix
+
+
+@pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
+async def test_a_record_on_the_retired_pair_set_qualifies_no_role(
+    session, tmp_path, role,
+):
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(
+        cfg, role=role, gold_pairs_sha256=next(iter(vj.RETIRED_PAIR_SETS)),
+    ))
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=role, record_path=path,
+    )
+    assert state.qualified is False
+    assert any("retired pair set" in r for r in state.reasons)
+
+
+@pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
+async def test_a_record_that_names_no_pair_set_fails_closed(session, tmp_path, role):
+    """Provenance is not optional on the one artifact that opens a gate: a
+    record that does not say which pairs produced it cannot be checked against
+    the retired sets at all."""
+    cfg = _judge_config()
+    record = _record(cfg, role=role)
+    record.pop("gold_pairs_sha256")
+    path = _write_record(tmp_path, record)
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=role, record_path=path,
+    )
+    assert state.qualified is False
+    assert any("gold_pairs_sha256" in r for r in state.reasons)
+
+
+async def test_an_entailment_record_must_disclose_the_leak_cell(session, tmp_path):
+    """The cost R1 incurs, made enforceable rather than aspirational.
+
+    Contradiction-recall >= 0.95 was the only bar bounding contradicted pairs
+    judged `entailed` — the ones that ship contradicted material under a
+    grounded badge. After the split nothing bounds that cell, so an entailment
+    record that does not at least *state* it fails closed.
+    """
+    cfg = _judge_config()
+    metrics = {
+        "entailed_precision": 1.0,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
+    }
+    path = _write_record(tmp_path, _record(cfg, metrics=dict(metrics)))
+    _state_the_recall_bar(session)
+    await session.commit()
+    assert (await vj.qualification_state(
+        session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path,
+    )).qualified is True
+
+    silent = _record(cfg, metrics=dict(metrics))
+    silent["metrics"].pop(vj.LEAK_DISCLOSURE_METRIC)
+    silent_path = tmp_path / "silent.json"
+    silent_path.write_text(json.dumps(silent), encoding="utf-8")
+    state = await vj.qualification_state(
+        session, cfg, role=vj.ENTAILMENT_ROLE, record_path=silent_path,
+    )
+    assert state.qualified is False
+    assert any(vj.LEAK_DISCLOSURE_METRIC in r for r in state.reasons)
+
+
+async def test_a_barred_metric_in_no_role_fails_every_role_closed(
+    session, tmp_path, monkeypatch,
+):
+    """The runtime half of the partition pin.
+
+    A future barred metric added to ``BAR_METRICS`` and to no role's tuple
+    would gate nothing at all — a strictly weaker instrument than before the
+    split, arrived at by omission. It fails closed instead, on the same posture
+    an unstated bar has.
+    """
+    monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "some_metric")
+    monkeypatch.setitem(vj.VERIFICATION_BAR_DEFAULTS, "a_future_bar", 0.5)
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg))
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path,
+    )
+    assert state.qualified is False
+    assert any("belong to no judge role" in r for r in state.reasons)
+
+
+async def test_an_unknown_role_raises_rather_than_reading_a_record(session, tmp_path):
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg))
+    with pytest.raises(ValueError, match="unknown judge role"):
+        await vj.qualification_state(
+            session, cfg, role="faithfulness", record_path=path,
+        )
+
+
 # ── qualification state: computed, never remembered (Task 2) ─────────────
 
 
@@ -223,18 +487,28 @@ def _judge_config(**overrides):
     return {"verification": LLMPurposeConfig(**fields)}
 
 
-def _record(llm_config, metrics=None, gate_eligible=True, **extra):
+def _record(llm_config, metrics=None, gate_eligible=True,
+            role=vj.ENTAILMENT_ROLE, **extra):
     identity = vj.judge_identity(llm_config["verification"])
+    base_metrics = {
+        "entailed_precision": 1.0,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
+    }
+    if metrics is not None:
+        base_metrics = dict(metrics)
+    # The disclosure an entailment-role record owes (R1): the confusion cell
+    # nothing bounds any more. Defaulted here so every unrelated test states a
+    # lawful record; the tests that care about the disclosure pass it away.
+    base_metrics.setdefault(vj.LEAK_DISCLOSURE_METRIC, 0)
     payload = {
+        "role": role,
         "judge_identity": {**identity, "identity_hash": vj.judge_identity_hash(identity)},
-        "metrics": metrics if metrics is not None else {
-            "entailed_precision": 1.0,
-            "entailed_recall": 1.0,
-            "contradiction_precision": 1.0,
-            "contradiction_recall": 1.0,
-        },
+        "metrics": base_metrics,
         "gate_eligible": gate_eligible,
         "gold_sha256": "0" * 64,
+        "gold_pairs_sha256": "a" * 64,
         "ledger_run_id": "test-run",
         "recorded_at": "2026-07-31T00:00:00+00:00",
         "git_sha": "deadbeef",
@@ -244,14 +518,16 @@ def _record(llm_config, metrics=None, gate_eligible=True, **extra):
 
 
 def _write_record(tmp_path, payload):
-    path = tmp_path / "verification_qualification.json"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    path = tmp_path / f"verification_qualification.{payload.get('role')}.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
 async def test_no_record_means_unqualified(session, tmp_path):
     state = await vj.qualification_state(
-        session, _judge_config(), record_path=tmp_path / "absent.json",
+        session, _judge_config(), role=vj.ENTAILMENT_ROLE,
+        record_path=tmp_path / "absent.json",
     )
     assert state.qualified is False
     assert any("no qualification record" in r for r in state.reasons)
@@ -260,14 +536,14 @@ async def test_no_record_means_unqualified(session, tmp_path):
 async def test_a_malformed_record_fails_closed(session, tmp_path):
     path = tmp_path / "verification_qualification.json"
     path.write_text("{not json", encoding="utf-8")
-    state = await vj.qualification_state(session, _judge_config(), record_path=path)
+    state = await vj.qualification_state(session, _judge_config(), role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
 
 
 async def test_gate_ineligible_record_is_unqualified(session, tmp_path):
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg, gate_eligible=False))
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("gate_eligible" in r for r in state.reasons)
 
@@ -277,7 +553,7 @@ async def test_a_matching_clearing_record_qualifies(session, tmp_path):
     path = _write_record(tmp_path, _record(cfg))
     _state_the_recall_bar(session)
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is True
     assert state.reasons == ()
 
@@ -290,7 +566,7 @@ async def test_an_unstated_bar_fails_closed_naming_it(session, tmp_path, monkeyp
     monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "some_metric")
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg))
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("a_future_bar" in r and "failing closed" in r for r in state.reasons)
 
@@ -307,19 +583,31 @@ async def test_the_gate_cannot_qualify_a_near_mute_judge(session, tmp_path):
 
     Every metric below except the recall is the near-mute judge's *best* case,
     so nothing but the new bar can be what refuses it. Removing
-    ``contradiction_recall_bar`` from ``BAR_METRICS`` reddens this test.
+    ``contradiction_recall_bar`` from ``BAR_METRICS`` — or from the
+    contradiction role's bar tuple — reddens this test.
+
+    **Asked as the contradiction role since the 2026-08-12 split**, which
+    sharpens the assertion rather than weakening it: on this same record the
+    near-mute judge now *passes* the entailment role, because it never
+    misclassifies an entailed pair. The veto's role is the one that has to
+    refuse it, and that is the role the veto's consumer asks as.
     """
     cfg = _judge_config()
-    path = _write_record(tmp_path, _record(cfg, metrics={
+    metrics = {
         "entailed_precision": 1.0,
         "entailed_recall": 1.0,
         "contradiction_precision": 1.0,
         "contradiction_recall": 1 / 55,
-    }))
+    }
+    path = _write_record(tmp_path, _record(
+        cfg, metrics=metrics, role=vj.CONTRADICTION_ROLE,
+    ))
     _state_the_recall_bar(session)
     await session.commit()
 
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(
+        session, cfg, role=vj.CONTRADICTION_ROLE, record_path=path,
+    )
     assert state.qualified is False
     assert any("contradiction_recall" in r for r in state.reasons)
 
@@ -327,7 +615,7 @@ async def test_the_gate_cannot_qualify_a_near_mute_judge(session, tmp_path):
 async def test_a_model_swap_is_detected_not_remembered(session, tmp_path):
     path = _write_record(tmp_path, _record(_judge_config()))
     swapped = _judge_config(model="deepseek-v4-pro")
-    state = await vj.qualification_state(session, swapped, record_path=path)
+    state = await vj.qualification_state(session, swapped, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("identity" in r for r in state.reasons)
 
@@ -342,7 +630,7 @@ async def test_metrics_below_the_default_bar_are_unqualified(session, tmp_path):
     }))
     _state_the_recall_bar(session)
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("groundedness_gate_precision_bar" in r for r in state.reasons)
 
@@ -357,12 +645,12 @@ async def test_raising_a_db_bar_flips_a_qualified_record_back(session, tmp_path)
     }))
     _state_the_recall_bar(session)
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is True
 
     session.add(Config(key="groundedness_gate_recall_bar", value={"value": 1.0}))
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
 
 
@@ -377,7 +665,7 @@ async def test_missing_or_null_metrics_fail_closed(session, tmp_path, metrics):
     path = _write_record(tmp_path, _record(cfg, metrics=metrics))
     _state_the_recall_bar(session)
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("entailed_precision" in r for r in state.reasons)
 
@@ -387,7 +675,7 @@ async def test_unreadable_bars_fail_the_qualification_closed(session, tmp_path):
     path = _write_record(tmp_path, _record(cfg))
     session.add(Config(key="groundedness_gate_recall_bar", value="not-a-number"))
     await session.commit()
-    state = await vj.qualification_state(session, cfg, record_path=path)
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
     assert any("failing closed" in r for r in state.reasons)
 
@@ -395,13 +683,18 @@ async def test_unreadable_bars_fail_the_qualification_closed(session, tmp_path):
 # ── the gated door ───────────────────────────────────────────────────────
 
 
-async def test_judge_refuses_when_unqualified(session, tmp_path, monkeypatch):
-    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", tmp_path / "absent.json")
+def _point_role_record(monkeypatch, role, path):
+    monkeypatch.setitem(vj.QUALIFICATION_RECORD_PATHS, role, path)
+
+
+@pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
+async def test_judge_refuses_when_unqualified(session, tmp_path, monkeypatch, role):
+    _point_role_record(monkeypatch, role, tmp_path / "absent.json")
     llm = StubLLM([json.dumps({"verdict": "entailed", "reason": "r"})])
     llm.config = _judge_config()
     judge = vj.VerificationJudge(llm)
     with pytest.raises(vj.JudgeNotQualifiedError):
-        await judge.judge(session, "p", "h")
+        await judge.judge(session, "p", "h", role=role)
     assert llm.calls == []
 
 
@@ -409,25 +702,107 @@ async def test_judge_answers_when_qualified(session, tmp_path, monkeypatch):
     llm = StubLLM([json.dumps({"verdict": "contradicted", "reason": "r"})])
     llm.config = _judge_config()
     path = _write_record(tmp_path, _record(llm.config))
-    monkeypatch.setattr(vj, "QUALIFICATION_RECORD_PATH", path)
+    _point_role_record(monkeypatch, vj.ENTAILMENT_ROLE, path)
     _state_the_recall_bar(session)
     await session.commit()
     judge = vj.VerificationJudge(llm)
-    result = await judge.judge(session, "p", "h")
+    result = await judge.judge(session, "p", "h", role=vj.ENTAILMENT_ROLE)
     assert result.valid is True
     assert result.verdict == "contradicted"
 
 
-def test_the_gated_door_accepts_no_record_path():
+async def test_one_roles_record_never_opens_the_other_role(
+    session, tmp_path, monkeypatch,
+):
+    """The split's whole content, asserted at the door rather than the record.
+
+    A minted, clearing record for one role must not admit a consumer asking as
+    the other — otherwise the entailment record a fresh gold is expected to
+    produce would silently re-arm the Tier-C scan, whose role the stopping rule
+    leaves unqualified.
+    """
+    llm = StubLLM([json.dumps({"verdict": "contradicted", "reason": "r"})])
+    llm.config = _judge_config()
+    path = _write_record(tmp_path, _record(llm.config))
+    _point_role_record(monkeypatch, vj.ENTAILMENT_ROLE, path)
+    _point_role_record(monkeypatch, vj.CONTRADICTION_ROLE, tmp_path / "absent.json")
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    judge = vj.VerificationJudge(llm)
+    assert (await judge.judge(session, "p", "h", role=vj.ENTAILMENT_ROLE)).valid
+    with pytest.raises(vj.JudgeNotQualifiedError):
+        await judge.judge(session, "p", "h", role=vj.CONTRADICTION_ROLE)
+
+
+async def test_a_records_role_is_checked_not_only_its_location(
+    session, tmp_path, monkeypatch,
+):
+    """Copying one role's record onto the other's path qualifies nothing.
+
+    Without this the split is a filename convention: the file that opens the
+    entailment gate would open the contradiction gate too, one `cp` away, and
+    the numbers inside it were never measured against that role's bars.
+    """
+    cfg = _judge_config()
+    entailment_record = _record(cfg, role=vj.ENTAILMENT_ROLE)
+    copied = tmp_path / "copied-onto-the-contradiction-path.json"
+    copied.write_text(json.dumps(entailment_record), encoding="utf-8")
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=vj.CONTRADICTION_ROLE, record_path=copied,
+    )
+    assert state.qualified is False
+    assert any("names role" in r for r in state.reasons)
+
+
+@pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
+async def test_a_pre_split_bundled_record_qualifies_no_role(
+    session, tmp_path, monkeypatch, role,
+):
+    """The migration hazard, closed in the direction that matters.
+
+    A pre-amendment record carries all four metrics and names no role. Read as
+    "whatever role you asked for", it would qualify the contradiction role from
+    an artifact whose contradiction bar was never the thing that cleared —
+    which is exactly the outcome the ruling refused. It qualifies nothing.
+    """
+    cfg = _judge_config()
+    bundled = _record(cfg)
+    bundled.pop("role")
+    path = tmp_path / "verification_qualification.json"
+    path.write_text(json.dumps(bundled), encoding="utf-8")
+    _state_the_recall_bar(session)
+    await session.commit()
+
+    state = await vj.qualification_state(
+        session, cfg, role=role, record_path=path,
+    )
+    assert state.qualified is False
+    assert any("pre-amendment bundle" in r for r in state.reasons)
+
+
+def test_the_gated_door_accepts_no_record_path_and_demands_a_role():
     # A caller-supplied record path would reopen the rehearsal-record bypass
     # one level above the writer's minting lock: a --gate rehearsal may
     # legitimately write a qualifying record from an easy gold to any
     # non-default path, and a consumer pointing the door at it would run as
     # qualified with nothing flagging it. Only the canonical, minting-locked
     # record may qualify a consumer call.
+    #
+    # `role` is keyword-only with no default: a consumer that does not name the
+    # discrimination it makes must not inherit whichever record happens to
+    # exist, which is what a defaulted role would give it.
     import inspect
-    params = list(inspect.signature(vj.VerificationJudge.judge).parameters)
-    assert params == ["self", "session", "premise", "hypothesis"]
+    signature = inspect.signature(vj.VerificationJudge.judge)
+    assert list(signature.parameters) == [
+        "self", "session", "premise", "hypothesis", "role",
+    ]
+    role = signature.parameters["role"]
+    assert role.kind is inspect.Parameter.KEYWORD_ONLY
+    assert role.default is inspect.Parameter.empty
 
 
 # ── identity: what moves the hash, and what must not ─────────────────────
@@ -476,11 +851,28 @@ def test_user_template_text_moves_the_identity(monkeypatch):
     assert before != after
 
 
-def test_the_canonical_record_is_absent_on_this_branch():
-    # The zero-pin: only a gate-eligible --gate run (T2.41's) may mint the
+@pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
+def test_the_canonical_records_are_absent_on_this_branch(role):
+    # The zero-pin, now per role: only a gate-eligible --gate run may mint a
     # record, so its first appearance must be a deliberate diff that
-    # consciously edits this test.
-    assert not vj.QUALIFICATION_RECORD_PATH.exists()
+    # consciously edits this test. Both are absent for stated reasons — the
+    # contradiction role missed its bar and stays missed, and the owner refused
+    # minting the entailment role from the spent run's artifact (ruling
+    # 2026-08-12), so that record is owed to a fresh gold and to nothing else.
+    assert not vj.qualification_record_path(role).exists()
+
+
+def test_the_pre_split_bundled_record_path_is_not_resurrected():
+    # A pre-amendment bundle qualified every consumer at once. Nothing reads
+    # that path any more and nothing may start: a file left there is inert, and
+    # an author reaching for the old module constant gets a red test rather
+    # than a working bypass.
+    bundled = (
+        vj.qualification_record_path(vj.ENTAILMENT_ROLE).parent
+        / "verification_qualification.json"
+    )
+    assert not bundled.exists()
+    assert not hasattr(vj, "QUALIFICATION_RECORD_PATH")
 
 
 # ── source scans: one door to the purpose, and off the hot path ──────────
@@ -745,3 +1137,215 @@ def test_the_entailment_consumers_use_the_gated_door_and_never_the_probe():
     assert ".judge(" not in synthesis, (
         "the tick hands the judge down; the pass is what asks it"
     )
+
+
+# ── R1's consumer scan: the derivation's premise, machine-checked ────────
+#
+# The amendment derives from "each consumer's gate depends on a discrimination
+# it never makes", and that premise is a property of two source files. Read
+# once and asserted in prose, it rots the first time a consumer grows a second
+# branch — at which point the amendment silently stops being true while every
+# test stays green. So it is scanned the way the second-RRF-constant scan is:
+# against the parsed tree, checking the binding rather than the wording.
+
+import ast as _ast  # noqa: E402
+
+# module -> the role it may ask as, and therefore the ONE judge verdict it may
+# name. Extending this dict means a third consumer, which is a doc 17 §6
+# question before it is a code change.
+_ROLE_CONSUMERS = {
+    "app/services/claim_entailment.py": "entailment",
+    "app/services/contradiction_scan.py": "contradiction",
+}
+
+
+def _judge_calls(tree) -> list[_ast.Call]:
+    return [
+        node for node in _ast.walk(tree)
+        if isinstance(node, _ast.Call)
+        and isinstance(node.func, _ast.Attribute)
+        and node.func.attr == "judge"
+    ]
+
+
+def _verdict_literals(tree) -> set[str]:
+    return {
+        node.value for node in _ast.walk(tree)
+        if isinstance(node, _ast.Constant)
+        and isinstance(node.value, str)
+        and node.value in vj.JUDGE_VERDICTS
+    }
+
+
+def _role_keyword(call: _ast.Call) -> str | None:
+    for keyword in call.keywords:
+        if keyword.arg == "role" and isinstance(keyword.value, _ast.Name):
+            return keyword.value.id
+    return None
+
+
+_ROLE_CONSTANTS = ("ENTAILMENT_ROLE", "CONTRADICTION_ROLE")
+
+
+def _role_bindings(tree) -> dict[str, str]:
+    """Local name -> the judge-module constant it is bound to.
+
+    Resolved rather than pattern-matched on the call site, because the call
+    site's spelling is not the binding. `from … import CONTRADICTION_ROLE as
+    ENTAILMENT_ROLE` reads as the entailment role at every call and is the
+    contradiction one — a one-token change that would flip which qualification
+    admits the article pass while a name-only scan stayed green. This was found
+    by breaking the scan on purpose, not by reading it.
+    """
+    bindings = {}
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.ImportFrom) and node.module == (
+            "app.services.verification_judge"
+        ):
+            for alias in node.names:
+                if alias.name in _ROLE_CONSTANTS:
+                    bindings[alias.asname or alias.name] = alias.name
+    return bindings
+
+
+def _rebound_role_names(tree) -> set[str]:
+    """Role names the module assigns to after importing them — the other way a
+    call site's spelling stops meaning what it imported."""
+    rebound = set()
+    for node in _ast.walk(tree):
+        targets = []
+        if isinstance(node, _ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (_ast.AnnAssign, _ast.AugAssign)):
+            targets = [node.target]
+        for target in targets:
+            if isinstance(target, _ast.Name) and target.id in _ROLE_CONSTANTS:
+                rebound.add(target.id)
+    return rebound
+
+
+@pytest.mark.parametrize("module,role", sorted(_ROLE_CONSUMERS.items()))
+def test_each_consumer_names_one_discrimination_and_asks_as_its_role(module, role):
+    """`claim_entailment` consumes only the entailed discrimination and
+    `contradiction_scan` only the contradicted one — the premise R1 derives
+    from, checked against the source rather than asserted about it.
+
+    Two halves, both necessary. The *literals* half proves the consumer cannot
+    branch on a verdict it is not qualified for: `contradicted` and
+    `unsupported` are genuinely one bucket to the entailment pass, and
+    `entailed` and `unsupported` genuinely one to the scan. The *role* half
+    proves it asks the judge as the role that measures that verdict — a
+    consumer branching correctly while asking as the other role would ship on a
+    qualification nobody measured for it.
+    """
+    root = _Path(__file__).resolve().parents[1]
+    tree = _ast.parse((root / module).read_text(encoding="utf-8"))
+
+    assert _verdict_literals(tree) == {vj.ROLE_VERDICTS[role]}, (
+        f"{module} names a judge verdict outside its {role!r} role's "
+        f"discrimination; R1's derivation rests on it naming exactly one"
+    )
+
+    calls = _judge_calls(tree)
+    assert calls, f"{module} no longer calls the gated door"
+    expected = {"entailment": "ENTAILMENT_ROLE", "contradiction": "CONTRADICTION_ROLE"}[role]
+
+    # The binding, not the spelling: an aliased import or a later assignment
+    # makes `role=ENTAILMENT_ROLE` mean whatever the module wants it to.
+    bindings = _role_bindings(tree)
+    assert bindings == {expected: expected}, (
+        f"{module} must import exactly {expected} from the judge module, "
+        f"unaliased; it binds {bindings}"
+    )
+    assert not _rebound_role_names(tree), (
+        f"{module} reassigns a judge role constant after importing it"
+    )
+
+    for call in calls:
+        assert _role_keyword(call) == expected, (
+            f"{module} calls judge() without role={expected}; a consumer must "
+            "ask as the role whose bars measure the verdict it branches on"
+        )
+
+
+def test_no_module_under_app_reaches_the_judge_without_naming_a_role():
+    """The floor under the per-module scan above: a third consumer cannot
+    appear with no role, or with a role spelled as a bare string that dodges
+    the constant."""
+    role_constants = {"ENTAILMENT_ROLE", "CONTRADICTION_ROLE"}
+    offenders = []
+    for path in _app_sources():
+        rel = _rel(path, _BACKEND)
+        if rel == "app/services/verification_judge.py":
+            continue
+        tree = _ast.parse(path.read_text(encoding="utf-8"))
+        for call in _judge_calls(tree):
+            if _role_keyword(call) not in role_constants:
+                offenders.append(f"{rel}:{call.lineno}")
+    assert not offenders, (
+        "a consumer called VerificationJudge.judge() without one of the "
+        f"module's role constants: {offenders}"
+    )
+
+
+def test_the_consumer_scan_flags_a_second_discrimination(tmp_path):
+    offending = tmp_path / "consumer.py"
+    offending.write_text(
+        'from app.services.verification_judge import ENTAILMENT_ROLE\n'
+        'CONTRADICTED = "contradicted"\n'
+        "async def check(judge, session, p, h):\n"
+        "    return await judge.judge(session, p, h, role=ENTAILMENT_ROLE)\n"
+    )
+    tree = _ast.parse(offending.read_text(encoding="utf-8"))
+    assert _verdict_literals(tree) == {"contradicted"}
+
+
+def test_the_consumer_scan_flags_an_aliased_role_import(tmp_path):
+    """The bypass the scan missed until it was broken on purpose: the call site
+    still reads `role=ENTAILMENT_ROLE` and is the other role."""
+    offending = tmp_path / "consumer.py"
+    offending.write_text(
+        "from app.services.verification_judge import (\n"
+        "    CONTRADICTION_ROLE as ENTAILMENT_ROLE,\n"
+        ")\n"
+        "async def check(judge, session, p, h):\n"
+        "    return await judge.judge(session, p, h, role=ENTAILMENT_ROLE)\n"
+    )
+    tree = _ast.parse(offending.read_text(encoding="utf-8"))
+    calls = _judge_calls(tree)
+    assert calls and _role_keyword(calls[0]) == "ENTAILMENT_ROLE"
+    assert _role_bindings(tree) == {"ENTAILMENT_ROLE": "CONTRADICTION_ROLE"}
+
+
+def test_the_consumer_scan_flags_a_rebound_role_constant(tmp_path):
+    offending = tmp_path / "consumer.py"
+    offending.write_text(
+        "from app.services.verification_judge import ENTAILMENT_ROLE\n"
+        'ENTAILMENT_ROLE = "contradiction"\n'
+        "async def check(judge, session, p, h):\n"
+        "    return await judge.judge(session, p, h, role=ENTAILMENT_ROLE)\n"
+    )
+    tree = _ast.parse(offending.read_text(encoding="utf-8"))
+    assert _rebound_role_names(tree) == {"ENTAILMENT_ROLE"}
+
+
+def test_the_consumer_scan_flags_a_role_free_call(tmp_path):
+    offending = tmp_path / "consumer.py"
+    offending.write_text(
+        "async def check(judge, session, p, h):\n"
+        "    return await judge.judge(session, p, h)\n"
+    )
+    tree = _ast.parse(offending.read_text(encoding="utf-8"))
+    calls = _judge_calls(tree)
+    assert calls and _role_keyword(calls[0]) is None
+
+
+def test_the_consumer_scan_flags_a_string_literal_role(tmp_path):
+    offending = tmp_path / "consumer.py"
+    offending.write_text(
+        "async def check(judge, session, p, h):\n"
+        '    return await judge.judge(session, p, h, role="entailment")\n'
+    )
+    tree = _ast.parse(offending.read_text(encoding="utf-8"))
+    calls = _judge_calls(tree)
+    assert calls and _role_keyword(calls[0]) is None

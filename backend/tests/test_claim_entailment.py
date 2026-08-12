@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from app.services import claim_entailment as ce
 from app.services.verification_judge import (
+    ENTAILMENT_ROLE,
     JudgeNotQualifiedError,
     ProbeVerdict,
 )
@@ -31,7 +32,11 @@ class _StubJudge:
         self.invalid = invalid
         self.asked: list[tuple[str, str]] = []
 
-    async def judge(self, session, premise, hypothesis):
+    async def judge(self, session, premise, hypothesis, *, role):
+        # The stub enforces the role rather than accepting it: since the
+        # 2026-08-12 split, asking as the wrong role would ship this pass on a
+        # qualification measured for the other consumer's discrimination.
+        assert role == ENTAILMENT_ROLE
         self.asked.append((premise, hypothesis))
         if self.raises is not None:
             raise self.raises
@@ -360,7 +365,8 @@ class _Judge:
         self.verdict = verdict
         self.raises = raises
 
-    async def judge(self, session, premise, hypothesis):
+    async def judge(self, session, premise, hypothesis, *, role):
+        assert role == ENTAILMENT_ROLE
         if self.raises is not None:
             raise self.raises
         return ProbeVerdict(
