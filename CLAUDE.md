@@ -129,7 +129,12 @@ A memory carries:
   corroboration-independence key facts count `DISTINCT` on. **It has writers on
   both doors** since T1.11 (`resolve_origin_key`, called from
   `api/routes/memories.py` and `api/mcp/server.py`, and on the raw entry dicts
-  for batch adds) — the "no writer yet" note here was stale and was corrected
+  for batch adds) — **and since T3.07 from a third caller that is not a door**,
+  `services/auto_research.py`, which resolves a *merged* key on purpose so a
+  research run's manufactured origins fold into one bucket that can never fire
+  a corroboration gate (the count above updated 2026-08-12; this said "both
+  doors" full stop, which is the "here is the full list" shape invariant 23 is
+  about) — the "no writer yet" note here was stale and was corrected
   2026-07-28. **No *capture* response echoes it**: it is absent from
   `MemoryResponse`, so on the capture doors it is write-only over the wire and
   a test asserting it through a capture door's response will assert nothing.

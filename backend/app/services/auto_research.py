@@ -37,9 +37,13 @@ over the same page are the same source fetched twice, which is exactly the
 shape "merge to one origin, never mint distinct ones" names.
 
 **A failed run leaves nothing behind.** Gathering completes before anything is
-written, the whole run is filed in a single ``batch_create_memories`` call
-(hence a single transaction and a single commit), and any failure rolls that
-transaction back before re-raising. A budget the run cannot satisfy refuses the
+written, and the whole run is filed in a single ``batch_create_memories``
+call — one transaction, one commit — with any failure rolling that transaction
+back before re-raising. The *run* commits twice, though: the filing, then the
+run-level journal. A failure in that second window leaves the filing durable
+and is degraded to ``journalled=False`` rather than raised, because raising
+would report a filed run as failed and a driver retrying on it would file the
+whole run twice. A budget the run cannot satisfy refuses the
 whole run rather than filing a truncated one: filing part of a research run
 would leave a corpus whose origin story is untrue in a way nothing downstream
 could detect.
@@ -174,8 +178,20 @@ async def load_budget(session: AsyncSession) -> ResearchBudget:
         )
         max_findings = MAX_FINDINGS_CEILING
 
+    # `bool()` is the wrong coercion for the master switch: `{"enabled":
+    # "false"}` — the most natural malformed shape an operator writes — is
+    # truthy, so the one field where failing closed matters most would fail
+    # open. The int fields already get this treatment from `_positive_int`.
+    enabled = stored.get("enabled", AUTO_RESEARCH_DEFAULTS["enabled"])
+    if not isinstance(enabled, bool):
+        logger.warning(
+            "%s.enabled=%r is not a boolean; falling back to the default",
+            AUTO_RESEARCH_CONFIG_KEY, enabled,
+        )
+        enabled = AUTO_RESEARCH_DEFAULTS["enabled"]
+
     return ResearchBudget(
-        enabled=bool(stored.get("enabled", AUTO_RESEARCH_DEFAULTS["enabled"])),
+        enabled=bool(enabled),
         max_findings_per_run=max_findings,
         max_content_chars=_positive_int(
             stored.get("max_content_chars"),
@@ -341,7 +357,19 @@ async def run_research(
         # reads is the marker on the memory rows themselves, which is already
         # committed. The journal is the run-level audit on top of it.
         logger.warning("research run %s filed %d memories unjournalled", run_id, len(memory_ids))
-    await session.commit()
+    try:
+        await session.commit()
+    except Exception:
+        # The filing committed inside the capture call and is durable. Raising
+        # here would report a filed run as failed, and a driver that retried on
+        # that exception would file the whole run a second time. Degrade to the
+        # same unjournalled outcome the branch above already tolerates.
+        await session.rollback()
+        journalled = False
+        logger.warning(
+            "research run %s filed %d memories; the journal commit failed",
+            run_id, len(memory_ids),
+        )
 
     return ResearchRunResult(
         run_id=run_id, subject=subject, project=project,

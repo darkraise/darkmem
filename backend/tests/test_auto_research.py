@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.mcp.client_identity import resolve_origin_key
 from app.models.config import Config
@@ -147,6 +148,14 @@ def test_the_loop_reaches_ingest_only_through_the_memory_service():
     added a new one. Pinning the whole set means any widening — a direct
     `memory_buffer.enqueue`, a `ProcessingPipeline`, a repository write, raw
     SQL against `memories` through a new import — fails here first.
+
+    **Its bound, stated rather than left to be discovered:** this catches every
+    ordinary import shape, including function-level ones, but not obfuscation —
+    a bare `import app` reached by attribute chain (the name carries no `app.`
+    prefix) or an `importlib.import_module` by string literal both slip past.
+    The sibling reachability scanner documents its own bound the same way; a
+    scan that claims completeness it does not have is worse than one that
+    names its edge.
     """
     imports = _app_imports((BACKEND / LOOP_MODULE).read_text())
     assert imports <= ALLOWED_APP_IMPORTS, (
@@ -236,6 +245,12 @@ def test_no_app_code_reaches_the_research_loop():
     scan is the dream-job family's own, so an import spelled across lines, an
     attribute reach through the package, or the dotted path inside a string
     literal are all covered.
+
+    Note it is blanket over `app/` with no exemption in use, so a **sanctioned**
+    driver — a jobs registration, a research route, an MCP tool — trips it too,
+    and must visibly invoke the `exempt_node_ids` machinery the dream-job scan
+    already uses. That is the intended default: reaching this loop should be an
+    argued act, never an incidental import.
     """
     paths = app_sources(BACKEND)
     offenders = find_forbidden_reach(
@@ -311,6 +326,30 @@ async def test_a_malformed_budget_row_degrades_to_the_defaults(session):
 
 
 @pytest.mark.asyncio
+async def test_a_malformed_enabled_fails_closed_rather_than_truthy(session):
+    """The string "false" is the most natural malformed shape an operator
+    writes, and it is truthy — so `bool()` on the master switch would fail
+    *open*, which is the one direction "building it is not running it" cannot
+    survive. The int fields already degrade strictly; this one has to as well."""
+    session.add(Config(key=AUTO_RESEARCH_CONFIG_KEY, value={"enabled": "false"}))
+    await session.flush()
+
+    budget = await load_budget(session)
+    assert budget.enabled is False
+    assert budget.enabled == AUTO_RESEARCH_DEFAULTS["enabled"]
+
+
+@pytest.mark.asyncio
+async def test_a_truthy_non_boolean_enabled_does_not_arm_the_loop(session):
+    """Not only the "false" case: any non-boolean falls back to the default,
+    so no operator typo can arm a loop the owner has not armed."""
+    session.add(Config(key=AUTO_RESEARCH_CONFIG_KEY, value={"enabled": "yes"}))
+    await session.flush()
+
+    assert (await load_budget(session)).enabled is False
+
+
+@pytest.mark.asyncio
 async def test_more_findings_than_the_budget_allows_refuses_the_whole_run(session):
     gatherer = _Gatherer([_finding(f"f{i}") for i in range(4)])
     with pytest.raises(ResearchBudgetExceeded):
@@ -371,6 +410,42 @@ async def test_a_failure_inside_the_capture_call_rolls_the_whole_run_back(
             session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
         )
     assert await _buffer_count(session) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_failed_journal_commit_does_not_report_a_filed_run_as_failed(
+    session, monkeypatch,
+):
+    """The run is two transactions, not one: the capture call commits the
+    filing, then the journal commits separately. A raise in that second window
+    would report a durable run as failed, and a driver retrying on it would
+    file the whole run twice. It degrades to the same unjournalled outcome the
+    non-fatal `record_event` branch already tolerates.
+
+    The durability half is deliberately not asserted here: conftest wraps each
+    test in an outer transaction, so the filing's "commit" is a savepoint and
+    the degradation's rollback discards rows that a real commit would have made
+    permanent. What the harness *can* observe is the reported outcome, which is
+    the half a retrying driver reads."""
+    committed: list[int] = []
+    real_commit = AsyncSession.commit
+
+    async def commit(self):
+        committed.append(1)
+        if len(committed) > 1:            # the filing's own commit is the first
+            raise RuntimeError("journal commit failed")
+        await real_commit(self)
+
+    gatherer = _Gatherer([_finding("f0"), _finding("f1")])
+    monkeypatch.setattr(AsyncSession, "commit", commit)
+    result = await run_research(
+        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+    )
+    monkeypatch.undo()
+
+    assert result.filed == 2, "the filing happened and must be reported as filed"
+    assert result.journalled is False, "and the lost journal must be visible"
+    assert len(committed) == 2, "the journal commit was reached and did raise"
 
 
 @pytest.mark.asyncio

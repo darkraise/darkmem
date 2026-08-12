@@ -200,6 +200,44 @@ second pipeline. That is the entire reason F7 is cheap here.
 
 **Verify.** `cd backend && python -m pytest tests/test_auto_research.py -q`
 
+#### T3.27 — The research loop has no door
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07` · `Doc: 09 §6` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-12 from T3.07's Fable review**, which found the gap and named
+the precedent that says it wants an owner now rather than at discovery time.
+
+**What.** `T3.07` landed `run_research` inert and correctly so — but nothing in
+the tree can reach it. It is callable from tests alone: no job, no route, no MCP
+tool, no script. It also needs an in-process `AsyncSession`, so an outside
+web-capable agent cannot call it even in principle. **Until this task lands, the
+Half B corpus route through `T3.07`/`T3.08` produces zero rows**, which is the
+whole reason those two tasks are in a version.
+
+This is the T2.27 → T2.96 shape exactly: a primitive shipped with no caller
+anywhere in `backend/app`, which CLAUDE.md records as a gap a *named* follow-up
+had to close. `T3.08` owns origin stamping only; nobody owned the door.
+
+**The design question this task must answer, not assume.** Doc 09 §6's flow is
+`Human->>Agent: research subject S into project P` — demand-driven, with a
+per-request subject. A cron cannot carry that subject, and `FieldDescriptor`'s
+`default` is typed `int` so a job's `config_schema` cannot either. So the door is
+probably a route or an MCP tool rather than a job; the task decides, with the
+argument recorded. Note also that a `ResearchGatherer` has **no in-tree
+implementation by design** (a model without web access would invent sources), so
+whatever door lands must let the caller inject one.
+
+**Done when:** exactly one door reaches `run_research`, with its shape argued
+against doc 09 §6's demand-driven flow; the door visibly invokes the
+`exempt_node_ids` machinery so invariant 15's blanket scan records a sanctioned
+crossing rather than being weakened; `enabled` still defaults false so the door
+refuses before it gathers; and the manufactured-origin disclosure survives the
+door — a caller cannot file through it while looking like ordinary capture.
+
+**Verify.** `cd backend && python -m pytest tests/test_auto_research.py -q`
+
+---
+
 #### T3.08 — Distinct-origin stamping for researched sources
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07, T1.11` · `Doc: 09 §6` · `Tag: target-new` · `Gate: G-E (label)`

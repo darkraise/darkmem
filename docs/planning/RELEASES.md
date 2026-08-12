@@ -151,6 +151,7 @@ owner's.
 - `T2.123` — The independence disclosure counts findings, not propositions
 - `T3.07` — Research-agent loop through the ordinary capture door
 - `T3.08` — Distinct-origin stamping for researched sources
+- `T3.27` — The research loop has no door
 - `T2.121` — Correct the contradiction-recall derivation in the ledger
 - `T2.122` — The verdicts directory leaks synthetic files under real identities
 
