@@ -1019,8 +1019,27 @@ it — and the option set is now known to be at least {`gpt-5.5`,
 `deepseek-v4-pro`}, with v4-pro carrying the resample-circularity objection
 above. ~~**Note this is now also gated behind R-B: whichever model is chosen, no
 attempt may run on `98fc4b49` until the duplicates are retired.**~~
-**Struck 2026-08-12: R-B's ordering gate was lifted by the owner ruling above,
-so R-C is once again the only thing blocking T2.114.**
+**Struck 2026-08-12: R-B's ordering gate was lifted by the owner ruling above.**
+
+> **R-C WAS SATISFIED THE SAME DAY, and this entry never said so.** This
+> adjudication landed at 18:59 on 2026-08-10 (`120e32a2`); the owner supplied
+> the ruling at 19:14, fifteen minutes later (`948a1a2d`), and it is recorded
+> in `tasks/M1-measurement.md`: **the model is `gpt-5.5`**, with the binding
+> stopping rule — final attempt on this gold, a miss records NOT CLEARED and no
+> further model is tried on that sha. **Re-affirmed by the owner 2026-08-12.**
+>
+> Two of R-C's three sentences are therefore on the record and the third is
+> deliberately absent: the ruling states that no session may "embellish it into
+> a rationale", so the *why* is the owner's and is unrecorded by design rather
+> than outstanding. An owner may choose without justifying the choice to their
+> own tooling; what the corpus forbids is an assistant manufacturing the reason
+> afterwards.
+>
+> **Consequence for anyone reading this entry alone:** T2.114 has not been
+> blocked on R-C since 2026-08-10. What actually held it after that was R-B's
+> ordering gate, lifted above. With both closed the task is **startable**, and
+> its own text binds who may run it — not the session that authored the
+> surrounding work.
 
 **R-D — doc 09 §4.1: adopt the damping (Tier-3, ratified).** `ln(1+x)` per
 signal is now the stated formula. `review_ranking` already compresses
