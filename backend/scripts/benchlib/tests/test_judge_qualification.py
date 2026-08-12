@@ -107,9 +107,20 @@ def test_sanity_fixtures_live_outside_the_gold():
 _MISSING = object()
 
 
-def _certified_resample():
-    return {"n": 93, "disagreements": 0, "seed": 4242,
-            "performed_by": "owner", "date": "2026-08-06"}
+def _certified_resample(pairs=None):
+    """A block that would certify, over ``pairs`` when they are given.
+
+    ``pairs`` is optional only so a caller can build a *deliberately*
+    uncertified block; every fixture that means to be eligible must pass
+    its pairs, because since T2.116 a block that names no pair set is
+    refused exactly like one that names the wrong set.
+    """
+    block = {"n": 93, "disagreements": 0, "seed": 4242,
+             "performed_by": "owner", "date": "2026-08-06"}
+    if pairs is not None:
+        block["pairs_sha256"] = entailment_gold.pairs_content_hash(pairs)
+        block["pair_digests"] = entailment_gold.pair_digests(pairs)
+    return block
 
 
 def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
@@ -129,7 +140,7 @@ def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
             "l2-fact": n_l2,
         },
     }
-    doc["resample"] = _certified_resample() if resample is _MISSING else resample
+    doc["resample"] = _certified_resample(pairs) if resample is _MISSING else resample
     return doc
 
 
@@ -263,6 +274,172 @@ def test_retired_pairs_do_not_count_as_live():
     assert eligibility.live_pairs == 200
     assert eligibility.author_labelled_pairs == 0
     assert eligibility.eligible is True
+
+
+# ── the certification's content basis (T2.116) ───────────────────────────
+#
+# D-7: the lock validated what the resample block *said* and never tied it
+# to the pairs it certified, so a verdict flipped after the sitting left
+# eligibility green. These tests are written against that exact case,
+# because it is the one the pre-T2.116 lock passed.
+
+
+def _flip_one_verdict(doc, pair_id=None):
+    """Flip one live pair's verdict, returning its id. A label flip is the
+    canonical post-certification tamper; everything else is a variation."""
+    for pair in doc["pairs"]:
+        if pair.get("retired"):
+            continue
+        if pair_id is not None and pair["id"] != pair_id:
+            continue
+        pair["verdict"] = (
+            "unsupported" if pair["verdict"] != "unsupported" else "entailed"
+        )
+        return pair["id"]
+    raise AssertionError("no live pair to flip")
+
+
+def test_a_verdict_flipped_after_certification_turns_eligibility_red():
+    """**The defect this task closes.** Before T2.116 this gold stayed
+    eligible: n, disagreements, seed, performer and date all still read
+    exactly as certified, because none of them describes the labels."""
+    doc = _synthetic_gold(200, 100, 0)
+    assert jq.gate_eligibility(doc).eligible is True
+
+    flipped = _flip_one_verdict(doc)
+    eligibility = jq.gate_eligibility(doc)
+
+    assert eligibility.eligible is False
+    reason = "\n".join(eligibility.reasons)
+    # Named, not merely detected -- a refusal that says "something moved"
+    # sends a human to diff 402 pairs by hand.
+    assert flipped in reason
+    assert "1 changed since certification" in reason
+
+
+def test_the_refusal_names_added_and_removed_pairs_distinctly():
+    """Three ways a pair set moves, and they mean different things: a
+    changed label, a pair deleted out from under the certification, and a
+    pair it never judged."""
+    doc = _synthetic_gold(200, 100, 0)
+    doc["pairs"].append({
+        "id": "eg-8888", "verdict": "entailed", "label_source": "adjudicated",
+    })
+    removed = doc["pairs"].pop(0)["id"]
+    changed = _flip_one_verdict(doc)
+
+    reason = "\n".join(jq.gate_eligibility(doc).reasons)
+    assert f"1 changed since certification: {changed}" in reason
+    assert f"1 removed since certification: {removed}" in reason
+    assert "1 added since certification: eg-8888" in reason
+
+
+def test_annotation_churn_does_not_invalidate_a_certification():
+    """The basis is narrower than the file sha on purpose. Every round to
+    date has rewritten rationales after its sitting, and hashing bytes
+    would make that ordinary churn indistinguishable from a label flip --
+    a guard that fires on immaterial edits is one people re-stamp past."""
+    doc = _synthetic_gold(200, 100, 0)
+    for pair in doc["pairs"][:20]:
+        pair["rationale"] = "rewritten long after the sitting"
+        pair["slice_tags"] = ["some-later-retag"]
+    assert jq.gate_eligibility(doc).eligible is True
+
+
+def test_churn_inside_the_retired_archive_does_not_invalidate():
+    """Retirement invalidates -- the pair leaves the live map and reports
+    as removed -- but editing an already-retired pair cannot move any
+    number the gate reads, so it must not fire the guard."""
+    doc = _synthetic_gold(200, 100, 0)
+    doc["pairs"].append({
+        "id": "eg-7777", "verdict": "entailed",
+        "label_source": "adjudicated", "retired": True,
+    })
+    assert jq.gate_eligibility(doc).eligible is True
+
+    doc["pairs"][-1]["verdict"] = "contradicted"
+    doc["pairs"][-1]["rationale"] = "re-adjudicated years later, still retired"
+    assert jq.gate_eligibility(doc).eligible is True
+
+    # Retiring a *live* pair is a different act and does invalidate.
+    doc["pairs"][0]["retired"] = True
+    reason = "\n".join(jq.gate_eligibility(doc).reasons)
+    assert "removed since certification" in reason
+
+
+def test_a_block_naming_no_pair_set_is_refused_like_one_naming_the_wrong_set():
+    """A certification that cites no content is the pre-T2.116 shape. It
+    must not be grandfathered: that shape is exactly what D-7 describes."""
+    doc = _synthetic_gold(200, 100, 0)
+    doc["resample"].pop("pairs_sha256")
+    assert jq.gate_eligibility(doc).eligible is False
+    assert "'pairs_sha256' missing" in "\n".join(jq.gate_eligibility(doc).reasons)
+
+    doc = _synthetic_gold(200, 100, 0)
+    doc["resample"].pop("pair_digests")
+    assert jq.gate_eligibility(doc).eligible is False
+    assert "'pair_digests' missing" in "\n".join(jq.gate_eligibility(doc).reasons)
+
+
+def test_a_block_whose_map_does_not_derive_its_aggregate_is_refused():
+    """The aggregate is the authority and the map is diagnostic, so the
+    map is checked to derive the aggregate before it is trusted to explain
+    anything. Repairing one field by hand to match the pairs while leaving
+    the other stale lands here rather than passing."""
+    doc = _synthetic_gold(200, 100, 0)
+    flipped = _flip_one_verdict(doc)
+    # Tamper: re-point the per-pair map at the new content, leaving the
+    # aggregate as certified. Naively diffing the maps would now find
+    # nothing moved.
+    doc["resample"]["pair_digests"] = entailment_gold.pair_digests(doc["pairs"])
+
+    eligibility = jq.gate_eligibility(doc)
+    assert eligibility.eligible is False
+    reason = "\n".join(eligibility.reasons)
+    assert "internally inconsistent" in reason
+    assert flipped not in reason  # it never gets as far as naming pairs
+
+
+def test_the_real_gold_carries_a_basis_that_re_derives():
+    """Done-when 4: the existing certified gold re-certifies with no manual
+    strip. The stamp was not taken on trust -- the gold minus its own
+    resample block reproduces the sha the draw manifest pinned, which
+    proves the pairs have not moved since the sitting and explains D-8
+    entirely: the certified sha differs from the file sha because writing
+    the certification into the file is what changed it."""
+    doc = entailment_gold.load_entailment_gold()
+    block = doc["resample"]
+
+    assert block["pairs_sha256"] == entailment_gold.pairs_content_hash(doc["pairs"])
+    assert block["pair_digests"] == entailment_gold.pair_digests(doc["pairs"])
+    assert len(block["pair_digests"]) == 402  # live pairs, retired excluded
+    assert jq.gate_eligibility(doc).eligible is True
+
+    gold_path = pathlib.Path(entailment_gold.__file__).parent / "entailment" / "gold.json"
+    on_disk = json.loads(gold_path.read_text(encoding="utf-8"))
+    stripped = {k: v for k, v in on_disk.items() if k != "resample"}
+    reconstructed = hashlib.sha256(
+        (json.dumps(stripped, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    ).hexdigest()
+    manifest = json.loads(
+        (gold_path.parent / "resample_manifest.json").read_text(encoding="utf-8")
+    )
+    assert reconstructed == manifest["gold_sha256"]
+    # And the manifest's seed derives from that same sha, so the draw, the
+    # certification and the stamped basis all name one file state.
+    assert manifest["seed"] == int(manifest["gold_sha256"][:8], 16)
+
+
+def test_the_basis_excludes_the_block_itself():
+    """Done-when 1: 'a hash over the pairs alone, excluding the block
+    itself'. Without this the field could never be stamped -- writing it
+    would change what it hashes."""
+    doc = _synthetic_gold(200, 100, 0)
+    before = entailment_gold.pairs_content_hash(doc["pairs"])
+    doc["resample"]["performed_by"] = "someone else entirely"
+    doc["resample"]["supersedes"] = [{"n": 93, "disagreements": 1}]
+    assert entailment_gold.pairs_content_hash(doc["pairs"]) == before
+    assert jq.gate_eligibility(doc).eligible is True
 
 
 # ── recorder, report, record writer (Task 5) ─────────────────────────────
@@ -794,8 +971,9 @@ def _write_eligible_gold(tmp_path):
         },
         # An eligible gold must now carry a certified resample: Layer 3's
         # n = 93 / <= 1 disagreement is what measures label accuracy, and the
-        # lock enforces it since 2026-08-06.
-        "resample": _certified_resample(),
+        # lock enforces it since 2026-08-06. Since T2.116 the block must also
+        # name the pairs it certified, so it is built from them.
+        "resample": _certified_resample(pairs),
         "pairs": pairs,
     }
     path = tmp_path / "eligible_gold.json"

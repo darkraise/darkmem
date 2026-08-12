@@ -16,7 +16,7 @@ import json
 
 import pytest
 
-from benchlib import judge_qualification as jq, resample_score
+from benchlib import entailment_gold, judge_qualification as jq, resample_score
 
 
 def _gold_bytes(pairs: list[dict]) -> bytes:
@@ -68,6 +68,12 @@ def test_perfect_agreement_yields_zero_disagreements():
     assert block == {
         "n": 3, "disagreements": 0, "seed": manifest["seed"],
         "performed_by": "owner", "date": "2026-08-07",
+        # T2.116: the sitting stamps the pair set it saw. Stamped *here*
+        # rather than at write time because the gold_sha256 refusal above
+        # has already proved these pairs are the ones the draw was pinned
+        # to; hashing at persist time would hash whatever is on disk then.
+        "pairs_sha256": entailment_gold.pairs_content_hash(_SYNTHETIC_PAIRS),
+        "pair_digests": entailment_gold.pair_digests(_SYNTHETIC_PAIRS),
     }
     assert disagreements == []
 
@@ -283,8 +289,24 @@ def test_the_real_lock_accepts_the_block_the_scorer_writes():
     # of the synthetic 3-pair fixture; pad it to the ratified size to prove
     # the *shape* the scorer writes is what the real lock wants, without
     # smuggling a real 93-pair draw into this synthetic-only suite.
-    padded_block = {**block, "n": jq.RESAMPLE_N, "disagreements": 0}
-    eligibility = jq.gate_eligibility(_synthetic_eligible_gold(padded_block))
+    #
+    # Since T2.116 the padding has to reach the content basis too, and the
+    # reason is the point of that task rather than a fixture nuisance: a
+    # block no longer certifies a shape, it certifies a pair set, so a
+    # block scored over these 3 pairs is genuinely not a certification of
+    # the 200-pair gold below. Re-stamping over the gold the block will sit
+    # in is what a real sitting does by construction — it scores against
+    # the gold it is pinned to.
+    gold = _synthetic_eligible_gold(None)
+    padded_block = {
+        **block,
+        "n": jq.RESAMPLE_N,
+        "disagreements": 0,
+        "pairs_sha256": entailment_gold.pairs_content_hash(gold["pairs"]),
+        "pair_digests": entailment_gold.pair_digests(gold["pairs"]),
+    }
+    gold["resample"] = padded_block
+    eligibility = jq.gate_eligibility(gold)
     assert eligibility.eligible is True
     assert len(eligibility.reasons) == 1  # only the composition summary line, no refusal ground
 
@@ -357,7 +379,13 @@ def test_main_reads_a_completed_sheet_scores_and_writes_the_block(tmp_path):
     assert written["resample"] == {
         "n": 3, "disagreements": 0, "seed": manifest["seed"],
         "performed_by": "test-owner", "date": "2026-08-07",
+        "pairs_sha256": entailment_gold.pairs_content_hash(written["pairs"]),
+        "pair_digests": entailment_gold.pair_digests(written["pairs"]),
     }
+    # End to end: what the CLI persisted describes the file it persisted it
+    # into, which is the property the whole task exists to establish.
+    assert jq.gate_eligibility(written).eligible is False  # n=3 < 93, nothing else
+    assert not any("pairs have moved" in r for r in jq.gate_eligibility(written).reasons)
     assert json.loads(disagreements_path.read_text(encoding="utf-8")) == []
 
 

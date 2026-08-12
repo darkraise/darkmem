@@ -49,6 +49,7 @@ only and move with every append, visibly.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -122,6 +123,93 @@ FACT_KEY_FIELDS = (
 # ruled. Collapsing them would tell T2.41 that a label carried blind-pass
 # agreement it never had — and the gate must report its metrics per population.
 LABEL_SOURCES = frozenset({"author", "adjudicated", "owner"})
+
+
+# ── the certification's content basis (T2.116) ───────────────────────────
+#
+# A resample certifies a *label error rate*, and until T2.116 nothing tied
+# that certification to the labels it saw: `gate_eligibility` checked that
+# the block *said* n >= 93 with <= 1 disagreement and carried its citation
+# fields, so a verdict flipped after the sitting left eligibility green on a
+# certification of a different file. Three rounds handled it correctly by
+# hand, which is the tell — the protocol already understood what no code
+# enforced.
+#
+# The basis is deliberately NARROWER than the file sha, and that is the
+# whole point of hashing pairs rather than bytes. The certified sha has
+# differed from the on-disk sha in every round to date (58ac1a90 against
+# 98fc4b49, most recently), always annotation-only, because rationales get
+# rewritten and notes get added long after a sitting. Hashing the file would
+# make that ordinary churn indistinguishable from a label flip and the
+# refusal would fire constantly until someone learned to ignore it — a
+# guard that cries wolf is worse than none, because it trains the response.
+#
+# So the basis is exactly the judged claim: which pair (`id`), what the
+# judge was shown (`premise`, `hypothesis`), and what the gold says the
+# answer is (`verdict`). Everything else is annotation or is separately
+# pinned — `slice_tags` by the declared slice-count pin, `provenance` by
+# the declared provenance counts and the harvest manifest, `label_source`
+# by the author-label condition in this same lock.
+#
+# It covers the LIVE population only, which is the population the
+# certification actually describes: a resample draws from live pairs, the
+# lock counts live pairs, and nothing anywhere scores a retired one.
+# Retirement still invalidates a certification — a retired pair leaves the
+# live map and the refusal reports it as removed — but churn *within* the
+# retired archive does not, because no number the gate reads can move with
+# it. Hashing retired pairs too was tried first and is wrong in a way worth
+# recording: appending an already-retired pair would have turned
+# eligibility red for a change that touches nothing measured, and a guard
+# that fires on immaterial edits is one people learn to re-stamp past.
+CERTIFIED_PAIR_FIELDS = ("id", "premise", "hypothesis", "verdict")
+
+_PAIR_DIGEST_CHARS = 12
+
+
+def _canonical(obj: object) -> bytes:
+    return json.dumps(
+        obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def pair_digest(pair: dict) -> str:
+    """Digest of one pair's judged content, over ``CERTIFIED_PAIR_FIELDS``."""
+    basis = {field: pair.get(field) for field in CERTIFIED_PAIR_FIELDS}
+    return hashlib.sha256(_canonical(basis)).hexdigest()[:_PAIR_DIGEST_CHARS]
+
+
+def pair_digests(pairs: list[dict]) -> dict[str, str]:
+    """``{pair id: digest}`` over the **live** pairs, retired ones excluded.
+
+    Same liveness predicate the eligibility lock counts on, so the basis
+    and the counts describe one population.
+    """
+    return {
+        pair["id"]: pair_digest(pair)
+        for pair in pairs
+        if not pair.get("retired")
+    }
+
+
+def digest_map_hash(digests: dict[str, str]) -> str:
+    """Fold a ``{id: digest}`` map into the one hash a block records.
+
+    Public because the eligibility lock re-folds the map a block *stored*
+    to check it derives the aggregate it stored beside it. One definition
+    of that fold, or the check would be comparing two different rules and
+    could disagree with the writer for reasons that are not drift.
+    """
+    return hashlib.sha256(_canonical(digests)).hexdigest()
+
+
+def pairs_content_hash(pairs: list[dict]) -> str:
+    """The single hash a ``resample`` block records, over the pairs alone.
+
+    Derived from ``pair_digests`` rather than from the pairs directly, so
+    the aggregate and the per-pair map a refusal reads to name *which*
+    pairs moved can never disagree about what they cover.
+    """
+    return digest_map_hash(pair_digests(pairs))
 
 
 def load_l2_harvest(path: str | Path = HARVEST_PATH) -> dict:
