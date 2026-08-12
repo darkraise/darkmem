@@ -164,8 +164,27 @@ def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
         f for f in find_duplicate_propositions(pairs)
         if f.left in row_ids and f.right in row_ids
     ]
-    # Each duplicate finding collapses one row into an existing proposition.
-    independent = len(rows) - len(dupes)
+    # Rows collapse by connected *component*, not by finding. A component of k
+    # mutually-duplicate rows yields k(k-1)/2 findings and collapses k-1 rows,
+    # so subtracting the finding count agrees with the truth only while every
+    # component is exactly two wide — true of the contradicted census, false of
+    # the entailed one, whose three-row component (T2.118) made this print one
+    # proposition fewer than exist.
+    parent: dict[str, str] = {}
+
+    def _find(node: str) -> str:
+        parent.setdefault(node, node)
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    for finding in dupes:
+        left, right = _find(finding.left), _find(finding.right)
+        if left != right:
+            parent[left] = right
+    collapsed = sum(1 for node in list(parent) if _find(node) != node)
+    independent = len(rows) - collapsed
 
     def _min_passing(n: int) -> tuple[int, float]:
         if n <= 0:

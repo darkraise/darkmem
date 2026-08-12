@@ -1355,6 +1355,44 @@ def test_the_live_gold_discloses_its_two_duplicated_propositions():
     ]
 
 
+def test_a_three_row_duplicate_component_collapses_two_rows_not_three():
+    """Rows collapse by connected component, not by finding. Three mutually
+    duplicate rows yield three pairwise findings and collapse two rows; the
+    original arithmetic subtracted the finding count and printed one
+    proposition fewer than exist (T2.118 found exactly this shape in the
+    entailed census, which is the class R2's mint re-scores)."""
+    pairs = [
+        {"id": "d-0001", "verdict": "contradicted",
+         "premise": "shared", "hypothesis": "the service runs on port 8000"},
+        {"id": "d-0002", "verdict": "contradicted",
+         "premise": "shared", "hypothesis": "the service runs on port 8000"},
+        {"id": "d-0003", "verdict": "contradicted",
+         "premise": "shared", "hypothesis": "the service runs on port 8000"},
+    ] + [
+        {"id": f"u-{i:04d}", "verdict": "contradicted",
+         "premise": f"p{i}", "hypothesis": f"h{i}"}
+        for i in range(7)
+    ]
+
+    ci = jq.census_independence(pairs, "contradicted", 0.95)
+    assert len(ci["duplicate_pairs"]) == 3, "three rows make three pairwise findings"
+    assert ci["rows"] == 10
+    assert ci["independent_propositions"] == 8, "k rows collapse to one, not zero"
+
+
+def test_the_entailed_census_prints_its_true_proposition_count():
+    """T2.118 measured 173 entailed rows over 167 independent propositions:
+    five duplicate components, one of them three wide, collapsing six rows.
+    The finding-count arithmetic printed 166."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+
+    ci = jq.census_independence(live, "entailed", 0.90)
+    assert ci["rows"] == 173
+    assert ci["independent_propositions"] == 167
+    assert len(ci["duplicate_pairs"]) == 7, "seven findings over five components"
+
+
 def test_it_reports_the_effective_bar_on_both_readings():
     """The gap runs the dangerous way: measured on rows the bar is exactly
     0.95, and on independent propositions it is 0.9615 — so a census with
