@@ -21,7 +21,7 @@ from app.config import settings
 from app.database import async_session_factory
 from app.schemas.envelope import ENVELOPE_SCHEMA_VERSION
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequest, MemoryUpdate
-from app.schemas.research import ResearchFindingInput
+from app.schemas.research import MAX_FINDINGS_CEILING, ResearchFindingInput
 from app.services.memory import MemoryService
 from app.utils.graph_keys import compose_key, decompose_key
 
@@ -1330,7 +1330,17 @@ class _SuppliedFindings:
     description="File research evidence YOU have already gathered into this project as one research run. This tool does not search or fetch anything: evidence gathering is your capability, not darkmem's, so do the searching with your own tools and hand the findings here. Give every finding the canonical locator of the source it actually came from in 'source_id' — corroboration counts distinct sources, so two findings from one page must carry the same source_id and two independent pages must carry different ones, and a finding whose source you cannot identify must leave it null so it merges into one anonymous origin rather than counting twice. Never split one page into several source_ids or paraphrase one page into two findings with different ones: that manufactures corroboration for a claim only one source made. Every row filed here is marked research-originated and cannot be filed as ordinary capture. Disabled by default — an install whose research config row is not enabled refuses the run and files nothing."
 )
 async def research_run(
-    subject: str, project: str, findings: list[ResearchFindingInput],
+    subject: str,
+    project: str,
+    # Bounded at the schema boundary, not only at runtime: an unauthenticated
+    # door should refuse an oversized list before validating and materialising
+    # it three times. The bound is the capture door's own ceiling, read off
+    # `MemoryBatchCreate` rather than re-typed, so it cannot drift from the cap
+    # the run is measured against. The configured budget is a further, lower
+    # refusal — this only stops work no budget could ever authorise.
+    findings: Annotated[
+        list[ResearchFindingInput], Field(max_length=MAX_FINDINGS_CEILING),
+    ],
 ) -> str:
     """
     Args:

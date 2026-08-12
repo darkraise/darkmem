@@ -236,6 +236,16 @@ door — a caller cannot file through it while looking like ordinary capture.
 
 **Verify.** `cd backend && python -m pytest tests/test_auto_research.py -q`
 
+**Landed (2026-08-12) as an MCP tool, `research_run`.** Files:
+`app/api/mcp/server.py`, `app/schemas/research.py`, `app/services/content_surfaces.py`
+(forced by the classification exhaustiveness guard), `tests/test_auto_research.py`,
+`tests/test_door_parity.py`, `docs/two-door-parity.md`, `CLAUDE.md`. **A bound the
+review recorded rather than closed:** the exemption binds to the *first*
+`AsyncFunctionDef` named `research_run` in walk order, so a same-name decoy defined
+earlier in the file would inherit it. That cannot happen by accident — any *second*
+crossing still flags, and a shadowed same-name definition is loud in review — and it
+sits inside the scan's stated tripwire-not-sandbox posture.
+
 ---
 
 #### T3.08 — Distinct-origin stamping for researched sources

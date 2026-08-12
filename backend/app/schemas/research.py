@@ -17,6 +17,20 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.memory import MemoryBatchCreate
+
+# The batch capture door's own cap, read off its schema rather than re-typed,
+# and re-exported here so the MCP door can bound its list at the wire boundary
+# without importing the research loop at module scope — that import is the
+# invariant-15 crossing the scan flags everywhere except inside the tool body.
+# The configured budget is a further, lower refusal; this only stops work no
+# budget could ever authorise.
+MAX_FINDINGS_CEILING: int = next(
+    meta.max_length
+    for meta in MemoryBatchCreate.model_fields["entries"].metadata
+    if getattr(meta, "max_length", None) is not None
+)
+
 
 class ResearchFindingInput(BaseModel):
     """One piece of evidence the calling agent gathered outside the box."""

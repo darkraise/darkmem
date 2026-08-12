@@ -123,6 +123,40 @@ async def _buffer_rows(session) -> list[MemoryBuffer]:
     return list((await session.execute(select(MemoryBuffer))).scalars().all())
 
 
+def test_the_door_and_the_loop_derive_one_ceiling():
+    """Two derivations, one source. Both read `MemoryBatchCreate`'s own bound —
+    the door needs it at module scope (importing the loop there is the
+    invariant-15 crossing the scan flags outside the tool body) and the loop
+    needs it to refuse. They cannot drift in value, and this pins that so a
+    future edit to either cannot make them disagree silently."""
+    from app.schemas.research import MAX_FINDINGS_CEILING as DOOR_CEILING
+
+    assert DOOR_CEILING == MAX_FINDINGS_CEILING == 100
+
+
+@pytest.mark.asyncio
+async def test_a_list_past_the_ceiling_is_refused_at_the_wire():
+    """The schema bound, not only the runtime budget. An unauthenticated door
+    should refuse an oversized list before validating and materialising it,
+    and no configured budget can authorise more than the capture cap anyway."""
+    from pydantic import BaseModel, Field
+    from typing import Annotated
+
+    from app.schemas.research import ResearchFindingInput
+
+    class _Door(BaseModel):
+        findings: Annotated[
+            list[ResearchFindingInput], Field(max_length=MAX_FINDINGS_CEILING),
+        ]
+
+    over = [{"content": f"f{i}"} for i in range(MAX_FINDINGS_CEILING + 1)]
+    with pytest.raises(ValidationError):
+        _Door(findings=over)
+
+    at_the_bound = [{"content": f"f{i}"} for i in range(MAX_FINDINGS_CEILING)]
+    assert len(_Door(findings=at_the_bound).findings) == MAX_FINDINGS_CEILING
+
+
 # --------------------------------------------------------------------------
 # Clause 1 — no new ingestion path
 # --------------------------------------------------------------------------
