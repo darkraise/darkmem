@@ -62,6 +62,14 @@ behavior change, not a cleanup.
   `./scripts/build-push.sh` — **one** image now (`darkraise/darkmem-api`),
   built from the repo-root `Dockerfile`, carrying the API and the built SPA
   together; the app serves the UI on `:8000` and nothing binds `:80`.
+- **Backups (homelab, T1.54): `systemd` timer `darkmem-backup.timer`**, nightly at
+  03:30 with `Persistent=true` so a night the host was down is caught up rather
+  than skipped. It runs `scripts/backup.sh /root/darkmem-backups`, which dumps
+  the live compose database and **prunes to the newest `BACKUP_KEEP` (14)** —
+  the script had no retention until 2026-08-13, and an unpruned nightly cadence
+  on the host that also runs the database is a slow disk-fill that takes
+  production down with it. Dumps are local only: copying them off-host is still
+  a manual step and nothing enforces it.
 - Backend lock: regenerate only with
   `uv pip compile --universal pyproject.toml -o requirements.lock` —
   a non-universal Windows resolve leaks pywin32 and drops uvloop.
