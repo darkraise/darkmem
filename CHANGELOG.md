@@ -64,10 +64,24 @@ placeholder for it.
 - **Articles ship unlabelled, deliberately.** Coverage cannot be measured until
   a verification judge qualifies (G-D), so every article reads `candidate` with
   its coverage shown as "not measured" — a measured absence, not a zero.
-- G-E's two bars are stated and pinned but nothing has measured them: the
-  runner that reads production coverage is still to come.
+- G-E's two bars are stated and pinned, and the runner that reads production
+  coverage now exists — but nothing has measured them. Its first run against
+  production reports 0 live articles and *not evaluable*, which is the honest
+  standing state while G-D is open rather than a fault.
 - Synthesis needs corroborated facts, and no fact has ever left `candidate` on
   this machine. A fresh install will correctly show no articles at all.
+
+### Also in this tag
+Gate-track hardening landed after v0.4's own scope closed. It ships in this
+tag without being part of the release's headline, because the gate track is
+not a version (`docs/planning/RELEASES.md`):
+- The entailment gold's resample certification is now bound to the pairs it
+  certified, so a verdict flipped after a sitting turns eligibility red
+  instead of leaving it green on a certification of a different file.
+- G-D's anti-tuning disclosure now counts contacts with the gold's *pairs*
+  rather than its file bytes. Editing a rationale — or writing the
+  certification into the file — used to reset that counter silently.
+- The coverage-distribution runner behind G-E, read-only against production.
 
 ## v0.3 — 2026-08-11
 
