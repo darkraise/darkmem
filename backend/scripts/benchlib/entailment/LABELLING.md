@@ -352,13 +352,19 @@ that pin — never a silent relabel of existing pairs.
   **The bias is not one-directional, and the first version of this paragraph
   said it was.** A judge that *misses* a duplicated proposition burns two of
   its four permitted misses — harder. A judge that *catches* it banks two
-  correlated hits and may then miss four of the remaining 78 independent items:
-  a per-item tolerance of 4/78 ≈ 5.13% against the intended 4/80 = 5.00% —
-  strictly **easier**, and at measured recall ≈ 0.94 the catch is the common
-  case. The live instance is sharp: attempt 1 on this gold scored Rule B at
-  exactly **38/40 = 0.9500**, a zero-margin pass whose independent-item reading
-  is below the bar. Nothing about "the duplicates only make it stricter" is
-  true, and reading it that way is the reassuring error.
+  correlated hits and may then miss four of the remaining independent items,
+  which is a wider per-item tolerance than the bar names — strictly
+  **easier**. Nothing about "the duplicates only make it stricter" is true,
+  and reading it that way is the reassuring error.
+
+  The worked arithmetic, and the measured example that made the asymmetry
+  concrete, are recorded below the strip truncation point (History,
+  "Duplicated propositions: the worked asymmetry") — **relocated there
+  2026-08-13 by owner amendment**. They cite a judge result, and this
+  paragraph sits ~390 lines above the truncation point that every pair author
+  and both blind labellers read to. The rule that labelling is judge-blind is
+  not satisfied by a file that hands them a score on page one; the byte-prefix
+  rule bars condensing it away, so the material moves rather than shrinks.
 
   **Therefore: no further judge attempt may run on gold `98fc4b49` until the
   duplicates are retired and the gold re-certified.** Retiring them is
@@ -745,6 +751,27 @@ would silently make its own bar unrepresentable.
   blocker B4).
 
 ## History
+
+### Duplicated propositions: the worked asymmetry (relocated 2026-08-13)
+
+**Relocated from "File discipline" by owner amendment, unchanged in substance.**
+It was ~390 lines above the strip truncation point, so every party the
+blind-adjudication protocol calls blind read a measured judge result before
+authoring or labelling a single pair. Found by T2.124's plan review; the plan
+had asserted this region carried no failure profile. The structural claim stays
+in place above; only the arithmetic and the measured example moved.
+
+**The bias is not one-directional, and the first version of this paragraph
+said it was.** A judge that *misses* a duplicated proposition burns two of
+its four permitted misses — harder. A judge that *catches* it banks two
+correlated hits and may then miss four of the remaining 78 independent items:
+a per-item tolerance of 4/78 ≈ 5.13% against the intended 4/80 = 5.00% —
+strictly **easier**, and at measured recall ≈ 0.94 the catch is the common
+case. The live instance is sharp: attempt 1 on this gold scored Rule B at
+exactly **38/40 = 0.9500**, a zero-margin pass whose independent-item reading
+is below the bar. Nothing about "the duplicates only make it stricter" is
+true, and reading it that way is the reassuring error.
+
 
 - **2026-08-10 (T2.115 lattice resize — the census split 40/40, certified at
   the bar's edge).** Rule B's second population held 25 contradicted pairs, so
