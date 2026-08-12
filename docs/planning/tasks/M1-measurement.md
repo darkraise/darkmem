@@ -565,7 +565,13 @@ effect on the outcome — it forecloses every branch equally.
 **This session must not run it.** Contaminated for the fitting rule, and it
 authored the surrounding work. Dispatch to a fresh session.
 
-**A second gate now sits in front of this task (ruling R-B, 2026-08-10):** no
+**~~A second gate now sits in front of this task (ruling R-B, 2026-08-10):~~
+LIFTED 2026-08-12.** The owner ruled that census independence is handled by
+**reporting** the duplicates rather than retiring them, because executing R-B
+would have raised the binding contradiction-recall bar to 37/38 = 0.9737 by
+arithmetic alone. Every run now discloses 80 rows over 78 independent
+propositions, names the duplicates, and flags a row-pass the independent
+reading would fail. The superseded text follows, for the record: no
 judge attempt may run on `98fc4b49` until the two contradicted duplicate
 propositions (`eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`) are retired and the gold
 re-certified. Rule B's attempt-1 pass was exactly 38/40 = 0.9500, and both
