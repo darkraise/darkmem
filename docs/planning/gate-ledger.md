@@ -1221,6 +1221,63 @@ exists, **a re-measure on the resized gold cannot separate a census-content
 delta from a judge delta**, and any comparison against the 0.9125 recorded on
 2026-08-08 must say so.
 
+### G-D ruling (2026-08-12): **R1 ratified as a design correction. The composed mint is REFUSED. The entailment role qualifies on a fresh gold or not at all.**
+
+The owner's holdings on the two questions v0.5 put, taken after an independent Fable-tier
+review that sat outside the authoring lineage of the proposal it judged.
+
+**Q3 — is R1 a distinct structural move, or a third attempt in disguise? RULED: a
+structural move, and ratified as a standing Tier-3 correction to doc 17 §6 and doc 20 §4.**
+The distinction that carries it, in the reviewer's formulation rather than the proposal's:
+in both post-failure re-cuts of G-D — the 2026-08-08 redesign after the precision failures,
+and R1 after the recall failure — **the failed bar never moved and the failed capability
+never became qualified.** Re-cutting *to pass* unlocks what the failed bar protected;
+re-cutting *to scope* does not. `contradiction_recall_bar` stays 0.95, the contradiction
+role stays NOT CLEARED, the Tier-C scan stays dead, and the stopping rule's two moves
+remain its only futures.
+
+Ground 3 as the proposal wrote it — "no selection was possible, the entailment pair never
+failed" — is true on the numbers and answers the wrong level. Selection operated on *when
+the split was proposed*: had the contradiction pair passed on 2026-08-12, R1 would not
+exist. The ratification is made in the knowledge of that, which is what makes it a holding
+rather than an inference.
+
+**An expiry check rides with the ratification.** If the contradiction role is never
+re-attempted on either of the stopping rule's sanctioned moves within roughly two quarters
+of this entry, the split reads retroactively as burial rather than separation. That
+outcome is to be recorded here as a finding about this ruling, not quietly tolerated.
+
+**Q4 — is the composed outcome intended, where the run recorded NOT CLEARED becomes the
+run whose verdicts mint the redefined gate's record? RULED: NO. The composition is
+refused.** R2's offline re-score is **deferred, not adopted**, and the entailment role's
+record will be minted from a **fresh gold** or not at all.
+
+Three reasons, and the first is the one that decides it:
+
+1. **Deferring costs approximately zero calendar time.** The entailment record opens the
+   L3 path, but articles synthesise only from corroborated or confirmed facts, and
+   production can produce none until a real corpus exists — measured this day at 2
+   memories, **zero attributable origins** (its single `unknown:api:default` key folds into
+   the reserved anonymous bucket), 1 `candidate` fact, 0 articles. The critical path runs
+   through capture either way, so the mint buys nothing it would not have anyway.
+2. **A fresh sitting on this gold is not merely barred but meaningless.** The stopping rule
+   binds contacts with pair set `4975c5cc`, and the frozen judge identity would be served
+   warm cache verdicts byte-for-byte — the T2.114 run was itself 338/402 replays of the
+   2026-08-08 sitting. Only a new gold can produce an independent number.
+3. **A new gold is owed regardless, on grounds that cite no result.** This gold's
+   false-positive censuses are published in this file, so it is **publication-contaminated
+   for all future qualification**; and T2.118 found the entailed class was never
+   lattice-sized to its own bar and carries five duplicated propositions over one
+   three-wide component.
+
+The standing rule this sets: **a record that needs a paragraph explaining why the NOT
+CLEARED run minted it is a record this project does not want.** A fresh-gold record needs
+no such paragraph.
+
+**What this ruling does not do.** It does not clear G-D on either role. It moves no bar.
+It leaves the stopping rule intact and unbreached — `4975c5cc` is retired from
+qualification use, and any future run against those pairs must refuse for **any** role.
+
 ### G-D final attempt (2026-08-12, T2.114): **NOT CLEARED — contradiction recall, both populations. The stopping rule has fired.**
 
 Attempt **2 of 2** on pair set `4975c5cc` — the counter keys on the pairs since

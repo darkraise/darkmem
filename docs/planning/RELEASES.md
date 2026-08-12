@@ -120,7 +120,7 @@ demonstration, not by assertion.
 - `T3.06` — Articles tab
 - `T3.23` — Articles retrieval channel + `article_embeddings` writer
 
-### v0.5 — The judge is admitted for the question it was measured on
+### v0.5 — The corpus can begin
 
 Design:
 `docs/superpowers/specs/2026-08-12-v0.5-per-role-qualification-and-corpus-design.md`.
@@ -132,10 +132,13 @@ redefined** if `T2.118` reports clean and the owner's holdings land. Half B is t
 is the version's true critical path: the 7-day origin-spacing clause cannot start
 counting until capture does.
 
-`T2.119`, the mint that produces the verdict, is **gate track** rather than v0.5 — a task
-that produces a gate carries `Version: gate` by this file's own contract, and
-`test_the_gate_track_is_qualified_produces` binds the two spellings. v0.5 ships the split
-and its preconditions; the verdict ships where every other verdict does.
+**Re-scoped 2026-08-12, on an independent review's fourth option, adopted by the owner.**
+Nothing in v0.5's shipped substance needs a G-D decision, and holding the version open on
+one applies exactly the pressure that turns a defensible amendment into a rushed one. So
+**`T2.117` moves to the gate track** beside the qualification work, and v0.5 is
+re-headlined as what it honestly is: the research loop, its origin discipline and its
+door, plus a hardened census — the machinery by which a corpus can start existing. The
+judge's redefinition and its qualification ship where every other gate verdict ships.
 
 **Half B is the corpus, and the research agent joined it on the owner's instruction
 (2026-08-12)** — `T3.07` and `T3.08` were parked and are now v0.5. The evidence cost is
@@ -145,7 +148,6 @@ machine-distinguishable and G-C's eventual verdict owes the slice. **Building th
 running them** — pointing the loop at production is a separate decision and remains the
 owner's.
 
-- `T2.117` — Per-role qualification records
 - `T2.118` — Duplicate/independence pass over the non-contradicted census
 - `T2.120` — `SINGLE_VALUED_RELATIONS`: the per-relation argument
 - `T2.123` — The independence disclosure counts findings, not propositions
@@ -160,7 +162,9 @@ owner's.
 Not parked and not a version: these produce gates, which unlock labels. Clearing
 G-C and G-D ships as its own version whose headline is "badges go live".
 
-- `T2.119` — Offline per-role re-score and mint (v0.5's verdict half)
+- `T2.117` — Per-role qualification records (R1, ratified 2026-08-12)
+- `T2.124` — A fresh entailment gold, justified without citing a result
+- `T2.125` — Qualify the entailment role on the fresh gold
 - `T2.114` — G-D third-vendor attempt
 - `T2.116` — Bind the resample certification to the pairs it certified
 - `T3.22` — G-E evidence run

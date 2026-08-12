@@ -100,9 +100,9 @@ green.
 | E3 — Synthesis & reach | 25 | 0 | 0 | 0 | 0 | 25 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 24 | 5 | 0 | 0 | 0 | 19 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 26 | 6 | 0 | 0 | 0 | 19 | 1 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **287** | **29** | **0** | **0** | **0** | **257** | **1** | |
+| **Total** | **289** | **30** | **0** | **0** | **0** | **257** | **2** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
@@ -461,7 +461,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | TH1.15 | Emergent cross-document connections | M | Sonnet | high | — | | todo | | | |
 | TH1.16 | Documents UI, horizon-labelled | M | Sonnet | high | — | | todo | | | |
 
-## M1 — Measurement phase (24 tasks)
+## M1 — Measurement phase (26 tasks)
 
 | Task | Title | Size | Model | Effort | Version | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -487,5 +487,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | T2.118 | Duplicate/independence pass over the non-contradicted census | S | Fable | xhigh | v0.5 | claude/t2.118-census-pass | done | `60f0163f` | | **Not clean, and the gate stands on the rows reading.** Five duplicated entailed propositions over seven findings, one component three rows wide (`eg-0094`/`eg-0279`/`eg-0323`); five of Rule B's 72 entailed rows restate propositions from the contacted population; no reproduced retirements on this side (the checker self-validated by reproducing the known contradicted ones). Min pass 156/173 rows, 151/167 independent, against a measured 0.9827 — the verdict is unthreatened, the disclosure obligation is not. Found the `census_independence` component-counting defect, minted as T2.123 |
 | T2.120 | `SINGLE_VALUED_RELATIONS`: the per-relation argument | M | Fable | xhigh | v0.5 | claude/t2.120-single-valued | done | `4fe2c8b5` | | **Empty after analysis, and R4's premise is falsified.** All sixteen relations fail the at-most-one-object-per-subject test; the argument lives beside the frozenset. The finding: every exclusive slot in the eight value-swap misses is an **attribute** (port, version, TTL, scrape interval, bucket name), which this taxonomy does not store as relations at all — so the hoped-for capacity cannot be added at any membership. `eg-0048` alone maps to a stored relation (`DEPLOYED_ON`), which is plural in ordinary use, so admitting it would manufacture disputes to catch one pair. Licensed one hardening test (a member must be in `RELATIONSHIP_TYPES`), break-it-proven by temporarily admitting `LISTENS_ON`. Verify: 91 passed |
 | T2.123 | The independence disclosure counts findings, not propositions | S | Sonnet | high | v0.5 | claude/t2.123-independence-count | done | `519b0706` | | **Counted by connected component, not by finding.** A component of k mutually-duplicate rows yields k(k-1)/2 findings and collapses k-1 rows, so the old `len(rows) - len(dupes)` agreed with the truth only while every component was two wide. Contradicted census unchanged at 80/78 (pinned), entailed corrected 166 → 167. Both new tests were proven to fail against the unfixed source before being restored to green. Verify: 64 passed. Executed inline — the dispatched worktree was cut from a divergent lineage and the agent correctly refused to guess at the task text |
-| T2.117 | Per-role qualification records | M | Opus | high | v0.5 | | todo | | | |
-| T2.119 | Offline per-role re-score and mint | S | Fable | xhigh | gate | | todo | | | |
+| T2.124 | A fresh entailment gold, justified without citing a result | L | Fable | xhigh | gate | | todo | | | |
+| T2.125 | Qualify the entailment role on the fresh gold | M | Fable | xhigh | gate | | todo | | | |
+| T2.117 | Per-role qualification records | M | Opus | high | gate | | todo | | | |
+| T2.119 | Offline per-role re-score and mint — **DROPPED 2026-08-12** | S | Fable | xhigh | — | | dropped | | | **Dropped by the owner's Q4 holding, 2026-08-12** (`gate-ledger.md`, "G-D ruling"), on an independent Fable review's recommendation. Its premise was minting the entailment role by re-scoring the T2.114 artifact — the run recorded NOT CLEARED becoming the run that mints the redefined gate's record. Refused. Deferring costs ~zero calendar time because the L3 path is corpus-blocked regardless, a fresh sitting on `4975c5cc` would be served warm cache verdicts, and the gold is publication-contaminated anyway. Replaced by T2.124 (fresh gold) and T2.125 (the run on it) |

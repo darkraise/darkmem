@@ -949,9 +949,61 @@ was wrong; the entailed census prints 167.
 
 ---
 
+#### T2.124 — A fresh entailment gold, justified without citing a result
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-12 from the owner's Q4 holding.** The entailment role qualifies on a
+fresh gold or not at all, so this is the gate's critical path on the judge side.
+
+**The justification must cite no measured result**, and two independent grounds are
+available that do not:
+
+1. **Publication contamination.** This gold's false-positive censuses, its duplicate
+   findings and its per-slice miss decompositions are all published in `gate-ledger.md`.
+   That makes pair set `4975c5cc` unusable for *any* future qualification, independently of
+   how any run on it scored.
+2. **The entailed class was never sized to its own bar.** T2.118 found no T2.110-style
+   lattice sizing was ever run for it (the 0.90 bar is not expressible: pooled entailed
+   enforces 0.9017), and it carries five duplicated propositions over seven findings with
+   one three-row component.
+
+**Size L, so runbook §3 forbids executing it directly** — it needs a step-level plan
+reviewed at Fable tier first. That cost is stated here rather than discovered.
+
+**Done when:** the sampling frame and the lattice sizing are stated **before** any pair is
+authored, and neither references which slices any judge has missed; the contradicted and
+entailed classes are both sized so their bars are expressible; the census-independence
+disclosure is computed for **both** classes on both readings (rows and independent
+propositions) using T2.123's component counting; the authoring party is not the
+adjudicating party; and `4975c5cc` is recorded retired from qualification use with a
+refusal pinned in the runner for **every** role.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_entailment_gold.py -q`
+
+---
+
+#### T2.125 — Qualify the entailment role on the fresh gold
+
+`Model: Fable 5` · `Effort: xhigh` · `Size: M` · `Depends: T2.117, T2.124` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
+
+**Minted 2026-08-12, replacing the dropped `T2.119`.** The per-role scoring path
+`T2.119` would have built is still needed; what is dropped is its input — the offline
+re-score of the spent run's verdicts.
+
+**Done when:** the runner mints **per role**, so the entailment role can clear while the
+contradiction role stays unqualified at an unmoved 0.95; the run is a genuine sitting on
+`T2.124`'s gold with its live/cache split reported; **the contradicted→entailed confusion
+cell is disclosed on the record** — R1 removed the only bar that bounded that leak into
+article coverage, so nothing else now bounds it; production's `verification` purpose is
+confirmed to carry the run's identity before minting, since a mismatch fails closed and
+mints a dead record; and the verdict lands in `gate-ledger.md` whichever way it goes.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py -q`
+
+---
+
 #### T2.117 — Per-role qualification records
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: the owner's holdings on spec open questions 3 and 4` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: —`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` (its `Trigger` was the owner's Q3/Q4 holdings, both recorded 2026-08-12) · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: —`
 
 **What.** Ruling R1. `VerificationJudge.judge()` is one gate over all four `BAR_METRICS`
 (`verification_judge.py:222-227`, refusal at `:135-161`, bar loop at `:324-333`) serving
@@ -988,9 +1040,20 @@ touches pair set `4975c5cc`.
 
 ---
 
-#### T2.119 — Offline per-role re-score and mint
+#### T2.119 — Offline per-role re-score and mint — **DROPPED 2026-08-12**
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: T2.117, T2.118, T2.122, T2.123` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
+
+**DROPPED by the owner's Q4 holding (2026-08-12, recorded in `gate-ledger.md`, "G-D
+ruling"), on an independent review's recommendation.** The premise no longer holds: this
+task mints the entailment role by re-scoring the T2.114 artifact, and that composition —
+the run recorded NOT CLEARED becoming the run whose verdicts mint the redefined gate's
+record — is refused. Deferring it costs approximately zero calendar time, because the L3
+path it opens is corpus-blocked regardless. Its replacement is `T2.124` (a fresh gold,
+justified on publication contamination) and `T2.125` (the qualification run on it). The
+machinery this task would have built — a runner that re-scores per role — is **not**
+dropped with it: `T2.125` needs the per-role scoring path, minus the offline-artifact
+input. Everything below is retained for the record.
 
 **What.** Ruling R2. An evidence record is *"minted only by a cleared run, never by hand"*
 (T2.95/T2.100), so R1 alone strands the entailment role. Amend
