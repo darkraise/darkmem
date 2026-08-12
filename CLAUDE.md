@@ -139,11 +139,17 @@ A memory carries:
   unestablishable identity still does. `research_origin_id` canonicalises the
   gatherer's locator (scheme, host case, `www.`, default port, credentials,
   trailing and duplicated slashes, fragment, campaign parameters, parameter
-  order all collapse), so a refetch, a re-run or a paraphrase of one page adds
-  no origin, while two genuine sources do promote. Every step of that
-  canonicalisation is merge-only by construction: no input may split one source
-  into two ids, because an undercount delays a promotion and an overcount
-  fabricates one. A blank or unresolvable `source_id` returns `None` and falls
+  order all collapse, and since T3.08's review the RFC 3986 §6.2.2-6.2.3
+  equivalences too — percent-encoding, dot-segments, punycode, NFC/NFD, a
+  duplicated identical parameter), so a refetch, a re-run or a paraphrase of one
+  page adds no origin. **Two genuine sources promote only on the ladder's own
+  terms** — both carry `source_kind='memory'`, so there is no kind diversity and
+  two same-day research origins *hold* at N = 3; they promote ≥ 7 days apart, or
+  same-day at three. Every step of that canonicalisation is merge-only by
+  construction: no input may split one source into two ids, because an
+  undercount delays a promotion and an overcount fabricates one. That claim was
+  **falsified once and repaired** — the review found six splitting inputs, each
+  a spelling this repo's own `httpx` produces, and each now pinned by test. A blank or unresolvable `source_id` returns `None` and falls
   to `unknown:research:<project>`, the bucket that counts once and fires no
   gate. Both shapes stay machine-sliceable through `is_researched_origin`, so a
   measurement pooling manufactured origins with observed ones does it on

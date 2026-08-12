@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import unicodedata
+
 import pytest
 from sqlalchemy import select, text
 
@@ -219,6 +221,58 @@ class TestOneSourceIsOneOrigin:
             gatherer=gatherer, budget=ENABLED,
         )
         assert len(set(await _buffer_origin_keys(session))) == 1
+
+
+class TestRfc3986EquivalenceIsOneOrigin:
+    """The classes RFC 3986 §6.2.2-6.2.3 call one identifier.
+
+    Found by T3.08's adversarial review, which falsified the merge-only claim
+    with six splitting inputs. These are not exotic spellings: `httpx` — this
+    repo's own client — percent-encodes a non-ASCII path, so a gatherer storing
+    `str(response.url)` and one storing the scraped href hand back two spellings
+    of one page. Two such variants ≥ 7 days apart were two attributable origins,
+    which is `required_n = 2`, which is a promotion manufactured off one page.
+    """
+
+    @pytest.mark.parametrize("left,right,why", [
+        ("https://example.test/café", "https://example.test/caf%C3%A9",
+         "percent-encoded non-ASCII path"),
+        ("https://example.test/~user", "https://example.test/%7Euser",
+         "percent-encoded unreserved character"),
+        ("https://example.test/abc", "https://example.test/%61bc",
+         "percent-encoded ASCII letter"),
+        ("https://example.test/x/../docs/pg", "https://example.test/docs/pg",
+         "dot-segment resolution"),
+        ("https://bücher.example/a", "https://xn--bcher-kva.example/a",
+         "IDN unicode against its punycode"),
+        ("https://example.test/a?x=1", "https://example.test/a?x=1&x=1",
+         "a duplicated identical parameter"),
+    ])
+    def test_one_page_under_two_spellings_is_one_origin(self, left, right, why):
+        left_id = research_origin_id(_finding(source_id=left))
+        right_id = research_origin_id(_finding(source_id=right))
+        assert left_id is not None, why
+        assert left_id == right_id, f"{why} split one source into two origins"
+
+    def test_the_nfc_and_nfd_spellings_of_one_host_agree(self):
+        """Two Unicode forms of one name, which a filesystem or a clipboard
+        can each hand back."""
+        composed = unicodedata.normalize("NFC", "https://café.example/a")
+        decomposed = unicodedata.normalize("NFD", "https://café.example/a")
+        assert composed != decomposed, "the fixture must really differ"
+        assert research_origin_id(_finding(source_id=composed)) == \
+            research_origin_id(_finding(source_id=decomposed))
+
+    @pytest.mark.parametrize("left,right", [
+        ("https://example.test/a?id=1", "https://example.test/a?id=2"),
+        ("https://example.test/docs/a", "https://example.test/docs/b"),
+        ("https://example.test/a?x=1&y=2", "https://example.test/a?x=1"),
+    ])
+    def test_the_merging_does_not_reach_genuinely_distinct_pages(self, left, right):
+        """The control on the fix: merge-only must not become merge-everything.
+        Dropping every parameter would collapse a site into one origin and the
+        loop could never corroborate anything."""
+        assert research_origin_id(_finding(source_id=left)) != research_origin_id(_finding(source_id=right))
 
 
 class TestUnknownIdentity:

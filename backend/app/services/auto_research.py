@@ -54,10 +54,11 @@ could detect.
 from __future__ import annotations
 
 import logging
+import unicodedata
 import re
 from dataclasses import dataclass, field
 from typing import Protocol, Sequence
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, urlsplit, unquote
 from uuid import UUID
 
 from sqlalchemy import select
@@ -229,13 +230,41 @@ async def load_budget(session: AsyncSession) -> ResearchBudget:
 
 
 def _canonical_query(query: str) -> str:
-    kept = [
+    kept = {
         (key.lower(), value.lower())
         for key, value in parse_qsl(query, keep_blank_values=True)
         if key.lower() not in _TRACKING_QUERY_KEYS
         and not key.lower().startswith(_TRACKING_QUERY_PREFIXES)
-    ]
+    }
+    # A set, not a list: `?a=1` and `?a=1&a=1` are one page, and a fetcher that
+    # appends a parameter it already carries would otherwise mint a second
+    # origin. Deduplicating identical pairs cannot separate two spellings —
+    # distinct values survive as distinct members.
     return "&".join(f"{key}={value}" for key, value in sorted(kept))
+
+
+def _canonical_path(path: str) -> str:
+    """Percent-decoded and dot-segment-resolved, both merge-only.
+
+    RFC 3986 §6.2.2 makes ``/caf%C3%A9`` and ``/café`` one identifier, and
+    §6.2.3 does the same for ``/x/../docs`` and ``/docs``. This repo's own
+    client produces the split: ``httpx`` percent-encodes a non-ASCII path, so a
+    gatherer storing ``str(response.url)`` and one storing the scraped href hand
+    back two spellings of one page. Decoding is deliberately full — ``%2F``
+    becomes ``/`` — because doubt resolves toward merging, which delays a
+    promotion rather than fabricating one.
+    """
+    decoded = unquote(path)
+    segments: list[str] = []
+    for segment in decoded.split("/"):
+        if segment == ".":
+            continue
+        if segment == "..":
+            if segments:
+                segments.pop()
+            continue
+        segments.append(segment)
+    return _REPEATED_SLASH_RE.sub("/", "/".join(segments))
 
 
 def _canonical_host(netloc: str) -> str:
@@ -246,7 +275,16 @@ def _canonical_host(netloc: str) -> str:
         if host.endswith(default_port):
             host = host[: -len(default_port)]
             break
-    return host[4:] if host.startswith("www.") else host
+    host = host[4:] if host.startswith("www.") else host
+    # A unicode host and its punycode are one host, and a resolver hands back
+    # whichever form its caller used. Failure falls through to the host as
+    # given: an unencodable name is not two names, it is one this pass cannot
+    # normalise, and leaving it merges no worse than before.
+    try:
+        host = host.encode("idna").decode("ascii")
+    except (UnicodeError, ValueError):
+        pass
+    return host
 
 
 def _canonical_locator(value: str) -> str:
@@ -255,10 +293,13 @@ def _canonical_locator(value: str) -> str:
     # rather than splitting on which spelling the gatherer happened to hand
     # back. A non-locator id simply lands in the host slot and survives the
     # pass unchanged.
+    # NFC first: two Unicode spellings of one host or path are one locator, and
+    # the encoding steps below have to run over a settled form.
+    value = unicodedata.normalize("NFC", value)
     prefixed = value if "://" in value or value.startswith("//") else f"//{value}"
     parts = urlsplit(prefixed)
     host = _canonical_host(parts.netloc)
-    path = _REPEATED_SLASH_RE.sub("/", parts.path.lower()).rstrip("/")
+    path = _canonical_path(parts.path.lower()).rstrip("/")
     query = _canonical_query(parts.query)
     return f"{host}{path}" + (f"?{query}" if query else "")
 
