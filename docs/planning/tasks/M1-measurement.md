@@ -916,6 +916,34 @@ detector's existing guards are re-read before any admission.
 
 ---
 
+#### T2.123 — The independence disclosure counts findings, not propositions
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
+
+**What.** Found by T2.118. `census_independence` in
+`backend/scripts/benchlib/judge_qualification.py` computes
+`independent = len(rows) - len(dupes)`, where `dupes` are the **pairwise findings**
+`find_duplicate_propositions` returns. A duplicate *component* of k rows yields
+`k·(k-1)/2` findings but collapses only `k-1` rows, so the two agree only while every
+component is exactly two rows wide — which is true of the contradicted census and **false
+of the entailed one**, where T2.118 found a three-row component
+(`eg-0094`/`eg-0279`/`eg-0323`). The entailed census prints 166 independent propositions
+where the true count is 167.
+
+The error is conservative — it under-reports independence, so the disclosed minimum pass
+reads slightly harder than it is — which is the safe direction and is why this is a defect
+rather than an incident. It is still wrong, and it sits on the disclosure path R2's mint
+must print for a class whose components are not all two wide.
+
+**Done when:** independence is counted by **connected component** (union-find or
+equivalent over the findings), not by finding count; a regression test pins a three-row
+component at `k-1`; the contradicted census's published figure (80 rows over 78
+propositions) is unchanged by the fix, proving the correction is confined to the case that
+was wrong; the entailed census prints 167.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_judge_qualification.py -q`
+
+---
+
 #### T2.117 — Per-role qualification records
 
 `Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: the owner's holdings on spec open questions 3 and 4` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: —`
@@ -957,7 +985,7 @@ touches pair set `4975c5cc`.
 
 #### T2.119 — Offline per-role re-score and mint
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: T2.117, T2.118, T2.122` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
+`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: T2.117, T2.118, T2.122, T2.123` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (produces)`
 
 **What.** Ruling R2. An evidence record is *"minted only by a cleared run, never by hand"*
 (T2.95/T2.100), so R1 alone strands the entailment role. Amend
@@ -975,6 +1003,14 @@ mandatory."*
 **Executed by a fresh session that did not author T2.117's split** — the separation-of-
 powers norm binds a mint harder than a census pass — and reviewed adversarially at Fable
 tier under runbook §6, since it feeds a gate claim.
+
+**Carry T2.118's finding.** The entailed census is not clean: five duplicated
+propositions over seven findings, one component three rows wide, and five of Rule B's 72
+entailed rows restate propositions the judge met in the contacted population. None of it
+threatens the verdict — measured entailed recall 0.9827 sits far above the minimum pass on
+either reading (156/173 rows, 151/167 independent) — but the 2026-08-12 independence ruling
+names only the **contradicted** class, so extending the disclosure to the entailment class
+is this task's obligation and not an assumption T2.118 could make.
 
 **Done when:** the input is **authenticated** — admissible only if it reproduces the
 ledger's published metrics for that identity and gold (0.9884 entailed precision / 0.8875

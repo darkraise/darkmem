@@ -100,9 +100,9 @@ green.
 | E3 — Synthesis & reach | 24 | 2 | 0 | 0 | 0 | 22 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 23 | 6 | 3 | 0 | 0 | 14 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 24 | 7 | 1 | 0 | 0 | 16 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **284** | **31** | **3** | **0** | **0** | **249** | **1** | |
+| **Total** | **285** | **32** | **1** | **0** | **0** | **251** | **1** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
@@ -459,7 +459,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | TH1.15 | Emergent cross-document connections | M | Sonnet | high | — | | todo | | | |
 | TH1.16 | Documents UI, horizon-labelled | M | Sonnet | high | — | | todo | | | |
 
-## M1 — Measurement phase (23 tasks)
+## M1 — Measurement phase (24 tasks)
 
 | Task | Title | Size | Model | Effort | Version | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -482,7 +482,8 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | TH1.10 | Faithfulness ship gate (G-F evidence) | M | Fable | xhigh | gate | | todo | | | |
 | T2.121 | Correct the contradiction-recall derivation in the ledger | S | Sonnet | high | v0.5 | claude/t2.121-recall-derivation | done | `fb542fc3` | | **Records a rejected derivation, not an applied one.** The 0.90 proposal would have converted the 2026-08-10 deepseek miss into a retroactive pass (0.9375 pooled / 0.9500 Rule B clear all four bars at 0.90), so the arithmetic is written into the ledger rather than the proposal quietly dropped. No bar moved. Verify: 13 passed (`tests/test_planning_docs.py`) after the Gate-field fix in `ab4fdbd4` |
 | T2.122 | The verdicts directory leaks synthetic files under real identities | S | Sonnet | high | v0.5 | claude/t2.122-verdicts-leak | wip | | | |
-| T2.118 | Duplicate/independence pass over the non-contradicted census | S | Fable | xhigh | v0.5 | claude/t2.118-census-pass | wip | | | |
+| T2.118 | Duplicate/independence pass over the non-contradicted census | S | Fable | xhigh | v0.5 | claude/t2.118-census-pass | done | `60f0163f` | | **Not clean, and the gate stands on the rows reading.** Five duplicated entailed propositions over seven findings, one component three rows wide (`eg-0094`/`eg-0279`/`eg-0323`); five of Rule B's 72 entailed rows restate propositions from the contacted population; no reproduced retirements on this side (the checker self-validated by reproducing the known contradicted ones). Min pass 156/173 rows, 151/167 independent, against a measured 0.9827 — the verdict is unthreatened, the disclosure obligation is not. Found the `census_independence` component-counting defect, minted as T2.123 |
 | T2.120 | `SINGLE_VALUED_RELATIONS`: the per-relation argument | M | Fable | xhigh | v0.5 | | todo | | | |
+| T2.123 | The independence disclosure counts findings, not propositions | S | Sonnet | high | — | | todo | | | |
 | T2.117 | Per-role qualification records | M | Opus | high | v0.5 | | todo | | | |
 | T2.119 | Offline per-role re-score and mint | S | Fable | xhigh | gate | | todo | | | |
