@@ -721,11 +721,38 @@ lane (T2.27–T2.28) closed.
 claim-support coverage, not a mean — one well-covered article is not evidence.
 
 **Done when:**
-- [ ] Distribution reported with percentiles, not a summary statistic
-- [ ] The production read is **read-only** (the sanctioned exception in runbook §8)
-- [ ] Runs against a named snapshot so the number is reproducible
+- [x] Distribution reported with percentiles, not a summary statistic
+- [x] The production read is **read-only** (the sanctioned exception in runbook §8)
+- [x] Runs against a named snapshot so the number is reproducible
 
 **Verify.** `cd backend && python scripts/benchlib/run_coverage_distribution.py`
+
+**Landed 2026-08-12.** `coverage_distribution.py` (the metric) plus
+`run_coverage_distribution.py` (the runner), split the way `promotion_metrics`
+splits for G-C: this states no verdict, because T3.22 owns G-E's. Percentiles
+are **nearest-rank over actual observations** — an interpolated p90 at these
+article counts is a coverage no article has, and G-E asks how many *articles*
+clear the bar.
+
+**Unmeasured is not zero** is the module's spine, inherited from T3.03 rather
+than re-decided: `knowledge_articles.confidence` is the coverage column and is
+written only on a measured outcome, so NULL means the entailment pass reached
+no verdict — a refusing judge, an outage and an invalid verdict all land there,
+and none is evidence an article is ungrounded. Unmeasured articles are counted
+as their own population and never folded in as zeros. That is the standing case,
+not a corner: G-D is open, so **every article on every install is unmeasured**,
+and a first run says *not evaluable* exactly as T2.40 did for G-C.
+
+The read-only claim is **proved, not asserted** — a bench-DB test attempts a
+real INSERT through the same `default_transaction_read_only=on` connection and
+asserts Postgres refuses it. Reproducibility rides a caller-named snapshot plus
+a `population_sha256` over the (id, coverage) pairs, unmeasured articles
+included, so two runs reporting the same share can be shown to have read the
+same corpus.
+
+**First run against production, 2026-08-12:** `darkmem`, schema present, **0
+live articles**, not evaluable. Recorded at
+`docs/eval/2026-08-12-coverage-distribution.md`.
 
 #### T3.22 — G-E evidence run
 
