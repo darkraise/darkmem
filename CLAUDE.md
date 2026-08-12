@@ -493,7 +493,22 @@ the same thing). The check that the 0.95 is a derivation and not a fit is that
 the measured judge does **not** clear it: gpt-5.5 scored 0.945, so a laundered
 bar would sit at 0.90, and a test pins it against exactly that. Both bars are
 the owner's to move with a recorded argument; neither may be moved to make a
-run pass. Each purpose is
+run pass. **Since T2.126 (doc 17 §6 amended 2026-08-13, owner-ruled) that rule
+holds at runtime too, not only in source**: all four shipped defaults are
+**floors**, on the verification ladder's shape. Tightening is free; a `config`
+row below a floor clamps back with a warning unless the
+`verification_bar_licences` row names that parameter, states the lowest value
+its recorded argument supports and cites where that argument lives — a licence
+bounds one loosening rather than blessing whatever the bar row says, which is
+what stops it being the bar row licensing itself. An *unreadable* bar row still
+raises and fails the role closed; the clamp is for readable-but-lower ones. No
+bar value moved. The limit is stated rather than claimed away: an operator who
+writes both rows is stopped by nothing in-process — `ladder_measurements` has
+the same limit — what changes is that a loosening is no longer a single number
+edit with no trace. Note the qualification *runner* stamps
+`VERIFICATION_BAR_DEFAULTS` directly and was never on the config surface, and
+G-C's `scripts/benchlib/promotion_bars.py` inherited the pre-clamp posture
+verbatim and still carries it. Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
