@@ -249,6 +249,7 @@ async def run_qualification(
     sanity_path: str | Path = jq.SANITY_PAIRS_PATH,
     cache_dir: str | Path = CACHE_DIR,
     report_dir: str | Path = REPORT_DIR,
+    verdicts_dir: str | Path = VERDICTS_DIR,
     ledger_path: str | Path = ledger.DEFAULT_PATH,
     record_path: str | Path | None = None,
     gate: bool = False,
@@ -393,8 +394,12 @@ async def run_qualification(
     report_path.write_text(report_text, encoding="utf-8")
 
     # The join a later round needs, keyed by pair id and by this run's identity
-    # so two attempts never overwrite each other's evidence.
-    verdicts_path = Path(VERDICTS_DIR) / (
+    # so two attempts never overwrite each other's evidence. Routed through
+    # the `verdicts_dir` parameter, not the module constant directly -- every
+    # test path must override it, or a stub-judge run leaves synthetic
+    # residue under a real judge identity in the live artifact directory
+    # (T2.122).
+    verdicts_path = Path(verdicts_dir) / (
         f"{run_date.isoformat()}-{identity_hash[:8]}-{gold_sha256[:8]}.json"
     )
     verdicts_path.parent.mkdir(parents=True, exist_ok=True)
