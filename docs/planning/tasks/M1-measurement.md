@@ -981,6 +981,40 @@ beside the bars themselves.
 
 ---
 
+#### T2.127 — G-C's bars inherited the same no-floor merge
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.126` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
+
+**Found by T2.126 while closing the judge bars, and left open there deliberately** — it is
+a different gate's bars in a different module, and widening a task to reach it would have
+put an unreviewed change on G-C's enforcement path.
+
+`resolve_promotion_bars` (`backend/scripts/benchlib/promotion_bars.py:154-166`) merges
+`config` values over `PROMOTION_BAR_DEFAULTS` with the database winning, and its own
+docstring says it inherited the `get_verification_bars` posture **verbatim** — including
+the part that is now fixed on the judge side and not here. So
+`verification_false_promotion_bar` and its siblings are still lowerable by a config write
+with no source diff, no review and no ledger entry, which is exactly what T2.126 closed for
+the judge. The bars are pinned in a committed file so moving one is a visible two-file
+diff; that pin, like the judge's tripwire, reads only the source and cannot see a config
+row.
+
+**The argument for clamping is *weaker* here and must be made honestly rather than
+copied.** A judge bar's failure is a wrong badge on a fact a person reads; a promotion bar
+governs a gate verdict a human writes up. The case may still carry — an unclamped bar is a
+number that can move without a trace either way — but this task must state which failure
+it prevents, not inherit T2.126's.
+
+**Done when:** the decision is made and recorded either way; if clamped, it reuses
+T2.126's licence shape (bounded per parameter, clamped to the **floor** rather than the
+licensed bound, citation checked for presence and never for truth) rather than a third
+mechanism; tightening stays free; unreadable rows keep raising; and the clamp is proven by
+test plus a negative control that a tightening row survives. **Leaving it unclamped is a
+legitimate outcome**, recorded beside the bars with the reason.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_promotion_bars.py -q`
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
