@@ -1,7 +1,7 @@
 # Retrieval eval — 2026-08-12
 
-- run id: `6e96bc4b-4f69-45fb-91cc-d6dc9708eefc` (recorded 2026-08-12T05:13:35.143042+00:00)
-- git sha: `7dbce2d9372095ef49fce051998c43b508e51a0c`
+- run id: `b5ca552d-b0c1-4da4-823d-7aaf38c0b4bf` (recorded 2026-08-12T05:23:48.595675+00:00)
+- git sha: `3009c1fcdeb7541c4bc4bb661ba2d1308829d5b7`
 - embedder fingerprint: `qwen3-embedding:0.6b|1024`
 - gate configuration: `classification_mode='simple', classifier_kind=None, relation_rescue=True`
 - corpus: 94 memories, gold v4, 118 pairs authored (102 live)
@@ -35,23 +35,23 @@ AGGREGATE          102   0.8582  0.9069   0.0487    0.8431  0.9314   0.0882
 
 --- retrieval: latency by channel (seconds, nearest-rank, min_samples=20) ---
 embed_query        live   no samples
-embed_query        cache  n= 102  p50=0.00038  p95=0.00136
+embed_query        cache  n= 102  p50=0.00026  p95=0.00160
 end_to_end         live   no samples
-end_to_end         cache  n= 102  p50=0.00446  p95=0.00688
-keyword_search     live   n= 102  p50=0.00063  p95=0.00139
+end_to_end         cache  n= 102  p50=0.00296  p95=0.00570
+keyword_search     live   n= 102  p50=0.00040  p95=0.00093
 keyword_search     cache  no samples
 reranker           live   no samples
 reranker           cache  no samples
-semantic_search    live   n= 102  p50=0.00235  p95=0.00350
+semantic_search    live   n= 102  p50=0.00166  p95=0.00215
 semantic_search    cache  no samples
 --- retrieval: token cost by purpose ---
   extraction: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 94, 'cache_known_prompt_tokens': 927166, 'cache_known_completion_tokens': 11996, 'cache_known_cached_prompt_tokens': 926080, 'cache_unknown_calls': 0}
 
 --- full_context: latency by channel (seconds, nearest-rank, min_samples=20) ---
 end_to_end         live   no samples
-end_to_end         cache  n= 102  p50=0.00025  p95=0.00042
+end_to_end         cache  n= 102  p50=0.00018  p95=0.00021
 full_context_call  live   no samples
-full_context_call  cache  n= 102  p50=0.00025  p95=0.00041
+full_context_call  cache  n= 102  p50=0.00018  p95=0.00021
 --- full_context: token cost by purpose ---
   reasoning: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 102, 'cache_known_prompt_tokens': 472558, 'cache_known_completion_tokens': 3899, 'cache_known_cached_prompt_tokens': 452608, 'cache_unknown_calls': 0}
 
