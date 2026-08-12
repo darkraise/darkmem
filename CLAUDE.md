@@ -453,8 +453,24 @@ until 2026-08-02; the `verification` half was stale, and a task reading it
 would wrongly believe activating that purpose was still an unmade decision.
 Note `verification` being dispatched is not the same as it being *usable*:
 `VerificationJudge.judge()` refuses unconditionally without a qualification
-record, which T2.41 mints and which is behind T2.54's gold. T2.109 also put it behind a
-fourth bar: `BAR_METRICS` gates `contradiction_recall`, and that bar was
+record, which only a cleared gate run mints and which is behind T2.54's gold.
+**Since T2.117 (doc 17 §6 amended 2026-08-12, owner-ratified) there is one
+record per consumer *role* over one judge identity, and `judge()` takes a
+keyword-only `role`** — `entailment` for the article claim pass, gated on
+`entailed_precision`/`entailed_recall`; `contradiction` for the Tier-C scan,
+gated on the contradiction pair. `JUDGE_ROLES` partitions `BAR_METRICS` and a
+test fails the build if it stops doing so; a record carries the role it was
+minted for, so copying one onto the other's path qualifies nothing, and a
+pre-split bundled record (no role field) qualifies **neither**. Both records
+are absent on this branch for stated reasons — the contradiction role missed
+its bar and stays missed, and the owner refused minting the entailment role
+from T2.114's spent artifact, so it is owed to a fresh gold. Two tripwires are
+tests rather than prose: relaxing a contradiction-role bar, and any
+qualification contact with pair set `4975c5cc` **for any role** (refused at the
+harness before a model call, at the writer, and at the app-side reader). The
+cost the amendment names and this file repeats because it is easy to miss:
+"articles may ship" no longer implies "a qualified contradiction judge exists".
+T2.109 put the judge behind a fourth bar: `BAR_METRICS` gates `contradiction_recall`, and that bar was
 deliberately left with no default so `get_verification_bars` would raise and
 `qualification_state` fail closed until someone wrote the number down —
 stating it alongside the amendment would have meant choosing it while looking
