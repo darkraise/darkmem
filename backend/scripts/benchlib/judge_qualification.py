@@ -677,6 +677,41 @@ def render_report(
         )
         lines.append("")
 
+    ci = meta.get("census_independence")
+    if ci and ci["rows"] != ci["independent_propositions"]:
+        # The owner ruled 2026-08-12 that independence is handled by
+        # reporting rather than retiring, which puts the whole weight of that
+        # ruling here: the bar is applied to rows, and a row-pass that the
+        # independent reading would fail must say so rather than read as a
+        # clear pass. Computed here rather than in `census_independence`,
+        # which takes no judge output by construction.
+        hits = round(score.contradiction_recall * ci["rows"])
+        collapsed = ci["rows"] - ci["independent_propositions"]
+        worst_independent = (hits - collapsed) / ci["independent_propositions"]
+        lines.append("## Census independence — read with the recall verdict")
+        lines.append("")
+        lines.append(
+            f"- {ci['rows']} contradicted rows over "
+            f"{ci['independent_propositions']} independent propositions "
+            f"({collapsed} duplicated: {ci['duplicate_pairs']})."
+        )
+        lines.append(
+            f"- Measured contradiction-recall {score.contradiction_recall:.4f} "
+            f"is {hits}/{ci['rows']} on rows. If the judge caught every "
+            f"correlated pair, the independent reading is at worst "
+            f"{max(hits - collapsed, 0)}/{ci['independent_propositions']} = "
+            f"{max(worst_independent, 0.0):.4f}."
+        )
+        if score.contradiction_recall >= ci["bar"] > worst_independent:
+            lines.append(
+                f"- **This pass is not robust to the independence reading.** It "
+                f"clears {ci['bar']} on rows and falls below it on independent "
+                f"propositions. The duplicate eases the bar in exactly this "
+                f"case, which is why the ruling that kept it also required this "
+                f"line to exist."
+            )
+        lines.append("")
+
     lines.append("## Confusion (gold rows × predicted columns)")
     lines.append("")
     predicted_cols = sorted(JUDGE_VERDICTS) + [INVALID]

@@ -1,8 +1,21 @@
 # G-D — what actually blocks it, and what the owner's decision has to contain
 
 **Written:** 2026-08-12, at the owner's request, to make the G-D decision
-decidable. **Status:** analysis only. It rules nothing and deliberately makes
-no argument the fitting rule reserves for an uncontaminated party.
+decidable. It rules nothing itself and deliberately makes no argument the
+fitting rule reserves for an uncontaminated party.
+
+> **STATUS — RULED 2026-08-12, same day.** The owner took the third option:
+> **independence is handled by reporting, not by retiring.** The census keeps
+> its 80 rows, `58ac1a90` stands, no sitting is owed, and R-B's ordering gate
+> is lifted. **R-C is now the only thing blocking T2.114.**
+>
+> Read the sections below as the reasoning that produced that ruling, not as
+> open questions. Two framings in them are superseded and are left in place
+> rather than rewritten, because the argument is the record: "T2.114 is blocked
+> on two things" (now one), and "neither move is available until R-B is
+> executed" (R-B is no longer to be executed). The re-certification question in
+> *What R-B costs* stays genuinely open for the next round that retires
+> anything — it is moot only for this one.
 
 ---
 
@@ -203,20 +216,27 @@ independent.
 
 ## The queue, in order
 
-**Revised by the addendum above.** The first step is no longer executable.
+**RULED 2026-08-12 — the owner chose the third option: independence is
+handled by reporting, not by retiring.** The census keeps its 80 rows, the
+duplicates stay live, the certification stands, no sitting is owed, and R-B's
+ordering gate is lifted. Every run now discloses 80 rows over 78 independent
+propositions, names the duplicates, and — where a row-pass would fail the
+independent reading — says so in terms. The gate ledger carries the ruling and
+its accepted cost.
 
-1. **Rule the R-B lattice conflict** — amend R-B with a compensating resize,
+**Remaining queue:**
+
+1. ~~**Rule the R-B lattice conflict**~~ — ruled; see above. — amend R-B with a compensating resize,
    accept the raised bar and record it, or replace retirement with reporting.
    Tier 3, owner's. *Nothing proceeds past this.*
-2. **Rule the re-certification question** — strict void, or narrowing for
-   content-forced removals. Tier 3, owner's. Worth ruling **with** step 1,
-   because together they decide whether the repair costs one human sitting,
-   two, or none.
-3. **Execute whatever step 1 rules**, then re-certify per step 2.
-4. **Write R-C's three sentences** from an uncontaminated session.
-5. **Run the final sanctioned attempt.**
+2. **The re-certification question is now moot for this round** — nothing is
+   retired, so `58ac1a90` is untouched and no sitting is owed. It stays open as
+   a standing question for the next round that *does* retire something.
+3. **Write R-C's three sentences** from an uncontaminated session: which model,
+   why that one, and what result ends the search. **This is now the only thing
+   blocking T2.114.**
+4. **Run the final sanctioned attempt.**
 
-Step 3 is work an agent can do once 1 and 2 are ruled. Steps 1, 2 and 4 are
-yours. Step 5 is the only one that can clear G-D, and it can equally record a
-measured miss — which doc 17 and runbook §7 both treat as an outcome rather
-than a failure to finish.
+Step 3 is yours and nothing proceeds past it. Step 4 is the only one that can
+clear G-D, and it can equally record a measured miss — which doc 17 and runbook
+§7 both treat as an outcome rather than a failure to finish.
