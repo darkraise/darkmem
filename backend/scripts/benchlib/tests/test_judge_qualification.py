@@ -899,6 +899,7 @@ def _run(tmp_path, stub_cls, **kwargs):
         report_dir=tmp_path / "reports",
         ledger_path=tmp_path / "ledger.jsonl",
         cache_dir=tmp_path / "cache",
+        verdicts_dir=tmp_path / "verdicts",
         orchestrator_cls=stub_cls,
     )
     defaults.update(kwargs)
@@ -1304,6 +1305,36 @@ def test_the_per_pair_verdict_artifact_is_quarantined_not_committed():
     # cannot drift away from the artifact it protects.
     assert rjq.VERDICTS_DIR.name == "verdicts"
     assert rjq.VERDICTS_DIR.parent.name == "entailment"
+
+
+def test_a_completed_run_never_writes_into_the_real_verdicts_directory(
+    tmp_path, monkeypatch,
+):
+    """T2.122: the module-level ``VERDICTS_DIR`` constant used to be read
+    directly at the write site with no override, so any test that drove
+    ``run_qualification`` to scoring completion wrote a per-pair verdict
+    file into the live, gitignored artifact directory under a real judge
+    identity -- 79 such files accumulated there across three days before
+    this was caught.
+
+    Stands the module constant in for "the real directory": if the writer
+    ever goes back to reading it directly instead of the ``verdicts_dir``
+    parameter ``_run`` overrides, a real-looking file lands here and this
+    test fails.
+    """
+    canary = tmp_path / "would-be-the-real-directory"
+    monkeypatch.setattr(rjq, "VERDICTS_DIR", canary)
+
+    stub_cls, _seen = make_stub(cycling_script())
+    result = _run(tmp_path, stub_cls)
+
+    assert not canary.exists(), (
+        "run_qualification wrote into VERDICTS_DIR directly instead of the "
+        "verdicts_dir override -- this is the T2.122 leak"
+    )
+    written = list((tmp_path / "verdicts").glob("*.json"))
+    assert len(written) == 1
+    assert result.report_path.exists()
 
 
 # ── census independence is disclosed, not discovered in review ───────────

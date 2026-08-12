@@ -1329,6 +1329,39 @@ fixture overhead 9 calls / 4,088 tokens. Latency: live p50 3.34 s / p95 7.21 s
 Phase 3 (L3 articles) stays closed and `article_synthesis` stays a placeholder.
 G-D remains open with no further attempt sanctioned on this gold.
 
+### G-D — the per-pair verdict artifact was leaking residue (T2.122, 2026-08-12)
+
+The paragraph above cites `entailment/verdicts/` as where this run's per-pair
+artifact landed. Measured 2026-08-12: that directory held **96 files, of
+which 95 were synthetic residue** written by the test suite — `VERDICTS_DIR`
+was a module constant read directly at the write site with no override, so
+any test driving `run_judge_qualification.py` to scoring completion under
+the default (deepseek) identity wrote a stub-judge verdict file into the
+live, gitignored artifact directory. 79 sat at the top level (the brief's
+original count); a further 16, previously undocumented, sat in a stray
+`verdicts/verdicts/` subdirectory consistent with an earlier, unfinished,
+unrecorded manual quarantine attempt. Several residue files carried the
+real, current gold sha and the real deepseek identity — i.e. were
+indistinguishable from a genuine run by filename alone.
+
+**Fixed**: `run_qualification` now takes a `verdicts_dir` parameter (default
+unchanged for production), the test suite's `_run` helper overrides it to a
+throwaway path, and a new regression test fails if the writer ever again
+reads the module constant directly instead of the parameter. The 95 residue
+files were identified — filename, identity, gold sha, pair count, measured
+entailed precision and contradiction recall for every one — and removed only
+after that identification was committed:
+`docs/eval/2026-08-12-verdicts-directory-residue-removed.md`.
+
+**The one genuine file, `2026-08-12-fd39e7b2-6eadba73.json`, is untouched.**
+Its metrics reproduce this section's numbers exactly (entailed precision
+0.9884, contradiction recall 0.8875), and its sha256 —
+`80ac5451c080b68649ea8524a3387b126dd30f96a4f69625acf2fb8252281962` — is now
+recorded both there and in
+`docs/eval/2026-08-12-judge-qualification-fd39e7b2.md`, outside the artifact
+itself, so R2/T2.119's re-score can authenticate its input against a value
+that does not live in a gitignored directory alone.
+
 ### T2.118 — duplicate/independence pass over the non-contradicted census (2026-08-12): **entailed 173 rows over 167 independent propositions; unsupported clean; no reproduced retirements. The gate applies its bar to ROWS, with the independent reading disclosed beside it.**
 
 Run by a party outside the census's authoring lineage, as the task requires,
