@@ -949,6 +949,38 @@ was wrong; the entailed census prints 167.
 
 ---
 
+#### T2.126 — A judge bar can be lowered at runtime with no source diff
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.117` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
+
+**Found by T2.117, which correctly declined to fix it** — this changes bar semantics, which
+is the owner's call, not an implementer's.
+
+`get_verification_bars` merges per-bar `config` rows **over** the code defaults with the
+database winning per key (`verification_judge.py:585-601`), and there is no floor clamp.
+So the standing rule this project states everywhere — *both bars are the owner's to move
+with a recorded argument, and neither may be moved to make a run pass* — is enforced in
+source but not at runtime: an operator can lower `contradiction_recall_bar` with a config
+write, and T2.117's tripwire test, which pins the source constant, sees nothing. No diff,
+no review, no ledger entry.
+
+**The asymmetry is the argument.** The verification ladder's own three thresholds are
+**floors**: tightening is free, and loosening below a floor is honoured only for parameters
+named in the `ladder_measurements` config row by a recorded G-C measurement, else clamped
+with a warning. The judge's bars are the same kind of number — a threshold whose movement
+is a truth claim — and they have no such clamp. Whatever is right for the ladder is
+presumptively right here, and if it is not, the difference is worth writing down.
+
+**Done when:** the decision is made and recorded either way; if clamped, the mechanism
+mirrors the ladder's (a named measurement record licenses a loosening, everything else
+clamps with a warning) rather than inventing a second shape; tightening stays free; and
+the clamp is proven by test against a config row attempting a loosening. **A decision to
+leave it unclamped is a legitimate outcome** — recorded, with the reason, in `doc 17 §6`
+beside the bars themselves.
+**Verify.** `cd backend && python -m pytest tests/test_verification_judge.py -q`
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
