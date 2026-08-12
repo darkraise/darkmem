@@ -1341,8 +1341,14 @@ shape).
 **The bars, stated 2026-08-08 by the controller under delegated authority.**
 `contradiction_recall_bar` = **0.95**, `contradiction_precision_bar` = 0.95 → **0.70**.
 Derived, not measured: doc 17 §6's rule — truth-critical metric at 0.95, the other at 0.90
-— predates every judge run, and the amendment is what made recall truth-critical, so recall
-takes 0.95 by that rule. **The check that this is a derivation and not a fit is that the
+— predates every judge run. **Refined 2026-08-12 (T2.121):** the phrase this section used to
+carry — "the amendment is what made recall truth-critical" — was loose. A recall miss's cost
+was truth-critical before T2.109 and is truth-critical after it; nothing about the amendment
+changed what a miss costs. What the amendment changed is **precision's** class: precision left
+the truth-critical bucket because its consumer (the absolute veto) moved to the deterministic
+arm, leaving recall the only truth-side metric left on the LLM-judge arm. Same bar, cleaner
+reason: recall takes 0.95 by that rule because it always sat in the truth-critical class, not
+because the amendment moved it there. **The check that this is a derivation and not a fit is that the
 measured judge does not clear it**: gpt-5.5 scored contradiction-recall 0.945, so a bar
 chosen to launder that number would sit at 0.90, and `test_contradiction_recall_is_gated_and_barred_by_derivation`
 pins the bar *against* 0.90 for exactly that reason. Precision drops because its consumer
@@ -1367,6 +1373,37 @@ for a deciding consumer that no longer exists on that arm.
 
 **G-D stays open.** Nothing about this ratification clears it; it changes what clearing
 would mean, and the measurement runs on T2.110's gold, not this one.
+
+### The 0.90 contradiction-recall re-derivation: rejected (2026-08-12, T2.121, ruling R3)
+
+A session proposed re-deriving `contradiction_recall_bar` from 0.95 down to 0.90, arguing that
+post-T2.109 a recall miss costs an unopened review item rather than a wrong belief — the same
+argument that already carried `contradiction_precision_bar` down to 0.70. **That derivation is
+wrong and is rejected.** `contradiction_recall_bar` stays **0.95**.
+
+The argument does not survive contact with what a recall miss actually is under the amended
+veto. A recall miss is a genuinely contradicted fact that keeps `corroborated`, keeps a badge
+asserting no known contradiction, and stays citable by articles — a standing wrong belief with
+no backstop, since the human-verdict arm (`rejected_after`) is the scan's only route into the
+audit and the deterministic arm is corpus-vacuous today. A precision miss is bounded: a
+reviewer opens the flagged fact, finds nothing wrong, and dismisses it in a minute. The two
+misses are not the same size, and that asymmetry — unchanged by T2.109 — is exactly what
+doc 17 §6's rule already prices: 0.95 for the truth-critical metric, 0.90 for the load metric.
+Recall did not move classes when precision did.
+
+**Why this is recorded rather than dropped quietly, with the arithmetic.** At a 0.90 bar the
+2026-08-10 deepseek re-measure (table above, `gate-ledger.md:1122-1127`) clears **all four
+bars on both populations**: contradiction recall 0.9375 pooled and 0.9500 Rule B, both above a
+0.90 line, with the other three bars already passing at every reading on that run. The
+proposal was presented as harmless bookkeeping; it is not — it would have converted a recorded
+**NOT CLEARED** result into a retroactive **PASS**, on a run whose two-attempt budget on this
+gold is already spent (T2.115 followed by T2.114's final attempt, both NOT CLEARED). A reader
+who believed the 0.90 derivation would conclude G-D cleared on 2026-08-10; it did not, and does
+not now. This entry exists so the same derivation cannot resurface at the next gold looking
+new.
+
+**No bar value moves.** `contradiction_recall_bar` remains 0.95, `contradiction_precision_bar`
+remains 0.70. G-D remains open, unchanged by this correction.
 
 ### G-D resolution (2026-08-08, resolution spike): the defect is the veto's architecture, not the judge
 
