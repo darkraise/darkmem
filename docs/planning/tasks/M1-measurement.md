@@ -1026,6 +1026,35 @@ legitimate outcome**, recorded beside the bars with the reason.
 
 ---
 
+#### T2.128 — A clamped run's evidence looks exactly like an unclamped one
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T2.127` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: —`
+
+**Found by T2.127 and left open there deliberately** — it is a change to the runner's
+report, not to the clamp, and folding it in would have put an unreviewed edit on the
+artifact the ledger quotes.
+
+`run_gc_evidence.py` prints no effective-bar block, so a clamp announces itself only
+through `logging`'s lastResort handler on stderr. **A clamped run's report body is
+byte-identical to an unclamped one.** The clamp itself works — the verdict is computed
+against the committed bar either way — but the artifact a reader audits cannot show
+whether an operator's config row was refused, honoured, or absent, and stderr is not part
+of what gets pasted into the gate ledger.
+
+The same gap exists on the judge side (`run_judge_qualification.py` stamps
+`VERIFICATION_BAR_DEFAULTS` directly, which is disclosed but also means the record cannot
+distinguish "no row" from "row clamped").
+
+**Done when:** every run that resolves bars prints them in its report with, per bar, the
+committed value, the effective value, and — when they differ — that a clamp fired and what
+was missing (no licence, or a bound the row exceeded); a run with no config rows says so
+explicitly rather than by omission, since "silent" must not be the same rendering as
+"clean"; and a test pins that a clamped run's report differs from an unclamped one, which
+is the property this task exists to create.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests/test_promotion_bars.py -q`
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
