@@ -1329,6 +1329,139 @@ fixture overhead 9 calls / 4,088 tokens. Latency: live p50 3.34 s / p95 7.21 s
 Phase 3 (L3 articles) stays closed and `article_synthesis` stays a placeholder.
 G-D remains open with no further attempt sanctioned on this gold.
 
+### T2.118 — duplicate/independence pass over the non-contradicted census (2026-08-12): **entailed 173 rows over 167 independent propositions; unsupported clean; no reproduced retirements. The gate applies its bar to ROWS, with the independent reading disclosed beside it.**
+
+Run by a party outside the census's authoring lineage, as the task requires,
+against gold file sha256 `6eadba73` (417 rows: 402 live — 173 entailed, 149
+unsupported, 80 contradicted — and 15 retired, all contradicted:
+`eg-0048/0119/0123/0128/0142/0146/0149/0155/0162/0164/0172/0181/0214/0218/0232`).
+The live counts confirm the spec's artifact-derived 173+149 from the gold
+itself, so no judge output was opened. **Zero model calls, zero runner
+invocations, zero gold edits** — the pass is the committed tooling the
+contradicted side received: `benchlib/duplicate_propositions.py` at its
+committed threshold (0.85), `judge_qualification.census_independence` for the
+ruled disclosure arithmetic, byte-identity over live pairs, and text comparison
+of every live non-contradicted pair against every retired pair. The checker
+validated itself by reproducing the contradicted side's two known findings
+exactly (live `eg-0367` byte-identical to retired `eg-0155`, live `eg-0404` to
+retired `eg-0048`) before being read on the new material.
+
+**Finding 1 — the entailed class carries five duplicated propositions, one of
+them three rows wide.** Seven findings, all similarity 1.0 (token-set
+identical), all `l2-fact` provenance, each differing only by an article, a
+casing change, or word order — exactly the class R-B named as *"passes the
+loader's uniqueness check while leaving a near-duplicate in a measurement
+set"*:
+
+| Component | Premise | Hypotheses | Slice |
+|---|---|---|---|
+| `eg-0051` + `eg-0322` | license-report depends on internal package mirror | "license-report depends on the internal package mirror." / "The license-report depends on the internal package mirror." | verbatim |
+| `eg-0063` + `eg-0125` | jenkins deployed on ci-01 | "Jenkins is deployed on ci-01." / "It is on ci-01 that Jenkins is deployed." | verbatim |
+| `eg-0078` + `eg-0307` | apps/portal uses audit-log | "audit-log has at least one consumer." / "The audit-log has at least one consumer." | weakening |
+| `eg-0083` + `eg-0247` | config management agent causes lp-relay | "lp-relay is brought about by the config management agent." / "The lp-relay is brought about by the config management agent." | paraphrase |
+| `eg-0094` + `eg-0279` + `eg-0323` | billing-sync deployed on apps-02 | "billing-sync is deployed on apps-02." / "On apps-02, billing-sync is deployed." / "Billing-sync has been deployed on apps-02." | verbatim |
+
+So the entailed census is **173 rows over 167 independent propositions** (six
+redundant rows across five components). The aggregate was technically on the
+record — R-B's 2026-08-10 entry says its check "reports nine duplicate
+relations … seven are `entailed`" — but the seven were never itemised, never
+adjudicated, and never disclosed in any run artifact: the runner computes
+`census_independence` for the contradicted class only
+(`run_judge_qualification.py:370`). This is their first itemisation. The
+mechanism mirrors the contradicted side's: five of the six redundant rows are
+growth-round pairs (`eg-0242`+, the T2.110/T2.115 authoring lineage) authored
+over premises that already carried a live pair.
+
+**Finding 2 — the committed collapse arithmetic is wrong on this class, by
+one, in the direction that misstates worst-case robustness.**
+`census_independence` computes `independent = rows − len(findings)`, treating
+each finding as one collapse. The `eg-0094`/`eg-0279`/`eg-0323` triangle
+produces **three** findings but only **two** collapses, so the committed
+function reports 166 where the true count is 167. Both contradicted components
+were two rows wide, so nothing exposed this before; the entailed class is
+where it first binds. Consequence for R2's mint path, which reuses this code:
+the disclosure would print 166, and the report's worst-case-independent
+computation (`hits − collapsed`) would over-collapse by one. Recorded here for
+T2.119/T2.117 to handle; this task edits no code by its own charter.
+
+**Finding 3 — Rule B's "not contacted before" property is dented for five of
+its 72 entailed rows,** more widely than the contradicted side's single
+`eg-0367` case: `eg-0322`, `eg-0307`, `eg-0247`, `eg-0279` and `eg-0323` are
+Rule B rows restating propositions the judge met in the contacted population
+(`eg-0051`, `eg-0078`, `eg-0083`, `eg-0094` — the last twice). The bytes were
+new; the propositions were not. Within the Rule B population itself one
+duplicate pair is fully internal (`eg-0279`+`eg-0323`), so Rule B's entailed
+census is **72 rows over 71 independent propositions**. `eg-0063`+`eg-0125`
+sits fully inside the contacted population.
+
+**Finding 4 — the unsupported class is clean.** 149 rows, zero duplicate
+findings at the committed threshold, zero byte-identical pairs: **149 rows =
+149 independent propositions**, rows and independent readings coincide.
+
+**Finding 5 — no reproduced retirements on the non-contradicted side.** No
+live entailed or unsupported pair matches any of the 15 retired pairs
+byte-for-byte, and the one near-duplicate flag was examined and dismissed:
+live `eg-0266` (entailed, verbatim: "Astro replaces MkDocs.") against retired
+`eg-0162` (contradicted, direction: "MkDocs replaces Astro.") scores 1.0 only
+because the checker discards word order — they assert **opposite**
+propositions under opposite verdicts, a reversal, not a reproduction. The
+defect class the contradicted side turned up (retired content re-entering
+under a new id) does not occur here.
+
+**Finding 6 — no cross-verdict label conflicts.** A check the committed tool
+cannot run (it groups by verdict, on purpose) was run once as diligence: same
+premise, hypotheses at similarity ≥ 0.85, one row `entailed` and the other
+`unsupported`. Five flags, all similarity 1.0, all the same shape — a
+`verbatim` restatement beside its `direction` reversal of non-exclusive `USES`
+(`eg-0042`/`eg-0282`, `eg-0074`/`eg-0283`, `eg-0079`/`eg-0141`,
+`eg-0151`/`eg-0269`, `eg-0185`/`eg-0305`). Reversals assert different
+propositions; different verdicts are correct. All dismissed; the corpus's
+deliberate hard negatives are intact, not duplicated.
+
+**The minimum-pass arithmetic, on both readings.** The census-denominator bar
+for the entailed class under R1 is `groundedness_gate_recall_bar` = **0.90**
+(precision's denominator is judge-dependent; the unsupported class is no
+barred metric's denominator — its rows enter precision only as false-accept
+candidates, and it carries no correlated structure to bank there).
+
+| Census | Rows reading | Independent reading |
+|---|---|---|
+| Entailed, pooled | **156/173 = 0.9017** | **151/167 = 0.9042** (committed arithmetic would print 150/166 = 0.9036) |
+| Entailed, Rule B | **65/72 = 0.9028** | **64/71 = 0.9014** |
+| Unsupported, pooled (no bar; shown at 0.90) | 135/149 = 0.9060 | same — rows = propositions |
+
+The bar is **not expressible on rows** for any of these censuses: 0.90 falls
+between lattice values everywhere (pooled entailed enforces 0.9017, +0.17pp of
+quantisation). T2.110 sized only the pooled *contradicted* census onto its bar
+(76/80 = 0.9500 exactly); no such sizing was ever run for the entailed class,
+and per the fd39e7b2 report's own words, where the lattice enforces a stricter
+number the verdict is evidence about the census, not only the judge.
+
+**Robustness at the margin, stated before any re-score exists.** A rows-pass
+at exactly the minimum 156/173 whose judge caught all six redundant rows has a
+worst-case independent reading of **150/167 = 0.8982 — below the bar**. At
+157/173 and above, the worst case is 151/167 = 0.9042 and the pass is robust.
+On Rule B the minimum 65/72 is already robust (worst case 64/71 = 0.9014, one
+internal collapse). So the same eyes-open easing the owner's 2026-08-12 ruling
+accepted for the contradicted class exists on the gated class, and it bites
+only in the exact-minimum row: the disclosure-plus-flag machinery is the right
+shape for it, once extended to this verdict class.
+
+**Which reading the gate stands on: ROWS.** The owner's 2026-08-12 ruling —
+independence is handled by reporting, not retiring — set that for the
+contradicted class, and nothing in this pass licenses a different regime here:
+the bar applies to rows (156/173 pooled, 65/72 Rule B for entailed recall at
+0.90), the independent reading (151/167, 64/71) is disclosed beside it, and an
+exact-minimum rows-pass must self-flag as not robust to the independence
+reading rather than read as a clear pass. The ruling's text names only the
+contradicted class, so its extension to the entailment class — and the
+component-arithmetic fix in Finding 2 — are conditions T2.119's mint must
+carry, not things this pass may assume. **The unsupported side is clean on
+every probe; the entailed side carries the contradicted side's duplicate
+defect in larger degree (5 duplicated propositions vs 2, one of them
+three-wide) and none of its worse one (no reproduced retirements, no label
+conflicts).** No gold file was modified by this pass.
+
 ### G-D redesign: **RATIFIED by the owner, 2026-08-08**
 
 The recommendation below is adopted. Tier-3 amendments applied to
