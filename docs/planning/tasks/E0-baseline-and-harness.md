@@ -583,6 +583,49 @@ leaf surface, not infrastructure another task consumes.*
 
 ---
 
+#### T0.20 — A worktree still cannot run the gate, and two of its gaps read as RED
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T0.19` · `Doc: 17 §9` · `Tag: target-new` · `Gate: none (harness integrity)`
+
+**Measured 2026-08-12** while gating v0.5's merged work from `.worktrees/master-claim`.
+T0.19 closed the half it named — the gate resolves an interpreter and *reports* it
+(`── resolved interpreter ──`, and it chose the worktree's own path) — but its first
+done-when, *"a lane worktree can run `./scripts/gate.sh`"*, does not hold end to end. Three
+runs were needed to reach a verdict, each stopped by a different gitignored artifact the
+gate assumes the tree already has:
+
+| Missing in a fresh worktree | The gate said | Should say |
+|---|---|---|
+| `frontend/node_modules` | `GATE BLOCKED` (exit 2) | correct |
+| `backend/.venv`, via `sdks/Makefile`'s own `../backend/.venv/bin/python` | `GATE RED — failed at: sdk build` | `GATE BLOCKED` |
+| `backend/scripts/extraction_bench/.cache` + its `manifest.json` | `GATE RED — failed at: extraction F1 bench` | `GATE BLOCKED` |
+
+**The misclassification is the defect, not the missing files.** CLAUDE.md's contract is
+explicit — *"`GATE BLOCKED` (exit 2) means a missing toolchain, not a red gate"* — and two
+of the three gaps violate it, telling a lane its **code** broke the SDK build or the F1
+bench when the truth is that its tree has no venv and no bench cache. That is the most
+expensive possible wrong answer: it points the next agent at a diff that is fine. The
+frontend arm already gets this right and is the model.
+
+Note the SDK gap is a *second* hard-coded interpreter, in `sdks/Makefile`, which T0.19's
+`PY` override does not reach — so the fix is not "override one more variable" but "every
+interpreter the gate reaches through resolves the same way".
+
+**Done when:** a fresh `git worktree add` runs `./scripts/gate.sh` to a verdict, or every
+stage whose prerequisite is a gitignored artifact fails as `GATE BLOCKED` (exit 2) naming
+what to install or restore; `sdks/Makefile` resolves its interpreter the way `gate.sh`
+does rather than hard-coding a second path; the F1 bench's absent-cache path is classified
+as blocked rather than red; and the runbook §8 note says which artifacts a worktree needs.
+A **deliberate** worktree-only test failure still reports `GATE RED`, so the two exit codes
+stay distinguishable — that is the property this task must not trade away.
+
+**Verify.** `git worktree add` a scratch tree, run `./scripts/gate.sh`, confirm exit 2 with
+a named prerequisite (or a full verdict); then break a test there only and confirm exit 1.
+
+*terminal-by-design — a backstop on the harness, not infrastructure another task consumes.*
+
+---
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
