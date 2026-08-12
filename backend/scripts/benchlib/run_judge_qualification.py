@@ -364,6 +364,13 @@ async def run_qualification(
         # the pairs did not.
         "gold_pairs_sha256": gold_pairs_sha256,
         "gold_touching_attempts": gold_touching_attempts,
+        # What the contradicted census can actually express against its bar.
+        # Disclosed because the 2026-08-10 attempt was spent against 80 rows
+        # over 78 independent propositions and no artifact said so.
+        "census_independence": jq.census_independence(
+            live_pairs, "contradicted",
+            vj.VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"],
+        ),
         "n_fixtures": len(sanity_pairs),
         "fixture_tokens": fixture_tokens,
         "gold_tokens": gold_tokens,

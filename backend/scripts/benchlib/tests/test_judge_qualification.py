@@ -1304,3 +1304,122 @@ def test_the_per_pair_verdict_artifact_is_quarantined_not_committed():
     # cannot drift away from the artifact it protects.
     assert rjq.VERDICTS_DIR.name == "verdicts"
     assert rjq.VERDICTS_DIR.parent.name == "entailment"
+
+
+# ── census independence is disclosed, not discovered in review ───────────
+
+
+def test_the_live_gold_discloses_its_two_duplicated_propositions():
+    """The 2026-08-10 attempt was spent against 80 contradicted rows over 78
+    independent propositions and no artifact said so; the finding arrived in
+    review, after the attempt was gone. This is that disclosure."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+
+    ci = jq.census_independence(live, "contradicted", 0.95)
+    assert ci["rows"] == 80
+    assert ci["independent_propositions"] == 78
+    assert [sorted(pair) for pair in ci["duplicate_pairs"]] == [
+        ["eg-0093", "eg-0367"], ["eg-0194", "eg-0251"],
+    ]
+
+
+def test_it_reports_the_effective_bar_on_both_readings():
+    """The gap runs the dangerous way: measured on rows the bar is exactly
+    0.95, and on independent propositions it is 0.9615 — so a census with
+    duplicates is *easier* than the bar it claims to enforce."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+
+    ci = jq.census_independence(live, "contradicted", 0.95)
+    assert (ci["min_passing_rows"], ci["effective_bar_on_rows"]) == (76, 0.95)
+    assert (ci["min_passing_independent"], ci["effective_bar_on_independent"]) == (75, 0.9615)
+    assert ci["bar_expressible_on_rows"] is True
+
+
+def test_a_census_whose_bar_is_not_expressible_says_so():
+    """Quantisation makes a stated bar unreachable at some census sizes, and
+    the effective bar is then one nobody argued for. 0.95 over 78 rows needs
+    75, which is 0.9615."""
+    pairs = [
+        {"id": f"x-{i:04d}", "verdict": "contradicted",
+         "premise": f"p{i}", "hypothesis": f"h{i}"}
+        for i in range(78)
+    ]
+    ci = jq.census_independence(pairs, "contradicted", 0.95)
+    assert ci["rows"] == ci["independent_propositions"] == 78
+    assert ci["bar_expressible_on_rows"] is False
+    assert ci["effective_bar_on_independent"] == 0.9615
+
+
+def test_the_disclosure_cannot_be_a_function_of_judge_performance():
+    """Reports, never judges — asserted on the interface rather than on the
+    source text, because a docstring mentioning "score" is not a defect and
+    a grep for it is the source-inspection shape this corpus keeps finding.
+
+    The property is structural: no judge output can reach this function,
+    because there is no parameter it could arrive through."""
+    import inspect
+    params = list(inspect.signature(jq.census_independence).parameters)
+    assert params == ["pairs", "verdict", "bar"]
+
+    # And it is deterministic on its inputs alone.
+    doc = entailment_gold.load_entailment_gold()
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+    assert jq.census_independence(live, "contradicted", 0.95) == \
+        jq.census_independence(live, "contradicted", 0.95)
+
+
+def _census_with_two_duplicates():
+    """80 contradicted rows over 78 propositions, built through the real
+    finder rather than hand-asserted, so the fixture cannot drift from the
+    shape `census_independence` actually returns."""
+    pairs = [
+        {"id": f"c-{i:04d}", "verdict": "contradicted",
+         "premise": f"subject{i} relates object{i}", "hypothesis": f"claim {i} holds"}
+        for i in range(76)
+    ]
+    for n in (0, 1):
+        pairs.append({"id": f"d-{n}a", "verdict": "contradicted",
+                      "premise": f"dup{n} has part widget",
+                      "hypothesis": f"The widget has dup{n} as a part."})
+        pairs.append({"id": f"d-{n}b", "verdict": "contradicted",
+                      "premise": f"dup{n} has part widget",
+                      "hypothesis": f"dup{n} is a part of the widget."})
+    return pairs
+
+
+def test_a_row_pass_the_independence_reading_would_fail_is_flagged():
+    """The owner's 2026-08-12 ruling kept the duplicates and handled
+    independence by reporting, which puts the ruling's whole weight on this
+    line existing. 76/80 clears 0.95 on rows; if the judge caught both
+    correlated pairs the independent reading is 74/78 = 0.9487, below it."""
+    ci = jq.census_independence(_census_with_two_duplicates(), "contradicted", 0.95)
+    score = jq.QualificationScore(
+        n_pairs=402, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=76 / 80, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=ci),
+    )
+    assert "not robust to the independence reading" in text
+    assert "74/78" in text and "0.9487" in text
+
+
+def test_a_comfortable_pass_is_not_flagged():
+    """The warning has to be selective or it is noise: 80/80 survives the
+    independent reading at 78/78 and must not carry the caveat."""
+    ci = jq.census_independence(_census_with_two_duplicates(), "contradicted", 0.95)
+    score = jq.QualificationScore(
+        n_pairs=402, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=1.0, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=ci),
+    )
+    assert "Census independence" in text            # still disclosed
+    assert "not robust to the independence reading" not in text

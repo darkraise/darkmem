@@ -961,6 +961,40 @@ record. Retiring them is content-forced by a deterministic finding rather than a
 census-shape selection, so clause 1 does not govern it and contamination is not
 the obstacle.
 
+> **SUPERSEDED 2026-08-12 by owner ruling — independence is handled by
+> reporting, not by retiring. The ordering gate is lifted.**
+>
+> Recorded as the owner's. The census keeps its 80 rows, the two duplicated
+> propositions stay live, and every qualification run now discloses that the
+> class carries **78 independent propositions** and names the duplicates
+> (`eg-0093`+`eg-0367`, `eg-0194`+`eg-0251`).
+>
+> **What forced the re-ruling.** Executing R-B as written was found on
+> 2026-08-12 to be impossible without moving a ratified bar: retiring two rows
+> takes the pooled contradicted census to 78, where the minimum passing score
+> becomes 75/78 = **0.9615**, and Rule B's to 38, where it becomes 37/38 =
+> **0.9737**. Since the verdict must hold on both, the binding bar would have
+> risen to 0.9737 — 2.37 points above the ratified 0.95, by arithmetic and
+> nobody's argument. That is the defect T2.115 was minted to fix, reintroduced
+> more severely by the ruling meant to fix a different one. No retirement
+> avoids it: any two-row reduction breaks the lattice, and retiring one from
+> each population lands on 39 (0.9487, also inexact). Analysis:
+> `analyses/2026-08-12-gd-decision-state.md`.
+>
+> **What this ruling costs, stated where the number lives.** The bar is still
+> applied to rows, so a run scoring exactly 76/80 passes at the stated 0.95
+> while its independent reading is 74/78 = 0.9487 — below the bar — if the
+> judge caught both correlated pairs. **A zero-margin pass is therefore not
+> robust to the independence reading, and a run that lands on one must say so
+> rather than be read as a clear pass.** The run report now computes and states
+> exactly this. The easing R-B objected to is real and is accepted with its
+> eyes open; what changes is that it can no longer be invisible.
+>
+> **What it buys.** No gold surgery, so `58ac1a90` stands, no fresh n = 93
+> sitting is owed, and the one remaining sanctioned attempt is not spent
+> repairing a census. T2.114 is no longer gated behind R-B and is blocked on
+> R-C alone.
+
 **R-C — T2.114: NOT RULED. The one blocker the delegation could not dissolve.**
 The draft argued that no selection existed to make, because attempt 1 on this
 gold used `deepseek-v4-flash` and only one other model carries a qualification
@@ -983,8 +1017,10 @@ who had not seen the scoreboard. The three sentences it needs are unchanged —
 which model, why that one, and what result ends the search rather than extends
 it — and the option set is now known to be at least {`gpt-5.5`,
 `deepseek-v4-pro`}, with v4-pro carrying the resample-circularity objection
-above. **Note this is now also gated behind R-B: whichever model is chosen, no
-attempt may run on `98fc4b49` until the duplicates are retired.**
+above. ~~**Note this is now also gated behind R-B: whichever model is chosen, no
+attempt may run on `98fc4b49` until the duplicates are retired.**~~
+**Struck 2026-08-12: R-B's ordering gate was lifted by the owner ruling above,
+so R-C is once again the only thing blocking T2.114.**
 
 **R-D — doc 09 §4.1: adopt the damping (Tier-3, ratified).** `ln(1+x)` per
 signal is now the stated formula. `review_ranking` already compresses
