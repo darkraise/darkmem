@@ -581,37 +581,190 @@ VERIFICATION_BAR_DEFAULTS: dict[str, float] = {
     "contradiction_precision_bar": 0.70,
 }
 
+# T2.126, owner-ruled 2026-08-13: the shipped defaults above are **floors**, on
+# the verification ladder's shape (`verification_ladder.LADDER_FLOORS`).
+# Tightening is free; a config row below a floor is honoured only against a
+# licence naming that parameter, and otherwise clamps back with a warning
+# rather than raising — a bad row degrades to the conservative bar instead of
+# taking the enforcement path down. The floors are `VERIFICATION_BAR_DEFAULTS`
+# itself rather than a second mapping, so "what ships" and "what may not be
+# gone below" stay one statement.
+#
+# **What this row can assert, and what it cannot.** The ladder ties a loosening
+# to a recorded G-C measurement; a judge bar's licence is the owner's recorded
+# argument in the gate ledger, and code cannot read a paragraph, let alone
+# judge one. So the row asserts only three mechanical things — which parameter
+# (by name, never blanket), how far (the lowest value the argument is claimed
+# to support, so the licence *bounds* the loosening), and where the argument is
+# recorded (a citation checked for presence and never for truth). Bounding it
+# is the part that keeps this from being the bar row licensing itself: a row
+# that unlocked "whatever the bar row says" would be a ratchet — one write,
+# then any number. What it cannot do is stop an operator who writes both rows;
+# nothing in-process can, and the ladder's row has the same limit. What it buys
+# is that a loosening is no longer a single number edit that leaves no trace.
+VERIFICATION_BAR_LICENCES_KEY = "verification_bar_licences"
+
+
+async def get_verification_bar_licences(session: AsyncSession) -> dict[str, float]:
+    """Which bars carry a licence to sit below their floor, and how far down.
+
+    Shape, mirroring ``get_ladder_measurements``' posture — a ``config`` row
+    nothing in this codebase writes, empty by default, degrading rather than
+    raising::
+
+        {"licensed": {"<bar key>": {"value": 0.90,
+                                    "argument": "gate-ledger.md#<section>"}}}
+
+    Permission is **per parameter and per value**: an entry unlocks its own
+    parameter down to its own stated value and nothing else. A malformed entry
+    licenses nothing and says which field it is missing, because the operator
+    whose value was ignored is the one who needs to read that line.
+    """
+    row = (await session.execute(
+        select(Config).where(Config.key == VERIFICATION_BAR_LICENCES_KEY)
+    )).scalar_one_or_none()
+    if row is None:
+        return {}
+
+    licensed = row.value.get("licensed") if isinstance(row.value, dict) else None
+    if not isinstance(licensed, dict):
+        logger.warning(
+            "%s config row is %r, not {\"licensed\": {<bar key>: {\"value\": x, "
+            "\"argument\": \"<where the argument is recorded>\"}}}; licensing "
+            "nothing, so every bar holds at its floor",
+            VERIFICATION_BAR_LICENCES_KEY,
+            row.value,
+        )
+        return {}
+
+    out: dict[str, float] = {}
+    for key, entry in licensed.items():
+        if key not in VERIFICATION_BAR_DEFAULTS:
+            logger.warning(
+                "%s licenses %r, which is not a barred metric with a floor; "
+                "ignoring. Licensable parameters: %s",
+                VERIFICATION_BAR_LICENCES_KEY,
+                key,
+                sorted(VERIFICATION_BAR_DEFAULTS),
+            )
+            continue
+        if not isinstance(entry, dict):
+            logger.warning(
+                "%s licence for %s is %r, not an object carrying value and "
+                "argument; licensing nothing for it",
+                VERIFICATION_BAR_LICENCES_KEY,
+                key,
+                entry,
+            )
+            continue
+        value = entry.get("value")
+        # bool is an int subclass, and False would read as a licence down to 0.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            logger.warning(
+                "%s licence for %s states value %r, not a number; licensing "
+                "nothing for it. A licence must say how far down the recorded "
+                "argument reaches, or it bounds nothing",
+                VERIFICATION_BAR_LICENCES_KEY,
+                key,
+                value,
+            )
+            continue
+        argument = entry.get("argument")
+        if not isinstance(argument, str) or not argument.strip():
+            logger.warning(
+                "%s licence for %s states no argument citation; licensing "
+                "nothing for it. The citation is what a reviewer checks the "
+                "loosening against — its presence is all this code can verify, "
+                "and its absence is all it takes to refuse",
+                VERIFICATION_BAR_LICENCES_KEY,
+                key,
+            )
+            continue
+        out[key] = float(value)
+    return out
+
+
+def _clamp_to_floor(key: str, candidate: float, licensed: dict[str, float]) -> float:
+    floor = VERIFICATION_BAR_DEFAULTS.get(key)
+    if floor is None or candidate >= floor:
+        return candidate
+
+    allowed = licensed.get(key)
+    if allowed is None:
+        logger.warning(
+            "%s=%s is below its floor %s and the %s row licenses no loosening "
+            "for it; clamping to %s. Lowering a judge bar takes a licence "
+            "naming this parameter, the lowest value its recorded argument "
+            "supports, and where that argument is recorded — never an edit to "
+            "the bar row alone.",
+            key,
+            candidate,
+            floor,
+            VERIFICATION_BAR_LICENCES_KEY,
+            floor,
+        )
+        return floor
+    if candidate < allowed:
+        # Back to the floor rather than to `allowed`: clamping to the licensed
+        # value would adopt a number the operator did not write, on an argument
+        # they did not make for it.
+        logger.warning(
+            "%s=%s is below its floor %s and below the %s licence's own lowest "
+            "licensed value %s; clamping to %s. The licence bounds how far the "
+            "bar may move, so going further takes a new licence and a new "
+            "recorded argument.",
+            key,
+            candidate,
+            floor,
+            VERIFICATION_BAR_LICENCES_KEY,
+            allowed,
+            floor,
+        )
+        return floor
+    return candidate
+
 
 async def get_verification_bars(session: AsyncSession) -> dict[str, float]:
     """Merge per-bar ``config`` rows over the code defaults, DB winning per
-    key. A row's value may be ``{"value": x}`` or a bare JSON number. An
-    unreadable row raises: silently falling back to the default would
-    ignore an operator's attempt to move a bar — conservative relative to
-    the defaults but not to operator intent — so the enforcement path
-    (``qualification_state``) catches this and fails closed instead.
+    key, then clamp any unlicensed loosening back to its floor. A row's value
+    may be ``{"value": x}`` or a bare JSON number. An unreadable row raises:
+    silently falling back to the default would ignore an operator's attempt to
+    move a bar — conservative relative to the defaults but not to operator
+    intent — so the enforcement path (``qualification_state``) catches this and
+    fails closed instead.
+
+    The two postures are deliberately different and the difference is the
+    readability of the row (T2.126). An *unreadable* row raises, because
+    nothing can be inferred from it. A readable row *below its floor* is a
+    statement this code can act on, so it degrades to the floor with a warning
+    the way the ladder does, rather than taking down every recompute that reads
+    a bar.
 
     A barred metric with neither a default nor a config row raises on the
     same terms, and it is the same argument one step further: an unstated
     bar is not a bar of zero, and resolving it to anything at all would let
     a judge qualify against a number nobody chose. The rows are selected
     over ``BAR_METRICS`` rather than over the defaults so that stating such
-    a bar is a config write and needs no code change."""
+    a bar is a config write and needs no code change. Such a bar has no floor
+    either: the row is the only statement of that number, so there is nothing
+    it could have been lowered from."""
     rows = (await session.execute(
         select(Config).where(Config.key.in_(BAR_METRICS))
     )).scalars().all()
+
+    licensed = await get_verification_bar_licences(session) if rows else {}
 
     bars = dict(VERIFICATION_BAR_DEFAULTS)
     for row in rows:
         value = row.value
         if isinstance(value, dict):
             value = value.get("value")
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            bars[row.key] = float(value)
-        else:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
             raise ValueError(
                 f"config row {row.key} carries an unreadable bar value "
                 f"{row.value!r}; fix or delete the row"
             )
+        bars[row.key] = _clamp_to_floor(row.key, float(value), licensed)
 
     unstated = sorted(set(BAR_METRICS) - set(bars))
     if unstated:

@@ -112,10 +112,12 @@ def test_verdict_vocabulary_is_the_gold_three():
 RECALL_BAR = "contradiction_recall_bar"
 
 
-def _state_the_recall_bar(session, value=0.90):
+def _state_the_recall_bar(session, value=0.95):
     """T2.109 barred contradiction-recall with no default, so every test that
-    wants a resolvable bar set has to state it — the same act a deployment
-    performs, and the reason the gate is closed until one does."""
+    wanted a resolvable bar set had to state it. The bar has carried a default
+    since 2026-08-08, so the row is now the same act a deployment performs
+    rather than the thing that makes the set resolvable — and since T2.126 it
+    states the bar at its floor, because a row below the floor clamps."""
     session.add(Config(key=RECALL_BAR, value={"value": value}))
 
 
@@ -159,10 +161,8 @@ def test_contradiction_precision_is_a_review_load_floor_not_a_truth_bar():
 
 
 async def test_bars_fall_back_to_defaults_on_an_empty_config_table(session):
-    _state_the_recall_bar(session)
-    await session.commit()
     bars = await vj.get_verification_bars(session)
-    assert bars == {**vj.VERIFICATION_BAR_DEFAULTS, RECALL_BAR: 0.90}
+    assert bars == vj.VERIFICATION_BAR_DEFAULTS
 
 
 async def test_an_unstated_bar_raises_rather_than_resolving(session, monkeypatch):
@@ -179,22 +179,25 @@ async def test_an_unstated_bar_raises_rather_than_resolving(session, monkeypatch
 
 
 async def test_a_db_bar_row_wins_per_key(session):
-    session.add(Config(key="groundedness_gate_recall_bar", value={"value": 0.8}))
+    # A *tightening* row: since T2.126 the loosening direction is the clamp's,
+    # and testing "DB wins" with a loosened value would test the escape hatch
+    # instead of the merge.
+    session.add(Config(key="groundedness_gate_recall_bar", value={"value": 0.96}))
     _state_the_recall_bar(session)
     await session.commit()
     bars = await vj.get_verification_bars(session)
-    assert bars["groundedness_gate_recall_bar"] == 0.8
+    assert bars["groundedness_gate_recall_bar"] == 0.96
     assert bars["groundedness_gate_precision_bar"] == 0.95
     assert bars["contradiction_precision_bar"] == 0.70
 
 
 async def test_a_bare_scalar_bar_row_is_also_read(session):
     session.add(Config(key="contradiction_precision_bar", value=0.97))
-    session.add(Config(key=RECALL_BAR, value=0.88))
+    session.add(Config(key=RECALL_BAR, value=0.99))
     await session.commit()
     bars = await vj.get_verification_bars(session)
     assert bars["contradiction_precision_bar"] == 0.97
-    assert bars[RECALL_BAR] == 0.88
+    assert bars[RECALL_BAR] == 0.99
 
 
 async def test_a_malformed_bar_row_raises_not_silently_defaults(session):
@@ -205,6 +208,195 @@ async def test_a_malformed_bar_row_raises_not_silently_defaults(session):
     await session.commit()
     with pytest.raises(ValueError, match="groundedness_gate_precision_bar"):
         await vj.get_verification_bars(session)
+
+
+# ── T2.126: the defaults are floors, and a licence is the only way under ─
+
+
+LOOSENINGS = [
+    ("groundedness_gate_precision_bar", 0.90),
+    ("groundedness_gate_recall_bar", 0.80),
+    ("contradiction_precision_bar", 0.50),
+    ("contradiction_recall_bar", 0.90),
+]
+
+TIGHTENINGS = [
+    ("groundedness_gate_precision_bar", 0.99),
+    ("groundedness_gate_recall_bar", 0.96),
+    ("contradiction_precision_bar", 0.85),
+    ("contradiction_recall_bar", 1.0),
+]
+
+LEDGER_CITATION = "gate-ledger.md, 'G-D redesign'"
+
+
+def _licence(session, entries):
+    session.add(Config(key=vj.VERIFICATION_BAR_LICENCES_KEY,
+                       value={"licensed": entries}))
+
+
+@pytest.mark.parametrize("key,loosened", LOOSENINGS)
+async def test_every_bar_clamps_an_unlicensed_loosening(
+    session, caplog, key, loosened
+):
+    """All four clamp, not just the one the implementer was thinking about.
+
+    A one-bar clamp would leave `contradiction_recall_bar` — the truth-critical
+    one, and the number three G-D runs failed against — movable by the config
+    write this task exists to close.
+    """
+    session.add(Config(key=key, value={"value": loosened}))
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[key] == vj.VERIFICATION_BAR_DEFAULTS[key]
+    assert key in caplog.text
+    assert vj.VERIFICATION_BAR_LICENCES_KEY in caplog.text, (
+        "the warning must name what is missing, or the operator cannot tell "
+        "why their value was ignored"
+    )
+
+
+@pytest.mark.parametrize("key,tightened", TIGHTENINGS)
+async def test_every_bar_honours_a_tightening_row(session, caplog, key, tightened):
+    """The negative control. A clamp that also caught tightenings would pin
+    every bar to its default and read as working."""
+    session.add(Config(key=key, value={"value": tightened}))
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[key] == tightened
+    assert "clamping" not in caplog.text
+
+
+@pytest.mark.parametrize("key,floor", sorted(vj.VERIFICATION_BAR_DEFAULTS.items()))
+async def test_a_row_exactly_at_the_floor_is_honoured_not_clamped(
+    session, caplog, key, floor
+):
+    session.add(Config(key=key, value={"value": floor}))
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[key] == floor
+    assert "clamping" not in caplog.text
+
+
+async def test_the_floor_is_the_shipped_default_itself_not_a_second_mapping(
+    session, monkeypatch
+):
+    """Moving a default must move its floor with it — one statement of "what
+    ships" and "what may not be gone below", so the two cannot drift."""
+    monkeypatch.setitem(vj.VERIFICATION_BAR_DEFAULTS, "contradiction_precision_bar", 0.60)
+    session.add(Config(key="contradiction_precision_bar", value={"value": 0.65}))
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars["contradiction_precision_bar"] == 0.65
+
+
+async def test_a_barred_metric_with_no_default_has_no_floor(
+    session, monkeypatch, caplog
+):
+    """Nothing to have been lowered from: the row is the only statement of
+    that number, and the unstated-bar rule already governs stating it."""
+    monkeypatch.setitem(vj.BAR_METRICS, "a_future_bar", "some_metric")
+    session.add(Config(key="a_future_bar", value={"value": 0.01}))
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars["a_future_bar"] == 0.01
+    assert "clamping" not in caplog.text
+
+
+async def test_no_licence_row_licenses_nothing(session):
+    assert await vj.get_verification_bar_licences(session) == {}
+
+
+async def test_a_licence_naming_the_parameter_honours_the_loosening(session):
+    session.add(Config(key=RECALL_BAR, value={"value": 0.90}))
+    _licence(session, {RECALL_BAR: {"value": 0.90, "argument": LEDGER_CITATION}})
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[RECALL_BAR] == 0.90
+
+
+async def test_a_licence_bounds_how_far_the_bar_may_move(session, caplog):
+    """The anti-ratchet property, and the reason the licence states a value.
+
+    A licence that unlocked *whatever the bar row says* would be the bar row
+    licensing itself with one extra hop: written once, it would bless every
+    later loosening. So a value below what the argument was recorded as
+    supporting clamps to the floor — not to the licensed value, which would
+    adopt a number the operator never wrote.
+    """
+    session.add(Config(key=RECALL_BAR, value={"value": 0.60}))
+    _licence(session, {RECALL_BAR: {"value": 0.90, "argument": LEDGER_CITATION}})
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[RECALL_BAR] == vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR]
+    assert "0.9" in caplog.text
+
+
+async def test_permission_is_per_parameter_not_row_presence(session):
+    """A reader treating the licence row's existence as permission passes
+    every single-parameter test above; only a mixed row catches it."""
+    session.add(Config(key=RECALL_BAR, value={"value": 0.90}))
+    session.add(Config(key="groundedness_gate_precision_bar", value={"value": 0.90}))
+    _licence(session, {RECALL_BAR: {"value": 0.90, "argument": LEDGER_CITATION}})
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[RECALL_BAR] == 0.90, "the licensed parameter must be honoured"
+    assert bars["groundedness_gate_precision_bar"] == 0.95, (
+        "the unlicensed parameter must still clamp"
+    )
+
+
+@pytest.mark.parametrize("entry,missing", [
+    ({"value": 0.90}, "argument"),
+    ({"value": 0.90, "argument": "   "}, "argument"),
+    ({"value": 0.90, "argument": ""}, "argument"),
+    ({"argument": LEDGER_CITATION}, "value"),
+    ({"value": "0.90", "argument": LEDGER_CITATION}, "value"),
+    # bool is an int subclass, so `False` would read as a licence down to 0.0 —
+    # a total unlock of that bar, and the one malformed value whose damage is
+    # not the same as clamping.
+    ({"value": False, "argument": LEDGER_CITATION}, "value"),
+    ("licensed", "value"),
+])
+async def test_a_malformed_licence_entry_licenses_nothing(
+    session, caplog, entry, missing
+):
+    session.add(Config(key=RECALL_BAR, value={"value": 0.90}))
+    _licence(session, {RECALL_BAR: entry})
+    await session.commit()
+    bars = await vj.get_verification_bars(session)
+    assert bars[RECALL_BAR] == vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR]
+    assert missing in caplog.text
+
+
+@pytest.mark.parametrize("row_value", [
+    {"licensed": "*"},
+    {"licensed": True},
+    {"licensed": [RECALL_BAR]},
+    {"measured": [RECALL_BAR]},
+    "*",
+])
+async def test_no_blanket_shape_unlocks_a_bar(session, caplog, row_value):
+    """The fail-open shape: a row that reads as "everything is licensed".
+
+    Each of these is a plausible operator guess at the schema (including the
+    ladder's own `measured` list, which is the nearest neighbour), and every
+    one of them must license nothing rather than everything.
+    """
+    session.add(Config(key=RECALL_BAR, value={"value": 0.90}))
+    session.add(Config(key=vj.VERIFICATION_BAR_LICENCES_KEY, value=row_value))
+    await session.commit()
+    assert await vj.get_verification_bar_licences(session) == {}
+    bars = await vj.get_verification_bars(session)
+    assert bars[RECALL_BAR] == vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR]
+    assert vj.VERIFICATION_BAR_LICENCES_KEY in caplog.text
+
+
+async def test_a_licence_for_an_unbarred_key_is_ignored(session, caplog):
+    _licence(session, {"promotion_rate_floor": {"value": 0.1, "argument": "x"}})
+    await session.commit()
+    assert await vj.get_verification_bar_licences(session) == {}
+    assert "promotion_rate_floor" in caplog.text
 
 
 # ── R1: the roles, their bars, and the two tripwires (2026-08-12) ────────
@@ -652,6 +844,50 @@ async def test_raising_a_db_bar_flips_a_qualified_record_back(session, tmp_path)
     await session.commit()
     state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
     assert state.qualified is False
+
+
+async def test_lowering_a_db_bar_cannot_qualify_a_record_the_floor_refuses(
+    session, tmp_path
+):
+    """T2.126 through the enforcement path, which is the only place it counts.
+
+    The clamp is not a property of the reader — a record measuring 0.92 against
+    a 0.95 floor must stay unqualified after an operator writes 0.90, and the
+    refusal must still cite the floor, not the row.
+    """
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg, metrics={
+        "entailed_precision": 0.92,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
+    }))
+    session.add(Config(key="groundedness_gate_precision_bar", value={"value": 0.90}))
+    await session.commit()
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
+    assert state.qualified is False
+    assert any("groundedness_gate_precision_bar=0.95" in r for r in state.reasons)
+
+
+async def test_a_licensed_loosening_does_reach_the_enforcement_path(
+    session, tmp_path
+):
+    """The escape hatch is real rather than decorative — which is what makes
+    the clamp a discipline on how a bar moves and not a freeze."""
+    cfg = _judge_config()
+    path = _write_record(tmp_path, _record(cfg, metrics={
+        "entailed_precision": 0.92,
+        "entailed_recall": 1.0,
+        "contradiction_precision": 1.0,
+        "contradiction_recall": 1.0,
+    }))
+    session.add(Config(key="groundedness_gate_precision_bar", value={"value": 0.90}))
+    _licence(session, {"groundedness_gate_precision_bar": {
+        "value": 0.90, "argument": LEDGER_CITATION,
+    }})
+    await session.commit()
+    state = await vj.qualification_state(session, cfg, role=vj.ENTAILMENT_ROLE, record_path=path)
+    assert state.qualified is True
 
 
 @pytest.mark.parametrize("metrics", [
