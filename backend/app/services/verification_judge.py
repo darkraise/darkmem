@@ -502,7 +502,11 @@ async def qualification_state(
 
     try:
         bars = await get_verification_bars(session)
-    except ValueError as exc:
+    except (ValueError, OverflowError) as exc:
+        # `OverflowError` is not a `ValueError`, and jsonb accepts numerics
+        # far outside float range (`1e400` round-trips as a 401-digit int), so
+        # `float()` on one raised straight through this catch and crashed the
+        # consumer instead of failing closed with a reason. Found in review.
         reasons.append(f"bars unreadable — failing closed: {exc}")
         return QualificationState(False, tuple(reasons), record)
 
@@ -669,6 +673,28 @@ async def get_verification_bar_licences(session: AsyncSession) -> dict[str, floa
                 value,
             )
             continue
+        # The bound must itself be a coherent bar value. Without this, a
+        # licence of 0 (or a negative) unlocks its parameter wholesale and
+        # *silently*, because no candidate can ever fall below it and the
+        # out-of-bound warning therefore never fires — a bound that bounds
+        # nothing, which is the one thing this shape exists not to be. Found
+        # in review; `1.0` is admitted and inert, since a licence at the
+        # ceiling licenses no loosening any floor would refuse.
+        try:
+            bound = float(value)
+        except (ValueError, OverflowError):
+            bound = float("nan")
+        if not 0.0 < bound <= 1.0:
+            logger.warning(
+                "%s licence for %s states value %r, which is not a bar value "
+                "in (0, 1]; licensing nothing for it. A licence at or below "
+                "zero would unlock the parameter outright and no candidate "
+                "could ever trip its own bound",
+                VERIFICATION_BAR_LICENCES_KEY,
+                key,
+                value,
+            )
+            continue
         argument = entry.get("argument")
         if not isinstance(argument, str) or not argument.strip():
             logger.warning(
@@ -680,7 +706,7 @@ async def get_verification_bar_licences(session: AsyncSession) -> dict[str, floa
                 key,
             )
             continue
-        out[key] = float(value)
+        out[key] = bound
     return out
 
 

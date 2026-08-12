@@ -1,6 +1,7 @@
 """T2.26 — the `verification`-purpose judge: probe, parsing, bars, and (Task 2+)
 the computed qualification gate and its source scans."""
 import json
+import logging
 
 import pytest
 
@@ -315,6 +316,45 @@ async def test_a_licence_naming_the_parameter_honours_the_loosening(session):
     assert bars[RECALL_BAR] == 0.90
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bound", [0, 0.0, -0.1, 1.5])
+async def test_a_licence_outside_the_bar_range_licenses_nothing(session, caplog, bound):
+    """A licence of zero or below unlocks its parameter outright *and
+    silently* — no candidate can fall below it, so the out-of-bound warning
+    that would otherwise fire never does. A bound that bounds nothing is the
+    one shape this design exists not to be. Above 1.0 is incoherent for a
+    [0,1] metric and refused on the same terms."""
+    session.add(Config(key=vj.VERIFICATION_BAR_LICENCES_KEY, value={
+        "licensed": {"contradiction_recall_bar": {
+            "value": bound, "argument": "gate-ledger.md, 'G-D ruling'"}},
+    }))
+    session.add(Config(key="contradiction_recall_bar", value=0.10))
+    await session.flush()
+
+    with caplog.at_level(logging.WARNING):
+        bars = await vj.get_verification_bars(session)
+
+    assert bars["contradiction_recall_bar"] == vj.VERIFICATION_BAR_DEFAULTS[
+        "contradiction_recall_bar"
+    ], "an incoherent licence must leave the bar at its floor"
+    assert "not a bar value" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_licence_at_the_ceiling_is_admitted_and_inert(session):
+    """1.0 is coherent and licenses no loosening any floor would refuse, so it
+    is admitted rather than refused — the guard rejects incoherence, not
+    values it merely considers pointless."""
+    session.add(Config(key=vj.VERIFICATION_BAR_LICENCES_KEY, value={
+        "licensed": {"contradiction_recall_bar": {
+            "value": 1.0, "argument": "gate-ledger.md, 'G-D ruling'"}},
+    }))
+    await session.flush()
+
+    licences = await vj.get_verification_bar_licences(session)
+    assert licences["contradiction_recall_bar"] == 1.0
+
+
 async def test_a_licence_bounds_how_far_the_bar_may_move(session, caplog):
     """The anti-ratchet property, and the reason the licence states a value.
 
@@ -329,7 +369,7 @@ async def test_a_licence_bounds_how_far_the_bar_may_move(session, caplog):
     await session.commit()
     bars = await vj.get_verification_bars(session)
     assert bars[RECALL_BAR] == vj.VERIFICATION_BAR_DEFAULTS[RECALL_BAR]
-    assert "0.9" in caplog.text
+    assert "lowest licensed value 0.9;" in caplog.text
 
 
 async def test_permission_is_per_parameter_not_row_presence(session):
