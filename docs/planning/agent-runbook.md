@@ -329,23 +329,37 @@ recoverable — every one of the six was resumed with its work intact — but a 
 stalls with nine modified files and no commits is one bad revert away from losing a whole
 task, and that has happened twice for other reasons.
 
-**A lane worktree has no `.venv`.** `backend/.venv/` is gitignored, so `git worktree add`
-does not populate it. The merge gate (`./scripts/gate.sh`) automatically resolves this:
-it detects when running in a worktree, falls back to the main checkout's interpreter
-(`/root/repositories/darkmem/backend/.venv/bin/python`), and prints which interpreter
-it resolved so you cannot silently gate against the wrong tree's code. The same
-fallback applies when you manually run the main checkout's interpreter by absolute path
-*from* your worktree's `backend/` directory, so imports resolve against your code rather
-than the main checkout's. The bench cache below has no such automation — both are gitignored,
-and both fail in ways that look like a code problem rather than a missing file.
+**A lane worktree has no `.venv`, no `node_modules`, and no bench cache — three
+gitignored artifacts `git worktree add` never populates** (T0.19, T0.20). All three
+are now preflight-checked by `./scripts/gate.sh` before any gate runs, and all three
+report `GATE BLOCKED` (exit 2) naming what to install or restore, never `GATE RED` —
+a lane's *code* did not break the SDK build or the F1 bench just because its tree is
+missing an artifact:
 
-**The extraction bench does not work cold.** `scripts/extraction_bench/.cache/` is
-gitignored and machine-local, and `--algo-only` exits non-zero on any uncached content.
-On a fresh lane worktree, copy it in from the main checkout before running the bench.
-The cache key is `sha256(content + system_prompt)`, so **any prompt change invalidates
-it**. Before `--algo-only` can serve as a merge gate on a fresh worktree, someone must run
-the live pass — which needs both an explicit `DATABASE_URL` (the bench reads LLM config
-from the database) and a live extraction model:
+- `backend/.venv/` — the gate detects when running in a worktree, falls back to the
+  main checkout's interpreter (`/root/repositories/darkmem/backend/.venv/bin/python`),
+  and prints which interpreter it resolved (`── resolved interpreter ──`) so you cannot
+  silently gate against the wrong tree's code. The same fallback applies when you
+  manually run the main checkout's interpreter by absolute path *from* your worktree's
+  `backend/` directory, so imports resolve against your code rather than the main
+  checkout's. `sdks/Makefile` used to hard-code its own
+  `$(CURDIR)/../backend/.venv/bin/python`, a second interpreter path the gate's own
+  resolution never reached — worktree-local and therefore always absent — which turned
+  the "sdk build" gate red on a missing venv rather than blocked. The gate now passes
+  its resolved `$PY` through (`env -C "$SDKS" PY="$PY" make build`); make's `?=` yields
+  to an already-set variable, so the Makefile's default only applies outside the gate.
+- `frontend/node_modules/` — run `cd frontend && npm ci`. This one already blocked
+  correctly and was the model for the other two.
+- `backend/scripts/extraction_bench/.cache/` (plus its `manifest.json`) — copy it in
+  from the main checkout, or from a lane worktree that has already warmed it, before
+  running the bench cold. The cache key is `sha256(content + system_prompt)`, so **any
+  prompt change invalidates it**. The gate now preflight-checks for `manifest.json`'s
+  mere existence and blocks if it is wholly absent; a manifest that exists but no
+  longer matches the current extraction assembly (prompt/schema drift) is a real
+  signal and still fails the gate red at the "extraction F1 bench" stage, not blocked.
+  Before `--algo-only` can serve as a merge gate on a fresh worktree at all, someone
+  must run the live pass — which needs both an explicit `DATABASE_URL` (the bench
+  reads LLM config from the database) and a live extraction model:
 
 ```bash
 cd backend

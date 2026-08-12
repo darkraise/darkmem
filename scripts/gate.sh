@@ -131,6 +131,17 @@ preflight_fail() {
 [ -d "$FRONTEND/node_modules" ] || preflight_fail \
     "frontend dependencies not installed — run 'cd frontend && npm ci' first"
 
+# The F1 bench cache (T0.20): scripts/extraction_bench/.cache/ is gitignored
+# and machine-local, and the floor always runs the bench with --algo-only,
+# which refuses to call the model — so a fresh worktree with no cache used to
+# fail here as GATE RED, reading as a broken extraction pipeline rather than
+# a missing artifact. A manifest that exists but no longer matches the current
+# extraction assembly is a real signal (prompt/schema drift) and stays RED;
+# only its total absence is an environment gap.
+BENCH_CACHE="$BACKEND/scripts/extraction_bench/.cache"
+[ -f "$BENCH_CACHE/manifest.json" ] || preflight_fail \
+    "extraction bench cache missing at $BENCH_CACHE/manifest.json — copy .cache/ from the main checkout (or a warmed lane worktree), or run scripts/extraction_bench/run_bench.py live once to record it; see runbook §8"
+
 # Only --full needs a key: the floor runs the F1 bench with --algo-only and
 # never dispatches. Checked here rather than left to the retrieval eval,
 # which reaches it after the whole floor has already run.
@@ -211,8 +222,15 @@ run_gate "sdk typescript tests" 300 "$SDKS/ts" \
 # transpiles with esbuild and does not typecheck, so a type error injected into
 # the emitted TypeScript passed both arms above and the backend generator suite;
 # only this target caught it. A generated file is exactly what rots this way.
+#
+# sdks/Makefile's own `PY ?= $(CURDIR)/../backend/.venv/bin/python` is a
+# second hard-coded interpreter path (T0.20): make's `?=` only yields to an
+# already-set variable, so passing PY through here makes it resolve exactly
+# the interpreter this script already resolved above — worktree-local when
+# present, the main checkout's by fallback otherwise — instead of hard-coding
+# its own path relative to $SDKS that a lane worktree never populates.
 run_gate "sdk build" 300 "$SDKS" \
-    env -C "$SDKS" make build
+    env -C "$SDKS" PY="$PY" make build
 
 # The benchlib harness suite. pyproject sets testpaths = ["tests"], so the
 # backend gate above does NOT collect scripts/benchlib/tests — which is how a
