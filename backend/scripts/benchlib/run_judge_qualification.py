@@ -23,8 +23,12 @@ Stage order, and why it is load-bearing:
    loaded, an attempt row is appended to the ledger and only then is the
    first gold pair sent — a crash, kill or transport death mid-pass still
    leaves its marker, so ``gold_touching_attempts`` counts the untidy
-   failures too. The counter keys on ``gold_sha256`` across ALL judge
-   identities, so a prompt-version bump can never reset it.
+   failures too. The counter keys on the gold's **pairs** across ALL judge
+   identities (``gold_pairs_sha256``, T2.116's escalation ruled
+   2026-08-12), so neither a prompt-version bump nor any edit to something
+   a judge was never shown — a rationale, a slice retag, the resample
+   block's own certification — can reset it. It keyed on the file sha
+   until that ruling, and every one of those edits silently did.
 4. The gold pass, the scorer, the gold backstop (same predicate; a trip
    here permits transport/IO fixes only — a prompt or mapping edit after
    gold contact bumps ``JUDGE_PROMPT_VERSION`` and is disclosed), the twin,
@@ -102,6 +106,46 @@ VERDICTS_DIR = entailment_gold.ENTAILMENT_DIR / "verdicts"
 REPORT_DIR = REPO_ROOT / "docs" / "eval"
 
 ATTEMPT_KIND = "judge_qualification_attempt"
+
+
+def count_gold_touching_attempts(
+    rows, *, gold_sha256: str, gold_pairs_sha256: str,
+) -> int:
+    """How many judge attempts have contacted **this pair set**.
+
+    Keyed on the pairs rather than the gold's file sha since T2.116's
+    escalation was ruled (2026-08-12). The file key had a hole the
+    disclosure could not survive: anything written into `gold.json` that is
+    not a pair moves the sha and resets the count. T2.116's own content
+    stamp did exactly that — the file went `98fc4b49 → 6eadba73` while the
+    pairs stayed `4975c5cc` — and the next run would have reported **0**
+    contacts for a pair set `deepseek-v4-flash` had already been measured
+    against. Rewriting a single rationale would have done the same thing,
+    silently, at any point in this gold's history.
+
+    Counting the pairs is strictly more conservative: a contact can no
+    longer be shed by editing anything a judge was never shown, and no
+    reachable edit lowers the number.
+
+    Rows predating the field are credited through their `gold_sha256`, so
+    an un-backfilled ledger never *loses* a contact it used to count. The
+    two keys are OR'd rather than AND'd for that reason — a row matching
+    either identity is a contact with this gold, and under-counting the
+    anti-tuning disclosure is the one direction that must not happen.
+    """
+    total = 0
+    for row in rows:
+        if row.get("kind") != ATTEMPT_KIND:
+            continue
+        recorded_pairs = row.get("gold_pairs_sha256")
+        if recorded_pairs is not None:
+            if recorded_pairs == gold_pairs_sha256:
+                total += 1
+        elif row.get("gold_sha256") == gold_sha256:
+            total += 1
+    return total
+
+
 SANITY_INVALID_RATE_MAX = 0.10
 DECLARED_CHANNELS = ("fixture_call", "judge_call")
 
@@ -253,6 +297,7 @@ async def run_qualification(
     live_pairs = [p for p in gold_doc["pairs"] if not p.get("retired")]
     eligibility = jq.gate_eligibility(gold_doc)
     gold_sha256 = hashlib.sha256(gold_path.read_bytes()).hexdigest()
+    gold_pairs_sha256 = entailment_gold.pairs_content_hash(gold_doc["pairs"])
 
     identity = vj.judge_identity(config["verification"])
     identity_hash = vj.judge_identity_hash(identity)
@@ -273,6 +318,7 @@ async def run_qualification(
         "judge_identity": {**identity, "identity_hash": identity_hash},
         "prompt_sha": identity["prompt_sha"],
         "gold_sha256": gold_sha256,
+        "gold_pairs_sha256": gold_pairs_sha256,
         "timestamp": timestamp,
     }, path=ledger_path)
 
@@ -292,9 +338,10 @@ async def run_qualification(
     nc_score = jq.score_judgments(nc_pairs, verdicts) if nc_pairs else None
     _sanity_check(verdicts, "gold backstop")
 
-    gold_touching_attempts = sum(
-        1 for row in ledger.read_runs(ledger_path)
-        if row.get("kind") == ATTEMPT_KIND and row.get("gold_sha256") == gold_sha256
+    gold_touching_attempts = count_gold_touching_attempts(
+        ledger.read_runs(ledger_path),
+        gold_sha256=gold_sha256,
+        gold_pairs_sha256=gold_pairs_sha256,
     )
 
     gold_tokens = _diff_tokens(llm.tokens.as_dict(), fixture_tokens)
@@ -311,6 +358,11 @@ async def run_qualification(
         "bars": dict(vj.VERIFICATION_BAR_DEFAULTS),
         "gold_version": gold_doc.get("version", "unknown"),
         "gold_sha256": gold_sha256,
+        # The identity the attempt counter keys on. Reported beside the file
+        # sha, not instead of it: they answer different questions, and a
+        # reader comparing two runs needs to see when the file moved while
+        # the pairs did not.
+        "gold_pairs_sha256": gold_pairs_sha256,
         "gold_touching_attempts": gold_touching_attempts,
         "n_fixtures": len(sanity_pairs),
         "fixture_tokens": fixture_tokens,
@@ -362,6 +414,7 @@ async def run_qualification(
         "timestamp": timestamp,
         "git_sha": meta["git_sha"],
         "gold_sha256": gold_sha256,
+        "gold_pairs_sha256": gold_pairs_sha256,
         "identity_hash": identity_hash,
         "gold_touching_attempts": gold_touching_attempts,
         "intent_row_id": intent_row_id,

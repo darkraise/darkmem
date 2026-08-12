@@ -1081,6 +1081,83 @@ def test_attempts_count_per_gold_across_identities(tmp_path):
     assert "gold_touching_attempts: 3" in result.report_path.read_text()
 
 
+# ── the counter keys on the pairs, not the file (T2.116 escalation) ──────
+
+
+def _attempt(**fields):
+    return {"kind": "judge_qualification_attempt", **fields}
+
+
+def test_a_contact_survives_the_file_moving_under_the_same_pairs():
+    """**The case that was actually lost, with its real shas.** T2.116's
+    content stamp moved gold.json from 98fc4b49 to 6eadba73 while the pairs
+    stayed 4975c5cc. Under the file key the deepseek-v4-flash attempt at
+    98fc4b49 stopped counting, so the next G-D run would have reported 0
+    contacts for a pair set already measured once.
+
+    This is the regression test for that, and it is written with the
+    historical shas rather than synthetic ones because the defect was
+    reachable only through a real sequence of events."""
+    rows = [_attempt(gold_sha256="98fc4b49", gold_pairs_sha256="4975c5cc",
+                     judge_identity={"model": "deepseek-v4-flash"})]
+
+    assert rjq.count_gold_touching_attempts(
+        rows, gold_sha256="6eadba73", gold_pairs_sha256="4975c5cc") == 1
+    # And the pre-ruling behaviour, for contrast: keyed on the file, it is 0.
+    assert sum(1 for r in rows if r.get("gold_sha256") == "6eadba73") == 0
+
+
+def test_a_different_pair_set_does_not_count_even_at_the_same_file_sha():
+    """The other direction: pairs win when recorded. A file sha collision or
+    a reused name must not credit a contact with different labels."""
+    rows = [_attempt(gold_sha256="6eadba73", gold_pairs_sha256="8e210191")]
+    assert rjq.count_gold_touching_attempts(
+        rows, gold_sha256="6eadba73", gold_pairs_sha256="4975c5cc") == 0
+
+
+def test_a_row_predating_the_field_is_still_credited_by_file_sha():
+    """An un-backfilled ledger must never *lose* a contact it used to
+    count. Under-counting is the one direction an anti-tuning disclosure
+    cannot afford, so the two keys are OR'd rather than AND'd."""
+    rows = [_attempt(gold_sha256="6eadba73")]              # legacy row
+    assert rjq.count_gold_touching_attempts(
+        rows, gold_sha256="6eadba73", gold_pairs_sha256="4975c5cc") == 1
+
+
+def test_the_counter_ignores_rows_that_are_not_attempts():
+    rows = [
+        _attempt(gold_sha256="x", gold_pairs_sha256="4975c5cc"),
+        {"kind": "coverage_distribution", "gold_pairs_sha256": "4975c5cc"},
+        {"kind": "judge_qualification_scored", "gold_pairs_sha256": "4975c5cc"},
+    ]
+    assert rjq.count_gold_touching_attempts(
+        rows, gold_sha256="none", gold_pairs_sha256="4975c5cc") == 1
+
+
+def test_the_backfill_recovers_pair_identity_and_never_invents_it(tmp_path):
+    """Evidence recovery, not invention: a row whose gold state is not in
+    git history is left alone rather than guessed at."""
+    from benchlib import backfill_attempt_pair_hashes as backfill
+
+    real_sha = hashlib.sha256(entailment_gold.GOLD_PATH.read_bytes()).hexdigest()
+    ledger_path = tmp_path / "ledger.jsonl"
+    ledger.record(_attempt(intent_row_id="known", gold_sha256=real_sha),
+                  path=ledger_path)
+    ledger.record(_attempt(intent_row_id="unknown", gold_sha256="deadbeef" * 8),
+                  path=ledger_path)
+
+    stamped, unresolved = backfill.backfill(ledger_path)
+    assert (stamped, unresolved) == (1, 1)
+
+    rows = {r["intent_row_id"]: r for r in ledger.read_runs(ledger_path)}
+    # Recovered, and marked as recovered rather than passed off as recorded.
+    assert rows["known"]["gold_pairs_sha256"] == entailment_gold.pairs_content_hash(
+        entailment_gold.load_entailment_gold()["pairs"])
+    assert rows["known"]["gold_pairs_sha256_backfilled"] is True
+    # Not invented.
+    assert "gold_pairs_sha256" not in rows["unknown"]
+
+
 def test_gate_mode_refuses_an_ineligible_gold_before_any_call(tmp_path):
     """The refusal must precede every model call, and it must be tested against
     a gold that is *actually* ineligible.
