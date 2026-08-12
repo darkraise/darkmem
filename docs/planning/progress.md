@@ -100,9 +100,9 @@ green.
 | E3 — Synthesis & reach | 24 | 2 | 0 | 0 | 0 | 22 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 23 | 9 | 0 | 0 | 0 | 14 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 23 | 6 | 3 | 0 | 0 | 14 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **284** | **34** | **0** | **0** | **0** | **249** | **1** | |
+| **Total** | **284** | **31** | **3** | **0** | **0** | **249** | **1** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
@@ -485,4 +485,4 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | T2.118 | Duplicate/independence pass over the non-contradicted census | S | Fable | xhigh | v0.5 | claude/t2.118-census-pass | wip | | | |
 | T2.120 | `SINGLE_VALUED_RELATIONS`: the per-relation argument | M | Fable | xhigh | v0.5 | | todo | | | |
 | T2.117 | Per-role qualification records | M | Opus | high | v0.5 | | todo | | | |
-| T2.119 | Offline per-role re-score and mint | S | Fable | xhigh | v0.5 | | todo | | | |
+| T2.119 | Offline per-role re-score and mint | S | Fable | xhigh | gate | | todo | | | |

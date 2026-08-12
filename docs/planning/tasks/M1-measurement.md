@@ -839,7 +839,7 @@ cleaner reason; no bar value moves anywhere.
 
 #### T2.122 — The verdicts directory leaks synthetic files under real identities
 
-`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (precondition)`
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
 
 **What.** Measured 2026-08-12: `backend/scripts/benchlib/entailment/verdicts/` holds 80
 files and **79 are synthetic residue**. Seven carry the real gold's exact shape (173
@@ -868,7 +868,7 @@ is recorded outside the artifact — in its eval report and the ledger.
 
 #### T2.118 — Duplicate/independence pass over the non-contradicted census
 
-`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: G-D (precondition)`
+`Model: Fable 5` · `Effort: xhigh` · `Size: S` · `Depends: —` · `Doc: 17 §6` · `Tag: target-new` · `Gate: —`
 
 **What.** Every census scrutiny this gold has received — Rule B, the duplicate findings
 (`eg-0093`/`eg-0367`, `eg-0194`/`eg-0251`), the reproduced-retirement defect — examined
@@ -918,7 +918,7 @@ detector's existing guards are re-read before any admission.
 
 #### T2.117 — Per-role qualification records
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: the owner's holdings on spec open questions 3 and 4` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: G-D (redefines)`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Trigger: the owner's holdings on spec open questions 3 and 4` · `Doc: 17 §6, 20 §4` · `Tag: target-new` · `Gate: —`
 
 **What.** Ruling R1. `VerificationJudge.judge()` is one gate over all four `BAR_METRICS`
 (`verification_judge.py:222-227`, refusal at `:135-161`, bar loop at `:324-333`) serving

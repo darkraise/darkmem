@@ -132,9 +132,13 @@ redefined** if `T2.118` reports clean and the owner's holdings land. Half B is t
 is the version's true critical path: the 7-day origin-spacing clause cannot start
 counting until capture does.
 
+`T2.119`, the mint that produces the verdict, is **gate track** rather than v0.5 — a task
+that produces a gate carries `Version: gate` by this file's own contract, and
+`test_the_gate_track_is_qualified_produces` binds the two spellings. v0.5 ships the split
+and its preconditions; the verdict ships where every other verdict does.
+
 - `T2.117` — Per-role qualification records
 - `T2.118` — Duplicate/independence pass over the non-contradicted census
-- `T2.119` — Offline per-role re-score and mint
 - `T2.120` — `SINGLE_VALUED_RELATIONS`: the per-relation argument
 - `T2.121` — Correct the contradiction-recall derivation in the ledger
 - `T2.122` — The verdicts directory leaks synthetic files under real identities
@@ -144,6 +148,7 @@ counting until capture does.
 Not parked and not a version: these produce gates, which unlock labels. Clearing
 G-C and G-D ships as its own version whose headline is "badges go live".
 
+- `T2.119` — Offline per-role re-score and mint (v0.5's verdict half)
 - `T2.114` — G-D third-vendor attempt
 - `T2.116` — Bind the resample certification to the pairs it certified
 - `T3.22` — G-E evidence run
