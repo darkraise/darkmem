@@ -178,6 +178,23 @@ def refuse_retired_pair_set(gold_doc: dict) -> None:
             "bar argument likewise independent — and neither is a re-run."
         )
 
+    # Set identity is not pair identity, and the difference is a live bypass:
+    # appending one synthetic pair to the retired gold moves the set hash off
+    # `4975c5cc` while leaving all 402 retired pairs contactable. Demonstrated
+    # against the real file during T2.117's review. So the refusal also runs
+    # per pair, on a **content** basis (premise/hypothesis/verdict, no id),
+    # because this census has twice reproduced a retired pair verbatim under a
+    # new id. Overlap of one is enough: a gold is either fresh or it is not.
+    overlap = entailment_gold.retired_pair_overlap(gold_doc["pairs"])
+    if overlap:
+        sample = ", ".join(sorted(overlap)[:3])
+        raise RuntimeError(
+            f"refused before any gold contact: {len(overlap)} of this gold's "
+            f"pairs are retired pairs by content (e.g. {sample}). Retiring a "
+            "pair set retires its pairs — a gold that re-uses them is not a "
+            "new gold, whatever its own hash says."
+        )
+
 
 SANITY_INVALID_RATE_MAX = 0.10
 DECLARED_CHANNELS = ("fixture_call", "judge_call")

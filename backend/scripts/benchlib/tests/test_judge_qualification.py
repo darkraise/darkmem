@@ -1603,3 +1603,71 @@ def test_a_comfortable_pass_is_not_flagged():
     )
     assert "Census independence" in text            # still disclosed
     assert "not robust to the independence reading" not in text
+
+
+# ── the stopping rule binds pairs, not only the set they arrived in ──────
+
+
+def _retired_gold_pairs():
+    return entailment_gold.load_entailment_gold()["pairs"]
+
+
+def test_appending_one_pair_does_not_un_retire_a_gold():
+    """The bypass, demonstrated live during T2.117's review: appending one
+    synthetic pair moves the set hash off `4975c5cc` while leaving every
+    retired pair contactable. Set identity is not pair identity."""
+    import copy
+    from benchlib import run_judge_qualification as rjq
+
+    mutated = copy.deepcopy(_retired_gold_pairs()) + [{
+        "id": "zz-9999", "verdict": "entailed",
+        "premise": "a pair nobody has judged", "hypothesis": "and nobody will",
+    }]
+    assert not vj.is_retired_pair_set(
+        entailment_gold.pairs_content_hash(mutated)
+    ), "the set hash really does move — that is what makes this a bypass"
+
+    with pytest.raises(RuntimeError, match="retired pairs by content"):
+        rjq.refuse_retired_pair_set({"pairs": mutated})
+
+
+def test_a_retired_pair_under_a_new_id_is_still_retired():
+    """The digest basis excludes the id on purpose. This census has twice
+    reproduced a retired pair's exact premise and hypothesis under a new id
+    (eg-0367, eg-0404), so keying on the id would retire a label rather than
+    a pair."""
+    import copy
+    from benchlib import run_judge_qualification as rjq
+
+    renamed = copy.deepcopy(_retired_gold_pairs()[0])
+    renamed["id"] = "renamed-0001"
+    assert entailment_gold.retired_pair_overlap([renamed]) == {"renamed-0001"}
+
+    with pytest.raises(RuntimeError, match="retired pairs by content"):
+        rjq.refuse_retired_pair_set({"pairs": [renamed]})
+
+
+def test_a_genuinely_fresh_gold_is_not_refused():
+    """The control. A refusal that fires on everything protects nothing and
+    would block T2.124, which is the whole remaining path."""
+    from benchlib import run_judge_qualification as rjq
+
+    fresh = [
+        {"id": f"nw-{i:04d}", "verdict": "entailed",
+         "premise": f"a premise nobody has authored before, {i}",
+         "hypothesis": f"and its hypothesis, {i}"}
+        for i in range(5)
+    ]
+    assert entailment_gold.retired_pair_overlap(fresh) == set()
+    rjq.refuse_retired_pair_set({"pairs": fresh})
+
+
+def test_the_pinned_digest_file_describes_the_retired_gold():
+    """The pin is only as good as its provenance: it must name the pair set it
+    was taken from, and cover every pair in it."""
+    raw = json.loads(entailment_gold.RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
+    assert vj.is_retired_pair_set(raw["pairs_content_hash"])
+    assert raw["digest_basis"] == list(entailment_gold.RETIRED_DIGEST_FIELDS)
+    assert entailment_gold.retired_pair_overlap(_retired_gold_pairs()) == {
+        pair["id"] for pair in _retired_gold_pairs()
+    }, "every pair of the retired gold must be recognised as retired"

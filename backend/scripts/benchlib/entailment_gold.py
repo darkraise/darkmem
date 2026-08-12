@@ -50,6 +50,7 @@ only and move with every append, visibly.
 from __future__ import annotations
 
 import hashlib
+from functools import lru_cache
 import json
 from pathlib import Path
 
@@ -546,3 +547,42 @@ def validate_gold_against_corpus(gold: dict, entries: list[dict]) -> None:
                 f"{key!r}'s content -- the corpus moved under the pair; "
                 "re-adjudicate under retire-and-replace"
             )
+
+
+RETIRED_DIGESTS_PATH = ENTAILMENT_DIR / "retired_pair_digests.json"
+
+# Basis without the id, deliberately: the id is the one field a re-author
+# controls freely, and this census has twice reproduced a retired pair's exact
+# premise and hypothesis under a new id (eg-0367, eg-0404). Keying on content
+# is what makes "retired" a property of the pair rather than of its label.
+RETIRED_DIGEST_FIELDS = ("premise", "hypothesis", "verdict")
+
+
+def content_digest(pair: dict) -> str:
+    basis = {field: pair.get(field) for field in RETIRED_DIGEST_FIELDS}
+    return hashlib.sha256(_canonical(basis)).hexdigest()[:_PAIR_DIGEST_CHARS]
+
+
+@lru_cache(maxsize=1)
+def retired_pair_digests() -> frozenset[str]:
+    """Content digests of every pair in a retired gold, pinned to disk.
+
+    Pinned rather than recomputed: the point is to refuse a **future** gold
+    that re-uses these pairs, and a future gold cannot be its own reference.
+    An unreadable or absent file raises rather than returning an empty set —
+    a stopping rule that silently stops stopping is worse than none.
+    """
+    raw = json.loads(RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
+    digests = raw["digests"]
+    if not isinstance(digests, list) or not digests:
+        raise ValueError(f"{RETIRED_DIGESTS_PATH} carries no retired digests")
+    return frozenset(digests)
+
+
+def retired_pair_overlap(pairs: list[dict]) -> set[str]:
+    """The ids in ``pairs`` whose content is a retired pair's content."""
+    retired = retired_pair_digests()
+    return {
+        pair["id"] for pair in pairs
+        if content_digest(pair) in retired
+    }
