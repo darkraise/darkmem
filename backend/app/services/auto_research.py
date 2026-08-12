@@ -27,14 +27,17 @@ only *widen* the manufactured slice, which is the safe direction for a
 disclosure — a researched capture can never lose its marker, because this
 module is the only thing that files one.
 
-**Today every researched capture is ONE origin, deliberately.** Establishing
-per-source identity is T3.08's task; until it lands, ``research_origin_id``
-returns ``None`` for every finding and ``resolve_origin_key`` folds the run
-into the capture layer's merge-to-one bucket. That undercounts — the direction
-doc 09 §6 requires — so this loop on its own cannot promote anything off
-``candidate``. Minting a per-run key instead would be the counterfeit: two runs
-over the same page are the same source fetched twice, which is exactly the
-shape "merge to one origin, never mint distinct ones" names.
+**A researched capture's origin is its SOURCE's identity — never the run's, and
+never the finding's** (T3.08). ``research_origin_id`` canonicalises the
+gatherer's ``source_id`` into a locator identity, so the same page fetched
+twice, under either scheme, with or without ``www.``, a trailing slash, a
+fragment or a campaign parameter, resolves to one origin and corroborates once.
+A per-run key would be the counterfeit doc 09 §6 names — two runs over one page
+are one source fetched twice — and a per-finding key would be worse still,
+since paraphrasing one page into two notes would then buy a promotion. Identity
+that cannot be established at all resolves to ``None``, which lands the capture
+in ``resolve_origin_key``'s merge-to-one bucket: an undercount, which only
+delays a promotion, rather than an overcount, which fabricates one.
 
 **A failed run leaves nothing behind.** Gathering completes before anything is
 written, and the whole run is filed in a single ``batch_create_memories``
@@ -51,8 +54,10 @@ could detect.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Protocol, Sequence
+from urllib.parse import parse_qsl, urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
@@ -73,6 +78,26 @@ logger = logging.getLogger(__name__)
 RESEARCH_SOURCE = "research"
 
 AUTO_RESEARCH_CONFIG_KEY = "auto_research"
+
+# Mirrors `client_identity._sanitize_origin`'s own bound. Emitting a longer id
+# would hand that function the merge boundary; emitting exactly its bound, over
+# an alphabet it leaves alone, makes the id this module computes the id that
+# lands on the row — and truncation past it merges two long locators, which is
+# the safe direction.
+ORIGIN_ID_MAX_LEN = 128
+
+# Query keys that identify a *referral* rather than a document. Dropping one can
+# only merge two ids; keeping one splits a single page into as many origins as
+# there are ways to link to it, and a split is the direction that manufactures
+# corroboration. Doubt therefore resolves toward dropping.
+_TRACKING_QUERY_KEYS = frozenset({
+    "fbclid", "gclid", "gbraid", "wbraid", "msclkid", "yclid", "igshid",
+    "mc_cid", "mc_eid", "spm", "_ga", "ref", "ref_src", "referrer",
+})
+_TRACKING_QUERY_PREFIXES = ("utm_",)
+
+_WHITESPACE_RE = re.compile(r"\s+")
+_REPEATED_SLASH_RE = re.compile(r"/{2,}")
 
 # Fail closed. Building the loop is not running it (T3.07 brief): pointing it
 # at a live instance is a separate, owner-owned decision, so an install that
@@ -111,8 +136,11 @@ class ResearchFinding:
 
     ``source_id`` is the gatherer's own identity for the source it came from —
     a canonical URL, a document id. It is carried through to the memory's
-    metadata and is what T3.08 will resolve into a distinct origin; today it
-    only documents provenance and changes no count.
+    metadata and is what ``research_origin_id`` resolves into this finding's
+    origin, so it is the one field on which a corroboration count turns: two
+    findings sharing it are one witness, and two findings that do not are two.
+    Leaving it unset is the honest answer when the gatherer cannot say, and it
+    merges rather than counting.
     """
 
     content: str
@@ -200,18 +228,95 @@ async def load_budget(session: AsyncSession) -> ResearchBudget:
     )
 
 
+def _canonical_query(query: str) -> str:
+    kept = [
+        (key.lower(), value.lower())
+        for key, value in parse_qsl(query, keep_blank_values=True)
+        if key.lower() not in _TRACKING_QUERY_KEYS
+        and not key.lower().startswith(_TRACKING_QUERY_PREFIXES)
+    ]
+    return "&".join(f"{key}={value}" for key, value in sorted(kept))
+
+
+def _canonical_host(netloc: str) -> str:
+    # Credentials are not identity, and a fetcher that carries them on one
+    # request and not the next would otherwise mint two origins for one page.
+    host = netloc.rsplit("@", 1)[-1].lower().rstrip(".")
+    for default_port in (":80", ":443"):
+        if host.endswith(default_port):
+            host = host[: -len(default_port)]
+            break
+    return host[4:] if host.startswith("www.") else host
+
+
+def _canonical_locator(value: str) -> str:
+    # Parsed as a locator whether or not it carries a scheme, so a bare
+    # `example.test/a` and `https://www.example.test/a/` reach the same form
+    # rather than splitting on which spelling the gatherer happened to hand
+    # back. A non-locator id simply lands in the host slot and survives the
+    # pass unchanged.
+    prefixed = value if "://" in value or value.startswith("//") else f"//{value}"
+    parts = urlsplit(prefixed)
+    host = _canonical_host(parts.netloc)
+    path = _REPEATED_SLASH_RE.sub("/", parts.path.lower()).rstrip("/")
+    query = _canonical_query(parts.query)
+    return f"{host}{path}" + (f"?{query}" if query else "")
+
+
+def _bounded_origin_id(value: str) -> str | None:
+    """The canonical form over the alphabet the capture layer leaves intact.
+
+    ``:`` is excluded because ``_sanitize_origin`` excludes it — that removal is
+    what stops a *declared* id forging a second key segment, so an id carrying
+    one would be rewritten under this module and the seam would no longer emit
+    what lands. An id with nothing alphanumeric left is not an identity and
+    merges instead.
+    """
+    cleaned = "".join(
+        "-" if character == " " else character
+        for character in value
+        if character.isprintable() and character != ":"
+    )[:ORIGIN_ID_MAX_LEN]
+    return cleaned if any(character.isalnum() for character in cleaned) else None
+
+
 def research_origin_id(finding: ResearchFinding) -> str | None:
     """The declared origin identity for one finding, or ``None`` to merge.
 
-    **T3.08's seam.** Returning ``None`` for every finding is what makes a
-    whole research run one origin today: ``resolve_origin_key`` falls back to
-    the capture layer's merge-to-one bucket, which counts once and can never
-    fire a corroboration gate on its own. T3.08 replaces this body with real
-    per-source identity — the same URL fetched twice must still resolve to one
-    id — and every other line of this module stays as it is, because the call
-    site below is already per-finding.
+    One source is one origin, whatever spelling it arrives under. The
+    canonicalisation collapses exactly the variation a fetcher produces
+    mechanically — scheme, host case, ``www.``, a default port, credentials, a
+    trailing slash, duplicated slashes, a fragment, campaign parameters,
+    parameter order — because each of those is one page reachable two ways, and
+    counting it twice is the manufactured corroboration doc 09 §6 forbids. Every
+    step is merge-only: no input splits one source into two ids, and the
+    lowercasing in particular is not cosmetic, since the corroboration count
+    normalises with ``lower(btrim(origin_key))`` and a case-preserved id would
+    show the audit a distinction the count does not honour.
+
+    **Its bound, stated rather than left to be discovered.** Identity here is the
+    *locator's*, not the content's: one wire story syndicated under two
+    hostnames is two origins, and so is one page reachable under two unrelated
+    URLs. Establishing that would take content identity the loop does not have,
+    and the guard against it is upstream — the gatherer declares the source it
+    actually fetched. What this function guarantees is narrower and checkable:
+    given an honest ``source_id``, no re-fetch, re-run or paraphrase adds an
+    origin.
     """
-    return None
+    raw = finding.source_id
+    if not isinstance(raw, str):
+        return None
+    value = _WHITESPACE_RE.sub(" ", raw).strip()
+    if not value:
+        return None
+    try:
+        canonical = _canonical_locator(value)
+    except ValueError:
+        # urlsplit refuses some netlocs outright (NFKC-confusable characters,
+        # unbalanced IPv6 brackets). The id is still an identity; it just gets
+        # the opaque treatment rather than the locator one.
+        canonical = value.lower()
+    return _bounded_origin_id(canonical) if canonical else None
 
 
 def research_origin_key(finding: ResearchFinding, *, project: str) -> str:
@@ -231,10 +336,11 @@ def is_researched_origin(origin_key: str | None) -> bool:
 
     The disclosure the v0.5 spec asks to be machine-enforced: a measurement
     that pools manufactured origins with observed ones has to do so on
-    purpose. Both shapes are recognised — the merged bucket this task files
-    under (``unknown:research:<project>``) and the declared form T3.08 will
-    mint (``research:<id>``) — so the predicate does not have to change when
-    the seam is filled.
+    purpose. Both shapes are recognised — the declared per-source form
+    (``research:<id>``) and the merged bucket an unestablishable identity falls
+    to (``unknown:research:<project>``) — so filling the seam did not have to
+    widen the predicate, which is the one edit that would have left a gap
+    exactly where the origins start counting.
     """
     if not origin_key:
         return False

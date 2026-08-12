@@ -491,17 +491,18 @@ async def test_every_researched_capture_carries_the_reserved_source(session):
 
 
 @pytest.mark.asyncio
-async def test_two_independent_sources_are_one_origin_today(session):
-    """The honest undercount, and the reason this task cannot promote a fact.
+async def test_findings_without_source_identity_are_one_origin(session):
+    """The honest undercount doc 09 section 6 requires.
 
-    Two genuinely different sources still resolve to a single `origin_key`,
-    because establishing per-source identity is T3.08's task and doc 09
-    section 6's rule for unestablished identity is merge-to-one. Minting two
-    here would be manufactured corroboration.
+    T3.08 filled the seam, so two *identified* sources are now two origins —
+    ``tests/test_research_origins.py`` owns that half. This is the half that did
+    not change: findings whose identity the gatherer could not establish still
+    resolve to a single `origin_key`, because minting one apiece would be
+    manufactured corroboration.
     """
     gatherer = _Gatherer([
-        _finding("claim", "https://example.test/a"),
-        _finding("same claim", "https://other.test/b"),
+        _finding("claim", None),
+        _finding("same claim", None),
     ])
     await run_research(
         session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
@@ -516,9 +517,10 @@ async def test_the_merged_origin_never_fires_a_corroboration_gate(session):
 
     `fact_sources` folds every `unknown:`-prefixed key into one reserved
     bucket that contributes to the count and to nothing else, so a research
-    run cannot reach the N = 2 diversity bar alongside one real witness.
+    finding of unestablished identity cannot reach the N = 2 diversity bar
+    alongside one real witness.
     """
-    gatherer = _Gatherer([_finding("claim", "https://example.test/a")])
+    gatherer = _Gatherer([_finding("claim", None)])
     await run_research(
         session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
     )
@@ -542,11 +544,14 @@ def test_a_researched_origin_never_looks_like_a_human_capture():
     assert not is_researched_origin("")
 
 
-def test_the_declared_form_t3_08_will_mint_is_already_recognised():
-    """T3.08 replaces the merged key with a declared one; the slice predicate
-    must not need editing when it does, or the disclosure has a gap exactly
-    where the origins start counting."""
-    assert is_researched_origin(f"{RESEARCH_SOURCE}:https-example-test-a")
+def test_the_declared_form_t3_08_mints_is_recognised_too():
+    """T3.08 replaced the merged key with a declared one, and the slice
+    predicate did not have to be edited for it — a widening made at that moment
+    would have left a gap exactly where the origins start counting."""
+    assert is_researched_origin(f"{RESEARCH_SOURCE}:example.test/a")
+    assert is_researched_origin(
+        research_origin_key(_finding("a", "https://example.test/a"), project="p")
+    )
 
 
 @pytest.mark.asyncio
@@ -554,10 +559,10 @@ async def test_the_origin_seam_is_per_finding(session, monkeypatch):
     """Proof the seam is real: nothing but `research_origin_id` decides
     whether two findings share an origin.
 
-    Standing in for T3.08 — one function returning a per-source identity —
-    turns two findings into two distinct declared origins, both still
-    recognised as researched. That is the whole change T3.08 has to make,
-    which is what "leave the seam" means.
+    It stood in for T3.08 before that task landed and is kept after it for the
+    same reason, pointed the other way: substituting an identity function still
+    changes the origins, so the *call site* remains per-finding and no second
+    place has quietly acquired a say in what an origin is.
     """
     monkeypatch.setattr(
         auto_research, "research_origin_id", lambda finding: finding.source_id,

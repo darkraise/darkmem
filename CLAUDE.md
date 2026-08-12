@@ -130,11 +130,24 @@ A memory carries:
   both doors** since T1.11 (`resolve_origin_key`, called from
   `api/routes/memories.py` and `api/mcp/server.py`, and on the raw entry dicts
   for batch adds) — **and since T3.07 from a third caller that is not a door**,
-  `services/auto_research.py`, which resolves a *merged* key on purpose so a
-  research run's manufactured origins fold into one bucket that can never fire
-  a corroboration gate (the count above updated 2026-08-12; this said "both
-  doors" full stop, which is the "here is the full list" shape invariant 23 is
-  about) — the "no writer yet" note here was stale and was corrected
+  `services/auto_research.py` (the count above updated 2026-08-12; this said
+  "both doors" full stop, which is the "here is the full list" shape invariant
+  23 is about). **That third caller stamps one origin per evidence *source*,
+  and the identity is the source's, never the run's or the finding's** — T3.07
+  landed it merged to one bucket and T3.08 filled the seam, so the paragraph
+  saying it "resolves a *merged* key on purpose" describes only what an
+  unestablishable identity still does. `research_origin_id` canonicalises the
+  gatherer's locator (scheme, host case, `www.`, default port, credentials,
+  trailing and duplicated slashes, fragment, campaign parameters, parameter
+  order all collapse), so a refetch, a re-run or a paraphrase of one page adds
+  no origin, while two genuine sources do promote. Every step of that
+  canonicalisation is merge-only by construction: no input may split one source
+  into two ids, because an undercount delays a promotion and an overcount
+  fabricates one. A blank or unresolvable `source_id` returns `None` and falls
+  to `unknown:research:<project>`, the bucket that counts once and fires no
+  gate. Both shapes stay machine-sliceable through `is_researched_origin`, so a
+  measurement pooling manufactured origins with observed ones does it on
+  purpose — the "no writer yet" note here was stale and was corrected
   2026-07-28. **No *capture* response echoes it**: it is absent from
   `MemoryResponse`, so on the capture doors it is write-only over the wire and
   a test asserting it through a capture door's response will assert nothing.
