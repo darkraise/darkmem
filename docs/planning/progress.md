@@ -100,9 +100,9 @@ green.
 | E3 — Synthesis & reach | 24 | 2 | 0 | 0 | 0 | 22 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
 | EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
-| M1 — Measurement phase | 24 | 7 | 1 | 0 | 0 | 16 | 0 | consumes implementation; gates nothing |
+| M1 — Measurement phase | 24 | 7 | 0 | 0 | 0 | 17 | 0 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **285** | **32** | **1** | **0** | **0** | **251** | **1** | |
+| **Total** | **285** | **32** | **0** | **0** | **0** | **252** | **1** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
