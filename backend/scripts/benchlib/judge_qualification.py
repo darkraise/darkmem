@@ -642,6 +642,14 @@ def render_report(
 
     lines.append("## Bars (stated before the run; config defaults)")
     lines.append("")
+    lines.append(
+        "These are `verification_judge.VERIFICATION_BAR_DEFAULTS` verbatim. "
+        "This runner reads no database, so no `verification_bar_licences` row "
+        "was consulted and no bar could have been clamped or licensed here — "
+        "the app-side floor governs `judge()`, never this measurement. Stated "
+        "rather than left to be inferred from an unchanged number (T2.128)."
+    )
+    lines.append("")
     for bar_key, result in bar_results(score, meta["bars"]).items():
         measured = result["measured"]
         rendered = "undefined (no acceptances)" if measured is None else f"{measured:.4f}"

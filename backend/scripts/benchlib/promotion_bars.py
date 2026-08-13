@@ -215,6 +215,25 @@ source diff where the import can move with it.
 config-write access can write the bar row and the licence row together,
 and nothing in-process stops that. What the clamp buys is that a
 loosening is no longer a single number edit that leaves no trace.
+
+What a clamp leaves behind (T2.128)
+-----------------------------------
+
+The clamp shipped correct and **invisible**: it announced itself only
+through ``logging``, and no runner configured a handler, so a clamped
+run's report body was byte-identical to an unclamped one. The verdict was
+computed against the committed bar either way — the protection worked —
+but the artifact a reviewer pastes into the gate ledger could not show
+whether an operator's row had been refused, honoured, or never written.
+
+So resolution now returns a ``BarReport``: per bar the committed value,
+the effective value, and the provenance sentence that separates the three
+— ``no config row``, ``honoured``, ``CLAMPED`` (naming what was missing,
+a licence or a bound). A run whose database carries no rows at all
+**says so in words**, because "silent" must not render the same as
+"clean". ``resolve_promotion_bars`` still returns the plain dict and is
+now derived from that report, so the numbers a verdict is computed from
+and the numbers the report prints cannot be two different resolutions.
 """
 from __future__ import annotations
 
@@ -439,12 +458,130 @@ def parse_promotion_bar_licences(row_value: object) -> dict[str, float]:
     return out
 
 
+# Why a clamp fired, in the words the report prints. A bar that moved
+# without one of these is a move the module honoured.
+CLAMP_NO_LICENCE = "no-licence"
+CLAMP_PAST_BOUND = "past-licence-bound"
+
+
+def _fmt(value: float | int) -> str:
+    number = float(value)
+    return str(int(number)) if number.is_integer() else f"{number:g}"
+
+
+@dataclass(frozen=True)
+class BarResolution:
+    """One bar's committed number, the number in force, and why they differ.
+
+    ``requested`` is ``None`` when the measured database carried no row for
+    this bar. That absence is rendered in words rather than by an unchanged
+    number, because a run that was never asked to move a bar and a run whose
+    move was refused must not read alike.
+    """
+
+    key: str
+    committed: float | int
+    effective: float
+    requested: float | None = None
+    clamp: str | None = None
+    licence_bound: float | None = None
+
+    @property
+    def moved(self) -> bool:
+        return self.effective != float(self.committed)
+
+    def provenance(self) -> str:
+        if self.requested is None:
+            return "no config row; the committed bar stands"
+        if self.clamp == CLAMP_NO_LICENCE:
+            return (
+                f"config row {_fmt(self.requested)} CLAMPED back: it loosens "
+                f"G-C and {PROMOTION_BAR_LICENCES_KEY} licenses nothing for "
+                f"this bar"
+            )
+        if self.clamp == CLAMP_PAST_BOUND:
+            return (
+                f"config row {_fmt(self.requested)} CLAMPED back: it loosens "
+                f"past the licence's own bound {_fmt(self.licence_bound)}"
+            )
+        if self.licence_bound is not None:
+            return (
+                f"config row {_fmt(self.requested)} honoured, under a licence "
+                f"bounded at {_fmt(self.licence_bound)}"
+            )
+        if self.effective == float(self.committed):
+            return f"config row {_fmt(self.requested)} restates the committed bar"
+        return (
+            f"config row {_fmt(self.requested)} honoured; it moves the bar its "
+            f"own conservative way"
+        )
+
+
+@dataclass(frozen=True)
+class BarReport:
+    """Every bar's resolution, in ``PROMOTION_BARS`` order, plus the two
+    facts a reader cannot infer from the numbers: whether the measured
+    database carried any bar row at all, and whether it carried a licence
+    row."""
+
+    resolutions: tuple[BarResolution, ...]
+    licence_row_present: bool
+
+    @property
+    def bars(self) -> dict[str, float]:
+        return {r.key: r.effective for r in self.resolutions}
+
+    @property
+    def config_rows_present(self) -> bool:
+        return any(r.requested is not None for r in self.resolutions)
+
+    @property
+    def clamped(self) -> tuple[BarResolution, ...]:
+        return tuple(r for r in self.resolutions if r.clamp is not None)
+
+
+def render_bar_report(report: BarReport) -> str:
+    """The block every run that resolves bars prints beside its verdicts."""
+    lines = [
+        "== bars in force (promotion_bars, committed before any measurement) =="
+    ]
+    if not report.config_rows_present and not report.licence_row_present:
+        lines.append(
+            "the measured database carries no `config` row for any G-C bar and "
+            "no "
+            f"`{PROMOTION_BAR_LICENCES_KEY}` row: every bar below is its "
+            "committed default, unmoved."
+        )
+    else:
+        moved = sum(1 for r in report.resolutions if r.requested is not None)
+        lines.append(
+            f"{moved} of {len(report.resolutions)} bars carry a `config` row; "
+            f"{len(report.clamped)} clamped back to the committed value; "
+            f"`{PROMOTION_BAR_LICENCES_KEY}` row "
+            f"{'present' if report.licence_row_present else 'absent'}."
+        )
+    width = max(len(r.key) for r in report.resolutions)
+    lines.append(f"{'bar'.ljust(width)}  committed  effective  provenance")
+    for r in report.resolutions:
+        lines.append(
+            f"{r.key.ljust(width)}  {_fmt(r.committed).ljust(9)}  "
+            f"{_fmt(r.effective).ljust(9)}  {r.provenance()}"
+        )
+    lines.append(
+        "note: promotion_journal_completeness_bar is read by no predicate "
+        "today (the 100 % bar is spelled as zero unexplained rows), so its "
+        "row and its clamp are prophylactic, not a live protection."
+    )
+    return "\n".join(lines)
+
+
 def _clamp_to_conservative(
     key: str, candidate: float, licensed: dict[str, float]
-) -> float:
+) -> tuple[float, str | None, float | None]:
+    """``(effective, clamp reason, the licence bound that applied)``."""
     spec = PROMOTION_BARS[key]
     if not spec.loosens(candidate):
-        return candidate
+        return candidate, None, None
 
     allowed = licensed.get(key)
     if allowed is None:
@@ -462,7 +599,7 @@ def _clamp_to_conservative(
             PROMOTION_BAR_LICENCES_KEY,
             spec.default,
         )
-        return float(spec.default)
+        return float(spec.default), CLAMP_NO_LICENCE, None
     if spec.beyond(candidate, allowed):
         # Back to the committed bar rather than to `allowed`: clamping to the
         # licensed value would put a number on the gate that the operator
@@ -477,8 +614,48 @@ def _clamp_to_conservative(
             allowed,
             spec.default,
         )
-        return float(spec.default)
-    return candidate
+        return float(spec.default), CLAMP_PAST_BOUND, allowed
+    return candidate, None, allowed
+
+
+def resolve_promotion_bar_report(rows: dict[str, object]) -> BarReport:
+    """The full resolution: what each bar was asked to be, what it is, why.
+
+    ``resolve_promotion_bars`` is this function's ``bars`` dict, so the
+    numbers a verdict is computed from and the numbers a run reports are
+    one resolution and cannot drift into two (T2.128).
+    """
+    licensed = parse_promotion_bar_licences(rows.get(PROMOTION_BAR_LICENCES_KEY))
+
+    resolutions: list[BarResolution] = []
+    for key, spec in PROMOTION_BARS.items():
+        if key not in rows:
+            resolutions.append(
+                BarResolution(key, spec.default, float(spec.default))
+            )
+            continue
+        value = rows[key]
+        if isinstance(value, dict):
+            value = value.get("value")
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
+            raise ValueError(
+                f"config row {key} carries an unreadable bar value {value!r}; "
+                f"fix or delete the row"
+            )
+        effective, clamp, bound = _clamp_to_conservative(
+            key, float(value), licensed
+        )
+        resolutions.append(
+            BarResolution(key, spec.default, effective, float(value), clamp, bound)
+        )
+    return BarReport(
+        tuple(resolutions),
+        licence_row_present=rows.get(PROMOTION_BAR_LICENCES_KEY) is not None,
+    )
 
 
 def resolve_promotion_bars(rows: dict[str, object]) -> dict[str, float]:
@@ -496,34 +673,19 @@ def resolve_promotion_bars(rows: dict[str, object]) -> dict[str, float]:
     ``rows`` carries the raw ``config`` values, including
     ``promotion_bar_licences`` when the measured database holds one.
     """
-    licensed = parse_promotion_bar_licences(rows.get(PROMOTION_BAR_LICENCES_KEY))
-
-    bars = {key: float(value) for key, value in PROMOTION_BAR_DEFAULTS.items()}
-    for key, value in rows.items():
-        if key not in PROMOTION_BAR_DEFAULTS:
-            continue
-        if isinstance(value, dict):
-            value = value.get("value")
-        if (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and math.isfinite(value)
-        ):
-            bars[key] = _clamp_to_conservative(key, float(value), licensed)
-        else:
-            raise ValueError(
-                f"config row {key} carries an unreadable bar value {value!r}; "
-                f"fix or delete the row"
-            )
-    return bars
+    return resolve_promotion_bar_report(rows).bars
 
 
-async def get_promotion_bars(session: AsyncSession) -> dict[str, float]:
+async def get_promotion_bar_report(session: AsyncSession) -> BarReport:
     result = await session.execute(
         _BARS_SQL,
         {"keys": [*PROMOTION_BAR_DEFAULTS, PROMOTION_BAR_LICENCES_KEY]},
     )
-    return resolve_promotion_bars({row.key: row.value for row in result})
+    return resolve_promotion_bar_report({row.key: row.value for row in result})
+
+
+async def get_promotion_bars(session: AsyncSession) -> dict[str, float]:
+    return (await get_promotion_bar_report(session)).bars
 
 
 # ── the pre-stated verdict predicates ────────────────────────────────────

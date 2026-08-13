@@ -343,6 +343,104 @@ class TestLicence:
             pb.resolve_promotion_bars(rows)
 
 
+class TestTheReportShowsWhatTheClampDid:
+    """T2.128: the clamp was real and invisible in the artifact.
+
+    It announced itself through `logging` alone, and no runner configures a
+    handler, so a clamped run's report body was byte-identical to an
+    unclamped one — the gate ledger quotes that body. These pin the
+    property the task exists to create: the rendered block must *differ*,
+    and it must differ by naming what was refused.
+    """
+
+    LOOSENING = {"promotion_rate_floor": 0.3}
+
+    def _render(self, rows):
+        return pb.render_bar_report(pb.resolve_promotion_bar_report(rows))
+
+    def test_a_clamped_run_does_not_render_like_a_clean_one(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            clamped = self._render(self.LOOSENING)
+        clean = self._render({})
+        assert clamped != clean, (
+            "a refused config row must be visible in the report body, which "
+            "is the whole of this task"
+        )
+        assert "CLAMPED" in clamped and "CLAMPED" not in clean
+        assert pb.PROMOTION_BAR_LICENCES_KEY in clamped
+
+    def test_a_silent_run_says_so_rather_than_by_omission(self):
+        clean = self._render({})
+        assert "no `config` row for any G-C bar" in clean
+        assert "CLAMPED" not in clean
+
+    def test_the_clamp_past_a_bound_names_the_bound(self, caplog):
+        rows = {"promotion_rate_floor": 0.1}
+        rows.update(_licence({"promotion_rate_floor": {
+            "value": 0.3, "argument": LEDGER}}))
+        with caplog.at_level(logging.WARNING):
+            rendered = self._render(rows)
+        assert "bound 0.3" in rendered
+        assert "CLAMPED" in rendered
+
+    def test_a_licensed_loosening_reads_as_honoured_not_clamped(self):
+        rows = {"promotion_rate_floor": 0.4}
+        rows.update(_licence({"promotion_rate_floor": {
+            "value": 0.3, "argument": LEDGER}}))
+        rendered = self._render(rows)
+        assert "honoured, under a licence bounded at 0.3" in rendered
+        assert "CLAMPED" not in rendered
+
+    def test_a_free_tightening_reads_as_honoured_and_needs_no_licence(self):
+        rendered = self._render({"promotion_rate_floor": 0.9})
+        assert "honoured; it moves the bar its own conservative way" in rendered
+        assert "CLAMPED" not in rendered
+
+    def test_every_bar_appears_with_both_numbers(self):
+        report = pb.resolve_promotion_bar_report({})
+        assert [r.key for r in report.resolutions] == list(pb.PROMOTION_BARS)
+        rendered = self._render({})
+        for key, committed in pb.PROMOTION_BAR_DEFAULTS.items():
+            assert key in rendered
+            assert pb._fmt(committed) in rendered
+
+    def test_the_prophylactic_bar_is_labelled_as_one(self):
+        """The report must not let an unread bar read as a live protection."""
+        assert "prophylactic" in self._render({})
+
+    def test_the_report_and_the_verdict_read_one_resolution(self, caplog):
+        """The number printed and the number a verdict uses are the same
+        resolution, not two that agree today."""
+        for rows in ({}, self.LOOSENING, {"promotion_rate_floor": 0.9}):
+            with caplog.at_level(logging.WARNING):
+                assert (
+                    pb.resolve_promotion_bar_report(rows).bars
+                    == pb.resolve_promotion_bars(rows)
+                )
+
+    def test_an_absent_row_is_not_reported_as_a_request(self):
+        report = pb.resolve_promotion_bar_report({})
+        assert not report.config_rows_present
+        assert not report.licence_row_present
+        assert all(r.requested is None and r.clamp is None
+                   for r in report.resolutions)
+
+    def test_a_licence_row_alone_is_still_disclosed(self):
+        """A licence with no bar row moves nothing, and the report says the
+        row is there — an operator who wrote one and saw no change needs to
+        know it was read."""
+        rows = _licence({"promotion_rate_floor": {
+            "value": 0.3, "argument": LEDGER}})
+        report = pb.resolve_promotion_bar_report(rows)
+        assert report.licence_row_present and not report.config_rows_present
+        rendered = pb.render_bar_report(report)
+        assert f"`{pb.PROMOTION_BAR_LICENCES_KEY}` row present" in rendered
+
+    def test_an_unreadable_row_still_raises_rather_than_rendering(self):
+        with pytest.raises(ValueError):
+            pb.resolve_promotion_bar_report({"promotion_rate_floor": "0.4"})
+
+
 class TestPredicates:
     BARS = pb.resolve_promotion_bars({})
 

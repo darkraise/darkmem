@@ -16,7 +16,12 @@ one number this gate must never accept.
 
 Verdicts are applied from ``promotion_bars`` — the bar module committed
 **before** this file existed (gate-ledger.md rule 1; the git history is
-the witness). This driver never mints
+the witness) — and since T2.128 the run prints the **bars in force** beside
+them: per bar the committed value, the effective value, and whether a
+``config`` row was absent, honoured or clamped back. Before that block
+existed a clamp reached only ``logging`` and this report body was
+byte-identical either way, so the artifact a gate ledger quotes could not
+show that an operator's row had been refused. This driver never mints
 ``app/services/promotion_metrics_record.json``: the record that lights
 the born-corroborated badge is written only by a run whose verdict
 cleared, and only by the gate owner deliberately, never as a side effect
@@ -179,7 +184,8 @@ async def main(argv: list[str] | None = None) -> int:
                 session, since=since, until=until,
                 database_identity=f"localhost:5433/{db_name}",
             )
-            bars = await promotion_bars.get_promotion_bars(session)
+            bar_report = await promotion_bars.get_promotion_bar_report(session)
+            bars = bar_report.bars
             completeness = (
                 await session.execute(text(promotion_bars.JOURNAL_COMPLETENESS_SQL))
             ).one()
@@ -198,6 +204,9 @@ async def main(argv: list[str] | None = None) -> int:
             f"facts: {completeness.facts}; born-rung carve-out: "
             f"{completeness.born_rung_carveout}; violations: {completeness.violations}"
         )
+
+        print()
+        print(promotion_bars.render_bar_report(bar_report))
 
         print()
         print("== pre-stated verdicts (promotion_bars, committed before this run) ==")
