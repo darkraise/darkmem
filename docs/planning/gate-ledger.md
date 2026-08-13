@@ -2156,8 +2156,22 @@ only. Every authoring or labelling brief passes the contamination screen (above)
 **before** it is issued; a hit stops the dispatch. The owner sits Layer 3; the
 resample model is `deepseek-v4-pro` (item 4 above).
 
-**Frame commit shas:** *(placeholder — filled at step 5, when the frame commit-group
-closes; the plan review verifies no pair predates them.)*
+**Frame commit shas (filled at step 5, closing the frame commit-group; the step-6
+review verifies no pair predates them):** step 1 `d71ccb25` (round record); step 2
+`8ef557ce` (corpus growth, 84 blind-authored entries, retrieval eval re-run and
+triaged); step 3 `bb6057c4` (fresh harvest — 225 facts, 163 fresh after the 62-key
+exclusion against a floor of 44 — plus the committed exclusion list and the
+re-collected cache fixture); step 4 `e783e18b` (A1/A2 repairs, extended by
+measurement to the writer-role and runner-mode refusal pins) and `66a2e21d` (the D1
+archive move, digest pin asserted untouched); step 5 `d23b35d0`
+(`benchlib/round4_frame.py`, the emitted `entailment/round4_frame.json` at
+**T = 280, census contradicted 80 / entailed 110 / unsupported 90**, the clause-5b
+absorbing rule as code, `build_round4_assignment`, and `cross_gold_near_overlap`
+pinned non-vacuous). The emitted matrix awaits **sitting 2** (plan step 6): an
+independent reviewer regenerates the JSON from the committed script and
+byte-compares, the lattice checks are asserted by test, and the owner answers
+yes/no. No pair exists yet; authoring does not start until that ratification is
+recorded.
 
 ---
 
