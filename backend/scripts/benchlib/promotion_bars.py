@@ -486,10 +486,6 @@ class BarResolution:
     clamp: str | None = None
     licence_bound: float | None = None
 
-    @property
-    def moved(self) -> bool:
-        return self.effective != float(self.committed)
-
     def provenance(self) -> str:
         if self.requested is None:
             return "no config row; the committed bar stands"
@@ -500,6 +496,16 @@ class BarResolution:
                 f"this bar"
             )
         if self.clamp == CLAMP_PAST_BOUND:
+            if PROMOTION_BARS[self.key].conservative is Conservative.NEITHER:
+                # "past" is this module's `!=` sense for a bar with no
+                # direction, and a reader seeing 6 described as past 8 would
+                # conclude the renderer is broken. Say what actually happened:
+                # a licence names one value and this is not it.
+                return (
+                    f"config row {_fmt(self.requested)} CLAMPED back: this bar "
+                    f"has no conservative direction, and the licence names "
+                    f"{_fmt(self.licence_bound)}, not this value"
+                )
             return (
                 f"config row {_fmt(self.requested)} CLAMPED back: it loosens "
                 f"past the licence's own bound {_fmt(self.licence_bound)}"
@@ -553,9 +559,10 @@ def render_bar_report(report: BarReport) -> str:
             "committed default, unmoved."
         )
     else:
-        moved = sum(1 for r in report.resolutions if r.requested is not None)
+        with_rows = sum(1 for r in report.resolutions if r.requested is not None)
         lines.append(
-            f"{moved} of {len(report.resolutions)} bars carry a `config` row; "
+            f"{with_rows} of {len(report.resolutions)} bars carry a `config` "
+            f"row; "
             f"{len(report.clamped)} clamped back to the committed value; "
             f"`{PROMOTION_BAR_LICENCES_KEY}` row "
             f"{'present' if report.licence_row_present else 'absent'}."
@@ -654,7 +661,10 @@ def resolve_promotion_bar_report(rows: dict[str, object]) -> BarReport:
         )
     return BarReport(
         tuple(resolutions),
-        licence_row_present=rows.get(PROMOTION_BAR_LICENCES_KEY) is not None,
+        # Presence of the row, not truthiness of its value: a row holding JSON
+        # null licenses nothing and must still be disclosed as present, or an
+        # operator who wrote one and saw no change is told it was never read.
+        licence_row_present=PROMOTION_BAR_LICENCES_KEY in rows,
     )
 
 

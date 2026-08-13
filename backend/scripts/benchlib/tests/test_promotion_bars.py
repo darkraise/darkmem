@@ -15,8 +15,11 @@ protecting the wrong side of one number.
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import logging
+import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -436,9 +439,80 @@ class TestTheReportShowsWhatTheClampDid:
         rendered = pb.render_bar_report(report)
         assert f"`{pb.PROMOTION_BAR_LICENCES_KEY}` row present" in rendered
 
+    def test_a_licence_row_holding_json_null_is_still_disclosed(self):
+        """`Config.value` is JSONB, so a row can exist holding null. It
+        licenses nothing — but reporting it absent tells an operator who
+        wrote one that it was never read, which is a different fact."""
+        report = pb.resolve_promotion_bar_report(
+            {pb.PROMOTION_BAR_LICENCES_KEY: None}
+        )
+        assert report.licence_row_present
+        assert f"`{pb.PROMOTION_BAR_LICENCES_KEY}` row present" in (
+            pb.render_bar_report(report)
+        )
+
+    def test_the_directionless_bar_does_not_call_a_lower_value_past_a_bound(
+        self, caplog
+    ):
+        """"Past" is this module's `!=` sense for the NEITHER bar, and a
+        reader seeing 6 described as past 8 concludes the renderer is broken.
+        The clamp is right either way; the sentence has to be too."""
+        key = "promotion_rate_min_eligible"
+        rows = {key: 6}
+        rows.update(_licence({key: {"value": 8, "argument": LEDGER}}))
+        with caplog.at_level(logging.WARNING):
+            rendered = self._render(rows)
+        assert "the licence names 8, not this value" in rendered
+        assert "past" not in rendered
+
     def test_an_unreadable_row_still_raises_rather_than_rendering(self):
         with pytest.raises(ValueError):
             pb.resolve_promotion_bar_report({"promotion_rate_floor": "0.4"})
+
+
+class TestTheDerivationIsStructuralNotIncidental:
+    """The one-resolution guarantee cannot be pinned extensionally.
+
+    T2.128's review planted the mutant that proves it: revert
+    ``resolve_promotion_bars`` to an independent recomputation of the old
+    merge loop and **every** test in this file still passes, because two
+    implementations that agree today agree on every input a test can name —
+    which is exactly the parallel-implementation drift the derivation exists
+    to prevent. So the assertion is structural, in the repo's own AST-scan
+    idiom: the public dict must be the report's ``bars`` and nothing else.
+    """
+
+    def test_resolve_delegates_to_the_report_and_computes_nothing(self):
+        fn = ast.parse(
+            textwrap.dedent(inspect.getsource(pb.resolve_promotion_bars))
+        ).body[0]
+        statements = [
+            node for node in fn.body
+            if not (isinstance(node, ast.Expr)
+                    and isinstance(node.value, ast.Constant))
+        ]
+        assert len(statements) == 1, (
+            "resolve_promotion_bars must be one return; anything else is a "
+            "second resolution that agrees with the report until it does not"
+        )
+        returned = statements[0]
+        assert isinstance(returned, ast.Return)
+        assert isinstance(returned.value, ast.Attribute)
+        assert returned.value.attr == "bars"
+        call = returned.value.value
+        assert isinstance(call, ast.Call)
+        assert getattr(call.func, "id", None) == "resolve_promotion_bar_report"
+
+    def test_the_runner_reads_the_report_it_prints(self):
+        """The other half: run_gc_evidence must not resolve twice either."""
+        source = (
+            Path(pb.__file__).with_name("run_gc_evidence.py").read_text()
+        )
+        assert "get_promotion_bar_report(session)" in source
+        assert "get_promotion_bars(" not in source, (
+            "a second resolution in the runner would let the printed block and "
+            "the verdicts disagree, which is the whole property"
+        )
 
 
 class TestPredicates:

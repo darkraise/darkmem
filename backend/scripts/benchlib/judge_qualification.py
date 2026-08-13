@@ -642,12 +642,25 @@ def render_report(
 
     lines.append("## Bars (stated before the run; config defaults)")
     lines.append("")
+    # Derived, never asserted: the "verbatim" half is the only clause a future
+    # runner could falsify by stamping an override, and a disclosure that says
+    # what it did not check is the defect this paragraph exists to fix.
+    if meta["bars"] == dict(verification_judge.VERIFICATION_BAR_DEFAULTS):
+        provenance = (
+            "These are `verification_judge.VERIFICATION_BAR_DEFAULTS` verbatim."
+        )
+    else:
+        provenance = (
+            "**These are NOT the committed defaults** — this run stamped an "
+            "override, so the bars below are not the shipped floors and this "
+            "record does not evidence a run against them."
+        )
     lines.append(
-        "These are `verification_judge.VERIFICATION_BAR_DEFAULTS` verbatim. "
-        "This runner reads no database, so no `verification_bar_licences` row "
-        "was consulted and no bar could have been clamped or licensed here — "
-        "the app-side floor governs `judge()`, never this measurement. Stated "
-        "rather than left to be inferred from an unchanged number (T2.128)."
+        provenance + " This runner reads no database, so no "
+        "`verification_bar_licences` row was consulted and no bar could have "
+        "been clamped or licensed here — the app-side floor governs `judge()`, "
+        "never this measurement. Stated rather than left to be inferred from "
+        "an unchanged number (T2.128)."
     )
     lines.append("")
     for bar_key, result in bar_results(score, meta["bars"]).items():
