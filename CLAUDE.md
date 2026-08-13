@@ -519,10 +519,15 @@ negation is the domain of the composed "every powered bucket must clear the
 floor" rule, so raising it silences buckets and can flip a failing axis to
 cleared; it takes a licence in **either** direction. Two limits worth knowing
 before quoting that module as G-C's floor: `promotion_journal_completeness_bar`
-is read by no predicate, so its clamp is prophylactic rather than live; and a
-clamped run's report body is currently byte-identical to an unclamped one
-(T2.128), so the clamp is real but presently invisible in the artifact the
-ledger quotes. Each purpose is
+is read by no predicate, so its clamp is prophylactic rather than live; and the
+clamp used to be **invisible** in the artifact the ledger quotes — it spoke only
+through `logging`, so a clamped run's report body was byte-identical to an
+unclamped one. **T2.128 closed that on 2026-08-13**: resolution returns a
+`BarReport`, `resolve_promotion_bars` is derived from it so the printed numbers
+and the verdict's numbers cannot be two resolutions, and every run that resolves
+bars prints per bar the committed value, the effective value and which of *no
+config row* / *honoured* / *CLAMPED* happened — a run with no rows saying so in
+words, because "silent" must not render like "clean". Each purpose is
 **one inline `llm_purpose_configs`
 row** carrying its own `{model, base_url, api_key, api_kind, params,
 dimensions?, reasoning?}` — resolution is one row read and no joins. The
