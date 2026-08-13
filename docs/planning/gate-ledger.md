@@ -2132,6 +2132,33 @@ narrower claim than "the strip is clean", and it is the true one: the strip carr
 identities and bars, and the plan never claimed otherwise. A hit outside this
 enumerated set is a finding.
 
+### The round record — grounds, parties, firewall (step 1, 2026-08-13)
+
+**Grounds, as ratified (item 3 above), restated where the round's execution is
+recorded:** publication contamination, standing alone — the retired set's censuses,
+duplicate findings and per-slice decompositions are on the public record in this
+ledger and the dated eval reports, so no future qualification on those pairs could be
+told apart from authorship-with-answers, independently of anything any run produced.
+The entailed class's missing lattice sizing is recorded as corroborating only.
+Nothing in this round record states or implies a measured judge result.
+
+**Parties and the firewall (governing plan §4).** The controller (this session) is
+**contaminated by construction** — it has read this ledger and the plan — so it
+dispatches, runs mechanical checks, and never authors a pair, a premise or a label.
+The frame is committed code with zero free parameters; its blindness is carried by
+that property and by step 6's independent review, never by its author. Corpus and
+premise authors are blind sub-agents on the §4 denylist (this plan, the `#### T2.124`
+task section, this ledger's G-D sections, `docs/eval/`, `verdicts/`, `cache/`, the
+archived gold, LABELLING.md History, every dispatch brief but their own); pair
+authors additionally read only the byte-prefix strip of LABELLING.md and their own
+slot assignments; the two blind labellers read the strip and the stripped export
+only. Every authoring or labelling brief passes the contamination screen (above)
+**before** it is issued; a hit stops the dispatch. The owner sits Layer 3; the
+resample model is `deepseek-v4-pro` (item 4 above).
+
+**Frame commit shas:** *(placeholder — filled at step 5, when the frame commit-group
+closes; the plan review verifies no pair predates them.)*
+
 ---
 
 ## G-E — L3 → F7
