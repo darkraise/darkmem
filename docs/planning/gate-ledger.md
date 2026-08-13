@@ -2122,15 +2122,25 @@ that always fires is a screen nobody runs. The committed patterns match only wha
 measurement looks like.
 
 **Baseline residual on the strip, enumerated 2026-08-13 so a reviewer can tell growth
-from what was already there.** Under the committed patterns the strip returns hits at
-LABELLING.md lines 255, 307, 369, 395–396, 411, 508, 521, 544, 698 and 701. Every one
-is a **bar value, census arithmetic, or an identity** — `0.95` as the stated bar,
-`131/200` and `×200/41` as composition, gold sha `98fc4b49`, judge identity
-`fd39e7b2` and its contact fact. **No measured score is above the cut**, which
-independently corroborates §4's re-verification after the B1 relocation. That is a
-narrower claim than "the strip is clean", and it is the true one: the strip carries
-identities and bars, and the plan never claimed otherwise. A hit outside this
-enumerated set is a finding.
+from what was already there. Corrected the same day — the first enumeration was
+half noise.** The decimal pattern was written as `[0-9]\.[0-9]{3,}`, which matches a
+**task id**: `T2.115` reads as `2.115`. That fired on lines 255, 307, 411, 544 and
+698 — every one a citation like "ratified 2026-08-10, T2.115" — and it also stopped a
+real step-2 dispatch, because the worktree path `.worktrees/t2.124` matches too. It
+failed safe, but a screen that cries wolf is one the next executor learns to wave
+through, and an enumerated baseline containing noise defeats its own purpose: a
+reviewer cannot tell growth from a false positive. The pattern is now
+`(^|[^A-Za-z])[0-9]\.[0-9]{3,}`, which still catches ` 0.9017` and `scored 0.945`
+while ignoring letter-prefixed ids.
+
+**The corrected baseline is five lines** — LABELLING.md 369, 395, 508, 521, 701 — and
+every one is a **bar value, census arithmetic, or an identity**: gold sha `98fc4b49`;
+`0.95` as the stated bar beside a census of 78; `×200/41` and `131/200` as
+composition; judge identity `fd39e7b2` and its contact fact. **No measured score is
+above the cut**, which independently corroborates §4's re-verification after the B1
+relocation. That is a narrower claim than "the strip is clean" and it is the true
+one: the strip carries identities and bars, and the plan never claimed otherwise. A
+hit outside these five is a finding.
 
 ---
 
