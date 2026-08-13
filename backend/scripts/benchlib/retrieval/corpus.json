@@ -876,6 +876,762 @@
       "source": "bench",
       "created_at": "2026-07-10T00:00:00+00:00",
       "project": "default"
+    },
+    {
+      "key": "xa01-authelia-port",
+      "memory_id": "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+      "content": "Authelia runs on auth-01 and listens on port 9091 for its web portal.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa02-auth02-standby",
+      "memory_id": "386b44fb-fd80-56da-b852-9be197af0699",
+      "content": "auth-02 is a hot standby for auth-01, and Authelia on auth-02 depends on the session store on kv-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa03-consul-monitor",
+      "memory_id": "065bfb53-456f-5b80-94a5-1ca2d90125bf",
+      "content": "Consul runs on core-03 and monitors the health checks for jobs-05.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa04-concourse-garage",
+      "memory_id": "68eb0fbd-6b29-5a14-a91d-50b1da16922d",
+      "content": "Concourse is deployed on build-04 and uses Garage on files-01 to store its build artifacts.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-04T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa05-garage-backup",
+      "memory_id": "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+      "content": "Garage on files-01 stores build artifacts in the forge-artifacts bucket, and backs up that bucket nightly to batch-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa06-clickhouse-export",
+      "memory_id": "a2540c1e-9546-552b-86c8-320fc2745728",
+      "content": "ClickHouse runs on data-06 and depends on the nightly export from ledger-02.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa07-airflow-sink",
+      "memory_id": "35d2da62-c3dd-59de-b8dc-b2e3e19a33c0",
+      "content": "Airflow runs on etl-02 and depends on ClickHouse on data-06 as its warehouse sink.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-07T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa08-memgraph-meridian",
+      "memory_id": "b053fb83-4dcf-54f2-8556-d947f0cf1052",
+      "content": "Memgraph runs on graph-01 and stores the dependency graph for the meridian project.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa09-huginn-consul",
+      "memory_id": "ead65b73-3e86-5b72-81c2-ca198168dda9",
+      "content": "Huginn runs on hooks-03 and depends on Consul on core-03 for service discovery.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-09T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa10-anvilrender-part",
+      "memory_id": "5b051865-a305-5ecd-bf15-cdf76f3f2e46",
+      "content": "The anvil-render pipeline has ImageMagick on images-02 as a part, and it depends on the fonts stored on files-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa11-celery-broker",
+      "memory_id": "06a0bc05-c935-592b-9282-8c810afdee56",
+      "content": "Celery runs on jobs-05 and depends on the message broker on core-03.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-11T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa12-infisical-keys",
+      "memory_id": "1392adec-e587-55f8-8f7b-27dae651257b",
+      "content": "Infisical runs on keys-01 and stores the signing keys used by Authelia.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa13-cockroach-replace",
+      "memory_id": "6a7ce349-6d67-535e-bcdc-2fe252fb5769",
+      "content": "CockroachDB runs on ledger-02 and replaced Firebird, the database ledger-02 used before the migration.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-13T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa14-ffmpeg-codec",
+      "memory_id": "f14b34e6-97f1-5021-8b95-1cff9787df4d",
+      "content": "FFmpeg runs on media-04 and depends on the codec pack maintained on files-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-14T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa15-luigi-monitor",
+      "memory_id": "72cc0d09-21a4-5f28-a49d-88c568ea9ffc",
+      "content": "Luigi runs on batch-01 and monitors the completion status of Airflow tasks on etl-02.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa16-graylog-store",
+      "memory_id": "1ed3ae10-8c9d-526f-a30b-1e9f19a0c56d",
+      "content": "Graylog runs on log-02 and stores ingest logs from every host in the meridian project.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa17-haproxy-port",
+      "memory_id": "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+      "content": "HAProxy runs on lb-01 and listens on port 8443 for the meridian project's public API.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-17T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa18-meilisearch-feed",
+      "memory_id": "08765527-7176-5ce3-81f3-5ce3e6f819ad",
+      "content": "Meilisearch runs on idx-03 and depends on the document feed produced by Huginn on hooks-03.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-18T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa19-ansible-inventory",
+      "memory_id": "66702356-1c67-5363-8d31-2ed9a07f79a9",
+      "content": "Ansible is deployed on infra-02 and depends on the inventory stored on files-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-19T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa20-jump01-bastion",
+      "memory_id": "d0fdb4a9-1152-5b98-a913-5810c96b752c",
+      "content": "jump-01 is a bastion host and monitors failed SSH attempts against auth-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa21-icinga-monitor",
+      "memory_id": "9075d958-d3f5-5b96-b890-1edf8255767c",
+      "content": "Icinga runs on mon-05 and monitors HAProxy on lb-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-21T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa22-etcd-leader",
+      "memory_id": "20154607-177b-55f6-9ec9-084381f548eb",
+      "content": "etcd runs on kv-01 and stores the leader-election state for Consul on core-03.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-22T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa23-concourse-port",
+      "memory_id": "586db5fe-2854-526f-bba6-107064713a88",
+      "content": "Concourse on build-04 listens on port 8080 for its web UI, and depends on Garage on files-01 for its artifact cache.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-23T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa24-forgeartifacts-version",
+      "memory_id": "2e33e174-1cf8-501f-a6f6-7565a9418135",
+      "content": "The forge-artifacts bucket on files-01 has object versioning as a part of its configuration, and Garage stores those versions for 90 days before they expire.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-24T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa25-auth01-etcd",
+      "memory_id": "218857e6-5cdc-5065-be4a-cef31c73dd71",
+      "content": "auth-01 depends on etcd on kv-01 for distributed locks during token rotation, and Authelia causes a brief login outage whenever etcd on kv-01 restarts.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-25T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa26-core03-latency",
+      "memory_id": "27e51c66-76b1-53a6-a6b3-6ff4d5af0301",
+      "content": "Consul on core-03 causes elevated latency on idx-03 whenever it re-elects its leader, and Consul also monitors Memgraph on graph-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-26T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa27-batch01-coldstorage",
+      "memory_id": "b829dbb5-70f3-5b01-9495-0c3aeee981f6",
+      "content": "batch-01 is a cold-storage host and backs up the ledger-02 database nightly.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-27T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa28-media04-queue",
+      "memory_id": "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc",
+      "content": "media-04 depends on jobs-05 to queue transcoding requests through Celery, and FFmpeg on media-04 stores rendered output on files-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-28T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa29-graph01-lb",
+      "memory_id": "c32f4418-3b4e-5239-a05e-a4d5800447e7",
+      "content": "graph-01 is deployed behind lb-01, and HAProxy listens on port 7474 for Memgraph's browser console.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-29T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa30-log02-buildfail",
+      "memory_id": "1ad4aa2e-8973-5979-9481-41dcf6e3eb0f",
+      "content": "log-02 monitors Concourse build failures on build-04 and stores them under a dedicated index in Graylog.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-30T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa31-images02-fontcache",
+      "memory_id": "5d015ba3-3dc5-5120-ab98-6062b3da4f4a",
+      "content": "images-02 depends on the anvil-render pipeline's font cache on files-01, and ImageMagick causes memory spikes when rendering large batches.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-03-31T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa32-keys01-replace",
+      "memory_id": "6b34ef0e-30c6-5922-b098-91c282fd776b",
+      "content": "keys-01 has Infisical as a part, and Infisical replaced the plaintext .env files that auth-01 used before the migration.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa33-etl02-staging",
+      "memory_id": "914537ea-1045-5af4-9f59-bfd804c1197a",
+      "content": "etl-02 stores raw ingest files on files-01, and Airflow depends on that staging area before loading ClickHouse on data-06.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa34-jump01-mfa",
+      "memory_id": "10e856b2-129d-597f-8be7-6ffc3282b621",
+      "content": "jump-01 depends on Authelia on auth-01 for multi-factor login before granting SSH access, and it monitors every session for the meridian project's audit log.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa35-mon05-alertstorm",
+      "memory_id": "0a9384cd-261d-5b68-b2a3-5dc9e4008552",
+      "content": "mon-05 causes alert storms on lb-01 whenever Icinga's check interval drops below one minute, and Icinga on mon-05 also monitors etcd on kv-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-04T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa36-core03-controlplane",
+      "memory_id": "1030a7ee-762a-5a2f-a416-822b66f5b254",
+      "content": "core-03 is a service-mesh host and has Consul as a part of its control plane.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa37-data06-backup",
+      "memory_id": "afa2689a-227c-562b-a56e-ecef521cd536",
+      "content": "data-06 backs up ClickHouse to Garage on files-01 every six hours, and the backup depends on a healthy etcd lock on kv-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa38-idx03-replace",
+      "memory_id": "b8b2fbfe-404d-5c34-b2c7-b1d04adf118b",
+      "content": "idx-03 replaced idx-01, the earlier Meilisearch host retired after a disk failure, and Meilisearch on idx-03 listens on port 7700.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-07T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa39-ledger02-pagelag",
+      "memory_id": "e3270f17-80d6-507e-8f50-f464443a974d",
+      "content": "ledger-02 monitors CockroachDB's replication lag and causes a paging alert on mon-05 when the lag exceeds five minutes.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa40-files01-diskarray",
+      "memory_id": "c571747e-cf8d-5ad7-a9b3-7bc80834cce1",
+      "content": "files-01 has Garage as a part of its storage stack, and Garage depends on the disk array mounted on batch-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-09T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa41-auth02-passive",
+      "memory_id": "8732825a-ea15-57ab-bd4c-2e2d4a301285",
+      "content": "auth-02 listens on port 9091 as a passive replica, and it backs up Authelia's configuration from auth-01 every hour.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xa42-meridian-discovery",
+      "memory_id": "5e9fe6b7-fa4c-5cac-bc43-80349a592cb6",
+      "content": "The meridian project depends on core-03 for service discovery, and Consul on core-03 monitors Authelia on auth-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-11T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb01-notifyrelay-port",
+      "memory_id": "dee0d629-648b-5001-b6ad-8cef3f4c9004",
+      "content": "The notify-relay service is deployed on host neon-04 and listens on port 8825.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb02-neon-nats",
+      "memory_id": "d27772e6-ee13-5e99-b0a8-9280189dd823",
+      "content": "neon-04 depends on the NATS message bus for internal event delivery.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-13T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb03-ordersync-host",
+      "memory_id": "09ce7617-51de-5952-986f-39cb2e33bd5c",
+      "content": "The order-sync service runs on host nimbus-02 and uses RabbitMQ as its task queue.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-14T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb04-nimbus-archive",
+      "memory_id": "bb8873c5-1960-5295-a365-8ed05f5c5552",
+      "content": "nimbus-02 stores its working data in the nimbus-archive object bucket.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb05-netdata-monitor",
+      "memory_id": "4d9e686f-2ed9-5643-b231-9ed93d40be43",
+      "content": "Netdata monitors every host in the fulfillment fleet, including orbit-01 and onyx-03.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb06-orbit-opensearch",
+      "memory_id": "677b668e-522b-5b31-b9bc-01831665e01d",
+      "content": "orbit-01 runs OpenSearch as the backing store for the internal log index.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-17T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb07-otel-onyx",
+      "memory_id": "ac7ca90f-e58a-5aa8-bfa7-1d0384ffb5c4",
+      "content": "OpenTelemetry traces from orbit-01 are exported to the collector on onyx-03.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-18T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb08-onyx-role",
+      "memory_id": "88a7950d-5641-5afc-a34d-c15c0eb7f795",
+      "content": "onyx-03 is a dedicated trace-collection host with no other workloads.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-19T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb09-parceltracker-bucket",
+      "memory_id": "f5d3c481-3d98-534b-9b5e-e01a9563518e",
+      "content": "The parcel-tracker service depends on the parcel-logs bucket for historical lookups.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb10-parceltracker-port",
+      "memory_id": "fdff8a92-078d-5897-bcf3-7f4e7fcdd4ce",
+      "content": "parcel-tracker is deployed on host pallet-02 and listens on port 9040.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-21T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb11-pallet-backup",
+      "memory_id": "db66a773-6873-59cd-b9a4-4942532fe0a6",
+      "content": "pallet-02 backs up its state nightly to the parcel-logs bucket.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-22T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb12-osquery-report",
+      "memory_id": "e25725bf-d3f6-5145-a9ac-943c5db5e13c",
+      "content": "Osquery runs on pivot-01 and reports fleet inventory to the quota-watcher service.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-23T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb13-quotawatcher-dns",
+      "memory_id": "52292aae-f93c-5e5e-8ca8-d4ff91c3bed0",
+      "content": "quota-watcher uses PowerDNS to resolve internal service names before rate-checking them.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-24T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb14-powerdns-zone",
+      "memory_id": "a0ccc435-c6d4-52b5-9808-f1779c3be670",
+      "content": "PowerDNS runs on quire-03 and serves the zone yard.lab for the fulfillment network.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-25T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb15-quire-qemu",
+      "memory_id": "f931fdb8-3db1-5753-b183-94c2748f5978",
+      "content": "quire-03 depends on the QEMU hypervisor cluster for its virtual machines.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-26T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb16-pihole-host",
+      "memory_id": "a74539c3-903a-5e84-8f6f-3bdaac7f73a1",
+      "content": "Pi-hole runs on ridge-01 and blocks ad traffic for the guest network.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-27T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb17-ridge-resolver",
+      "memory_id": "9231fbf6-bee4-5317-9b31-05ae39040a2e",
+      "content": "ridge-01 uses quire-03 as its upstream DNS resolver.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-28T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb18-rclone-mirror",
+      "memory_id": "e98f71a2-92fa-51f2-97b1-ab8321ee4733",
+      "content": "Rclone runs on slate-03 and mirrors the slate-media volume to the nimbus-archive bucket nightly.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-29T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb19-syncthing-spire",
+      "memory_id": "21deefe1-4c51-5e02-b88a-1680443f3a5e",
+      "content": "Syncthing runs on spire-01 and keeps the design archive synced with vane-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-04-30T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb20-talon-backup",
+      "memory_id": "c27cdf51-e0ca-5a74-9f07-cacda052357b",
+      "content": "talon-01 backs up its database nightly to the talon-backups bucket.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-01T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb21-talon-role",
+      "memory_id": "41fefc5c-1d3e-5c59-a585-0c015ec65f36",
+      "content": "talon-01 is the primary metadata store for the fulfillment application.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-02T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb22-woodpecker-tether",
+      "memory_id": "57ab215e-243b-5926-b22a-26a193ccfe34",
+      "content": "Woodpecker CI runs on tether-02 and builds every push to the fulfillment monorepo.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-03T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb23-tether-traefik",
+      "memory_id": "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56",
+      "content": "tether-02 sits behind Traefik, which terminates TLS for the internal build UI.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-04T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb24-woodpecker-quay",
+      "memory_id": "c9d6fa95-6527-589e-964c-b6f3f42444bf",
+      "content": "Woodpecker pushes finished container images to the Quay registry after each successful build on tether-02.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-05T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb25-rostersync-port",
+      "memory_id": "e9044ccb-f1d8-5d65-af4c-485cc373fea7",
+      "content": "The roster-sync service is deployed on tether-02 and listens on port 8600.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-06T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb26-wazuh-umbra",
+      "memory_id": "d1878bda-a2f5-5e47-ada2-3ff8ca868470",
+      "content": "Wazuh runs on umbra-04 and monitors host integrity across the fulfillment fleet.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-07T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb27-teleport-warden",
+      "memory_id": "87d78d08-5cea-5776-b9e2-18a49926daef",
+      "content": "Teleport runs on warden-02 and brokers SSH access to every production host, including talon-01.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-08T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb28-tailscale-warden",
+      "memory_id": "79dc3c0b-a72e-5433-a3c1-b2c025c5081c",
+      "content": "warden-02 uses Tailscale to reach hosts on the warehouse VLAN without a VPN concentrator.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-09T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb29-warden-audit",
+      "memory_id": "4a6e2759-1c1d-598e-b5b2-b5f71b03994e",
+      "content": "warden-02 stores every access grant in the warden-audit dataset.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-10T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb30-zulip-vane",
+      "memory_id": "7d7f65f0-800e-5c06-8ffe-117fa9080575",
+      "content": "Zulip runs on vane-01 and notifies the ticket-router service of new support threads.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-11T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb31-ticketrouter-wisp",
+      "memory_id": "24c8dc69-3611-51f5-b121-a59b01663694",
+      "content": "The ticket-router service is deployed on wisp-01 and depends on Zulip for incoming support requests.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-12T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb32-wisp-port",
+      "memory_id": "c68ce301-16ab-5187-88fa-5e9af9bf06a0",
+      "content": "wisp-01 listens on port 9500 for the ticket-router's internal API.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-13T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb33-zfs-xenon",
+      "memory_id": "6040c6ce-5833-5a8f-9ea9-33626e32022c",
+      "content": "xenon-02 has a ZFS pool as its primary storage and scrubs it every Sunday.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-14T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb34-xenon-snapshots",
+      "memory_id": "330c6bef-3955-5433-a04c-4154a76d55ee",
+      "content": "xenon-02 backs up its ZFS pool nightly to the xenon-snapshots bucket.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-15T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb35-slurm-yarrow",
+      "memory_id": "d0cc4e86-c461-55f3-a0eb-ac765547c9ff",
+      "content": "Slurm runs on yarrow-01 and depends on zephyr-03 for shared scratch storage during batch renders.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-16T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb36-zephyr-role",
+      "memory_id": "3eb55347-7ffb-523a-b3f8-223f534d688d",
+      "content": "zephyr-03 is a dedicated scratch-storage host with no user-facing services.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-17T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb37-uptimekuma-monitor",
+      "memory_id": "7854f96c-e7a1-5120-ac94-0eee086cf633",
+      "content": "Uptime Kuma monitors the notify-relay and order-sync endpoints, paging quota-watcher on failure.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-18T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb38-rundeck-patchrunner",
+      "memory_id": "6ff136dc-07bb-5fca-84e4-0e53eda78cdd",
+      "content": "Rundeck replaced the patch-runner cron scripts for scheduled maintenance across the fleet.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-19T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb39-samba-vane",
+      "memory_id": "76b5d433-d211-59e6-ba08-59192ee4f6b9",
+      "content": "vane-01 runs Samba to share the design archive with the warehouse floor terminals.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-20T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb40-pgadmin-quire",
+      "memory_id": "b849588a-f28b-5615-9d40-4e9d058c59f6",
+      "content": "pgAdmin runs on quire-03 and has read-only access to the fulfillment reporting database.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-21T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb41-osquery-causes",
+      "memory_id": "9625a454-cf17-5fb7-864d-d7d26f271c6e",
+      "content": "Osquery's inventory sweep on pivot-01 causes brief CPU spikes on quota-watcher during the nightly report.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-22T00:00:00+00:00",
+      "project": "default"
+    },
+    {
+      "key": "xb42-rabbitmq-queue",
+      "memory_id": "2199766c-c77b-548c-9794-d98afb32ce1a",
+      "content": "RabbitMQ on nimbus-02 has the order-events queue as a part of the order-sync pipeline.",
+      "memory_type": "fact",
+      "source": "bench",
+      "created_at": "2026-05-23T00:00:00+00:00",
+      "project": "default"
     }
   ]
 }
