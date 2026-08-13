@@ -752,6 +752,33 @@ would silently make its own bar unrepresentable.
 
 ## History
 
+### Round 4 — the fresh gold (T2.124), frame ratified 2026-08-13
+
+**Pair set `4975c5cc` is retired from qualification use for every role.** The ground is
+**publication contamination**: that gold's censuses, its duplicate findings and its
+per-slice decompositions are published in `gate-ledger.md`, which makes the set unusable
+for any future qualification independently of anything measured on it. A second ground —
+that the entailed class was never lattice-sized to its own bar — is recorded as
+corroborating only.
+
+Round 4 authors a fresh census at ids `eg-0418+` on **fresh premises**: no premise from
+the retired harvest is reused, because contamination transfers through a premise to the
+propositions it determines (for `verbatim` the hypothesis is a near-literal restatement,
+and for `direction` it *is* the reversal).
+
+**The Rule B reading for a gold with no contacted pairs.** `rule_b_population` filters
+`id >= RULE_B_FIRST_ID` and that filter is lexical and open-ended, so a continued
+4-digit id sequence puts the **entire** fresh census inside Rule B: the pooled population
+and the Rule B population **coincide** until the first qualification attempt spends
+against this gold, after which they diverge in the usual way. One congruence per class
+therefore suffices for lattice sizing, and T2.115's two-population obstruction — where
+`N ≡ 0 (mod 20)` and `55 + N ≡ 0 (mod 20)` had no simultaneous solution — does not arise
+on a restarted sequence.
+
+The frame was ratified **before any pair was authored** (`gate-ledger.md`, "T2.124 frame
+— owner ratification, sitting 1"); the emitted matrix is ratified separately once the
+script's inputs exist. Nothing in this entry states or implies a measured result.
+
 ### Duplicated propositions: the worked asymmetry (relocated 2026-08-13)
 
 **Relocated from "File discipline" by owner amendment, unchanged in substance.**

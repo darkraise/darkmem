@@ -2043,6 +2043,63 @@ record only a canonical-gold `--gate` run can mint), and the ship-path half is T
 
 ---
 
+## T2.124 frame — owner ratification, sitting 1 (2026-08-13)
+
+Recorded per the governing plan's step 0 Catch
+(`docs/superpowers/plans/2026-08-12-t2.124-fresh-entailment-gold.md` §5), **before
+step 1's commit and before any pair exists**. That ordering is the point: a sizing
+ratified after pairs are authored is a sizing fitted to them.
+
+**Ratified — items 1, 2, 3.**
+
+1. **The derivation rule**, as §6 states it and as the committed script must implement
+   verbatim: T2.25's frozen pre-judge slice proportions (verbatim 4 / paraphrase 6 /
+   weakening 5 / temporal 6 / direction 5 / overreach 6 / value-swap 5 / unrelated 4,
+   sum 41) scaled by largest remainder with **all** tie-breaks alphabetical; per-slice
+   verdict splits from T2.25's own splits counted mechanically off pairs
+   `eg-0001`–`eg-0041` with retirement flags ignored (retirement is post-judge
+   information); the minimal-adjustment rule for mixed slices subject to contradicted
+   = **80** (T2.110's ratified size, 76/80 = 0.9500 exactly) and entailed ≡ 0 (mod 10)
+   (the 0.90 lattice); rule 3's minimum-total form, which emits **T = 280**. The
+   worked matrix is ratified as *the rule's arithmetic and not the object* — the
+   emitted matrix is sitting 2's, at step 6.
+2. **The archive move** (D1) and the LABELLING.md round section.
+3. **The justification text** (§2) as the recorded grounds: publication contamination,
+   standing alone. The lattice ground is corroborating only, and the plan review
+   verified that 156/173 = 0.9017 is computable from the census size and the bar with
+   no judge output involved — census arithmetic, not a laundered score.
+
+**Ruled — items 4, 5, 6.**
+
+4. **Resample model: `deepseek-v4-pro`**, the precedent. Ruled with the foreclosure
+   stated in front of the choice rather than discovered after it: whichever model
+   certifies this gold acquires the resample-circularity objection as a T2.125 judge,
+   so this spends v4-pro and **preserves `gpt-5.5`** — the stronger measured
+   entailment performer — as a judge candidate.
+5. **Premise scope: full exclusion of the old premises.** The default, not the named
+   weakening. Publication contamination transfers through a premise to the
+   propositions it determines: for `verbatim` the hypothesis is a near-literal
+   restatement and for `direction` it *is* the reversal, so a fresh pair on a
+   published premise is either a digest hit or an `eg-0367`-class near-verbatim
+   reproduction. Accepted cost: rule 3 gates feasibility on the fresh harvest's yield,
+   so a thin harvest **stops the round** rather than shrinking it.
+6. **Branch: a task branch, merged whole at completion.** The sanctioned red — no
+   `entailment/gold.json` at the canonical path between the archive commit and the
+   closing floor re-assertion — never touches the working branch.
+
+**Two code-level findings bind this round and are steps, not notes** (from the
+superseded second plan's review, `docs/planning/reviews/2026-08-13-t2.124-plan-review.md`;
+they are facts about `entailment_gold.py` and the refusal suite rather than about any
+frame): three refusal tests read the canonical gold path and go red at the archive, and
+the digest-truncation pin is destroyed by that same archive, silently disarming 414 of
+415 content refusals. Both are repaired before the archive, never improvised during it.
+
+**Not ratified here, and deliberately:** the emitted matrix (sitting 2, step 6, a
+bounded yes/no on three mechanical checks), and anything requiring the fresh harvest,
+which does not exist yet.
+
+---
+
 ## G-E — L3 → F7
 
 **Owning task:** T3.22. **Bar lives in:** `config`.
