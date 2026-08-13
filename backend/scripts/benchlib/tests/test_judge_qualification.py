@@ -806,16 +806,17 @@ def test_the_writer_refuses_a_retired_pair_set_for_every_role(tmp_path):
     """
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     identity = vj.judge_identity(_fake_cfg())
-    retired_doc = entailment_gold.load_entailment_gold()
+    retired_path = _retired_gold_path()
+    retired_doc = json.loads(retired_path.read_text(encoding="utf-8"))
     assert vj.is_retired_pair_set(
         entailment_gold.pairs_content_hash(retired_doc["pairs"])
-    ), "the canonical gold is the retired pair set; this test is about that"
+    ), "the archived gold is the retired pair set; this test is about that"
 
     for role in sorted(vj.JUDGE_ROLES):
         with pytest.raises(ValueError, match="retired"):
             jq.write_qualification_record(
                 tmp_path / f"{role}.json", role=role,
-                gold_path=entailment_gold.GOLD_PATH, identity=identity,
+                gold_path=retired_path, identity=identity,
                 score=score, gold_doc=retired_doc, ledger_run_id="run-1",
                 bars=dict(vj.VERIFICATION_BAR_DEFAULTS), git_sha="deadbeef",
                 timestamp="2026-08-12T00:00:00+00:00",
@@ -835,7 +836,7 @@ def test_the_runner_refuses_the_retired_pair_set_in_every_mode(tmp_path):
         stub_cls, seen = make_stub(cycling_script())
         with pytest.raises(RuntimeError, match="retired from qualification"):
             _run(run_dir, stub_cls, gate=gate,
-                 gold_path=entailment_gold.GOLD_PATH)
+                 gold_path=_retired_gold_path())
         assert not (run_dir / "ledger.jsonl").exists()
         assert {_premise_of(u) for u in seen} <= SANITY_PREMISES
 
@@ -1608,8 +1609,22 @@ def test_a_comfortable_pass_is_not_flagged():
 # ── the stopping rule binds pairs, not only the set they arrived in ──────
 
 
+def _retired_gold_path():
+    """Where the retired pair set lives: the D1 archive once it exists, the
+    canonical path only in pre-archive tree states. Every test about the
+    4975c5cc stopping rule reads through this, so none of them starts
+    asserting facts about whatever fresh gold later holds the canonical
+    path."""
+    path = entailment_gold.RETIRED_GOLD_ARCHIVE_PATH
+    return path if path.exists() else entailment_gold.GOLD_PATH
+
+
 def _retired_gold_pairs():
-    return entailment_gold.load_entailment_gold()["pairs"]
+    """The retired pairs, raw ``json.loads`` and not ``load_entailment_gold``:
+    the archive is an audit copy pinned by content digests, and running the
+    validating loader on it would couple the pin to the *live* harvest
+    manifest, a file the archive predates."""
+    return json.loads(_retired_gold_path().read_text(encoding="utf-8"))["pairs"]
 
 
 def test_appending_one_pair_does_not_un_retire_a_gold():
@@ -1664,10 +1679,44 @@ def test_a_genuinely_fresh_gold_is_not_refused():
 
 def test_the_pinned_digest_file_describes_the_retired_gold():
     """The pin is only as good as its provenance: it must name the pair set it
-    was taken from, and cover every pair in it."""
+    was taken from, and cover every pair in it.
+
+    The last three assertions are the A2 repair (T2.124): before them the
+    embedded ``count`` and ``pairs_content_hash`` were checked nowhere, and
+    the coverage assertion below stopped referencing the retired pairs the
+    moment the archive left the canonical path -- so a truncation of the
+    digest list would have silently disarmed 414 of 415 content refusals.
+    """
     raw = json.loads(entailment_gold.RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
     assert vj.is_retired_pair_set(raw["pairs_content_hash"])
     assert raw["digest_basis"] == list(entailment_gold.RETIRED_DIGEST_FIELDS)
-    assert entailment_gold.retired_pair_overlap(_retired_gold_pairs()) == {
-        pair["id"] for pair in _retired_gold_pairs()
+    pairs = _retired_gold_pairs()
+    assert entailment_gold.retired_pair_overlap(pairs) == {
+        pair["id"] for pair in pairs
     }, "every pair of the retired gold must be recognised as retired"
+
+    assert raw["count"] == len(raw["digests"]) == len(set(raw["digests"]))
+    assert set(raw["digests"]) == {
+        entailment_gold.content_digest(pair) for pair in pairs
+    }, "the digest list must be exactly the archived pairs' content digests"
+    assert entailment_gold.pairs_content_hash(pairs) == raw["pairs_content_hash"], (
+        "the named pair set must be derivable from the archived file's live "
+        "pairs -- the pin's provenance claim, checked rather than asserted"
+    )
+
+
+def test_a_truncated_digest_list_refuses_rather_than_disarming(tmp_path, monkeypatch):
+    """Removing entries from the pinned digest list must raise, never shrink
+    the refusal's reach: 'count' is load-bearing only because this check
+    exists, and this test fails if the check is removed."""
+    raw = json.loads(entailment_gold.RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
+    raw["digests"] = raw["digests"][:1]
+    truncated = tmp_path / "retired_pair_digests.json"
+    truncated.write_text(json.dumps(raw), encoding="utf-8")
+    monkeypatch.setattr(entailment_gold, "RETIRED_DIGESTS_PATH", truncated)
+    entailment_gold.retired_pair_digests.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="truncated or padded"):
+            entailment_gold.retired_pair_digests()
+    finally:
+        entailment_gold.retired_pair_digests.cache_clear()
