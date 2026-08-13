@@ -1,0 +1,8 @@
+[0-9]\.[0-9]{3,}
+\b0\.[6-9][0-9]\b
+\b[0-9]{1,3}/[0-9]{1,3}\b
+(?i)\b(gpt-5\.5|deepseek-v4-(pro|flash))\b
+\b(4975c5cc|4d886440|fd39e7b2|1bb9d9ba|7779f3dd|6eadba73|98fc4b49|58ac1a90)\b
+(?i)\battempt [0-9]
+(?i)\b(measured (recall|precision)|scored (rule b|exactly)|at measured)\b
+(?i)\b(cleared the bar|clears the bar|below the bar|missed (its|the) bar)\b

@@ -2098,6 +2098,40 @@ the digest-truncation pin is destroyed by that same archive, silently disarming 
 bounded yes/no on three mechanical checks), and anything requiring the fresh harvest,
 which does not exist yet.
 
+### The contamination screen — created 2026-08-13 (Tier-1 amendment to the plan)
+
+The plan's step 1 Catch names a controller-only screen at
+`scripts/benchlib/entailment/frame_contamination_screen.txt`. **It did not exist**
+anywhere in the tree — the plan was its only mention — so step 1's Catch was
+unrunnable as written. Created by the controller before any brief was issued, since
+the plan's standing rule is that the screen runs over every dispatch brief *before*
+the brief goes out.
+
+**Scope, decided here because the plan did not state it.** The screen runs over (a)
+the **byte-prefix strip** of `LABELLING.md` — the bytes pair authors and blind
+labellers actually read, i.e. everything above `## History` — and (b) every dispatch
+brief addressed to an authoring or labelling party. It does **not** run over the
+`## History` sections or over this ledger: neither is inside the strip, and both are
+controller/owner-facing by design. A screen pointed at text nobody blind reads would
+manufacture hits and get ignored.
+
+**A first, blunter version was discarded** after it returned 66 hits on the strip —
+firing on pair ids cited as worked examples and on the words "precision"/"scored"
+inside rule text. Those are the recorded T2.110 residual, not leaks, and a screen
+that always fires is a screen nobody runs. The committed patterns match only what a
+measurement looks like.
+
+**Baseline residual on the strip, enumerated 2026-08-13 so a reviewer can tell growth
+from what was already there.** Under the committed patterns the strip returns hits at
+LABELLING.md lines 255, 307, 369, 395–396, 411, 508, 521, 544, 698 and 701. Every one
+is a **bar value, census arithmetic, or an identity** — `0.95` as the stated bar,
+`131/200` and `×200/41` as composition, gold sha `98fc4b49`, judge identity
+`fd39e7b2` and its contact fact. **No measured score is above the cut**, which
+independently corroborates §4's re-verification after the B1 relocation. That is a
+narrower claim than "the strip is clean", and it is the true one: the strip carries
+identities and bars, and the plan never claimed otherwise. A hit outside this
+enumerated set is a finding.
+
 ---
 
 ## G-E — L3 → F7
