@@ -497,6 +497,97 @@ never silently absorbed.
 | False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
 | Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
 
+### G-C bench-arm evidence run (2026-08-13): **NOT CLEARED — operable and powered for the first time, and still not clearable**
+
+The first G-C verdict driven from T2.108's promotion corpus (`--corpus
+promotion`, corpus sha `9c74f451b0cbfa14…`, unchanged since `b33cee39`). Both
+prior measurements read the empty production journal; this run finally puts
+facts through the counting ladder and reports powered denominators on every
+probe. Report and untrimmed transcripts:
+`docs/eval/2026-08-13-gc-bench-evidence/`. Reproduce:
+`run_gc_evidence.py --corpus promotion` against a fresh
+`darkmem_bench_gc`, both with and without `--no-capture-time-simulation`.
+**The decision rule was stated in the report before either pass ran**: no
+numeric outcome could clear this run, on grounds already on this ledger.
+
+**Measured (window 2026-05-15 → 2026-08-13; 66 captures, 42 facts through
+the shipping lift; fingerprint `qwen3-embedding:0.6b|1024`):**
+
+- **Rate by `gate_fired`** — pass 1 (simulated capture clock): diversity
+  **11/11**, none **10/10**, time_gap **10/10**; all powered (≥ 5), all clear
+  the 0.5 floor at 1.000. Pass 2 (`--no-capture-time-simulation`): diversity
+  11/11, none 10/10, **time_gap bucket empty** — its 10 promotions rest
+  entirely on the one disclosed simulation; the other two buckets are
+  byte-identical without it.
+- **Rate by diversity** — diverse 11/11, homogeneous 20/20 (pass 2: 10/10).
+- **False-promotion audit** — 31 corroborations (pass 2: **21, decidable by a
+  margin of one** over the 20 floor), 0 disputed-after, 0 human-rejected,
+  rate 0.0000; **R2 fold companion: 0** `expired` events in window.
+  `audit_clears` printed True in both passes and **that True is the vacuous
+  reading the 2026-08-07 amendment predicted, now observed in a real gate
+  run** — all three numerator producers verified dark on this run's data:
+  0 stored REPLACES-family edges (SQL over `entity_relations`, so
+  `inverse_replacement` could not arm; `SINGLE_VALUED_RELATIONS` still
+  empty), 0 `human_verdict` events, and the LLM scan never ran, dead-ends on
+  the unqualified judge, and post-T2.109 could not mint a dispute anyway.
+- **Journal completeness** — 42 facts, 0 violations, **1 born-rung carve-out**
+  (`payments-gateway USES python`, code-only provenance, R3's licence, named
+  not absorbed). **Non-vacuous for the first time**: 31 (21) transitions
+  occurred and every one is journal-explained, so the claim is "100 % of
+  counting-ladder transitions journaled, 1 born-rung row excluded".
+- **Both designed refusals refused for the designed reasons** —
+  `ledger-exports USES avro` held `candidate` (2 same-kind origins < 7 days,
+  k=2 against N=3); `ledger-core USES cassandra` held `candidate` (1 origin
+  behind 3 provenance rows). Identical in both passes.
+- **Bars in force** — the T2.128 block printed the explicit no-rows sentence
+  ("the measured database carries no `config` row for any G-C bar and no
+  `promotion_bar_licences` row: every bar below is its committed default,
+  unmoved"), and was **verified against the database rather than believed**
+  (its author built it): independent SQL found 0 rows for the six bar keys
+  and the licence key; the committed/effective pairs match
+  `PROMOTION_BAR_DEFAULTS`. No misreport.
+- **Live calls, disclosed** — the promotion cache was empty on this machine,
+  so pass 1 made **73 live round-trips** (seeded `deepseek-v4-flash`
+  extraction for 66 captures plus embedding chunks), unlike T2.108's
+  cache-served `live_calls: 0`; pass 2 replayed the warm cache at 0.
+  Extraction drifted under the live pass — 42 facts vs the reference 38 —
+  and **every drifted fact landed as a single-origin `candidate`**:
+  promotions bucket-for-bucket identical, controls byte-identical. The
+  gate-relevant structure survived a fully live re-extraction.
+- **Twin (rule 2):** pass 1 35.9 s wall / 73 live round-trips; pass 2
+  14.6 s / 0. Token counts are **not measurable from this harness** (the
+  cache stores response text only) — a recorded gap for a future powered
+  run, not an omission.
+
+**Verdict: NOT CLEARED — gate stays open; no record minted.** The run
+demonstrates the bench arm end-to-end and retires "under-powered" as the
+reason: every probe now has denominators. What it cannot do is clear:
+the audit's clear is vacuous with its numerator's producers verified dark,
+the owner ruling the 2026-08-07 amendment demands is unmade, and the
+verdict section's route (b) carries a judge-qualification precondition G-D
+(open) does not meet. `promotion_metrics_record.json` stays absent; every
+promoted or born badge keeps serving as `candidate` with
+`verification_unmeasured`; the deriver-lane consequence is unchanged.
+
+**The brief's Tier-3 question, answered rather than left ambient:** the
+bench arm *can* carry a G-C verdict — this ledger's own "What would evaluate
+this gate" clause (b) says so, and doc 17 §11's sequencing makes it the only
+pre-cutover route, so "primary target" (production) and "only pre-cutover
+route" (bench) state preference and availability, not a contradiction. No
+gate-definition change was needed to record this NOT CLEARED. **Recording
+CLEARED from this arm would be a gate-definition act, and it is escalated to
+the gate owner, not settled here**, as three open items: (1) rule on the
+vacuity amendment — what makes a zero-numerator audit *measured*? (noting
+T2.108's review result that no corpus in the 20–99 corroboration band can be
+both operable-numerator and passing under the strict 1 % bar, so the defect
+attributes to the bar); (2) whether a route-(b) clear licenses minting the
+promotion record — production badges lighting on corpus-design evidence —
+or the mint waits for a route-(a) production window; (3) if the bench route
+is to become clearable, the arming path for the audit's machine arm (a
+REPLACES-family corpus extension arms `inverse_replacement` judge-free, at
+the cost of item 1's band problem; the human arm needs G-D plus a reviewer
+no harness run can supply).
+
 ### G-C re-measure (2026-08-08, T2.111): **still NOT CLEARED**, and the audit was re-derived
 
 Report: `docs/eval/2026-08-08-promotion-metrics.md`. Every probe reports the same
