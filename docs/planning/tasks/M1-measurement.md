@@ -1055,6 +1055,61 @@ is the property this task exists to create.
 
 ---
 
+#### T2.129 — Grow the promotion corpus past the band, and arm the machine arm
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+
+**Minted 2026-08-13 from the owner's ruling on the G-C bench-arm run's three escalated
+items** (gate-ledger.md, "OWNER RULING on all three escalated items"). The 2026-08-13
+run was the first powered G-C measurement — 31 promotions, all three gate paths firing,
+both negative controls holding — and it did not clear, because the false-promotion
+audit's pass is **vacuous**: all three numerator producers were verified dark on the
+data (0 REPLACES-family edges so `inverse_replacement` could not arm,
+`SINGLE_VALUED_RELATIONS` empty, 0 `human_verdict` events, the Tier-C scan unqualified
+and post-T2.109 dispute-incapable).
+
+**The band problem is why this is a corpus task and not a bar task.** The bar is
+`rate < 0.01`, strict, decidable at ≥ 20 corroborations. One genuine false promotion in
+a window of N corroborations is a rate of 1/N, which exceeds 1 % for every N below 100.
+So across the entire decidable band of 20–99 a corpus is either vacuous (no dispute, so
+the zero means nothing) or failing (one dispute, so the bar breaches) — there is no
+corpus in that band that is both operable and passing. **The 1 % bar does not move**;
+it stands where it was committed 2026-08-07 and moving it to fit this would be exactly
+rule 3's prohibition. The census moves instead.
+
+**Both halves are required and neither suffices alone.** Growing past 100 without arming
+leaves a larger vacuum; arming without growing guarantees a fail on the first dispute.
+
+**The arming path is the deterministic detector, deliberately.** A stored
+REPLACES-family edge lets `inverse_replacement` dispute judge-free, so G-C's
+machine-dispute arm acquires **no** dependency on G-D. The human arm (`rejected_after`)
+stays dark by construction inside a harness run — no human adjudicates a bench database
+— and is not part of this path. A second consequence, and the reason this beats waiting
+for the human arm: it is also what makes `blocked ≡ 0` reachable, the vacuity clause
+T2.111 recorded as live-in-principle and untested by this corpus.
+
+**The corroboration structure must stay honest.** The existing corpus's design rule
+holds and is not to be relaxed to reach the count: corroboration means independent
+capture sessions asserted the same thing, and a unique `origin_key` per memory would
+promote everything instantly while being one assertion relabelled N times. The echo and
+under-sourced controls must survive the growth and must still hold at `candidate`.
+
+**Watch the decidability margin.** The 2026-08-13 run's unsimulated pass
+(`--no-capture-time-simulation`) was decidable by exactly **one** corroboration (21
+against the floor of 20). Growth must clear the band on the unsimulated pass too, not
+only on the pass that rests on the simulated capture clock.
+
+**Done when:** the promotion corpus carries > 100 corroborations in the measured window
+on **both** passes; at least one stored REPLACES-family edge arms `inverse_replacement`
+against live rows, demonstrated by a dispute the detector actually produces; the audit's
+numerator is operable, shown by that dispute appearing in `disputed_after`; the echo and
+under-sourced controls still hold at `candidate`; and the G-C evidence run is re-run
+end to end with its verdict recorded by a party that did not author the extension.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`, then the G-C
+evidence run per `docs/planning/briefs/2026-08-13-gc-bench-arm-evidence.md`.
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
@@ -1222,3 +1277,5 @@ holding cited.
 | 2026-08-10 | T2.116 | 2 | **Minted** from the E3 branch review's triage of D-7 and D-8. The review ruled both "may stand" and then recorded that T2.115 had just paid their manual tax a third time; the fix shape it names — a pairs-only content hash in the `resample` block, re-derived at eligibility time — is now a task rather than a note in two amendment logs | Not a G-D blocker and not a correction: the gold is eligible today by a resample that happened, on the file as it stands. What changed is the evidence about cost. Twice-parked as hardening on a lock whose answer is right, it has now been executed correctly by hand three times (T2.110, T2.115, and T2.115's own re-certification), and a procedure re-executed correctly three times is one waiting to be executed incorrectly once — which here means a certification that names no pair set silently certifying a different file |
 | 2026-08-12 | T2.116 | 3 | **ESCALATED, then RULED AND APPLIED the same day (owner ruled both halves: re-key, and record the analysis —  `docs/planning/analyses/2026-08-12-t2.116-attempt-counter-keying.md`): stamping the content basis silently zeroes `gold_touching_attempts` for the current pair set.** The counter (`run_judge_qualification.py`) keys on the gold's **file** sha, and T2.116's required stamp writes two fields into `gold.json`, moving it `98fc4b49 → 6eadba73`. Measured on the ledger: 5 attempt rows across 3 shas (`e6d5647a` ×3, `800d4d91` ×1, `98fc4b49` ×1), and the current file now counts **0**. The one at `98fc4b49` is a contact with pairs that are byte-identical to today's — proved by the strip-reconstruction above — so the next G-D run would report `gold_touching_attempts: 0` for a pair set that has already been judged once. **Ruled: key it on `pairs_sha256`.** Strictly more conservative — annotation churn, the certification's own insertion and any future stamp stop resetting it, and no reachable edit lowers the count, which is the direction that matters for an anti-tuning disclosure. Applied with legacy rows still credited by file sha (OR'd, never AND'd, so an un-backfilled ledger loses nothing), a git-history backfill that recovers pair identity without inventing it (5 rows resolved, 0 guessed), and a regression test written with the real shas. **The counter now reports 1 for the current pair set, which is deepseek-v4-flash's contact.** T2.114 is gpt-5.5's first contact with these pairs | The runbook's own test: "a gate's definition ... would have to change" stops an agent rather than licensing it. Recorded here because the count is wrong **the moment this commit lands**, not at some future date, and T2.114 is the run that would read it. Note the fragmentation is pre-existing — three shas already — so this does not introduce the defect, it adds one more fragment and makes the visible number 0 where the honest number for these pairs is 1 |
 | 2026-08-12 | T2.122 | 1 | **The task text and its brief measured 80 files / 79 residue at the top level of `entailment/verdicts/`; a recursive audit found a second, previously undocumented population — 16 more residue files in a stray `verdicts/verdicts/` subdirectory, all dated 2026-08-10, consistent with an earlier, unfinished, unrecorded manual quarantine attempt. Total 96 files, 95 residue, 1 genuine, not 80/79** | Task-local reality found during execution: same defect category (synthetic residue under real judge identities), a more complete count. Corrected in the identification record (`docs/eval/2026-08-12-verdicts-directory-residue-removed.md`) before any deletion, per the task's own constraint |
+| 2026-08-13 | T2.129 | 2 | **Minted from the owner's ruling on the G-C bench-arm run's three escalated items (gate-ledger.md, 2026-08-13).** The first powered G-C measurement cleared three probes and failed on the fourth being *vacuous* — the false-promotion audit's zero is inoperability, not measured precision, with all three numerator producers verified dark on the data. The owner ruled the corpus grows past 100 corroborations **and** the machine arm is armed with a REPLACES-family edge, rather than ruling a dark numerator "measured with a caveat". No task owned that work | Tier-2 because it adds a task and because two of the three rulings are **gate-definition acts** the evidence run was explicitly not entitled to make: whether a route-(b) clear may mint `promotion_metrics_record.json` (ruled yes, with the corpus-design caveat stated in the ledger row where the claim is made), and the arming path. The band derivation is what makes this a corpus task rather than a bar task — at 20–99 corroborations one genuine dispute is already ≥ 1 %, so every corpus in the decidable band is either vacuous or failing, and the sanctioned repair for a bar/small-N interaction is a bigger N, never a looser bar (rule 3). The 1 % bar does not move |
+| 2026-08-13 | T2.124 | 2 | **A second step-level plan was written for this task and is superseded.** A reviewed plan already existed at runbook §3's canonical path (`docs/superpowers/plans/2026-08-12-t2.124-fresh-entailment-gold.md`, v2 at `6f86748b` closing all three of its blockers); a dispatch nine hours later chartered another at `docs/planning/plans/` without checking, and it landed with an incompatible frame — T = 240 / E 100 / **C 40** against the governing T = 280 / E 110 / **C 80**. The v2 plan governs; the second is marked superseded and kept, not deleted | Recorded rather than quietly dropped because the existence of two frames **is** the finding, and it is this task's own subject matter: two derivation rules each claiming zero planner freedom, emitting different numbers, with a score-aware party choosing which to put forward — the T2.115 near-miss at frame scale, every delta landing soft. The fault is the dispatch brief's, which never asked for prior art. Two findings from the second plan's review survive because they are facts about the code rather than about either frame, and are folded into the governing plan: three refusal tests read the canonical gold path and go red at the archive commit, and the digest-truncation pin is destroyed by that same archive, silently disarming 414 of 415 content refusals |

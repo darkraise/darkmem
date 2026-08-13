@@ -588,6 +588,47 @@ REPLACES-family corpus extension arms `inverse_replacement` judge-free, at
 the cost of item 1's band problem; the human arm needs G-D plus a reviewer
 no harness run can supply).
 
+### OWNER RULING on all three escalated items — 2026-08-13
+
+Ruled the same day the run reported, on the run's own numbers and before any
+further measurement. Recorded here because items 2 and 3 are
+**gate-definition acts** and the evidence run was explicitly not entitled to
+make them.
+
+**Item 1 — what makes a zero-numerator audit measured: RULED — the corpus
+grows past 100 corroborations AND the machine arm is armed.** Not the
+alternative of ruling a dark numerator "measured with a caveat". The band
+problem is the reason: at 20–99 corroborations one genuine dispute is
+already ≥ 1 % and breaches the strict bar, so within that band a corpus is
+either vacuous or failing, and the audit can only become *both* operable and
+passable above 100. This ruling therefore does **not** move the 1 % bar —
+which stands exactly where it was committed on 2026-08-07 — it moves the
+census the bar is measured on. That direction is the point: the defect
+attributes to the bar's interaction with small N, and the sanctioned repair
+for that is a bigger N, never a looser bar (rule 3).
+
+**Item 2 — may a route-(b) clear mint `promotion_metrics_record.json`:
+RULED YES, with the caveat recorded.** A cleared bench run licenses the
+mint, and the ledger row for that run must state in terms that production
+badges are lighting on **corpus-design evidence** — probes 1–2 measure a
+corpus authored to promote, which is evidence of mechanism and weak evidence
+about organic behaviour (route (b)'s own stated caveat, unchanged). The
+caveat lives in the ledger where the claim is made. **The mint remains the
+owner's deliberate act on a cleared run and is never a side effect of
+measuring**; nothing in this ruling licenses a harness to mint one.
+
+**Item 3 — the arming path: RULED — the REPLACES-family corpus extension**,
+which arms `inverse_replacement` deterministically and judge-free, so G-C's
+machine-dispute arm acquires no dependency on G-D. The human arm
+(`rejected_after`) stays dark by construction inside a harness run and is
+not part of this path. Owning task: **T2.129**, minted below.
+
+**What this does not do.** It does not clear G-C, does not mint a record,
+and does not change any bar. `blocked ≡ 0` remains data-precluded until a
+veto or a supersession-blocked hold actually fires in a measured window —
+arming `inverse_replacement` is what makes that reachable, which is the
+second reason item 3 was ruled this way rather than left to the human arm.
+
 ### G-C re-measure (2026-08-08, T2.111): **still NOT CLEARED**, and the audit was re-derived
 
 Report: `docs/eval/2026-08-08-promotion-metrics.md`. Every probe reports the same
