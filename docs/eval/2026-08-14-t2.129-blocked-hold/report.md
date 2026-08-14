@@ -158,3 +158,80 @@ recorded red — the corpus moves, never a bar.**
 ## 4. Measured results
 
 (Appended after the run; the section above is committed first.)
+
+Run artifact: `bench-run.txt` in this directory. Database
+`darkmem_bench_t2129hold`; run window
+`2026-05-16T12:32:05Z .. 2026-08-14T12:32:05Z`; executed inside a systemd
+scope capped at `MemoryMax=4G / MemorySwapMax=256M`.
+
+**Expectations 1–4 (the guard did not weaken): all hold, byte-for-byte
+against pass 2.** Promotions 149 (98/33/18); audit corroborations 149,
+later disputed 1, rate 0.006711, R2 companion 0, `decidable=True
+clears=True`; `trino REPLACES hive` disputed under `inverse_replacement`
+with `corroborated_first=True`, numerator 1; `warehouse` superseded = 0.
+
+**Expectations 5–6 (the restored arm): hold.** `scheduler` superseded =
+exactly 2 of 3; the fact `dagster REPLACES oozie` holds at `candidate` with
+origins = 3, never journaled `corroborated`, never promoted; it is the only
+`scheduler` fact in the census (no extraneous candidates).
+
+**Expectation 7: the ≥ 1 pass condition holds; the point estimate was
+wrong, and the extra is explained from the journal rather than waved
+through.** Measured **2** `supersession_blocked` hold events, not 1. The
+journal shows three `sources_changed` events for the fact, all stamped
+`12:31:51.63` (one lift tick wrote all three sources), and two `verified`
+holds 0.72 s apart (`12:31:58.47`, `12:31:59.18`), **both** `k=3 n=3
+candidate → candidate blocked=true`. The recompute's fast arm drains events
+in batches of `batch_size` = 100, and wave 1's lift produced ~260
+`sources_changed` rows, so the fact's three events straddled a drain-batch
+boundary and it was recomputed in two consecutive ticks — each eligible
+blocked decision journals (per-transition units, the same accounting that
+gave pass 1's armed subject two holds). No mystery transition, no second
+fact. The pre-registration's derivation ("one eligible decision") assumed
+the drain sees a fact's events in one tick, which the batch bound does not
+promise. Recorded as a miss in the same spirit the ledger recorded the
+pass-2 plan's one-hold-vs-two error.
+
+**Expectation 8: holds in its parameterized form.** Bucket `none` eligible
+= 33 + B with B = 2 → 35, rate 33/35 = 0.943, powered and clearing;
+eligible vector [98, 35, 18] (the pre-stated point vector [98, 34, 18]
+assumed B = 1).
+
+**Expectations 9–10: hold.** Every bar reads "no config row; the committed
+bar stands"; `live_calls` = 6 (the three new contents, extraction +
+classification via `deepseek-v4-flash`; embeddings hit the LAN Ollama).
+Total facts 176; journal completeness 0 violations over 176 facts.
+
+## 5. What this achieves, and what it does not
+
+Both arms the 2026-08-13 ruling names now fire in **one** measured window,
+reproducible from committed state at any future run date: the veto arm
+(1/149 with `corroborated_first=True`) and the supersession-blocked hold
+(2 hold events, 2 superseded memories, fact held at `candidate`), each in
+its own project, with the arming project's superseded count printed as 0 on
+the same page.
+
+It does **not** clear G-C, does not mint
+`promotion_metrics_record.json`, and does not change what pass 2's caveats
+said about power (the audit still cannot reject a system sitting at the
+bar), about the one-fact numerator, or about authorship (the three new
+contents' extraction is vouched for by this run alone, made by the group's
+own author — the same single-live-run caveat as pass 1). The blocked-hold
+demonstration is instrument-operability: the corpus was authored to be
+held, so the 2 blocked events confirm design, not system behaviour. This
+lane may not certify this run as gate evidence; the independent re-run
+stands owed.
+
+## 6. Suite status
+
+- Harness suite (`pytest scripts/benchlib/tests`, own database
+  `darkmem_bench_t2129hold`): **868 passed** (baseline 853 + 15 new).
+  Earlier flaky failures during development were collisions with another
+  process actively using the shared `darkmem_bench`; every run against this
+  lane's own database is green.
+- Backend floor (`python -m pytest -q`): **5364 passed, 2 failed,
+  19 skipped**. Both failures are `tests/test_planning_docs.py`
+  consistency checks about T2.129's own planning entries (no `progress.md`
+  row; the Gate field's phrasing) — present at branch head `32a17469`,
+  untouched by this change (its diff contains no `docs/planning` file),
+  and owned by the controller's planning-docs lane.
