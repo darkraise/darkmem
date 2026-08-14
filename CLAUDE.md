@@ -913,11 +913,32 @@ and the gate ledger says so where the number lives.
 T2.95/T2.100): a promoted fact status reaches a reader only while
 `app/services/promotion_metrics_record.json` exists with `gate_eligible`
 exactly `true` — minted only by a cleared G-C run, never by hand.
-**G-C was re-measured 2026-08-08 (T2.111) and is still not evaluable:
-under-powered on every probe — no fact has ever exited `candidate` in any
-journal this machine can see — so the gate stays open, the record stays
-unminted, and every promoted or born badge serves as `candidate` with the
-`verification_unmeasured` reason, scan-enforced.** The bars are stated as
+**G-C still does not clear — the gate stays open, the record stays unminted,
+and every promoted or born badge serves as `candidate` with the
+`verification_unmeasured` reason, scan-enforced. What changed is the reason,
+twice, and this paragraph carried the old one until 2026-08-15.** It read "not
+evaluable: under-powered on every probe — no fact has ever exited `candidate` in
+any journal this machine can see" from T2.111 (2026-08-08), and that stopped
+being true on **2026-08-13**, when the bench-arm run became the first powered
+measurement (31 corroborations, all three `gate_fired` buckets clearing) — and
+again on **2026-08-14**, when T2.129 armed the deterministic detector so the
+false-promotion audit acquired a numerator at all: 1 disputed over 149 in-window
+corroborations. **What replaced vacuity is not a pass.** The point estimate
+0.0067 reads under the 0.01 bar, but T2.130 measured what that rule is worth —
+comparing a point estimate to the bar it is centred on is a coin flip at the
+boundary at *every* sample size (0.56 at n = 149, 0.49 at n = 10 000), so corpus
+growth was never the repair and every earlier statement treating the census size
+as the limiting factor aimed at the wrong quantity. The exact 95% Clopper-Pearson
+upper bound on 1/149 is **0.0314**, over three times the bar, and n = 149 cannot
+clear the bound even at zero observed. Three limits belong beside the number
+rather than after it: the numerator is **one** fact, the corpus is authored end
+to end by the measured party, and the unsimulated pass shows one of the three
+gate paths (`time_gap`) exists only under the harness's simulated capture clock —
+it does not shrink without the simulation, it disappears. Switching the scored
+rule to the bound is a **strict tightening** and therefore needs no loosening
+licence, but it changes what the gate decides and is the owner's; the numbers
+land beside the existing verdict until then. Every figure and its provenance is
+in the gate ledger's G-C sections. The bars are stated as
 config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
 (committed before the first measurement; the pin test makes moving one a
 visible two-file diff), and the metrics are SQL over `events` alone in
