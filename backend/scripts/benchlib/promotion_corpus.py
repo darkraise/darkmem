@@ -85,25 +85,33 @@ counterpart). The re-assertion's origin is deliberately not the rollback's:
 the veto's echo test asks whether the *counterpart* brings a witness the
 subject does not already have.
 
-**MEASURED 2026-08-14, and the arming half does NOT yet reach the audit.**
+**Pass 1 (2026-08-14) armed the detector and still measured a numerator of 0.**
 The census grew as designed — 148 corroborations against a floor of 20 and a
 band that ends at 100 — and the detector fired for real, disputing both halves
-of the pair under ``inverse_replacement`` on live rows. But the audit's
-numerator is still **0**, because the subject fact was never journaled
-``corroborated``: every one of its wave-1 memories asserts a REPLACES edge on
-the same target inside one project, so ``detect_supersessions`` retires each in
-favour of the next, and ``supersession_hold`` blocks the promotion of any fact
-**one** of whose memory sources is superseded under a newer one. The fact
-therefore holds at ``candidate`` with ``supersession_blocked`` journaled — it
-appears in G-C's eligible denominator and never in its numerator — and the
-dispute that follows lands with no corroboration to join to.
+of the pair under ``inverse_replacement`` on live rows. But the subject fact was
+never journaled ``corroborated``: every one of its wave-1 memories asserted a
+REPLACES edge on the same target inside one project, so ``detect_supersessions``
+retired each in favour of the next, and ``supersession_hold`` withheld the
+promotion of a fact **one** of whose memory sources is superseded. The fact held
+at ``candidate`` with ``supersession_blocked`` journaled — inside G-C's eligible
+denominator, never its numerator — and the dispute landed with no corroboration
+to join to. A property of the arming content, not of the ladder: neither the
+veto nor the blocker was wrong.
 
-This is a property of the arming content, not of the ladder: a claim needs
-three sessions to corroborate by count, and three sessions asserting one
-replacement in one project supersede each other by construction. Neither the
-veto nor the blocker is wrong. The next attempt has to make the corroborated
-fact's *sources* survive as ``active``, and the corpus is the only side of that
-which may move.
+**Pass 2 (2026-08-14) closed it, and the repair was five dates.** Every arming
+capture moved 150 days back, outside the ``SUPERSESSION_WINDOW_DAYS``
+look-back, so no supersession fires in the arming project at all — the run
+verified 0 superseded rows and 0 ``supersession_blocked`` events. The subject
+promotes on its three wave-1 origins, the wave-2 counterpart then disputes it
+under ``inverse_replacement`` with ``corroborated_first=True``, and the audit
+reads **1 / 149 = 0.0067** against a 0.01 bar. ``validate_arming_design`` now
+refuses a capture inside the window, importing the bound from
+``app.services.relations`` so the guard moves with it.
+
+What this does **not** establish: the arm is demonstrated on the
+disjoint-window case only. The production shape pass 1 exposed — recent
+same-project re-assertions of one claim being retired and held — stays
+structurally inexpressible by this corpus.
 """
 from __future__ import annotations
 

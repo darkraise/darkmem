@@ -1,0 +1,165 @@
+bench_db: darkmem_bench_t2129p2
+corpus: promotion (243 captures, sha256 2840651b597da347)
+ingest live_calls: 0
+embedder fingerprint: qwen3-embedding:0.6b|1024
+lift: {'ticks': 2, 'facts_created': 170, 'sources_added': 257, 'stalled_candidates': 0, 'salience_min_asserting_memories': 1}
+wave 1 recompute (before wave 2 landed): {'ticks': 5, 'recomputed': 273, 'transitions': 78}
+wave 2: 2 captures, lift {'ticks': 2, 'facts_created': 1, 'sources_added': 2, 'stalled_candidates': 0, 'salience_min_asserting_memories': 1}
+capture-time provenance stamped (SIMULATED CLOCK): 259 rows
+repo assertions: {'repo_id': '0e77b03d-e6fe-5ed8-8794-cf012c08bb22', 'entities': 103, 'relations': 102, 'internal_imports': 0, 'skipped_by_language': {}}
+code lift: {'ticks': 2, 'facts_created': 4, 'sources_added': 102}
+facts minted through the shipping lift: 175
+note: wave 1 (241 captures) was recomputed to convergence before wave 2 (2 captures) was ingested; the dispute wave 2 arms is owed to the ticks that follow
+recompute tick 1: drained 2 events, recomputed 2 facts, 2 transitions; slow arm skipped (scanned 0, healed 0)
+recompute tick 2: drained 0 events, recomputed 0 facts, 0 transitions; slow arm skipped (scanned 0, healed 0)
+recompute: 2 ticks, 2 facts recomputed, 2 journaled transitions
+
+== promotions journaled, read back from `events` by SQL ==
+  gate_fired=diversity: 98 promote events over 98 distinct facts
+  gate_fired=none: 33 promote events over 33 distinct facts
+  gate_fired=time_gap: 18 promote events over 18 distinct facts
+  total distinct facts promoted: 149
+
+== fact census (project, status, distinct origins, kinds) ==
+  atlas     candidate     origins=1 kinds=1 provenance_rows=1 -> 1 facts
+  atlas     corroborated  origins=2 kinds=1 provenance_rows=2 -> 18 facts
+  default   candidate     origins=1 kinds=1 provenance_rows=1 -> 14 facts
+  default   corroborated  origins=1 kinds=1 provenance_rows=1 -> 4 facts
+  default   corroborated  origins=2 kinds=2 provenance_rows=2 -> 98 facts
+  ledger    candidate     origins=1 kinds=1 provenance_rows=1 -> 4 facts
+  ledger    candidate     origins=1 kinds=1 provenance_rows=3 -> 1 facts
+  ledger    candidate     origins=2 kinds=1 provenance_rows=2 -> 1 facts
+  ledger    corroborated  origins=3 kinds=1 provenance_rows=3 -> 32 facts
+  warehouse disputed      origins=1 kinds=1 provenance_rows=1 -> 1 facts
+  warehouse disputed      origins=4 kinds=1 provenance_rows=4 -> 1 facts
+
+== the designed refusals (echo, under-sourced) ==
+  ledger: ledger-exports USES avro -> candidate (origins=2, provenance_rows=2)
+  ledger: ledger-core USES cassandra -> candidate (origins=1, provenance_rows=3)
+
+== the armed veto: disputes the detector actually produced ==
+  warehouse: hive REPLACES trino -> disputed by rule=inverse_replacement against [trino REPLACES hive], witness=claude-code:aa10b3c7, corroborated_first=False
+  warehouse: trino REPLACES hive -> disputed by rule=inverse_replacement against [hive REPLACES trino], witness=codex:ee5c67b3, corroborated_first=True
+  disputes after a journaled corroboration (the audit's numerator): 1
+
+# Promotion metrics — 2026-05-16 to 2026-08-14
+
+- database: `localhost:5433/darkmem_bench_t2129p2` (read-only)
+- window: `2026-05-16T08:35:42.074788+00:00` .. `2026-08-14T08:35:42.074788+00:00`
+- schema present: True
+- `verified` payloads validated (T2.60 / unknown-vocabulary guard): 151
+- under-powered threshold: < 5 observations
+
+This is a measurement, not a verdict: no bar is stated or judged here (T2.40's role). Every rate below carries its denominator; a slice below the under-powered threshold is labelled, never read as a plain percentage.
+
+**Units: every promotion-rate figure below is per-transition (per journaled `verified` event), not per-fact.** Doc 17 §5.1 states the metric as `(facts promoted) / (eligible candidate facts)`; a fact that exits `candidate` more than once inside the window (e.g. promote, later demote, later re-promote) contributes one row per transition to both promoted and eligible here, not one row per fact. The false-promotion audit below is the one number in this report that IS de-duplicated to distinct facts (`COUNT(DISTINCT object_id)`), matching doc 17's own wording for that metric — do not read the two counting conventions as consistent with each other.
+
+## Promotion rate — by which N-fired gate (`gate_fired`)
+
+| gate_fired | promoted | blocked | eligible | rate |
+|---|---|---|---|---|
+| diversity | 98 | 0 | 98 | 1.000 |
+| none | 33 | 0 | 33 | 1.000 |
+| time_gap | 18 | 0 | 18 | 1.000 |
+
+## Promotion rate — by source-kind diversity
+
+**Caveat: the `diverse` bucket is not equivalent to "the diversity gate fired".** It buckets on whether the payload's `source_kinds` list (the union of kinds across every origin that ever asserted the fact, including a single origin whose own rows span two kinds) contains more than one distinct value. The ladder's actual diversity gate (`OriginProfile.kinds_are_diverse`) is stricter: it requires **two distinct, attributable origins** that differ in kind, and returns `False` outright for a lone origin regardless of how many kinds that one origin spans. So a fact asserted by exactly one origin under two kinds slices as `diverse` here without ever having lowered N — this is a deliberately independent cut (per doc 17 §5.1's two-slice-axes instruction), not a proxy for `gate_fired = 'diversity'`; use the gate_fired table above for that question.
+
+| bucket | promoted | blocked | eligible | rate |
+|---|---|---|---|---|
+| diverse | 98 | 0 | 98 | 1.000 |
+| homogeneous | 51 | 0 | 51 | 1.000 |
+
+## False-promotion audit
+
+Count of DISTINCT corroborated facts later disputed or human-rejected (doc 17 §5.1). Sources: `events` self-join for the disputed half (T2.06's exact SQL, tuple-compared).
+
+**The human-rejected half is live as of T2.63.** It reads the `human_verdict` journal, not `review_state` -- that column is pure queue-membership (T2.62: only `open` is writable, cleared to NULL on resolution), so it could never carry a verdict and this count read 0 forever while its own tripwire could not fire. A 0 here is now a measurement, not an absence -- but note the only human verb reachable today is rejection; ratify is T2.05's and re-ground/edit have no owner, so this counts rejections rather than all adjudication.
+
+- corroborations in window: 149
+- later disputed: 1
+- later human-rejected: 0
+- DISTINCT facts in either arm: 1
+- false-promotion rate: 0.0067
+- corroborated facts later expired (R2 companion): 0
+
+**The last line is `promotion_bars` ruling R2's companion, and the rate above must not be quoted without it.** An entity-merge fact fold keeps one row's id and retires the other, so a corroboration and a later dispute can land on two ids that the audit's join can never bring together — the audit then undercounts, the one direction it may not err in silently. A non-zero count here caps what a zero rate claims. It is an upper bound on folds by construction: human adjudication and provenance withdrawal expire facts too, and the journal carries no discriminator, so this counts every expiry after an in-window corroboration rather than narrowing the cap on a guess.
+
+The three counts above do not sum: a fact the human rejects is usually one the queue served them *because* it was disputed, so it appears in both arms. doc 17 §5.1 counts facts, so the rate divides the DISTINCT union — summing the arms reported 200% off a single fact.
+
+== journal completeness (promotion_bars.JOURNAL_COMPLETENESS_SQL) ==
+facts: 175; born-rung carve-out: 4; violations: 0
+
+== bars in force (promotion_bars, committed before any measurement) ==
+the measured database carries no `config` row for any G-C bar and no `promotion_bar_licences` row: every bar below is its committed default, unmoved.
+bar                                 committed  effective  provenance
+verification_false_promotion_bar    0.01       0.01       no config row; the committed bar stands
+false_promotion_min_corroborations  20         20         no config row; the committed bar stands
+promotion_rate_floor                0.5        0.5        no config row; the committed bar stands
+promotion_rate_min_eligible         5          5          no config row; the committed bar stands
+promotion_rate_min_promotions       1          1          no config row; the committed bar stands
+promotion_journal_completeness_bar  1          1          no config row; the committed bar stands
+note: promotion_journal_completeness_bar is read by no predicate today (the 100 % bar is spelled as zero unexplained rows), so its row and its clamp are prophylactic, not a live protection.
+
+== pre-stated verdicts (promotion_bars, committed before this run) ==
+by gate_fired: decidable=True (eligible per bucket: [98, 33, 18], promotions: 149)
+  bucket diversity: powered=True clears=True
+  bucket none: powered=True clears=True
+  bucket time_gap: powered=True clears=True
+by diversity: decidable=True (eligible per bucket: [98, 51], promotions: 149)
+  bucket diverse: powered=True clears=True
+  bucket homogeneous: powered=True clears=True
+false-promotion audit: decidable=True clears=True (corroborations: 149, rate: 0.006711409395973154, R2 companion -- corroborated facts later expired: 0)
+journal completeness: clears=True over 175 facts (4 carve-out rows) -- vacuous unless transitions occurred
+
+== run record (appended by the controller; not runner output) ==
+
+Pass 2 of T2.129, on the reviewed plan docs/superpowers/plans/2026-08-14-t2.129-arming-redesign.md.
+Database: darkmem_bench_t2129p2, created for this run alone.
+Corpus sha256 2840651b597da347 -- pass 1 was 4449a3b447bf8684. The corpus
+identity moved, so this is a different corpus and not a re-run of the same one.
+The only difference is five `created_at` values, each shifted -150 days.
+
+Plan step 3's four catches, read in order:
+  (a) superseded rows in the arming project: 0 (all five warehouse memories
+      `active`); superseded rows anywhere in the database: 0;
+      `supersession_blocked` journal events: 0.
+  (b) the armed subject journaled `corroborated`.
+  (c) the dispute followed it.
+  (d) "warehouse: trino REPLACES hive -> disputed by rule=inverse_replacement
+      against [hive REPLACES trino], witness=codex:ee5c67b3,
+      corroborated_first=True". Pass 1 printed this same line with
+      corroborated_first=False. Disputes after a journaled corroboration: 1.
+
+Catch (a) is what separates demonstrating the mechanism from reproducing the
+number: the audit's numerator could have landed even with a supersession in
+place, because `decide` checks the veto ahead of every count and the
+already-corroborated branch returns before `supersession_blocked` is read.
+
+TWO CAVEATS THIS NUMBER MUST NOT BE QUOTED WITHOUT.
+
+1. `ingest live_calls: 0`. Pass 1 made 267 live deepseek-v4-flash round trips;
+   this run made none. The extraction cache is keyed on memory *content*, and
+   only dates changed, so every call hit. Downstream is identical to pass 1
+   (lift 170 facts / 257 sources, wave-1 recompute 5 ticks / 273 recomputed /
+   78 transitions), which is the point -- but this pass did not re-exercise the
+   live extraction path.
+
+2. The numerator is ONE fact. A rate computed from a single numerator event is
+   decidable, not precise. 0.0067 is not a measurement of this system's
+   false-promotion behaviour; it is the smallest non-vacuous reading the audit
+   can produce, which is exactly what the arming was built to supply.
+
+Census deltas against pass 1, pre-stated in the plan and confirmed here:
+promotions 148 -> 149; gate_fired eligibles [98, 34, 19] -> [98, 33, 18]. Both
+remaining buckets stay above promotion_rate_min_eligible (5) and all three
+report powered=True clears=True.
+
+Memory profile (pass2-memory-profile.txt): the run executed inside a systemd
+scope capped at MemoryMax=6G / MemorySwapMax=256M and peaked at 113 MB with
+zero swap and a system-availability floor of 9.3 GB. Because of caveat 1 this
+bounds a cache-hit run only, NOT a live one.
+
+The independent G-C evidence re-run that T2.129's done-when owes is still owed.
+This lane built the corpus and may not certify it.

@@ -1,0 +1,4 @@
+ts scope_cur_MB scope_peak_MB scope_swap_MB sys_avail_MB swapfree_MB
+15:35:16 60 73 0 9409 99
+15:35:26 90 113 0 9347 99
+15:35:36 90 113 0 9394 99

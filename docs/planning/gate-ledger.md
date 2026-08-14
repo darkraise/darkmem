@@ -588,6 +588,59 @@ REPLACES-family corpus extension arms `inverse_replacement` judge-free, at
 the cost of item 1's band problem; the human arm needs G-D plus a reviewer
 no harness run can supply).
 
+### G-C arming, passes 1 and 2 (2026-08-14, T2.129): the audit's machine arm is **operable** for the first time
+
+Executing the owner ruling above — grow the census past 100 and arm the machine
+arm, with the 1% bar unmoved (rule 3). Corpus sha `2840651b597da347`; pass 1 ran
+at `4449a3b447bf8684`. Both are new corpora, not re-runs of `9c74f451b0cbfa14…`.
+
+**Pass 1 armed the detector and still measured a numerator of 0.** The census
+half worked — 148 corroborations against a floor of 20, all three `gate_fired`
+buckets powered and clearing, both designed refusals intact — and the detector
+produced a real judge-free dispute on live rows under `inverse_replacement`. But
+the subject fact never journaled `corroborated`: its three wave-1 memories each
+assert one REPLACES edge in one project, so `detect_supersessions` retired each
+under the next and `supersession_hold` withheld the promotion. The fact held at
+`candidate` with `supersession_blocked` journaled — in the eligible denominator,
+never the numerator — and the dispute landed with nothing to join. **The zero
+was still inoperability, not precision.** Recorded red at `9b7d2283`.
+
+**Pass 2 closed it, and the repair was five dates.** Every arming capture moved
+150 days back, outside `SUPERSESSION_WINDOW_DAYS`, so no supersession fires in
+the arming project at all. Measured: **0** superseded rows in the project, **0**
+anywhere in the database, **0** `supersession_blocked` events. The subject
+promotes on its three wave-1 origins; the wave-2 counterpart then disputes it,
+`corroborated_first=True` where pass 1 printed `False`.
+
+| Metric | Pass 1 | Pass 2 |
+|---|---|---|
+| In-window corroborations | 148 | **149** |
+| Later disputed | 0 | **1** |
+| False-promotion rate | n/a (vacuous) | **0.0067** vs a 0.01 bar |
+| `gate_fired` eligibles | [98, 34, 19] | [98, 33, 18] — all powered, all clearing |
+
+**No bar, threshold or ladder predicate moved.** The corpus moved; the census
+deltas were pre-stated in the plan before the run and match. The plan was
+Fable-reviewed before execution, and that review killed a wrong mechanism claim
+(moving wave 1 alone would in fact have landed the numerator — `decide` checks
+the veto ahead of every count and the already-corroborated branch returns before
+`supersession_blocked` is read) and a wrong pre-stated denominator (148 → 149).
+`validate_arming_design` now refuses an arming capture inside the window,
+importing the bound from `app.services.relations`, with the failing side pinned
+against a fixed clock because the pass-1 dates stop failing a live one around
+2026-10-18.
+
+**What this does not do, stated where the number lives.** It does **not** clear
+G-C. It makes one arm of the false-promotion audit operable. Three limits ride
+with the 0.0067: the numerator is **one fact**, so the rate is decidable but not
+precise; the arm is demonstrated on the **disjoint-window case only**, and the
+production shape pass 1 exposed stays structurally inexpressible by this corpus;
+and pass 2 ran with `live_calls: 0` — the content-keyed extraction cache served
+every call, since only dates changed — so it did not re-exercise the live
+extraction path pass 1 did. **The independent G-C evidence re-run T2.129's
+done-when owes is still owed**; the lane that built this corpus may not certify
+it. Artifacts: `docs/eval/2026-08-14-t2.129-arming/`.
+
 ### OWNER RULING on all three escalated items — 2026-08-13
 
 Ruled the same day the run reported, on the run's own numbers and before any
