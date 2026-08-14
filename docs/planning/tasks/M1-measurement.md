@@ -1057,7 +1057,7 @@ is the property this task exists to create.
 
 #### T2.129 — Grow the promotion corpus past the band, and arm the machine arm
 
-`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C`
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: —` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C (produces)`
 
 **Minted 2026-08-13 from the owner's ruling on the G-C bench-arm run's three escalated
 items** (gate-ledger.md, "OWNER RULING on all three escalated items"). The 2026-08-13
@@ -1107,6 +1107,44 @@ under-sourced controls still hold at `candidate`; and the G-C evidence run is re
 end to end with its verdict recorded by a party that did not author the extension.
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`, then the G-C
 evidence run per `docs/planning/briefs/2026-08-13-gc-bench-arm-evidence.md`.
+
+---
+
+#### T2.130 — The false-promotion verdict was a coin flip, at every sample size
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.129` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-14, after T2.129's audit was read as under-powered and the diagnosis
+turned out to be wrong.** The audit scored `observed rate < 0.01`; a system whose *true*
+rate sits exactly at the failing bar passed that rule 56 % of the time at n = 149. Every
+party who looked at it — this lane, and the independent probe that raised it — read that
+as "the corpus is too small", and the probe closed by recommending roughly n ≥ 300.
+
+**Measured, and the diagnosis was false.** The at-the-bar pass probability is 0.4221 at
+n = 300, 0.4573 at n = 1000 and 0.4865 at n = 10 000. Comparing a point estimate to the
+bar it is centred on is a coin flip at the boundary *by construction*, so it converges to
+~0.5 rather than to 0. **The defect is the decision rule, not the denominator**, and no
+amount of corpus growth was ever going to repair it.
+
+**Done-when.** Every false-promotion audit prints, beside the point estimate: the exact
+one-sided Clopper-Pearson upper confidence bound on the true rate; whether the evidence
+*supports* a true rate under the bar; the at-the-bar pass probability under both the
+point-estimate rule and the bound rule; and the window size that would settle it at the
+observed count. Exact binomial arithmetic — no normal approximation, which is worst
+exactly where this audit lives, at tiny rates and small counts. The claim that more data
+does not help is pinned by test rather than asserted, and so is the property that scoring
+on the bound is **strictly a tightening** (it can never clear a window the point estimate
+fails, so it needs no loosening licence).
+
+**Explicitly NOT in scope: switching the scored verdict.** The bound rule bounds the
+at-the-bar pass probability at 1 − confidence = 0.05 while still clearing a genuinely
+good system (true rate 0.002) 94.8 % of the time at n = 1000, and it is a tightening — but
+changing what the gate *decides* is the owner's, and making that change silently inside a
+power-reporting task is precisely the move the gate ledger exists to catch. The numbers
+land beside the existing verdict; the switch is a recorded ratification.
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q` (the harness is
+excluded from `testpaths`, so a plain `pytest -q` does not collect it).
 
 ---
 
