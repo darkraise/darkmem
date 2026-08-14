@@ -833,6 +833,62 @@ one-fact numerator stand as written above), and is not certified by the lane
 that built it — the independent evidence re-run T2.129's done-when owes
 remains owed and now covers this corpus too.
 
+### G-C's audit had almost no rejection power, and more data was never going to fix it (T2.130, 2026-08-14)
+
+The audit's decision rule was **`observed rate < 0.01`**. Measured: a system
+whose **true** rate sits exactly **at** the failing bar passes that rule about
+half the time — **and at every sample size.**
+
+| corroborations | P(pass \| true rate = the bar) |
+|---|---|
+| 149 | 0.5604 |
+| 300 | 0.4221 |
+| 1 000 | 0.4573 |
+| 10 000 | 0.4865 |
+
+**This is the correction that matters: growing the corpus does not repair it.**
+Comparing a point estimate to the bar it is centred on is a coin flip at the
+boundary by construction, so the pass probability converges to ~0.5 rather than
+to 0. The independent probe's closing suggestion — that "roughly n ≥ 300" would
+drop the at-the-bar pass probability meaningfully — is arithmetically false, and
+the table above is the disproof. Every earlier statement in this ledger that
+treats the census size as the audit's limiting factor was aiming at the wrong
+quantity: **the defect is the decision rule, not the denominator.**
+
+**What the audit now reports beside every rate** (`promotion_metrics.py`, pinned
+by `tests/test_promotion_audit_power.py`): the exact one-sided **Clopper-Pearson
+upper confidence bound** on the true rate, whether the evidence *supports* a
+true rate under the bar, the at-the-bar pass probability under both rules, and
+the window size that would settle it. Exact binomial arithmetic, no normal
+approximation — the approximation is worst exactly where this audit lives, at
+tiny rates and small counts.
+
+**On the measured window, the honest reading is that it does not clear.**
+1/149 is a point estimate of 0.0067 and a **95% upper bound of 0.0314** — over
+three times the bar. n = 149 is in fact too small to clear the bound *even with
+a perfect record*: zero false promotions in 149 still bounds only to 0.0199. The
+derived window sizes are **299** corroborations at 0 observed, **473** at 1,
+**628** at 2. These are consequences of the bar rather than a stated floor,
+which is what `false_promotion_min_corroborations` = 20 never was.
+
+**The proposed rule change, for the owner: score the audit on `upper bound <
+bar`.** It is **strictly a tightening** — the bound is never below the point
+estimate, so no window that clears the new rule fails the old one, and under
+this ledger's floors discipline a tightening needs no licence. Its at-the-bar
+pass probability is bounded by 1 − confidence = **0.05** by construction, and it
+still passes a genuinely good system: at n = 1000 a true rate of 0.002 clears
+**94.8%** of the time. **This lane has not switched the verdict** — the scored
+rule is unchanged and the new numbers are printed beside it, because changing
+what the gate *decides* is the owner's, and doing it silently inside a
+power-reporting change is exactly the move this ledger exists to catch.
+
+**What this does not fix.** Power is not the only thing wrong with the audit:
+the numerator is still one authored fact, the corpus is still authored by the
+measured party, and a `blocked`-arm denominator still inflates with wall-clock
+(recorded above). A well-powered rule over authored evidence is a better
+instrument measuring the same thing. It buys honesty about what a "clears"
+means, not a cleared gate.
+
 ### OWNER RULING on all three escalated items — 2026-08-13
 
 Ruled the same day the run reported, on the run's own numbers and before any

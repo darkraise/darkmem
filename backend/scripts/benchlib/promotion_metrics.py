@@ -101,6 +101,7 @@ changes what "eligible" means -- never to catch and skip the offending row.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -634,6 +635,182 @@ class FalsePromotionAudit:
     def powered(self) -> bool:
         return self.total_corroborations >= UNDER_POWERED_THRESHOLD
 
+    def upper_bound(self, confidence: float = 0.95) -> float | None:
+        """The one-sided upper confidence bound on the **true** rate.
+
+        `rate` is a point estimate and the bar is a claim about the system, not
+        about one window. This is the number that connects them.
+        """
+        if not self.total_corroborations:
+            return None
+        return clopper_pearson_upper(
+            self.false_promotions, self.total_corroborations, confidence
+        )
+
+    def clears_with_confidence(self, bar: float, confidence: float = 0.95) -> bool | None:
+        """Does the evidence *support* a true rate under `bar`?
+
+        Strictly stronger than `rate < bar`: the upper bound is never below the
+        point estimate, so every window clearing this clears that too.
+        """
+        upper = self.upper_bound(confidence)
+        if upper is None:
+            return None
+        return upper < bar
+
+
+# ── statistical power of the false-promotion audit (T2.130) ──────────────────
+#
+# The audit's decision rule was `observed rate < bar`. Measured 2026-08-14: a
+# system whose TRUE rate sits exactly AT the failing bar passes that rule
+# **about half the time, at every sample size** --
+#
+#     n =    149  ->  0.5604      n =   1000  ->  0.4573
+#     n =    300  ->  0.4221      n =  10000  ->  0.4865
+#
+# -- because comparing a point estimate to the bar it is centred on is a coin
+# flip at the boundary by construction. **More corroborations do not fix it**;
+# the independent probe's suggestion that n >= 300 would "drop the pass
+# probability meaningfully" is arithmetically false, and this table is why.
+# What fixes it is asking a different question: not "was the observed rate
+# low?" but "does the evidence support a true rate below the bar?".
+
+
+def binomial_cdf(k: int, n: int, p: float) -> float:
+    """P(X <= k) for X ~ Binomial(n, p). Exact; no SciPy in this venv."""
+    if k < 0:
+        return 0.0
+    if k >= n:
+        return 1.0
+    return sum(math.comb(n, i) * p**i * (1.0 - p) ** (n - i) for i in range(k + 1))
+
+
+def clopper_pearson_upper(k: int, n: int, confidence: float = 0.95) -> float:
+    """Exact one-sided upper confidence bound on a binomial proportion.
+
+    The largest `p` for which observing `k` or fewer in `n` is not yet
+    surprising at `1 - confidence`. Solved by bisection on the exact CDF, which
+    is monotone decreasing in `p` — no distributional approximation, so it stays
+    honest at the tiny rates and small counts this audit actually sees, where a
+    normal approximation is worst.
+    """
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if not 0 <= k <= n:
+        raise ValueError(f"k={k} out of range for n={n}")
+    if k == n:
+        return 1.0
+    alpha = 1.0 - confidence
+    low, high = 0.0, 1.0
+    for _ in range(200):
+        mid = (low + high) / 2.0
+        if binomial_cdf(k, n, mid) > alpha:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2.0
+
+
+def at_bar_pass_probability(n: int, bar: float, *, confidence: float | None = None) -> float:
+    """P(this audit passes | the system's true rate is exactly `bar`).
+
+    The number that says what a "clears" is worth. Under the point-estimate
+    rule it sits near 0.5 forever; under the confidence rule it is bounded by
+    `1 - confidence` by construction, which is the whole point of the change.
+    """
+    if n <= 0:
+        return 1.0
+    if confidence is None:
+        threshold = -1
+        for k in range(n + 1):
+            if k / n < bar:
+                threshold = k
+            else:
+                break
+    else:
+        threshold = -1
+        for k in range(n + 1):
+            if clopper_pearson_upper(k, n, confidence) < bar:
+                threshold = k
+            else:
+                break
+    if threshold < 0:
+        return 0.0
+    return binomial_cdf(threshold, n, bar)
+
+
+def corroborations_required(k: int, bar: float, confidence: float = 0.95,
+                            *, ceiling: int = 100_000) -> int | None:
+    """Smallest window size whose upper bound clears `bar` given `k` observed.
+
+    Replaces a stated decidability floor with a derived one: at the 0.01 bar
+    and 95% confidence this is 299 for k=0, 473 for k=1, 628 for k=2.
+    """
+    n = max(k, 1)
+    while n <= ceiling:
+        if n > k and clopper_pearson_upper(k, n, confidence) < bar:
+            return n
+        n += 1
+    return None
+
+
+#: The bar the audit is scored against, restated here only so the power block
+#: can be rendered without threading the resolved bars through the renderer.
+#: `promotion_bars` remains the authority; a mismatch is caught by test.
+_AUDIT_BAR_FOR_POWER = 0.01
+_AUDIT_CONFIDENCE = 0.95
+
+
+def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
+    """What the point estimate above is worth, printed beside it.
+
+    Exists because `decidable=True clears=True` was quotable forty lines above
+    the caveats explaining that it meant almost nothing.
+    """
+    if not fp.total_corroborations:
+        return []
+    n = fp.total_corroborations
+    upper = fp.upper_bound(_AUDIT_CONFIDENCE)
+    supported = fp.clears_with_confidence(_AUDIT_BAR_FOR_POWER, _AUDIT_CONFIDENCE)
+    naive = at_bar_pass_probability(n, _AUDIT_BAR_FOR_POWER)
+    strict = at_bar_pass_probability(
+        n, _AUDIT_BAR_FOR_POWER, confidence=_AUDIT_CONFIDENCE
+    )
+    need = corroborations_required(
+        fp.false_promotions, _AUDIT_BAR_FOR_POWER, _AUDIT_CONFIDENCE
+    )
+    # A window too small for the bound to clear at ANY observed count reports
+    # 0.0 here, which reads like excellent specificity rather than a window
+    # that cannot pass. Say which it is.
+    strict_note = (
+        f"**{strict:.4f}**" if strict > 0.0
+        else "**unreachable** — at this window size the bound cannot clear "
+             "even at zero observed false promotions"
+    )
+    return [
+        "**What that point estimate is worth (T2.130).**\n",
+        "\n",
+        f"- 95% upper confidence bound on the TRUE rate: **{upper:.4f}**"
+        f" (bar {_AUDIT_BAR_FOR_POWER})\n",
+        f"- evidence supports a true rate under the bar: "
+        f"**{'YES' if supported else 'NO'}**\n",
+        f"- P(this window passes | the system's true rate is exactly the bar):\n",
+        f"    - under `rate < bar` (the rule scored above): **{naive:.4f}**\n",
+        f"    - under `upper bound < bar`: {strict_note}\n",
+        f"- corroborations needed for the bound to clear at "
+        f"{fp.false_promotions} observed: "
+        f"**{need if need is not None else 'unreachable'}** (have {n})\n",
+        "\n",
+        "**A point estimate below the bar is not evidence the system is below "
+        "the bar.** Comparing an observed rate to the bar it is centred on is a "
+        "coin flip at the boundary *at every sample size* — measured 0.56 at "
+        "n = 149 and 0.49 at n = 10000, so more corroborations do not repair "
+        "it. The upper-bound line is the one that answers the gate's actual "
+        "question, and it is strictly the more conservative of the two: it can "
+        "never clear a window the point estimate fails.\n",
+        "\n",
+    ]
+
 
 @dataclass(frozen=True)
 class PromotionMetricsReport:
@@ -901,10 +1078,11 @@ def render_report(report: PromotionMetricsReport) -> str:
         f"- later disputed: {fp.disputed_after_corroboration}\n",
         f"- later human-rejected: {fp.human_rejected}\n",
         f"- DISTINCT facts in either arm: {fp.false_promotions}\n",
-        f"- false-promotion rate: {fp_rate}{fp_powered}\n",
+        f"- false-promotion rate (point estimate): {fp_rate}{fp_powered}\n",
         f"- corroborated facts later expired (R2 companion): "
         f"{fp.expired_after_corroboration}\n",
         "\n",
+        *_render_audit_power(fp),
         "**The last line is `promotion_bars` ruling R2's companion, and the "
         "rate above must not be quoted without it.** An entity-merge fact fold "
         "keeps one row's id and retires the other, so a corroboration and a "

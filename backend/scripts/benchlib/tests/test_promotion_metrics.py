@@ -285,9 +285,15 @@ class TestPromotionRateSlices:
         rendered = pm.render_report(report)
         assert "UNDER-POWERED" in rendered
         # The rendered false-promotion rate must read "n/a", never a bare
-        # percentage or a pass, when there is nothing to divide by.
-        assert "false-promotion rate: n/a **UNDER-POWERED**" in rendered
+        # percentage or a pass, when there is nothing to divide by. The label
+        # gained "(point estimate)" with T2.130, which prints an upper
+        # confidence bound beside it — the distinction this line now carries is
+        # the reason for the qualifier, and the pinned behaviour is unchanged.
+        assert "false-promotion rate (point estimate): n/a **UNDER-POWERED**" in rendered
         assert " PASS" not in rendered
+        # An empty window has no bound either: the power block renders nothing
+        # rather than a spurious 0.0000 upper bound on no observations.
+        assert "upper confidence bound" not in rendered
 
 
 # ───────────────────────── the false-promotion audit ─────────────────────────
