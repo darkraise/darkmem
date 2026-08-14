@@ -1194,14 +1194,40 @@ own measurer wrote is a decisive instrument pointed at an artifact, not evidence
 system — the same limit T2.130 recorded, now merely better powered. The disclosure travels
 with the verdict.
 
-**Done when:** the corpus carries ≥ 473 in-window corroborations on the **unsimulated**
-pass (the simulated pass follows, and the `time_gap` bucket's dependence on the simulated
-clock is disclosed, not repaired); the armed dispute still fires and `k` is still exactly
-1, so the window and the observed count match the derivation; the echo and under-sourced
-controls still hold at `candidate`; every existing validator passes unmodified and the
-diff shows no validator weakened; growth is spread across projects with the distribution
-reported; the run carries its rule-2 latency/token twin; and the G-C evidence run is
-re-run end to end with its verdict recorded by a party that did not author the growth.
+**Amended 2026-08-15, same day, by the plan's own adversarial review** (Tier-1 — this
+task's text only, minted hours earlier and not yet executed;
+`docs/planning/reviews/2026-08-15-t2.131-plan-review.md`). Three clauses below were
+written before the plan discovered what the code permits, and the review returned
+**spec compliance ❌** against them. Recorded rather than silently rewritten, because
+two of the three are cases of the task text asking for something the tree cannot give:
+
+1. **473 → 490.** 473 is the derived *minimum*: it clears by 1×10⁻⁵ and prints as
+   `0.0100` against a strict `< 0.01` rule, i.e. a tie rendered as a pass. 490 bounds
+   to 0.00964. The bar did not move; the target acquired a margin.
+2. **"growth is spread across projects" is scoped to the `none` arm.**
+   `fact_lift.CODE_FACT_PROJECT` is the constant `"default"` and `repositories` carries
+   no project, so a code-seconded `diversity` claim outside `default` lifts to a
+   different fact and corroborates nothing. The original clause asked for something no
+   corpus can satisfy on that arm.
+3. **"every existing validator passes unmodified" is left standing and is a live
+   conflict, not resolved here.** Multi-repo fixture support requires making
+   `validate_diversity_group_against_fixture` per-repo, which is a modification and, in
+   letter, a widening. The plan names it and routes it to its Step 0 for adjudication —
+   letter versus intent — before any authoring. **If the clause is upheld as written,
+   the multi-repo route is closed and the sizing changes**, so this is a real fork and
+   not a formality.
+
+**Done when:** the corpus carries ≥ **490** in-window corroborations on the
+**unsimulated** pass (the simulated pass follows, and the `time_gap` bucket's dependence
+on the simulated clock is disclosed, not repaired); the armed dispute still fires and
+`k` is still exactly 1; the echo and under-sourced controls still hold at `candidate`,
+and no growth capture re-asserts a control claim's triple under a different key; the
+validator clause is honoured as adjudicated at the plan's Step 0, with any modification
+shown to preserve the invariant's substance and no validator weakened; the `none` arm's
+growth is spread across projects with the distribution reported, and the diversity arm's
+confinement to `default` is disclosed rather than worked around; the run carries its
+rule-2 latency/token twin; and the G-C evidence run is re-run end to end with its verdict
+recorded by a party that did not author the growth.
 **Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`, then the G-C
 evidence run per `docs/planning/briefs/2026-08-13-gc-bench-arm-evidence.md`, both passes.
 

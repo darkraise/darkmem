@@ -926,7 +926,7 @@ measured party, and a `blocked`-arm denominator still inflates with wall-clock
 instrument measuring the same thing. It buys honesty about what a "clears"
 means, not a cleared gate.
 
-### The corpus-growth route is taken, and its target is 473, not the 300 that was suggested (owner instruction 2026-08-15, T2.131)
+### The corpus-growth route is taken, and its target is 490 — not the 300 that was suggested, and not the 473 first recorded here (owner instruction 2026-08-15, T2.131)
 
 **The owner directed the lane down the independent probe's route — grow the
 corpus — rather than the bound-rule switch T2.130 left open.** The route is
@@ -937,11 +937,18 @@ the committed instrument (`promotion_metrics.clopper_pearson_upper`,
 
 | n | point estimate | clears the scored rule? | 95% upper bound | clears the bound? | at-bar pass (point rule) |
 |---|---|---|---|---|---|
-| 131 (today, unsimulated) | 0.0076 | yes | 0.0357 | no | 0.6227 |
-| 149 (today, simulated) | 0.0067 | yes | 0.0314 | no | 0.5604 |
-| **300 (as suggested)** | 0.0033 | yes | **0.0157** | **no** | 0.4221 |
-| 400 | 0.0025 | yes | 0.0118 | no | 0.4325 |
-| **473 (derived)** | 0.0021 | yes | **0.0100** | **yes** | 0.4884 |
+| 131 (today, unsimulated) | 0.0076 | yes | 0.03574 | no | 0.6227 |
+| 149 (today, simulated) | 0.0067 | yes | 0.03139 | no | 0.5604 |
+| **300 (as suggested)** | 0.0033 | yes | **0.01573** | **no** | 0.4221 |
+| 400 | 0.0025 | yes | 0.01180 | no | 0.4325 |
+| **473 (derived minimum)** | 0.0021 | yes | **0.00999** | yes, by 1×10⁻⁵ | 0.4884 |
+| **490 (the working target)** | 0.0020 | yes | **0.00964** | **yes** | 0.4884 |
+
+**Bounds are stated to five decimals here, and the reason is the 473 row.** At four
+decimals it prints `0.0100` against a strict `< 0.01` rule — a tie rendered as a pass,
+which is the exact shape this ledger exists to catch. **473 is the derived minimum and
+a bad target**; the plan's working target is **490**, which bounds to 0.00964 and is
+unambiguous in print. The bar did not move: a target acquired a margin.
 
 **Where the 300 came from, and why it does not apply.** T2.130 derived 299 —
 and that is the **k = 0** window. The suggestion carried it across to a corpus
@@ -982,6 +989,41 @@ at **≈ +615 captures**, about 3.5× the corpus rather than 2.4×, on top of on
 that already tripled under T2.129. **A second hazard scales with it**: any new
 capture carrying a REPLACES-family relation arms a *second* dispute and moves the
 target from 473 to 628, so the growth could outrun its own goal.
+
+**Both of those paragraphs were corrected again the same day, by the plan's own
+adversarial review, and the second was a refuted mechanism rather than a stale
+number** (`docs/planning/reviews/2026-08-15-t2.131-plan-review.md`). Recorded in
+place, because the sizing above has now moved twice and a reader arriving at the
+first figure should not have to discover that by scrolling.
+
+- **The sizing is +582, not +615, and the conversion behind it was measured
+  against the wrong denominator twice.** `none` converts at **3.00 memories per
+  claim** (96 → 32 by distinct `claim_key`), not the 2.7 obtained by dividing 96
+  memories by a `gate_fired` bucket that carries other groups' facts. And *claims
+  are not corroborations*: the two promoting groups hold 133 claims while the
+  audit counts 131, a standing shortfall this task did not introduce. Sizing now
+  runs off the realized 131 ⁄ 133 = 0.985 to the **490** target: +359
+  corroborations, +364 claims, ≈ **+582 captures** at the recommended split.
+- **The 473 → 628 hazard is withdrawn.** `inverse_replacement` needs a live
+  *inverse fact* in the same project with overlapping windows and a non-echo
+  witness; a lone stray REPLACES edge arms nothing. Stronger: **k = 2 is
+  unreachable in any corpus the committed loader admits** — wave 2 is refused
+  outside the arming groups, so an accidental inverse pair lands whole in wave 1,
+  is disputed ahead of the count, and never emits the `corroborated` event the
+  audit's numerator joins on. Reaching k = 2 would take a weakened validator. The
+  no-REPLACES rule is kept as hygiene; what genuinely threatens the count is
+  supersession withholding a corroboration, which is a function of
+  REPLACES-emitting captures × same-project in-window candidates rather than of
+  density alone.
+- **A third blocker was missed entirely and is the one that reshapes the route.**
+  `fact_lift.CODE_FACT_PROJECT` is the constant `"default"` and `repositories`
+  carries no project, so code-seconded `diversity` claims **cannot leave
+  `default`** — a spread-authored one would hold at a single origin, refused by no
+  validator. Multi-repo fixtures buy distinct dependencies, which §3.1 needs; they
+  buy no project spread. So the monoculture concern lands in the arm the first
+  sizing thought relieved it, and at the recommended split `default` holds roughly
+  356 of ~497 promoting claims. That concentration is disclosure, not a defect to
+  engineer away, and it travels with the eventual number.
 
 **And the cost is not only effort, which is why it is recorded here rather than
 in the task alone.** Every one of those captures is written by the measured
