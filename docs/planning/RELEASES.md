@@ -165,6 +165,7 @@ G-C and G-D ships as its own version whose headline is "badges go live".
 - `T2.117` — Per-role qualification records (R1, ratified 2026-08-12)
 - `T2.124` — A fresh entailment gold, justified without citing a result
 - `T2.125` — Qualify the entailment role on the fresh gold
+- `T2.129` — Grow the promotion corpus past the band, and arm the machine arm
 - `T2.114` — G-D third-vendor attempt
 - `T2.116` — Bind the resample certification to the pairs it certified
 - `T3.22` — G-E evidence run

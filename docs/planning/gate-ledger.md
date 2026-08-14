@@ -2098,6 +2098,48 @@ the digest-truncation pin is destroyed by that same archive, silently disarming 
 bounded yes/no on three mechanical checks), and anything requiring the fresh harvest,
 which does not exist yet.
 
+### Sitting 2 — the emitted matrix, RATIFIED 2026-08-13
+
+**Ratified: T = 280, contradicted 80 / entailed 110 / unsupported 90.** Pair authoring
+(step 7) is open from this ratification and was closed before it. From here a "no"
+loops through a rule amendment via sitting 1's channel — **never** a hand edit of the
+matrix.
+
+The owner saw exactly the three things §5 fixes, each verified by a reviewer outside
+the authoring lineage:
+
+1. **Byte-regeneration: identical**, sha `ae11bc172bac05e7`, produced through the
+   reviewer's own driver rather than the script's verify path. The pin was then
+   *proved* to bite: a planted hand edit that leaves the census and slice sums
+   consistent still fails `test_committed_frame_regenerates_byte_identically`.
+2. **Asserted checks green by test** (17 passed), read off the committed file with
+   `RESAMPLE_N` = 93 and `MIN_GOLD_PAIRS` = 200 resolved from source, not retyped.
+3. **The matrix is the ratified rule applied to the committed inputs**, re-derived
+   independently. The mixed-slice adjustment — the step the plan's own history flags as
+   a contamination channel, because round 3's tie-break preference came from a party who
+   had read the failure profile — is **forced, not preferred**: 12 moves is provably
+   minimal, the entailed lattice forces exactly 6 to be E→C, and `SLICE_VERDICTS` forces
+   all 6 into `temporal` as the only entailed-bearing mixed slice. The remaining 6 land
+   in `direction` by the alphabetical tie-break alone. Nothing prefers temporal; the
+   closed vocabulary compels it.
+
+**Feasibility:** 163 fresh facts after exclusion against the rule's floor of 44.
+
+**One tension named here rather than left for an audit, and left standing by owner
+ruling.** Item 4 of the sitting-1 record above cites `gpt-5.5` as "the stronger measured
+entailment performer" — a **measured judge comparative inside a round artifact**, on a
+surface §2's discipline otherwise keeps score-free. It stands, deliberately: it is the
+honest rationale for a ruling the owner made, and the resample choice could not be made
+knowingly without it. Blindness is unharmed — the ledger is denylisted for every
+authoring and labelling party, so no author or labeller can reach it. Recorded so the
+next audit finds a decision rather than a leak.
+
+**Two record corrections from the same review**, neither consequential and both landed:
+the plan's near-miss share is 27/41, not 26/41 (scale-invariant, so the constraint held
+either way), and U3's residual now has a shape — `cross_gold_near_overlap` screens the
+archive's **live** pairs only, so a *rewording* of one of the 15 lattice-retired pairs is
+unscreened while byte-identical reuse of all 415 is still refused by the digest pin.
+
 ### The contamination screen — created 2026-08-13 (Tier-1 amendment to the plan)
 
 The plan's step 1 Catch names a controller-only screen at
@@ -2122,15 +2164,25 @@ that always fires is a screen nobody runs. The committed patterns match only wha
 measurement looks like.
 
 **Baseline residual on the strip, enumerated 2026-08-13 so a reviewer can tell growth
-from what was already there.** Under the committed patterns the strip returns hits at
-LABELLING.md lines 255, 307, 369, 395–396, 411, 508, 521, 544, 698 and 701. Every one
-is a **bar value, census arithmetic, or an identity** — `0.95` as the stated bar,
-`131/200` and `×200/41` as composition, gold sha `98fc4b49`, judge identity
-`fd39e7b2` and its contact fact. **No measured score is above the cut**, which
-independently corroborates §4's re-verification after the B1 relocation. That is a
-narrower claim than "the strip is clean", and it is the true one: the strip carries
-identities and bars, and the plan never claimed otherwise. A hit outside this
-enumerated set is a finding.
+from what was already there. Corrected the same day — the first enumeration was
+half noise.** The decimal pattern was written as `[0-9]\.[0-9]{3,}`, which matches a
+**task id**: `T2.115` reads as `2.115`. That fired on lines 255, 307, 411, 544 and
+698 — every one a citation like "ratified 2026-08-10, T2.115" — and it also stopped a
+real step-2 dispatch, because the worktree path `.worktrees/t2.124` matches too. It
+failed safe, but a screen that cries wolf is one the next executor learns to wave
+through, and an enumerated baseline containing noise defeats its own purpose: a
+reviewer cannot tell growth from a false positive. The pattern is now
+`(^|[^A-Za-z])[0-9]\.[0-9]{3,}`, which still catches ` 0.9017` and `scored 0.945`
+while ignoring letter-prefixed ids.
+
+**The corrected baseline is five lines** — LABELLING.md 369, 395, 508, 521, 701 — and
+every one is a **bar value, census arithmetic, or an identity**: gold sha `98fc4b49`;
+`0.95` as the stated bar beside a census of 78; `×200/41` and `131/200` as
+composition; judge identity `fd39e7b2` and its contact fact. **No measured score is
+above the cut**, which independently corroborates §4's re-verification after the B1
+relocation. That is a narrower claim than "the strip is clean" and it is the true
+one: the strip carries identities and bars, and the plan never claimed otherwise. A
+hit outside these five is a finding.
 
 ### The round record — grounds, parties, firewall (step 1, 2026-08-13)
 
