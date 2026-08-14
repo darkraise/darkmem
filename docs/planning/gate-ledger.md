@@ -726,6 +726,19 @@ run. Report and full alternatives argument:
 `docs/eval/2026-08-14-t2.129-blocked-hold/report.md`, corpus sha
 `69dbb717b0476167`, run database `darkmem_bench_t2129hold`.
 
+**That database no longer holds the run, and nothing here rests on it**
+(verified 2026-08-14, after the lane reported). The lane ran the full harness
+suite against the same database *after* its evidence run; the DB-backed tests
+reset the schema, so the measured state was destroyed by its own verification
+step. `darkmem_bench_t2129hold` now holds two rows from a unit-test probe.
+**The committed artifacts are the evidence and are intact** — which is the
+whole reason a run is written to `docs/eval/` rather than left in a database.
+Contrast pass 1, whose database `darkmem_bench_t2129run` *is* still readable
+and was re-read by the independent probe: that reproducibility is not available
+here, so this run is evidenced by its artifact alone. A future party wanting
+the live rows must re-run from committed state; the corpus sha and the
+pre-registration make that a re-derivation rather than a re-authoring.
+
 **Measured, against a pre-registration committed before the run**
 (`fbae980c`). The numerator path reproduced pass 2 exactly: promotions 149
 (98/33/18 by gate), audit 1/149 = 0.0067 with `corroborated_first=True`, R2

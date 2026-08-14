@@ -164,6 +164,16 @@ Run artifact: `bench-run.txt` in this directory. Database
 `2026-05-16T12:32:05Z .. 2026-08-14T12:32:05Z`; executed inside a systemd
 scope capped at `MemoryMax=4G / MemorySwapMax=256M`.
 
+**Correction, 2026-08-14 (found in controller verification, after this report
+was written): that database no longer holds this run.** The harness suite was
+run against the same database *after* the evidence run, and the DB-backed tests
+reset the schema — so the verification step destroyed the state it was
+verifying. `darkmem_bench_t2129hold` now holds two rows from a unit-test probe.
+Anything in this report that reads as "the rows are there to inspect" is false;
+`bench-run.txt` is the evidence, and it is intact. The lesson is the reason
+runs are committed rather than left live: **an evidence database and a test
+database must not be the same database**, and this lane used one name for both.
+
 **Expectations 1–4 (the guard did not weaken): all hold, byte-for-byte
 against pass 2.** Promotions 149 (98/33/18); audit corroborations 149,
 later disputed 1, rate 0.006711, R2 companion 0, `decidable=True
