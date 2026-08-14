@@ -12,6 +12,9 @@
     "The imports are all real, published Python packages, none of which is a",
     "stdlib module or a suffix of an indexed file path -- the two conditions",
     "code_deriver.dependency_name / is_internal_import decline on.",
+    "T2.129 grew the set from 12 edges to one the size a real service of this",
+    "shape carries, because the diversity bucket grows one claim per import and",
+    "the false-promotion audit is undecidable below 100 corroborations.",
     "EDITING CONSTRAINT: this file is half of the corpus's diversity design.",
     "Every `diversity` claim in corpus.json is seconded by exactly one import",
     "edge here, so removing or renaming a target_key removes that claim's",
@@ -30,24 +33,451 @@
     "last_indexed_commit": "9c1f4a7e2b83d05614a9f7c3e8d21b6045af9c37"
   },
   "files": [
-    {"file_path": "service/app.py", "language": "python"},
-    {"file_path": "service/webhooks.py", "language": "python"},
-    {"file_path": "service/settlement.py", "language": "python"},
-    {"file_path": "service/storage.py", "language": "python"},
-    {"file_path": "service/observability.py", "language": "python"}
+    {
+      "file_path": "service/app.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/webhooks.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/settlement.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/storage.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/observability.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/processors.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/notifications.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/risk.py",
+      "language": "python"
+    },
+    {
+      "file_path": "service/cli.py",
+      "language": "python"
+    },
+    {
+      "file_path": "tests/conftest.py",
+      "language": "python"
+    }
   ],
   "imports": [
-    {"source_key": "service/app.py", "target_key": "httpx"},
-    {"source_key": "service/app.py", "target_key": "pydantic"},
-    {"source_key": "service/app.py", "target_key": "structlog"},
-    {"source_key": "service/webhooks.py", "target_key": "pydantic"},
-    {"source_key": "service/webhooks.py", "target_key": "stripe"},
-    {"source_key": "service/webhooks.py", "target_key": "tenacity"},
-    {"source_key": "service/settlement.py", "target_key": "celery"},
-    {"source_key": "service/settlement.py", "target_key": "boto3"},
-    {"source_key": "service/storage.py", "target_key": "sqlalchemy"},
-    {"source_key": "service/storage.py", "target_key": "alembic"},
-    {"source_key": "service/storage.py", "target_key": "redis"},
-    {"source_key": "service/observability.py", "target_key": "prometheus_client"}
+    {
+      "source_key": "service/app.py",
+      "target_key": "httpx"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "pydantic"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "structlog"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "stripe"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "tenacity"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "celery"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "boto3"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "sqlalchemy"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "alembic"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "redis"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "prometheus_client"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "fastapi"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "uvicorn"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "starlette"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "gunicorn"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "anyio"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "itsdangerous"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "multipart"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "websockets"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "cryptography"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "pyjwt"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "bcrypt"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "orjson"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "msgpack"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "jsonschema"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "marshmallow"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "attrs"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "kombu"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "pika"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "apscheduler"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "pyarrow"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "pandas"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "minio"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "babel"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "schwifty"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "asyncpg"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "pymongo"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "elasticsearch"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "cachetools"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "filelock"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "sentry_sdk"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "opentelemetry"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "statsd"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "datadog"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "rich"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "braintree"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "plaid"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "zeep"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "requests"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "urllib3"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "certifi"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "backoff"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "twilio"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "sendgrid"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "slack_sdk"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "jinja2"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "phonenumbers"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "networkx"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "pycountry"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "dateutil"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "pytz"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "semver"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "deepdiff"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "click"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "typer"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "tabulate"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "tqdm"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "yaml"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "tomli"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "paramiko"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "watchdog"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "lxml"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "bs4"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "pytest"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "hypothesis"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "freezegun"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "faker"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "respx"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "coverage"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "mypy"
+    },
+    {
+      "source_key": "tests/conftest.py",
+      "target_key": "ruff"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "uvloop"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "httptools"
+    },
+    {
+      "source_key": "service/observability.py",
+      "target_key": "pythonjsonlogger"
+    },
+    {
+      "source_key": "service/webhooks.py",
+      "target_key": "pyotp"
+    },
+    {
+      "source_key": "service/notifications.py",
+      "target_key": "qrcode"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "stdnum"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "holidays"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "moneyed"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "ratelimit"
+    },
+    {
+      "source_key": "service/processors.py",
+      "target_key": "circuitbreaker"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "diskcache"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "joblib"
+    },
+    {
+      "source_key": "service/storage.py",
+      "target_key": "xxhash"
+    },
+    {
+      "source_key": "service/settlement.py",
+      "target_key": "zstandard"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "brotli"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "validators"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "netaddr"
+    },
+    {
+      "source_key": "service/risk.py",
+      "target_key": "geoip2"
+    },
+    {
+      "source_key": "service/app.py",
+      "target_key": "shortuuid"
+    },
+    {
+      "source_key": "service/cli.py",
+      "target_key": "humanize"
+    }
   ]
 }

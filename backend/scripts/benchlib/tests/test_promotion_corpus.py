@@ -77,6 +77,56 @@ def test_corpus_carries_enough_promotable_claims_for_the_audit(entries):
     assert len(promotable) >= PROMOTION_BAR_DEFAULTS["false_promotion_min_corroborations"]
 
 
+def _claims_promoting_without_the_time_gate(entries) -> set[str]:
+    """Claims that corroborate on the ``--no-capture-time-simulation`` pass.
+
+    Without the simulated clock every ``fact_sources`` row carries its write
+    time, so the time-gap gate cannot fire and the ``time_gap`` claims hold at
+    two origins against N=3.
+    """
+    return {
+        pc.claim_key(entry["key"])
+        for entry in entries
+        if entry["group"] not in pc.NON_PROMOTING_GROUPS
+        and entry["group"] != "time_gap"
+    }
+
+
+def test_corpus_clears_the_audit_band_on_both_passes(entries):
+    """Past the band, not merely past the decidability floor.
+
+    One genuine false promotion in a window of N corroborations is a rate of
+    ``1/N``, so a corpus anywhere in 20–99 is either vacuous or failing however
+    correct the ladder is. The corpus is what moves; the bar is derived from
+    ``promotion_bars`` rather than restated, so tightening the bar tightens this
+    check and loosening it can never quietly satisfy it.
+    """
+    import math
+
+    from benchlib.promotion_bars import PROMOTION_BAR_DEFAULTS
+
+    bar = PROMOTION_BAR_DEFAULTS["verification_false_promotion_bar"]
+    needed = math.floor(1 / bar) + 1
+    unsimulated = _claims_promoting_without_the_time_gate(entries)
+    assert len(unsimulated) >= needed, (
+        f"{len(unsimulated)} claims corroborate without the simulated capture "
+        f"clock; one dispute against that denominator is "
+        f"{1 / len(unsimulated):.4f}, and the bar is a strict < {bar}"
+    )
+
+
+def test_the_arming_pair_is_one_claim_the_audit_can_count(entries):
+    """The arm has to be armed against a claim that corroborates first."""
+    unsimulated = _claims_promoting_without_the_time_gate(entries)
+    subject = {
+        pc.claim_key(entry["key"])
+        for entry in entries
+        if entry["group"] == pc.ARMING_SUBJECT_GROUP
+    }
+    assert len(subject) == 1
+    assert subject <= unsimulated
+
+
 def test_claim_key_strips_only_a_single_character_variant():
     assert pc.claim_key("at-k8s-a") == "at-k8s"
     assert pc.claim_key("ld-postgres-3") == "ld-postgres"
@@ -201,6 +251,118 @@ def test_design_guard_refuses_a_none_claim_short_of_origins(entries):
         pc.validate_corroboration_design(broken)
 
 
+# ── the arming design, and every way it goes quietly vacuous ──────────────
+
+
+def _arming(entries, group):
+    return [entry for entry in entries if entry["group"] == group]
+
+
+def test_the_committed_corpus_keeps_the_arming_design(entries):
+    pc.validate_arming_design(entries)
+
+
+def test_loader_refuses_a_measured_claim_held_back_to_wave_two(tmp_path, entries):
+    import json
+
+    broken = copy.deepcopy(entries)
+    victim = next(e for e in broken if e["group"] == "none")
+    victim["wave"] = 2
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps({"memories": broken}), encoding="utf-8")
+    with pytest.raises(ValueError, match="Only the arming groups"):
+        pc.load_promotion_corpus(path)
+
+
+def test_arming_guard_refuses_a_counterpart_that_arrives_in_wave_one(entries):
+    """The vacuum this whole design exists to avoid.
+
+    A counterpart present from the start disputes the fact straight out of
+    ``candidate``: the veto is checked before the count, so the fact is never
+    journaled ``corroborated`` and the audit's numerator reads 0 with the arm
+    fully armed.
+    """
+    broken = copy.deepcopy(entries)
+    for entry in _arming(broken, pc.ARMING_COUNTERPART_GROUP):
+        entry["wave"] = 1
+    with pytest.raises(ValueError, match="no corroboration to count against"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_counterpart_sharing_the_subject_origin(entries):
+    """The veto's echo test asks whether the counterpart brings a new witness."""
+    broken = copy.deepcopy(entries)
+    subject = _arming(broken, pc.ARMING_SUBJECT_GROUP)[0]
+    for entry in _arming(broken, pc.ARMING_COUNTERPART_GROUP):
+        entry["origin_key"] = subject["origin_key"]
+    with pytest.raises(ValueError, match="a shared origin is an echo"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_subject_with_no_wave_two_re_assertion(entries):
+    """Without it nothing re-enqueues the corroborated fact for the fast arm."""
+    broken = [
+        entry for entry in copy.deepcopy(entries)
+        if not (
+            entry["group"] == pc.ARMING_SUBJECT_GROUP
+            and entry.get("wave", pc.DEFAULT_WAVE) == 2
+        )
+    ]
+    with pytest.raises(ValueError, match="no wave-2 entry"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_subject_short_of_origins_in_wave_one(entries):
+    broken = copy.deepcopy(entries)
+    first = pc.entries_for_wave(_arming(broken, pc.ARMING_SUBJECT_GROUP), 1)
+    for entry in first[1:]:
+        entry["origin_key"] = first[0]["origin_key"]
+    with pytest.raises(ValueError, match="origin\\(s\\) in wave 1"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_subject_stretched_past_the_gap(entries):
+    """A time-gap-carried subject would not corroborate on the unsimulated pass."""
+    broken = copy.deepcopy(entries)
+    first = sorted(
+        pc.entries_for_wave(_arming(broken, pc.ARMING_SUBJECT_GROUP), 1),
+        key=lambda entry: entry["created_at"],
+    )
+    earliest = datetime.fromisoformat(first[0]["created_at"])
+    first[-1]["created_at"] = (earliest + timedelta(days=30)).isoformat()
+    with pytest.raises(ValueError, match="unsimulated pass"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_counterpart_that_is_not_the_inverse(entries):
+    broken = copy.deepcopy(entries)
+    for entry in _arming(broken, pc.ARMING_COUNTERPART_GROUP):
+        subject, obj = entry["replaces"]
+        # the subject claim's own direction, which contradicts nothing
+        entry["replaces"] = [obj, subject]
+        entry["content"] = f"{obj} replaces {subject} after the rollback."
+    with pytest.raises(ValueError, match="not the inverse"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_declared_name_the_content_never_states(entries):
+    broken = copy.deepcopy(entries)
+    counterpart = _arming(broken, pc.ARMING_COUNTERPART_GROUP)[0]
+    counterpart["content"] = "The warehouse rollback is complete."
+    with pytest.raises(ValueError, match="never names"):
+        pc.validate_arming_design(broken)
+
+
+def test_arming_guard_refuses_a_measured_claim_in_the_arming_project(entries):
+    """A REPLACES memory supersedes its project; measured claims stay out of it."""
+    broken = copy.deepcopy(entries)
+    arming_project = _arming(broken, pc.ARMING_SUBJECT_GROUP)[0]["project"]
+    victim = next(entry for entry in broken if entry["group"] == "none")
+    victim["project"] = arming_project
+    with pytest.raises(ValueError, match="share the arming project"):
+        pc.validate_arming_design(broken)
+
+
 def test_repo_fixture_imports_are_derivable_dependencies():
     """Every fixture import must survive the deriver's own two refusals.
 
@@ -263,6 +425,112 @@ class TestAgainstBenchDatabase:
         assert row.origin_key == _PROBE_ORIGIN
         assert row.project == "t2108-probe"
         assert row.created_at == datetime(2026, 2, 3, 9, 0, tzinfo=timezone.utc)
+
+    @staticmethod
+    async def _open_replacement(project, key, subject, obj, origins):
+        """One open REPLACES fact with the named attributable origins."""
+        from app.repositories.fact_sources import FactSourceRepository
+        from app.repositories.knowledge_triples import KnowledgeTripleRepository
+
+        async with bench_db.session_factory() as session:
+            fact = await KnowledgeTripleRepository(session).insert_open(
+                triple_key=key,
+                subject_name=subject,
+                object_name=obj,
+                rel_type="REPLACES",
+                fact=f"{subject} replaces {obj}",
+                reference_time=datetime(2026, 6, 10, tzinfo=timezone.utc),
+                project=project,
+            )
+            sources = FactSourceRepository(session)
+            for origin in origins:
+                await sources.add_source(
+                    fact_id=fact["id"], source_kind="memory",
+                    source_ref=str(uuid.uuid4()), origin_key=origin,
+                )
+            await session.commit()
+        return fact
+
+    @staticmethod
+    async def _recompute(fact_id):
+        from app.services.verification_ladder import recompute_fact
+
+        async with bench_db.session_factory() as session:
+            decision = await recompute_fact(session, fact_id)
+            await session.commit()
+        return decision
+
+    @pytest.mark.asyncio
+    async def test_a_later_counterpart_disputes_an_already_corroborated_fact(self):
+        """The property the corpus's two waves exist to reach.
+
+        ``decide`` checks the veto ahead of both the count and the
+        already-corroborated hold, and the demotion hysteresis is interposed
+        only on ``demote`` — so a counterpart that arrives after the promotion
+        flips the fact sideways at once, which is exactly the
+        corroborated-then-disputed pair the false-promotion audit's numerator
+        joins on.
+        """
+        project = "t2129-order"
+        subject = await self._open_replacement(
+            project, "t2129-order-subject", "t2129-alpha", "t2129-beta",
+            ("t2129:a", "t2129:b", "t2129:c"),
+        )
+
+        promoted = await self._recompute(subject["id"])
+        assert (promoted.outcome, promoted.target_status) == (
+            "promote", "corroborated"
+        )
+
+        await self._open_replacement(
+            project, "t2129-order-counterpart", "t2129-beta", "t2129-alpha",
+            ("t2129:d",),
+        )
+        disputed = await self._recompute(subject["id"])
+        assert (disputed.outcome, disputed.target_status) == ("dispute", "disputed")
+
+        async with bench_db.session_factory() as session:
+            back = await pc.read_back(session)
+        rows = [row for row in back.disputes if row["project"] == project]
+        assert len(rows) == 1, rows
+        row = rows[0]
+        assert row["rule"] == "inverse_replacement"
+        assert row["witness_origin"] == "t2129:d"
+        assert row["corroborated_first"] is True
+        assert (row["counterpart_subject"], row["counterpart_object"]) == (
+            "t2129-beta", "t2129-alpha"
+        )
+        assert back.disputes_after_corroboration >= 1
+
+    @pytest.mark.asyncio
+    async def test_a_counterpart_present_from_the_start_leaves_the_audit_at_zero(self):
+        """Arming without the wave order is the same vacuum one layer down.
+
+        The dispute is real, the detector fired, and the false-promotion
+        audit's numerator still reads 0 — it joins a dispute to a *prior*
+        corroboration, and there is none. This is the corpus edit
+        ``validate_arming_design`` refuses, proven here against the ladder
+        rather than argued in the corpus's prose.
+        """
+        project = "t2129-vacuum"
+        subject = await self._open_replacement(
+            project, "t2129-vacuum-subject", "t2129-gamma", "t2129-delta",
+            ("t2129:e", "t2129:f", "t2129:g"),
+        )
+        await self._open_replacement(
+            project, "t2129-vacuum-counterpart", "t2129-delta", "t2129-gamma",
+            ("t2129:h",),
+        )
+
+        decision = await self._recompute(subject["id"])
+        assert (decision.current_status, decision.outcome) == ("candidate", "dispute")
+
+        async with bench_db.session_factory() as session:
+            back = await pc.read_back(session)
+        rows = [row for row in back.disputes if row["project"] == project]
+        assert len(rows) == 1, rows
+        assert rows[0]["rule"] == "inverse_replacement"
+        assert rows[0]["corroborated_first"] is False
 
     @pytest.mark.asyncio
     async def test_capture_time_stamp_moves_memory_rows_and_nothing_else(self):

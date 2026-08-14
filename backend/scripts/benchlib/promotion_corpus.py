@@ -42,6 +42,48 @@ Stubbed — two inputs, both of them *corpus*, neither of them ladder input:
    this module touches a row shipped code wrote, it is disclosed as simulation
    in the report, and the corpus's own declared session dates are what it
    applies.
+
+**T2.129 — the census grew and the audit's machine arm is armed.** The
+2026-08-13 evidence run was the first powered G-C measurement and did not
+clear, because the false-promotion audit's zero was *inoperability* rather
+than measured precision: not one of the numerator's producers could fire on
+this corpus. Both halves of the repair live here, and neither works alone.
+
+*The census.* The audit's bar is ``rate < 0.01``, strict, and one genuine
+false promotion in a window of N corroborations is ``1/N`` — over 1 % for
+every N below 100. Across the whole decidable band of 20–99 a corpus is
+therefore either vacuous or failing, so the corpus, not the bar, is what had
+to move. The claim counts grew to carry more than 100 corroborations on the
+**unsimulated** pass too, where the ``time_gap`` bucket empties; the 2026-08-13
+run cleared its decidability floor there by exactly one corroboration.
+Nothing about the corroboration structure was relaxed to reach the count: the
+growth is more claims of the shapes already designed, and the two designed
+refusals are untouched.
+
+*The arm.* ``inverse_replacement`` needs a REPLACES-family edge asserted in
+both directions between one pair of names, which no earlier version of this
+corpus contained. The ``armed_subject`` / ``armed_counterpart`` groups supply
+one, in a project nothing else uses, and they arm the **deterministic**
+detector — so the audit's machine arm takes no dependency on G-D's judge
+qualification.
+
+**Which is why the corpus has waves, and this is the finding that shaped
+them.** ``verification_ladder.decide`` checks the veto *before* the count and
+before the already-corroborated hold, and the demotion hysteresis is
+interposed only on the ``demote`` outcome — so a later-arriving counterpart
+flips an already-corroborated fact to ``disputed`` immediately, with no grace.
+That is what the audit's numerator counts, and it is only reachable in that
+order: a counterpart present from the first recompute sends the fact
+``candidate -> disputed`` with no corroboration in between, leaving the
+numerator at zero with the arm fully armed — the same vacuum one layer down.
+So wave 1 is the corpus, recomputed to convergence; wave 2 is the rollback
+that contradicts it, plus one independent re-assertion of the original claim,
+which is what puts the already-corroborated fact back in front of the
+recompute's fast arm (that arm recomputes exactly the facts named by a
+``sources_changed`` payload, and the counterpart's own event names only the
+counterpart). The re-assertion's origin is deliberately not the rollback's:
+the veto's echo test asks whether the *counterpart* brings a witness the
+subject does not already have.
 """
 from __future__ import annotations
 
@@ -75,6 +117,7 @@ from app.services import fact_lift
 from app.services.code_deriver import assert_repo_graph
 from app.services.config import get_llm_config
 from app.services.fact_provenance import MEMORY_SOURCE_KIND
+from app.services.verification_recompute import run_recompute
 
 HERE = Path(__file__).resolve().parent
 PROMOTION_DIR = HERE / "promotion"
@@ -97,18 +140,42 @@ REPO_ID_NAMESPACE = uuid.uuid5(
 )
 
 MAX_CODE_LIFT_TICKS = 20
+MAX_RECOMPUTE_TICKS = 20
+
+# The recompute's fast arm refuses events younger than its commit-skew margin
+# (`verification_recompute._COMMIT_SKEW_MARGIN`, 5s), so a tick fired straight
+# after a lift drains nothing. One second over it, the same wait the runner
+# makes before its own ticks.
+RECOMPUTE_SKEW_WAIT_SECONDS = 6
+
+ARMING_SUBJECT_GROUP = "armed_subject"
+ARMING_COUNTERPART_GROUP = "armed_counterpart"
+ARMING_GROUPS = frozenset({ARMING_SUBJECT_GROUP, ARMING_COUNTERPART_GROUP})
 
 # The groups the corpus declares, and what each is for. Validated so a typo in
 # a group label cannot silently produce a corpus whose design nobody can read
 # back off the data.
 CORPUS_GROUPS = frozenset({
     "diversity", "time_gap", "none", "echo", "under_sourced",
+    ARMING_SUBJECT_GROUP, ARMING_COUNTERPART_GROUP,
 })
 
-# The two groups the design expects to stay at `candidate`. Named so the
-# runner can report them as an outcome rather than leaving a reader to notice
-# their absence from the promoted set.
-NON_PROMOTING_GROUPS = frozenset({"echo", "under_sourced"})
+# The groups the design expects to stay at `candidate`. The first two are the
+# designed refusals, named so the runner can report them as an outcome rather
+# than leaving a reader to notice their absence from the promoted set. The
+# counterpart is here for a different reason and is not a control: it carries
+# one origin against N=3, so it can never corroborate, and counting it as a
+# promotable claim would overstate what the corpus can put in the audit's
+# denominator.
+NON_PROMOTING_GROUPS = frozenset({
+    "echo", "under_sourced", ARMING_COUNTERPART_GROUP,
+})
+
+# Which ingestion pass an entry belongs to. Wave 2 exists so a fact can be
+# corroborated *and then* disputed -- see the module docstring; a corpus with
+# one wave can arm the detector and still leave the audit's numerator at zero.
+CORPUS_WAVES = (1, 2)
+DEFAULT_WAVE = 1
 
 
 # The corroboration parameters the design is written against. Imported from
@@ -133,6 +200,17 @@ _DESIGN: dict[str, tuple[int, int | None, str | None]] = {
     "echo": (1, 1, None),
     # Two same-kind sessions inside one week: k=2 against N=3.
     "under_sourced": (CORROBORATION_N_DIVERSE, CORROBORATION_N_DIVERSE, "lt"),
+    # The claim the veto is armed against. Its wave-1 sessions alone must meet
+    # the default N -- `validate_arming_design` is what checks that, because
+    # this table cannot see waves -- and the wave-2 re-assertion then adds an
+    # origin, which is why no gap rule applies here: whether that fourth origin
+    # lands inside or outside the seven days changes which gate *would* have
+    # fired, and the fact is already corroborated by then either way.
+    ARMING_SUBJECT_GROUP: (CORROBORATION_N_DEFAULT, None, None),
+    # One session records the rollback. One origin is the design, not a
+    # shortfall: the counterpart's job is to contradict, and a counterpart that
+    # corroborated would put a second fact in the audit's numerator.
+    ARMING_COUNTERPART_GROUP: (1, 1, None),
 }
 
 
@@ -230,10 +308,29 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
                 f"entry {key!r}: created_at {raw_created!r} is not ISO-8601"
             ) from exc
 
+        wave = entry.get("wave", DEFAULT_WAVE)
+        if wave not in CORPUS_WAVES:
+            raise ValueError(
+                f"entry {key!r}: wave {wave!r} is not one of {list(CORPUS_WAVES)}"
+            )
+        if wave != DEFAULT_WAVE and group not in ARMING_GROUPS:
+            raise ValueError(
+                f"entry {key!r} in group {group!r} is in wave {wave}. Only the "
+                f"arming groups {sorted(ARMING_GROUPS)} have a second wave; a "
+                f"measured claim held back to wave 2 is recomputed once fewer "
+                f"than the corpus it is measured beside"
+            )
+        entry["wave"] = wave
+
         entry["memory_id"] = memory_id_for_key(key)
     validate_claim_key_convention(entries)
     validate_corroboration_design(entries)
+    validate_arming_design(entries)
     return entries
+
+
+def entries_for_wave(entries: list[dict], wave: int) -> list[dict]:
+    return [entry for entry in entries if entry.get("wave", DEFAULT_WAVE) == wave]
 
 
 def validate_claim_key_convention(entries: list[dict]) -> None:
@@ -326,6 +423,169 @@ def validate_corroboration_design(entries: list[dict]) -> None:
                 f"origins, at or over {_GAP}, so the time-gap gate fires and the "
                 f"claim leaves the bucket its group exists to populate"
             )
+
+
+def _declared_replacement(entry: dict) -> tuple[str, str]:
+    declared = entry.get("replaces")
+    if (
+        not isinstance(declared, list)
+        or len(declared) != 2
+        or not all(isinstance(name, str) and name.strip() for name in declared)
+    ):
+        raise ValueError(
+            f"arming entry {entry['key']!r} must declare "
+            f"'replaces': [subject, object] -- the two names whose REPLACES "
+            f"edge the veto is armed on. Left to the extractor alone, a "
+            f"reworded content silently arms nothing and the run reports a "
+            f"clean audit"
+        )
+    subject, obj = (name.strip().lower() for name in declared)
+    if subject == obj:
+        raise ValueError(
+            f"arming entry {entry['key']!r} declares {subject!r} replacing "
+            f"itself; `detect_open_contradiction` skips a self-loop, whose "
+            f"inverse is itself"
+        )
+    text_ = entry["content"].lower()
+    for name in (subject, obj):
+        if not re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text_):
+            raise ValueError(
+                f"arming entry {entry['key']!r} declares the pair "
+                f"({subject!r}, {obj!r}) but its content never names {name!r}, "
+                f"so the extractor has nothing to build the edge from"
+            )
+    return subject, obj
+
+
+def validate_arming_design(entries: list[dict]) -> None:
+    """Assert the corpus can actually arm ``inverse_replacement``, and in order.
+
+    Every clause here is a way the arming silently becomes vacuous while the
+    corpus still loads, still runs and still prints an audit rate of 0.0000 —
+    which is the exact reading the 2026-08-13 run was unable to distinguish
+    from precision, and the reason this task exists.
+
+    - **Wave order.** The subject's wave-1 sessions alone must meet the default
+      N, because the audit counts a fact corroborated and *then* disputed. Move
+      the counterpart into wave 1 and the veto fires on the first recompute:
+      ``candidate -> disputed``, no corroboration in between, numerator 0.
+    - **The re-assertion.** A wave-2 entry on the subject claim, from an origin
+      of its own, is what re-enqueues the already-corroborated fact — the fast
+      arm recomputes exactly the facts a ``sources_changed`` payload names, and
+      the counterpart's event names only the counterpart. Without it the
+      dispute waits on the slow arm's cadence, which a run cannot depend on.
+    - **The witness.** The counterpart's origin may appear nowhere in the
+      subject claim. The veto's echo test asks whether the *counterpart* brings
+      a witness the subject lacks; share the origin and the finding is an echo
+      and the veto correctly declines.
+    - **The project.** Nothing else may live in the arming project, so the
+      REPLACES memories' supersession and the detector's candidate scan cannot
+      reach a measured claim.
+    """
+    by_group: dict[str, list[dict]] = {}
+    for entry in entries:
+        if entry["group"] in ARMING_GROUPS:
+            by_group.setdefault(entry["group"], []).append(entry)
+
+    for group in sorted(ARMING_GROUPS):
+        members = by_group.get(group, [])
+        claims = {claim_key(entry["key"]) for entry in members}
+        if len(claims) != 1:
+            raise ValueError(
+                f"group {group!r} holds {len(claims)} claim(s); the arming "
+                f"design is exactly one pair, and a second pair would put a "
+                f"second fact in the false-promotion audit's numerator"
+            )
+
+    subject_entries = by_group[ARMING_SUBJECT_GROUP]
+    counterpart_entries = by_group[ARMING_COUNTERPART_GROUP]
+
+    pairs = {_declared_replacement(entry) for entry in subject_entries}
+    if len(pairs) != 1:
+        raise ValueError(
+            f"the arming subject claim declares several replacement pairs "
+            f"{sorted(pairs)}; its entries must all assert one edge"
+        )
+    forward = pairs.pop()
+    reverse = {_declared_replacement(entry) for entry in counterpart_entries}
+    if reverse != {(forward[1], forward[0])}:
+        raise ValueError(
+            f"the arming counterpart declares {sorted(reverse)}, which is not "
+            f"the inverse of the subject's {forward}. `inverse_replacement` "
+            f"matches a REPLACES-family edge asserted in both directions "
+            f"between the same two names and nothing else"
+        )
+
+    projects = {entry["project"] for entry in subject_entries + counterpart_entries}
+    if len(projects) != 1:
+        raise ValueError(
+            f"the arming pair spans projects {sorted(projects)}; the detector "
+            f"scopes its candidate scan by project, so a split pair contradicts "
+            f"nothing"
+        )
+    arming_project = projects.pop()
+    intruders = sorted({
+        entry["key"] for entry in entries
+        if entry["project"] == arming_project and entry["group"] not in ARMING_GROUPS
+    })
+    if intruders:
+        raise ValueError(
+            f"entries {intruders} share the arming project {arming_project!r}. "
+            f"A REPLACES memory supersedes same-project memories and the "
+            f"detector scans same-project facts, so a measured claim parked "
+            f"here is measured under a side effect"
+        )
+
+    first_wave = entries_for_wave(subject_entries, 1)
+    later_wave = entries_for_wave(subject_entries, 2)
+    first_origins = {entry["origin_key"].strip().lower() for entry in first_wave}
+    if len(first_origins) < CORROBORATION_N_DEFAULT:
+        raise ValueError(
+            f"the arming subject claim is asserted by {len(first_origins)} "
+            f"origin(s) in wave 1; it needs {CORROBORATION_N_DEFAULT} to be "
+            f"corroborated before the counterpart arrives, and a fact disputed "
+            f"straight out of `candidate` never enters the audit's numerator"
+        )
+    captured = sorted(
+        datetime.fromisoformat(entry["created_at"]) for entry in first_wave
+    )
+    if captured[-1] - captured[0] >= _GAP:
+        raise ValueError(
+            f"the arming subject claim's wave-1 sessions span "
+            f"{captured[-1] - captured[0]}, at or over {_GAP}. The time-gap "
+            f"gate would then carry it, and the gate is unreachable on the "
+            f"unsimulated pass -- so the fact would not be corroborated there "
+            f"and the dispute would land on one pass only"
+        )
+    if not later_wave:
+        raise ValueError(
+            "the arming subject claim has no wave-2 entry, so nothing "
+            "re-enqueues the corroborated fact and the dispute waits on the "
+            "slow arm's cadence rather than on the corpus"
+        )
+    later_origins = {entry["origin_key"].strip().lower() for entry in later_wave}
+    if later_origins & first_origins:
+        raise ValueError(
+            f"the arming subject claim's wave-2 re-assertion reuses origin(s) "
+            f"{sorted(later_origins & first_origins)}; an independent session "
+            f"re-confirming the claim is what the corpus says it is"
+        )
+
+    if entries_for_wave(counterpart_entries, 1):
+        raise ValueError(
+            "the arming counterpart has a wave-1 entry, so the veto fires on "
+            "the first recompute and the subject is disputed out of "
+            "`candidate` with no corroboration to count against"
+        )
+    witness = {entry["origin_key"].strip().lower() for entry in counterpart_entries}
+    subject_origins = first_origins | later_origins
+    if witness & subject_origins:
+        raise ValueError(
+            f"the arming counterpart's origin(s) {sorted(witness & subject_origins)} "
+            f"also assert the subject claim. The veto's echo test asks whether "
+            f"the counterpart brings a witness the subject does not have, so a "
+            f"shared origin is an echo and no contradiction is found"
+        )
 
 
 def validate_diversity_group_against_fixture(
@@ -666,16 +926,63 @@ _CONTROL_FACTS = text("""
 # The object names the corpus's `echo` and `under_sourced` groups assert.
 CONTROL_OBJECT_NAMES = ("cassandra", "avro")
 
+# Every dispute the ladder journaled, with the one thing that decides whether
+# it reaches the false-promotion audit's numerator: whether the same fact was
+# journaled `corroborated` first. A dispute out of `candidate` is a real
+# dispute and still leaves the audit reading zero, so the two are reported
+# apart rather than as one "disputes" count.
+#
+# The counterpart triple is joined off the payload rather than replayed from
+# it, on `detect_scanned_contradiction`'s own reasoning: a journal row is
+# append-only and can outlive the rows it describes.
+_ARMED_DISPUTES = text("""
+    WITH disputes AS (
+        SELECT DISTINCT ON (e.object_id)
+               e.object_id, e.created_at, e.id, e.payload
+        FROM events e
+        WHERE e.event_type = 'verified'
+          AND e.object_type = 'fact'
+          AND e.payload->>'outcome' = 'dispute'
+        ORDER BY e.object_id, e.created_at, e.id
+    )
+    SELECT kt.project,
+           kt.subject_name, kt.rel_type, kt.object_name,
+           kt.verification_status,
+           d.payload->'contradiction'->>'rule'           AS rule,
+           d.payload->'contradiction'->>'witness_origin' AS witness_origin,
+           ck.subject_name AS counterpart_subject,
+           ck.rel_type     AS counterpart_rel_type,
+           ck.object_name  AS counterpart_object,
+           EXISTS (
+               SELECT 1 FROM events p
+               WHERE p.event_type = 'verified'
+                 AND p.object_type = 'fact'
+                 AND p.object_id = d.object_id
+                 AND p.payload->'after'->>'verification_status' = 'corroborated'
+                 AND (p.created_at, p.id) < (d.created_at, d.id)
+           ) AS corroborated_first
+    FROM disputes d
+    JOIN knowledge_triples kt ON kt.id = d.object_id
+    LEFT JOIN knowledge_triples ck
+           ON CAST(ck.id AS text) = d.payload->'contradiction'->>'counterpart_id'
+    ORDER BY kt.project, kt.subject_name, kt.object_name
+""")
+
 
 @dataclass(frozen=True)
 class ReadBack:
     promotions_by_gate: tuple[dict, ...]
     census: tuple[dict, ...]
     controls: tuple[dict, ...]
+    disputes: tuple[dict, ...] = ()
 
     @property
     def promoted_facts(self) -> int:
         return sum(row["promoted_facts"] for row in self.promotions_by_gate)
+
+    @property
+    def disputes_after_corroboration(self) -> int:
+        return sum(1 for row in self.disputes if row["corroborated_first"])
 
 
 async def read_back(session) -> ReadBack:
@@ -685,10 +992,12 @@ async def read_back(session) -> ReadBack:
     controls = (
         await session.execute(_CONTROL_FACTS, {"names": list(CONTROL_OBJECT_NAMES)})
     ).mappings().all()
+    disputes = (await session.execute(_ARMED_DISPUTES)).mappings().all()
     return ReadBack(
         promotions_by_gate=tuple(dict(row) for row in gates),
         census=tuple(dict(row) for row in census),
         controls=tuple(dict(row) for row in controls),
+        disputes=tuple(dict(row) for row in disputes),
     )
 
 
@@ -722,6 +1031,31 @@ def render_read_back(result: ReadBack) -> str:
             f"{row['object_name']} -> {row['verification_status']} "
             f"(origins={row['origins']}, provenance_rows={row['provenance_rows']})"
         )
+
+    lines.append("")
+    lines.append("== the armed veto: disputes the detector actually produced ==")
+    if not result.disputes:
+        lines.append(
+            "  NONE -- the arm did not fire. The false-promotion audit's zero "
+            "is inoperability, not precision, and says nothing about the ladder"
+        )
+    for row in result.disputes:
+        counterpart = (
+            f"{row['counterpart_subject']} {row['counterpart_rel_type']} "
+            f"{row['counterpart_object']}"
+            if row["counterpart_subject"] else "(counterpart row is gone)"
+        )
+        lines.append(
+            f"  {row['project']}: {row['subject_name']} {row['rel_type']} "
+            f"{row['object_name']} -> {row['verification_status']} "
+            f"by rule={row['rule']} against [{counterpart}], "
+            f"witness={row['witness_origin']}, "
+            f"corroborated_first={row['corroborated_first']}"
+        )
+    lines.append(
+        f"  disputes after a journaled corroboration (the audit's numerator): "
+        f"{result.disputes_after_corroboration}"
+    )
     return "\n".join(lines)
 
 
@@ -740,9 +1074,36 @@ class PreparedCorpus:
     repo_assertions: dict
     n_facts: int
     notes: tuple[str, ...] = field(default_factory=tuple)
+    wave_two_entries: int = 0
+    wave_two_lift: dict = field(default_factory=dict)
+    first_recompute: dict = field(default_factory=dict)
 
 
 _COUNT_FACTS = text("SELECT COUNT(*) FROM knowledge_triples")
+
+
+async def recompute_to_convergence(session_factory) -> dict:
+    """Run the shipping recompute until a tick drains no events.
+
+    The same loop the runner makes after this returns, spelled once here
+    because wave 1 has to converge *before* wave 2 lands: the corpus's whole
+    arming design is a fact corroborated on one pass and disputed on the next,
+    and a single pass over both waves collapses that into one decision.
+    """
+    import asyncio
+
+    await asyncio.sleep(RECOMPUTE_SKEW_WAIT_SECONDS)
+    ticks = recomputed = transitions = 0
+    while ticks < MAX_RECOMPUTE_TICKS:
+        async with session_factory() as session:
+            outcome = await run_recompute(session)
+            await session.commit()
+        ticks += 1
+        recomputed += outcome.drain.facts_recomputed
+        transitions += outcome.drain.transitions
+        if outcome.drain.events_scanned == 0:
+            break
+    return {"ticks": ticks, "recomputed": recomputed, "transitions": transitions}
 
 
 async def prepare(
@@ -766,6 +1127,17 @@ async def prepare(
     a second kind and climbs by the count, journaling as it goes. Reversed, the
     same facts would be born on the rung with no journal row at all and would
     be invisible to every G-C promotion metric.
+
+    **Two waves, with a full recompute between them** (T2.129). Wave 1 is the
+    measured corpus and everything above; it is then recomputed to convergence,
+    which is where the promotions the audit's denominator counts are journaled.
+    Wave 2 is the arming pair's later half — the rollback that contradicts an
+    already-corroborated fact, and the independent re-assertion that puts that
+    fact back in front of the fast arm. Folding wave 2 into wave 1 does not
+    merely reorder the run: the veto is checked ahead of the count, so the fact
+    would go ``candidate -> disputed`` and the audit's numerator would stay 0
+    with the arm armed. The runner's own recompute ticks are what then apply
+    wave 2, so this returns with the dispute still owed.
     """
     import hashlib
 
@@ -773,6 +1145,8 @@ async def prepare(
     entries = load_promotion_corpus(corpus_path)
     fixture = load_repo_fixture(fixture_path)
     validate_diversity_group_against_fixture(entries, fixture)
+    first_wave = entries_for_wave(entries, 1)
+    second_wave = entries_for_wave(entries, 2)
 
     await reset()
     await run_smoke.seed_llm_purpose_configs(session_factory, api_key)
@@ -780,7 +1154,7 @@ async def prepare(
     async with session_factory() as session:
         llm_config = await get_llm_config(session)
 
-    prepared_entries = await seed_memory_rows(session_factory, entries)
+    prepared_entries = await seed_memory_rows(session_factory, first_wave)
     llm = CachingLLMOrchestrator(llm_config, cache_dir=str(cache_dir))
     ingest_result = await run_ingest(llm, prepared_entries, GateConfig(), session_factory)
 
@@ -796,6 +1170,16 @@ async def prepare(
         await session.commit()
     code_lift = await code_lift_to_exhaustion(session_factory)
 
+    first_recompute = await recompute_to_convergence(session_factory)
+
+    prepared_second = await seed_memory_rows(session_factory, second_wave)
+    second_ingest = await run_ingest(
+        llm, prepared_second, GateConfig(), session_factory
+    )
+    wave_two_lift = await _lift_to_exhaustion(session_factory)
+    if simulate_capture_time:
+        stamped += await simulate_capture_time_provenance(session_factory)
+
     async with session_factory() as session:
         n_facts = int((await session.execute(_COUNT_FACTS)).scalar_one())
 
@@ -805,16 +1189,24 @@ async def prepare(
             "capture-time provenance simulation disabled: every fact_sources "
             "row carries its write time, so the time_gap gate cannot fire"
         )
+    notes.append(
+        f"wave 1 ({len(first_wave)} captures) was recomputed to convergence "
+        f"before wave 2 ({len(second_wave)} captures) was ingested; the "
+        f"dispute wave 2 arms is owed to the ticks that follow"
+    )
     return PreparedCorpus(
         corpus_entries=len(entries),
         corpus_sha256=hashlib.sha256(corpus_bytes).hexdigest(),
         gate_config=ingest_result.gate_config,
         fingerprint=ingest_result.fingerprint,
-        live_calls=ingest_result.live_calls,
+        live_calls=ingest_result.live_calls + second_ingest.live_calls,
         lift=lift,
         code_lift=code_lift,
         capture_time_stamped=stamped,
         repo_assertions=repo_assertions,
         n_facts=n_facts,
         notes=tuple(notes),
+        wave_two_entries=len(second_wave),
+        wave_two_lift=wave_two_lift,
+        first_recompute=first_recompute,
     )

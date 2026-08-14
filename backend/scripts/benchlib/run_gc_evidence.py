@@ -100,6 +100,8 @@ async def _prepare_promotion(
     print(f"ingest live_calls: {prepared.live_calls}")
     print(f"embedder fingerprint: {prepared.fingerprint}")
     print(f"lift: {prepared.lift}")
+    print(f"wave 1 recompute (before wave 2 landed): {prepared.first_recompute}")
+    print(f"wave 2: {prepared.wave_two_entries} captures, lift {prepared.wave_two_lift}")
     print(f"capture-time provenance stamped (SIMULATED CLOCK): "
           f"{prepared.capture_time_stamped} rows")
     print(f"repo assertions: {prepared.repo_assertions}")
