@@ -1720,3 +1720,88 @@ def test_a_truncated_digest_list_refuses_rather_than_disarming(tmp_path, monkeyp
             entailment_gold.retired_pair_digests()
     finally:
         entailment_gold.retired_pair_digests.cache_clear()
+
+
+# ── the adjudication sidecar (T2.124 step 9) ─────────────────────────────────
+#
+# Content-token Jaccard cannot separate a duplicate proposition from a lawful
+# near-miss: on the round-4 census a recorded duplicate and an owner-ruled
+# lawful pair both score 0.2857. So `census_independence` unions human-tier
+# verdicts, and reports a range where the adjudicators split rather than
+# picking a side.
+
+def test_an_absent_sidecar_is_lawful_and_degrades_to_the_jaccard_reading(tmp_path):
+    """Every tree before step 9 was in this state; it must not raise."""
+    empty = jq.load_adjudicated_duplicates(tmp_path / "nope.json")
+    assert empty == {"confirmed_duplicates": [], "contested": []}
+
+
+def test_a_malformed_sidecar_raises_rather_than_silently_restoring_the_overcount(tmp_path):
+    bad = tmp_path / "adjudicated.json"
+    bad.write_text(json.dumps({"confirmed_duplicates": [{"left": "eg-0001"}]}))
+    with pytest.raises(ValueError, match="needs 'left' and 'right'"):
+        jq.load_adjudicated_duplicates(bad)
+
+    worse = tmp_path / "worse.json"
+    worse.write_text(json.dumps({"contested": "eg-0001,eg-0002"}))
+    with pytest.raises(ValueError, match="must be a list"):
+        jq.load_adjudicated_duplicates(worse)
+
+
+def test_the_committed_sidecar_collapses_the_entailed_census():
+    """The number this function used to report, and the one it reports now."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    ci = jq.census_independence(live, "entailed", 0.90)
+
+    # Jaccard alone finds nothing here — which is the whole point.
+    assert ci["duplicate_pairs"] == []
+    assert len(ci["adjudicated_duplicate_pairs"]) == 8
+    assert len(ci["contested_pairs"]) == 6
+
+    assert ci["rows"] == 110
+    assert ci["independent_propositions"] == 102, (
+        "the upper bound must collapse the 8 unanimous duplicates"
+    )
+    assert ci["independent_propositions_range"] == [96, 102]
+    assert ci["independence_contested"] is True
+    # Both endpoints clear the stated bar, which is why the range is reportable
+    # rather than blocking: no decision depends on which way the contested fall.
+    low, high = ci["effective_bar_on_independent_range"]
+    assert low >= 0.90 and high >= 0.90
+
+
+def test_the_contradicted_census_is_untouched_by_the_sidecar():
+    """The class carrying the harder bar has no adjudicated duplicate at all."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    ci = jq.census_independence(live, "contradicted", 0.95)
+    assert ci["rows"] == 80
+    assert ci["independent_propositions"] == 80
+    assert ci["independent_propositions_range"] == [80, 80]
+    assert ci["independence_contested"] is False
+    assert ci["adjudicated_duplicate_pairs"] == []
+
+
+def test_the_renderer_never_prints_a_count_with_an_empty_pair_list():
+    """The regression this wiring could most easily introduce.
+
+    `independent_propositions` now collapses on a source `duplicate_pairs` does
+    not carry, so a note built from that key alone reads "8 duplicated
+    proposition(s): []".
+    """
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    ci = jq.census_independence(live, "entailed", 0.90)
+    collapsing = ci["duplicate_pairs"] + ci["adjudicated_duplicate_pairs"]
+    assert len(collapsing) == ci["rows"] - ci["independent_propositions"]
+    assert collapsing, "a non-zero collapse must name the pairs that caused it"
