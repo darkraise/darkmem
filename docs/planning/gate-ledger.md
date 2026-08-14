@@ -926,6 +926,65 @@ measured party, and a `blocked`-arm denominator still inflates with wall-clock
 instrument measuring the same thing. It buys honesty about what a "clears"
 means, not a cleared gate.
 
+### The corpus-growth route is taken, and its target is 473, not the 300 that was suggested (owner instruction 2026-08-15, T2.131)
+
+**The owner directed the lane down the independent probe's route — grow the
+corpus — rather than the bound-rule switch T2.130 left open.** The route is
+taken; the number came with it, and the number is wrong. Recomputed here with
+the committed instrument (`promotion_metrics.clopper_pearson_upper`,
+`at_bar_pass_probability`, `corroborations_required`), at the corpus's actual
+**k = 1** observed false promotion:
+
+| n | point estimate | clears the scored rule? | 95% upper bound | clears the bound? | at-bar pass (point rule) |
+|---|---|---|---|---|---|
+| 131 (today, unsimulated) | 0.0076 | yes | 0.0357 | no | 0.6227 |
+| 149 (today, simulated) | 0.0067 | yes | 0.0314 | no | 0.5604 |
+| **300 (as suggested)** | 0.0033 | yes | **0.0157** | **no** | 0.4221 |
+| 400 | 0.0025 | yes | 0.0118 | no | 0.4325 |
+| **473 (derived)** | 0.0021 | yes | **0.0100** | **yes** | 0.4884 |
+
+**Where the 300 came from, and why it does not apply.** T2.130 derived 299 —
+and that is the **k = 0** window. The suggestion carried it across to a corpus
+that has k = 1, where the derived window is **473**. So the suggested growth
+lands at a bound of 0.0157, over half again the bar, and changes no verdict.
+Under the currently *scored* rule it changes even less: the at-the-bar pass
+probability is non-monotone in n (0.4221 at 300, 0.5361 at 350, 0.4325 at 400)
+because the admissible `k` steps in integers, so "more data" does not even move
+it in a consistent direction.
+
+**The trade-off this exposes is structural, and it is the finding worth
+keeping.** The corpus has k = 1 *because* T2.129 armed it, and the arming is
+what made the audit non-vacuous at all — T2.129's whole result is that an
+unarmed zero means nothing. So the two properties price against each other: an
+**unarmed** corpus settles at 299 and its clear is vacuous; an **armed** corpus
+is meaningful and settles at 473. There is no window at which the audit is both
+cheap and honest, and 299 is only ever the price of the vacuous one. Whoever
+next quotes a required window must say which `k` it assumes.
+
+**What the 473 costs, measured rather than estimated.** Today 246 authored
+memories yield 131 unsimulated in-window corroborations. Reaching 473 needs
+**+342 corroborations**. The only group that converts near one-for-one is
+`diversity` (98 promotions from 101 memories, because the repo fixture supplies
+the second origin of a second kind), so the honest estimate is **roughly +350
+authored captures plus their matching repo-fixture edges** — about 2.4× the
+existing corpus, on top of a corpus that already tripled under T2.129.
+
+**And the cost is not only effort, which is why it is recorded here rather than
+in the task alone.** Every one of those captures is written by the measured
+party, and the section above already names that as the audit's binding limit:
+*a well-powered rule over authored evidence is a better instrument measuring the
+same thing*. Growing to 473 makes the instrument decisive about a corpus its own
+measurer wrote, and concentrating +350 of them in one project to get the
+one-for-one conversion makes the denominator's authorship more visible, not
+less. That is not an argument against the owner's instruction — the instruction
+stands and `T2.131` executes it — it is the disclosure that has to travel with
+the eventual number, so a future reader of "473 corroborations, bound 0.0100,
+CLEARS" meets it beside what it was made of.
+
+**No bar moved and none may.** The 0.01 bar and the 0.95 confidence are
+untouched; this section changes a *target window*, which is a property of the
+evidence, not of the gate.
+
 ### OWNER RULING on all three escalated items — 2026-08-13
 
 Ruled the same day the run reported, on the run's own numbers and before any

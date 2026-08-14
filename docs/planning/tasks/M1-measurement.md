@@ -1148,6 +1148,65 @@ excluded from `testpaths`, so a plain `pytest -q` does not collect it).
 
 ---
 
+#### T2.131 — Grow the promotion corpus to a window that settles the audit
+
+`Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T2.129, T2.130` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C (produces)`
+
+**Minted 2026-08-15 on the owner's instruction to take the independent probe's route**
+— grow the corpus — rather than T2.130's bound-rule switch, which stays open and
+untaken. The route is the owner's to choose and is chosen; what follows is only the
+arithmetic of executing it.
+
+**The suggested number is not the target, and the task exists partly to stop it being
+quoted.** The probe closed on "roughly n ≥ 300", carrying across T2.130's 299 — which is
+the **k = 0** window. This corpus has **k = 1**, so its derived window is **473**
+(`corroborations_required(1, 0.01, 0.95)`). At 300 the 95% upper bound is **0.0157**,
+over half again the 0.01 bar, and no verdict moves. The full table is in the gate
+ledger's "corpus-growth route" section.
+
+**The trade-off is structural and must survive into whatever this produces.** The corpus
+has k = 1 *because* T2.129 armed it, and that arming is the only reason the audit is not
+vacuous. An unarmed corpus settles at 299 and its clear means nothing; an armed corpus
+means something and settles at 473. 299 is only ever the price of the vacuous version.
+Any future statement of a required window states its `k`.
+
+**What it costs.** 246 authored memories yield 131 unsimulated in-window corroborations
+today. +342 are needed. `diversity` is the only near one-for-one group (98 promotions
+from 101 memories, because `repo_fixture.json` supplies the second origin of a second
+kind), so budget **≈ +350 captures with matching fixture edges** — about 2.4× the current
+corpus. Size L, so runbook §3 forbids executing it directly: it needs a step-level plan
+reviewed at Fable tier first.
+
+**The design rules do not relax to reach the count, and this is the whole risk.** T2.129's
+text already says it and the pressure is strictly higher here: corroboration means
+independent capture sessions asserted the same thing, and a unique `origin_key` per memory
+would reach 473 immediately while being one assertion relabelled 473 times.
+`validate_corroboration_design`, `validate_claim_key_convention`, the echo and
+under-sourced refusals and the arming and blocked-hold validators all stand unchanged and
+must still hold at the larger size. **A monoculture is its own failure mode**: +350
+near-identical captures in one project would satisfy every validator and still make the
+denominator's authorship the first thing a reader notices, so growth spreads across
+projects and claim shapes even where that costs conversion efficiency.
+
+**What this cannot buy, stated at mint so the eventual number is not oversold.** The
+numerator stays authored, and so does the denominator. A settled bound over a corpus its
+own measurer wrote is a decisive instrument pointed at an artifact, not evidence about the
+system — the same limit T2.130 recorded, now merely better powered. The disclosure travels
+with the verdict.
+
+**Done when:** the corpus carries ≥ 473 in-window corroborations on the **unsimulated**
+pass (the simulated pass follows, and the `time_gap` bucket's dependence on the simulated
+clock is disclosed, not repaired); the armed dispute still fires and `k` is still exactly
+1, so the window and the observed count match the derivation; the echo and under-sourced
+controls still hold at `candidate`; every existing validator passes unmodified and the
+diff shows no validator weakened; growth is spread across projects with the distribution
+reported; the run carries its rule-2 latency/token twin; and the G-C evidence run is
+re-run end to end with its verdict recorded by a party that did not author the growth.
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`, then the G-C
+evidence run per `docs/planning/briefs/2026-08-13-gc-bench-arm-evidence.md`, both passes.
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`
