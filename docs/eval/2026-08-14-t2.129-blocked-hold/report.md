@@ -235,3 +235,16 @@ stands owed.
   row; the Gate field's phrasing) — present at branch head `32a17469`,
   untouched by this change (its diff contains no `docs/planning` file),
   and owned by the controller's planning-docs lane.
+
+### Mutation drills (the failing side, shown)
+
+Two deliberate breaks of the new guard, each watched failing and then
+restored to green:
+
+- Window clause neutered (`outside = []` in `validate_blocked_hold_design`):
+  `test_blocked_hold_clause_bites_on_a_date_outside_the_window` and
+  `test_blocked_hold_clause_reads_its_bound_from_the_application` both
+  FAILED; restored, all 14 blocked-hold tests pass.
+- Group-existence refusal bypassed (early `return` on empty group):
+  `test_blocked_hold_guard_refuses_a_corpus_without_the_group` FAILED;
+  restored, full module 55 passed.
