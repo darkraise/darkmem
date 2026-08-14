@@ -701,6 +701,83 @@ measurement half is sound and **G-C should not clear**. Every finding above
 except the two corrections is its work. Artifacts:
 `docs/eval/2026-08-14-t2.129-arming/`.
 
+### G-C blocked-hold reachability restored (2026-08-14, T2.129 follow-on): both of the ruling's arms now fire in one measured window
+
+The subsection above records that pass 2's window clause made the
+supersession-blocked hold "structurally unreachable in the arming groups for
+every admissible future corpus", forfeiting one of the two arms the
+2026-08-13 ruling names, and escalated "whether that guard should be
+waivable" as an owner call. **The repair taken does not answer that question
+— it moots it**: the guard is not waivable and did not move (the clause still
+iterates the arming groups alone, its tests unchanged and green); a seventh
+corpus group, `blocked_hold`, carries the hold in a project of its own.
+Three sessions assert one replacement (`dagster REPLACES oozie`, project
+`scheduler`), deliberately dated **inside** the window, so ingest retires
+each capture under the next and the ladder journals the meets-bar-but-held
+decision. Waivability was rejected because it weakens the guard to a
+convention and still cannot produce both arms in one window; standing on
+pass 1's preserved database was rejected because that evidence is not
+reproducible from committed state (the committed validator refuses its
+corpus, and after ~2026-10-18 no live-clock run could reproduce it at all),
+because the two arms would still never have fired in one window, and because
+it would leave `blocked ≡ 0` in every future corpus forever — so a
+regression in the hold's journalling would be invisible to every future G-C
+run. Report and full alternatives argument:
+`docs/eval/2026-08-14-t2.129-blocked-hold/report.md`, corpus sha
+`69dbb717b0476167`, run database `darkmem_bench_t2129hold`.
+
+**Measured, against a pre-registration committed before the run**
+(`fbae980c`). The numerator path reproduced pass 2 exactly: promotions 149
+(98/33/18 by gate), audit 1/149 = 0.0067 with `corroborated_first=True`, R2
+companion 0, 0 superseded memories in the arming project. The restored arm:
+2 of 3 `scheduler` memories superseded, the fact held at `candidate` with
+origins = 3, **2** `supersession_blocked` hold events journaled — bucket
+`none` reads promoted 33 / blocked 2 / eligible 35, rate 0.943, powered and
+clearing. No bar, threshold or ladder predicate moved; every bars-in-force
+row reads "no config row; the committed bar stands".
+
+**One pre-stated point estimate was wrong, recorded here as this ledger
+recorded the pass-2 plan's identical genus of error.** The pre-registration
+expected exactly 1 hold event (pass floor ≥ 1) and the run journaled 2:
+the fact's three `sources_changed` events straddled the recompute drain's
+100-event batch boundary, so two consecutive ticks each re-decided the fact
+at k=3 and each eligible blocked decision journals (per-transition units —
+the same accounting that gave pass 1's armed subject two holds). Both rows
+read `k=3 n=3 candidate→candidate blocked=true`; the derivation assumed the
+drain sees a fact's events in one tick, which `batch_size` does not promise.
+The parameterized invariant (eligible = 33 + B, B ≥ 1, fact never promoted)
+held; the eligible vector [98, 35, 18] under B = 2 was not pre-stated as a
+point.
+
+**What this buys.** Both producers of `blocked > 0` — the veto and the
+supersession-blocked hold — are now demonstrable in one measured window from
+committed state at any future run date, and the hold's journalling (the
+T2.60 shape `_PROMOTION_RATE_BY_GATE_SQL` counts) has standing regression
+coverage in every future evidence run. The blocked-hold group is also the
+one corpus state reachable through a capture door: `MemoryCreate` carries no
+`created_at` and `detect_supersessions` anchors at ingest wall-clock, so
+three same-claim captures days apart cannot all survive `active` in
+production — pass 1's shape, now expressed deliberately instead of by
+accident.
+
+**What it costs, stated where it will be read.** The corpus is no longer a
+fully absolute timeline: the group's dates are spelled `now-<N>d` and
+resolve against the run clock at load (the loader refuses an absolute date
+in this group — a silent 90-day fuse — and a relative date anywhere else),
+so two runs on different days write byte-different `created_at` rows in the
+`scheduler` project while the corpus sha and every design property stay
+fixed. The run made 6 live calls (the three new contents), so the group's
+extraction is vouched for by its own author's single live run — the same
+caveat pass 1 carries for everything else. And the blocked demonstration is
+instrument-operability only: a corpus authored to be held confirms the
+mechanism, not the system's behaviour.
+
+**What this does not do.** It does not clear G-C, does not mint the record,
+does not touch the audit's power caveats (the 56 %-at-the-bar figure and the
+one-fact numerator stand as written above), and is not certified by the lane
+that built it — the independent evidence re-run T2.129's done-when owes
+remains owed and now covers this corpus too.
+
 ### OWNER RULING on all three escalated items — 2026-08-13
 
 Ruled the same day the run reported, on the run's own numbers and before any
