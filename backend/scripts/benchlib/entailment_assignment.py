@@ -32,7 +32,7 @@ for _path in (str(BACKEND_DIR), str(SCRIPTS_DIR)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from benchlib.entailment_gold import load_l2_harvest  # noqa: E402
+from benchlib.entailment_gold import SLICE_VERDICTS, load_l2_harvest  # noqa: E402
 
 # T2.25's 41-pair slice proportions scaled to 200 by largest-remainder
 # rounding, ties broken alphabetically (LABELLING.md, "Frozen composition
@@ -480,6 +480,165 @@ def build_round4_assignment(
         remaining[chosen["triple_key"]] -= 1
         if slice_name in ROUND4_DETERMINED_SLICES:
             used_in_slice[slice_name].add(chosen["triple_key"])
+        assignment.append({
+            "slot": slot,
+            "slice": slice_name,
+            "reversal_class": (
+                "exclusive" if rel_class is REVERSAL_EXCLUSIVE
+                else "non-exclusive" if rel_class is REVERSAL_NON_EXCLUSIVE
+                else None
+            ),
+            "triple_key": chosen["triple_key"],
+            "rel_type": chosen["rel_type"],
+            "fact": chosen["fact"],
+        })
+    return assignment
+
+
+# ── round-5 exclusion rule (T2.124 step-9 finding; inert until round 5) ──
+#
+# Round 4 keyed premise exclusion per SLICE (`ROUND4_DETERMINED_SLICES`),
+# and step 9's blind adjudication measured what that misses: every one of
+# the 8 unanimous duplicate propositions sits on a premise the assignment
+# handed two entailed slots -- across slices (verbatim x paraphrase) and
+# within slices never listed (paraphrase, weakening). Determination is a
+# property of the VERDICT, not the slice: an entailed hypothesis must be
+# licensed by its premise, and a premise licenses a narrow set of claims,
+# so two blind authors converge; contradicted and unsupported hypothesis
+# spaces are open, and their shared-premise candidates adjudicated distinct
+# (0 of 8 groups). Design and re-ratification requirements:
+# docs/superpowers/plans/2026-08-14-t2.124-round5-frame-fix.md.
+#
+# The rule (R5): a premise may fund at most one slot whose determined
+# verdict is `entailed`, across all slices; the `direction` per-slice
+# exclusion stands; `verbatim`'s old per-slice rule is subsumed. Inert by
+# construction here: the default frame path does not exist until the
+# round-5 frame is derived and ratified, the round-4 builder is untouched,
+# and nothing calls this for round 4.
+
+ROUND5_FRAME_PATH = Path(__file__).resolve().parent / "entailment" / "round5_frame.json"
+ROUND5_EXCLUDED_KEYS_PATH = (
+    Path(__file__).resolve().parent / "entailment" / "round5_excluded_triple_keys.json"
+)
+
+
+def entailed_determined_slices() -> frozenset[str]:
+    """Slices whose lawful verdict set is exactly {entailed}, derived from
+    the committed ``SLICE_VERDICTS`` table -- never listed by hand."""
+    return frozenset(
+        s for s, verdicts in SLICE_VERDICTS.items()
+        if verdicts == frozenset({"entailed"})
+    )
+
+
+def round5_seed(frame_path: str | Path = ROUND5_FRAME_PATH) -> int:
+    return int(hashlib.sha256(Path(frame_path).read_bytes()).hexdigest()[:8], 16)
+
+
+def build_round5_assignment(
+    manifest: dict | None = None,
+    frame_path: str | Path = ROUND5_FRAME_PATH,
+    frame: dict | None = None,
+    excluded: set[str] | None = None,
+) -> list[dict]:
+    """The round-5 seeded (premise x slice) assignment under R5.
+
+    Round 4's builder with one exclusion replaced: instead of per-slice
+    determined sets for {direction, verbatim}, a premise is ineligible for
+    a second slot whose determined verdict is `entailed`, whatever the
+    slice. The frame document and the seed both come from ``frame_path``
+    (round 3's precedent: the committed file preceding the operation), so
+    the counterfactual tests can run this rule against the ratified round-4
+    inputs without touching the round-4 builder.
+    """
+    import json
+
+    manifest = manifest or load_l2_harvest()
+    if frame is None:
+        frame = json.loads(Path(frame_path).read_text(encoding="utf-8"))
+    if excluded is None:
+        excluded = set(
+            json.loads(ROUND5_EXCLUDED_KEYS_PATH.read_text(encoding="utf-8"))
+            ["triple_keys"]
+        )
+
+    entailed_slices = entailed_determined_slices()
+    for slice_name in frame["matrix"]:
+        if slice_name == "temporal":
+            continue
+        lawful = SLICE_VERDICTS[slice_name]
+        if "entailed" in lawful and slice_name not in entailed_slices:
+            raise RuntimeError(
+                f"slice {slice_name!r} draws manifest premises with a mixed "
+                f"entailed-bearing verdict set {sorted(lawful)} -- R5 cannot "
+                "determine its slots' verdicts at assignment time; stop for "
+                "a rule amendment rather than under-excluding silently"
+            )
+
+    facts = [row for row in manifest["facts"] if row["triple_key"] not in excluded]
+    cap = manifest["header"]["pairs_per_premise_cap"]
+    remaining = {row["triple_key"]: cap for row in facts}
+    used_entailed: set[str] = set()
+    used_direction: set[str] = set()
+
+    slots: list[tuple[str, frozenset | None]] = []
+    for slice_name in sorted(frame["matrix"]):
+        if slice_name == "temporal":
+            continue
+        cells = frame["matrix"][slice_name]
+        if slice_name == "direction":
+            slots.extend([("direction", REVERSAL_EXCLUSIVE)] * cells.get("contradicted", 0))
+            slots.extend([("direction", REVERSAL_NON_EXCLUSIVE)] * cells.get("unsupported", 0))
+        else:
+            slots.extend([(slice_name, None)] * sum(cells.values()))
+
+    entailed_slot_count = sum(1 for name, _ in slots if name in entailed_slices)
+    if entailed_slot_count > len(facts):
+        raise RuntimeError(
+            f"{entailed_slot_count} entailed slots need that many distinct "
+            f"premises under R5 and the fresh harvest holds {len(facts)} -- "
+            "the corpus must grow (do not widen the cap, do not relax the "
+            "exclusion)"
+        )
+    if sum(remaining.values()) < len(slots):
+        raise RuntimeError(
+            f"{len(slots)} slots exceed the fresh harvest's capacity under "
+            "the pairs-per-premise cap -- the corpus must grow (do not widen "
+            "the cap, do not reuse an excluded premise)"
+        )
+
+    rng = random.Random(round5_seed(frame_path))
+    shuffled_slots = rng.sample(slots, len(slots))
+    fact_order = rng.sample(range(len(facts)), len(facts))
+
+    assignment = []
+    cursor = 0
+    for slot, (slice_name, rel_class) in enumerate(shuffled_slots):
+        chosen = None
+        for _ in range(len(facts)):
+            row = facts[fact_order[cursor % len(facts)]]
+            cursor += 1
+            if remaining[row["triple_key"]] <= 0:
+                continue
+            if rel_class is not None and row["rel_type"] not in rel_class:
+                continue
+            if slice_name in entailed_slices and row["triple_key"] in used_entailed:
+                continue
+            if slice_name == "direction" and row["triple_key"] in used_direction:
+                continue
+            chosen = row
+            break
+        if chosen is None:
+            raise RuntimeError(
+                f"slot {slot} ({slice_name}) has no eligible fresh fact -- "
+                "the harvest cannot fund this cell's quota; stop for the "
+                "owner rather than relaxing an exclusion"
+            )
+        remaining[chosen["triple_key"]] -= 1
+        if slice_name in entailed_slices:
+            used_entailed.add(chosen["triple_key"])
+        if slice_name == "direction":
+            used_direction.add(chosen["triple_key"])
         assignment.append({
             "slot": slot,
             "slice": slice_name,
