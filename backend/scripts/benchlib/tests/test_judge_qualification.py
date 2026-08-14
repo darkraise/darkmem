@@ -1759,17 +1759,20 @@ def test_the_committed_sidecar_collapses_the_entailed_census():
 
     # Jaccard alone finds nothing here — which is the whole point.
     assert ci["duplicate_pairs"] == []
-    assert len(ci["adjudicated_duplicate_pairs"]) == 8
-    assert len(ci["contested_pairs"]) == 6
+    # 8 by unanimous blind adjudication, plus 6 by the owner's 2026-08-14
+    # ruling that the opposite-slot precedent does not reach a one-directional
+    # generalisation. The sidecar records which basis each rests on, so the
+    # two populations stay separable if the ruling is ever revisited.
+    assert len(ci["adjudicated_duplicate_pairs"]) == 14
+    assert ci["contested_pairs"] == []
 
     assert ci["rows"] == 110
-    assert ci["independent_propositions"] == 102, (
-        "the upper bound must collapse the 8 unanimous duplicates"
-    )
-    assert ci["independent_propositions_range"] == [96, 102]
-    assert ci["independence_contested"] is True
-    # Both endpoints clear the stated bar, which is why the range is reportable
-    # rather than blocking: no decision depends on which way the contested fall.
+    assert ci["independent_propositions"] == 96
+    # A point, not a range, now the contest is resolved. It read [96, 102]
+    # before the ruling and BOTH endpoints cleared the bar — which is why the
+    # ruling could be taken on its own terms rather than to unblock a gate.
+    assert ci["independent_propositions_range"] == [96, 96]
+    assert ci["independence_contested"] is False
     low, high = ci["effective_bar_on_independent_range"]
     assert low >= 0.90 and high >= 0.90
 

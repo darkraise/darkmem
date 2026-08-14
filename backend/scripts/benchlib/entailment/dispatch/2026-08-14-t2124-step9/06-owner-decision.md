@@ -1,5 +1,39 @@
 # T2.124 step 9 — the decision this pass hands to the owner
 
+## DECIDED — owner, 2026-08-14
+
+**Question 2 (the contested six): the precedent does not reach them; they are
+duplicates.** Both lawful pairs generalise *opposite* slots, so neither entails
+the other. Each of the six generalises **one** slot against the specific
+restatement, so one entails the other. The precedent's own stated ground —
+opposite-direction generalisation — is absent in all six.
+
+**Question 3 (which option): C, with B chartered for round 5.** The
+adjudicated duplicates are carried into the disclosure rather than re-authored
+under an unfixed frame; the generator fix is R5, ratified the same day through
+sitting 1's channel (`docs/superpowers/plans/2026-08-14-t2.124-round5-frame-fix.md`
+§6a).
+
+**Question 1 (which count is the gate): answered by consequence.** The
+adjudicated count is what `census_independence` reports; the mechanical zero is
+recorded as what it is — a lexical check that cannot see paraphrase.
+
+**Effect:** confirmed duplicates 8 → **14**; entailed independent propositions
+102 → **96**; the reported range collapses to a point. No bar moves. No matrix
+number moves — the ratified census is 110 entailed **rows** either way, and
+round 4 is not re-ratified.
+
+**Reversal is one file.** The six rows carry
+`basis: "owner ruling 2026-08-14 (opposite-slot precedent)"` in
+`entailment/adjudicated_duplicates.json`; moving them back to `contested`
+restores the [96, 102] range. Both endpoints clear the stated 0.90, so no gate
+decision rests on this ruling — it was taken on its merits, not to unblock
+anything.
+
+The analysis that follows is the packet as it was put, preserved unedited.
+
+---
+
 Prepared by the step-9 controller. **Nothing here is decided.** The pass measured
 a thing the plan did not anticipate, and the remedy is a frame question, which
 §7 of the governing plan makes the owner's.

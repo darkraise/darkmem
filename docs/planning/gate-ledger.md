@@ -2200,6 +2200,54 @@ absorption, pinned cell-by-cell by `test_round4_census.py`.
 `eg-0424`/`eg-0558`, `eg-0425`/`eg-0559`, `eg-0463`/`eg-0590` — recorded by the
 authoring lineage and deliberately **not** fixed by it.
 
+### Step 9 — the census carries fourteen duplicate propositions, not three (2026-08-14)
+
+The step-9 pass ran the four mechanical gates clean (zero retired-pair overlap,
+zero within-class duplicates at the committed 0.85, zero cross-gold near
+overlap, zero cross-verdict pairs) and **that zero is worth nothing on its
+own**: content-token Jaccard sees wording, not entailment. The three recorded
+duplicates score 0.8333 / 0.3333 / 0.2857 — none caught at 0.85 — while a
+ruled-*lawful* pair scores 0.2857, equal to one of them. The populations
+interleave, so no threshold separates them.
+
+So the population where a same-proposition duplicate can occur at all — the 24
+live pairs sharing a byte-identical premise **and** verdict — was adjudicated
+exhaustively by two blind parties from bare directories, neither told which
+cases carried a prior label. **Both recovered all five controls** (3/3 recorded
+duplicates, 2/2 owner-ruled lawful). Result: 8 unanimous duplicates, 6
+contested, 10 unanimous distinct.
+
+**Every one sits in the `entailed` class.** All seven `unsupported` and the one
+`contradicted` candidate were unanimously distinct, so **the contradicted
+census — the class carrying the 0.95 bar — is 80 rows over 80 independent
+propositions, confirmed rather than assumed.**
+
+**Owner ruling, 2026-08-14: the six contested are duplicates too.** The two
+lawful pairs generalise *opposite* slots, so neither entails the other; each of
+the six generalises **one** slot against the specific restatement, so one
+entails the other. The precedent's stated ground is absent in all six. Total
+**14**; entailed independence **96** of 110 rows; effective bar 0.9062 against a
+stated 0.90. Reversal is one file, and both endpoints of the pre-ruling
+[96, 102] range sat above the stated bar — the ruling was taken on its merits,
+not to unblock a gate.
+
+*Screen note: this section trips the contamination screen on the Jaccard
+similarity scores, the two stated class bars and census arithmetic. It carries
+**no measured judge result**, and the ledger is denylisted for every authoring
+and labelling party in any case. A hit outside those categories is a finding.*
+
+**`census_independence` now reports this**, unioning an adjudication sidecar
+(`entailment/adjudicated_duplicates.json`, each row carrying its basis) into
+its component counting. Before that it printed the entailed class 110
+independent of 110 rows — the exact defect it was written to disclose,
+recurring inside its own instrument.
+
+**No matrix number moves.** Duplicates change proposition counts, never row
+counts: the sitting-2 census stands at T = 280, 80/110/90, and round 4 is not
+re-ratified. The generator defect is R5's, ratified the same day through
+sitting 1's channel and inert until round 5. Evidence:
+`entailment/dispatch/2026-08-14-t2124-step9/`.
+
 ---
 
 ## G-E — L3 → F7
