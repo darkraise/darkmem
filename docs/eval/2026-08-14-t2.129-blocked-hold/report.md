@@ -191,16 +191,32 @@ through.** Measured **2** `supersession_blocked` hold events, not 1. The
 journal shows three `sources_changed` events for the fact, all stamped
 `12:31:51.63` (one lift tick wrote all three sources), and two `verified`
 holds 0.72 s apart (`12:31:58.47`, `12:31:59.18`), **both** `k=3 n=3
-candidate → candidate blocked=true`. The recompute's fast arm drains events
-in batches of `batch_size` = 100, and wave 1's lift produced ~260
-`sources_changed` rows, so the fact's three events straddled a drain-batch
-boundary and it was recomputed in two consecutive ticks — each eligible
-blocked decision journals (per-transition units, the same accounting that
-gave pass 1's armed subject two holds). No mystery transition, no second
-fact. The pre-registration's derivation ("one eligible decision") assumed
-the drain sees a fact's events in one tick, which the batch bound does not
-promise. Recorded as a miss in the same spirit the ledger recorded the
-pass-2 plan's one-hold-vs-two error.
+candidate → candidate blocked=true`. No mystery transition, no second fact.
+
+**CORRECTION, 2026-08-14 — the explanation given here was wrong, and the
+journal disproves it.** This paragraph originally said the fact's three
+`sources_changed` events "straddled a drain-batch boundary and it was
+recomputed in two consecutive ticks". An independent probe re-ran from
+committed state and checked: in `(created_at, id)` order those three events sit
+at ranks **255, 256, 257** — wholly inside a single 100-event batch. Nothing
+straddled.
+
+The real mechanism is the **slow arm firing on tick 1**. `slow_arm_last_run_at`
+is unset on a fresh database, so the first tick sweeps, and `DEFAULT_SLOW_BATCH`
+= 200 covers all 175 facts. The journal shows it plainly: **150 `verified` rows
+share one transaction stamp** — all 149 promotions *and* hold #1 — with hold #2
+alone at a later stamp, the fast arm reaching batch 3. Pass 1's preserved
+database carries the identical signature, so the clause "the same accounting
+that gave pass 1's armed subject two holds" repeated the wrong mechanism there
+too.
+
+The miss itself was real and correctly disclosed; what failed is that the
+surprise was then explained by a mechanism **inferred rather than derived** —
+checkable from the very timestamps quoted above, and wrong. This report's own
+rule was that each extra "must be explained from the journal … not waved
+through", and an explanation that contradicts the journal is a wave-through
+wearing a derivation's clothes. It went unchecked for as long as it did because
+this lane then reset its own evidence database.
 
 **Expectation 8: holds in its parameterized form.** Bucket `none` eligible
 = 33 + B with B = 2 → 35, rate 33/35 = 0.943, powered and clearing;
@@ -258,3 +274,60 @@ restored to green:
 - Group-existence refusal bypassed (early `return` on empty group):
   `test_blocked_hold_guard_refuses_a_corpus_without_the_group` FAILED;
   restored, full module 55 passed.
+
+## Independent probe findings, appended 2026-08-14
+
+A party that built neither corpus reproduced this run from committed state on
+its own database (`darkmem_bench_t2129probe`, **preserved read-only** — it holds
+the only live rows disproving the batch-straddle claim above) and re-derived
+every figure by its own SQL. Output byte-identical to this artifact but for the
+database name, scope id, window timestamps and `live_calls`. Verdict: the
+numbers are real; **G-C should not clear**; the blocked-hold work does restore
+what the 2026-08-13 ruling asked for *on its literal terms*, subject to the
+corrections now folded in above and below.
+
+**1. The hold-count explanation was false.** Corrected in place above.
+
+**2. `B` is a scheduling artifact, unbounded in window length.** A
+supersession-blocked fact journals a hold on **every** recompute visit, the hold
+never lifts, and the slow arm revisits every non-confirmed live fact on a
+600-second cadence. `B = 2` here only because the run finishes in ~30 s and
+`DEFAULT_SLOW_BATCH` = 200 ≥ 175 facts. Over a production-length window one
+permanently-held fact accrues holds roughly linearly (~144/day at the default
+cadence), inflating that bucket's per-transition eligible denominator without
+bound — enough on a small vault to sink the 0.5 promotion-rate floor as pure
+artifact. The pre-registered "eligible = 33 + B" is unstable by construction.
+**A metric-design question for the gate owner, not a defect in this run.**
+
+**3. "Both producers of `blocked > 0`" was false about the veto.** The metric
+counts `blocked` from `supersession_blocked` alone; a veto from `candidate`
+produces a *dispute* (eligible, never blocked), and a contradiction-blocked hold
+carries `before='disputed'` and is excluded entirely. The supersession hold is
+the **only** producer of `blocked` under the committed SQL. Corrected in the
+ledger.
+
+**4. The corpus sha names a family, not a corpus.** `corpus_sha256` is computed
+over raw file bytes *before* the loader resolves `now-<N>d`, so each run writes
+different `scheduler` rows — at run-instant granularity, not merely "different
+days" as disclosed. The design invariants are genuinely date-proof (8–12 d
+always inside the 90-day window; the 4-day span always under the 7-day gap) and
+the printed numbers are invariant across runs — but the sha no longer uniquely
+identifies the measured input, which weakens what "corpus sha" certifies
+elsewhere in this repo.
+
+**5. The probe's own reproduction ran at `live_calls: 0`**, consuming this
+lane's cached extraction. **No independent party has vouched the three new
+contents' model outputs.** The authorship caveat is not discharged.
+
+**6. An implication this record had not drawn.** The blocked-hold group is the
+corpus's only door-reachable state — and that state is *permanently
+unpromotable*, because the hold never lifts. So organic same-project
+re-assertion of a REPLACES-family claim inside 90 days can never promote, which
+means the fact class the veto guards is structurally starved from any future
+*organic* audit. Instrument-only is right, and organic power is weaker than the
+stated power caveats already imply.
+
+**7. Process.** The rule-2 latency/token twin is missing from this
+pre-registration and report — the third consecutive run repeating a regression
+this ledger flagged for passes 1–2. The probe's own twin: ~33 s wall, 0 live
+calls, memory-scope peak well under its 4G cap.

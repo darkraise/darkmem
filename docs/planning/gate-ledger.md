@@ -751,22 +751,64 @@ row reads "no config row; the committed bar stands".
 
 **One pre-stated point estimate was wrong, recorded here as this ledger
 recorded the pass-2 plan's identical genus of error.** The pre-registration
-expected exactly 1 hold event (pass floor ≥ 1) and the run journaled 2:
-the fact's three `sources_changed` events straddled the recompute drain's
-100-event batch boundary, so two consecutive ticks each re-decided the fact
-at k=3 and each eligible blocked decision journals (per-transition units —
-the same accounting that gave pass 1's armed subject two holds). Both rows
-read `k=3 n=3 candidate→candidate blocked=true`; the derivation assumed the
-drain sees a fact's events in one tick, which `batch_size` does not promise.
-The parameterized invariant (eligible = 33 + B, B ≥ 1, fact never promoted)
-held; the eligible vector [98, 35, 18] under B = 2 was not pre-stated as a
-point.
+expected exactly 1 hold event (pass floor ≥ 1) and the run journaled 2. Both
+rows read `k=3 n=3 candidate→candidate blocked=true`, and the parameterized
+invariant (eligible = 33 + B, B ≥ 1, fact never promoted) held; the eligible
+vector [98, 35, 18] under B = 2 was not pre-stated as a point.
 
-**What this buys.** Both producers of `blocked > 0` — the veto and the
-supersession-blocked hold — are now demonstrable in one measured window from
-committed state at any future run date, and the hold's journalling (the
-T2.60 shape `_PROMOTION_RATE_BY_GATE_SQL` counts) has standing regression
-coverage in every future evidence run. The blocked-hold group is also the
+**The mechanism this ledger first gave for the extra hold was wrong, and the
+journal disproves it** (independent probe, 2026-08-14; verified here against
+two preserved databases). It said the fact's three `sources_changed` events
+"straddled the recompute drain's 100-event batch boundary, so two consecutive
+ticks each re-decided the fact". They did not straddle anything: in
+`(created_at, id)` order those events sit at ranks **255, 256, 257** — wholly
+inside one 100-event batch. The real mechanism is the **slow arm on tick 1**:
+`slow_arm_last_run_at` is unset on a fresh database, so the first tick sweeps,
+and `DEFAULT_SLOW_BATCH` = 200 covers all 175 facts. The journal shows it —
+**150 `verified` rows share one transaction stamp** (149 promotions *and* hold
+#1), with hold #2 alone at a later stamp as the fast arm reaches batch 3.
+Pass 1's preserved database carries the identical signature (149 rows at one
+stamp, hold #2 alone later), so the clause "the same accounting that gave pass 1
+two holds" repeated the wrong mechanism for pass 1 as well.
+
+**This is the failure the pre-registration discipline exists to catch, and it
+half-failed.** The miss was disclosed rather than buried — that part worked —
+but the surprise was then explained by a mechanism inferred rather than derived,
+checkable from timestamps the lane itself quoted, and wrong. The lane then
+destroyed its database, which is what made the claim uncheckable until an
+independent re-run. **A disclosed miss with a fabricated explanation is worse
+than an undisclosed one**, because it reads as understood.
+
+**What this buys — corrected 2026-08-14, the first wording was false about the
+instrument.** It said "both producers of `blocked > 0` — the veto and the
+supersession-blocked hold". **The veto is not a producer of `blocked`.**
+`_PROMOTION_RATE_BY_GATE_SQL` counts `blocked` from
+`(payload->>'supersession_blocked')::boolean` alone; a veto firing from
+`candidate` produces a **dispute**, which enters *eligible* and never `blocked`,
+and a contradiction-blocked hold carries `before='disputed'` and is excluded
+from the metric entirely. Empirically in this run, `contradiction_blocked=true`
+appears on exactly the two dispute rows and on no hold. Under the committed SQL
+**the supersession hold is the only producer of `blocked`.** What the window
+actually demonstrates is veto → *disputes* and hold → *blocked*, which is what
+the 2026-08-13 ruling asked for on its literal terms — its own "a veto or a
+supersession-blocked hold" wording conflates the two, and this ledger amplified
+that into a claim about the metric. Corrected rather than quietly reworded,
+because the false version reads as stronger instrument coverage than exists.
+
+The hold's journalling (the T2.60 shape `_PROMOTION_RATE_BY_GATE_SQL` counts)
+does have standing regression coverage in every future evidence run.
+
+**A metric-design question this raises, for the gate owner.** The hold count
+`B` is a *scheduling artifact*, not a corpus property: a supersession-blocked
+fact journals a hold on **every** recompute visit, the hold never lifts, and the
+slow arm revisits every non-confirmed live fact on a 600-second cadence. `B = 2`
+here only because the run finishes in ~30 seconds. Over a long measured window a
+single permanently-held fact accrues holds roughly linearly (~144/day at the
+default cadence), inflating that bucket's per-transition eligible denominator
+without bound — enough, on a small vault, to sink the 0.5 promotion-rate floor
+as pure artifact. **The promotion-rate probe is therefore not yet a stable
+instrument for a production-length window**, and that is a bar-and-metric
+question to settle before G-C is measured against one. The blocked-hold group is also the
 one corpus state reachable through a capture door: `MemoryCreate` carries no
 `created_at` and `detect_supersessions` anchors at ingest wall-clock, so
 three same-claim captures days apart cannot all survive `active` in
