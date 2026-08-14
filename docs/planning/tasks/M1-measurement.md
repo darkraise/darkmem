@@ -1209,21 +1209,32 @@ two of the three are cases of the task text asking for something the tree cannot
    no project, so a code-seconded `diversity` claim outside `default` lifts to a
    different fact and corroborates nothing. The original clause asked for something no
    corpus can satisfy on that arm.
-3. **"every existing validator passes unmodified" is left standing and is a live
-   conflict, not resolved here.** Multi-repo fixture support requires making
-   `validate_diversity_group_against_fixture` per-repo, which is a modification and, in
-   letter, a widening. The plan names it and routes it to its Step 0 for adjudication —
-   letter versus intent — before any authoring. **If the clause is upheld as written,
-   the multi-repo route is closed and the sizing changes**, so this is a real fork and
-   not a formality.
+3. **"every existing validator passes unmodified" — the conflict was adjudicated the
+   same day and resolved for INTENT.** Multi-repo support makes
+   `validate_diversity_group_against_fixture` per-repo, a modification and in letter a
+   widening. The Fable re-review ruled it admissible on substance —
+   `triple_key` embeds the subject and the code lift joins on canonicalised subject name
+   per repo, so cross-repo seconding has no code path and claim-to-fact bijectivity
+   survives — conditioned on five tests, including a widening-delta pair test and
+   enforced subject binding. The letter reading was priced, not waved away: it closes
+   the diversity arm outright and costs ≈ +1092 captures for no added independence. The
+   ruling was made by an escalation target told in its brief that this clause's author
+   wanted it widened.
+
+**Re-sized 2026-08-15 (same day, third pass).** The target is **490 as a floor**, and
+the route is sized to an expected **500** — a floor is not a target, and the previous
+sizing landed at 489.5 in expectation. Conversion is **per arm**: diversity 0.9703
+(98/101), `none` 1.0000 (32/32). The blended 0.985 it replaced folded in the armed
+subject's non-recurring corroboration and flattered the arm doing the growing.
 
 **Done when:** the corpus carries ≥ **490** in-window corroborations on the
 **unsimulated** pass (the simulated pass follows, and the `time_gap` bucket's dependence
 on the simulated clock is disclosed, not repaired); the armed dispute still fires and
 `k` is still exactly 1; the echo and under-sourced controls still hold at `candidate`,
 and no growth capture re-asserts a control claim's triple under a different key; the
-validator clause is honoured as adjudicated at the plan's Step 0, with any modification
-shown to preserve the invariant's substance and no validator weakened; the `none` arm's
+per-repo validator widening is landed under all five adjudicated conditions, with the
+widening-delta pair test demonstrating that the diff admits exactly the adjudicated
+pairs and no others; the `none` arm's
 growth is spread across projects with the distribution reported, and the diversity arm's
 confinement to `default` is disclosed rather than worked around; the run carries its
 rule-2 latency/token twin; and the G-C evidence run is re-run end to end with its verdict

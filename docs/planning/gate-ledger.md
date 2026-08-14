@@ -937,12 +937,20 @@ the committed instrument (`promotion_metrics.clopper_pearson_upper`,
 
 | n | point estimate | clears the scored rule? | 95% upper bound | clears the bound? | at-bar pass (point rule) |
 |---|---|---|---|---|---|
-| 131 (today, unsimulated) | 0.0076 | yes | 0.03574 | no | 0.6227 |
-| 149 (today, simulated) | 0.0067 | yes | 0.03139 | no | 0.5604 |
-| **300 (as suggested)** | 0.0033 | yes | **0.01573** | **no** | 0.4221 |
+| 131 (today, unsimulated) | 0.0076 | yes | 0.03570 | no | 0.6227 |
+| 149 (today, simulated) | 0.0067 | yes | 0.03144 | no | 0.5604 |
+| **300 (as suggested)** | 0.0033 | yes | **0.01571** | **no** | 0.4221 |
 | 400 | 0.0025 | yes | 0.01180 | no | 0.4325 |
 | **473 (derived minimum)** | 0.0021 | yes | **0.00999** | yes, by 1×10⁻⁵ | 0.4884 |
-| **490 (the working target)** | 0.0020 | yes | **0.00964** | **yes** | 0.4884 |
+| **490 (the floor)** | 0.0020 | yes | **0.00964** | **yes** | 0.4574 |
+| **500 (what the route is sized to reach)** | 0.0020 | yes | **0.00945** | **yes** | 0.4396 |
+
+**Three of the five-decimal bounds in this table were wrong when first written, and
+the way they were wrong is worth recording** (re-review, M-v2-1). They were
+four-decimal values with a fifth digit supplied by hand rather than by the
+instrument, and the 490 row's at-bar figure was 473's copied down. Every figure
+above is now machine-generated from `promotion_metrics`. Precision invented to look
+rigorous is the same defect class as a number quoted without its `k`.
 
 **Bounds are stated to five decimals here, and the reason is the 473 row.** At four
 decimals it prints `0.0100` against a strict `< 0.01` rule — a tie rendered as a pass,
@@ -996,14 +1004,21 @@ number** (`docs/planning/reviews/2026-08-15-t2.131-plan-review.md`). Recorded in
 place, because the sizing above has now moved twice and a reader arriving at the
 first figure should not have to discover that by scrolling.
 
-- **The sizing is +582, not +615, and the conversion behind it was measured
-  against the wrong denominator twice.** `none` converts at **3.00 memories per
-  claim** (96 → 32 by distinct `claim_key`), not the 2.7 obtained by dividing 96
-  memories by a `gate_fired` bucket that carries other groups' facts. And *claims
-  are not corroborations*: the two promoting groups hold 133 claims while the
-  audit counts 131, a standing shortfall this task did not introduce. Sizing now
-  runs off the realized 131 ⁄ 133 = 0.985 to the **490** target: +359
-  corroborations, +364 claims, ≈ **+582 captures** at the recommended split.
+- **The sizing is ≈ +603 captures, and it took three passes to get there** —
+  +350, then +582, now +603. Each correction moved the *conversion*, never the
+  bar. `none` converts at **3.00 memories per claim** (96 → 32 by distinct
+  `claim_key`), not the 2.7 from dividing by a `gate_fired` bucket carrying other
+  groups' facts. The second pass then replaced that error with a *blended*
+  constant, `131 ⁄ 133 = 0.985`, describing its two-claim gap as unexplained — and
+  **the committed census refutes the premise**: the 131 is diversity **98 of 101
+  (0.9703)** plus `none` **32 of 32 (1.0000)** plus the armed subject's one
+  corroborated-then-disputed fact, which growth does not reproduce. The shortfall
+  is 3, all in diversity, and its mechanism is visible in the same file (the code
+  lift's 4 born facts = 1 language edge + the code halves of the 3 claims whose
+  memory-side extraction never converged; 98 + 4 = 102 sources). Blending
+  flattered the arm doing most of the growing. **Sizing now uses per-arm
+  conversion and no blend**, to an expected **500** rather than to the 490 floor:
+  377 claims (264 diversity + 113 `none`) ≈ **+603 captures**, 3.5× the corpus.
 - **The 473 → 628 hazard is withdrawn.** `inverse_replacement` needs a live
   *inverse fact* in the same project with overlapping windows and a non-echo
   witness; a lone stray REPLACES edge arms nothing. Stronger: **k = 2 is
@@ -1021,20 +1036,32 @@ first figure should not have to discover that by scrolling.
   `default`** — a spread-authored one would hold at a single origin, refused by no
   validator. Multi-repo fixtures buy distinct dependencies, which §3.1 needs; they
   buy no project spread. So the monoculture concern lands in the arm the first
-  sizing thought relieved it, and at the recommended split `default` holds roughly
-  356 of ~497 promoting claims. That concentration is disclosure, not a defect to
+  sizing thought relieved it, and at the recommended split `default` holds **365
+  of 510** promoting claims. That concentration is disclosure, not a defect to
   engineer away, and it travels with the eventual number.
+- **The fixture fleet and the validator widening are both adjudicated** (Fable as
+  escalation target, autonomous-loop §4; neither ruled owner-only). Ceiling: **six
+  repos total**, new ones 40–90 imports each, a shared dependency core *required*
+  (a pairwise-disjoint fleet is itself the manufactured signature), ≥10% of each
+  repo's imports left unclaimed, role-coherent sets. The per-repo validator form is
+  admissible on **intent** — `triple_key` embeds the subject and the code lift
+  joins on canonicalised subject name per repo, so cross-repo seconding has no code
+  path and claim-to-fact bijectivity survives — conditioned on five tests including
+  a widening-delta pair test and enforced subject binding. The letter reading was
+  priced rather than dismissed: it closes the diversity arm (the existing repo is
+  claim-saturated) and forces ≈ +1092 captures, 1.9× the cost for no added
+  independence.
 
 **And the cost is not only effort, which is why it is recorded here rather than
 in the task alone.** Every one of those captures is written by the measured
 party, and the section above already names that as the audit's binding limit:
 *a well-powered rule over authored evidence is a better instrument measuring the
-same thing*. Growing to 473 makes the instrument decisive about a corpus its own
-measurer wrote, and concentrating +350 of them in one project to get the
-one-for-one conversion makes the denominator's authorship more visible, not
+same thing*. Clearing at ~500 makes the instrument decisive about a corpus its own
+measurer wrote, and concentrating 264 of the new claims in one project to get the
+near one-for-one conversion makes the denominator's authorship more visible, not
 less. That is not an argument against the owner's instruction — the instruction
 stands and `T2.131` executes it — it is the disclosure that has to travel with
-the eventual number, so a future reader of "473 corroborations, bound 0.0100,
+the eventual number, so a future reader of "500 corroborations, bound 0.00945,
 CLEARS" meets it beside what it was made of.
 
 **No bar moved and none may.** The 0.01 bar and the 0.95 confidence are
