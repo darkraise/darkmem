@@ -965,9 +965,23 @@ next quotes a required window must say which `k` it assumes.
 memories yield 131 unsimulated in-window corroborations. Reaching 473 needs
 **+342 corroborations**. The only group that converts near one-for-one is
 `diversity` (98 promotions from 101 memories, because the repo fixture supplies
-the second origin of a second kind), so the honest estimate is **roughly +350
-authored captures plus their matching repo-fixture edges** — about 2.4× the
-existing corpus, on top of a corpus that already tripled under T2.129.
+the second origin of a second kind), which put the first sizing at **+350
+authored captures plus their matching repo-fixture edges**.
+
+**That sizing was optimistic, and the step-level plan written the same day says
+why** (`docs/superpowers/plans/2026-08-15-t2.131-corpus-growth-to-473.md` §3.1).
+It assumed the cheap arm scales, and it does not:
+`validate_diversity_group_against_fixture` refuses two claims naming one
+dependency — deliberately, since they would converge on one fact — and
+`repo_fixture.json` carries a **single** repo. So +342 diversity claims means one
+stand-in service repo with **443 distinct third-party dependencies**, which is not
+a repository anyone could have indexed. The ceiling is plausibility, not effort,
+and plausibility is the premise the corpus rests on. The realistic route is mixed
+— multi-repo diversity (a loader change) plus `none` at ~2.7 captures each —
+at **≈ +615 captures**, about 3.5× the corpus rather than 2.4×, on top of one
+that already tripled under T2.129. **A second hazard scales with it**: any new
+capture carrying a REPLACES-family relation arms a *second* dispute and moves the
+target from 473 to 628, so the growth could outrun its own goal.
 
 **And the cost is not only effort, which is why it is recorded here rather than
 in the task alone.** Every one of those captures is written by the measured
