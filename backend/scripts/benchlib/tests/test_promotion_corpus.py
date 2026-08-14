@@ -655,3 +655,198 @@ def test_the_window_clause_reads_its_bound_from_the_application(entries):
     subject[0]["created_at"] = inside.isoformat()
     with pytest.raises(ValueError, match="supersession window"):
         pc.validate_arming_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+# ── the blocked-hold group: the ruling's other arm, and its mirror guard ──
+#
+# Pass 2's arming window clause makes the supersession-blocked hold
+# structurally unreachable in the arming groups (the independent probe's
+# 2026-08-14 finding), so the `blocked_hold` group carries it in a project of
+# its own. Its design property -- inside the look-back window at ingest -- is
+# run-clock-relative, so the group's dates are spelled `now-<N>d` and resolved
+# at load; these tests load with the pinned clock so resolution and validation
+# share one `now` and the proofs do not decay with the calendar.
+
+
+@pytest.fixture(scope="module")
+def pinned_entries():
+    return pc.load_promotion_corpus(now=_ARMING_RUN_CLOCK)
+
+
+def _blocked(entries):
+    return [e for e in entries if e["group"] == pc.BLOCKED_HOLD_GROUP]
+
+
+def test_relative_dates_resolve_against_the_given_clock(pinned_entries):
+    resolved = {e["key"]: e["created_at"] for e in _blocked(pinned_entries)}
+    assert resolved == {
+        "sch-dagster-1": (_ARMING_RUN_CLOCK - timedelta(days=12)).isoformat(),
+        "sch-dagster-2": (_ARMING_RUN_CLOCK - timedelta(days=10)).isoformat(),
+        "sch-dagster-3": (_ARMING_RUN_CLOCK - timedelta(days=8)).isoformat(),
+    }
+
+
+def test_the_committed_corpus_keeps_the_blocked_hold_design(pinned_entries):
+    pc.validate_blocked_hold_design(pinned_entries, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_clause_bites_on_a_date_outside_the_window(pinned_entries):
+    """The failing side of the mirror clause.
+
+    Outside the window supersession never fires, no memory is retired, the
+    hold never journals, and `blocked = 0` is unreachability again -- with no
+    symptom, because the corpus keeps loading.
+    """
+    broken = copy.deepcopy(pinned_entries)
+    outside = _ARMING_RUN_CLOCK - timedelta(
+        days=relations.SUPERSESSION_WINDOW_DAYS + 1
+    )
+    _blocked(broken)[0]["created_at"] = outside.isoformat()
+    with pytest.raises(ValueError, match="outside the .*supersession window"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_clause_reads_its_bound_from_the_application(pinned_entries):
+    broken = copy.deepcopy(pinned_entries)
+    # One day outside whatever the application's window currently is.
+    outside = _ARMING_RUN_CLOCK - timedelta(
+        days=relations.SUPERSESSION_WINDOW_DAYS + 1
+    )
+    _blocked(broken)[0]["created_at"] = outside.isoformat()
+    with pytest.raises(ValueError, match="supersession window"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+    # And one day inside it still validates.
+    inside = _ARMING_RUN_CLOCK - timedelta(
+        days=relations.SUPERSESSION_WINDOW_DAYS - 1
+    )
+    healed = copy.deepcopy(pinned_entries)
+    _blocked(healed)[0]["created_at"] = inside.isoformat()
+    pc.validate_blocked_hold_design(healed, now=_ARMING_RUN_CLOCK)
+
+
+def test_loader_refuses_an_absolute_date_in_the_blocked_hold_group(
+    tmp_path, pinned_entries
+):
+    """An absolute date here is a silent 90-day fuse.
+
+    The corpus would keep loading after the date recedes past the window,
+    supersession would quietly stop firing, and the blocked count would
+    return to the zero this group exists to make non-vacuous.
+    """
+    import json
+
+    broken = copy.deepcopy(pinned_entries)
+    # The resolved ISO stamp is exactly what a well-meaning editor would
+    # commit; the loader must refuse it even though it is inside the window
+    # today.
+    assert "T" in _blocked(broken)[0]["created_at"]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps({"memories": broken}), encoding="utf-8")
+    with pytest.raises(ValueError, match="fuse"):
+        pc.load_promotion_corpus(path, now=_ARMING_RUN_CLOCK)
+
+
+def test_loader_refuses_a_relative_date_outside_the_blocked_hold_group(
+    tmp_path, pinned_entries
+):
+    """Every other group's timeline is a committed fact and stays absolute."""
+    import json
+
+    broken = copy.deepcopy(pinned_entries)
+    victim = next(e for e in broken if e["group"] == "none")
+    victim["created_at"] = "now-5d"
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps({"memories": broken}), encoding="utf-8")
+    with pytest.raises(ValueError, match="resolve against the run clock"):
+        pc.load_promotion_corpus(path, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_a_corpus_without_the_group(pinned_entries):
+    """Deleting the group re-forecloses the hold, so the deletion must bite."""
+    broken = [
+        e for e in copy.deepcopy(pinned_entries)
+        if e["group"] != pc.BLOCKED_HOLD_GROUP
+    ]
+    with pytest.raises(ValueError, match="structurally unreachable"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_a_second_claim(pinned_entries):
+    broken = copy.deepcopy(pinned_entries)
+    _blocked(broken)[2]["key"] = "sch-oozie-9"
+    with pytest.raises(ValueError, match="holds 2 claims"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_an_inverse_entry(pinned_entries):
+    """An inverse entry is a contradiction, and the veto pre-empts the hold."""
+    broken = copy.deepcopy(pinned_entries)
+    entry = _blocked(broken)[2]
+    entry["replaces"] = list(reversed(entry["replaces"]))
+    with pytest.raises(ValueError, match="several replacement pairs"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_names_the_arming_pair_asserts(pinned_entries):
+    broken = copy.deepcopy(pinned_entries)
+    for entry in _blocked(broken):
+        entry["replaces"] = ["dagster", "hive"]
+        entry["content"] += " Nothing moved to hive."
+    with pytest.raises(ValueError, match="the arming pair also asserts"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_a_measured_claim_in_its_project(pinned_entries):
+    broken = copy.deepcopy(pinned_entries)
+    victim = next(e for e in broken if e["group"] == "none")
+    victim["project"] = _blocked(broken)[0]["project"]
+    with pytest.raises(ValueError, match="share the blocked-hold project"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_blocked_hold_guard_refuses_equal_capture_times(pinned_entries):
+    broken = copy.deepcopy(pinned_entries)
+    stamps = _blocked(broken)
+    stamps[1]["created_at"] = stamps[0]["created_at"]
+    with pytest.raises(ValueError, match="equal capture times"):
+        pc.validate_blocked_hold_design(broken, now=_ARMING_RUN_CLOCK)
+
+
+def test_design_guard_refuses_a_blocked_hold_claim_past_the_gap(pinned_entries):
+    """Span the origins past seven days and the time-gap gate would carry it.
+
+    The gate is unreachable on the unsimulated pass, so the fact would hold
+    below its count there and the blocked hold would journal on one pass only.
+    """
+    broken = copy.deepcopy(pinned_entries)
+    late = datetime.fromisoformat(_blocked(broken)[0]["created_at"]) + timedelta(days=8)
+    _blocked(broken)[2]["created_at"] = late.isoformat()
+    with pytest.raises(ValueError, match="time-gap gate fires"):
+        pc.validate_corroboration_design(broken)
+
+
+def test_design_guard_refuses_a_blocked_hold_claim_grown_a_fourth_origin(
+    pinned_entries,
+):
+    broken = copy.deepcopy(pinned_entries)
+    extra = copy.deepcopy(_blocked(broken)[2])
+    extra["key"] = "sch-dagster-4"
+    extra["origin_key"] = "codex:0f00ba44"
+    broken.append(extra)
+    with pytest.raises(ValueError, match="at most 3"):
+        pc.validate_corroboration_design(broken)
+
+
+def test_the_arming_window_clause_ignores_the_blocked_hold_group(pinned_entries):
+    """The two window clauses guard opposite properties for disjoint groups.
+
+    The committed blocked-hold dates sit INSIDE the window; if a future edit
+    folded them into the arming clause's sweep, the corpus would stop loading
+    entirely -- so the additivity is pinned as a passing validation, both
+    guards at once, one clock.
+    """
+    pc.validate_arming_design(pinned_entries, now=_ARMING_RUN_CLOCK)
+    pc.validate_blocked_hold_design(pinned_entries, now=_ARMING_RUN_CLOCK)
+    cutoff = _ARMING_RUN_CLOCK - timedelta(days=relations.SUPERSESSION_WINDOW_DAYS)
+    for entry in _blocked(pinned_entries):
+        assert datetime.fromisoformat(entry["created_at"]) >= cutoff
