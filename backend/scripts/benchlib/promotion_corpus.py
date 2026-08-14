@@ -84,6 +84,26 @@ recompute's fast arm (that arm recomputes exactly the facts named by a
 counterpart). The re-assertion's origin is deliberately not the rollback's:
 the veto's echo test asks whether the *counterpart* brings a witness the
 subject does not already have.
+
+**MEASURED 2026-08-14, and the arming half does NOT yet reach the audit.**
+The census grew as designed — 148 corroborations against a floor of 20 and a
+band that ends at 100 — and the detector fired for real, disputing both halves
+of the pair under ``inverse_replacement`` on live rows. But the audit's
+numerator is still **0**, because the subject fact was never journaled
+``corroborated``: every one of its wave-1 memories asserts a REPLACES edge on
+the same target inside one project, so ``detect_supersessions`` retires each in
+favour of the next, and ``supersession_hold`` blocks the promotion of any fact
+**one** of whose memory sources is superseded under a newer one. The fact
+therefore holds at ``candidate`` with ``supersession_blocked`` journaled — it
+appears in G-C's eligible denominator and never in its numerator — and the
+dispute that follows lands with no corroboration to join to.
+
+This is a property of the arming content, not of the ladder: a claim needs
+three sessions to corroborate by count, and three sessions asserting one
+replacement in one project supersede each other by construction. Neither the
+veto nor the blocker is wrong. The next attempt has to make the corroborated
+fact's *sources* survive as ``active``, and the corpus is the only side of that
+which may move.
 """
 from __future__ import annotations
 
