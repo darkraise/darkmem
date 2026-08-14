@@ -151,10 +151,16 @@ TWO CAVEATS THIS NUMBER MUST NOT BE QUOTED WITHOUT.
    false-promotion behaviour; it is the smallest non-vacuous reading the audit
    can produce, which is exactly what the arming was built to supply.
 
-Census deltas against pass 1, pre-stated in the plan and confirmed here:
-promotions 148 -> 149; gate_fired eligibles [98, 34, 19] -> [98, 33, 18]. Both
-remaining buckets stay above promotion_rate_min_eligible (5) and all three
-report powered=True clears=True.
+Census deltas against pass 1: promotions 148 -> 149; gate_fired eligibles
+[98, 34, 19] -> [98, 33, 18]. All three buckets stay above
+promotion_rate_min_eligible (5) and report powered=True clears=True.
+
+CORRECTION (independent probe, 2026-08-14): an earlier version of this record
+said these deltas were "pre-stated in the plan and confirmed here". They were
+not, fully. The plan pre-stated promotions 148 -> 149 and pass 1's vector, but
+its mechanism named ONE supersession_blocked hold where pass 1's journal carries
+TWO; its own arithmetic therefore yields 34 -> 34, and the destination vector
+[98, 33, 18] appears nowhere in it. The vector was discovered at run time.
 
 Memory profile (pass2-memory-profile.txt): the run executed inside a systemd
 scope capped at MemoryMax=6G / MemorySwapMax=256M and peaked at 113 MB with
@@ -163,3 +169,63 @@ bounds a cache-hit run only, NOT a live one.
 
 The independent G-C evidence re-run that T2.129's done-when owes is still owed.
 This lane built the corpus and may not certify it.
+
+== independent probe findings, appended 2026-08-14 ==
+
+An independent party that did not build this corpus reproduced the run from
+committed state on its own database, byte-identical to this artifact, and
+re-derived every number by its own SQL over `events`. The measurement half
+verifies: numerator is exactly fact 019fff74-b9cf-7a20-a9aa-c9fdb72edfd4
+(warehouse `trino REPLACES hive`), promoted candidate->corroborated on gate
+`none` at k=3/n=3, then disputed corroborated->disputed under
+`inverse_replacement`; denominator 149 distinct facts over exactly 149 events;
+0 superseded memories, 0 supersession_blocked events, 0 human_verdict, 0 expired.
+Pass 1's failure story also verifies on its preserved database.
+
+It nonetheless returned findings that change how this number must be read.
+
+1. THE RATE HAS ALMOST NO REJECTION POWER, AND THIS BELONGS BESIDE IT.
+   A system whose true false-promotion rate sits exactly AT the failing bar
+   (0.01) passes this audit 56% of the time at n=149 -- P(X<=1 | n=149, p=0.01)
+   = 0.5604, verified independently. The exact 95% interval for 1/149 runs to
+   an upper bound of ~0.037, roughly 3.7x the bar. "Decidable" is a protocol
+   term (n >= 20); it is not a claim that the audit decided anything about the
+   system. The harness's own line `false-promotion audit: decidable=True
+   clears=True` sits ~40 lines above these caveats and is the quotable hazard.
+
+2. THE DEMONSTRATED STATE CANNOT ARISE THROUGH ANY CAPTURE DOOR.
+   `MemoryCreate` carries no `created_at`; production `memories.created_at` is
+   the ingest stamp, and `detect_supersessions` anchors its window at ingest
+   wall-clock. So three same-claim captures 2-5 days apart CANNOT all survive
+   `active` in production -- each ingest retires the previous, which is exactly
+   what pass 1 showed. The pass-2 state exists only because the harness
+   backdates rows attribute-side. The nearest production analogues are
+   different shapes: re-assertions genuinely >= 90 days apart, or a Phase-5
+   re-extraction more than 90 days after capture emitting REPLACES edges the
+   original ingest missed. Neither is what was demonstrated. Read "operable"
+   as instrument-operability only.
+
+3. THE PROMOTION-RATE BUCKETS CONFIRM DESIGN, NOT BEHAVIOUR.
+   Every bucket reads 1.000 because the corpus was authored to promote.
+
+4. A HARNESS PREDICATE DID MOVE, AND IT COSTS SOMETHING THE OWNER RULING WANTED.
+   See the ledger's G-C subsection: `validate_arming_design`'s new window clause
+   makes the supersession-blocked hold structurally unreachable in the arming
+   groups for every admissible future corpus. Pass 1 was the first measured
+   window in which that hold fired (twice). The owner ruling of 2026-08-13 made
+   `blocked = 0` reachable via "a veto OR a supersession-blocked hold"; this
+   repair delivers the veto arm and forfeits the other.
+
+5. NO NON-AUTHOR HAS EXERCISED THE LIVE PATH.
+   The cache memoises embed/embed_batch/chat_completion on content plus purpose
+   config, so pass 2 would have succeeded with both vendors dark. Every model
+   output behind this graph -- including the REPLACES edges the arming rides on
+   -- is vouched for by pass 1's single live run, made by this corpus's author.
+   The probe's reproduction also ran at live_calls=0, so it verifies the
+   measurement half and not the extraction half.
+
+6. THE LATENCY/TOKEN TWIN IS MISSING. The 2026-08-13 G-C run recorded one under
+   rule 2; neither pass artifact does. Reporting regression against precedent.
+
+The probe's verdict: the arm is operable as a measurement INSTRUMENT; it is not
+operable as evidence ABOUT the system, and G-C should not clear.

@@ -619,8 +619,33 @@ promotes on its three wave-1 origins; the wave-2 counterpart then disputes it,
 | False-promotion rate | n/a (vacuous) | **0.0067** vs a 0.01 bar |
 | `gate_fired` eligibles | [98, 34, 19] | [98, 33, 18] — all powered, all clearing |
 
-**No bar, threshold or ladder predicate moved.** The corpus moved; the census
-deltas were pre-stated in the plan before the run and match. The plan was
+**No bar, threshold or ladder predicate moved** — verified independently against
+the pin test, both artifacts' bars-in-force blocks, and a config-row scan of the
+measured database. **One harness predicate did move, and it costs something this
+ruling asked for — recorded here because it was missed on the first write-up.**
+`validate_arming_design`'s new window clause is enforced at every corpus load
+against the live clock, so **the supersession-blocked hold is now structurally
+unreachable in the arming groups for every admissible future corpus.** Pass 1
+was the first measured window in which that hold fired — twice, on the armed
+subject, with four superseded warehouse memories. The 2026-08-13 ruling above
+made `blocked ≡ 0` reachable "until a veto **or a supersession-blocked hold**
+actually fires in a measured window"; this repair delivers the veto arm and
+forfeits the other, and the guard that protects the numerator is the same guard
+that forecloses it. The blocked-hold evidence exists and is preserved (pass 1,
+database `darkmem_bench_t2129run`) but is no longer reproducible under the
+committed validator. **Whether that guard should be waivable — so a deliberate
+blocked-hold corpus stays expressible — is an owner call this lane did not
+take.**
+
+**A pre-registration claim here was overstated and is corrected.** This
+paragraph previously said the census deltas "were pre-stated in the plan before
+the run and match". The plan pre-stated promotions 148 → 149 and pass 1's
+vector, but its mechanism named **one** blocked hold where the journal carries
+**two**; its own arithmetic yields 34 → 34, and the destination vector
+[98, 33, 18] appears nowhere in it. That vector was discovered at run time. The
+plan also cited `promotion_rate_min_eligible` = 20; **the bar is 5**, and the
+"not spare slack" argument built on the wrong value was false. Both errors
+entered through the Fable review and survived it. The plan was
 Fable-reviewed before execution, and that review killed a wrong mechanism claim
 (moving wave 1 alone would in fact have landed the numerator — `decide` checks
 the veto ahead of every count and the already-corroborated branch returns before
@@ -631,15 +656,50 @@ against a fixed clock because the pass-1 dates stop failing a live one around
 2026-10-18.
 
 **What this does not do, stated where the number lives.** It does **not** clear
-G-C. It makes one arm of the false-promotion audit operable. Three limits ride
-with the 0.0067: the numerator is **one fact**, so the rate is decidable but not
-precise; the arm is demonstrated on the **disjoint-window case only**, and the
-production shape pass 1 exposed stays structurally inexpressible by this corpus;
-and pass 2 ran with `live_calls: 0` — the content-keyed extraction cache served
-every call, since only dates changed — so it did not re-exercise the live
-extraction path pass 1 did. **The independent G-C evidence re-run T2.129's
-done-when owes is still owed**; the lane that built this corpus may not certify
-it. Artifacts: `docs/eval/2026-08-14-t2.129-arming/`.
+G-C. It makes one arm of the false-promotion audit operable **as an instrument**
+— the independent probe's distinction, and the right one: the arm is not
+operable as evidence *about the system*, because the single number it produces
+is authored end to end.
+
+**The 0.0067 must not be quoted without its power.** A system whose true
+false-promotion rate sits exactly **at** the failing bar passes this audit
+**56% of the time** at n = 149 (`P(X ≤ 1 | n=149, p=0.01) = 0.5604`, verified
+independently), and the exact 95% interval for 1/149 reaches ≈ **0.037**, about
+3.7× the bar. "Decidable" is the protocol's term for n ≥ 20; it is not a claim
+that the audit decided anything. The harness prints
+`false-promotion audit: decidable=True clears=True` forty lines above the
+caveats, which is the quotable hazard.
+
+**The demonstrated state is not door-reachable.** `MemoryCreate` carries no
+`created_at`, production `memories.created_at` is the ingest stamp, and
+`detect_supersessions` anchors at ingest wall-clock — so three same-claim
+captures 2–5 days apart *cannot* all survive `active` in production; each ingest
+retires the previous, which is precisely what pass 1 demonstrated. Pass 2's
+state exists only because the harness backdates attribute-side. The nearest
+production analogues are different shapes (re-assertions genuinely ≥ 90 days
+apart, or a Phase-5 re-extraction > 90 days after capture emitting REPLACES
+edges the original ingest missed) and neither is what was shown. The earlier
+"disjoint-window case only" wording read as though the pass-2 shape were one of
+the production shapes; it is not.
+
+Further limits: the numerator is **one fact**; every promotion-rate bucket reads
+1.000 because the corpus was authored to promote, so those probes confirm design
+and measure nothing; pass 2 ran at `live_calls: 0` — the cache memoises
+embed/chat on content plus purpose config, so it would have succeeded with both
+vendors dark, and **every model output behind this graph, including the REPLACES
+edges the arming rides on, is vouched for by pass 1's single live run made by
+this corpus's own author**; and neither pass carries the latency/token twin the
+2026-08-13 G-C run recorded under rule 2, a reporting regression against this
+ledger's own precedent.
+
+**The independent evidence re-run T2.129's done-when owes has now been done**
+(2026-08-14, by a party that did not build the corpus, chartered adversarially).
+It reproduced the run byte-identically from committed state on its own database,
+re-derived every figure by its own SQL, verified pass 1's failure story on the
+preserved database, and confirmed the guard bites both ways. Its verdict: the
+measurement half is sound and **G-C should not clear**. Every finding above
+except the two corrections is its work. Artifacts:
+`docs/eval/2026-08-14-t2.129-arming/`.
 
 ### OWNER RULING on all three escalated items — 2026-08-13
 
