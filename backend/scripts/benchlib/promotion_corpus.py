@@ -111,7 +111,7 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import text
@@ -137,6 +137,7 @@ from app.services import fact_lift
 from app.services.code_deriver import assert_repo_graph
 from app.services.config import get_llm_config
 from app.services.fact_provenance import MEMORY_SOURCE_KIND
+from app.services.relations import SUPERSESSION_WINDOW_DAYS
 from app.services.verification_recompute import run_recompute
 
 HERE = Path(__file__).resolve().parent
@@ -477,7 +478,7 @@ def _declared_replacement(entry: dict) -> tuple[str, str]:
     return subject, obj
 
 
-def validate_arming_design(entries: list[dict]) -> None:
+def validate_arming_design(entries: list[dict], *, now: datetime | None = None) -> None:
     """Assert the corpus can actually arm ``inverse_replacement``, and in order.
 
     Every clause here is a way the arming silently becomes vacuous while the
@@ -501,6 +502,13 @@ def validate_arming_design(entries: list[dict]) -> None:
     - **The project.** Nothing else may live in the arming project, so the
       REPLACES memories' supersession and the detector's candidate scan cannot
       reach a measured claim.
+    - **The capture dates.** Every arming entry must sit outside the
+      supersession look-back window, measured against the run clock. This is
+      what pass 1 got wrong: three sessions asserting one replacement inside
+      the window supersede each other, ``supersession_hold`` blocks the
+      promotion, and the fact never reaches the audit's numerator. The bound is
+      imported from ``app.services.relations``, never restated here, so a
+      change to the window moves this clause with it.
     """
     by_group: dict[str, list[dict]] = {}
     for entry in entries:
@@ -554,6 +562,34 @@ def validate_arming_design(entries: list[dict]) -> None:
             f"A REPLACES memory supersedes same-project memories and the "
             f"detector scans same-project facts, so a measured claim parked "
             f"here is measured under a side effect"
+        )
+
+    # Both waves, subject and counterpart alike. Wave 1 is the clause pass 1
+    # needed; wave 2 is here so step 3's "no superseded row in the arming
+    # project" catch is satisfiable at all -- the counterpart asserts the
+    # reverse edge, so a wave-2 re-assertion left inside the window is a lawful
+    # supersession candidate for it. Note this is *not* the reason the
+    # numerator would be lost: `decide` checks the veto ahead of every count
+    # and the already-corroborated branch returns before `supersession_blocked`
+    # is read, so a corroborated fact still disputes. It is the reason the run
+    # could not *demonstrate* the mechanism it claims.
+    reference = now or datetime.now(timezone.utc)
+    cutoff = reference - timedelta(days=SUPERSESSION_WINDOW_DAYS)
+    inside = sorted(
+        (entry["key"], entry["created_at"])
+        for entry in subject_entries + counterpart_entries
+        if datetime.fromisoformat(entry["created_at"]) >= cutoff
+    )
+    if inside:
+        raise ValueError(
+            f"arming entries {[key for key, _ in inside]} are dated inside the "
+            f"{SUPERSESSION_WINDOW_DAYS}-day supersession window (on or after "
+            f"{cutoff.isoformat()}): {inside}. Same-project memories asserting "
+            f"one REPLACES edge inside the window supersede each other, "
+            f"`supersession_hold` then withholds the promotion, and the fact "
+            f"sits in the audit's eligible denominator and never its numerator "
+            f"-- the exact way the 2026-08-14 pass-1 arming failed to reach the "
+            f"audit while every other clause here passed"
         )
 
     first_wave = entries_for_wave(subject_entries, 1)

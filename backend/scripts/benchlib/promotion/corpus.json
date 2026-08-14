@@ -2455,7 +2455,7 @@
       ],
       "source": "claude-code",
       "origin_key": "claude-code:aa10b3c7",
-      "created_at": "2026-06-10T09:30:00+00:00",
+      "created_at": "2026-01-11T09:30:00+00:00",
       "memory_type": "architecture",
       "content": "trino replaces hive as the query engine for the warehouse. The cutover finished this morning."
     },
@@ -2469,7 +2469,7 @@
       ],
       "source": "codex",
       "origin_key": "codex:bb42d9e1",
-      "created_at": "2026-06-12T11:05:00+00:00",
+      "created_at": "2026-01-13T11:05:00+00:00",
       "memory_type": "fact",
       "content": "Recorded in the migration review: trino replaces hive for every reporting query."
     },
@@ -2483,7 +2483,7 @@
       ],
       "source": "mcp",
       "origin_key": "mcp:cc73f508",
-      "created_at": "2026-06-15T14:20:00+00:00",
+      "created_at": "2026-01-16T14:20:00+00:00",
       "memory_type": "fact",
       "content": "The warehouse migration is done. trino replaces hive, and the hive cluster now serves nothing."
     },
@@ -2498,7 +2498,7 @@
       ],
       "source": "claude-code",
       "origin_key": "claude-code:dd914a26",
-      "created_at": "2026-07-06T10:15:00+00:00",
+      "created_at": "2026-02-06T10:15:00+00:00",
       "memory_type": "fact",
       "content": "Checked the query router again: trino replaces hive for the analytics workload."
     },
@@ -2513,7 +2513,7 @@
       ],
       "source": "codex",
       "origin_key": "codex:ee5c67b3",
-      "created_at": "2026-07-20T08:40:00+00:00",
+      "created_at": "2026-02-20T08:40:00+00:00",
       "memory_type": "fact",
       "content": "The warehouse rollback is complete: hive replaces trino for every reporting query."
     }

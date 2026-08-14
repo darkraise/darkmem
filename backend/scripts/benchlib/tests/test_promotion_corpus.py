@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select, text
 
+from app.services import relations
 from benchlib import bench_db, promotion_corpus as pc
 
 
@@ -590,3 +591,67 @@ class TestAgainstBenchDatabase:
         # backfill of a capture that happened earlier.
         assert by_kind["code"]["created_at"] > captured
         assert by_kind["code"]["detail"] == {"basis": "import"}
+
+
+# ── the supersession-window clause (T2.129 pass 2) ───────────────────────────
+#
+# Pass 1 armed the detector and still reported a numerator of 0. Every clause
+# above passed while it did: the failure was the arming captures' *dates*.
+# These tests pin the date property and, more importantly, pin that the clause
+# actually bites -- a guard that only ever passes is pinning nothing.
+
+#: A clock the window arithmetic is measured against, so these tests do not
+#: quietly stop testing anything once the committed dates recede far enough
+#: that any date would pass. The pass-1 dates fail against this clock; after
+#: roughly 2026-10-18 they would pass against a live one.
+_ARMING_RUN_CLOCK = datetime(2026, 8, 14, 12, 0, 0, tzinfo=timezone.utc)
+
+#: The dates the corpus actually carried when pass 1 measured a zero numerator.
+_PASS_1_ARMING_DATES = {
+    "wh-trino-1": "2026-06-10T09:30:00+00:00",
+    "wh-trino-2": "2026-06-12T11:05:00+00:00",
+    "wh-trino-3": "2026-06-15T14:20:00+00:00",
+    "wh-trino-4": "2026-07-06T10:15:00+00:00",
+    "wh-rollback": "2026-07-20T08:40:00+00:00",
+}
+
+
+def test_the_committed_arming_dates_sit_outside_the_supersession_window(entries):
+    pc.validate_arming_design(entries, now=_ARMING_RUN_CLOCK)
+
+
+def test_the_window_clause_bites_on_the_dates_pass_one_actually_ran(entries):
+    """The failing side of the proof, recorded because the calendar erases it.
+
+    Every one of pass 1's five arming captures sat inside the window. Against a
+    live clock this stops being demonstrable once they age out, so the clock is
+    pinned and the pass-1 dates are restated here rather than cited.
+    """
+    broken = copy.deepcopy(entries)
+    for entry in broken:
+        if entry["key"] in _PASS_1_ARMING_DATES:
+            entry["created_at"] = _PASS_1_ARMING_DATES[entry["key"]]
+
+    with pytest.raises(ValueError, match="supersession window") as excinfo:
+        pc.validate_arming_design(broken, now=_ARMING_RUN_CLOCK)
+
+    # All five, not just wave 1: the counterpart asserts the reverse edge, so a
+    # wave-2 re-assertion left inside the window is a lawful supersession
+    # candidate for it and step 3's "no superseded row" catch would be
+    # unsatisfiable.
+    message = str(excinfo.value)
+    for key in _PASS_1_ARMING_DATES:
+        assert key in message, f"{key} not named by the window clause"
+
+
+def test_the_window_clause_reads_its_bound_from_the_application(entries):
+    """The 90 is imported, not restated, so moving the window moves the guard."""
+    assert pc.SUPERSESSION_WINDOW_DAYS == relations.SUPERSESSION_WINDOW_DAYS
+
+    broken = copy.deepcopy(entries)
+    subject = _arming(broken, pc.ARMING_SUBJECT_GROUP)
+    # One day inside whatever the application's window currently is.
+    inside = _ARMING_RUN_CLOCK - timedelta(days=relations.SUPERSESSION_WINDOW_DAYS - 1)
+    subject[0]["created_at"] = inside.isoformat()
+    with pytest.raises(ValueError, match="supersession window"):
+        pc.validate_arming_design(broken, now=_ARMING_RUN_CLOCK)
