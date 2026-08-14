@@ -108,10 +108,25 @@ reads **1 / 149 = 0.0067** against a 0.01 bar. ``validate_arming_design`` now
 refuses a capture inside the window, importing the bound from
 ``app.services.relations`` so the guard moves with it.
 
-What this does **not** establish: the arm is demonstrated on the
-disjoint-window case only. The production shape pass 1 exposed — recent
-same-project re-assertions of one claim being retired and held — stays
-structurally inexpressible by this corpus.
+**The blocked-hold group restores what the window clause foreclosed.** The
+clause that fixed pass 2 refuses any *arming* capture inside the supersession
+window, which made the ``supersession_blocked`` hold — the other arm the
+2026-08-13 ruling requires to fire in a measured window — structurally
+unreachable in the arming groups for every admissible corpus. The
+``blocked_hold`` group carries that arm in a project of its own: three
+sessions asserting one replacement, deliberately dated *inside* the window,
+so ingest retires each capture under the next and the ladder journals the
+hold on a fact that met its count. That is the production shape pass 1
+exposed — the only state in this corpus reachable through a capture door,
+since production stamps ``created_at`` at ingest and three same-claim
+captures days apart cannot all survive ``active``. Its dates are spelled
+**relative to the run clock** (``now-<N>d``): "inside the look-back window
+at ingest" is a run-clock-relative property no absolute date can carry past
+the window's width, and an absolute date here would be a silent 90-day fuse
+— the corpus would keep loading and the blocked count would quietly return
+to the zero the ruling refuses to accept unexercised. The arming window
+clause is untouched: it iterates the arming groups alone, and
+:func:`validate_blocked_hold_design` is the mirror guard on this one.
 """
 from __future__ import annotations
 
@@ -180,13 +195,14 @@ RECOMPUTE_SKEW_WAIT_SECONDS = 6
 ARMING_SUBJECT_GROUP = "armed_subject"
 ARMING_COUNTERPART_GROUP = "armed_counterpart"
 ARMING_GROUPS = frozenset({ARMING_SUBJECT_GROUP, ARMING_COUNTERPART_GROUP})
+BLOCKED_HOLD_GROUP = "blocked_hold"
 
 # The groups the corpus declares, and what each is for. Validated so a typo in
 # a group label cannot silently produce a corpus whose design nobody can read
 # back off the data.
 CORPUS_GROUPS = frozenset({
     "diversity", "time_gap", "none", "echo", "under_sourced",
-    ARMING_SUBJECT_GROUP, ARMING_COUNTERPART_GROUP,
+    ARMING_SUBJECT_GROUP, ARMING_COUNTERPART_GROUP, BLOCKED_HOLD_GROUP,
 })
 
 # The groups the design expects to stay at `candidate`. The first two are the
@@ -195,10 +211,19 @@ CORPUS_GROUPS = frozenset({
 # counterpart is here for a different reason and is not a control: it carries
 # one origin against N=3, so it can never corroborate, and counting it as a
 # promotable claim would overstate what the corpus can put in the audit's
-# denominator.
+# denominator. The blocked-hold claim meets its count and is *withheld* by
+# the supersession hold, so it too must never appear in the promoted set --
+# a promotion there means the hold failed, not that the corpus grew.
 NON_PROMOTING_GROUPS = frozenset({
-    "echo", "under_sourced", ARMING_COUNTERPART_GROUP,
+    "echo", "under_sourced", ARMING_COUNTERPART_GROUP, BLOCKED_HOLD_GROUP,
 })
+
+# The one date spelling the blocked-hold group may use: `now-<N>d`, resolved
+# against the run clock at load. "Inside the supersession look-back window at
+# ingest" is a run-clock-relative property, so no absolute date can carry it
+# for longer than the window's width -- an absolute date here is a corpus
+# that keeps loading while the hold quietly stops firing.
+_RELATIVE_CREATED_AT = re.compile(r"^now-(\d+)d$")
 
 # Which ingestion pass an entry belongs to. Wave 2 exists so a fact can be
 # corroborated *and then* disputed -- see the module docstring; a corpus with
@@ -240,6 +265,13 @@ _DESIGN: dict[str, tuple[int, int | None, str | None]] = {
     # shortfall: the counterpart's job is to contradict, and a counterpart that
     # corroborated would put a second fact in the audit's numerator.
     ARMING_COUNTERPART_GROUP: (1, 1, None),
+    # Exactly the default N, inside one week: the claim must MEET its count --
+    # a fact short of N holds silently and journals nothing -- and must meet
+    # it by count alone, because the time-gap gate is unreachable on the
+    # unsimulated pass and the hold has to be demonstrable on both.
+    BLOCKED_HOLD_GROUP: (
+        CORROBORATION_N_DEFAULT, CORROBORATION_N_DEFAULT, "lt",
+    ),
 }
 
 
@@ -276,8 +308,16 @@ def repo_id_for_name(name: str) -> str:
     return str(uuid.uuid5(REPO_ID_NAMESPACE, name))
 
 
-def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
+def load_promotion_corpus(
+    path: str | Path = CORPUS_PATH, *, now: datetime | None = None
+) -> list[dict]:
     """Load and validate the corpus, filling each entry's derived ``memory_id``.
+
+    ``now`` is the run clock the relative ``blocked_hold`` dates resolve
+    against and the window validators measure against; both uses share the one
+    value so a corpus can never resolve under one clock and validate under
+    another. Defaults to the wall clock, which is what a run wants; tests pin
+    it so the proofs do not decay with the calendar.
 
     Raises:
         ValueError: on a duplicate or missing ``key``, an unknown ``group``, a
@@ -288,6 +328,7 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
             arriving by accident would look like a fact that simply failed to
             promote.
     """
+    reference = now or datetime.now(timezone.utc)
     entries = load_corpus(path)
     seen_keys: set[str] = set()
     for idx, entry in enumerate(entries):
@@ -327,15 +368,40 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
         raw_created = entry.get("created_at")
         if not isinstance(raw_created, str):
             raise ValueError(
-                f"entry {key!r}: created_at must be an ISO-8601 string, "
+                f"entry {key!r}: created_at must be a string, "
                 f"got {raw_created!r}"
             )
-        try:
-            datetime.fromisoformat(raw_created)
-        except ValueError as exc:
+        relative = _RELATIVE_CREATED_AT.fullmatch(raw_created)
+        if relative:
+            if group != BLOCKED_HOLD_GROUP:
+                raise ValueError(
+                    f"entry {key!r} in group {group!r} carries the relative "
+                    f"date {raw_created!r}. Only {BLOCKED_HOLD_GROUP!r} may "
+                    f"resolve against the run clock: its design property -- "
+                    f"inside the supersession window at ingest -- is the one "
+                    f"property no absolute date can carry. Every other "
+                    f"group's timeline is a committed fact and stays absolute"
+                )
+            entry["created_at"] = (
+                reference - timedelta(days=int(relative.group(1)))
+            ).isoformat()
+        elif group == BLOCKED_HOLD_GROUP:
             raise ValueError(
-                f"entry {key!r}: created_at {raw_created!r} is not ISO-8601"
-            ) from exc
+                f"entry {key!r} in group {BLOCKED_HOLD_GROUP!r} carries the "
+                f"absolute date {raw_created!r}, which is a silent "
+                f"{SUPERSESSION_WINDOW_DAYS}-day fuse: the corpus keeps "
+                f"loading after the date recedes past the supersession "
+                f"window, supersession quietly stops firing, and the blocked "
+                f"count returns to the zero this group exists to make "
+                f"non-vacuous. Spell it now-<N>d"
+            )
+        else:
+            try:
+                datetime.fromisoformat(raw_created)
+            except ValueError as exc:
+                raise ValueError(
+                    f"entry {key!r}: created_at {raw_created!r} is not ISO-8601"
+                ) from exc
 
         wave = entry.get("wave", DEFAULT_WAVE)
         if wave not in CORPUS_WAVES:
@@ -354,7 +420,8 @@ def load_promotion_corpus(path: str | Path = CORPUS_PATH) -> list[dict]:
         entry["memory_id"] = memory_id_for_key(key)
     validate_claim_key_convention(entries)
     validate_corroboration_design(entries)
-    validate_arming_design(entries)
+    validate_arming_design(entries, now=reference)
+    validate_blocked_hold_design(entries, now=reference)
     return entries
 
 
@@ -649,6 +716,134 @@ def validate_arming_design(entries: list[dict], *, now: datetime | None = None) 
             f"also assert the subject claim. The veto's echo test asks whether "
             f"the counterpart brings a witness the subject does not have, so a "
             f"shared origin is an echo and no contradiction is found"
+        )
+
+
+def validate_blocked_hold_design(
+    entries: list[dict], *, now: datetime | None = None
+) -> None:
+    """Assert the corpus can journal a ``supersession_blocked`` hold, in order.
+
+    The mirror of :func:`validate_arming_design`'s window clause, guarding the
+    opposite property for a different group: the arming captures must sit
+    *outside* the supersession window so the armed fact reaches the audit's
+    numerator, and the blocked-hold captures must sit *inside* it so the hold
+    the 2026-08-13 ruling names actually fires in the same measured window.
+    Pass 2's repair delivered the first and — the independent probe's finding
+    — structurally foreclosed the second; this validator is what makes both
+    demonstrable at once, each in its own project. Every clause is a way the
+    hold silently becomes unreachable while the corpus still loads and the
+    metrics still print ``blocked = 0`` as if it were a property of the
+    system.
+
+    - **One claim, one direction.** Several claims spread the origins thin;
+      an inverse entry turns the group into a second veto pair, and a dispute
+      would then pre-empt the hold (`decide` checks the veto first).
+    - **Names disjoint from the arming pair.** The two demonstrations must
+      not share entity rows, or a change to one group's extraction silently
+      reshapes the other's graph.
+    - **A project of its own.** Supersession and the detector's candidate
+      scan are project-scoped, so the deliberate supersession here can reach
+      neither a measured claim nor the arming pair.
+    - **Inside the window, against the run clock.** The property this group
+      exists for: same-project captures asserting one replacement inside the
+      look-back retire each other at ingest, and the hold journals on the
+      fact that met its count.
+    - **Distinct capture times.** Equal stamps fall to the id tie-break,
+      whose order is a hash accident of the derived uuids — the supersession
+      chain would then depend on nothing a reader can see in the corpus.
+    """
+    members = [e for e in entries if e["group"] == BLOCKED_HOLD_GROUP]
+    if not members:
+        raise ValueError(
+            f"the corpus carries no {BLOCKED_HOLD_GROUP!r} entry. Without the "
+            f"group the supersession-blocked hold is structurally unreachable "
+            f"in every admissible corpus -- the exact foreclosure the "
+            f"2026-08-14 independent probe found after pass 2's window clause "
+            f"landed -- and `blocked` reads 0 as a property of the corpus "
+            f"while reporting as a property of the system"
+        )
+
+    claims = {claim_key(entry["key"]) for entry in members}
+    if len(claims) != 1:
+        raise ValueError(
+            f"group {BLOCKED_HOLD_GROUP!r} holds {len(claims)} claims; the "
+            f"design is one claim whose sessions supersede each other, and a "
+            f"second claim spreads the origins below the count the hold "
+            f"needs to journal at all"
+        )
+
+    pairs = {_declared_replacement(entry) for entry in members}
+    if len(pairs) != 1:
+        raise ValueError(
+            f"group {BLOCKED_HOLD_GROUP!r} declares several replacement "
+            f"pairs {sorted(pairs)}. One entry asserting the inverse is a "
+            f"contradiction, not a supersession chain: the veto is checked "
+            f"ahead of every count, so the fact would be disputed out of "
+            f"`candidate` and the hold would never journal"
+        )
+    blocked_names = set(pairs.pop())
+
+    arming_names: set[str] = set()
+    for entry in entries:
+        if entry["group"] in ARMING_GROUPS:
+            arming_names.update(_declared_replacement(entry))
+    shared = sorted(blocked_names & arming_names)
+    if shared:
+        raise ValueError(
+            f"group {BLOCKED_HOLD_GROUP!r} names {shared}, which the arming "
+            f"pair also asserts. Entities are global rows keyed on name, so "
+            f"the two demonstrations would share graph state and neither "
+            f"could be read independently of the other"
+        )
+
+    projects = {entry["project"] for entry in members}
+    if len(projects) != 1:
+        raise ValueError(
+            f"group {BLOCKED_HOLD_GROUP!r} spans projects {sorted(projects)}; "
+            f"supersession is same-project only, so a split group cannot "
+            f"build the chain the hold needs"
+        )
+    blocked_project = projects.pop()
+    intruders = sorted({
+        entry["key"] for entry in entries
+        if entry["project"] == blocked_project
+        and entry["group"] != BLOCKED_HOLD_GROUP
+    })
+    if intruders:
+        raise ValueError(
+            f"entries {intruders} share the blocked-hold project "
+            f"{blocked_project!r}, where supersession fires on purpose. A "
+            f"measured claim parked here is measured under a deliberate side "
+            f"effect, and an arming entry here re-creates pass 1's zero "
+            f"numerator"
+        )
+
+    reference = now or datetime.now(timezone.utc)
+    cutoff = reference - timedelta(days=SUPERSESSION_WINDOW_DAYS)
+    outside = sorted(
+        (entry["key"], entry["created_at"])
+        for entry in members
+        if datetime.fromisoformat(entry["created_at"]) < cutoff
+    )
+    if outside:
+        raise ValueError(
+            f"blocked-hold entries {[key for key, _ in outside]} are dated "
+            f"outside the {SUPERSESSION_WINDOW_DAYS}-day supersession window "
+            f"(before {cutoff.isoformat()}): {outside}. Outside the window "
+            f"supersession never fires, no memory is retired, the hold never "
+            f"journals, and `blocked = 0` is once again unreachable -- the "
+            f"corpus keeps loading and the loss has no symptom, which is why "
+            f"this refuses instead of warning"
+        )
+
+    stamps = [entry["created_at"] for entry in members]
+    if len(set(stamps)) != len(stamps):
+        raise ValueError(
+            f"group {BLOCKED_HOLD_GROUP!r} carries equal capture times; the "
+            f"supersession candidate rule breaks ties on the derived uuid, "
+            f"so which capture retires which would be a hash accident the "
+            f"corpus does not state"
         )
 
 
@@ -1033,12 +1228,47 @@ _ARMED_DISPUTES = text("""
 """)
 
 
+# The other arm the 2026-08-13 ruling names: a fact that met its count and
+# was withheld because a memory source is superseded. `decide` journals the
+# hold with outcome 'hold' and the flag set (T2.60's shape, the same one
+# `_PROMOTION_RATE_BY_GATE_SQL` counts into `blocked`), so this reads the
+# journal rather than any counter this module kept.
+_BLOCKED_HOLDS = text("""
+    SELECT kt.project, kt.subject_name, kt.rel_type, kt.object_name,
+           kt.verification_status,
+           COUNT(*) AS hold_events
+    FROM events e
+    JOIN knowledge_triples kt ON kt.id = e.object_id
+    WHERE e.event_type = 'verified'
+      AND e.object_type = 'fact'
+      AND e.payload->>'outcome' = 'hold'
+      AND (e.payload->>'supersession_blocked')::boolean
+    GROUP BY kt.id, kt.project, kt.subject_name, kt.rel_type, kt.object_name,
+             kt.verification_status
+    ORDER BY kt.project, kt.subject_name, kt.object_name
+""")
+
+# Superseded memories by project. Two readings on one page: the blocked-hold
+# project must carry them (the mechanism), and the arming project must carry
+# none (pass 2's guard, still holding).
+_SUPERSEDED_MEMORIES = text("""
+    SELECT project,
+           COUNT(*) FILTER (WHERE status = 'superseded') AS superseded,
+           COUNT(*) AS memories
+    FROM memories
+    GROUP BY project
+    ORDER BY project
+""")
+
+
 @dataclass(frozen=True)
 class ReadBack:
     promotions_by_gate: tuple[dict, ...]
     census: tuple[dict, ...]
     controls: tuple[dict, ...]
     disputes: tuple[dict, ...] = ()
+    blocked_holds: tuple[dict, ...] = ()
+    superseded_by_project: tuple[dict, ...] = ()
 
     @property
     def promoted_facts(self) -> int:
@@ -1047,6 +1277,10 @@ class ReadBack:
     @property
     def disputes_after_corroboration(self) -> int:
         return sum(1 for row in self.disputes if row["corroborated_first"])
+
+    @property
+    def supersession_blocked_events(self) -> int:
+        return sum(row["hold_events"] for row in self.blocked_holds)
 
 
 async def read_back(session) -> ReadBack:
@@ -1057,11 +1291,15 @@ async def read_back(session) -> ReadBack:
         await session.execute(_CONTROL_FACTS, {"names": list(CONTROL_OBJECT_NAMES)})
     ).mappings().all()
     disputes = (await session.execute(_ARMED_DISPUTES)).mappings().all()
+    blocked = (await session.execute(_BLOCKED_HOLDS)).mappings().all()
+    superseded = (await session.execute(_SUPERSEDED_MEMORIES)).mappings().all()
     return ReadBack(
         promotions_by_gate=tuple(dict(row) for row in gates),
         census=tuple(dict(row) for row in census),
         controls=tuple(dict(row) for row in controls),
         disputes=tuple(dict(row) for row in disputes),
+        blocked_holds=tuple(dict(row) for row in blocked),
+        superseded_by_project=tuple(dict(row) for row in superseded),
     )
 
 
@@ -1120,6 +1358,34 @@ def render_read_back(result: ReadBack) -> str:
         f"  disputes after a journaled corroboration (the audit's numerator): "
         f"{result.disputes_after_corroboration}"
     )
+
+    lines.append("")
+    lines.append(
+        "== the withheld promotion: supersession-blocked holds the ladder "
+        "journaled =="
+    )
+    if not result.blocked_holds:
+        lines.append(
+            "  NONE -- the hold did not fire. `blocked = 0` is then "
+            "unreachability, not a property of the system, and the "
+            "2026-08-13 ruling's second arm went unexercised in this window"
+        )
+    for row in result.blocked_holds:
+        lines.append(
+            f"  {row['project']}: {row['subject_name']} {row['rel_type']} "
+            f"{row['object_name']} -> held at {row['verification_status']} "
+            f"({row['hold_events']} supersession_blocked hold event(s))"
+        )
+    lines.append(
+        f"  supersession_blocked hold events journaled: "
+        f"{result.supersession_blocked_events}"
+    )
+    lines.append("  superseded memories by project (arming project must read 0):")
+    for row in result.superseded_by_project:
+        lines.append(
+            f"    {row['project']:<9} superseded={row['superseded']} "
+            f"of {row['memories']}"
+        )
     return "\n".join(lines)
 
 

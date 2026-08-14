@@ -13,8 +13,9 @@
     "claim from two same-week sessions of the same kind, which is k=2 against",
     "N=3. Both are results, not defects.",
     "",
-    "Six groups. Three target a different threshold gate, two are the designed",
-    "refusals, and the sixth is T2.129's arming pair:",
+    "Seven groups. Three target a different threshold gate, two are the",
+    "designed refusals, the sixth is T2.129's arming pair, and the seventh is",
+    "T2.129's blocked-hold chain:",
     "",
     "  diversity  -- project `default`. A payments service whose dependency set",
     "                is recorded in memory by the agents working on it AND",
@@ -50,6 +51,20 @@
     "                appears nowhere in the subject claim, because the veto's",
     "                echo test asks whether the counterpart brings a witness the",
     "                subject does not have.",
+    "  blocked_hold -- project `scheduler`, which nothing else uses. Three",
+    "                sessions inside one week record that dagster replaced",
+    "                oozie, deliberately dated INSIDE the 90-day supersession",
+    "                window (`now-<N>d`, resolved against the run clock at",
+    "                load): ingest retires each capture under the next, and the",
+    "                ladder journals a `supersession_blocked` hold on a fact",
+    "                that met its count -- the other arm the 2026-08-13 owner",
+    "                ruling requires to fire in a measured window, and the one",
+    "                the arming groups' window clause forecloses there. This is",
+    "                also the one group whose database state is reachable",
+    "                through a capture door: production stamps created_at at",
+    "                ingest, so three same-claim captures days apart cannot all",
+    "                survive `active`. Expected to hold at `candidate` forever;",
+    "                a promotion here means the hold failed.",
     "",
     "`wave` is which ingestion pass an entry belongs to and defaults to 1. The",
     "arming pair's wave-2 entries arrive AFTER the corpus's first recompute has",
@@ -59,10 +74,12 @@
     "would stay 0 with the arm armed -- a vacuum one layer down.",
     "",
     "EDITING CONSTRAINT: the corroboration structure is validated by",
-    "promotion_corpus.validate_corroboration_design and",
-    "validate_arming_design. Adding an origin, moving a date across the seven",
-    "day gap, or moving an arming entry between waves changes what a group",
-    "demonstrates, and each is refused rather than silently honoured."
+    "promotion_corpus.validate_corroboration_design, validate_arming_design",
+    "and validate_blocked_hold_design. Adding an origin, moving a date across",
+    "the seven-day gap, moving an arming entry between waves, dating an arming",
+    "entry inside the supersession window, or dating a blocked_hold entry",
+    "outside it (or absolutely at all) changes what a group demonstrates, and",
+    "each is refused rather than silently honoured."
   ],
   "memories": [
     {
@@ -2516,6 +2533,48 @@
       "created_at": "2026-02-20T08:40:00+00:00",
       "memory_type": "fact",
       "content": "The warehouse rollback is complete: hive replaces trino for every reporting query."
+    },
+    {
+      "key": "sch-dagster-1",
+      "group": "blocked_hold",
+      "project": "scheduler",
+      "replaces": [
+        "dagster",
+        "oozie"
+      ],
+      "source": "claude-code",
+      "origin_key": "claude-code:f2a91c4e",
+      "created_at": "now-12d",
+      "memory_type": "architecture",
+      "content": "dagster replaces oozie as the workflow orchestrator. The cutover finished this morning."
+    },
+    {
+      "key": "sch-dagster-2",
+      "group": "blocked_hold",
+      "project": "scheduler",
+      "replaces": [
+        "dagster",
+        "oozie"
+      ],
+      "source": "codex",
+      "origin_key": "codex:8b53d7a2",
+      "created_at": "now-10d",
+      "memory_type": "fact",
+      "content": "Noted during the on-call handover: dagster replaces oozie for every scheduled job."
+    },
+    {
+      "key": "sch-dagster-3",
+      "group": "blocked_hold",
+      "project": "scheduler",
+      "replaces": [
+        "dagster",
+        "oozie"
+      ],
+      "source": "mcp",
+      "origin_key": "mcp:6e14c9b5",
+      "created_at": "now-8d",
+      "memory_type": "fact",
+      "content": "The orchestrator migration is done. dagster replaces oozie, and the oozie server now serves nothing."
     }
   ]
 }
