@@ -1,0 +1,221 @@
+{
+  "shuffle_seed": 2330575273,
+  "cases": [
+    {
+      "case": 1,
+      "verdict": "entailed",
+      "premise": "syncthing deployed on spire-01",
+      "A_id": "eg-0475",
+      "A_hypothesis": "At least one service is deployed on spire-01.",
+      "B_id": "eg-0599",
+      "B_hypothesis": "It is on spire-01 that syncthing is deployed."
+    },
+    {
+      "case": 2,
+      "verdict": "entailed",
+      "premise": "zulip deployed on vane-01",
+      "A_id": "eg-0427",
+      "A_hypothesis": "vane-01 is the host on which Zulip is deployed.",
+      "B_id": "eg-0561",
+      "B_hypothesis": "vane-01 carries the Zulip installation."
+    },
+    {
+      "case": 3,
+      "verdict": "unsupported",
+      "premise": "slurm deployed on yarrow-01",
+      "A_id": "eg-0511",
+      "A_hypothesis": "Slurm is deployed on yarrow-01 in a high-availability configuration.",
+      "B_id": "eg-0641",
+      "B_hypothesis": "Yarrow-01 draws its power from the rack's secondary PDU feed."
+    },
+    {
+      "case": 4,
+      "verdict": "entailed",
+      "premise": "codec pack deployed on files-01",
+      "A_id": "eg-0424",
+      "A_hypothesis": "files-01 has at least one component deployed on it.",
+      "B_id": "eg-0558",
+      "B_hypothesis": "files-01 carries at least one deployed component."
+    },
+    {
+      "case": 5,
+      "verdict": "entailed",
+      "premise": "anvil-render uses imagemagick",
+      "A_id": "eg-0422",
+      "A_hypothesis": "ImageMagick is among the software that anvil-render calls on to do its work.",
+      "B_id": "eg-0556",
+      "B_hypothesis": "ImageMagick is used by anvil-render."
+    },
+    {
+      "case": 6,
+      "verdict": "entailed",
+      "premise": "ridge-01 uses quire-03",
+      "A_id": "eg-0423",
+      "A_hypothesis": "quire-03 is one of the components ridge-01 operates with.",
+      "B_id": "eg-0557",
+      "B_hypothesis": "quire-03 is used by ridge-01."
+    },
+    {
+      "case": 7,
+      "verdict": "entailed",
+      "premise": "celery deployed on media-04",
+      "A_id": "eg-0425",
+      "A_hypothesis": "media-04 is the machine that carries the Celery installation.",
+      "B_id": "eg-0559",
+      "B_hypothesis": "media-04 is the host Celery runs on."
+    },
+    {
+      "case": 8,
+      "verdict": "entailed",
+      "premise": "alert storms related to lb-01",
+      "A_id": "eg-0452",
+      "A_hypothesis": "Alert storms are related to at least one named component of the estate.",
+      "B_id": "eg-0580",
+      "B_hypothesis": "lb-01 is related to alert storms."
+    },
+    {
+      "case": 9,
+      "verdict": "unsupported",
+      "premise": "data-06 uses clickhouse",
+      "A_id": "eg-0509",
+      "A_hypothesis": "data-06 uses ClickHouse to store its long-term metrics history.",
+      "B_id": "eg-0639",
+      "B_hypothesis": "ClickHouse is the only datastore data-06 queries."
+    },
+    {
+      "case": 10,
+      "verdict": "unsupported",
+      "premise": "xenon-02 uses xenon-snapshots",
+      "A_id": "eg-0449",
+      "A_hypothesis": "The xenon-snapshots store is replicated nightly to an offsite provider.",
+      "B_id": "eg-0577",
+      "B_hypothesis": "xenon-snapshots was excluded from the last disaster-recovery drill."
+    },
+    {
+      "case": 11,
+      "verdict": "entailed",
+      "premise": "clickhouse depends on ledger-02",
+      "A_id": "eg-0486",
+      "A_hypothesis": "ledger-02 has at least one component that depends on it.",
+      "B_id": "eg-0614",
+      "B_hypothesis": "clickhouse has at least one dependency."
+    },
+    {
+      "case": 12,
+      "verdict": "entailed",
+      "premise": "imagemagick deployed on images-02",
+      "A_id": "eg-0479",
+      "A_hypothesis": "images-02 is the host on which ImageMagick is deployed.",
+      "B_id": "eg-0607",
+      "B_hypothesis": "Images-02 hosts at least one deployed component."
+    },
+    {
+      "case": 13,
+      "verdict": "unsupported",
+      "premise": "uptime kuma uses order-sync",
+      "A_id": "eg-0496",
+      "A_hypothesis": "Uptime Kuma polls order-sync every thirty seconds.",
+      "B_id": "eg-0626",
+      "B_hypothesis": "Order-sync clears several thousand records on each nightly run."
+    },
+    {
+      "case": 14,
+      "verdict": "entailed",
+      "premise": "auth-02 uses authelia",
+      "A_id": "eg-0426",
+      "A_hypothesis": "Authelia is used by at least one system.",
+      "B_id": "eg-0560",
+      "B_hypothesis": "Authelia is used by auth-02."
+    },
+    {
+      "case": 15,
+      "verdict": "unsupported",
+      "premise": "consul uses authelia",
+      "A_id": "eg-0497",
+      "A_hypothesis": "Every request reaching Consul is authenticated through Authelia.",
+      "B_id": "eg-0627",
+      "B_hypothesis": "Authelia enforces two-factor authentication for administrative logins."
+    },
+    {
+      "case": 16,
+      "verdict": "entailed",
+      "premise": "nimbus-02 uses nimbus-archive",
+      "A_id": "eg-0510",
+      "A_hypothesis": "At least one component of the nimbus deployment makes use of nimbus-archive.",
+      "B_id": "eg-0640",
+      "B_hypothesis": "Nimbus-archive is a resource that nimbus-02 makes use of."
+    },
+    {
+      "case": 17,
+      "verdict": "unsupported",
+      "premise": "powerdns uses fulfillment network",
+      "A_id": "eg-0472",
+      "A_hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs.",
+      "B_id": "eg-0598",
+      "B_hypothesis": "The fulfillment network is monitored around the clock by an on-call rotation."
+    },
+    {
+      "case": 18,
+      "verdict": "contradicted",
+      "premise": "ticket-router deployed on wisp-01",
+      "A_id": "eg-0519",
+      "A_hypothesis": "ticket-router is deployed on tether-02.",
+      "B_id": "eg-0642",
+      "B_hypothesis": "Wisp-01 runs as a workload on ticket-router."
+    },
+    {
+      "case": 19,
+      "verdict": "entailed",
+      "premise": "airflow depends on files-01",
+      "A_id": "eg-0456",
+      "A_hypothesis": "files-01 has at least one dependent component in the estate.",
+      "B_id": "eg-0584",
+      "B_hypothesis": "files-01 is one of airflow's dependencies."
+    },
+    {
+      "case": 20,
+      "verdict": "entailed",
+      "premise": "ledger-02 causes mon-05",
+      "A_id": "eg-0463",
+      "A_hypothesis": "mon-05 is the effect that ledger-02 produces.",
+      "B_id": "eg-0590",
+      "B_hypothesis": "mon-05 is brought about by ledger-02."
+    },
+    {
+      "case": 21,
+      "verdict": "entailed",
+      "premise": "nimbus-02 uses rabbitmq",
+      "A_id": "eg-0418",
+      "A_hypothesis": "RabbitMQ is used by nimbus-02.",
+      "B_id": "eg-0554",
+      "B_hypothesis": "RabbitMQ is called on by nimbus-02."
+    },
+    {
+      "case": 22,
+      "verdict": "entailed",
+      "premise": "osquery uses quota-watcher",
+      "A_id": "eg-0504",
+      "A_hypothesis": "osquery's operation involves quota-watcher.",
+      "B_id": "eg-0634",
+      "B_hypothesis": "Quota-watcher is a component that osquery relies on."
+    },
+    {
+      "case": 23,
+      "verdict": "entailed",
+      "premise": "meilisearch deployed on idx-03",
+      "A_id": "eg-0465",
+      "A_hypothesis": "idx-03 hosts at least one deployed service.",
+      "B_id": "eg-0592",
+      "B_hypothesis": "Meilisearch is deployed on at least one host."
+    },
+    {
+      "case": 24,
+      "verdict": "unsupported",
+      "premise": "cockroachdb deployed on ledger-02",
+      "A_id": "eg-0527",
+      "A_hypothesis": "ledger-02 sits in the finance team's rack allocation.",
+      "B_id": "eg-0648",
+      "B_hypothesis": "CockroachDB is deployed on ledger-02, a machine provisioned as a dedicated database host."
+    }
+  ]
+}
