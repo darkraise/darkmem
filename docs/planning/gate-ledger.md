@@ -2167,11 +2167,38 @@ archive move, digest pin asserted untouched); step 5 `d23b35d0`
 (`benchlib/round4_frame.py`, the emitted `entailment/round4_frame.json` at
 **T = 280, census contradicted 80 / entailed 110 / unsupported 90**, the clause-5b
 absorbing rule as code, `build_round4_assignment`, and `cross_gold_near_overlap`
-pinned non-vacuous). The emitted matrix awaits **sitting 2** (plan step 6): an
-independent reviewer regenerates the JSON from the committed script and
-byte-compares, the lattice checks are asserted by test, and the owner answers
-yes/no. No pair exists yet; authoring does not start until that ratification is
-recorded.
+pinned non-vacuous).
+
+**Step 6 and step 7 have both happened; this paragraph said otherwise until
+2026-08-14.** It closed on "The emitted matrix awaits **sitting 2** … No pair
+exists yet; authoring does not start until that ratification is recorded" —
+true when step 5 wrote it, false from the moment sitting 2 was ratified, and
+still sitting on this branch beside 280 authored pairs. It is corrected here
+rather than at merge because the two records reconcile **silently**: the
+ratification landed on `master` and the authoring on this branch, they touch
+different regions of this file, and `git merge-tree` reports no conflict — so a
+merge would have produced one ledger asserting both "RATIFIED" and "no pair
+exists yet" with nothing flagging the contradiction. A record that contradicts
+itself is worse than either half alone, and nothing mechanical was going to
+catch it.
+
+**Sitting 2 ratified the matrix on 2026-08-13** at **T = 280, contradicted 80 /
+entailed 110 / unsupported 90**; the sitting's own record — the byte-regeneration
+sha, the three verified items and the named tension left standing — is `master`'s
+"Sitting 2 — the emitted matrix, RATIFIED" section above, landed there as
+`5a2c798d`. Authoring followed as `eed99e31`: ids `eg-0418`..`eg-0697`, ten blind
+authors plus three single-slot re-authors, dispatched as clean-room headless CLI
+sessions **after a probe measured that Agent-tool sub-agents inherit the project
+instructions and the judge scores they carry** — the blindness of every earlier
+round's sub-agent dispatch rests on an assumption this round is the first to have
+tested. Step-7 catches green (loader, empty retired-content overlap, zero
+within-class duplicates at the committed threshold, zero cross-gold near
+overlap); step-8 reconciliation exact on all 11 matrix cells with no clause-5b
+absorption, pinned cell-by-cell by `test_round4_census.py`.
+
+**Three sub-threshold duplicate propositions are open for step 9** —
+`eg-0424`/`eg-0558`, `eg-0425`/`eg-0559`, `eg-0463`/`eg-0590` — recorded by the
+authoring lineage and deliberately **not** fixed by it.
 
 ---
 
