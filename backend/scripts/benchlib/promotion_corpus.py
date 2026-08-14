@@ -141,7 +141,8 @@ from sqlalchemy import text
 
 from benchlib import bench_db  # noqa: F401  (DATABASE_URL override first)
 from benchlib import run_smoke
-from benchlib.caching_llm import CachingLLMOrchestrator
+from benchlib.caching_llm import CachingLLMOrchestrator  # noqa: F401  (type in run_ingest)
+from benchlib.twin import TwinningOrchestrator
 from benchlib.corpus import load_corpus
 from benchlib.ingest import GateConfig, _parse_created_at, run_ingest
 
@@ -1403,6 +1404,12 @@ class PreparedCorpus:
     capture_time_stamped: int
     repo_assertions: dict
     n_facts: int
+    #: Rule 2's twin. `{purpose: {live_calls, prompt_tokens, completion_tokens,
+    #: cache_known_calls, cache_unknown_calls, ...}}` from `TokenLedger`, plus
+    #: the run's wall clock. Empty on a fully-replayed run is a real reading,
+    #: not a missing one -- it says the run paid nothing.
+    tokens_by_purpose: dict = field(default_factory=dict)
+    wall_seconds: float = 0.0
     notes: tuple[str, ...] = field(default_factory=tuple)
     wave_two_entries: int = 0
     wave_two_lift: dict = field(default_factory=dict)
@@ -1470,7 +1477,9 @@ async def prepare(
     wave 2, so this returns with the dispute still owed.
     """
     import hashlib
+    import time
 
+    started = time.monotonic()
     corpus_bytes = Path(corpus_path).read_bytes()
     entries = load_promotion_corpus(corpus_path)
     fixture = load_repo_fixture(fixture_path)
@@ -1485,7 +1494,13 @@ async def prepare(
         llm_config = await get_llm_config(session)
 
     prepared_entries = await seed_memory_rows(session_factory, first_wave)
-    llm = CachingLLMOrchestrator(llm_config, cache_dir=str(cache_dir))
+    # Rule 2's twin: an accuracy figure never ships without its latency and
+    # token cost, and three consecutive G-C runs shipped without one because
+    # this path built the plain cacher. `TwinningOrchestrator` is a subclass,
+    # not a fork -- same cache, same keys, same replay semantics, plus the
+    # per-purpose usage ledger. A pre-twin cache entry is a bare string and
+    # reads back as `cache_unknown` rather than being coerced to a paid zero.
+    llm = TwinningOrchestrator(llm_config, cache_dir=str(cache_dir))
     ingest_result = await run_ingest(llm, prepared_entries, GateConfig(), session_factory)
 
     lift = await _lift_to_exhaustion(session_factory)
@@ -1539,4 +1554,6 @@ async def prepare(
         wave_two_entries=len(second_wave),
         wave_two_lift=wave_two_lift,
         first_recompute=first_recompute,
+        tokens_by_purpose=llm.tokens.as_dict(),
+        wall_seconds=round(time.monotonic() - started, 2),
     )

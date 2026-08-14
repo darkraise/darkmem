@@ -833,6 +833,43 @@ one-fact numerator stand as written above), and is not certified by the lane
 that built it — the independent evidence re-run T2.129's done-when owes
 remains owed and now covers this corpus too.
 
+### The unsimulated pass: one of G-C's three gate paths is a property of the simulation (T2.129, 2026-08-14)
+
+The `--no-capture-time-simulation` run T2.129's done-when has owed since pass 1,
+on the same corpus (`69dbb717b0476167`) so the clock is the only variable.
+
+| | simulated | unsimulated |
+|---|---|---|
+| corroborations | 149 | **131** |
+| `gate_fired` eligibles | [98, 33, 18] | **[98, 35]** |
+
+**The `time_gap` bucket does not shrink — it disappears.** All 18 of its
+promotions exist only under the simulated clock, exactly as `promotion_corpus`'s
+own docstring predicts: the gate reads `fact_sources.created_at`, which on any
+single-pass backfilled corpus records the lift's write time rather than the
+capture's. Two of G-C's three gate paths survive an honest clock; **the third is
+a property of the harness**, and any future G-C verdict quoting three powered
+buckets is quoting one the corpus cannot produce without help.
+
+**What owes the simulation nothing:** the arming. The armed subject corroborates
+on three distinct origins by count, so the numerator survives at 1 disputed, and
+the blocked-hold arm still fires (`none` eligible 35 = 33 promoted + 2 holds).
+Both surviving buckets stay powered and clearing.
+
+**The audit, read both ways** — point estimate 1/131 = **0.0076**, 95% upper
+bound **0.0357**, evidence supports a true rate under the bar: **NO**. Worth
+noting as a live demonstration of T2.130: dropping 18 corroborations moves the
+point estimate by 0.0009 and the bound by 0.0043. The point estimate is nearly
+insensitive to how much evidence stands behind it; the bound is not.
+
+**Rule 2's twin is present for the first time in four runs** — 15.97 s wall, 0
+live calls, extraction `cache_unknown=246`. The runner had never carried twin
+instrumentation at all, which is why the ledger's notice of the omission never
+fixed it. `promotion_corpus` now builds `TwinningOrchestrator` (a subclass, not
+a fork: same cache, same keys, same replay semantics). `cache_unknown` is the
+honest reading for entries written before usage capture existed — never coerced
+to a paid zero. Artifact: `docs/eval/2026-08-14-t2.129-unsimulated/`.
+
 ### G-C's audit had almost no rejection power, and more data was never going to fix it (T2.130, 2026-08-14)
 
 The audit's decision rule was **`observed rate < 0.01`**. Measured: a system

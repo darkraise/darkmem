@@ -1,0 +1,197 @@
+bench_db: darkmem_bench_t2129nosim
+corpus: promotion (246 captures, sha256 69dbb717b0476167)
+ingest live_calls: 0
+embedder fingerprint: qwen3-embedding:0.6b|1024
+lift: {'ticks': 2, 'facts_created': 171, 'sources_added': 260, 'stalled_candidates': 0, 'salience_min_asserting_memories': 1}
+wave 1 recompute (before wave 2 landed): {'ticks': 5, 'recomputed': 274, 'transitions': 60}
+wave 2: 2 captures, lift {'ticks': 2, 'facts_created': 1, 'sources_added': 2, 'stalled_candidates': 0, 'salience_min_asserting_memories': 1}
+capture-time provenance stamped (SIMULATED CLOCK): 0 rows
+repo assertions: {'repo_id': '0e77b03d-e6fe-5ed8-8794-cf012c08bb22', 'entities': 103, 'relations': 102, 'internal_imports': 0, 'skipped_by_language': {}}
+code lift: {'ticks': 2, 'facts_created': 4, 'sources_added': 102}
+facts minted through the shipping lift: 176
+== twin (rule 2) ==
+  wall clock: 15.97s
+  live model calls: 0
+  extraction: live=0 prompt=0 completion=0 cache_known=0 cache_unknown=246
+note: capture-time provenance simulation disabled: every fact_sources row carries its write time, so the time_gap gate cannot fire
+note: wave 1 (244 captures) was recomputed to convergence before wave 2 (2 captures) was ingested; the dispute wave 2 arms is owed to the ticks that follow
+recompute tick 1: drained 2 events, recomputed 2 facts, 2 transitions; slow arm skipped (scanned 0, healed 0)
+recompute tick 2: drained 0 events, recomputed 0 facts, 0 transitions; slow arm skipped (scanned 0, healed 0)
+recompute: 2 ticks, 2 facts recomputed, 2 journaled transitions
+
+== promotions journaled, read back from `events` by SQL ==
+  gate_fired=diversity: 98 promote events over 98 distinct facts
+  gate_fired=none: 33 promote events over 33 distinct facts
+  total distinct facts promoted: 131
+
+== fact census (project, status, distinct origins, kinds) ==
+  atlas     candidate     origins=1 kinds=1 provenance_rows=1 -> 1 facts
+  atlas     candidate     origins=2 kinds=1 provenance_rows=2 -> 18 facts
+  default   candidate     origins=1 kinds=1 provenance_rows=1 -> 14 facts
+  default   corroborated  origins=1 kinds=1 provenance_rows=1 -> 4 facts
+  default   corroborated  origins=2 kinds=2 provenance_rows=2 -> 98 facts
+  ledger    candidate     origins=1 kinds=1 provenance_rows=1 -> 4 facts
+  ledger    candidate     origins=1 kinds=1 provenance_rows=3 -> 1 facts
+  ledger    candidate     origins=2 kinds=1 provenance_rows=2 -> 1 facts
+  ledger    corroborated  origins=3 kinds=1 provenance_rows=3 -> 32 facts
+  scheduler candidate     origins=3 kinds=1 provenance_rows=3 -> 1 facts
+  warehouse disputed      origins=1 kinds=1 provenance_rows=1 -> 1 facts
+  warehouse disputed      origins=4 kinds=1 provenance_rows=4 -> 1 facts
+
+== the designed refusals (echo, under-sourced) ==
+  ledger: ledger-exports USES avro -> candidate (origins=2, provenance_rows=2)
+  ledger: ledger-core USES cassandra -> candidate (origins=1, provenance_rows=3)
+
+== the armed veto: disputes the detector actually produced ==
+  warehouse: hive REPLACES trino -> disputed by rule=inverse_replacement against [trino REPLACES hive], witness=claude-code:aa10b3c7, corroborated_first=False
+  warehouse: trino REPLACES hive -> disputed by rule=inverse_replacement against [hive REPLACES trino], witness=codex:ee5c67b3, corroborated_first=True
+  disputes after a journaled corroboration (the audit's numerator): 1
+
+== the withheld promotion: supersession-blocked holds the ladder journaled ==
+  scheduler: dagster REPLACES oozie -> held at candidate (2 supersession_blocked hold event(s))
+  supersession_blocked hold events journaled: 2
+  superseded memories by project (arming project must read 0):
+    atlas     superseded=0 of 36
+    default   superseded=0 of 101
+    ledger    superseded=0 of 101
+    scheduler superseded=1 of 3
+    warehouse superseded=0 of 5
+
+# Promotion metrics — 2026-05-16 to 2026-08-14
+
+- database: `localhost:5433/darkmem_bench_t2129nosim` (read-only)
+- window: `2026-05-16T16:06:13.646487+00:00` .. `2026-08-14T16:06:13.646487+00:00`
+- schema present: True
+- `verified` payloads validated (T2.60 / unknown-vocabulary guard): 135
+- under-powered threshold: < 5 observations
+
+This is a measurement, not a verdict: no bar is stated or judged here (T2.40's role). Every rate below carries its denominator; a slice below the under-powered threshold is labelled, never read as a plain percentage.
+
+**Units: every promotion-rate figure below is per-transition (per journaled `verified` event), not per-fact.** Doc 17 §5.1 states the metric as `(facts promoted) / (eligible candidate facts)`; a fact that exits `candidate` more than once inside the window (e.g. promote, later demote, later re-promote) contributes one row per transition to both promoted and eligible here, not one row per fact. The false-promotion audit below is the one number in this report that IS de-duplicated to distinct facts (`COUNT(DISTINCT object_id)`), matching doc 17's own wording for that metric — do not read the two counting conventions as consistent with each other.
+
+## Promotion rate — by which N-fired gate (`gate_fired`)
+
+| gate_fired | promoted | blocked | eligible | rate |
+|---|---|---|---|---|
+| diversity | 98 | 0 | 98 | 1.000 |
+| none | 33 | 2 | 35 | 0.943 |
+
+## Promotion rate — by source-kind diversity
+
+**Caveat: the `diverse` bucket is not equivalent to "the diversity gate fired".** It buckets on whether the payload's `source_kinds` list (the union of kinds across every origin that ever asserted the fact, including a single origin whose own rows span two kinds) contains more than one distinct value. The ladder's actual diversity gate (`OriginProfile.kinds_are_diverse`) is stricter: it requires **two distinct, attributable origins** that differ in kind, and returns `False` outright for a lone origin regardless of how many kinds that one origin spans. So a fact asserted by exactly one origin under two kinds slices as `diverse` here without ever having lowered N — this is a deliberately independent cut (per doc 17 §5.1's two-slice-axes instruction), not a proxy for `gate_fired = 'diversity'`; use the gate_fired table above for that question.
+
+| bucket | promoted | blocked | eligible | rate |
+|---|---|---|---|---|
+| diverse | 98 | 0 | 98 | 1.000 |
+| homogeneous | 33 | 2 | 35 | 0.943 |
+
+## False-promotion audit
+
+Count of DISTINCT corroborated facts later disputed or human-rejected (doc 17 §5.1). Sources: `events` self-join for the disputed half (T2.06's exact SQL, tuple-compared).
+
+**The human-rejected half is live as of T2.63.** It reads the `human_verdict` journal, not `review_state` -- that column is pure queue-membership (T2.62: only `open` is writable, cleared to NULL on resolution), so it could never carry a verdict and this count read 0 forever while its own tripwire could not fire. A 0 here is now a measurement, not an absence -- but note the only human verb reachable today is rejection; ratify is T2.05's and re-ground/edit have no owner, so this counts rejections rather than all adjudication.
+
+- corroborations in window: 131
+- later disputed: 1
+- later human-rejected: 0
+- DISTINCT facts in either arm: 1
+- false-promotion rate (point estimate): 0.0076
+- corroborated facts later expired (R2 companion): 0
+
+**What that point estimate is worth (T2.130).**
+
+- 95% upper confidence bound on the TRUE rate: **0.0357** (bar 0.01)
+- evidence supports a true rate under the bar: **NO**
+- P(this window passes | the system's true rate is exactly the bar):
+    - under `rate < bar` (the rule scored above): **0.6227**
+    - under `upper bound < bar`: **unreachable** — at this window size the bound cannot clear even at zero observed false promotions
+- corroborations needed for the bound to clear at 1 observed: **473** (have 131)
+
+**A point estimate below the bar is not evidence the system is below the bar.** Comparing an observed rate to the bar it is centred on is a coin flip at the boundary *at every sample size* — measured 0.56 at n = 149 and 0.49 at n = 10000, so more corroborations do not repair it. The upper-bound line is the one that answers the gate's actual question, and it is strictly the more conservative of the two: it can never clear a window the point estimate fails.
+
+**The last line is `promotion_bars` ruling R2's companion, and the rate above must not be quoted without it.** An entity-merge fact fold keeps one row's id and retires the other, so a corroboration and a later dispute can land on two ids that the audit's join can never bring together — the audit then undercounts, the one direction it may not err in silently. A non-zero count here caps what a zero rate claims. It is an upper bound on folds by construction: human adjudication and provenance withdrawal expire facts too, and the journal carries no discriminator, so this counts every expiry after an in-window corroboration rather than narrowing the cap on a guess.
+
+The three counts above do not sum: a fact the human rejects is usually one the queue served them *because* it was disputed, so it appears in both arms. doc 17 §5.1 counts facts, so the rate divides the DISTINCT union — summing the arms reported 200% off a single fact.
+
+== journal completeness (promotion_bars.JOURNAL_COMPLETENESS_SQL) ==
+facts: 176; born-rung carve-out: 4; violations: 0
+
+== bars in force (promotion_bars, committed before any measurement) ==
+the measured database carries no `config` row for any G-C bar and no `promotion_bar_licences` row: every bar below is its committed default, unmoved.
+bar                                 committed  effective  provenance
+verification_false_promotion_bar    0.01       0.01       no config row; the committed bar stands
+false_promotion_min_corroborations  20         20         no config row; the committed bar stands
+promotion_rate_floor                0.5        0.5        no config row; the committed bar stands
+promotion_rate_min_eligible         5          5          no config row; the committed bar stands
+promotion_rate_min_promotions       1          1          no config row; the committed bar stands
+promotion_journal_completeness_bar  1          1          no config row; the committed bar stands
+note: promotion_journal_completeness_bar is read by no predicate today (the 100 % bar is spelled as zero unexplained rows), so its row and its clamp are prophylactic, not a live protection.
+
+== pre-stated verdicts (promotion_bars, committed before this run) ==
+by gate_fired: decidable=True (eligible per bucket: [98, 35], promotions: 131)
+  bucket diversity: powered=True clears=True
+  bucket none: powered=True clears=True
+by diversity: decidable=True (eligible per bucket: [98, 35], promotions: 131)
+  bucket diverse: powered=True clears=True
+  bucket homogeneous: powered=True clears=True
+false-promotion audit: decidable=True clears=True (corroborations: 131, rate: 0.007633587786259542, R2 companion -- corroborated facts later expired: 0)
+journal completeness: clears=True over 176 facts (4 carve-out rows) -- vacuous unless transitions occurred
+
+== run record (appended by the controller; not runner output) ==
+
+The `--no-capture-time-simulation` pass T2.129's done-when has owed since
+pass 1. Corpus sha `69dbb717b0476167` — the same corpus the blocked-hold run
+measured, so the only variable is the simulated clock. Database
+`darkmem_bench_t2129nosim`, created for this run and NOT used for any test
+suite (the lesson from the blocked-hold run, which reset its own evidence).
+
+WHAT THE SIMULATION WAS HOLDING UP, WHICH IS THE POINT OF THIS PASS.
+
+`simulate_capture_time_provenance` moves each memory-kind `fact_sources`
+row's timestamp back to the capture time of the memory that asserted it,
+because the corpus is ingested in one pass and the time-gap gate reads a
+column that would otherwise record the lift's write time. Turn it off and:
+
+  corroborations:  149 -> 131   (-18)
+  gate buckets:    [98, 33, 18] -> [98, 35]
+
+The `time_gap` bucket does not shrink. It **disappears** — 18 promotions, the
+entire bucket, exist only under the simulated clock, exactly as
+`promotion_corpus`'s own docstring predicts ("the time-gap gate is unreachable
+on **any** backfilled corpus"). Two of G-C's three gate paths survive the
+honest clock; the third is a property of the simulation.
+
+WHAT SURVIVES IT.
+
+- The arming still works end to end: 1 later-disputed fact, the numerator
+  intact. The armed subject corroborates on three distinct origins by count,
+  not by time gap, so the audit's machine arm owes the simulation nothing.
+- The blocked-hold arm still fires: `none` bucket eligible 35 = 33 promoted
+  + 2 blocked holds, rate 0.943.
+- Both surviving buckets stay powered and clearing.
+
+WHAT THE AUDIT SAYS, READ HONESTLY.
+
+  point estimate:      1/131 = 0.0076   (under the 0.01 bar)
+  95% upper bound:     0.0357           (3.6x the bar)
+  evidence supports a true rate under the bar:  NO
+
+The harness still prints `decidable=True clears=True` from the point-estimate
+rule; the bound beside it is T2.130's and says the opposite. A smaller window
+makes the point estimate *look* barely worse (0.0076 vs 0.0067) and the bound
+materially worse (0.0357 vs 0.0314) — which is the T2.130 finding in one
+comparison: the point estimate is nearly insensitive to how much evidence
+stands behind it, and the bound is not.
+
+THE TWIN, PRESENT FOR THE FIRST TIME IN FOUR RUNS (rule 2).
+
+  wall clock:         15.97 s
+  live model calls:   0
+  extraction:         live=0  prompt=0  completion=0
+                      cache_known=0  cache_unknown=246
+
+`cache_unknown=246` is the honest reading and not a gap: every extraction
+call replayed from a cache entry written before `TwinningOrchestrator`
+existed, and those entries are bare strings with no usage to report. They are
+counted as unknown rather than coerced to a paid zero. A future run against a
+cold cache pays and reports real numbers; this one paid nothing and says so.

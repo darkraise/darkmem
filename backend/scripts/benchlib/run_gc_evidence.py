@@ -107,9 +107,40 @@ async def _prepare_promotion(
     print(f"repo assertions: {prepared.repo_assertions}")
     print(f"code lift: {prepared.code_lift}")
     print(f"facts minted through the shipping lift: {prepared.n_facts}")
+    _print_twin(prepared)
     for note in prepared.notes:
         print(f"note: {note}")
     return prepared.n_facts
+
+
+def _print_twin(prepared) -> None:
+    """Rule 2's twin: no accuracy figure ships without latency and token cost.
+
+    Three consecutive G-C runs shipped without one, which the gate ledger
+    flagged for the first two and then stopped noticing — the reporting
+    regression outlived the notice of it.
+
+    A fully-replayed run prints zeros, and that is a reading rather than a
+    gap: it says this run paid nothing and its numbers rest on cache entries
+    some earlier run paid for. `cache_unknown` counts calls whose entry
+    predates usage capture; it is never coerced to a paid zero.
+    """
+    print(f"== twin (rule 2) ==")
+    print(f"  wall clock: {prepared.wall_seconds}s")
+    print(f"  live model calls: {prepared.live_calls}")
+    by_purpose = prepared.tokens_by_purpose or {}
+    if not by_purpose:
+        print("  tokens: no chat purpose recorded usage this run")
+        return
+    for purpose, usage in sorted(by_purpose.items()):
+        prompt = usage.get("prompt_tokens", 0)
+        completion = usage.get("completion_tokens", 0)
+        print(
+            f"  {purpose}: live={usage.get('live_calls', 0)} "
+            f"prompt={prompt} completion={completion} "
+            f"cache_known={usage.get('cache_known_calls', 0)} "
+            f"cache_unknown={usage.get('cache_unknown_calls', 0)}"
+        )
 
 
 async def main(argv: list[str] | None = None) -> int:
