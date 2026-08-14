@@ -779,6 +779,34 @@ The frame was ratified **before any pair was authored** (`gate-ledger.md`, "T2.1
 — owner ratification, sitting 1"); the emitted matrix is ratified separately once the
 script's inputs exist. Nothing in this entry states or implies a measured result.
 
+### Skip log (round 4, step 7 — authored 2026-08-14)
+
+Twenty-one skips, every one re-authored in place for the same slice and
+verdict with a hand-authored premise, so slice targets stayed exact and only
+the `l2-fact` count moved: 218 of 280 live pairs anchor manifest facts
+(floor 140). Verbatim reasons, slot files and author attestations:
+`dispatch/2026-08-14-t2124/` (04/05).
+
+- **15 value-swap slots on multi-valued relations** (`USES`, `DEPENDS_ON`,
+  `CAUSES`, `RELATED_TO`) — the named known-infeasible shape; found
+  independently by six blind authors: eg-0444, eg-0457, eg-0461, eg-0462,
+  eg-0491, eg-0494, plus n3's third variant, eg-0518, eg-0526, eg-0533,
+  eg-0537, eg-0542, eg-0579, eg-0583, eg-0588, eg-0645, eg-0646, eg-0647.
+- **2 direction slots whose shared-premise differentiation note could not be
+  met** (the hypothesis is determined by the premise; rewording the reversal
+  is barred): eg-0488, eg-0500.
+- **1 paraphrase duplicate** (eg-0564, controller-logged): byte-identical to
+  eg-0430 under cross-batch convergence on a shared premise; a second
+  paraphrase of one premise asserts the same proposition in every wording, so
+  the later-minted member (id order) moved to a hand-authored premise.
+
+Two same-premise weakening duplicates (eg-0592, eg-0614, similarity 1.0) were
+re-authored on their assigned premises toward different weakening axes — not
+skips; the premise stayed. Three sub-threshold duplicate propositions found
+after assembly are recorded as **known-open for step 9** in the dispatch
+record: eg-0424/eg-0558, eg-0425/eg-0559, eg-0463/eg-0590.
+
+
 ### Duplicated propositions: the worked asymmetry (relocated 2026-08-13)
 
 **Relocated from "File discipline" by owner amendment, unchanged in substance.**

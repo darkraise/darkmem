@@ -1,0 +1,2919 @@
+{
+ "n1": [
+  {
+   "slot": 0,
+   "id": "eg-0418",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "nimbus-02 uses rabbitmq",
+   "triple_key": "cfafeac7-976f-58b0-8154-3a0314a65932",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 1,
+   "id": "eg-0419",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "uptime kuma uses quota-watcher",
+   "triple_key": "ff12f5f5-ac07-5502-a2ec-492d74e9c791"
+  },
+  {
+   "slot": 2,
+   "id": "eg-0420",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "batch-01 uses ledger-02",
+   "triple_key": "948da6ef-ad2f-5d28-b61e-fb2674e9659b"
+  },
+  {
+   "slot": 3,
+   "id": "eg-0421",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "ffmpeg deployed on media-04",
+   "triple_key": "1521af2c-eaaa-5471-a449-bf115d26e7e4"
+  },
+  {
+   "slot": 4,
+   "id": "eg-0422",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "anvil-render uses imagemagick",
+   "triple_key": "4b436166-597c-58bc-bf88-698ae2aa337c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 5,
+   "id": "eg-0423",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "ridge-01 uses quire-03",
+   "triple_key": "badb2850-36dc-5fc2-b789-d32f0651a363",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 6,
+   "id": "eg-0424",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "codec pack deployed on files-01",
+   "triple_key": "4cbb6d71-6b31-5f2f-9cf6-1cf829c6f6bb",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 7,
+   "id": "eg-0425",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "celery deployed on media-04",
+   "triple_key": "6d1f764b-aaf4-55a5-82b5-27afb8c2692d",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 8,
+   "id": "eg-0426",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "auth-02 uses authelia",
+   "triple_key": "cb601f61-6db0-5ef7-b34f-f4a9481ce748",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 9,
+   "id": "eg-0427",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "zulip deployed on vane-01",
+   "triple_key": "a54d8693-33ce-5b29-b922-a7a3909de0ea",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 10,
+   "id": "eg-0428",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "mon-05 uses etcd",
+   "triple_key": "37363c29-6760-5353-80d1-4b37694c282c"
+  },
+  {
+   "slot": 11,
+   "id": "eg-0429",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "osquery causes quota-watcher",
+   "triple_key": "0e03f089-99ac-56a5-a358-022462901a04"
+  },
+  {
+   "slot": 12,
+   "id": "eg-0430",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "media-04 depends on jobs-05",
+   "triple_key": "bcef80fd-5529-5e2d-ac56-28730af1eca6",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 13,
+   "id": "eg-0431",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "garage uses batch-01",
+   "triple_key": "f3b24096-410d-568c-bea3-bb02e0818e40"
+  },
+  {
+   "slot": 14,
+   "id": "eg-0432",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "wisp-01 uses ticket-router",
+   "triple_key": "009e95f0-2e4d-5833-9fad-63d6ed5ac6e5"
+  },
+  {
+   "slot": 15,
+   "id": "eg-0433",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "wazuh uses fulfillment fleet",
+   "triple_key": "982b716c-6cce-5373-9db6-375e963be7a2"
+  },
+  {
+   "slot": 16,
+   "id": "eg-0434",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "syncthing uses vane-01",
+   "triple_key": "230ebccf-775c-58fc-8c70-9646be482e86"
+  },
+  {
+   "slot": 17,
+   "id": "eg-0435",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "media-04 uses ffmpeg",
+   "triple_key": "ac7e3328-a3ff-5268-8a8a-c93e4f53e5c9"
+  },
+  {
+   "slot": 18,
+   "id": "eg-0436",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "ticket-router depends on zulip",
+   "triple_key": "10ac4c04-9882-596c-afbe-750413fdfcf3"
+  },
+  {
+   "slot": 19,
+   "id": "eg-0437",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "consul uses jobs-05",
+   "triple_key": "66e5034b-2ade-5757-be59-ad455fbf2dd6"
+  },
+  {
+   "slot": 20,
+   "id": "eg-0438",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "celery deployed on jobs-05",
+   "triple_key": "971c93b0-41b5-5073-9121-faa5f127d2e5"
+  },
+  {
+   "slot": 21,
+   "id": "eg-0439",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "opentelemetry deployed on onyx-03",
+   "triple_key": "fc3294b6-697a-57af-8c06-e769a0630fe9"
+  },
+  {
+   "slot": 22,
+   "id": "eg-0440",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "MENTIONS",
+   "reversal_class": null,
+   "premise": "nightly report mentions quota-watcher",
+   "triple_key": "7458915a-9269-542c-8359-1a67d4261aa0"
+  },
+  {
+   "slot": 23,
+   "id": "eg-0441",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "authelia deployed on auth-01",
+   "triple_key": "e5b64f2b-9721-56fc-939f-b2924e63a143"
+  },
+  {
+   "slot": 24,
+   "id": "eg-0442",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "pi-hole deployed on ridge-01",
+   "triple_key": "8696f9b6-f128-50e7-b015-020e1848d07e"
+  },
+  {
+   "slot": 25,
+   "id": "eg-0443",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "vane-01 uses samba",
+   "triple_key": "c8157e7f-d4e9-54be-91ea-f7b330b7860f"
+  },
+  {
+   "slot": 26,
+   "id": "eg-0444",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "warden-02 uses tailscale",
+   "triple_key": "523763ce-51db-51d8-bab0-2b0e4c4fdc53"
+  },
+  {
+   "slot": 27,
+   "id": "eg-0445",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "jump-01 depends on authelia",
+   "triple_key": "822dbd63-09db-5b43-bffd-74742d3753f6"
+  },
+  {
+   "slot": 28,
+   "id": "eg-0446",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "REPLACES",
+   "reversal_class": null,
+   "premise": "cockroachdb replaces firebird",
+   "triple_key": "e8069cba-d0bf-5720-aa14-6b9e8917f9ff"
+  },
+  {
+   "slot": 29,
+   "id": "eg-0447",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "tether-02 deployed on traefik",
+   "triple_key": "e621dc18-44e4-57a2-ab96-85205dc45d6d"
+  }
+ ],
+ "n2": [
+  {
+   "slot": 30,
+   "id": "eg-0448",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "wazuh deployed on umbra-04",
+   "triple_key": "819f0979-dfaa-599f-981b-d9c6201b76b7"
+  },
+  {
+   "slot": 31,
+   "id": "eg-0449",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "xenon-02 uses xenon-snapshots",
+   "triple_key": "1f17afad-917e-5b34-a989-38c0ef2b799c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 32,
+   "id": "eg-0450",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "airflow deployed on data-06",
+   "triple_key": "9443138f-1549-5de8-a261-96a79af44310"
+  },
+  {
+   "slot": 33,
+   "id": "eg-0451",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "rclone uses nimbus-archive",
+   "triple_key": "ca9df512-aec7-5df5-9750-94a368e0e0a6"
+  },
+  {
+   "slot": 34,
+   "id": "eg-0452",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "RELATED_TO",
+   "reversal_class": null,
+   "premise": "alert storms related to lb-01",
+   "triple_key": "8ee0b1d1-348a-5869-824f-90fb43308a94",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 35,
+   "id": "eg-0453",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "auth-02 depends on auth-01",
+   "triple_key": "0f3cbf48-0cb5-511b-89ff-2edfaea702b6"
+  },
+  {
+   "slot": 36,
+   "id": "eg-0454",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "HAS_PART",
+   "reversal_class": "exclusive",
+   "premise": "qemu has part hypervisor",
+   "triple_key": "d04a31e7-7340-524b-9c03-0f60ca354516"
+  },
+  {
+   "slot": 37,
+   "id": "eg-0455",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "concourse uses garage",
+   "triple_key": "21e8b762-eb48-5aae-a372-178b11f5f4f2"
+  },
+  {
+   "slot": 38,
+   "id": "eg-0456",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "airflow depends on files-01",
+   "triple_key": "f1d66952-3026-5033-88c5-ba4da8e97150",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 39,
+   "id": "eg-0457",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "log-02 uses graylog",
+   "triple_key": "825981aa-a02e-5e0c-a3ef-51088dd48c14"
+  },
+  {
+   "slot": 40,
+   "id": "eg-0458",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "media-04 uses files-01",
+   "triple_key": "49d735a5-6b35-51cf-a791-c4abfffd4377"
+  },
+  {
+   "slot": 41,
+   "id": "eg-0459",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "infisical uses authelia",
+   "triple_key": "ad02a7db-fe79-5dc4-997f-685f37e05954"
+  },
+  {
+   "slot": 42,
+   "id": "eg-0460",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "clickhouse deployed on data-06",
+   "triple_key": "f6660040-c3cf-55c8-ab6f-9c754df59cce"
+  },
+  {
+   "slot": 43,
+   "id": "eg-0461",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "images-02 depends on anvil-render",
+   "triple_key": "4d0aa886-bbcf-5d1f-8009-ded7a037fcf7",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 44,
+   "id": "eg-0462",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "ansible depends on files-01",
+   "triple_key": "05e9faa3-5593-5cae-a0ef-ccf45cc08635"
+  },
+  {
+   "slot": 45,
+   "id": "eg-0463",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "ledger-02 causes mon-05",
+   "triple_key": "e53c875f-a5da-56bd-9b63-a7874793d66c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 46,
+   "id": "eg-0464",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": "non-exclusive",
+   "premise": "authelia depends on kv-01",
+   "triple_key": "8625ecd7-25b3-5ca2-b02f-27df0067088a"
+  },
+  {
+   "slot": 47,
+   "id": "eg-0465",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "meilisearch deployed on idx-03",
+   "triple_key": "ddff326b-c4c3-573d-bcdc-1300e1fcdc19",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 48,
+   "id": "eg-0466",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "powerdns deployed on quire-03",
+   "triple_key": "6e60fcd1-c6a2-5ef9-82ca-58cc3284361b"
+  },
+  {
+   "slot": 49,
+   "id": "eg-0467",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "wisp-01 deployed on port 9500",
+   "triple_key": "f87a028f-5139-5345-b7bf-53a4d2d5dadd"
+  },
+  {
+   "slot": 50,
+   "id": "eg-0468",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "orbit-01 uses opensearch",
+   "triple_key": "5cce8a8b-a0aa-5b7c-9e5f-9b6524add4fd"
+  },
+  {
+   "slot": 51,
+   "id": "eg-0469",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "ansible deployed on infra-02",
+   "triple_key": "a4e7d764-e506-556c-96c0-13b8db3af46a"
+  },
+  {
+   "slot": 52,
+   "id": "eg-0470",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "huginn deployed on hooks-03",
+   "triple_key": "2230c333-c361-5ed6-8a1f-cc4ce813a687"
+  },
+  {
+   "slot": 53,
+   "id": "eg-0471",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "etcd deployed on core-03",
+   "triple_key": "75d89555-5e60-5b3e-9198-15aaab8affec"
+  },
+  {
+   "slot": 54,
+   "id": "eg-0472",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "powerdns uses fulfillment network",
+   "triple_key": "79a4ea1d-5916-5569-9c83-d1febe313919",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 55,
+   "id": "eg-0473",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "syncthing uses design archive",
+   "triple_key": "e5555e1a-00e0-598d-9e89-1a5887d070bc"
+  },
+  {
+   "slot": 56,
+   "id": "eg-0474",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "jump-01 uses meridian",
+   "triple_key": "94d09f3d-6a93-5e92-9fdf-fc0e92f5a73c"
+  },
+  {
+   "slot": 57,
+   "id": "eg-0475",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "syncthing deployed on spire-01",
+   "triple_key": "74c9ff3c-5ca4-5657-ad49-094e19e58d15",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 58,
+   "id": "eg-0476",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "anvil-render uses files-01",
+   "triple_key": "07b0f38c-eff3-5ba7-9458-941366f8664c"
+  },
+  {
+   "slot": 59,
+   "id": "eg-0477",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "lb-01 deployed on memgraph",
+   "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8"
+  }
+ ],
+ "n3": [
+  {
+   "slot": 60,
+   "id": "eg-0478",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "HAS_PART",
+   "reversal_class": "exclusive",
+   "premise": "rabbitmq has part order-events",
+   "triple_key": "0ce45065-ee27-5e6a-bdce-3c611deda3b1"
+  },
+  {
+   "slot": 61,
+   "id": "eg-0479",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "imagemagick deployed on images-02",
+   "triple_key": "d2e4036b-779a-54fe-a79b-be901cebd88d",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 62,
+   "id": "eg-0480",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "garage deployed on files-01",
+   "triple_key": "3dea0e8e-6ab7-551b-99b7-09a93a7de208"
+  },
+  {
+   "slot": 63,
+   "id": "eg-0481",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": "non-exclusive",
+   "premise": "parcel-tracker depends on parcel-logs",
+   "triple_key": "400a6699-44aa-5ce4-9300-9c388f18ff97"
+  },
+  {
+   "slot": 64,
+   "id": "eg-0482",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "infisical deployed on keys-01",
+   "triple_key": "6f81177f-cbc9-52dc-8c18-1e5a959b5617"
+  },
+  {
+   "slot": 65,
+   "id": "eg-0483",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "consul deployed on core-03",
+   "triple_key": "295cea68-7196-52c6-8be6-d1fb61170490"
+  },
+  {
+   "slot": 66,
+   "id": "eg-0484",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "zulip uses ticket-router",
+   "triple_key": "5ac560e8-9b78-516c-a29f-0662284792f3"
+  },
+  {
+   "slot": 67,
+   "id": "eg-0485",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "ffmpeg depends on codec pack",
+   "triple_key": "b15ea9e8-100c-5c2a-9d6b-3b2474bf7b5d"
+  },
+  {
+   "slot": 68,
+   "id": "eg-0486",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "clickhouse depends on ledger-02",
+   "triple_key": "4015fc37-f5a0-5815-8547-22b712d64290",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 69,
+   "id": "eg-0487",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "luigi uses airflow",
+   "triple_key": "cdcebe14-9186-5f36-ae01-e03d24097661"
+  },
+  {
+   "slot": 70,
+   "id": "eg-0488",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "rclone deployed on slate-03",
+   "triple_key": "8e392c49-258c-5e62-a613-2364c3beb985",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 71,
+   "id": "eg-0489",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "notify-relay deployed on neon-04",
+   "triple_key": "7f067595-4237-5a58-bac6-682e3c429e81"
+  },
+  {
+   "slot": 72,
+   "id": "eg-0490",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "lb-01 uses haproxy",
+   "triple_key": "248db4bb-0324-5713-a8b0-4733aa44fe21"
+  },
+  {
+   "slot": 73,
+   "id": "eg-0491",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "pgadmin uses fulfillment reporting database",
+   "triple_key": "6e3d59b0-72df-5894-9bc7-21b025fe2321"
+  },
+  {
+   "slot": 74,
+   "id": "eg-0492",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "osquery deployed on pivot-01",
+   "triple_key": "ba67fefa-0315-5064-a351-fb9395e08183"
+  },
+  {
+   "slot": 75,
+   "id": "eg-0493",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "data-06 uses garage",
+   "triple_key": "0fb10de6-b28d-5cf5-aaa8-1b0ae07a48f5"
+  },
+  {
+   "slot": 76,
+   "id": "eg-0494",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "icinga uses haproxy",
+   "triple_key": "b1c30f2b-20cd-5b0a-b504-9ed3c237d03d"
+  },
+  {
+   "slot": 77,
+   "id": "eg-0495",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "netdata uses onyx-03",
+   "triple_key": "a0bfbd1a-a71c-5b77-80a2-063dfd047373"
+  },
+  {
+   "slot": 78,
+   "id": "eg-0496",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "uptime kuma uses order-sync",
+   "triple_key": "920a89c5-ecb0-5027-8391-8931646e5223",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 79,
+   "id": "eg-0497",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "consul uses authelia",
+   "triple_key": "a5153e11-192e-5736-b1f8-bc6de1b2c9bd",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 80,
+   "id": "eg-0498",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "graylog deployed on log-02",
+   "triple_key": "82e225fe-684b-59bf-821d-b65b15bdf167"
+  },
+  {
+   "slot": 81,
+   "id": "eg-0499",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "garage depends on batch-01",
+   "triple_key": "f9e851dd-dfa7-5337-bf76-dbf294a99af5"
+  },
+  {
+   "slot": 82,
+   "id": "eg-0500",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "order-sync deployed on nimbus-02",
+   "triple_key": "b1e00f7b-81ea-51eb-9442-0510462ff384",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 83,
+   "id": "eg-0501",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "etcd deployed on kv-01",
+   "triple_key": "45a57ddf-011d-5f45-9740-646a9d6dd289"
+  },
+  {
+   "slot": 84,
+   "id": "eg-0502",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "xenon-02 uses zfs",
+   "triple_key": "93807305-33c3-5634-9f2f-e91f01814666"
+  },
+  {
+   "slot": 85,
+   "id": "eg-0503",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "graph-01 deployed on lb-01",
+   "triple_key": "4e52a074-066a-5962-a394-c0722a9527e8"
+  },
+  {
+   "slot": 86,
+   "id": "eg-0504",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "osquery uses quota-watcher",
+   "triple_key": "779b64d9-4a18-54bc-a811-3b9a4f33ce39",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 87,
+   "id": "eg-0505",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "quire-03 depends on qemu",
+   "triple_key": "b2e9f7be-b9d3-5677-9190-57cb05e60feb"
+  },
+  {
+   "slot": 88,
+   "id": "eg-0506",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "airflow depends on clickhouse",
+   "triple_key": "3bb614e2-818a-5329-bc81-194b78b3cb1d"
+  },
+  {
+   "slot": 89,
+   "id": "eg-0507",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "parcel-tracker deployed on pallet-02",
+   "triple_key": "f5c9de8f-27ff-5703-b732-b5ddf3f3723b"
+  }
+ ],
+ "n4": [
+  {
+   "slot": 90,
+   "id": "eg-0508",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "auth-01 deployed on auth-02",
+   "triple_key": "ba50bd6d-ca99-5c27-9ebd-389518aa25e9"
+  },
+  {
+   "slot": 91,
+   "id": "eg-0509",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "data-06 uses clickhouse",
+   "triple_key": "848c6a68-a24b-53f2-84ae-9c278c58a8ea",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 92,
+   "id": "eg-0510",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "nimbus-02 uses nimbus-archive",
+   "triple_key": "9a870025-6ffa-5967-bfe6-3ba047c3ca57",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 93,
+   "id": "eg-0511",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "slurm deployed on yarrow-01",
+   "triple_key": "c10a16cf-9c1f-5ef7-9282-e37b54ac277a",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 94,
+   "id": "eg-0512",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "log-02 uses concourse",
+   "triple_key": "cd4d47ac-bfc9-57d4-8fa2-d4e55a64ad36"
+  },
+  {
+   "slot": 95,
+   "id": "eg-0513",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "consul uses memgraph",
+   "triple_key": "2f4dbf3a-f724-5c95-a5c2-9452ffa7d0cf"
+  },
+  {
+   "slot": 96,
+   "id": "eg-0514",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "warden-02 uses warehouse vlan",
+   "triple_key": "639c94f4-2340-57b3-8b52-391258035035"
+  },
+  {
+   "slot": 97,
+   "id": "eg-0515",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "quota-watcher deployed on cpu",
+   "triple_key": "011907db-f20b-5b82-9df2-81a333af0485"
+  },
+  {
+   "slot": 98,
+   "id": "eg-0516",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "neon-04 depends on nats",
+   "triple_key": "f3c0948c-7bfb-5616-8e7d-d7e7681672c5"
+  },
+  {
+   "slot": 99,
+   "id": "eg-0517",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "rabbitmq deployed on nimbus-02",
+   "triple_key": "da2374d9-f620-53ea-97d8-16841158d91a"
+  },
+  {
+   "slot": 100,
+   "id": "eg-0518",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "memgraph uses meridian",
+   "triple_key": "e2c7787f-5611-566d-9022-767b5fad0cb9"
+  },
+  {
+   "slot": 101,
+   "id": "eg-0519",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "ticket-router deployed on wisp-01",
+   "triple_key": "48560a22-8784-5515-9499-0afa155a0d07",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 102,
+   "id": "eg-0520",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "quota-watcher uses powerdns",
+   "triple_key": "93a5febd-a5fc-574d-81fd-b7fc862681f3"
+  },
+  {
+   "slot": 103,
+   "id": "eg-0521",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "woodpecker uses quay",
+   "triple_key": "c414935e-05d4-5107-a921-c59910ee1708"
+  },
+  {
+   "slot": 104,
+   "id": "eg-0522",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "haproxy deployed on memgraph",
+   "triple_key": "807b756f-e1cc-5851-abf9-83b65a0d11c2"
+  },
+  {
+   "slot": 105,
+   "id": "eg-0523",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "haproxy deployed on lb-01",
+   "triple_key": "64886d33-2253-5ed0-b49d-f90b92c4c79c"
+  },
+  {
+   "slot": 106,
+   "id": "eg-0524",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "RELATED_TO",
+   "reversal_class": null,
+   "premise": "design archive related to vane-01",
+   "triple_key": "40ee6ae2-37a1-59e2-80ea-96be1ad2fed5"
+  },
+  {
+   "slot": 107,
+   "id": "eg-0525",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "anvil-render depends on files-01",
+   "triple_key": "22181cbc-56f4-50ac-803c-e96f295be436"
+  },
+  {
+   "slot": 108,
+   "id": "eg-0526",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "netdata uses orbit-01",
+   "triple_key": "7d0ca81a-87c1-5146-9e9e-79a021557584",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 109,
+   "id": "eg-0527",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "cockroachdb deployed on ledger-02",
+   "triple_key": "6d9e5e73-3b22-5547-b8c2-4996b02ff8eb",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 110,
+   "id": "eg-0528",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "teleport deployed on warden-02",
+   "triple_key": "1834ccaf-3cc0-5340-88a6-fb4cb70e8ca8"
+  },
+  {
+   "slot": 111,
+   "id": "eg-0529",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "alert storms deployed on lb-01",
+   "triple_key": "227484b1-7555-53ae-a666-2895668718ca"
+  },
+  {
+   "slot": 112,
+   "id": "eg-0530",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "airflow deployed on etl-02",
+   "triple_key": "5d1af690-fd5c-5c62-b8fc-e93aa8902b35"
+  },
+  {
+   "slot": 113,
+   "id": "eg-0531",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "HAS_PART",
+   "reversal_class": "exclusive",
+   "premise": "core-03 has part consul",
+   "triple_key": "9699c10f-9029-512a-a09e-0e5cb67a5eb8"
+  },
+  {
+   "slot": 114,
+   "id": "eg-0532",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "vane-01 uses warehouse floor terminals",
+   "triple_key": "499d0131-e0cd-53e6-8852-2abee9c4dc36"
+  },
+  {
+   "slot": 115,
+   "id": "eg-0533",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "celery depends on core-03",
+   "triple_key": "5d612b17-b7d8-58cd-ab1e-607828186712"
+  },
+  {
+   "slot": 116,
+   "id": "eg-0534",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "woodpecker ci deployed on tether-02",
+   "triple_key": "1899947d-a0b3-561b-9899-71723a4ede11"
+  },
+  {
+   "slot": 117,
+   "id": "eg-0535",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "concourse deployed on build-04",
+   "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded"
+  },
+  {
+   "slot": 118,
+   "id": "eg-0536",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "data-06 deployed on files-01",
+   "triple_key": "0e82d174-a980-5ee1-a163-aecf596f1e3d"
+  },
+  {
+   "slot": 119,
+   "id": "eg-0537",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "mon-05 causes alert storms",
+   "triple_key": "c965df0e-936e-58bd-912a-687ccde2d42c"
+  }
+ ],
+ "n5": [
+  {
+   "slot": 120,
+   "id": "eg-0538",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "forge-artifacts deployed on garage",
+   "triple_key": "e4022072-2346-5129-a0bd-3c8a2053b77c"
+  },
+  {
+   "slot": 121,
+   "id": "eg-0539",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "imagemagick causes images-02",
+   "triple_key": "12557583-950c-51f8-bdd3-18b228567cda"
+  },
+  {
+   "slot": 122,
+   "id": "eg-0540",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "etl-02 deployed on files-01",
+   "triple_key": "c6d74a7e-f926-596a-9eca-c18e972673c6"
+  },
+  {
+   "slot": 123,
+   "id": "eg-0541",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "warden-02 uses warden-audit",
+   "triple_key": "cbf69301-fa94-50f5-880f-900f522d31b8"
+  },
+  {
+   "slot": 124,
+   "id": "eg-0542",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "meilisearch depends on huginn",
+   "triple_key": "7e92cf35-dd89-5e98-acb5-91fd5666321e"
+  },
+  {
+   "slot": 125,
+   "id": "eg-0543",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "concourse depends on garage",
+   "triple_key": "cb049cf5-d410-5c1e-859a-c2ec31869964"
+  },
+  {
+   "slot": 126,
+   "id": "eg-0544",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "talon-01 uses talon-backups",
+   "triple_key": "fd562614-cf2a-5ce7-b58e-c1ea9eaf9ece"
+  },
+  {
+   "slot": 127,
+   "id": "eg-0545",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "HAS_PART",
+   "reversal_class": null,
+   "premise": "keys-01 has part infisical",
+   "triple_key": "4f741539-9142-5850-a381-40d136e00c0d"
+  },
+  {
+   "slot": 128,
+   "id": "eg-0546",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "consul uses etcd",
+   "triple_key": "ec5b69b7-7a63-556a-84fc-15b8f169aff3"
+  },
+  {
+   "slot": 129,
+   "id": "eg-0547",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "slurm depends on zephyr-03",
+   "triple_key": "a748e310-e994-5611-933d-a7c668267885"
+  },
+  {
+   "slot": 130,
+   "id": "eg-0548",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "REPLACES",
+   "reversal_class": null,
+   "premise": "idx-03 replaces idx-01",
+   "triple_key": "57ae740c-f396-54d5-83d1-a4cd621ad81f"
+  },
+  {
+   "slot": 131,
+   "id": "eg-0549",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "authelia deployed on auth-02",
+   "triple_key": "f023bd15-70dc-5f9a-a0f8-7b85163c3944"
+  },
+  {
+   "slot": 132,
+   "id": "eg-0550",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "pallet-02 uses parcel-logs",
+   "triple_key": "e5af8fd9-e8e9-5b47-8627-61d6a880dc73"
+  },
+  {
+   "slot": 133,
+   "id": "eg-0551",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "vane-01 uses design archive",
+   "triple_key": "86ffb1f8-81a3-5708-a93a-21ab581ef0bf"
+  },
+  {
+   "slot": 134,
+   "id": "eg-0552",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "files-01 deployed on batch-01",
+   "triple_key": "66faaee0-2a87-5dd5-9fc0-f65e7cf947d0"
+  },
+  {
+   "slot": 135,
+   "id": "eg-0553",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "files-01 uses garage",
+   "triple_key": "9bf26140-11ff-5a51-94e5-19d3b644aebb"
+  },
+  {
+   "slot": 136,
+   "id": "eg-0554",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "nimbus-02 uses rabbitmq",
+   "triple_key": "cfafeac7-976f-58b0-8154-3a0314a65932",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 137,
+   "id": "eg-0555",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "ffmpeg deployed on media-04",
+   "triple_key": "1521af2c-eaaa-5471-a449-bf115d26e7e4"
+  },
+  {
+   "slot": 138,
+   "id": "eg-0556",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "anvil-render uses imagemagick",
+   "triple_key": "4b436166-597c-58bc-bf88-698ae2aa337c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 139,
+   "id": "eg-0557",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "ridge-01 uses quire-03",
+   "triple_key": "badb2850-36dc-5fc2-b789-d32f0651a363",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 140,
+   "id": "eg-0558",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "codec pack deployed on files-01",
+   "triple_key": "4cbb6d71-6b31-5f2f-9cf6-1cf829c6f6bb",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 141,
+   "id": "eg-0559",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "celery deployed on media-04",
+   "triple_key": "6d1f764b-aaf4-55a5-82b5-27afb8c2692d",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 142,
+   "id": "eg-0560",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "auth-02 uses authelia",
+   "triple_key": "cb601f61-6db0-5ef7-b34f-f4a9481ce748",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 143,
+   "id": "eg-0561",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "zulip deployed on vane-01",
+   "triple_key": "a54d8693-33ce-5b29-b922-a7a3909de0ea",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 144,
+   "id": "eg-0562",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "mon-05 uses etcd",
+   "triple_key": "37363c29-6760-5353-80d1-4b37694c282c"
+  },
+  {
+   "slot": 145,
+   "id": "eg-0563",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "osquery causes quota-watcher",
+   "triple_key": "0e03f089-99ac-56a5-a358-022462901a04"
+  },
+  {
+   "slot": 146,
+   "id": "eg-0564",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "media-04 depends on jobs-05",
+   "triple_key": "bcef80fd-5529-5e2d-ac56-28730af1eca6",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 147,
+   "id": "eg-0565",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "authelia deployed on auth-01",
+   "triple_key": "e5b64f2b-9721-56fc-939f-b2924e63a143"
+  },
+  {
+   "slot": 148,
+   "id": "eg-0566",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "pi-hole deployed on ridge-01",
+   "triple_key": "8696f9b6-f128-50e7-b015-020e1848d07e"
+  },
+  {
+   "slot": 149,
+   "id": "eg-0567",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "roster-sync deployed on tether-02",
+   "triple_key": "a08a9bac-92a2-588d-9cca-79de7bc38e89"
+  }
+ ],
+ "n6": [
+  {
+   "slot": 150,
+   "id": "eg-0568",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "REPLACES",
+   "reversal_class": null,
+   "premise": "infisical replaces .env files",
+   "triple_key": "b5b03967-8d98-5a9e-9569-4597b0065abf"
+  },
+  {
+   "slot": 151,
+   "id": "eg-0569",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "icinga deployed on mon-05",
+   "triple_key": "f11f4257-139e-5c4c-a2ba-e0eb609ccfaa"
+  },
+  {
+   "slot": 152,
+   "id": "eg-0570",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "vane-01 uses samba",
+   "triple_key": "c8157e7f-d4e9-54be-91ea-f7b330b7860f"
+  },
+  {
+   "slot": 153,
+   "id": "eg-0571",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "warden-02 uses tailscale",
+   "triple_key": "523763ce-51db-51d8-bab0-2b0e4c4fdc53"
+  },
+  {
+   "slot": 154,
+   "id": "eg-0572",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "jump-01 depends on authelia",
+   "triple_key": "822dbd63-09db-5b43-bffd-74742d3753f6"
+  },
+  {
+   "slot": 155,
+   "id": "eg-0573",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "REPLACES",
+   "reversal_class": null,
+   "premise": "cockroachdb replaces firebird",
+   "triple_key": "e8069cba-d0bf-5720-aa14-6b9e8917f9ff"
+  },
+  {
+   "slot": 156,
+   "id": "eg-0574",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "tether-02 deployed on traefik",
+   "triple_key": "e621dc18-44e4-57a2-ab96-85205dc45d6d"
+  },
+  {
+   "slot": 157,
+   "id": "eg-0575",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "files-01 causes images-02",
+   "triple_key": "9f1cde10-27d0-566a-877d-64e13fbfbf78"
+  },
+  {
+   "slot": 158,
+   "id": "eg-0576",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "wazuh deployed on umbra-04",
+   "triple_key": "819f0979-dfaa-599f-981b-d9c6201b76b7"
+  },
+  {
+   "slot": 159,
+   "id": "eg-0577",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "xenon-02 uses xenon-snapshots",
+   "triple_key": "1f17afad-917e-5b34-a989-38c0ef2b799c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 160,
+   "id": "eg-0578",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "airflow deployed on data-06",
+   "triple_key": "9443138f-1549-5de8-a261-96a79af44310"
+  },
+  {
+   "slot": 161,
+   "id": "eg-0579",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "rclone uses nimbus-archive",
+   "triple_key": "ca9df512-aec7-5df5-9750-94a368e0e0a6"
+  },
+  {
+   "slot": 162,
+   "id": "eg-0580",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "RELATED_TO",
+   "reversal_class": null,
+   "premise": "alert storms related to lb-01",
+   "triple_key": "8ee0b1d1-348a-5869-824f-90fb43308a94",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 163,
+   "id": "eg-0581",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "auth-02 depends on auth-01",
+   "triple_key": "0f3cbf48-0cb5-511b-89ff-2edfaea702b6"
+  },
+  {
+   "slot": 164,
+   "id": "eg-0582",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "HAS_PART",
+   "reversal_class": null,
+   "premise": "qemu has part hypervisor",
+   "triple_key": "d04a31e7-7340-524b-9c03-0f60ca354516"
+  },
+  {
+   "slot": 165,
+   "id": "eg-0583",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "concourse uses garage",
+   "triple_key": "21e8b762-eb48-5aae-a372-178b11f5f4f2"
+  },
+  {
+   "slot": 166,
+   "id": "eg-0584",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "airflow depends on files-01",
+   "triple_key": "f1d66952-3026-5033-88c5-ba4da8e97150",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 167,
+   "id": "eg-0585",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "log-02 uses graylog",
+   "triple_key": "825981aa-a02e-5e0c-a3ef-51088dd48c14"
+  },
+  {
+   "slot": 168,
+   "id": "eg-0586",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "media-04 uses files-01",
+   "triple_key": "49d735a5-6b35-51cf-a791-c4abfffd4377"
+  },
+  {
+   "slot": 169,
+   "id": "eg-0587",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "clickhouse deployed on data-06",
+   "triple_key": "f6660040-c3cf-55c8-ab6f-9c754df59cce"
+  },
+  {
+   "slot": 170,
+   "id": "eg-0588",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "images-02 depends on anvil-render",
+   "triple_key": "4d0aa886-bbcf-5d1f-8009-ded7a037fcf7",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 171,
+   "id": "eg-0589",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "ansible depends on files-01",
+   "triple_key": "05e9faa3-5593-5cae-a0ef-ccf45cc08635"
+  },
+  {
+   "slot": 172,
+   "id": "eg-0590",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "CAUSES",
+   "reversal_class": null,
+   "premise": "ledger-02 causes mon-05",
+   "triple_key": "e53c875f-a5da-56bd-9b63-a7874793d66c",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 173,
+   "id": "eg-0591",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "authelia depends on kv-01",
+   "triple_key": "8625ecd7-25b3-5ca2-b02f-27df0067088a"
+  },
+  {
+   "slot": 174,
+   "id": "eg-0592",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "meilisearch deployed on idx-03",
+   "triple_key": "ddff326b-c4c3-573d-bcdc-1300e1fcdc19",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 175,
+   "id": "eg-0593",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "powerdns deployed on quire-03",
+   "triple_key": "6e60fcd1-c6a2-5ef9-82ca-58cc3284361b"
+  },
+  {
+   "slot": 176,
+   "id": "eg-0594",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "airflow uses clickhouse",
+   "triple_key": "c73d520a-faef-5c93-b41c-34ace0845554"
+  },
+  {
+   "slot": 177,
+   "id": "eg-0595",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "ansible deployed on infra-02",
+   "triple_key": "a4e7d764-e506-556c-96c0-13b8db3af46a"
+  },
+  {
+   "slot": 178,
+   "id": "eg-0596",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "huginn deployed on hooks-03",
+   "triple_key": "2230c333-c361-5ed6-8a1f-cc4ce813a687"
+  },
+  {
+   "slot": 179,
+   "id": "eg-0597",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "etcd deployed on core-03",
+   "triple_key": "75d89555-5e60-5b3e-9198-15aaab8affec"
+  }
+ ],
+ "n7": [
+  {
+   "slot": 180,
+   "id": "eg-0598",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "powerdns uses fulfillment network",
+   "triple_key": "79a4ea1d-5916-5569-9c83-d1febe313919",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 181,
+   "id": "eg-0599",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "syncthing deployed on spire-01",
+   "triple_key": "74c9ff3c-5ca4-5657-ad49-094e19e58d15",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 182,
+   "id": "eg-0600",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "anvil-render uses files-01",
+   "triple_key": "07b0f38c-eff3-5ba7-9458-941366f8664c"
+  },
+  {
+   "slot": 183,
+   "id": "eg-0601",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "garage uses forge-artifacts",
+   "triple_key": "7de46288-aea2-5e22-b812-25eeb08edb9d"
+  },
+  {
+   "slot": 184,
+   "id": "eg-0602",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "lb-01 deployed on memgraph",
+   "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8"
+  },
+  {
+   "slot": 185,
+   "id": "eg-0603",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "teleport uses ssh",
+   "triple_key": "792d85d2-5162-5098-a664-10df363cfd72"
+  },
+  {
+   "slot": 186,
+   "id": "eg-0604",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "rclone uses slate-media",
+   "triple_key": "027f2305-b5a6-5384-ae69-ee6d17529d0e"
+  },
+  {
+   "slot": 187,
+   "id": "eg-0605",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "fulfillment application uses talon-01",
+   "triple_key": "e9c765d2-625b-5a2c-bc39-789ca1392e78"
+  },
+  {
+   "slot": 188,
+   "id": "eg-0606",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "HAS_PART",
+   "reversal_class": null,
+   "premise": "rabbitmq has part order-events",
+   "triple_key": "0ce45065-ee27-5e6a-bdce-3c611deda3b1"
+  },
+  {
+   "slot": 189,
+   "id": "eg-0607",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "imagemagick deployed on images-02",
+   "triple_key": "d2e4036b-779a-54fe-a79b-be901cebd88d",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 190,
+   "id": "eg-0608",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "garage deployed on files-01",
+   "triple_key": "3dea0e8e-6ab7-551b-99b7-09a93a7de208"
+  },
+  {
+   "slot": 191,
+   "id": "eg-0609",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "parcel-tracker depends on parcel-logs",
+   "triple_key": "400a6699-44aa-5ce4-9300-9c388f18ff97"
+  },
+  {
+   "slot": 192,
+   "id": "eg-0610",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "infisical deployed on keys-01",
+   "triple_key": "6f81177f-cbc9-52dc-8c18-1e5a959b5617"
+  },
+  {
+   "slot": 193,
+   "id": "eg-0611",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "consul deployed on core-03",
+   "triple_key": "295cea68-7196-52c6-8be6-d1fb61170490"
+  },
+  {
+   "slot": 194,
+   "id": "eg-0612",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "zulip uses ticket-router",
+   "triple_key": "5ac560e8-9b78-516c-a29f-0662284792f3"
+  },
+  {
+   "slot": 195,
+   "id": "eg-0613",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "ffmpeg depends on codec pack",
+   "triple_key": "b15ea9e8-100c-5c2a-9d6b-3b2474bf7b5d"
+  },
+  {
+   "slot": 196,
+   "id": "eg-0614",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "clickhouse depends on ledger-02",
+   "triple_key": "4015fc37-f5a0-5815-8547-22b712d64290",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 197,
+   "id": "eg-0615",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "luigi uses airflow",
+   "triple_key": "cdcebe14-9186-5f36-ae01-e03d24097661"
+  },
+  {
+   "slot": 198,
+   "id": "eg-0616",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "files-01 uses clickhouse",
+   "triple_key": "2c73c439-30d1-510d-b26a-541fff181726"
+  },
+  {
+   "slot": 199,
+   "id": "eg-0617",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "rclone deployed on slate-03",
+   "triple_key": "8e392c49-258c-5e62-a613-2364c3beb985",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 200,
+   "id": "eg-0618",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "notify-relay deployed on neon-04",
+   "triple_key": "7f067595-4237-5a58-bac6-682e3c429e81"
+  },
+  {
+   "slot": 201,
+   "id": "eg-0619",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "luigi deployed on batch-01",
+   "triple_key": "1dcd54b7-e3d7-5b7f-a514-cb3b680bc360"
+  },
+  {
+   "slot": 202,
+   "id": "eg-0620",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "osquery deployed on pivot-01",
+   "triple_key": "ba67fefa-0315-5064-a351-fb9395e08183"
+  },
+  {
+   "slot": 203,
+   "id": "eg-0621",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "data-06 uses garage",
+   "triple_key": "0fb10de6-b28d-5cf5-aaa8-1b0ae07a48f5"
+  },
+  {
+   "slot": 204,
+   "id": "eg-0622",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "icinga uses haproxy",
+   "triple_key": "b1c30f2b-20cd-5b0a-b504-9ed3c237d03d"
+  },
+  {
+   "slot": 205,
+   "id": "eg-0623",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "pgadmin deployed on quire-03",
+   "triple_key": "964acb5e-ff1e-5014-b395-71b010a061a0"
+  },
+  {
+   "slot": 206,
+   "id": "eg-0624",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "memgraph deployed on graph-01",
+   "triple_key": "1086bf0d-031e-56ce-ab8c-07826bb65c94"
+  },
+  {
+   "slot": 207,
+   "id": "eg-0625",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "netdata uses onyx-03",
+   "triple_key": "a0bfbd1a-a71c-5b77-80a2-063dfd047373"
+  },
+  {
+   "slot": 208,
+   "id": "eg-0626",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "uptime kuma uses order-sync",
+   "triple_key": "920a89c5-ecb0-5027-8391-8931646e5223",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 209,
+   "id": "eg-0627",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "consul uses authelia",
+   "triple_key": "a5153e11-192e-5736-b1f8-bc6de1b2c9bd",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  }
+ ],
+ "n8": [
+  {
+   "slot": 210,
+   "id": "eg-0628",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "graylog deployed on log-02",
+   "triple_key": "82e225fe-684b-59bf-821d-b65b15bdf167"
+  },
+  {
+   "slot": 211,
+   "id": "eg-0629",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "garage depends on batch-01",
+   "triple_key": "f9e851dd-dfa7-5337-bf76-dbf294a99af5"
+  },
+  {
+   "slot": 212,
+   "id": "eg-0630",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "order-sync deployed on nimbus-02",
+   "triple_key": "b1e00f7b-81ea-51eb-9442-0510462ff384",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 213,
+   "id": "eg-0631",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "etcd deployed on kv-01",
+   "triple_key": "45a57ddf-011d-5f45-9740-646a9d6dd289"
+  },
+  {
+   "slot": 214,
+   "id": "eg-0632",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "xenon-02 uses zfs",
+   "triple_key": "93807305-33c3-5634-9f2f-e91f01814666"
+  },
+  {
+   "slot": 215,
+   "id": "eg-0633",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "graph-01 deployed on lb-01",
+   "triple_key": "4e52a074-066a-5962-a394-c0722a9527e8"
+  },
+  {
+   "slot": 216,
+   "id": "eg-0634",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "osquery uses quota-watcher",
+   "triple_key": "779b64d9-4a18-54bc-a811-3b9a4f33ce39",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 217,
+   "id": "eg-0635",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "quire-03 depends on qemu",
+   "triple_key": "b2e9f7be-b9d3-5677-9190-57cb05e60feb"
+  },
+  {
+   "slot": 218,
+   "id": "eg-0636",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "airflow depends on clickhouse",
+   "triple_key": "3bb614e2-818a-5329-bc81-194b78b3cb1d"
+  },
+  {
+   "slot": 219,
+   "id": "eg-0637",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "parcel-tracker deployed on pallet-02",
+   "triple_key": "f5c9de8f-27ff-5703-b732-b5ddf3f3723b"
+  },
+  {
+   "slot": 220,
+   "id": "eg-0638",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "auth-01 deployed on auth-02",
+   "triple_key": "ba50bd6d-ca99-5c27-9ebd-389518aa25e9"
+  },
+  {
+   "slot": 221,
+   "id": "eg-0639",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "data-06 uses clickhouse",
+   "triple_key": "848c6a68-a24b-53f2-84ae-9c278c58a8ea",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 222,
+   "id": "eg-0640",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "nimbus-02 uses nimbus-archive",
+   "triple_key": "9a870025-6ffa-5967-bfe6-3ba047c3ca57",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 223,
+   "id": "eg-0641",
+   "slice": "unrelated",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "slurm deployed on yarrow-01",
+   "triple_key": "c10a16cf-9c1f-5ef7-9282-e37b54ac277a",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 224,
+   "id": "eg-0642",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "ticket-router deployed on wisp-01",
+   "triple_key": "48560a22-8784-5515-9499-0afa155a0d07",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 225,
+   "id": "eg-0643",
+   "slice": "direction",
+   "verdict": "unsupported",
+   "rel_type": "USES",
+   "reversal_class": "non-exclusive",
+   "premise": "quota-watcher uses powerdns",
+   "triple_key": "93a5febd-a5fc-574d-81fd-b7fc862681f3"
+  },
+  {
+   "slot": 226,
+   "id": "eg-0644",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "haproxy deployed on lb-01",
+   "triple_key": "64886d33-2253-5ed0-b49d-f90b92c4c79c"
+  },
+  {
+   "slot": 227,
+   "id": "eg-0645",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "RELATED_TO",
+   "reversal_class": null,
+   "premise": "design archive related to vane-01",
+   "triple_key": "40ee6ae2-37a1-59e2-80ea-96be1ad2fed5"
+  },
+  {
+   "slot": 228,
+   "id": "eg-0646",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "anvil-render depends on files-01",
+   "triple_key": "22181cbc-56f4-50ac-803c-e96f295be436"
+  },
+  {
+   "slot": 229,
+   "id": "eg-0647",
+   "slice": "value-swap",
+   "verdict": "contradicted",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "netdata uses orbit-01",
+   "triple_key": "7d0ca81a-87c1-5146-9e9e-79a021557584",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 230,
+   "id": "eg-0648",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "cockroachdb deployed on ledger-02",
+   "triple_key": "6d9e5e73-3b22-5547-b8c2-4996b02ff8eb",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  },
+  {
+   "slot": 231,
+   "id": "eg-0649",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "teleport deployed on warden-02",
+   "triple_key": "1834ccaf-3cc0-5340-88a6-fb4cb70e8ca8"
+  },
+  {
+   "slot": 232,
+   "id": "eg-0650",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "alert storms deployed on lb-01",
+   "triple_key": "227484b1-7555-53ae-a666-2895668718ca"
+  },
+  {
+   "slot": 233,
+   "id": "eg-0651",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "airflow deployed on etl-02",
+   "triple_key": "5d1af690-fd5c-5c62-b8fc-e93aa8902b35"
+  },
+  {
+   "slot": 234,
+   "id": "eg-0652",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "HAS_PART",
+   "reversal_class": null,
+   "premise": "core-03 has part consul",
+   "triple_key": "9699c10f-9029-512a-a09e-0e5cb67a5eb8"
+  },
+  {
+   "slot": 235,
+   "id": "eg-0653",
+   "slice": "verbatim",
+   "verdict": "entailed",
+   "rel_type": "USES",
+   "reversal_class": null,
+   "premise": "vane-01 uses warehouse floor terminals",
+   "triple_key": "499d0131-e0cd-53e6-8852-2abee9c4dc36"
+  },
+  {
+   "slot": 236,
+   "id": "eg-0654",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "celery depends on core-03",
+   "triple_key": "5d612b17-b7d8-58cd-ab1e-607828186712"
+  },
+  {
+   "slot": 237,
+   "id": "eg-0655",
+   "slice": "direction",
+   "verdict": "contradicted",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": "exclusive",
+   "premise": "woodpecker ci deployed on tether-02",
+   "triple_key": "1899947d-a0b3-561b-9899-71723a4ede11"
+  },
+  {
+   "slot": 238,
+   "id": "eg-0656",
+   "slice": "overreach",
+   "verdict": "unsupported",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "concourse deployed on build-04",
+   "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded"
+  }
+ ],
+ "t1": [
+  {
+   "slot": null,
+   "id": "eg-0657",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0658",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0659",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0660",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0661",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0662",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0663",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0664",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0665",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0666",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0667",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0668",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0669",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0670",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0671",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0672",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0673",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0674",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0675",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0676",
+   "slice": "temporal",
+   "verdict": "contradicted",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  }
+ ],
+ "t2": [
+  {
+   "slot": null,
+   "id": "eg-0677",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0678",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0679",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0680",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0681",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0682",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0683",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0684",
+   "slice": "temporal",
+   "verdict": "entailed",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0685",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0686",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0687",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0688",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0689",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0690",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0691",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0692",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0693",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0694",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0695",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0696",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  },
+  {
+   "slot": null,
+   "id": "eg-0697",
+   "slice": "temporal",
+   "verdict": "unsupported",
+   "rel_type": null,
+   "reversal_class": null,
+   "premise": null,
+   "triple_key": null
+  }
+ ],
+ "re-0564": [
+  {
+   "slot": 146,
+   "id": "eg-0564",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "media-04 depends on jobs-05",
+   "triple_key": "bcef80fd-5529-5e2d-ac56-28730af1eca6",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  }
+ ],
+ "re-0592": [
+  {
+   "slot": 174,
+   "id": "eg-0592",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPLOYED_ON",
+   "reversal_class": null,
+   "premise": "meilisearch deployed on idx-03",
+   "triple_key": "ddff326b-c4c3-573d-bcdc-1300e1fcdc19",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  }
+ ],
+ "re-0614": [
+  {
+   "slot": 196,
+   "id": "eg-0614",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "rel_type": "DEPENDS_ON",
+   "reversal_class": null,
+   "premise": "clickhouse depends on ledger-02",
+   "triple_key": "4015fc37-f5a0-5815-8547-22b712d64290",
+   "shared_note": "another slot elsewhere uses this premise with the same verdict; build your hypothesis on a different element, endpoint or value than the most direct construction"
+  }
+ ]
+}
