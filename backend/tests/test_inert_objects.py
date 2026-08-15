@@ -57,8 +57,9 @@ INERT_COLUMNS: dict[tuple[str, str], str] = {}
 # relation_embeddings is no longer here: T2.49, its declared first writer
 # (schema inventory §7), landed `app/services/relation_embeddings.py` and the
 # Tier-C refresh job that keeps the partition current.
+# block_embeddings is no longer here: TH1.05, its declared first writer
+# (schema inventory §7), landed `app/services/block_embeddings.py`.
 INERT_TEMPLATES = {
-    "block_embeddings": "TH1.05",
     "article_embeddings": "T3.23",
 }
 
