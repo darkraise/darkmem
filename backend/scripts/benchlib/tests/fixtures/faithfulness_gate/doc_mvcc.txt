@@ -1,0 +1,1 @@
+Postgres uses MVCC for concurrency control. It was designed to avoid locking readers against writers. The default isolation level is READ COMMITTED.

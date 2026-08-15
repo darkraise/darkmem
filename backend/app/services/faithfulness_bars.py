@@ -318,6 +318,26 @@ async def get_faithfulness_bars(session: AsyncSession) -> dict[str, float]:
     return resolve_faithfulness_bars({row.key: row.value for row in result})
 
 
+async def get_raw_faithfulness_bar_rows(session: AsyncSession) -> dict[str, object]:
+    """The unresolved ``config`` rows this module's bars would read, keyed
+    by bar name (plus the licence row when present) — never clamped or
+    merged with a default.
+
+    ``get_faithfulness_bars`` already does the resolution a serving
+    decision needs; this is deliberately its unresolved half, for a gate
+    runner's visibility report (T2.128's obligation, restated at the top of
+    this module): a reader needs to see what was *asked for* as well as
+    what took effect, and a report built only from the resolved dict cannot
+    show the difference between "no config row" and "a row that was
+    clamped back to the same value it started at".
+    """
+    result = await session.execute(
+        _BARS_SQL,
+        {"keys": [*FAITHFULNESS_BAR_DEFAULTS, FAITHFULNESS_BAR_LICENCES_KEY]},
+    )
+    return {row.key: row.value for row in result}
+
+
 # ── the pre-stated verdict predicates ────────────────────────────────────
 
 

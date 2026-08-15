@@ -224,6 +224,22 @@ async def test_get_faithfulness_bars_reads_the_config_table(session):
     assert bars["faithfulness_gate_precision_bar"] == 0.95
 
 
+async def test_get_raw_faithfulness_bar_rows_returns_the_unresolved_rows(session):
+    """The gate-runner visibility obligation (T2.128) needs both halves: a
+    resolved bars dict cannot show the difference between "no config row"
+    and "a row that was clamped back to the value it started at". This is
+    the unresolved half, exposed for exactly that report."""
+    session.add(Config(key="faithfulness_gate_recall_bar", value={"value": 0.94}))
+    session.add(Config(key="faithfulness_coverage_bar", value=0.7))
+    await session.flush()
+
+    rows = await fb.get_raw_faithfulness_bar_rows(session)
+
+    assert rows["faithfulness_gate_recall_bar"] == {"value": 0.94}
+    assert rows["faithfulness_coverage_bar"] == 0.7
+    assert "faithfulness_gate_precision_bar" not in rows
+
+
 class TestLoosensReadsTheDirectionItCarries:
     """`loosens` hardcoded `<` while the type carried a `conservative` field.
 
