@@ -1179,3 +1179,18 @@ and the drain journal a `repo_indexed` `events` row and surface on
   variadic ANY / unnest / jsonb_build_object — otherwise
   `IndeterminateDatatypeError`. And roll back the session before
   mutating ORM objects in an error handler.
+- **Single worker (invariant 13), re-decided 2026-08-16.** Exactly one
+  uvicorn worker, one replica, on every launch path. The knob has three
+  silent spellings — `--workers`, the `WEB_CONCURRENCY` env var uvicorn
+  reads when the flag is absent, and compose `deploy.replicas` — and
+  none may appear in an ops change. The reason is T4.09's audit (38
+  in-process assumptions; 17 BREAKS at N = 2), not the inert PPR
+  snapshot the design docs lead with: the WebSocket fan-out, the job
+  scheduler (no lease — all 21 jobs fire N times per tick), the per-IP
+  login limiter, the live orchestrator swap and seven unlocked job
+  cursors all break first, and `backend/app` holds no cross-process
+  serialisation primitive to build on. Raising the count is a flagged
+  decision through the T4.10 record
+  (`docs/planning/analyses/2026-08-16-t4.10-replica-decision.md`, which
+  states what would flip it) — never a side effect of a deployment
+  task.
