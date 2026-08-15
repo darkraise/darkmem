@@ -653,6 +653,60 @@ class TestAgainstBenchDatabase:
         assert row.project == "t2108-probe"
         assert row.created_at == datetime(2026, 2, 3, 9, 0, tzinfo=timezone.utc)
 
+    @pytest.mark.asyncio
+    async def test_one_dependency_in_two_repos_is_two_separately_owned_relations(self):
+        """The widening's premise, proven against rows rather than argued.
+
+        The adjudication that let the diversity binding become per-repo rests on
+        cross-repo seconding having no code path: one dependency named in two
+        repos is two relations from two subjects, each carrying only its own
+        repository's id, so the code origin one claim receives can never second
+        the other's. Prose cannot demonstrate that — these rows can.
+
+        It also covers the multi-repo install itself, which nothing else
+        reaches. A break there surfaces during a G-C evidence run, which is
+        several hundred uncached extraction calls, and that is not a place to
+        discover it.
+        """
+        from app.services.code_deriver import assert_repo_graph, dependency_name
+
+        fixtures = pc.load_repo_fixtures()
+        repo_ids = await pc.install_repo_fixtures(bench_db.session_factory, fixtures)
+        assert len(set(repo_ids.values())) == len(fixtures)
+
+        imports: dict[str, set[str]] = {}
+        async with bench_db.session_factory() as session:
+            for fixture in fixtures:
+                name = fixture["repo"]["name"]
+                await assert_repo_graph(session, repo_ids[name])
+                imports[name.lower()] = {
+                    dependency_name(edge["target_key"]).lower()
+                    for edge in fixture["imports"]
+                }
+            await session.commit()
+
+        shared = sorted(set.intersection(*imports.values()))
+        assert shared, "the fleet must share a common core"
+        dependency = shared[0]
+
+        async with bench_db.session_factory() as session:
+            rows = (await session.execute(
+                text("""
+                    SELECT src.name AS subject, r.repo_ids
+                    FROM entity_relations r
+                    JOIN entities src ON src.id = r.source_entity_id
+                    JOIN entities tgt ON tgt.id = r.target_entity_id
+                    WHERE tgt.name = CAST(:dep AS text)
+                      AND src.name = ANY(CAST(:repos AS text[]))
+                    ORDER BY src.name
+                """),
+                {"dep": dependency, "repos": sorted(imports)},
+            )).mappings().all()
+
+        assert [row["subject"] for row in rows] == sorted(imports)
+        assert all(len(row["repo_ids"]) == 1 for row in rows)
+        assert len({row["repo_ids"][0] for row in rows}) == len(fixtures)
+
     @staticmethod
     async def _open_replacement(project, key, subject, obj, origins):
         """One open REPLACES fact with the named attributable origins."""
