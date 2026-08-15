@@ -56,19 +56,44 @@ the epic branch. The ladder for what ships next is
 dev environment, disposable data, and CLAUDE.md's trigger (the first deploy
 whose data must survive) is still ahead.
 
-**Open and uncharacterised: one `frontend test` gate failure with no diagnostics
-(2026-08-10, 22:47).** `./scripts/gate.sh` exited red at the `frontend test`
-step. `npm test` run standalone immediately afterwards passed — 111 files, 753
-tests — and the next full gate run was green, so the gate is green *through a
-re-run*. **No output was captured**: the run was piped through a `grep` that
-kept only the `GATE`/`FAILED` lines, and `gate.sh` streams rather than
-persisting per-step logs, so the failure's actual cause is unknown and was
-destroyed by the operator, not by the tooling. This is **not** the known
-`activity.spec.ts` flake below — that one is Playwright e2e under
-`npm run test:e2e`, and this was vitest under `npm test`, a different suite in a
-different gate step. Recorded because one unexplained red in a suite that
-otherwise passes 753/753 is exactly the shape the flake below took before three
-waves walked past it. **Next occurrence: capture the whole step, do not grep.**
+**Characterised, 2026-08-15: the `frontend test` gate red is host contention,
+not a code failure.** It recurred during T2.132's gate run, the whole step was
+captured this time as the previous note demanded, and the evidence is
+one-sided.
+
+| | under the gate | standalone, idle host |
+|---|---|---|
+| result | 14 failed / 789 passed (113 files) | **811 passed (114 files)** |
+| per-file duration | ~89 s across 14 unrelated files | whole suite in **20.16 s** |
+| failure kind | every one a timeout (`Hook timed out in 10000ms`, `test timed out`) | — |
+
+**Every failure was a clock, never an assertion**, and they were scattered
+across settings, knowledge, code, activity and routes with nothing in common —
+one worker could not even be killed (`Timeout terminating forks worker`). The
+host was at **load 57 on 16 cores with ~4 GB in swap** when the step ran; a
+real regression fails on an assertion, in related files, in milliseconds. The
+same-day green standalone run is the control, and it is the same control the
+2026-08-10 occurrence reported (`npm test` passed immediately afterwards) —
+which is now readable as the same cause rather than an unexplained coincidence.
+
+**The 2026-08-10 occurrence is therefore explained by inheritance, not
+re-diagnosed**: its output was destroyed by a `grep` and cannot be re-read, so
+this is a matching-signature attribution — same step, same suite, same
+green-on-standalone control — and not a proof about that run. It is written
+down at that strength deliberately.
+
+**What this costs and what to do.** `gate.sh` runs vitest's fork pool sized to
+the host, so a loaded box makes the floor fail for a reason no diff caused, and
+the loop's stop condition 7 then halts a lane over the weather. The cheap fix
+when it next bites is to check `uptime` before believing a `frontend test` red;
+the real fix, unowned, is bounding the pool or raising `hookTimeout` so the step
+degrades in duration rather than in verdict. **Still true and still worth
+keeping: capture the whole step, never grep it** — that instruction is the only
+reason this occurrence could be characterised at all.
+
+This is **not** the `activity.spec.ts` flake below: that one is Playwright e2e
+under `npm run test:e2e`, a different suite in a different gate step, and it
+fails on a missing element rather than on time.
 
 **Open, not closed: an e2e flake with a wrong explanation withdrawn (2026-08-10).**
 `frontend/tests/activity.spec.ts:10` has failed on three of seven
