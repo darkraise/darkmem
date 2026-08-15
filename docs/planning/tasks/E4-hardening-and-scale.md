@@ -237,6 +237,51 @@ The fix belongs to `test_memory_dream.py` (T2.12's suite).
 
 **Verify.** `cd backend && python -m pytest tests/test_memory_dream.py tests/test_push_webhook.py -q`, then the full floor.
 
+#### T4.12 — The `frontend test` gate step must degrade in duration, not in verdict
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: —` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-16.** `progress.md` has characterised this failure twice and both
+times recorded that the real fix is **unowned**. This owns it.
+
+**What.** `gate.sh`'s `frontend test` step reds on a loaded host for a reason no
+diff caused, and the loop's stop condition 7 then halts a lane over the weather.
+The 2026-08-15 characterisation is one-sided and conclusive: **14 failed / 789
+passed under the gate at load 57 on 16 cores with ~4 GB in swap, against 811
+passed in 20.16 s standalone on an idle host.** Every failure was a clock, never an
+assertion, scattered across unrelated files; one worker could not even be killed.
+
+**The cause is config, and it is absent rather than wrong.**
+`frontend/vitest.config.ts` sets `environment`, `globals`, `setupFiles` and
+`exclude` — and **nothing else**. There is no `poolOptions`, no `maxForks`, no
+`hookTimeout` and no `testTimeout`, so vitest sizes its fork pool to the host's CPU
+count and uses the default 10 s hook timeout. That default is the exact string in
+the failure record (`Hook timed out in 10000ms`).
+
+**Bounding the pool and raising a timeout are not equally safe, and the task is
+mostly the first.** Capping `maxForks` cannot mask a failure — it only serialises
+work, so an assertion that would fail still fails. Raising `hookTimeout` **can**
+mask a genuinely slow hook, which is a real regression this step exists to catch.
+So: bound the pool, and raise a timeout only as far as evidence supports, with the
+number justified rather than picked.
+
+**Done when:**
+- [ ] The fork pool is bounded so the step cannot saturate the host it runs on
+- [ ] Any timeout change is justified against measured hook durations on an idle
+      host, not chosen to make a red run pass
+- [ ] The standalone suite is still green and **not materially slower** on an idle
+      host — record both durations
+- [ ] Evidence that the step now degrades in duration under load: run it under
+      deliberate load and show it passing slower rather than failing
+- [ ] `progress.md`'s two characterisation notes are updated to point here
+
+**Note this is not the `activity.spec.ts` flake**, which is Playwright e2e in a
+different gate step and fails on a missing element rather than on time. Do not
+conflate them; that flake is separately open with four refuted hypotheses.
+
+**Verify.** `cd frontend && npm test`, then `./scripts/gate.sh` on a host whose
+`uptime` is recorded alongside the result.
+
 ---
 
 ## Amendment log
