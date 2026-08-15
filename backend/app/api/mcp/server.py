@@ -180,7 +180,9 @@ async def memory_add(
             ),
             memory_type=memory_type, project=resolved_project,
         )
-        result = await service.create_memory(data, api_key_id=None, wait_process=wait_process)
+        result = await service.create_memory(
+            data, api_key_id=None, wait_process=wait_process, actor=resolved_source,
+        )
         if result.memory is not None:
             return json.dumps(_memory_to_dict(result.memory))
         return json.dumps(_ack_to_dict(result.ack))
@@ -253,6 +255,7 @@ async def memory_update(
     content: str | None = None,
     tags: list[str] | None = None,
     memory_type: str | None = None,
+    ctx: Context | None = None,
 ) -> str:
     """
     Args:
@@ -276,7 +279,8 @@ async def memory_update(
         fields["memory_type"] = memory_type
     async with _memory_service_context() as service:
         data = MemoryUpdate(**fields)
-        memory = await service.update_memory(mid, data, api_key_id=None)
+        actor = resolve_client_source(None, ctx)
+        memory = await service.update_memory(mid, data, api_key_id=None, actor=actor)
         if not memory:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps(_memory_to_dict(memory))
@@ -285,14 +289,15 @@ async def memory_update(
 @mcp.tool(
     description="Permanently delete a memory and its associated vectors and graph entities."
 )
-async def memory_delete(memory_id: str) -> str:
+async def memory_delete(memory_id: str, ctx: Context | None = None) -> str:
     """
     Args:
         memory_id: The UUID of the memory to delete.
     """
     mid = _validate_uuid(memory_id)
     async with _memory_service_context() as service:
-        result = await service.delete_memory(mid, api_key_id=None)
+        actor = resolve_client_source(None, ctx)
+        result = await service.delete_memory(mid, api_key_id=None, actor=actor)
         if not result:
             raise ValueError(f"Memory not found: {memory_id}")
         return json.dumps({"deleted": True, "memory_id": memory_id})
@@ -327,6 +332,7 @@ async def memory_batch_add(
     async with _memory_service_context() as service:
         results = await service.batch_create_memories(
             validated.entries, api_key_id=None, wait_process=wait_process,
+            actor=resolve_client_source(None, ctx, fallback=FALLBACK_SOURCE),
         )
         return json.dumps([
             _memory_to_dict(r.memory) if r.memory is not None
@@ -469,7 +475,7 @@ async def checkpoint_save(
                 summary=body.summary,
                 next_steps=body.bounded_steps(),
                 project=body.project,
-                actor="mcp",
+                actor=source,
             )
             payload = checkpoint_service.serialize(row)
             await session.commit()

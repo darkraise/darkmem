@@ -59,7 +59,7 @@ async def save_checkpoint(
         summary=body.summary,
         next_steps=steps,
         project=body.project,
-        actor=getattr(user, "username", None) if user else None,
+        actor=user.sub,
     )
     await session.commit()
     return checkpoint_service.serialize(row)

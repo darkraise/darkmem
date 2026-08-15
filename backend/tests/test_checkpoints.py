@@ -665,6 +665,54 @@ class TestBothDoors:
                 origin_key=ORIGIN, summary="x" * (cp.MAX_SUMMARY_LENGTH + 1)
             )
 
+    async def test_the_rest_door_stamps_the_human_actor(self, client, auth_headers, session):
+        """T4.02: the route used to pass ``getattr(user, "username", None)``,
+        and ``TokenPayload`` has no ``username`` field — so ``events.actor``
+        was silently ``NULL`` on every REST checkpoint save regardless of who
+        was logged in. Fixed to read ``user.sub``, matching every other
+        single-door route's convention (ratification, review, hygiene, key
+        management)."""
+        origin = f"actor-rest:{uuid4()}"
+        response = await client.post(
+            "/api/v1/checkpoints",
+            json={"origin_key": origin, "summary": "actor probe", "project": PROJECT},
+            headers=auth_headers,
+        )
+        assert response.status_code == 201, response.text
+
+        actor = (await session.execute(
+            text("SELECT actor FROM events WHERE event_type = 'checkpoint_saved' "
+                 "AND payload->>'origin_key' LIKE :pattern "
+                 "ORDER BY created_at DESC, id DESC LIMIT 1"),
+            {"pattern": f"%{origin.replace(':', '')}"},
+        )).scalar_one()
+        assert actor == "admin"
+
+    async def test_the_mcp_door_stamps_the_resolved_source_not_the_literal(
+        self, session, mcp_on_the_test_session,
+    ):
+        """The MCP tool used to hardcode ``actor="mcp"`` even though it
+        already resolves the caller's client identity two lines above (for
+        ``origin_key``). Fixed to reuse that resolution, matching
+        ``memory_add``'s attribution and doc 18 §5's "attributed via
+        headers" design for the unkeyed LAN default."""
+        from app.api.mcp import server as mcp_server
+
+        origin = f"actor-mcp:{uuid4()}"
+        await mcp_server.checkpoint_save(
+            origin_key=origin, summary="actor probe", project=PROJECT,
+            ctx=_ctx({CLIENT_HEADER: "Codex!"}),
+        )
+
+        actor = (await session.execute(
+            text("SELECT actor FROM events WHERE event_type = 'checkpoint_saved' "
+                 "AND payload->>'origin_key' LIKE :pattern "
+                 "ORDER BY created_at DESC, id DESC LIMIT 1"),
+            {"pattern": f"%{origin.replace(':', '')}"},
+        )).scalar_one()
+        assert actor == "codex"
+        assert actor != "mcp"
+
 
 # ─────────────── T3.21: the resume text the UI copies ───────────────
 

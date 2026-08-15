@@ -75,9 +75,16 @@ class MemoryService:
         self.pipeline = pipeline
 
     async def create_memory(
-        self, data: MemoryCreate, api_key_id: UUID | None, *, wait_process: bool = False,
+        self,
+        data: MemoryCreate,
+        api_key_id: UUID | None,
+        *,
+        wait_process: bool = False,
+        actor: str | None = None,
     ) -> CaptureResult:
-        results = await self._capture_batch([data], api_key_id, wait_process=wait_process)
+        results = await self._capture_batch(
+            [data], api_key_id, wait_process=wait_process, actor=actor,
+        )
         return results[0]
 
     async def batch_create_memories(
@@ -86,16 +93,24 @@ class MemoryService:
         api_key_id: UUID | None,
         *,
         wait_process: bool = False,
+        actor: str | None = None,
     ) -> list[CaptureResult]:
         """Buffer N captures in one round-trip; with ``wait_process`` drive
         their flush inline as a single batch, through the identical
         ``pipeline.process_batch`` call the scheduled ``buffer_flush`` job
         uses (doc 05 §2/§3, T1.14) — never a second, per-entry code path.
         """
-        return await self._capture_batch(entries, api_key_id, wait_process=wait_process)
+        return await self._capture_batch(
+            entries, api_key_id, wait_process=wait_process, actor=actor,
+        )
 
     async def _capture_batch(
-        self, entries: list[MemoryCreate], api_key_id: UUID | None, *, wait_process: bool,
+        self,
+        entries: list[MemoryCreate],
+        api_key_id: UUID | None,
+        *,
+        wait_process: bool,
+        actor: str | None = None,
     ) -> list[CaptureResult]:
         """Tier-A accept (doc 05 §2): validate, buffer, journal, ack — every
         front door funnels through here, buffered by default. The caller's
@@ -153,6 +168,7 @@ class MemoryService:
         for row, data in zip(rows, entries):
             await self.audit_repo.log(
                 "create", buffered_memory_id(row), api_key_id, {"source": data.source},
+                actor=actor,
             )
 
         await self._handoff_repo_hints(rows, entries)
@@ -253,7 +269,14 @@ class MemoryService:
             memory.predecessors = await self.memory_repo.get_predecessors(memory_id)
         return memory
 
-    async def update_memory(self, memory_id: UUID, data: MemoryUpdate, api_key_id: UUID | None) -> Memory | None:
+    async def update_memory(
+        self,
+        memory_id: UUID,
+        data: MemoryUpdate,
+        api_key_id: UUID | None,
+        *,
+        actor: str | None = None,
+    ) -> Memory | None:
         update_fields = data.model_dump(exclude_unset=True, exclude={"tags"})
         # Normalise before store (invariant 5). Create goes through the pipeline,
         # which normalises; update does not, and an unchanged content triggers no
@@ -300,7 +323,10 @@ class MemoryService:
             await self.memory_repo.set_tags(memory_id, data.tags)
             await self.session.refresh(memory, ["tags"])
 
-        await self.audit_repo.log("update", memory_id, api_key_id, {"fields": list(update_fields.keys())})
+        await self.audit_repo.log(
+            "update", memory_id, api_key_id, {"fields": list(update_fields.keys())},
+            actor=actor,
+        )
 
         # Re-process if content changed. Commit first so the pipeline's
         # fresh session reads the new content; otherwise the re-extraction
@@ -313,13 +339,18 @@ class MemoryService:
                 tags=[t.name for t in memory.tags], memory_type=memory.memory_type,
                 created_at=memory.created_at.isoformat(),
             )
-            await self.audit_repo.log("pipeline", memory.id, api_key_id, status)
+            await self.audit_repo.log("pipeline", memory.id, api_key_id, status, actor=actor)
             await self.session.commit()
 
         return memory
 
     async def delete_memory(
-        self, memory_id: UUID, api_key_id: UUID | None, broadcast: bool = True
+        self,
+        memory_id: UUID,
+        api_key_id: UUID | None,
+        broadcast: bool = True,
+        *,
+        actor: str | None = None,
     ) -> bool:
         try:
             from app.services.pipeline_failures import PipelineFailureService
@@ -337,7 +368,7 @@ class MemoryService:
 
         result = await self.memory_repo.delete(memory_id)
         if result:
-            await self.audit_repo.log("delete", memory_id, api_key_id, {})
+            await self.audit_repo.log("delete", memory_id, api_key_id, {}, actor=actor)
             # The memory's memory_tags links are gone (ON DELETE CASCADE) after
             # the delete flush, so prune any tag now carried by no memory before
             # committing — keeps the dashboard tag count and tag filter honest.
@@ -354,7 +385,9 @@ class MemoryService:
                 )
         return result
 
-    async def bulk_delete_memories(self, ids: list[UUID], api_key_id: UUID | None) -> dict:
+    async def bulk_delete_memories(
+        self, ids: list[UUID], api_key_id: UUID | None, *, actor: str | None = None,
+    ) -> dict:
         """Delete many memories in ONE request, SEQUENTIALLY. Each delete runs an
         independent graph-cleanup pass (``delete_by_memory_id``) that mutates
         shared ``entities`` / ``entity_relations`` rows; concurrent passes on the
@@ -374,7 +407,7 @@ class MemoryService:
             # Suppress the per-row memory.deleted broadcast; one terminal
             # memory.bulk_deleted fires after the loop so clients invalidate once.
             try:
-                if await self.delete_memory(mid, api_key_id, broadcast=False):
+                if await self.delete_memory(mid, api_key_id, broadcast=False, actor=actor):
                     deleted += 1
                 else:
                     not_found.append(mid)
@@ -837,7 +870,14 @@ limit=params.limit, offset=params.offset,
 
         return {"answer": answer, "sources": sources}
 
-    async def merge_memories(self, source_id: UUID, target_id: UUID, api_key_id: UUID | None) -> Memory | None:
+    async def merge_memories(
+        self,
+        source_id: UUID,
+        target_id: UUID,
+        api_key_id: UUID | None,
+        *,
+        actor: str | None = None,
+    ) -> Memory | None:
         source = await self.memory_repo.get(source_id)
         target = await self.memory_repo.get(target_id)
         if not source or not target:
@@ -849,7 +889,9 @@ limit=params.limit, offset=params.offset,
         await self.memory_repo.update(target_id, content=merged_content)
         await self.memory_repo.set_tags(target_id, merged_tags)
 
-        await self.audit_repo.log("delete", source_id, api_key_id, {"merged_into": str(target_id)})
+        await self.audit_repo.log(
+            "delete", source_id, api_key_id, {"merged_into": str(target_id)}, actor=actor,
+        )
         await self.memory_repo.delete(source_id)
         await self.session.commit()
 
@@ -869,6 +911,8 @@ limit=params.limit, offset=params.offset,
             except Exception as e:
                 logger.warning("Pipeline cleanup for merged source %s failed: %s", source_id, e)
 
-        await self.audit_repo.log("merge", target_id, api_key_id, {"source_id": str(source_id)})
+        await self.audit_repo.log(
+            "merge", target_id, api_key_id, {"source_id": str(source_id)}, actor=actor,
+        )
         await self.session.refresh(target, ["tags"])
         return await self.memory_repo.get(target_id)

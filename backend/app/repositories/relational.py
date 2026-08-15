@@ -282,12 +282,13 @@ class PostgresAuditRepository(AuditRepositoryBase):
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def log(self, action, memory_id=None, api_key_id=None, details=None):
+    async def log(self, action, memory_id=None, api_key_id=None, details=None, *, actor=None):
         await record_event(
             self.session,
             event_type=self._ACTION_EVENT_TYPE.get(action, action),
             object_type="memory" if memory_id else "system",
             object_id=memory_id,
+            actor=actor,
             api_key_id=api_key_id,
             payload=details or {},
         )
