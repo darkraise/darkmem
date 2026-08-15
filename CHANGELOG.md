@@ -65,7 +65,8 @@ decision.
   over-merge controls guarding the other direction.
 - **And the same claim was falsified a second time, before this release was
   cut.** v0.5's version review attacked the repaired canonicaliser with 26
-  same-source pairs and found **nine more splits**. The one that matters: this
+  same-source pairs and found **eleven more splitting pairs across nine
+  defect shapes**. The one that matters: this
   module normalised hosts through Python's IDNA**2003** codec while `httpx`
   emits IDNA**2008**, so `straße.example` and the `xn--strae-oqa.example` the
   client produces for it were two attributable origins — one page, and at seven

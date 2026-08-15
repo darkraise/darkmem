@@ -431,6 +431,13 @@ class TestTheSlashFoldAfterTheFourthFalsification:
          "httpx emits the one-slash spelling for the three-slash href"),
         ("https:////example.test/a", "https://example.test/a",
          "four slashes, which httpx itself reads as the host form"),
+        ("ftp:///example.test/a", "ftp://example.test/a",
+         "ftp is authority-mandatory too; only set membership folds three "
+         "slashes, so this pin is what makes the membership tested"),
+        ("ws:///example.test/a", "ws://example.test/a",
+         "likewise ws"),
+        ("wss:///example.test/a", "wss://example.test/a",
+         "likewise wss"),
         ("https://example.test:08443/a", "https://example.test:8443/a",
          "httpx reads `:08443` as port 8443 and emits the plain form, so the "
          "leading zero split the raw href from the client's own spelling"),
@@ -450,12 +457,20 @@ class TestTheSlashFoldAfterTheFourthFalsification:
          "a scheme-relative reference carrying a port: the dotted token "
          "before the colon is a host, and reading it as a scheme made the "
          "port the host — found by probing the fold, not by a reviewer"),
+        ("https://example.test:８４４３/a", "https://example.test:8443/a",
+         "fullwidth digits in a non-default port, which httpx reads as 8443 "
+         "and emits in ASCII — excluded from the corpus as having no real "
+         "producer, which this repo's own client falsifies; the default-port "
+         "check already treated the same characters as numbers two lines up"),
     ])
     def test_one_page_under_two_spellings_is_one_origin(self, left, right, why):
         left_id = research_origin_id(_finding(source_id=left))
         right_id = research_origin_id(_finding(source_id=right))
         assert left_id is not None, why
         assert left_id == right_id, f"{why} split one source into two origins"
+
+
+_ASCII_TO_FULLWIDTH_DIGITS = str.maketrans("0123456789", "０１２３４５６７８９")
 
 
 def _corpus_host_port(netloc: str) -> tuple[str, str]:
@@ -510,6 +525,9 @@ def _generated_spellings(seed: str) -> list[tuple[str, str]]:
     if port:
         base = netloc[: -len(port)]
         add("leading-zero port", rebuild(new_netloc=f"{base}0{port}"))
+        if port.isascii():
+            fullwidth = port.translate(_ASCII_TO_FULLWIDTH_DIGITS)
+            add("fullwidth port digits", rebuild(new_netloc=f"{base}{fullwidth}"))
     if host.startswith("["):
         expanded = ipaddress.IPv6Address(host[1:-1]).exploded
         suffix = f":{port}" if port else ""
@@ -583,10 +601,26 @@ class TestMergeOnlyIsAGeneratedProperty:
             for label, spelling in _generated_spellings(seed)
         ]
 
+    # Every transform family the generator is expected to produce, so that
+    # deleting one family fails loudly instead of eroding the corpus while an
+    # aggregate size floor stays satisfied.
+    REQUIRED_TRANSFORMS = frozenset({
+        "upper scheme", "upper host", "www alias", "trailing host dot",
+        "explicit default port", "leading-zero port", "fullwidth port digits",
+        "expanded IPv6", "punycode host", "trailing slash", "doubled slash",
+        "dot segment", "percent-encoded path letter", "fragment",
+        "tracking parameter", "NFD form", "zero-slash scheme",
+        "one-slash scheme", "three-slash scheme", "one-slash file",
+        "localhost file", "httpx spelling",
+    })
+
     def test_the_generator_generates(self):
         """A generator quietly producing nothing would pass everything."""
         corpus = self._all_spellings()
         assert len(corpus) >= 80, f"only {len(corpus)} generated spellings"
+        produced = {label for _, label, _ in corpus}
+        missing = self.REQUIRED_TRANSFORMS - produced
+        assert not missing, f"transform families vanished: {sorted(missing)}"
 
     @pytest.mark.parametrize("seed", SEEDS)
     def test_every_generated_spelling_of_one_seed_is_one_origin(self, seed):

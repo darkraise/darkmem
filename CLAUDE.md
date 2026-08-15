@@ -158,8 +158,8 @@ A memory carries:
   undercount delays a promotion and an overcount fabricates one. **That claim
   was stated as holding "by construction" and has now been falsified four
   times — twice by reviews, then twice by the repairs themselves.** T3.08's
-  review found six splitting inputs; v0.5's version review found nine more over
-  26 same-source pairs (2026-08-15), including the one that matters most: this
+  review found six splitting inputs; v0.5's version review found eleven more
+  over 26 same-source pairs (2026-08-15), including the one that matters most: this
   module normalised hosts through Python's IDNA**2003** codec while `httpx`
   emits IDNA**2008**, so `straße.example` and the `xn--strae-oqa.example` the
   client produces for it were two attributable origins — one page, and at seven

@@ -347,12 +347,16 @@ def _split_port(host: str) -> tuple[str, str]:
             return head, ""
     except ValueError:
         return head, tail
-    # A leading zero is a spelling, not an identity: `httpx` reads `:08443` as
-    # port 8443 and emits the plain form, so keeping the zero verbatim split a
-    # raw href from the client's own spelling of it. Only an unambiguous ASCII
-    # digit run in port range is rewritten — `urn:isbn:0451450523`'s ten
-    # digits exceed it and stay verbatim, keeping two distinct identifiers two.
-    if tail.isascii() and tail.isdigit() and int(tail) <= 65535:
+    # A leading zero or a fullwidth digit is a spelling, not an identity:
+    # `httpx` reads `:08443` and `:８４４３` both as port 8443 and emits the
+    # plain ASCII form, so keeping either verbatim split a raw href from the
+    # client's own spelling of it. (The default-port check above already
+    # treats the same characters as numbers; restricting this branch to ASCII
+    # gave one function two treatments of one character class.) Only an
+    # unambiguous digit run in port range is rewritten —
+    # `urn:isbn:0451450523`'s ten digits exceed it and stay verbatim, keeping
+    # two distinct identifiers two.
+    if tail.isdigit() and int(tail) <= 65535:
         return head, str(int(tail))
     return head, tail
 
@@ -468,7 +472,7 @@ def research_origin_id(finding: ResearchFinding) -> str | None:
     **Merge-only is a tested property, not a structural guarantee, and the
     difference has cost four times.** Stated as holding "by construction", it
     was falsified by T3.08's review (six splitting inputs), by v0.5's version
-    review (nine more, 2026-08-15 — most seriously an IDNA2003 host pass
+    review (eleven more, 2026-08-15 — most seriously an IDNA2003 host pass
     against the IDNA2008 punycode ``httpx`` emits), and then twice by the
     repairs themselves: reattaching a port before the host passes split
     IDN-with-port pairs, and widening the slash fold split ``file:``
