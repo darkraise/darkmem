@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import require_auth
+from app.api.auth import require_auth, require_scope
 from app.api.deps import get_code_pipeline, get_repo_manager
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
@@ -21,6 +21,13 @@ from app.services.repo_manager import RepoManager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repos"])
+
+# Doc 18 §5 groups repository control under the `admin` scope. Bound once at
+# module scope, not inside the route, so a test can override this exact
+# dependency object via `app.dependency_overrides` (a `require_scope(...)`
+# call builds a fresh closure each time, so overriding one built inline in
+# the decorator would silently miss the one actually wired to the route).
+_require_repo_admin = require_scope("admin")
 
 def _to_response(repo: Repository, file_count: int = 0, symbol_count: int = 0) -> RepoResponse:
     return RepoResponse(
@@ -226,6 +233,53 @@ async def reindex_repo(
         await manager.session.commit()
         raise HTTPException(status_code=500, detail="Failed to start indexing")
     return {"status": "indexing", "repo_id": str(repo_id)}
+
+
+@router.post("/{repo_id}/webhook", status_code=status.HTTP_202_ACCEPTED)
+async def repo_push_webhook(
+    repo_id: UUID,
+    _principal=Depends(_require_repo_admin),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
+    manager: RepoManager = Depends(get_repo_manager),
+):
+    """Push-triggered sync for one repo (doc 10 §5, doc 15 §9).
+
+    Calls the identical change-gated ``CodePipeline.run`` polling uses --
+    never a second indexing path, and no parsing or indexing logic of its
+    own. Credential verification is the ``_require_repo_admin`` dependency,
+    which FastAPI resolves before this body runs at all, so a missing,
+    forged, wrong-scope or revoked credential never reaches the conflict
+    check or the pipeline call below.
+
+    The push payload itself is never parsed: the pipeline re-derives the
+    true state with its own ``git pull`` + HEAD-sha compare inside ``run``,
+    so nothing here needs to trust (or even read) what the sender claims
+    changed -- exactly the "purely a latency improvement" framing doc 10 §5
+    gives the webhook over polling.
+    """
+    repo = await manager.get(repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    if repo.status in ("indexing", "cloning"):
+        # A sync (from polling or an earlier webhook delivery) is already in
+        # flight for this repo -- the same conflict this module's own
+        # `reindex_repo` guards against, and the same status code
+        # docs/api-rest-conventions.md names for exactly this case. The
+        # in-flight run already pulls HEAD itself, so a second concurrent
+        # `CodePipeline.run` would duplicate work rather than reach
+        # anything a queued retry couldn't.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Repository is already indexing",
+        )
+
+    result = await pipeline.run(repo_id)
+    return {
+        "status": result.get("status", "indexed"),
+        "repo_id": str(repo_id),
+        "commit": result.get("commit"),
+    }
 
 
 @router.get("/{repo_id}/tasks")

@@ -814,17 +814,20 @@ class TestPostureIsUnchanged:
         assert "authenticate" not in called
         assert "looks_like_credential" not in called
 
-    def test_no_shipped_route_is_keyed_yet(self):
-        """T4.01 lands the mechanism; T4.03 assigns scopes to the surface.
-        A route appearing here before then is a posture change nobody argued
-        for, so this asserts the count rather than trusting the intent."""
+    def test_no_shipped_route_is_keyed_yet_beyond_the_sanctioned_one(self):
+        """T4.01 lands the mechanism; T4.03 assigns scopes to the *existing*
+        surface. T4.05's push-webhook receiver is a genuinely new route, not
+        a retrofit of one already reachable by a human session -- doc 18 §5
+        itself names the push-webhook receiver as one of the two triggers for
+        this activation -- so it is the one sanctioned exception, scoped by
+        name rather than by widening the assertion to "some routes now"."""
         routes = APP_ROOT / "api" / "routes"
         offenders = [
             str(path.relative_to(APP_ROOT))
             for path in sorted(routes.rglob("*.py"))
             if "require_scope" in path.read_text(encoding="utf-8")
         ]
-        assert offenders == []
+        assert offenders == ["api/routes/repos.py"]
 
     def test_the_mcp_door_gained_no_bearer_requirement(self):
         # Doc 18 §11's stance: the MCP bearer is a second, independent flip.
