@@ -1025,7 +1025,10 @@ def _pass_two() -> None:
         """
     )
 
-    # Wired by T4.01 (doc 18 §5). The two added columns are the whole schema
+    # Wired by T4.01 (doc 18 §5) — this comment read "Exists, unwired … the
+    # schema carries over unchanged" until the activation landed, which is the
+    # invariant-23 honesty label going stale in the direction that presents a
+    # shipped path as dormant. The two added columns are the whole schema
     # cost of the activation, which doc 04 §9 caps at "adding columns to the
     # existing table, never a new table".
     #
