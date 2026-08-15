@@ -52,13 +52,42 @@ def project() -> str:
 async def committing(setup_database):
     """A real session factory with real commits — a cycle commits per write
     batch through its own sessions, which the rollback-isolated `session`
-    fixture cannot express."""
+    fixture cannot express.
+
+    `FP` is `derive`'s default fingerprint, so the proximity arm reads that
+    partition on nearly every test here. Seeding it once per test — present
+    and empty — is what keeps it from being an artefact of whichever earlier
+    test happened to create it first: the alternative is an ordering
+    dependency that also cannot be torn down.
+    """
     engine = create_async_engine(settings.test_database_url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as prepare:
+        await seed_partition(prepare, FP)
+        await prepare.commit()
     try:
         yield factory
     finally:
         async with factory() as cleanup:
+            # `seed_partition` durably registers an `embedders` row but
+            # creates only the `memory_embeddings__<slug>` child table, not
+            # the full set `embedder_registry.register` guarantees in
+            # production. A surviving row is a half-registered fingerprint
+            # every later suite inherits: any repository method that loops
+            # every `embedders` row and trusts the full partition set (e.g.
+            # `delete_code_chunks_by_repo`) then crashes on this
+            # fingerprint's missing `code_chunk_embeddings__<slug>` table.
+            # Drop the child tables before the `embedders` row (they FK to
+            # it), via `information_schema` rather than the registry's own
+            # table template list, so this stays correct if that list grows.
+            stray_tables = (await cleanup.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name ~ '__t216_'"
+                )
+            )).scalars().all()
+            for table_name in stray_tables:
+                await cleanup.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
             for statement in (
                 "DELETE FROM memory_relations WHERE project LIKE 't216-%'",
                 "DELETE FROM entity_relations WHERE EXISTS ("
@@ -69,6 +98,7 @@ async def committing(setup_database):
                 "DELETE FROM memories WHERE project LIKE 't216-%'",
                 "DELETE FROM config WHERE key = 'memory_dream_state'",
                 "DELETE FROM config WHERE key = 'job:memory_dream'",
+                "DELETE FROM embedders WHERE fingerprint LIKE 't216-%'",
             ):
                 await cleanup.execute(text(statement))
             await cleanup.commit()
