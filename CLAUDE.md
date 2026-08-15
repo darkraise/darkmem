@@ -156,19 +156,30 @@ A memory carries:
   same-day at three. Every step of that canonicalisation aims to be
   merge-only: no input should split one source into two ids, because an
   undercount delays a promotion and an overcount fabricates one. **That claim
-  was stated as holding "by construction" and has now been falsified twice, by
-  the only two parties that attacked it deliberately** — T3.08's review found
-  six splitting inputs, and v0.5's version review found nine more over 26
-  same-source pairs (2026-08-15), including the one that matters most: this
+  was stated as holding "by construction" and has now been falsified four
+  times — twice by reviews, then twice by the repairs themselves.** T3.08's
+  review found six splitting inputs; v0.5's version review found nine more over
+  26 same-source pairs (2026-08-15), including the one that matters most: this
   module normalised hosts through Python's IDNA**2003** codec while `httpx`
   emits IDNA**2008**, so `straße.example` and the `xn--strae-oqa.example` the
   client produces for it were two attributable origins — one page, and at seven
-  days' spacing a promotion. All nine are repaired and pinned; the host pass now
-  goes through the `idna` package with the same parameters `httpx` uses, which
-  also stopped IDNA2003 conflating `strasse.example` with `straße.example`.
-  **Treat "merge-only" as a tested property with named pins, never as a
-  structural guarantee** — the phrase "by construction" is what let two rounds
-  of reviewers find what nobody had looked for. Two splits are deliberate and
+  days' spacing a promotion. Then the repair reattached a non-default port
+  before the host passes ran and thereby split IDN-with-port pairs, and the
+  repair of *that* widened the slash fold and thereby split `file:`
+  empty-authority pairs — `httpx` emits `file:/tmp/a.pdf` for
+  `file:///tmp/a.pdf`, and the fold read that spelling as host `tmp`. All are
+  repaired and pinned; the host pass goes through the `idna` package with
+  `httpx`'s own parameters (which also stopped IDNA2003 conflating
+  `strasse.example` with `straße.example`), and the slash fold is scheme-aware,
+  because no single slash rule is correct for both `https:` and `file:`.
+  **Treat "merge-only" as a tested property, never as a structural guarantee**
+  — three consecutive hand-written repairs introduced the failure class they
+  were closing, so `tests/test_research_origins.py` now carries the reviewers'
+  own instrument: a deterministic generator over mechanical URL spellings
+  asserting every one agrees with the spelling `httpx` itself emits for it,
+  which on its first run found three splits no review round had seen
+  (percent-encoded hosts, percent-encoded NFD bytes, leading-zero ports).
+  Extend the generator before extending the canonicaliser. Two splits are deliberate and
   documented as correct: `;` versus `&` in a query is not variation a fetcher
   produces, and two punycode labels that decode to different strings are
   different hosts. A blank or unresolvable `source_id` returns `None` and falls

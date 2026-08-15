@@ -31,9 +31,12 @@ decision.
   and a finding naming either field is a loud error rather than a dropped key.
 - Distinct-origin stamping for researched sources (`T3.08`). One origin per
   evidence **source** — the identity is the source's, never the run's and never
-  the finding's — and the canonicalisation collapses the variation a fetcher
-  produces mechanically, so a refetch, a re-run or a paraphrase of one page
-  adds no origin. Researched
+  the finding's — and the canonicalisation aims to collapse the variation a
+  fetcher produces mechanically, so that a refetch, a re-run or a paraphrase of
+  one page adds no origin. That is a tested property held by generated-spelling
+  tests and named pins, not a structural guarantee: three earlier restatements
+  of it as a closure did not survive their reviews, and every falsification so
+  far is pinned. Researched
   origins stay machine-distinguishable from observed ones, so a measurement that
   pools them does it on purpose.
 
@@ -84,6 +87,19 @@ decision.
   origins" *created* exactly that failure for an IDN host carrying a port. The
   port is now split off before any canonicalisation and reattached at the end.
   Found by the review of the fix, not by the fix's own tests.
+- **And the repair of the repair did it again, which settled the approach.**
+  Widening the slash fold to one slash made `tmp` the host of
+  `file:/tmp/a.pdf` — the spelling `httpx` itself emits for
+  `file:///tmp/a.pdf` — so the third consecutive hand-written repair
+  introduced the split class it was closing, again found by the review rather
+  than by the fix's own tests. The fold is now scheme-aware (no single slash
+  rule is correct for both `https:` and `file:`), and the suite carries the
+  reviewers' own instrument instead of relying on hand-written pairs: a
+  deterministic generator produces URL spellings mechanically and asserts
+  every one agrees with the spelling `httpx` emits for it. On its first run
+  that property found three splits no review round had seen — percent-encoded
+  hosts, percent-encoded NFD bytes in paths and query values, a leading-zero
+  non-default port — each repaired red-first.
 - Two fail-open defects in the research loop, also found by review (`T3.07`).
   `bool("false")` is `True`, so a malformed `enabled` value armed the master
   switch — the one field where failing closed matters most was the one without a
