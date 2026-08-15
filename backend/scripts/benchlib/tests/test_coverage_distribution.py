@@ -201,10 +201,23 @@ pytestmark_db = pytest.mark.usefixtures("_bench_db")
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_bench_db")
 async def test_the_connection_actually_refuses_a_write():
-    """Done-when 2, proved rather than asserted. The read-only claim is
-    enforced by `default_transaction_read_only=on` at the connection, so
-    an accidental write fails in Postgres and not in review -- and this
-    test fails if someone drops the connect_args."""
+    """Done-when 2: proves the mechanism, **not** this runner's binding to it.
+
+    `default_transaction_read_only=on` makes Postgres refuse an accidental
+    write in the database rather than in review, and that is what is proved
+    here. What is *not* proved is that `run_coverage_distribution.run`
+    actually sends the setting: the engine below is built from a copy
+    written in this test, so stripping the `connect_args` from `run` leaves
+    this green.
+
+    The docstring said "this test fails if someone drops the connect_args"
+    until 2026-08-16, which is false and was found by TH1.17's re-review
+    while probing the test that copied this one. The binding-proving shape
+    is in `test_run_faithfulness_gate.py::test_fetch_bar_rows_actually_refuses_a_write`:
+    capture the kwargs off `create_async_engine` and probe with exactly
+    those. Applying it here needs a way to drive `run` cheaply, so it is
+    recorded rather than done.
+    """
     from sqlalchemy import text
     from sqlalchemy.exc import DBAPIError
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine

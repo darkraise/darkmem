@@ -219,23 +219,39 @@ async def test_run_live_with_only_model_override_does_not_crash(monkeypatch, tmp
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("_bench_db")
-async def test_fetch_bar_rows_actually_refuses_a_write():
-    """Done-when proved rather than asserted, mirroring T3.24's equivalent
-    for `run_coverage_distribution.py`. `_fetch_bar_rows` itself is driven
-    for a real read, and the same `connect_args` it uses is proved to make
-    Postgres itself refuse a write -- not merely present in source."""
+async def test_fetch_bar_rows_actually_refuses_a_write(monkeypatch):
+    """Done-when proved rather than asserted, and proved *of this function*.
+
+    The probe engine is built from the `connect_args` `_fetch_bar_rows`
+    actually passed, captured off `create_async_engine` -- never from a
+    copy written here. That binding is the whole point: an earlier draft
+    hardcoded the read-only setting in the test, so stripping it from
+    `_fetch_bar_rows` left the test green. It proved Postgres honours the
+    setting, which nobody doubted, rather than that this function sends it.
+    """
     from sqlalchemy import text
     from sqlalchemy.exc import DBAPIError
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from benchlib import bench_db
 
+    captured: dict[str, object] = {}
+    real_create = rfg.create_async_engine
+
+    def _capturing(url, **kwargs):
+        captured.update(kwargs)
+        return real_create(url, **kwargs)
+
+    monkeypatch.setattr(rfg, "create_async_engine", _capturing)
     rows = await rfg._fetch_bar_rows(bench_db.BENCH_DATABASE_URL)
+    monkeypatch.undo()
     assert isinstance(rows, dict)
 
+    # Whatever the function sent is what gets probed. Drop the setting from
+    # the function and this engine accepts the INSERT, failing the test.
     engine = create_async_engine(
         bench_db.BENCH_DATABASE_URL,
-        connect_args={"server_settings": {"default_transaction_read_only": "on"}},
+        **{k: v for k, v in captured.items() if k == "connect_args"},
     )
     try:
         async with async_sessionmaker(engine)() as session:
