@@ -83,7 +83,7 @@ async def _prepare_retrieval(api_key: str, bench_url: str, db_name: str) -> int:
 
 async def _prepare_promotion(
     api_key: str, bench_url: str, db_name: str, *, simulate_capture_time: bool
-) -> int:
+) -> promotion_corpus.PreparedCorpus:
     target = bench_db.BenchDatabase(bench_url)
     try:
         prepared = await promotion_corpus.prepare(
@@ -107,10 +107,11 @@ async def _prepare_promotion(
     print(f"repo assertions: {prepared.repo_assertions}")
     print(f"code lift: {prepared.code_lift}")
     print(f"facts minted through the shipping lift: {prepared.n_facts}")
+    print(f"diversity claims authored per repo: {prepared.diversity_claims_by_repo}")
     _print_twin(prepared)
     for note in prepared.notes:
         print(f"note: {note}")
-    return prepared.n_facts
+    return prepared
 
 
 def _print_twin(prepared) -> None:
@@ -187,10 +188,11 @@ async def main(argv: list[str] | None = None) -> int:
     db_name = db_target.resolved_database_name(bench_url)
     assert_bench_db_allowed(db_name)
 
+    prepared = None
     if args.corpus == RETRIEVAL_CORPUS:
         await _prepare_retrieval(api_key, bench_url, db_name)
     else:
-        await _prepare_promotion(
+        prepared = await _prepare_promotion(
             api_key, bench_url, db_name,
             simulate_capture_time=not args.no_capture_time_simulation,
         )
@@ -241,7 +243,10 @@ async def main(argv: list[str] | None = None) -> int:
 
         if args.corpus == PROMOTION_CORPUS:
             async with target.session_factory() as session:
-                back = await promotion_corpus.read_back(session)
+                back = await promotion_corpus.read_back(
+                    session,
+                    diversity_claims_by_repo=prepared.diversity_claims_by_repo,
+                )
             print()
             print(promotion_corpus.render_read_back(back))
 
