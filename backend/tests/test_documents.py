@@ -74,7 +74,7 @@ def _drafts(*texts: str) -> list[BlockDraft]:
     return [BlockDraft(text=t, type="paragraph") for t in texts]
 
 
-async def _observe(session, coro_factory):
+async def _observe(coro_factory):
     """Run `coro_factory()` with every SQL statement recorded."""
     recorder = _StatementRecorder()
     event.listen(test_engine.sync_engine, "before_cursor_execute", recorder)
@@ -139,7 +139,7 @@ async def test_reingesting_an_unchanged_document_does_zero_work(session):
     assert len(before_ids) == 2
 
     second_parser = _Parser(_drafts("Title", "A paragraph."))
-    second, recorder = await _observe(session, lambda: file_document(
+    second, recorder = await _observe(lambda: file_document(
         session, project="default", uri=uri, content=content, parse=second_parser,
         title="Title", source_type="md",
     ))

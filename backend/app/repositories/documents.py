@@ -100,6 +100,13 @@ _UPDATE_DOCUMENT = text(
 
 _STRIP_BLOCKS = text("DELETE FROM blocks WHERE document_id = CAST(:document_id AS uuid)")
 
+# The `char_span` bind is cast twice on purpose. A single `CAST(:char_span AS
+# int4range)` — which is the form doc 16 §2 names — makes asyncpg infer the
+# parameter as int4range and then refuse the string: "list, tuple or Range
+# object expected (got type <class 'str'>)". Casting through `text` first pins
+# the parameter to a type asyncpg can send and lets Postgres parse the literal,
+# which is what keeps the bound convention (`[lo,hi)`) explicit in one place
+# rather than delegated to a driver default.
 _INSERT_BLOCK = text(
     """
     INSERT INTO blocks (id, document_id, parent_id, order_index, type, text,

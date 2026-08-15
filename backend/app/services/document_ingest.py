@@ -99,10 +99,6 @@ class DocumentIngest:
     blocks_written: int = 0
     blocks_stripped: int = 0
 
-    @property
-    def did_work(self) -> bool:
-        return self.outcome != UNCHANGED
-
 
 def compute_content_hash(content: str | bytes) -> str:
     """The change gate's key. Text is hashed as UTF-8 so a source read as
