@@ -124,3 +124,38 @@ def test_qualification_banner_still_fails_closed_when_role_is_absent(capsys):
     rfg._print_missing_qualification()
     out = capsys.readouterr().out
     assert "FAIL_CLOSED (missing qualification)" in out
+
+
+# ── I-2: an unreadable bar row refuses a live run before spending it ────────
+
+
+async def test_unreadable_bars_refuse_a_live_run_before_any_judge_call(
+    capsys, monkeypatch, tmp_path,
+):
+    """The pre-spend guard. Simulates the unreadable-bar path the same way
+    the existing bars test does (`render_bar_visibility` raises), then
+    proves the live path never reaches `score_via_live_judge` at all --
+    the mutation this guards against is exactly "continue past bars_ok and
+    let the live probe spend the attempt before dying on a second raise"."""
+    def _boom(_rows):
+        raise ValueError("config row faithfulness_gate_recall_bar is unreadable")
+
+    monkeypatch.setattr(rfg.fg, "render_bar_visibility", _boom)
+
+    def _must_not_be_called(*args, **kwargs):
+        raise AssertionError(
+            "score_via_live_judge was called with unreadable bars -- the "
+            "pre-spend refusal did not fire"
+        )
+
+    monkeypatch.setattr(rfg.fg, "score_via_live_judge", _must_not_be_called)
+
+    gold_path = tmp_path / "span_gold.json"
+    gold_path.write_text(json.dumps({"pairs": fx.build_fixture_pairs()}))
+
+    code = await rfg._run(["--gold", str(gold_path), "--live", "--api-key", "k"])
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "FAIL_CLOSED (unreadable bar row)" in out
+    assert "refusing to spend" in out

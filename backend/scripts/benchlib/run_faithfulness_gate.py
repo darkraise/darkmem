@@ -174,6 +174,19 @@ async def _run(argv: list[str] | None = None) -> int:
         print("status: FAIL_CLOSED (--live given with no --api-key)")
         return 1
 
+    if not bars_ok:
+        # The unreadable state is known before the first judge call. A
+        # live run against unreadable bars must refuse here, before
+        # score_via_live_judge spends the measurement attempt probing
+        # every pair -- never after, by an uncaught traceback out of
+        # resolve_faithfulness_bars.
+        print(
+            "status: FAIL_CLOSED (unreadable bar row) — refusing to spend "
+            "a live judge pass while the bars that would gate its result "
+            "cannot be resolved; see '== bars in force ==' above"
+        )
+        return 1
+
     base_dir = Path(args.gold).resolve().parent
     config = fg.judge_purpose_config(
         args.api_key, model=args.model, base_url=args.base_url,
