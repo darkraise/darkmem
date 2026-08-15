@@ -1,0 +1,16 @@
+{
+ "escalations": [
+  {
+   "id": "eg-0510",
+   "recorded": "entailed",
+   "pass_a": {
+    "verdict": "entailed",
+    "rationale": "Weakening to an existential with nimbus-02 as witness; 'the nimbus deployment' is a presupposed definite description, and non-asserted content moves no verdict (exhaustivity rule's counterpart principle)."
+   },
+   "pass_b": {
+    "verdict": "unsupported",
+    "rationale": "Procedure 2: the premise never establishes a 'nimbus deployment' or nimbus-02's membership in one, and inferring it from the hostname is inadmissible world knowledge, so the restricted existential is not entailed."
+   }
+  }
+ ]
+}
