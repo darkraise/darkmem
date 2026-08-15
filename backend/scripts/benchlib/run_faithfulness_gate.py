@@ -191,7 +191,7 @@ async def _run(argv: list[str] | None = None) -> int:
     config = fg.judge_purpose_config(
         args.api_key, model=args.model, base_url=args.base_url,
         api_kind=args.api_kind,
-    ) if any((args.model, args.base_url, args.api_kind)) else fg.judge_purpose_config(args.api_key)
+    )
 
     score, twin, verdicts = await fg.score_via_live_judge(
         pairs, base_dir, config, cache_dir=fg.SPAN_CACHE_DIR,

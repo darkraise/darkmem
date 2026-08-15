@@ -159,3 +159,56 @@ async def test_unreadable_bars_refuse_a_live_run_before_any_judge_call(
     assert code == 1
     assert "FAIL_CLOSED (unreadable bar row)" in out
     assert "refusing to spend" in out
+
+
+# ── I-3: a partial judge override no longer crashes ─────────────────────────
+
+
+def test_judge_purpose_config_merges_a_single_override_per_field():
+    """The reproduced defect: `--model` alone used to pass `base_url=None,
+    api_kind=None` through a blanket dict-merge, which pydantic rejected.
+    A single-field override must fall back to the other two defaults, not
+    stomp them with an explicit None."""
+    config = fg.judge_purpose_config("k", model="gpt-5.5")
+    purpose = config["verification"]
+    assert purpose.model == "gpt-5.5"
+    assert purpose.base_url == fg.DEFAULT_JUDGE["base_url"]
+    assert purpose.api_kind == fg.DEFAULT_JUDGE["api_kind"]
+
+
+def test_judge_purpose_config_with_no_overrides_matches_default_judge():
+    config = fg.judge_purpose_config("k")
+    purpose = config["verification"]
+    assert purpose.model == fg.DEFAULT_JUDGE["model"]
+    assert purpose.base_url == fg.DEFAULT_JUDGE["base_url"]
+    assert purpose.api_kind == fg.DEFAULT_JUDGE["api_kind"]
+
+
+async def test_run_live_with_only_model_override_does_not_crash(monkeypatch, tmp_path):
+    """CLI-level reproduction of the reviewer's exact repro:
+    `--live --api-key K --model gpt-5.5` with base-url/api-kind left at
+    their argparse None default."""
+    gold_path = tmp_path / "span_gold.json"
+    gold_path.write_text(json.dumps({"pairs": fx.build_fixture_pairs()}))
+
+    async def _stub_live_judge(pairs, base_dir, config, *, cache_dir):
+        from benchlib.twin import LatencyRecorder, Twin
+        from app.services.verification_judge import ProbeVerdict
+
+        verdicts = {
+            p["id"]: ProbeVerdict(verdict="entailed", reason="stub", raw="{}", valid=True)
+            for p in pairs
+        }
+        score = fg.score_span_judgments(pairs, verdicts)
+        recorder = LatencyRecorder()
+        recorder.record("judge_call", 0.01, "live")
+        from benchlib.twin import TokenLedger
+        twin = Twin.capture(recorder, TokenLedger(), declared_channels=("judge_call",))
+        return score, twin, verdicts
+
+    monkeypatch.setattr(rfg.fg, "score_via_live_judge", _stub_live_judge)
+
+    code = await rfg._run([
+        "--gold", str(gold_path), "--live", "--api-key", "k", "--model", "gpt-5.5",
+    ])
+    assert code == 0

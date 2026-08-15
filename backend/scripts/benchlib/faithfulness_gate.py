@@ -385,14 +385,26 @@ DEFAULT_JUDGE = {
 }
 
 
-def judge_purpose_config(api_key: str, **overrides) -> dict[str, LLMPurposeConfig]:
-    merged = {**DEFAULT_JUDGE, **overrides}
+def judge_purpose_config(
+    api_key: str,
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_kind: str | None = None,
+    params: dict | None = None,
+) -> dict[str, LLMPurposeConfig]:
+    """The judge identity for a live run. Merges per field against
+    ``DEFAULT_JUDGE`` (mirroring ``run_judge_qualification.py``'s
+    ``judge_purpose_config``) rather than a blanket ``{**DEFAULT_JUDGE,
+    **overrides}`` — a caller passing one override (e.g. ``--model``) with
+    the rest left at their argparse default of ``None`` must not have those
+    explicit ``None``s stomp the other two defaults."""
     return {"verification": LLMPurposeConfig(
-        model=merged["model"],
-        base_url=merged["base_url"],
+        model=model or DEFAULT_JUDGE["model"],
+        base_url=base_url or DEFAULT_JUDGE["base_url"],
         api_key=api_key,
-        api_kind=merged["api_kind"],
-        params=dict(merged["params"]),
+        api_kind=api_kind or DEFAULT_JUDGE["api_kind"],
+        params=dict(params if params is not None else DEFAULT_JUDGE["params"]),
     )}
 
 
