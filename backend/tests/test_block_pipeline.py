@@ -940,23 +940,25 @@ def _opt_out_offenders(paths: list[pathlib.Path], root: pathlib.Path) -> list[st
     return sorted(offenders)
 
 
-def _production_sources() -> list[pathlib.Path]:
-    """Every shipped `.py` under the backend — app, harnesses, migrations.
-
-    `tests/` is excluded at every depth, and it is the *only* exclusion: the
-    drills live there and are the reason the opt-out exists at all.
-    """
-    paths = [
-        path
-        for root in ("app", "scripts", "migrations")
-        for path in (BACKEND / root).rglob("*.py")
-        if "__pycache__" not in path.parts and "tests" not in path.parts
-    ]
-    assert len(paths) > 100, (
-        f"only found {len(paths)} shipped files — the scan below would pass "
+def _backend_sources() -> list[pathlib.Path]:
+    """Every `.py` in the backend tree, tests included, artifacts excluded."""
+    artifacts = {"__pycache__", ".venv", "node_modules"}
+    paths = [path for path in BACKEND.rglob("*.py") if not artifacts & set(path.parts)]
+    assert len(paths) > 200, (
+        f"only found {len(paths)} files — the scans below would pass "
         "vacuously; check the backend root / the globs"
     )
     return paths
+
+
+def _production_sources() -> list[pathlib.Path]:
+    """The same set with every `tests/` directory dropped, at any depth.
+
+    That covers `scripts/benchlib/tests` as well as `backend/tests` — the
+    exclusion is what the two scans differ on, so it has to mean the same
+    thing in both.
+    """
+    return [path for path in _backend_sources() if "tests" not in path.parts]
 
 
 def test_no_production_caller_can_reach_the_unguarded_entry_point():
@@ -999,15 +1001,16 @@ def test_the_opt_out_scan_reports_a_file_that_does_reach_it(tmp_path, route, sou
 
 
 def test_only_the_two_standing_drills_name_the_opt_out():
-    """Containment inside the suite too. The opt-out is worth exactly the two
-    drills it keeps runnable; a third test reaching for it is a test that
-    wanted the guarded door and took the unguarded one."""
-    tests = BACKEND / "tests"
-    naming = sorted(
-        path.name
-        for path in tests.rglob("*.py")
-        if "__pycache__" not in path.parts and UNGUARDED_ENTRY in path.read_text()
-    )
-    assert naming == ["test_block_pipeline.py", "test_document_parsers.py"]
+    """Containment across the whole tree, not only the shipped half. The
+    opt-out is worth exactly the two drills it keeps runnable; anything else
+    reaching for it — a third test, a harness under `scripts/benchlib/tests`
+    that the production scan skips — wanted the guarded door and took the
+    unguarded one."""
+    offenders = _opt_out_offenders(_backend_sources(), BACKEND)
+    naming = sorted({offender.split(":")[0] for offender in offenders})
+    assert naming == [
+        "tests/test_block_pipeline.py",
+        "tests/test_document_parsers.py",
+    ], "\n".join(offenders)
 
 
