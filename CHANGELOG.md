@@ -31,8 +31,9 @@ decision.
   and a finding naming either field is a loud error rather than a dropped key.
 - Distinct-origin stamping for researched sources (`T3.08`). One origin per
   evidence **source** — the identity is the source's, never the run's and never
-  the finding's — and the canonicalisation is merge-only by construction, so a
-  refetch, a re-run or a paraphrase of one page adds no origin. Researched
+  the finding's — and the canonicalisation is merge-only against every input
+  anyone has attacked it with, so a refetch, a re-run or a paraphrase of one
+  page adds no origin. Researched
   origins stay machine-distinguishable from observed ones, so a measurement that
   pools them does it on purpose.
 
@@ -59,6 +60,21 @@ decision.
   the two-origin bar, which is a promotion off a single page. Repaired
   merge-only, with all seven failing shapes proven red first and three
   over-merge controls guarding the other direction.
+- **And the same claim was falsified a second time, before this release was
+  cut.** v0.5's version review attacked the repaired canonicaliser with 26
+  same-source pairs and found **nine more splits**. The one that matters: this
+  module normalised hosts through Python's IDNA**2003** codec while `httpx`
+  emits IDNA**2008**, so `straße.example` and the `xn--strae-oqa.example` the
+  client produces for it were two attributable origins — one page, and at seven
+  days' spacing a promotion. The host pass now uses the `idna` package with
+  `httpx`'s own parameters, which also stopped IDNA2003 conflating
+  `strasse.example` with `straße.example`, two genuinely different hosts. The
+  other eight: a trailing-dot FQDN keeping its dot once a default port came
+  off, `:0443` not recognised as `:443`, IPv6 zero-compression, a
+  scheme-relative href written without its slashes, an embedded tab or newline
+  the URL spec strips, dot-segments popping past the root and gluing the path
+  onto the host, and an unparseable id falling back to its pre-normalisation
+  spelling.
 - Two fail-open defects in the research loop, also found by review (`T3.07`).
   `bool("false")` is `True`, so a malformed `enabled` value armed the master
   switch — the one field where failing closed matters most was the one without a
@@ -71,6 +87,13 @@ decision.
   sha recorded outside the gitignored directory.
 
 ### Known limits
+- **"Merge-only by construction" is retired as a phrase.** It has been stated
+  as a structural guarantee twice and falsified twice, by the only two parties
+  who attacked it on purpose. It is a tested property with named pins, and the
+  next person to extend the canonicaliser should assume there are more splits
+  nobody has looked for. Two are deliberate: `;` versus `&` in a query is not
+  variation a fetcher produces, and two punycode labels decoding to different
+  strings are different hosts.
 - **Built is not armed, and armed is not measured.** The loop refuses by
   default. When it is armed, the origins it mints are weaker corroboration than
   independent capture produces: two same-day research origins carry the same

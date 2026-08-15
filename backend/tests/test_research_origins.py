@@ -275,6 +275,88 @@ class TestRfc3986EquivalenceIsOneOrigin:
         assert research_origin_id(_finding(source_id=left)) != research_origin_id(_finding(source_id=right))
 
 
+class TestTheMergeOnlyClaimAfterTheSecondFalsification:
+    """v0.5's version review falsified "merge-only by construction" again.
+
+    T3.08's own review closed six splitting inputs and the claim was restated
+    as absolute in `CHANGELOG.md`, `CLAUDE.md` and the function's docstring. A
+    second adversarial pass found **eleven** more splits over 26 same-source
+    pairs, of which ten are mechanical variation a fetcher or a scraper
+    produces on its own. Two clear T3.08's own "this repo's `httpx` produces
+    it" bar: the client emits IDNA2008 punycode while this module normalised
+    through Python's IDNA2003 codec, so one page under its unicode and its
+    fetched spelling was two attributable origins — which is `required_n = 2`
+    at seven days' spacing, a promotion manufactured off one page.
+
+    The lesson recorded with the fixture: an invariant asserted as "by
+    construction" has now been falsified twice by the first party to attack it
+    deliberately. These pins are what the phrase is allowed to rest on.
+    """
+
+    @pytest.mark.parametrize("left,right,why", [
+        ("https://straße.example/a", "https://xn--strae-oqa.example/a",
+         "IDNA2008 deviation character against the punycode httpx emits"),
+        ("https://βόλος.example/a", "https://xn--nxasmm1c.example/a",
+         "IDNA final-sigma deviation, against the punycode httpx emits"),
+        ("https://example.test.:443/a", "https://example.test/a",
+         "trailing-dot FQDN carrying an explicit default port"),
+        ("https://example.test:0443/a", "https://example.test/a",
+         "a default port written with a leading zero"),
+        ("https://[2001:db8::1]/a", "https://[2001:db8:0:0:0:0:0:1]/a",
+         "IPv6 zero-compression against its expanded form"),
+        ("https:example.test/a", "https://example.test/a",
+         "a scheme-relative href written without its slashes"),
+        ("https://exa\nmple.test/a", "https://example.test/a",
+         "an embedded newline, which the URL spec strips"),
+        ("https://example.test/a\tb", "https://example.test/ab",
+         "an embedded tab, likewise"),
+        ("https://example.test/%2e%2e/a", "https://example.test/a",
+         "percent-encoded dot-segments popping past the root"),
+    ])
+    def test_one_page_under_two_spellings_is_still_one_origin(self, left, right, why):
+        left_id = research_origin_id(_finding(source_id=left))
+        right_id = research_origin_id(_finding(source_id=right))
+        assert left_id is not None, why
+        assert left_id == right_id, f"{why} split one source into two origins"
+
+    def test_the_opaque_fallback_normalises_before_it_gives_up(self):
+        """An id `urlsplit` refuses still has to reach one form.
+
+        The fallback returned the **pre-NFC** value, so a locator that could not
+        be parsed split on Unicode spelling alone — the one path where the
+        normalisation this module does first was thrown away.
+        """
+        composed = unicodedata.normalize("NFC", "café℀z")
+        decomposed = unicodedata.normalize("NFD", "café℀z")
+        assert composed != decomposed, "the fixture must really differ"
+        assert research_origin_id(_finding(source_id=composed)) == \
+            research_origin_id(_finding(source_id=decomposed))
+
+    @pytest.mark.parametrize("left,right,why", [
+        ("https://example.test:8443/a", "https://example.test/a",
+         "a non-default port is part of the identity"),
+        ("https://strasse.example/a", "https://straße.example/a",
+         "a genuinely different host that IDNA2003 would have conflated"),
+        ("https://[2001:db8::1]/a", "https://[2001:db8::2]/a",
+         "two different addresses"),
+        ("https://xn--nxasmm1c.example/a", "https://xn--nxasmq6b.example/a",
+         "the IDNA2003 spelling of a final-sigma host decodes to a different "
+         "label and is a different domain under IDNA2008"),
+        ("https://example.test/a?x=1;y=2", "https://example.test/a?x=1&y=2",
+         "`;` is not a separator a fetcher substitutes — servers may serve "
+         "different content, so these stay two"),
+    ])
+    def test_the_repairs_did_not_become_merge_everything(self, left, right, why):
+        """The control, widened with the fix.
+
+        Over-merging is the safe direction for a *gate* — an undercount delays
+        a promotion — but it is not free: merge everything and the loop can
+        never corroborate anything at all. Each pair here must stay two.
+        """
+        assert research_origin_id(_finding(source_id=left)) != \
+            research_origin_id(_finding(source_id=right)), why
+
+
 class TestUnknownIdentity:
     @pytest.mark.parametrize("unestablished", [None, "", "   ", "\t\n", "://", "///", "..."])
     def test_an_identity_that_cannot_be_established_merges(self, unestablished):

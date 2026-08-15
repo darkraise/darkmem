@@ -53,14 +53,16 @@ could detect.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
-import unicodedata
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Protocol, Sequence
 from urllib.parse import parse_qsl, urlsplit, unquote
 from uuid import UUID
 
+import idna
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +100,10 @@ _TRACKING_QUERY_KEYS = frozenset({
 _TRACKING_QUERY_PREFIXES = ("utm_",)
 
 _WHITESPACE_RE = re.compile(r"\s+")
+# Removed outright rather than replaced: the WHATWG URL parser strips these
+# from a URL, so one href wrapped across lines is one locator.
+_URL_STRIPPED_RE = re.compile(r"[\t\r\n]")
+_SCHEME_NO_SLASHES_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):(?!//)")
 _REPEATED_SLASH_RE = re.compile(r"/{2,}")
 
 # Fail closed. Building the loop is not running it (T3.07 brief): pointing it
@@ -260,7 +266,11 @@ def _canonical_path(path: str) -> str:
         if segment == ".":
             continue
         if segment == "..":
-            if segments:
+            # **Never past the root.** `segments[0]` is the empty string an
+            # absolute path splits to, and popping it glued the path onto the
+            # host — `/%2e%2e/a` canonicalised to `example.testa` while `/a`
+            # gave `example.test/a`, two origins for one page.
+            if len(segments) > 1:
                 segments.pop()
             continue
         segments.append(segment)
@@ -270,20 +280,52 @@ def _canonical_path(path: str) -> str:
 def _canonical_host(netloc: str) -> str:
     # Credentials are not identity, and a fetcher that carries them on one
     # request and not the next would otherwise mint two origins for one page.
-    host = netloc.rsplit("@", 1)[-1].lower().rstrip(".")
-    for default_port in (":80", ":443"):
-        if host.endswith(default_port):
-            host = host[: -len(default_port)]
-            break
+    host = netloc.rsplit("@", 1)[-1].lower()
+
+    # **Port before dots.** `rstrip(".")` used to run first, so a trailing-dot
+    # FQDN carrying an explicit default port kept its dot once the port came
+    # off and split from the same host written plainly.
+    host, _, port = host.rpartition(":")
+    if not host or "]" in port:
+        # No port, or the colon belonged to an IPv6 literal.
+        host, port = netloc.rsplit("@", 1)[-1].lower(), ""
+    elif port:
+        # Numeric, so `:0443` is the same default port as `:443`. A
+        # non-default port is part of the identity and is put back.
+        try:
+            if int(port) not in (80, 443):
+                host = f"{host}:{int(port)}"
+        except ValueError:
+            host = f"{host}:{port}"
+
+    host = host.rstrip(".")
     host = host[4:] if host.startswith("www.") else host
-    # A unicode host and its punycode are one host, and a resolver hands back
-    # whichever form its caller used. Failure falls through to the host as
-    # given: an unencodable name is not two names, it is one this pass cannot
-    # normalise, and leaving it merges no worse than before.
-    try:
-        host = host.encode("idna").decode("ascii")
-    except (UnicodeError, ValueError):
-        pass
+
+    # An IPv6 literal has many spellings of one address (zero-compression,
+    # leading zeros, case). `ipaddress` gives the one canonical form; anything
+    # it refuses is left as written rather than guessed at.
+    if host.startswith("[") and host.endswith("]"):
+        try:
+            return f"[{ipaddress.IPv6Address(host[1:-1]).compressed}]"
+        except ValueError:
+            return host
+
+    # **IDNA2008 via the `idna` package, which is what `httpx` uses.** This ran
+    # through Python's built-in codec, i.e. IDNA2003, and the two standards
+    # disagree on the deviation characters: IDNA2003 maps `ß` to `ss` and final
+    # sigma to sigma, IDNA2008 keeps them. So `https://straße.example` and the
+    # `xn--strae-oqa.example` this repo's own client emits for it canonicalised
+    # to two different origins — one page, two attributable witnesses, which at
+    # seven days' spacing is a promotion off a single source. Matching the
+    # client is also what stops the opposite error: IDNA2003 conflated
+    # `strasse.example` with `straße.example`, two genuinely different hosts.
+    if host:
+        try:
+            host = idna.encode(host, uts46=True, transitional=False).decode("ascii")
+        except (idna.IDNAError, UnicodeError, ValueError):
+            # An unencodable name is not two names; it is one this pass cannot
+            # normalise, and leaving it merges no worse than before.
+            pass
     return host
 
 
@@ -296,6 +338,10 @@ def _canonical_locator(value: str) -> str:
     # NFC first: two Unicode spellings of one host or path are one locator, and
     # the encoding steps below have to run over a settled form.
     value = unicodedata.normalize("NFC", value)
+    # `https:example.test/a` is a legal spelling of `https://example.test/a`
+    # and appears in hand-written hrefs. Without this the scheme lands in the
+    # host slot and the two split.
+    value = _SCHEME_NO_SLASHES_RE.sub(r"\1://", value, count=1)
     prefixed = value if "://" in value or value.startswith("//") else f"//{value}"
     parts = urlsplit(prefixed)
     host = _canonical_host(parts.netloc)
@@ -330,10 +376,20 @@ def research_origin_id(finding: ResearchFinding) -> str | None:
     trailing slash, duplicated slashes, a fragment, campaign parameters,
     parameter order — because each of those is one page reachable two ways, and
     counting it twice is the manufactured corroboration doc 09 §6 forbids. Every
-    step is merge-only: no input splits one source into two ids, and the
-    lowercasing in particular is not cosmetic, since the corroboration count
+    step aims to be merge-only — no input should split one source into two ids —
+    and the lowercasing in particular is not cosmetic, since the corroboration
+    count
     normalises with ``lower(btrim(origin_key))`` and a case-preserved id would
     show the audit a distinction the count does not honour.
+
+    **Merge-only is a tested property, not a structural guarantee, and the
+    difference has cost twice.** Stated as holding "by construction", it was
+    falsified by T3.08's review (six splitting inputs) and again by v0.5's
+    version review (nine more, 2026-08-15) — most seriously an IDNA2003 host
+    pass against the IDNA2008 punycode ``httpx`` emits, which made one page two
+    attributable origins. Every one is pinned in
+    ``tests/test_research_origins.py``. Assume more exist that nobody has
+    looked for, and add a red-first pin before extending anything here.
 
     **Its bound, stated rather than left to be discovered.** Identity here is the
     *locator's*, not the content's: one wire story syndicated under two
@@ -347,7 +403,10 @@ def research_origin_id(finding: ResearchFinding) -> str | None:
     raw = finding.source_id
     if not isinstance(raw, str):
         return None
-    value = _WHITESPACE_RE.sub(" ", raw).strip()
+    # Before the whitespace collapse, not after: tab/CR/LF are *removed* from a
+    # URL by the WHATWG parser, and collapsing them to spaces first meant the
+    # capture layer saw a `-` where the other spelling had nothing.
+    value = _WHITESPACE_RE.sub(" ", _URL_STRIPPED_RE.sub("", raw)).strip()
     if not value:
         return None
     try:
@@ -355,8 +414,11 @@ def research_origin_id(finding: ResearchFinding) -> str | None:
     except ValueError:
         # urlsplit refuses some netlocs outright (NFKC-confusable characters,
         # unbalanced IPv6 brackets). The id is still an identity; it just gets
-        # the opaque treatment rather than the locator one.
-        canonical = value.lower()
+        # the opaque treatment rather than the locator one -- but it gets it
+        # over the **normalised** form. Falling back to `value` threw away the
+        # NFC pass this module does first, so the one path that could not be
+        # parsed was also the one that split on Unicode spelling alone.
+        canonical = unicodedata.normalize("NFC", value).lower()
     return _bounded_origin_id(canonical) if canonical else None
 
 

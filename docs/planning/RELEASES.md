@@ -177,7 +177,10 @@ G-C and G-D ships as its own version whose headline is "badges go live".
 ## Parked — kept, not dropped, no version assigned
 
 EH1 documents/PKM (15 tasks), API keys
-and webhooks (`T4.01`–`T4.05`), the two audit records (`T4.09`, `T4.10`), and
-`T1.54`. Parked work stops implying imminent effort; it is not dropped, and a
+and webhooks (`T4.01`–`T4.05`), and the two audit records (`T4.09`, `T4.10`).
+**`T1.54` was on this list and is not parked — it shipped `done` and rides in
+v0.5's tag** (corrected 2026-08-15, found by that version's review: a "here is
+the full list" sentence naming a task that had already landed).
+Parked work stops implying imminent effort; it is not dropped, and a
 drop is a different status with a different obligation (`progress.md`'s status
 vocabulary).

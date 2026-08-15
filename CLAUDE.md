@@ -153,11 +153,25 @@ A memory carries:
   page adds no origin. **Two genuine sources promote only on the ladder's own
   terms** — both carry `source_kind='memory'`, so there is no kind diversity and
   two same-day research origins *hold* at N = 3; they promote ≥ 7 days apart, or
-  same-day at three. Every step of that canonicalisation is merge-only by
-  construction: no input may split one source into two ids, because an
-  undercount delays a promotion and an overcount fabricates one. That claim was
-  **falsified once and repaired** — the review found six splitting inputs, each
-  a spelling this repo's own `httpx` produces, and each now pinned by test. A blank or unresolvable `source_id` returns `None` and falls
+  same-day at three. Every step of that canonicalisation aims to be
+  merge-only: no input should split one source into two ids, because an
+  undercount delays a promotion and an overcount fabricates one. **That claim
+  was stated as holding "by construction" and has now been falsified twice, by
+  the only two parties that attacked it deliberately** — T3.08's review found
+  six splitting inputs, and v0.5's version review found nine more over 26
+  same-source pairs (2026-08-15), including the one that matters most: this
+  module normalised hosts through Python's IDNA**2003** codec while `httpx`
+  emits IDNA**2008**, so `straße.example` and the `xn--strae-oqa.example` the
+  client produces for it were two attributable origins — one page, and at seven
+  days' spacing a promotion. All nine are repaired and pinned; the host pass now
+  goes through the `idna` package with the same parameters `httpx` uses, which
+  also stopped IDNA2003 conflating `strasse.example` with `straße.example`.
+  **Treat "merge-only" as a tested property with named pins, never as a
+  structural guarantee** — the phrase "by construction" is what let two rounds
+  of reviewers find what nobody had looked for. Two splits are deliberate and
+  documented as correct: `;` versus `&` in a query is not variation a fetcher
+  produces, and two punycode labels that decode to different strings are
+  different hosts. A blank or unresolvable `source_id` returns `None` and falls
   to `unknown:research:<project>`, the bucket that counts once and fires no
   gate. Both shapes stay machine-sliceable through `is_researched_origin`, so a
   measurement pooling manufactured origins with observed ones does it on
