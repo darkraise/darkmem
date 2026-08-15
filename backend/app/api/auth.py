@@ -159,10 +159,13 @@ def require_scope(scope: str):
     **This is opt-in, and that is the fail-closed half of the activation.**
     ``require_auth`` is unchanged and still decodes a login JWT and nothing
     else, so every route that declares it stays unreachable by any key. A key
-    reaches exactly the routes that name a scope here — which today is none in
-    ``app/api/routes``; assigning scopes to the existing surface is T4.03's,
-    and doing it by widening ``require_auth`` instead would have made every
-    route keyed at once, silently.
+    reaches exactly the routes that name a scope here — today that is the
+    push-webhook receiver alone (``POST /repos/{repo_id}/webhook``, T4.05),
+    sanctioned by doc 18 §5 as one of the activation's own two triggers, not
+    an anticipation of this route by T4.03. Assigning scopes to the rest of
+    the existing surface is still T4.03's, and doing it by widening
+    ``require_auth`` instead would have made every route keyed at once,
+    silently.
 
     The scope literal is validated at decoration time, so a typo is a startup
     failure rather than a route that quietly admits nobody. ``ratify`` fails

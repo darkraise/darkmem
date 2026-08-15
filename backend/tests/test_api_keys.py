@@ -200,6 +200,33 @@ def _require_scope_arguments() -> list[tuple[str, ast.expr]]:
     return found
 
 
+def _routes_source_files() -> list[tuple[str, str]]:
+    """`(relative_path, source_text)` for every module under app/api/routes."""
+    routes = APP_ROOT / "api" / "routes"
+    return [
+        (str(path.relative_to(APP_ROOT)), path.read_text(encoding="utf-8"))
+        for path in sorted(routes.rglob("*.py"))
+    ]
+
+
+def _require_scope_call_sites(files: list[tuple[str, str]]) -> list[tuple[str, int]]:
+    """How many `require_scope(...)` call sites each file has -- binding
+    granularity, not a substring match on the file text, so a second call
+    site added to an already-offending file still moves the count."""
+    sites: list[tuple[str, int]] = []
+    for rel, text in files:
+        tree = ast.parse(text, filename=rel)
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "require_scope"
+        ]
+        if calls:
+            sites.append((rel, len(calls)))
+    return sites
+
+
 def _offending_scope_arguments(arguments) -> list[str]:
     offenders = []
     for rel, node in arguments:
@@ -814,20 +841,48 @@ class TestPostureIsUnchanged:
         assert "authenticate" not in called
         assert "looks_like_credential" not in called
 
-    def test_no_shipped_route_is_keyed_yet_beyond_the_sanctioned_one(self):
+    def test_no_shipped_route_is_keyed_yet_beyond_the_sanctioned_call_site(self):
         """T4.01 lands the mechanism; T4.03 assigns scopes to the *existing*
         surface. T4.05's push-webhook receiver is a genuinely new route, not
         a retrofit of one already reachable by a human session -- doc 18 §5
-        itself names the push-webhook receiver as one of the two triggers for
-        this activation -- so it is the one sanctioned exception, scoped by
-        name rather than by widening the assertion to "some routes now"."""
-        routes = APP_ROOT / "api" / "routes"
-        offenders = [
-            str(path.relative_to(APP_ROOT))
-            for path in sorted(routes.rglob("*.py"))
-            if "require_scope" in path.read_text(encoding="utf-8")
+        (18-security-auth-and-trust.md:138, 261) names the push-webhook
+        receiver as one of the two triggers for this activation -- so it is
+        the one sanctioned exception, pinned to the exact binding rather than
+        to file membership: a file-level check would pass unchanged if a
+        second, unargued `require_scope` call landed anywhere else in
+        `repos.py` (see the drills below)."""
+        sites = _require_scope_call_sites(_routes_source_files())
+        assert sites == [("api/routes/repos.py", 1)]
+
+        repos_source = (APP_ROOT / "api" / "routes" / "repos.py").read_text(encoding="utf-8")
+        assert '_require_repo_admin = require_scope("admin")' in repos_source
+
+    def test_the_scan_flags_a_call_site_planted_in_another_route(self):
+        """The fail-closed direction: a require_scope call anywhere else in
+        the tree still fails the positive assertion above, even though it is
+        no longer a bare file-membership check."""
+        files = _routes_source_files() + [
+            (
+                "api/routes/tags.py",
+                "from app.api.auth import require_scope\n_x = require_scope('admin')\n",
+            ),
         ]
-        assert offenders == ["api/routes/repos.py"]
+        sites = _require_scope_call_sites(files)
+        assert sites != [("api/routes/repos.py", 1)]
+        assert ("api/routes/tags.py", 1) in sites
+
+    def test_the_scan_flags_a_second_call_site_in_repos_py_itself(self):
+        """What file-granularity membership would have missed: a second
+        require_scope call added to repos.py -- a DELETE route quietly
+        gaining a scope nobody argued for, say -- leaves the file list
+        unchanged but must move the call count."""
+        patched = [
+            (rel, text + "\n_extra = require_scope('read')\n") if rel == "api/routes/repos.py" else (rel, text)
+            for rel, text in _routes_source_files()
+        ]
+        sites = _require_scope_call_sites(patched)
+        assert sites == [("api/routes/repos.py", 2)]
+        assert sites != [("api/routes/repos.py", 1)]
 
     def test_the_mcp_door_gained_no_bearer_requirement(self):
         # Doc 18 §11's stance: the MCP bearer is a second, independent flip.

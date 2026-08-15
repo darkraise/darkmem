@@ -5,10 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request as FastAPIRequest, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.auth import require_auth, require_scope
-from app.api.deps import get_code_pipeline, get_repo_manager
+from app.api.deps import get_code_pipeline, get_repo_manager, get_session_factory
 from app.database import get_session
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.schemas.code import (
@@ -17,6 +17,7 @@ from app.schemas.code import (
 from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
+from app.services.task_registry import TaskRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -149,61 +150,65 @@ async def delete_repo(
         raise HTTPException(status_code=404, detail="Repository not found")
 
 
-@router.post("/{repo_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
-async def reindex_repo(
+def _spawn_repo_index(
     repo_id: UUID,
-    body: ReindexRequest = ReindexRequest(),
-    _user=Depends(require_auth),
-    pipeline: CodePipeline = Depends(get_code_pipeline),
-    manager: RepoManager = Depends(get_repo_manager),
-):
-    from app.database import async_session_factory
+    pipeline: CodePipeline,
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    kind: str,
+    full: bool = False,
+    enrich_symbols: bool = False,
+    generate_wiki: bool = False,
+) -> asyncio.Task:
+    """Spawn the one background indexing path both ``reindex_repo`` and
+    ``repo_push_webhook`` dispatch through -- a tracked task on a fresh
+    session, never a synchronous ``pipeline.run`` inline in either route.
 
-    full = body.full
-    enrich_symbols = body.enrich_symbols
-    generate_wiki = body.generate_wiki
+    ``run_kwargs`` carries a flag only when it is true, so a caller that
+    passes nothing but ``repo_id`` (the webhook) reaches ``CodePipeline.run``
+    with the identical bare ``(repo_id)`` shape polling's own call site uses
+    (``job_runners.py``), not a look-alike call with explicit ``False``s.
 
-    repo = await manager.get(repo_id)
-    if not repo:
-        raise HTTPException(status_code=404, detail="Repository not found")
-
-    if repo.status in ("indexing", "cloning"):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Repository is already indexing",
-        )
-
-    repo.status = "indexing"
-    repo.status_message = "Queued for indexing..."
-    await manager.session.flush()
-    await manager.session.commit()
-
-    _collection_name = pipeline.vector_repo.collection_name if pipeline.vector_repo else "code_chunks"
-    _llm = pipeline.llm
+    The background pipeline mirrors whether the *injected* ``pipeline`` was
+    given a vector repo at all: production's DI-provided pipeline always
+    carries one, so this only ever matters to a test that overrides
+    ``get_code_pipeline`` with ``vector_repo=None`` (the established pattern
+    for a deterministic run with no live embedder) -- that override has to
+    reach the background closure too, not just the request-scoped object,
+    or a background run silently falls back to a real
+    ``PostgresVectorRepository`` regardless of what the caller asked for.
+    """
+    collection_name = pipeline.vector_repo.collection_name if pipeline.vector_repo else None
+    has_vector_repo = pipeline.vector_repo is not None
+    llm = pipeline.llm
 
     async def _run_index():
         try:
-            async with async_session_factory() as session:
-                from app.repositories.vector import PostgresVectorRepository
-                fresh_vector_repo = PostgresVectorRepository(session, _collection_name)
+            async with session_factory() as session:
+                fresh_vector_repo = None
+                if has_vector_repo:
+                    from app.repositories.vector import PostgresVectorRepository
+                    fresh_vector_repo = PostgresVectorRepository(session, collection_name)
                 idx = CodePipeline(
                     session=session,
-                    llm=_llm,
+                    llm=llm,
                     vector_repo=fresh_vector_repo,
                     repo_manager=RepoManager(session),
                 )
-                await idx.run(
-                    repo_id,
-                    full=full,
-                    enrich_symbols=enrich_symbols,
-                    generate_wiki=generate_wiki,
-                )
+                run_kwargs = {}
+                if full:
+                    run_kwargs["full"] = full
+                if enrich_symbols:
+                    run_kwargs["enrich_symbols"] = enrich_symbols
+                if generate_wiki:
+                    run_kwargs["generate_wiki"] = generate_wiki
+                await idx.run(repo_id, **run_kwargs)
         except Exception as e:
-            logger.error(f"Background reindex failed for {repo_id}: {e}")
+            logger.error(f"Background {kind} failed for {repo_id}: {e}")
             from app.api.websocket import event_manager
             await event_manager.broadcast("repo.indexing_failed", {"repo_id": str(repo_id), "error": str(e)[:200]})
             try:
-                async with async_session_factory() as session:
+                async with session_factory() as session:
                     from app.models.code import Repository
                     from sqlalchemy import select
                     r = (await session.execute(
@@ -219,10 +224,43 @@ async def reindex_repo(
             except Exception as inner_e:
                 logger.error("Failed to set error status for repo %s: %s", repo_id, inner_e)
 
-    from app.services.task_registry import TaskRegistry
+    task = asyncio.create_task(_run_index())
+    TaskRegistry.register(repo_id, kind, task, "Indexing repository...")
+    return task
+
+
+@router.post("/{repo_id}/reindex", status_code=status.HTTP_202_ACCEPTED)
+async def reindex_repo(
+    repo_id: UUID,
+    body: ReindexRequest = ReindexRequest(),
+    _user=Depends(require_auth),
+    pipeline: CodePipeline = Depends(get_code_pipeline),
+    manager: RepoManager = Depends(get_repo_manager),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+):
+    repo = await manager.get(repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    if repo.status in ("indexing", "cloning"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Repository is already indexing",
+        )
+
+    repo.status = "indexing"
+    repo.status_message = "Queued for indexing..."
+    await manager.session.flush()
+    await manager.session.commit()
+
     try:
-        task = asyncio.create_task(_run_index())
-        TaskRegistry.register(repo_id, "reindex", task, "Indexing repository...")
+        _spawn_repo_index(
+            repo_id, pipeline, session_factory,
+            kind="reindex",
+            full=body.full,
+            enrich_symbols=body.enrich_symbols,
+            generate_wiki=body.generate_wiki,
+        )
     except Exception as e:
         # The 'indexing' status was already committed above; if scheduling fails
         # the repo would be stuck there with no task. Reset it so the UI isn't
@@ -241,21 +279,28 @@ async def repo_push_webhook(
     _principal=Depends(_require_repo_admin),
     pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
 ):
     """Push-triggered sync for one repo (doc 10 §5, doc 15 §9).
 
-    Calls the identical change-gated ``CodePipeline.run`` polling uses --
-    never a second indexing path, and no parsing or indexing logic of its
-    own. Credential verification is the ``_require_repo_admin`` dependency,
+    ``reindex_repo``'s own shape, one screen up in this file: guard, commit
+    ``status='indexing'`` in the route before any work, spawn the identical
+    change-gated ``CodePipeline.run`` polling's own job runner uses through
+    the one shared ``_spawn_repo_index`` background path, and return 202
+    with no terminal result -- never a synchronous ``pipeline.run`` inline
+    here. Credential verification is the ``_require_repo_admin`` dependency,
     which FastAPI resolves before this body runs at all, so a missing,
     forged, wrong-scope or revoked credential never reaches the conflict
-    check or the pipeline call below.
+    check or the spawn below.
 
     The push payload itself is never parsed: the pipeline re-derives the
     true state with its own ``git pull`` + HEAD-sha compare inside ``run``,
     so nothing here needs to trust (or even read) what the sender claims
     changed -- exactly the "purely a latency improvement" framing doc 10 §5
-    gives the webhook over polling.
+    gives the webhook over polling. Committing ``status='indexing'`` here,
+    before any work, is also what narrows the concurrent-delivery window to
+    the route body rather than leaving it as wide as the pipeline's own
+    ``git pull``.
     """
     repo = await manager.get(repo_id)
     if not repo:
@@ -265,21 +310,26 @@ async def repo_push_webhook(
         # A sync (from polling or an earlier webhook delivery) is already in
         # flight for this repo -- the same conflict this module's own
         # `reindex_repo` guards against, and the same status code
-        # docs/api-rest-conventions.md names for exactly this case. The
-        # in-flight run already pulls HEAD itself, so a second concurrent
-        # `CodePipeline.run` would duplicate work rather than reach
-        # anything a queued retry couldn't.
+        # docs/api-rest-conventions.md names for exactly this case.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository is already indexing",
         )
 
-    result = await pipeline.run(repo_id)
-    return {
-        "status": result.get("status", "indexed"),
-        "repo_id": str(repo_id),
-        "commit": result.get("commit"),
-    }
+    repo.status = "indexing"
+    repo.status_message = "Queued for indexing..."
+    await manager.session.flush()
+    await manager.session.commit()
+
+    try:
+        _spawn_repo_index(repo_id, pipeline, session_factory, kind="webhook")
+    except Exception as e:
+        logger.error("Failed to schedule webhook reindex for %s: %s", repo_id, e)
+        repo.status = "error"
+        repo.status_message = "Failed to start indexing"
+        await manager.session.commit()
+        raise HTTPException(status_code=500, detail="Failed to start indexing")
+    return {"status": "indexing", "repo_id": str(repo_id)}
 
 
 @router.get("/{repo_id}/tasks")
