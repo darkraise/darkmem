@@ -200,6 +200,44 @@ Scope, all of it:
   configuration and trigger surface on the web UI, because today `auto_research`
   has no writer anywhere in the tree and arming it means a manual database write.
 
+**The scope above is prose, and prose assigns nothing.** The four bullets name
+their tasks inside sentences, and both parsers own only `` - `Tid` `` list items
+— so from this section's minting on 2026-08-15 until 2026-08-16, **every one of
+the nineteen open tasks v1.0 carries showed `—` in `progress.md`'s Version
+column**, the exact question that column was added to answer. The list below is
+the same scope in the form the parsers read; it adds no task and moves none.
+
+This is the h3-hole failure in a second dress, and `gen_progress.py`'s own
+comment predicted the shape: *every test still passed on the misparse, because
+the column and the ladder agreed with each other.* They agreed here too — the
+prose was right, the column was empty, and nothing compared them.
+
+**Done rows are deliberately absent**, on v0.1's stated precedent: the column
+answers "which release?" for *open* work, so the EH1 and E4 tasks already `done`
+carry no version and are not listed. The **gate-track** tasks are also absent
+and stay `gate` — that section says it is "not a version", and listing them here
+would silently overwrite the label, since this section is parsed after it.
+
+- `T3.28` — Arm the research loop from the UI: configure, enable, trigger
+- `T4.02` — Stamp `events.api_key_id` / `events.actor`
+- `T4.03` — Exposed-deployment posture
+- `T4.04` — `ApiKey` use surfaced in the per-object timeline
+- `T4.05` — Push webhook receiver
+- `T4.09` — In-process assumption audit
+- `T4.10` — Multi-replica decision record
+- `TH1.05` — `block_embeddings__<slug>` writer
+- `TH1.06` — Semantic-only block channel
+- `TH1.07` — Trace addendum: `block` id-kind, `document` layer
+- `TH1.08` — Grounded Q&A flow
+- `TH1.09` — Span-support faithfulness check before serving
+- `TH1.11` — On-demand Tier-C lift
+- `TH1.12` — Block-sourced facts, one document = one origin
+- `TH1.13` — Idempotent lifting, keyed on `document_id`
+- `TH1.14` — Single-document summary (unbadged)
+- `TH1.15` — Emergent cross-document connections
+- `TH1.16` — Documents UI, horizon-labelled
+- `TH1.18` — Make `file_document` atomic by default
+
 **The schema freeze is *not* in this version and must not be inferred from it.**
 It happens after v1.0 ships and after the owner's review of the visual web UI
 passes (owner ruling 2026-08-15, recorded in `CLAUDE.md`).
