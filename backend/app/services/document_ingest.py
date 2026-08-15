@@ -58,11 +58,14 @@ __all__ = [
     "BlockDraft",
     "CREATED",
     "DOCUMENT_FILED_EVENT",
+    "DocumentFileFailure",
+    "DocumentFileJob",
     "DocumentIngest",
     "UNCHANGED",
     "UPDATED",
     "compute_content_hash",
     "file_document",
+    "file_documents_isolated",
 ]
 
 DOCUMENT_FILED_EVENT = "document_filed"
@@ -203,6 +206,81 @@ async def file_document(
         resolved_id, outcome, content_hash,
         blocks_written=len(rows), blocks_stripped=stripped,
     )
+
+
+@dataclass(frozen=True)
+class DocumentFileJob:
+    """One document to file, addressed the same way `file_document` is.
+
+    `label` is the caller's own identifier for reporting a failure — a
+    filename, a uri, whatever the batch was keyed on — never used to resolve
+    identity; that is still `uri` or `document_id`.
+    """
+
+    project: str
+    content: str | bytes
+    parse: Callable[[], Sequence[BlockDraft]]
+    uri: str | None = None
+    document_id: UUID | None = None
+    title: str | None = None
+    source_type: str | None = None
+    properties: dict | None = None
+    actor: str | None = None
+    source: str | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class DocumentFileFailure:
+    label: str | None
+    error: str
+
+
+async def file_documents_isolated(
+    session: AsyncSession, jobs: Sequence[DocumentFileJob],
+) -> list[DocumentIngest | DocumentFileFailure]:
+    """File every job, isolating one job's failure from the rest of the batch.
+
+    A parse failure (TH1.03's parsers all raise `DocumentParseError` on
+    unparseable content) is the expected case, but nothing here is narrowed to
+    that type — any exception `file_document` lets through isolates the same
+    way, including a bad-parent `ValueError` or a genuine database error.
+
+    **Why a SAVEPOINT and not a bare try/except.** `file_document` does not
+    commit (the caller owns the transaction boundary), so a parse failure
+    lands *after* the strip and *before* the new blocks are written — the
+    exact midpoint doc 16 §3's flowchart draws as one atomic step. Without a
+    SAVEPOINT, catching the exception and moving on would leave that
+    document's prior blocks deleted with nothing written to replace them,
+    staged in the caller's still-open transaction, to be committed along with
+    every other job's success. `session.begin_nested()` scopes each job to
+    its own SAVEPOINT: on exception it rolls back to the mark automatically
+    (SQLAlchemy's async context-manager contract) before this function's own
+    `except` ever runs, so the failed job's partial writes never reach the
+    outer transaction and every other job's is untouched.
+    """
+    results: list[DocumentIngest | DocumentFileFailure] = []
+    for job in jobs:
+        try:
+            async with session.begin_nested():
+                result = await file_document(
+                    session,
+                    project=job.project,
+                    content=job.content,
+                    parse=job.parse,
+                    uri=job.uri,
+                    document_id=job.document_id,
+                    title=job.title,
+                    source_type=job.source_type,
+                    properties=job.properties,
+                    actor=job.actor,
+                    source=job.source,
+                )
+        except Exception as exc:
+            results.append(DocumentFileFailure(label=job.label, error=str(exc)))
+        else:
+            results.append(result)
+    return results
 
 
 def _resolve_tree(drafts: Sequence[BlockDraft]) -> list[documents_repo.BlockRow]:
