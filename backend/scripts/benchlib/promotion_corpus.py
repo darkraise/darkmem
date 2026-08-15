@@ -127,12 +127,57 @@ the window's width, and an absolute date here would be a silent 90-day fuse
 to the zero the ruling refuses to accept unexercised. The arming window
 clause is untouched: it iterates the arming groups alone, and
 :func:`validate_blocked_hold_design` is the mirror guard on this one.
+
+**T2.131 — the fixture became a fleet, and the diversity binding became
+per-repo.** The audit is scored on the 95 % Clopper-Pearson upper bound
+(T2.132), and at ``k = 1`` that bound needs a window near 500 rather than the
+149 T2.129 reached. The diversity arm is the only one that converts near
+one-for-one, and it could not grow:
+:func:`validate_diversity_group_against_fixture` refuses two claims naming one
+dependency — deliberately, since they converge on one fact — and the fixture
+carried a single repository whose 101 imports were already claim-saturated.
+Growing that arm inside one repository would have meant a stand-in service with
+several hundred distinct third-party dependencies, which is not a repository
+anyone indexed, and plausibility is the premise the whole corpus rests on.
+
+So the fixture carries a **fleet**, and each claim's subject is bound to one
+repo in it. The widening was adjudicated on intent rather than on letter:
+``triple_key`` embeds the subject, the code lift matches candidates on
+canonicalised subject name inside ``fact_lift.CODE_FACT_PROJECT``, and each code
+origin is the repo's own id, so cross-repo seconding has no code path and
+claim-to-fact bijectivity survives the widening structurally. What the letter
+protected, the per-repo form still protects: two claims naming one dependency
+**in one repo** are refused exactly as before.
+
+**Subject binding is enforced, not assumed**, because it is the entire mechanism
+that makes the facts distinct. A claim naming no repo leaves its subject to
+whatever noun phrase the extractor promotes, and the fact that results is then
+not the one the code side seconds — so the claim holds silently at one origin,
+which is the failure every other validator here exists to refuse. The loader
+refuses duplicate repo names and duplicate derived ids across the fleet for the
+same reason: two fixtures resolving to one repository id fold two claim sets
+onto one subject.
+
+**The three claims that did not converge in T2.129's census have a cause, and it
+is largely mechanical** (identified by SQL over the preserved unsimulated run,
+2026-08-15). Two of them — ``redis`` and ``elasticsearch`` — are the only two of
+the original 101 imports whose name types into
+``code_deriver._USES_ENTITY_TYPES`` (both ``database``), so the deriver asserts
+``USES`` where the memory-side extraction of "X depends on Y" asserts
+``DEPENDS_ON``: two rel_types, two ``triple_key``s, no convergence. The third —
+``requests`` — is an authoring drift: its content named a second component in a
+trailing clause ("inside the synchronous acquirer client") and the extractor
+promoted *that* to subject. Both causes are avoidable at authoring time, the
+first by an offline screen over the fixture and the second by keeping the repo
+the grammatical subject, so the measured 0.9703 is a conservative constant to
+size against rather than a rate that decays as the arm grows.
 """
 from __future__ import annotations
 
 import json
 import re
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -848,9 +893,23 @@ def validate_blocked_hold_design(
         )
 
 
+def _names_in(text_: str, candidates) -> list[str]:
+    """Which candidate names the text mentions, at word boundaries.
+
+    One spelling of the match for dependencies and for repository names alike:
+    a repo bound by a looser rule than its dependency would make the subject
+    the weaker half of the binding, and the subject is what makes the facts
+    distinct.
+    """
+    return sorted(
+        name for name in candidates
+        if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text_)
+    )
+
+
 def validate_diversity_group_against_fixture(
-    entries: list[dict], fixture: dict
-) -> dict[str, str]:
+    entries: list[dict], fixtures: list[dict]
+) -> dict[str, tuple[str, str]]:
     """Tie each ``diversity`` claim to the repository import that seconds it.
 
     The diversity group's design spans two committed files, and the dependency
@@ -862,14 +921,26 @@ def validate_diversity_group_against_fixture(
     ``_DESIGN`` cannot catch it: it grants ``diversity`` a single memory origin
     precisely because the second origin is supposed to come from the parse.
 
-    Refuses three shapes and returns the claim → dependency map it proved:
+    **The binding is per repository** (T2.131). The claim names one repo in the
+    fleet and one dependency *that repo imports*, and the pair is what must be
+    unique. Two claims naming one dependency in **different** repos are two
+    facts — different subjects, different ``triple_key``s, each seconded by its
+    own repo's code origin — and are admitted; two in the **same** repo still
+    converge on one fact and are still refused.
 
-    - a claim naming none of the fixture's dependencies (the import was never
-      added, or was renamed out from under the claim);
-    - a claim naming several (the grouping is ambiguous, so which fact the
-      claim lands on is not readable off the corpus);
-    - two claims naming the same dependency (they converge on one fact, so the
-      bucket carries fewer claims than the corpus appears to declare).
+    Refuses five shapes and returns the claim → (repo, dependency) map it
+    proved:
+
+    - a claim naming no repo in the fleet, which leaves its subject to whatever
+      noun phrase the extractor promotes — the fact then differs from the one
+      the code side seconds and the claim holds silently at one origin;
+    - a claim naming several repos, so which repo's fact it corroborates is not
+      readable off the corpus;
+    - a claim naming none of *its* repo's dependencies (the import was never
+      added, was renamed out from under the claim, or belongs to a sibling
+      repo);
+    - a claim naming several of them (the grouping is ambiguous);
+    - two claims naming the same (repo, dependency) pair.
 
     The other direction is deliberately allowed: an import no memory notes is
     a code-only fact born on the rung, counted by the completeness probe's
@@ -877,15 +948,19 @@ def validate_diversity_group_against_fixture(
     """
     from app.services.code_deriver import dependency_name
 
-    dependencies: set[str] = set()
-    for edge in fixture.get("imports", ()):
-        name = dependency_name(edge["target_key"])
-        if name is None:
-            raise ValueError(
-                f"repo fixture import {edge['target_key']!r} is not a "
-                f"dependency the deriver will assert, so it seconds nothing"
-            )
-        dependencies.add(name.lower())
+    dependencies_by_repo: dict[str, set[str]] = {}
+    for fixture in fixtures:
+        repo_name = fixture["repo"]["name"].strip().lower()
+        dependencies: set[str] = set()
+        for edge in fixture.get("imports", ()):
+            name = dependency_name(edge["target_key"])
+            if name is None:
+                raise ValueError(
+                    f"repo fixture import {edge['target_key']!r} is not a "
+                    f"dependency the deriver will assert, so it seconds nothing"
+                )
+            dependencies.add(name.lower())
+        dependencies_by_repo[repo_name] = dependencies
 
     by_claim: dict[str, list[dict]] = {}
     for entry in entries:
@@ -893,46 +968,118 @@ def validate_diversity_group_against_fixture(
             continue
         by_claim.setdefault(claim_key(entry["key"]), []).append(entry)
 
-    resolved: dict[str, str] = {}
+    resolved: dict[str, tuple[str, str]] = {}
     for claim, group_entries in sorted(by_claim.items()):
         text_ = " ".join(entry["content"] for entry in group_entries).lower()
-        named = sorted(
-            dep for dep in dependencies
-            if re.search(rf"(?<![\w-]){re.escape(dep)}(?![\w-])", text_)
-        )
+        repos = _names_in(text_, dependencies_by_repo)
+        if not repos:
+            raise ValueError(
+                f"diversity claim {claim!r} names none of the fleet's "
+                f"repositories {sorted(dependencies_by_repo)}; the subject is "
+                f"then whatever noun phrase the extractor promotes, the fact "
+                f"it lifts to is not the one the repository seconds, and the "
+                f"claim holds silently at one origin"
+            )
+        if len(repos) > 1:
+            raise ValueError(
+                f"diversity claim {claim!r} names several repositories "
+                f"{repos}; which repository's fact it corroborates is then "
+                f"not readable off the corpus"
+            )
+        repo_name = repos[0]
+        named = _names_in(text_, dependencies_by_repo[repo_name])
         if not named:
             raise ValueError(
                 f"diversity claim {claim!r} names none of the repository's "
-                f"imported dependencies {sorted(dependencies)}; without the "
+                f"imported dependencies -- {repo_name!r} imports "
+                f"{sorted(dependencies_by_repo[repo_name])}; without the "
                 f"import there is no second origin, so the claim silently "
                 f"holds at one origin and leaves the diversity bucket"
             )
         if len(named) > 1:
             raise ValueError(
                 f"diversity claim {claim!r} names several imported "
-                f"dependencies {named}; which fact it corroborates is then "
-                f"not readable off the corpus"
+                f"dependencies {named} of {repo_name!r}; which fact it "
+                f"corroborates is then not readable off the corpus"
             )
-        dependency = named[0]
-        if dependency in resolved.values():
-            twin = next(k for k, v in resolved.items() if v == dependency)
+        pair = (repo_name, named[0])
+        if pair in resolved.values():
+            twin = next(k for k, v in resolved.items() if v == pair)
             raise ValueError(
                 f"diversity claims {twin!r} and {claim!r} both name "
-                f"{dependency!r}; they converge on one fact, so the bucket "
-                f"holds fewer claims than the corpus appears to declare"
+                f"{named[0]!r} in {repo_name!r}; they converge on one fact, so "
+                f"the bucket holds fewer claims than the corpus appears to "
+                f"declare"
             )
-        resolved[claim] = dependency
+        resolved[claim] = pair
     return resolved
 
 
-def load_repo_fixture(path: str | Path = REPO_FIXTURE_PATH) -> dict:
-    fixture = json.loads(Path(path).read_text(encoding="utf-8"))
-    repo = fixture.get("repo") or {}
-    if not repo.get("name"):
-        raise ValueError(f"repo fixture {path}: 'repo.name' is required")
-    if not fixture.get("files"):
-        raise ValueError(f"repo fixture {path}: 'files' is required and non-empty")
-    return fixture
+def load_repo_fixtures(path: str | Path = REPO_FIXTURE_PATH) -> list[dict]:
+    """Load the repository fleet, one ``{repo, files, imports}`` per element.
+
+    Three refusals, each of them a way the fleet silently stops meaning what
+    the corpus says it means:
+
+    - **A duplicate repo name, case-insensitively.** Entity names are
+      lowercased on write, so two spellings of one name are one node and the
+      two claim sets fold onto one subject.
+    - **A duplicate derived repository id.** ``repo_id_for_name`` is what the
+      code-side origin key is, so two fixtures sharing an id second each
+      other's claims.
+    - **An import whose ``source_key`` names no file in the fixture.**
+      ``assert_repo_graph`` reads the importing file's language out of
+      ``code_files``; an edge from a file it cannot find lands in the
+      ``unknown`` language bucket and is skipped as underivable, so the claim
+      it was supposed to second quietly loses its second origin.
+    """
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    fixtures = raw.get("repos")
+    if not isinstance(fixtures, list) or not fixtures:
+        raise ValueError(f"repo fixture {path}: 'repos' is required and non-empty")
+
+    by_name: dict[str, str] = {}
+    by_id: dict[str, str] = {}
+    for fixture in fixtures:
+        repo = fixture.get("repo") or {}
+        name = repo.get("name")
+        if not name:
+            raise ValueError(f"repo fixture {path}: every repo needs a 'name'")
+        if not fixture.get("files"):
+            raise ValueError(
+                f"repo fixture {path}: repo {name!r} needs a non-empty 'files'"
+            )
+        lowered = name.strip().lower()
+        if lowered in by_name:
+            raise ValueError(
+                f"repo fixture {path}: {name!r} and {by_name[lowered]!r} are "
+                f"one repository name once lowercased. Entity names are "
+                f"lowercased on write, so both claim sets would fold onto one "
+                f"subject and half of them would hold at one origin"
+            )
+        by_name[lowered] = name
+        repo_id = repo_id_for_name(name)
+        if repo_id in by_id:
+            raise ValueError(
+                f"repo fixture {path}: {name!r} and {by_id[repo_id]!r} derive "
+                f"the same repository id {repo_id}, which is the code-side "
+                f"origin key -- each would second the other's claims"
+            )
+        by_id[repo_id] = name
+
+        paths = {entry["file_path"] for entry in fixture["files"]}
+        stray = sorted({
+            edge["source_key"] for edge in fixture.get("imports", ())
+            if edge["source_key"] not in paths
+        })
+        if stray:
+            raise ValueError(
+                f"repo fixture {path}: repo {name!r} imports from files it "
+                f"does not declare {stray}; the deriver reads the importing "
+                f"file's language from `code_files`, so those edges land in "
+                f"the `unknown` bucket and are skipped as underivable"
+            )
+    return fixtures
 
 
 async def seed_memory_rows(session_factory, entries: list[dict]) -> list[dict]:
@@ -1007,8 +1154,8 @@ _INSERT_EDGE = text("""
 """)
 
 
-async def install_repo_fixture(session_factory, fixture: dict) -> str:
-    """Write the rows a completed index run would have left, and return the id.
+async def install_repo_fixtures(session_factory, fixtures: list[dict]) -> dict[str, str]:
+    """Write the rows completed index runs would have left, by repo name.
 
     **This is corpus, not ladder input.** It stubs the indexer — cloning a
     repository and parsing it needs a network and a working tree a gate run
@@ -1018,34 +1165,39 @@ async def install_repo_fixture(session_factory, fixture: dict) -> str:
     from the provenance. The stand-in stops at the boundary where the truth
     core begins.
     """
-    repo = fixture["repo"]
-    repo_id = repo_id_for_name(repo["name"])
-    commit = repo.get("last_indexed_commit")
+    repo_ids: dict[str, str] = {}
     async with session_factory() as session:
-        await session.execute(_INSERT_REPO, {
-            "id": repo_id,
-            "name": repo["name"],
-            "url": repo.get("url"),
-            "local_path": repo.get("local_path"),
-            "branch": repo.get("default_branch", "main"),
-            "commit": commit,
-        })
-        for entry in fixture["files"]:
-            await session.execute(_INSERT_FILE, {
-                "id": str(uuid.uuid5(REPO_ID_NAMESPACE, f"{repo_id}:{entry['file_path']}")),
-                "repo_id": repo_id,
-                "file_path": entry["file_path"],
-                "language": entry.get("language"),
+        for fixture in fixtures:
+            repo = fixture["repo"]
+            repo_id = repo_id_for_name(repo["name"])
+            commit = repo.get("last_indexed_commit")
+            await session.execute(_INSERT_REPO, {
+                "id": repo_id,
+                "name": repo["name"],
+                "url": repo.get("url"),
+                "local_path": repo.get("local_path"),
+                "branch": repo.get("default_branch", "main"),
                 "commit": commit,
             })
-        for edge in fixture.get("imports", ()):
-            await session.execute(_INSERT_EDGE, {
-                "repo_id": repo_id,
-                "source_key": edge["source_key"],
-                "target_key": edge["target_key"],
-            })
+            for entry in fixture["files"]:
+                await session.execute(_INSERT_FILE, {
+                    "id": str(uuid.uuid5(
+                        REPO_ID_NAMESPACE, f"{repo_id}:{entry['file_path']}"
+                    )),
+                    "repo_id": repo_id,
+                    "file_path": entry["file_path"],
+                    "language": entry.get("language"),
+                    "commit": commit,
+                })
+            for edge in fixture.get("imports", ()):
+                await session.execute(_INSERT_EDGE, {
+                    "repo_id": repo_id,
+                    "source_key": edge["source_key"],
+                    "target_key": edge["target_key"],
+                })
+            repo_ids[repo["name"]] = repo_id
         await session.commit()
-    return repo_id
+    return repo_ids
 
 
 # The memory whose id a `memory`-kind provenance row names. Joined on the text
@@ -1262,6 +1414,32 @@ _SUPERSEDED_MEMORIES = text("""
 """)
 
 
+# Step 3's per-repo reconciliation, read off the journal (§0(b) condition 5).
+# Every diversity claim lives in one project, so a project-level count cannot
+# say which repository's claims fell short -- and a shortfall there is silent
+# by construction: the claim holds at one origin, journals nothing and simply
+# is not in the promoted set. Grouped on the fact's own subject rather than on
+# the corpus's declared repo, so a claim whose extraction drifted to another
+# subject shows up as a missing promotion rather than being counted anyway.
+_DIVERSITY_BY_REPO = text("""
+    SELECT kt.subject_name AS repo,
+           COUNT(DISTINCT kt.id) AS facts,
+           COUNT(DISTINCT kt.id) FILTER (
+               WHERE EXISTS (
+                   SELECT 1 FROM events e
+                   WHERE e.event_type = 'verified'
+                     AND e.object_type = 'fact'
+                     AND e.object_id = kt.id
+                     AND e.payload->>'outcome' = 'promote'
+               )
+           ) AS promoted_facts
+    FROM knowledge_triples kt
+    WHERE kt.subject_name = ANY(CAST(:repos AS text[]))
+    GROUP BY 1
+    ORDER BY 1
+""")
+
+
 @dataclass(frozen=True)
 class ReadBack:
     promotions_by_gate: tuple[dict, ...]
@@ -1270,6 +1448,10 @@ class ReadBack:
     disputes: tuple[dict, ...] = ()
     blocked_holds: tuple[dict, ...] = ()
     superseded_by_project: tuple[dict, ...] = ()
+    diversity_by_repo: tuple[dict, ...] = ()
+    #: Authored claims per repo, carried alongside so the rendered
+    #: reconciliation is a comparison rather than a bare count.
+    diversity_claims_by_repo: dict = field(default_factory=dict)
 
     @property
     def promoted_facts(self) -> int:
@@ -1284,8 +1466,9 @@ class ReadBack:
         return sum(row["hold_events"] for row in self.blocked_holds)
 
 
-async def read_back(session) -> ReadBack:
+async def read_back(session, *, diversity_claims_by_repo: dict | None = None) -> ReadBack:
     """What the journal and the vault say after the recompute has converged."""
+    authored = dict(diversity_claims_by_repo or {})
     gates = (await session.execute(_PROMOTIONS_BY_GATE)).mappings().all()
     census = (await session.execute(_FACT_CENSUS)).mappings().all()
     controls = (
@@ -1294,6 +1477,12 @@ async def read_back(session) -> ReadBack:
     disputes = (await session.execute(_ARMED_DISPUTES)).mappings().all()
     blocked = (await session.execute(_BLOCKED_HOLDS)).mappings().all()
     superseded = (await session.execute(_SUPERSEDED_MEMORIES)).mappings().all()
+    by_repo = (
+        (await session.execute(
+            _DIVERSITY_BY_REPO, {"repos": sorted(authored)}
+        )).mappings().all()
+        if authored else []
+    )
     return ReadBack(
         promotions_by_gate=tuple(dict(row) for row in gates),
         census=tuple(dict(row) for row in census),
@@ -1301,6 +1490,8 @@ async def read_back(session) -> ReadBack:
         disputes=tuple(dict(row) for row in disputes),
         blocked_holds=tuple(dict(row) for row in blocked),
         superseded_by_project=tuple(dict(row) for row in superseded),
+        diversity_by_repo=tuple(dict(row) for row in by_repo),
+        diversity_claims_by_repo=authored,
     )
 
 
@@ -1387,6 +1578,30 @@ def render_read_back(result: ReadBack) -> str:
             f"    {row['project']:<9} superseded={row['superseded']} "
             f"of {row['memories']}"
         )
+
+    if result.diversity_claims_by_repo:
+        lines.append("")
+        lines.append(
+            "== diversity reconciliation, per repository (authored vs promoted) =="
+        )
+        promoted = {
+            row["repo"]: row["promoted_facts"] for row in result.diversity_by_repo
+        }
+        for repo, authored in sorted(result.diversity_claims_by_repo.items()):
+            landed = promoted.get(repo, 0)
+            lines.append(
+                f"  {repo:<24} authored={authored:<4} promoted={landed:<4} "
+                f"shortfall={authored - landed}"
+            )
+        total_authored = sum(result.diversity_claims_by_repo.values())
+        total_promoted = sum(
+            promoted.get(repo, 0) for repo in result.diversity_claims_by_repo
+        )
+        lines.append(
+            f"  total authored={total_authored} promoted={total_promoted} "
+            f"conversion="
+            f"{(total_promoted / total_authored if total_authored else 0):.4f}"
+        )
     return "\n".join(lines)
 
 
@@ -1410,6 +1625,11 @@ class PreparedCorpus:
     #: not a missing one -- it says the run paid nothing.
     tokens_by_purpose: dict = field(default_factory=dict)
     wall_seconds: float = 0.0
+    #: Authored `diversity` claims per fixture repository, which is the side
+    #: Step 3's per-repo reconciliation compares the journal against. All of
+    #: them live in `fact_lift.CODE_FACT_PROJECT`, so a project-level check
+    #: cannot see which repo's claims fell short.
+    diversity_claims_by_repo: dict = field(default_factory=dict)
     notes: tuple[str, ...] = field(default_factory=tuple)
     wave_two_entries: int = 0
     wave_two_lift: dict = field(default_factory=dict)
@@ -1482,8 +1702,8 @@ async def prepare(
     started = time.monotonic()
     corpus_bytes = Path(corpus_path).read_bytes()
     entries = load_promotion_corpus(corpus_path)
-    fixture = load_repo_fixture(fixture_path)
-    validate_diversity_group_against_fixture(entries, fixture)
+    fixtures = load_repo_fixtures(fixture_path)
+    diversity_binding = validate_diversity_group_against_fixture(entries, fixtures)
     first_wave = entries_for_wave(entries, 1)
     second_wave = entries_for_wave(entries, 2)
 
@@ -1509,9 +1729,11 @@ async def prepare(
     if simulate_capture_time:
         stamped = await simulate_capture_time_provenance(session_factory)
 
-    repo_id = await install_repo_fixture(session_factory, fixture)
+    repo_ids = await install_repo_fixtures(session_factory, fixtures)
+    repo_assertions: dict[str, dict] = {}
     async with session_factory() as session:
-        repo_assertions = await assert_repo_graph(session, repo_id)
+        for repo_name, repo_id in repo_ids.items():
+            repo_assertions[repo_name] = await assert_repo_graph(session, repo_id)
         await session.commit()
     code_lift = await code_lift_to_exhaustion(session_factory)
 
@@ -1550,6 +1772,9 @@ async def prepare(
         capture_time_stamped=stamped,
         repo_assertions=repo_assertions,
         n_facts=n_facts,
+        diversity_claims_by_repo=dict(sorted(Counter(
+            repo for repo, _ in diversity_binding.values()
+        ).items())),
         notes=tuple(notes),
         wave_two_entries=len(second_wave),
         wave_two_lift=wave_two_lift,

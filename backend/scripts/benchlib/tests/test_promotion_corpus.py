@@ -151,11 +151,18 @@ def test_the_committed_corpus_keeps_the_claim_key_convention(entries):
     pc.validate_claim_key_convention(entries)
 
 
-def test_every_diversity_claim_is_seconded_by_a_fixture_import(entries):
+@pytest.fixture(scope="module")
+def fixtures():
+    return pc.load_repo_fixtures()
+
+
+def _claim_entries(entries, claim):
+    return [e for e in entries if pc.claim_key(e["key"]) == claim]
+
+
+def test_every_diversity_claim_is_seconded_by_a_fixture_import(entries, fixtures):
     """The cross-file half of the diversity design, proven rather than assumed."""
-    resolved = pc.validate_diversity_group_against_fixture(
-        entries, pc.load_repo_fixture()
-    )
+    resolved = pc.validate_diversity_group_against_fixture(entries, fixtures)
     claims = {
         pc.claim_key(entry["key"])
         for entry in entries
@@ -165,22 +172,241 @@ def test_every_diversity_claim_is_seconded_by_a_fixture_import(entries):
     assert len(set(resolved.values())) == len(resolved)
 
 
-def test_diversity_guard_refuses_a_claim_whose_import_is_missing(entries):
+def test_diversity_guard_refuses_a_claim_whose_import_is_missing(entries, fixtures):
     """The silent edit: a claim loads, validates, runs — and holds at one origin."""
-    fixture = pc.load_repo_fixture()
-    fixture["imports"] = [
-        edge for edge in fixture["imports"] if edge["target_key"] != "redis"
-    ]
+    broken = copy.deepcopy(fixtures)
+    home = next(
+        f for f in broken
+        if any(e["target_key"] == "redis" for e in f["imports"])
+    )
+    home["imports"] = [e for e in home["imports"] if e["target_key"] != "redis"]
     with pytest.raises(ValueError, match="names none of the repository's"):
-        pc.validate_diversity_group_against_fixture(entries, fixture)
+        pc.validate_diversity_group_against_fixture(entries, broken)
 
 
-def test_diversity_guard_refuses_two_claims_naming_one_dependency(entries):
+def test_diversity_guard_refuses_two_claims_naming_one_dependency(entries, fixtures):
+    """Same dependency, same repo: still one fact, so still refused."""
+    resolved = pc.validate_diversity_group_against_fixture(entries, fixtures)
+    repo, _ = next(iter(resolved.values()))
+    siblings = [claim for claim, (r, _) in resolved.items() if r == repo][:2]
+    assert len(siblings) == 2
     broken = copy.deepcopy(entries)
-    claims = [e for e in broken if e["group"] == "diversity"]
-    claims[0]["content"] = claims[1]["content"] + " (restated)"
+    donor = _claim_entries(broken, siblings[1])[0]["content"]
+    for entry in _claim_entries(broken, siblings[0]):
+        entry["content"] = donor + " (restated)"
     with pytest.raises(ValueError, match="both name"):
-        pc.validate_diversity_group_against_fixture(broken, pc.load_repo_fixture())
+        pc.validate_diversity_group_against_fixture(broken, fixtures)
+
+
+def test_the_widening_admits_a_shared_dependency_across_repos_and_no_more(fixtures):
+    """§0(b) condition 3 — the widening-delta pair, asserted side by side.
+
+    The adjudicated grant is exactly one step wide: the subject is what makes
+    two claims two facts, so one dependency named in *different* repos is two
+    facts and is admitted, and one dependency named twice in the *same* repo
+    still converges on one fact and is still refused. Written as one test
+    because the two halves are the grant and its boundary, and a diff that
+    quietly widened the second half would still pass either half alone.
+    """
+    assert len(fixtures) >= 2
+    first, second = fixtures[0]["repo"]["name"], fixtures[1]["repo"]["name"]
+    shared = sorted(
+        {e["target_key"] for e in fixtures[0]["imports"]}
+        & {e["target_key"] for e in fixtures[1]["imports"]}
+    )
+    assert shared, "the fleet must share a common core for this to be testable"
+    dependency = shared[0]
+
+    def claim(key, repo):
+        return {
+            "key": key, "group": "diversity", "project": "default",
+            "source": "claude-code", "origin_key": "claude-code:widen01",
+            "created_at": "2026-06-02T09:14:00+00:00", "memory_type": "fact",
+            "content": f"{repo} depends on {dependency} for the outbound path.",
+        }
+
+    admitted = pc.validate_diversity_group_against_fixture(
+        [claim("wd-one", first), claim("wd-two", second)], fixtures
+    )
+    assert admitted == {
+        "wd-one": (first.lower(), dependency.lower()),
+        "wd-two": (second.lower(), dependency.lower()),
+    }
+
+    with pytest.raises(ValueError, match="both name"):
+        pc.validate_diversity_group_against_fixture(
+            [claim("wd-one", first), claim("wd-two", first)], fixtures
+        )
+
+
+def test_diversity_guard_refuses_a_claim_that_names_no_repository(fixtures):
+    """§0(b) condition 4 — zero named repos is refused, not only ambiguity.
+
+    Subject binding is the whole mechanism that makes the facts distinct. A
+    claim that names only its dependency leaves the subject to whatever noun
+    phrase the extractor promotes, and the fact it lifts to is then not the one
+    the repository seconds — so it holds at one origin with no error anywhere.
+    """
+    dependency = fixtures[0]["imports"][0]["target_key"]
+    orphan = {
+        "key": "wd-orphan", "group": "diversity", "project": "default",
+        "source": "claude-code", "origin_key": "claude-code:widen02",
+        "created_at": "2026-06-02T09:14:00+00:00", "memory_type": "fact",
+        "content": f"The billing service depends on {dependency} for retries.",
+    }
+    with pytest.raises(ValueError, match="names none of the fleet's repositories"):
+        pc.validate_diversity_group_against_fixture([orphan], fixtures)
+
+
+def test_diversity_guard_refuses_a_claim_that_names_several_repositories(fixtures):
+    """Cross-repo ambiguity, refused as dependency ambiguity already is."""
+    first, second = fixtures[0]["repo"]["name"], fixtures[1]["repo"]["name"]
+    dependency = fixtures[0]["imports"][0]["target_key"]
+    ambiguous = {
+        "key": "wd-both", "group": "diversity", "project": "default",
+        "source": "claude-code", "origin_key": "claude-code:widen03",
+        "created_at": "2026-06-02T09:14:00+00:00", "memory_type": "fact",
+        "content": f"{first} and {second} both depend on {dependency}.",
+    }
+    with pytest.raises(ValueError, match="names several repositories"):
+        pc.validate_diversity_group_against_fixture([ambiguous], fixtures)
+
+
+def test_diversity_guard_refuses_a_dependency_the_named_repo_does_not_import(fixtures):
+    """§0(b) condition 4 — the named repo must itself import the dependency.
+
+    Without this the binding leans on dependency uniqueness across the whole
+    fleet, which leaves the subject unpinned again: the claim's repo would not
+    be the one whose code origin seconds it.
+    """
+    host = fixtures[0]
+    mine = {e["target_key"] for e in host["imports"]}
+    foreign = next(
+        (
+            edge["target_key"]
+            for other in fixtures[1:]
+            for edge in other["imports"]
+            if edge["target_key"] not in mine
+        ),
+        None,
+    )
+    assert foreign, "a sibling repo must import something this one does not"
+    stray = {
+        "key": "wd-foreign", "group": "diversity", "project": "default",
+        "source": "claude-code", "origin_key": "claude-code:widen04",
+        "created_at": "2026-06-02T09:14:00+00:00", "memory_type": "fact",
+        "content": f"{host['repo']['name']} depends on {foreign} for the feed.",
+    }
+    with pytest.raises(ValueError, match="names none of the repository's"):
+        pc.validate_diversity_group_against_fixture([stray], fixtures)
+
+
+def test_fixture_loader_refuses_a_duplicate_repo_name(tmp_path, fixtures):
+    """§0(b) condition 4 — two fixtures cannot be one subject.
+
+    Entity names are lowercased on write, so two spellings of one name are one
+    node; both claim sets would fold onto it and half of them would silently
+    hold at one origin.
+    """
+    import json
+
+    twin = copy.deepcopy(fixtures[0])
+    twin["repo"] = {**twin["repo"], "name": twin["repo"]["name"].upper()}
+    path = tmp_path / "repo_fixture.json"
+    path.write_text(json.dumps({"repos": [fixtures[0], twin]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="one repository name once lowercased"):
+        pc.load_repo_fixtures(path)
+
+
+def test_fixture_loader_refuses_a_duplicate_derived_repo_id(
+    tmp_path, fixtures, monkeypatch
+):
+    """The id is the code-side origin key, so a shared one cross-seconds.
+
+    Distinct names derive distinct ids today, which is exactly why this guard
+    is a tripwire on the *derivation* rather than a second spelling of the name
+    check — and why the derivation has to be made to collide to reach it. Left
+    untested it would read as covered by the name check and could be deleted
+    with a change to ``repo_id_for_name`` that nothing else notices.
+    """
+    import json
+
+    monkeypatch.setattr(pc, "repo_id_for_name", lambda name: "collided")
+    twin = copy.deepcopy(fixtures[0])
+    twin["repo"] = {**twin["repo"], "name": "a-different-name"}
+    path = tmp_path / "repo_fixture.json"
+    path.write_text(json.dumps({"repos": [fixtures[0], twin]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="derive the same repository id"):
+        pc.load_repo_fixtures(path)
+
+
+def test_fixture_loader_refuses_an_import_from_an_undeclared_file(tmp_path, fixtures):
+    """The silent drop: the deriver reads the importing file's language.
+
+    An edge whose ``source_key`` names no row in ``code_files`` lands in the
+    ``unknown`` language bucket and is skipped as underivable, so the claim it
+    was supposed to second loses its second origin with no error.
+    """
+    import json
+
+    broken = copy.deepcopy(fixtures[0])
+    broken["imports"] = broken["imports"] + [
+        {"source_key": "service/not_indexed.py", "target_key": "httpx"}
+    ]
+    path = tmp_path / "repo_fixture.json"
+    path.write_text(json.dumps({"repos": [broken]}), encoding="utf-8")
+    with pytest.raises(ValueError, match="imports from files it does not declare"):
+        pc.load_repo_fixtures(path)
+
+
+def test_the_fleet_stays_inside_its_adjudicated_ceiling(fixtures):
+    """§0(a)'s decided shape, asserted rather than described.
+
+    Manufactured-ness is a shape, not a count: a fleet of pairwise-disjoint
+    dependency sets is itself the signature, and a repository claiming every
+    import it has is a claim manifest wearing a repository's clothes.
+    """
+    assert len(fixtures) <= 6
+    imports = {
+        f["repo"]["name"]: {e["target_key"] for e in f["imports"]} for f in fixtures
+    }
+    for name, deps in imports.items():
+        assert len(deps) <= 101, name
+    core = set.intersection(*imports.values())
+    assert core, "sibling repos must share a common core"
+
+
+def test_every_claimed_dependency_asserts_the_relation_the_memory_does(entries, fixtures):
+    """The mechanical half of T2.129's three-claim shortfall, refused.
+
+    ``code_deriver`` picks ``USES`` over ``DEPENDS_ON`` by the dependency's
+    *entity type* — a ``database``, ``service``, ``protocol`` or ``language``
+    is something a repo uses — while a memory reading "X depends on Y" lifts a
+    ``DEPENDS_ON`` triple. Two rel_types are two ``triple_key``s, so the code
+    origin opens its own fact and the claim holds at one origin with nothing
+    logged. It is the exact cause of two of the three claims that did not
+    converge in the committed census, it is decidable offline, and it is
+    therefore refused here rather than paid for at run time.
+    """
+    from app.services.code_deriver import _entity_type_for, _relation_type_for
+
+    resolved = pc.validate_diversity_group_against_fixture(entries, fixtures)
+    mismatched = sorted(
+        (claim, dependency)
+        for claim, (_, dependency) in resolved.items()
+        if _relation_type_for(_entity_type_for(dependency, "tool")) != "DEPENDS_ON"
+    )
+    assert mismatched == [
+        ("pg-elasticsearch", "elasticsearch"),
+        ("pg-redis", "redis"),
+    ], (
+        "a claimed dependency types into code_deriver._USES_ENTITY_TYPES, so "
+        "the repository asserts USES where the memory asserts DEPENDS_ON and "
+        "the two never converge on one fact. The two grandfathered here are "
+        "T2.129's measured shortfall and are left as they are on purpose -- "
+        "re-wording them would move the 0.9703 constant the sizing reconciles "
+        "against. New claims must not join them"
+    )
 
 
 @pytest.mark.parametrize("origin", [None, "", "   ", "unknown", "unknown:mcp:default"])
@@ -374,14 +600,14 @@ def test_repo_fixture_imports_are_derivable_dependencies():
     from app.services.code_deriver import dependency_name, is_internal_import
     from app.services.suffix_index import SuffixIndex
 
-    fixture = pc.load_repo_fixture()
-    paths = [entry["file_path"] for entry in fixture["files"]]
-    index = SuffixIndex(paths)
-    for edge in fixture["imports"]:
-        target = edge["target_key"]
-        assert not is_internal_import(target, index), target
-        assert dependency_name(target) is not None, target
-    assert {edge["source_key"] for edge in fixture["imports"]} <= set(paths)
+    for fixture in pc.load_repo_fixtures():
+        paths = [entry["file_path"] for entry in fixture["files"]]
+        index = SuffixIndex(paths)
+        for edge in fixture["imports"]:
+            target = edge["target_key"]
+            assert not is_internal_import(target, index), target
+            assert dependency_name(target) is not None, target
+        assert {edge["source_key"] for edge in fixture["imports"]} <= set(paths)
 
 
 # ── the two mechanisms, against the real bench database ───────────────────
@@ -426,6 +652,60 @@ class TestAgainstBenchDatabase:
         assert row.origin_key == _PROBE_ORIGIN
         assert row.project == "t2108-probe"
         assert row.created_at == datetime(2026, 2, 3, 9, 0, tzinfo=timezone.utc)
+
+    @pytest.mark.asyncio
+    async def test_one_dependency_in_two_repos_is_two_separately_owned_relations(self):
+        """The widening's premise, proven against rows rather than argued.
+
+        The adjudication that let the diversity binding become per-repo rests on
+        cross-repo seconding having no code path: one dependency named in two
+        repos is two relations from two subjects, each carrying only its own
+        repository's id, so the code origin one claim receives can never second
+        the other's. Prose cannot demonstrate that — these rows can.
+
+        It also covers the multi-repo install itself, which nothing else
+        reaches. A break there surfaces during a G-C evidence run, which is
+        several hundred uncached extraction calls, and that is not a place to
+        discover it.
+        """
+        from app.services.code_deriver import assert_repo_graph, dependency_name
+
+        fixtures = pc.load_repo_fixtures()
+        repo_ids = await pc.install_repo_fixtures(bench_db.session_factory, fixtures)
+        assert len(set(repo_ids.values())) == len(fixtures)
+
+        imports: dict[str, set[str]] = {}
+        async with bench_db.session_factory() as session:
+            for fixture in fixtures:
+                name = fixture["repo"]["name"]
+                await assert_repo_graph(session, repo_ids[name])
+                imports[name.lower()] = {
+                    dependency_name(edge["target_key"]).lower()
+                    for edge in fixture["imports"]
+                }
+            await session.commit()
+
+        shared = sorted(set.intersection(*imports.values()))
+        assert shared, "the fleet must share a common core"
+        dependency = shared[0]
+
+        async with bench_db.session_factory() as session:
+            rows = (await session.execute(
+                text("""
+                    SELECT src.name AS subject, r.repo_ids
+                    FROM entity_relations r
+                    JOIN entities src ON src.id = r.source_entity_id
+                    JOIN entities tgt ON tgt.id = r.target_entity_id
+                    WHERE tgt.name = CAST(:dep AS text)
+                      AND src.name = ANY(CAST(:repos AS text[]))
+                    ORDER BY src.name
+                """),
+                {"dep": dependency, "repos": sorted(imports)},
+            )).mappings().all()
+
+        assert [row["subject"] for row in rows] == sorted(imports)
+        assert all(len(row["repo_ids"]) == 1 for row in rows)
+        assert len({row["repo_ids"][0] for row in rows}) == len(fixtures)
 
     @staticmethod
     async def _open_replacement(project, key, subject, obj, origins):
@@ -850,3 +1130,76 @@ def test_the_arming_window_clause_ignores_the_blocked_hold_group(pinned_entries)
     cutoff = _ARMING_RUN_CLOCK - timedelta(days=relations.SUPERSESSION_WINDOW_DAYS)
     for entry in _blocked(pinned_entries):
         assert datetime.fromisoformat(entry["created_at"]) >= cutoff
+
+
+class TestTheTwinPrintsTokensItActuallyHas:
+    """`_print_twin` read `prompt_tokens` / `completion_tokens`, which
+    `PurposeUsage` has never had — its fields are split live/cache_known.
+
+    Both columns therefore printed 0 unconditionally, and the artifact was
+    correct only because the measured run was fully replayed and the true
+    values *were* zero. The first cold run would have printed
+    `live=246 prompt=0 completion=0` — the paid zero rule 2's twin exists to
+    refuse — with nothing to notice it. No test covered the printer
+    (T2.129 review, Critical C-1).
+    """
+
+    def _twin_output(self, usage: dict, capsys):
+        from dataclasses import dataclass, field
+        from benchlib.run_gc_evidence import _print_twin
+
+        @dataclass
+        class _Prepared:
+            wall_seconds: float = 1.0
+            live_calls: int = 3
+            tokens_by_purpose: dict = field(default_factory=dict)
+
+        _print_twin(_Prepared(tokens_by_purpose={"extraction": usage}))
+        return capsys.readouterr().out
+
+    def test_paid_tokens_reach_the_artifact(self, capsys):
+        """The assertion the old printer fails: non-zero paid tokens must
+        appear. Against the pre-fix code these render as 0."""
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        usage = asdict(PurposeUsage())
+        usage.update(
+            live_calls=246, live_prompt_tokens=91234, live_completion_tokens=5678,
+            cache_known_prompt_tokens=11, cache_known_completion_tokens=22,
+        )
+        out = self._twin_output(usage, capsys)
+        assert "91234" in out, "paid prompt tokens must reach the artifact"
+        assert "5678" in out, "paid completion tokens must reach the artifact"
+
+    def test_the_printer_reads_only_keys_the_ledger_emits(self):
+        """Structural: every key the printer asks for must exist on
+        `PurposeUsage`, so a field rename cannot silently zero a column."""
+        import ast, inspect, textwrap
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        from benchlib import run_gc_evidence
+
+        real = set(asdict(PurposeUsage()))
+        src = textwrap.dedent(inspect.getsource(run_gc_evidence._print_twin))
+        asked = {
+            node.args[0].value
+            for node in ast.walk(ast.parse(src))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute) and node.func.attr == "get"
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        }
+        unknown = asked - real
+        assert not unknown, (
+            f"the twin asks for keys the ledger does not emit: {sorted(unknown)} "
+            f"— each renders 0 forever and reads as a free call"
+        )
+
+    def test_live_unknown_calls_is_disclosed(self, capsys):
+        """A live call whose usage the vendor did not report is not free, and
+        this is the field built to say so."""
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        usage = asdict(PurposeUsage())
+        usage.update(live_calls=5, live_unknown_calls=4)
+        assert "live_unknown=4" in self._twin_output(usage, capsys)
