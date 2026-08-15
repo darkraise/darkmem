@@ -53,6 +53,78 @@ def test_load_span_gold_validates_every_pair(tmp_path):
         fg.load_span_gold(bad)
 
 
+# ── m2: hardening -- missing 'pairs', ids, answer_id/hypothesis ─────────────
+
+
+def _valid_pair(**overrides) -> dict:
+    base = {
+        "id": "x",
+        "answer_id": "ans-1",
+        "hypothesis": "some claim",
+        "verdict": "entailed",
+        "provenance": "hand-authored-fixture-span",
+        "premise_spans": [{"fixture_path": "a", "content_hash": "b",
+                            "block_id": "c", "char_span": [0, 1]}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_load_span_gold_refuses_a_document_with_no_pairs_key(tmp_path):
+    """The reproduced defect: a gold missing 'pairs' entirely used to
+    KeyError as a raw traceback at the run_faithfulness_gate.py call site
+    rather than a readable message from the loader itself."""
+    doc = tmp_path / "span_gold.json"
+    doc.write_text(json.dumps({"not_pairs": []}))
+    with pytest.raises(ValueError, match="pairs"):
+        fg.load_span_gold(doc)
+
+
+def test_load_span_gold_refuses_a_pair_with_no_id(tmp_path):
+    doc = tmp_path / "span_gold.json"
+    pair = _valid_pair()
+    del pair["id"]
+    doc.write_text(json.dumps({"pairs": [pair]}))
+    with pytest.raises(ValueError, match="id"):
+        fg.load_span_gold(doc)
+
+
+def test_load_span_gold_refuses_a_duplicate_id(tmp_path):
+    """The silent-corruption mutation: a duplicate id must be refused, not
+    silently overwrite an earlier verdict and double-count a slice."""
+    doc = tmp_path / "span_gold.json"
+    doc.write_text(json.dumps({"pairs": [
+        _valid_pair(id="dup"), _valid_pair(id="dup"),
+    ]}))
+    with pytest.raises(ValueError, match="duplicate"):
+        fg.load_span_gold(doc)
+
+
+def test_load_span_gold_refuses_a_pair_with_no_answer_id(tmp_path):
+    doc = tmp_path / "span_gold.json"
+    pair = _valid_pair()
+    del pair["answer_id"]
+    doc.write_text(json.dumps({"pairs": [pair]}))
+    with pytest.raises(ValueError, match="answer_id"):
+        fg.load_span_gold(doc)
+
+
+def test_load_span_gold_refuses_a_pair_with_no_hypothesis(tmp_path):
+    doc = tmp_path / "span_gold.json"
+    pair = _valid_pair()
+    del pair["hypothesis"]
+    doc.write_text(json.dumps({"pairs": [pair]}))
+    with pytest.raises(ValueError, match="hypothesis"):
+        fg.load_span_gold(doc)
+
+
+def test_load_span_gold_accepts_a_well_formed_document(tmp_path):
+    doc = tmp_path / "span_gold.json"
+    doc.write_text(json.dumps({"pairs": [_valid_pair()]}))
+    loaded = fg.load_span_gold(doc)
+    assert len(loaded["pairs"]) == 1
+
+
 # ── pair-shape validation ────────────────────────────────────────────────
 
 

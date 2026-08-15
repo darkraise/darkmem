@@ -169,13 +169,39 @@ def validate_pair_shape(pair: dict) -> None:
 def load_span_gold(path: str | Path = SPAN_GOLD_PATH) -> dict:
     """The real gold, loaded and shape-validated. Raises ``SpanGoldAbsent``
     — never returns an empty structure — when the file does not exist, so a
-    caller cannot mistake "nothing to load" for "loaded zero pairs"."""
+    caller cannot mistake "nothing to load" for "loaded zero pairs".
+
+    Beyond ``validate_pair_shape``'s per-pair checks (verdict, provenance,
+    premise spans), this also refuses a document with no ``"pairs"`` key at
+    all, a pair with no usable ``id``, a duplicate ``id`` (which would
+    silently overwrite an earlier verdict in every ``dict[id, ...]`` this
+    module builds and double-count that pair's slice), and a pair missing
+    ``answer_id`` or ``hypothesis`` — both are read unguarded downstream by
+    ``score_answer_coverage`` and ``score_via_live_judge``."""
     path = Path(path)
     if not path.exists():
         raise SpanGoldAbsent(path)
     doc = json.loads(path.read_text(encoding="utf-8"))
-    for pair in doc.get("pairs", []):
+    if "pairs" not in doc:
+        raise ValueError(f"{path}: gold document carries no 'pairs' key")
+
+    seen_ids: set[str] = set()
+    for pair in doc["pairs"]:
         validate_pair_shape(pair)
+        pair_id = pair.get("id")
+        if not isinstance(pair_id, str) or not pair_id:
+            raise ValueError(f"pair carries no usable 'id': {pair!r}")
+        if pair_id in seen_ids:
+            raise ValueError(
+                f"duplicate pair id {pair_id!r} in {path} — ids must be "
+                f"unique, or a repeated id silently overwrites an earlier "
+                f"verdict and double-counts that pair's slice"
+            )
+        seen_ids.add(pair_id)
+        if not pair.get("answer_id"):
+            raise ValueError(f"pair {pair_id!r} carries no 'answer_id'")
+        if not pair.get("hypothesis"):
+            raise ValueError(f"pair {pair_id!r} carries no 'hypothesis'")
     return doc
 
 
