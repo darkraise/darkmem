@@ -34,6 +34,31 @@ half-replaced one. Block ids are minted fresh each time, which is what makes
 "this re-ingest did no block work" observable from outside rather than merely
 asserted — an unchanged re-file leaves the *same* ids behind.
 
+**The replace is atomic in the writer, not in each caller** (TH1.18). The strip
+runs before a parse that can fail, so an unguarded filing leaves the document
+row carrying the *new* ``content_hash`` while the old blocks are already
+deleted and the replacement never landed — and the hash is the worse half,
+because the next re-file of that same content short-circuits on a gate that now
+agrees with a tree nobody wrote. So ``file_document`` opens a SAVEPOINT around
+its whole body, the same atomic-replace shape Phase 5 gives savepoint B: a
+failure anywhere in resolve, strip, parse or write rolls back to the mark, the
+prior tree and the prior hash both survive, and the session stays usable for
+the caller. TH1.04 gave that to the one module it owned, which left the
+foot-gun live for every other direct caller; the guard belongs here, where a
+caller cannot forget it. The declared cost is that the short-circuit path pays
+a ``SAVEPOINT`` and a ``RELEASE`` it does not need — two statements that write
+nothing and parse nothing, and are the price of the gate living inside the
+guarded region rather than in front of it. Duplicating the gate outside it to
+skip them would put two answers to "did the content change" in the tree.
+
+``_file_document_without_savepoint`` is that body, unguarded and reachable, so
+TH1.03's and TH1.04's standing drills can run the identical failure through it
+and show the damage the SAVEPOINT prevents — a guard whose absence is never
+exercised is decorative. It is private, absent from ``__all__``, and
+``tests/test_block_pipeline.py`` fails the build if anything outside
+``file_document`` itself names it, anywhere under ``app/``, ``scripts/`` or
+``migrations/``.
+
 What this module deliberately does **not** do: parse anything (TH1.03 owns the
 parser stack), embed anything (TH1.05 owns ``block_embeddings__<slug>``), or
 run the five-phase memory pipeline over document content (doc 16 §3 — a filed
@@ -124,7 +149,48 @@ async def file_document(
     actor: str | None = None,
     source: str | None = None,
 ) -> DocumentIngest:
-    """File `content` as a document and replace its blocks. Does not commit.
+    """File `content` as a document and replace its blocks, atomically.
+    Does not commit.
+
+    Raises whatever went wrong — an unparseable source, a malformed tree, a
+    database error — after the SAVEPOINT has already rolled the whole filing
+    back, so a caller that catches sees the document exactly as it was, keeps
+    its prior `content_hash`, and gets a session it can keep using.
+    """
+    async with session.begin_nested():
+        return await _file_document_without_savepoint(
+            session,
+            project=project,
+            content=content,
+            parse=parse,
+            uri=uri,
+            document_id=document_id,
+            title=title,
+            source_type=source_type,
+            properties=properties,
+            actor=actor,
+            source=source,
+        )
+
+
+async def _file_document_without_savepoint(
+    session: AsyncSession,
+    *,
+    project: str,
+    content: str | bytes,
+    parse: Callable[[], Sequence[BlockDraft]],
+    uri: str | None = None,
+    document_id: UUID | None = None,
+    title: str | None = None,
+    source_type: str | None = None,
+    properties: dict | None = None,
+    actor: str | None = None,
+    source: str | None = None,
+) -> DocumentIngest:
+    """`file_document`'s body with the atomic replace taken away.
+
+    Reachable only from `file_document` and from the two standing drills that
+    exist to show what the SAVEPOINT buys; see the module docstring.
 
     `document_id` addresses an existing uri-less document — a note being
     re-filed. Passing it alongside a `uri` is refused rather than resolved by
@@ -246,36 +312,36 @@ async def file_documents_isolated(
     that type — any exception `file_document` lets through isolates the same
     way, including a bad-parent `ValueError` or a genuine database error.
 
-    **Why a SAVEPOINT and not a bare try/except.** `file_document` does not
-    commit (the caller owns the transaction boundary), so a parse failure
-    lands *after* the strip and *before* the new blocks are written — the
-    exact midpoint doc 16 §3's flowchart draws as one atomic step. Without a
-    SAVEPOINT, catching the exception and moving on would leave that
-    document's prior blocks deleted with nothing written to replace them,
-    staged in the caller's still-open transaction, to be committed along with
-    every other job's success. `session.begin_nested()` scopes each job to
-    its own SAVEPOINT: on exception it rolls back to the mark automatically
-    (SQLAlchemy's async context-manager contract) before this function's own
-    `except` ever runs, so the failed job's partial writes never reach the
-    outer transaction and every other job's is untouched.
+    **Why a bare try/except is enough here, and only here.** `file_document`
+    does not commit (the caller owns the transaction boundary), so a parse
+    failure lands *after* the strip and *before* the new blocks are written —
+    the exact midpoint doc 16 §3's flowchart draws as one atomic step. Catching
+    that and moving on, over an unguarded filing, would leave the document's
+    prior blocks deleted with nothing written to replace them, staged in the
+    caller's still-open transaction, to be committed along with every other
+    job's success. The SAVEPOINT that prevents it is `file_document`'s own
+    (TH1.18): it rolls back to the mark before the exception reaches this
+    `except`, so the failed job's partial writes never reach the outer
+    transaction and every other job's is untouched. This loop used to open a
+    second, redundant one per job; one guard, in the writer, serves every
+    caller instead.
     """
     results: list[DocumentIngest | DocumentFileFailure] = []
     for job in jobs:
         try:
-            async with session.begin_nested():
-                result = await file_document(
-                    session,
-                    project=job.project,
-                    content=job.content,
-                    parse=job.parse,
-                    uri=job.uri,
-                    document_id=job.document_id,
-                    title=job.title,
-                    source_type=job.source_type,
-                    properties=job.properties,
-                    actor=job.actor,
-                    source=job.source,
-                )
+            result = await file_document(
+                session,
+                project=job.project,
+                content=job.content,
+                parse=job.parse,
+                uri=job.uri,
+                document_id=job.document_id,
+                title=job.title,
+                source_type=job.source_type,
+                properties=job.properties,
+                actor=job.actor,
+                source=job.source,
+            )
         except Exception as exc:
             results.append(DocumentFileFailure(label=job.label, error=str(exc)))
         else:

@@ -24,12 +24,23 @@ one DELETE and one INSERT per changed re-ingest. A writer that stripped twice,
 wrote per row, or skipped the strip fails one of the three.
 
 **The atomic replace is drilled, not asserted.** ``test_without_the_savepoint_*``
-runs the identical failure through the unguarded call and shows the damage:
+runs the identical failure through the unguarded body and shows the damage:
 the blocks gone *and* the document row already carrying the new
 ``content_hash``, which is the corruption that never announces itself — the
 next re-file of that same content short-circuits on a gate agreeing with a
 tree that was never written. It is committed as a standing regression in the
-shape TH1.03 established for its own SAVEPOINT.
+shape TH1.03 established for its own SAVEPOINT, and its guarded twin runs the
+same failure through the same door to show both halves surviving.
+
+**The unguarded body is contained by a scan, not by its underscore.** Since
+TH1.18 the SAVEPOINT is ``file_document``'s default and the drills reach past
+it through a private entry point, so "only tests can take the opt-out" has to
+be a checked property: every ``.py`` under ``app/``, ``scripts/`` and
+``migrations/`` is parsed and every AST-visible route to that name — import,
+attribute, bare name, string literal — is an offence, with the sole exemption
+being the nodes inside ``file_document``'s own body. A positive control feeds
+the same scanner a file that does reach it, so a scan that stopped matching
+fails rather than passing silently.
 
 **The firewall is structural.** Doc 16 §3's decision that filing a document
 does not run the five-phase pipeline is enforced by walking this module's
@@ -56,6 +67,7 @@ from app.services.document_ingest import (
     BlockDraft,
     DocumentFileFailure,
     DocumentIngest,
+    _file_document_without_savepoint,
     file_document,
 )
 from app.services.document_parsers import (
@@ -527,12 +539,50 @@ async def test_a_failed_parse_leaves_the_prior_tree_and_the_prior_hash(session, 
 
 
 @pytest.mark.asyncio
+async def test_file_document_is_atomic_without_a_caller_side_savepoint(session):
+    """TH1.18's flip, asserted on the writer's own door rather than the
+    pipeline's. The drill below is only evidence about the guard if the guard
+    is what the default gives an arbitrary direct caller — and the replay is
+    the half that matters: a filing that failed must still be re-filable."""
+    uri = f"file:///{uuid4()}.md"
+    edited = MARKDOWN + "\nedited\n"
+    first = await file_document(
+        session, project="default", uri=uri, content=MARKDOWN,
+        parse=lambda: [BlockDraft(text="original")],
+    )
+    await session.flush()
+    original_ids = [block["id"] for block in await _blocks(session, first.document_id)]
+    original_hash = await _content_hash(session, first.document_id)
+    assert original_ids
+
+    with pytest.raises(DocumentParseError):
+        await file_document(
+            session, project="default", uri=uri, content=edited, parse=_explodes,
+        )
+    await session.flush()
+
+    assert [block["id"] for block in await _blocks(session, first.document_id)] == original_ids
+    assert await _content_hash(session, first.document_id) == original_hash
+
+    replay = await file_document(
+        session, project="default", uri=uri, content=edited,
+        parse=lambda: [BlockDraft(text="replacement")],
+    )
+    await session.flush()
+    assert replay.outcome == UPDATED
+    assert [block["text"] for block in await _blocks(session, first.document_id)] == [
+        "replacement"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_without_the_savepoint_the_same_failure_destroys_both(session):
-    """The mutation drill, executable and permanent. `file_document` owns no
-    savepoint, so the identical scenario driven through it directly leaves the
-    blocks stripped *and* the document already carrying the new
-    `content_hash` — after which the next re-file of that content
-    short-circuits on a gate that agrees with a tree nobody ever wrote."""
+    """The mutation drill, executable and permanent. Driven through the
+    unguarded body the identical scenario leaves the blocks stripped *and* the
+    document already carrying the new `content_hash` — after which the next
+    re-file of that content short-circuits on a gate that agrees with a tree
+    nobody ever wrote. That is what `file_document`'s default now prevents,
+    and the opt-out exists so this stays runnable rather than hypothetical."""
     uri = f"file:///{uuid4()}.md"
     edited = MARKDOWN + "\nedited\n"
     first = await bp.ingest_document(session, project="default", uri=uri, content=MARKDOWN)
@@ -540,7 +590,7 @@ async def test_without_the_savepoint_the_same_failure_destroys_both(session):
     assert await _blocks(session, first.document_id)
 
     with pytest.raises(DocumentParseError):
-        await file_document(
+        await _file_document_without_savepoint(
             session, project="default", uri=uri, content=edited, parse=_explodes,
         )
     await session.flush()
@@ -832,5 +882,135 @@ def test_the_memory_pipeline_does_not_reach_the_block_pipeline():
         ),
     )
     assert not offenders, "\n".join(offenders)
+
+
+# ── the opt-out is reachable only from the writer itself ────────────
+
+
+UNGUARDED_ENTRY = "_file_document_without_savepoint"
+WRITER_FILE = "app/services/document_ingest.py"
+
+_OPT_OUT_RULES = ReachabilityRules(
+    forbidden_modules=frozenset({f"app.services.document_ingest.{UNGUARDED_ENTRY}"}),
+    forbidden_attrs=frozenset({UNGUARDED_ENTRY}),
+    forbidden_literals=frozenset({UNGUARDED_ENTRY}),
+)
+
+
+def _writer_body_nodes(rel: str, tree: ast.Module) -> set[int]:
+    """Every node inside `file_document`'s own body, in the writer's file.
+
+    The one sanctioned reach: `file_document` is what wraps the unguarded body
+    in the SAVEPOINT, so it necessarily names it. Scoped to that function's
+    body by node identity, so the same call anywhere else in the same file —
+    a second helper, a module-level alias — is still an offence.
+    """
+    if rel != WRITER_FILE:
+        return set()
+    for node in tree.body:
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "file_document":
+            return {id(inner) for stmt in node.body for inner in ast.walk(stmt)}
+    raise AssertionError(f"{WRITER_FILE} no longer defines `file_document`")
+
+
+def _opt_out_offenders(paths: list[pathlib.Path], root: pathlib.Path) -> list[str]:
+    """Every AST-visible route from `paths` to the unguarded entry point.
+
+    `find_forbidden_reach` carries the import, attribute, literal and
+    loader-call routes. The bare-`Name` route is added here because a name
+    pulled in by `from ... import *` reaches the function without any
+    statement spelling its module — a bound that scanner documents, and one
+    this guard cannot afford, since the whole claim is that no production
+    caller can take the opt-out.
+    """
+    offenders = find_forbidden_reach(
+        paths, root, _OPT_OUT_RULES, exempt_node_ids=_writer_body_nodes,
+    )
+    for path in paths:
+        rel = str(path.relative_to(root))
+        tree = ast.parse(path.read_text(), filename=rel)
+        exempt = _writer_body_nodes(rel, tree)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Name)
+                and node.id == UNGUARDED_ENTRY
+                and id(node) not in exempt
+            ):
+                offenders.append(f"{rel}:{node.lineno}: name route: {node.id}")
+    return sorted(offenders)
+
+
+def _backend_sources() -> list[pathlib.Path]:
+    """Every `.py` in the backend tree, tests included, artifacts excluded."""
+    artifacts = {"__pycache__", ".venv", "node_modules"}
+    paths = [path for path in BACKEND.rglob("*.py") if not artifacts & set(path.parts)]
+    assert len(paths) > 200, (
+        f"only found {len(paths)} files — the scans below would pass "
+        "vacuously; check the backend root / the globs"
+    )
+    return paths
+
+
+def _production_sources() -> list[pathlib.Path]:
+    """The same set with every `tests/` directory dropped, at any depth.
+
+    That covers `scripts/benchlib/tests` as well as `backend/tests` — the
+    exclusion is what the two scans differ on, so it has to mean the same
+    thing in both.
+    """
+    return [path for path in _backend_sources() if "tests" not in path.parts]
+
+
+def test_no_production_caller_can_reach_the_unguarded_entry_point():
+    """TH1.18's opt-out is a proven property, not a naming convention. A
+    caller that reached this body would file documents non-atomically again,
+    and the failure it reintroduces is silent: blocks gone, hash moved, and
+    the replay short-circuiting on a gate that agrees with nothing."""
+    offenders = _opt_out_offenders(_production_sources(), BACKEND)
+    assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.parametrize(
+    "route,source",
+    [
+        ("import", f"from app.services.document_ingest import {UNGUARDED_ENTRY}\n"),
+        (
+            "attribute",
+            "from app.services import document_ingest\n"
+            f"reach = document_ingest.{UNGUARDED_ENTRY}\n",
+        ),
+        (
+            "literal",
+            "from app.services import document_ingest\n"
+            f"reach = getattr(document_ingest, {UNGUARDED_ENTRY!r})\n",
+        ),
+        (
+            "bare name",
+            "from app.services.document_ingest import *\n"
+            f"reach = {UNGUARDED_ENTRY}\n",
+        ),
+    ],
+)
+def test_the_opt_out_scan_reports_a_file_that_does_reach_it(tmp_path, route, source):
+    """The positive control, one case per route. Without it a scan whose
+    rules stopped matching — a renamed entry point, a route the scanner never
+    covered — passes silently and the containment becomes a comment."""
+    probe = tmp_path / "probe.py"
+    probe.write_text(source)
+    assert _opt_out_offenders([probe], tmp_path), route
+
+
+def test_only_the_two_standing_drills_name_the_opt_out():
+    """Containment across the whole tree, not only the shipped half. The
+    opt-out is worth exactly the two drills it keeps runnable; anything else
+    reaching for it — a third test, a harness under `scripts/benchlib/tests`
+    that the production scan skips — wanted the guarded door and took the
+    unguarded one."""
+    offenders = _opt_out_offenders(_backend_sources(), BACKEND)
+    naming = sorted({offender.split(":")[0] for offender in offenders})
+    assert naming == [
+        "tests/test_block_pipeline.py",
+        "tests/test_document_parsers.py",
+    ], "\n".join(offenders)
 
 

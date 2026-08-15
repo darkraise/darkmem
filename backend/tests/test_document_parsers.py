@@ -13,12 +13,15 @@ source with it, never by trusting the number the parser reports.
 
 **Batch isolation is proven by comparison, not by inspection.** A guard that
 only ever runs its intended path is decorative. So alongside the real batch
-function (`file_documents_isolated`, SAVEPOINT per job) this module also
-defines the naive version it deliberately does not ship — a bare try/except
-with no SAVEPOINT — and runs the identical failure scenario through both.
-The naive version corrupts the sibling document; the real one does not. That
-comparison is the mutation drill, committed as a permanent regression test
-rather than a one-off manual edit.
+function (`file_documents_isolated`, whose per-job SAVEPOINT is
+`file_document`'s own since TH1.18) this module also defines the naive version
+it deliberately does not ship — a bare try/except over the unguarded body,
+reached through `_file_document_without_savepoint` — and runs the identical
+failure scenario through both. The naive version corrupts the sibling
+document; the real one does not. That comparison is the mutation drill,
+committed as a permanent regression test rather than a one-off manual edit.
+The opt-out is explicit for exactly this reason: making atomicity
+unconditional would have deleted the drill along with the defect.
 """
 from __future__ import annotations
 
@@ -34,6 +37,7 @@ from app.services.document_ingest import (
     DocumentFileFailure,
     DocumentFileJob,
     DocumentIngest,
+    _file_document_without_savepoint,
     file_document,
     file_documents_isolated,
 )
@@ -367,12 +371,15 @@ async def _naive_file_documents(session, jobs):
     """The version this module deliberately does not ship: no SAVEPOINT.
 
     Kept only to prove the real function's guard is load-bearing — run the
-    identical scenario through both and compare.
+    identical scenario through both and compare. Since TH1.18 the guard is
+    `file_document`'s own, so the naive shape has to opt out of it explicitly
+    through the private unguarded body; a bare try/except around
+    `file_document` would now be atomic and this drill would prove nothing.
     """
     results = []
     for job in jobs:
         try:
-            result = await file_document(
+            result = await _file_document_without_savepoint(
                 session, project=job.project, content=job.content, parse=job.parse,
                 uri=job.uri, document_id=job.document_id, title=job.title,
                 source_type=job.source_type, properties=job.properties,

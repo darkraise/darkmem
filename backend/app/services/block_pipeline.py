@@ -19,24 +19,15 @@ graph is reached only through the on-demand lift in §5.
 closure for any AST-visible route to ``process_batch``. A prose firewall goes
 stale; this one fails the build.
 
-**The atomic replace lives here, not in the writer.** ``file_document`` does
-not commit and owns no savepoint: on the failure path it leaves the document
-row carrying the *new* ``content_hash`` while the strip has already deleted
-the old blocks and the replacement never landed — two corruptions, and the
-worse of the pair is the hash, because the next re-file of that same content
-short-circuits on a gate that now agrees with a tree that was never written.
-The blocks are gone permanently and nothing reports it. So the single-document
-door opens a SAVEPOINT around the whole call, which is the same atomic-replace
-shape Phase 5 gives savepoint B: a failure anywhere in parse, strip or write
-rolls back to the mark, the prior tree and the prior hash both survive, and
-the session stays usable for the caller. ``file_documents_isolated`` already
-had this for the batch shape; the single-document shape had no equivalent.
-The declared cost is that the short-circuit path pays a ``SAVEPOINT`` and a
-``RELEASE`` it does not need — two statements that write nothing, parse
-nothing, and are the price of the gate living inside the guarded region rather
-than in front of it. Duplicating the gate out here to skip them would put two
-answers to "did the content change" in the tree, which is worse than two round
-trips.
+**The atomic replace lives in the writer, and this module no longer repeats
+it.** TH1.04 opened the SAVEPOINT here because ``file_document`` owned none;
+that guarded the one door this module serves and left every other direct
+caller holding the same foot-gun, which is what TH1.18 closed by moving the
+guard into ``file_document`` itself. Both doors below therefore inherit it —
+a failure anywhere in parse, strip or write rolls back to the writer's own
+mark, the prior tree and the prior hash both survive, and the session stays
+usable for the caller. Re-opening a savepoint out here would nest a second one
+inside it per call and guard nothing the writer does not already guard.
 
 **The parse stays a callable all the way down.** ``bind_parser`` binds the
 parser to its content and returns it *uncalled*; the gate is what decides
@@ -193,26 +184,25 @@ async def ingest_document(
     """File one source through the block pipeline. Does not commit.
 
     Raises whatever went wrong — an unparseable source, a malformed tree, a
-    database error — after the SAVEPOINT has already rolled the whole filing
-    back, so a caller that catches sees the document exactly as it was and a
-    session it can keep using.
+    database error — after `file_document`'s SAVEPOINT has already rolled the
+    whole filing back, so a caller that catches sees the document exactly as
+    it was and a session it can keep using.
     """
     resolved_type = resolve_source_type(source_type=source_type, uri=uri)
     parse = bind_parser(resolved_type, content)
-    async with session.begin_nested():
-        return await file_document(
-            session,
-            project=project,
-            content=content,
-            parse=parse,
-            uri=uri,
-            document_id=document_id,
-            title=title,
-            source_type=resolved_type,
-            properties=properties,
-            actor=actor,
-            source=source,
-        )
+    return await file_document(
+        session,
+        project=project,
+        content=content,
+        parse=parse,
+        uri=uri,
+        document_id=document_id,
+        title=title,
+        source_type=resolved_type,
+        properties=properties,
+        actor=actor,
+        source=source,
+    )
 
 
 async def ingest_documents(
