@@ -357,36 +357,55 @@ class CodePipeline:
             # rolling back first raises PendingRollbackError and masks the real
             # exception. Roll back so the cleanup runs in a clean transaction.
             await self.session.rollback()
-            repo = await self.repo_manager.get(repo_id) or repo
             cause = f"{type(exc).__name__}: {exc}"[:400]
 
-            # last_indexed_commit is only ever advanced on a full success
-            # (below), so it still names the last graph this repo successfully
-            # built. If one exists, a mid-run failure must never destroy it —
-            # the user's symptom for a wiped graph is "my code search went
-            # empty" with no visible error, and it is unrecoverable short of a
-            # full re-index. Keep serving that graph and label it stale instead.
-            # Only a repo that never finished a first index (nothing to lose)
-            # still gets the destructive cleanup.
-            if repo.last_indexed_commit:
-                repo.status = "stale"
-                repo.status_message = (
-                    f"Indexing failed; still serving the graph from commit "
-                    f"{repo.last_indexed_commit}. Cause: {cause}"
-                )
+            # `rollback()` expires every object this session holds, `repo`
+            # included, so re-fetching rather than trusting the in-memory
+            # object is deliberate. But `repo_manager.get` can legitimately
+            # come back None here (the row itself was part of what the
+            # rollback undid), and the original code fell back to `repo` in
+            # that case — an object whose attributes are now expired. Async
+            # SQLAlchemy cannot lazy-load an expired attribute from a bare
+            # property access (no `await` site to hang the query off), so
+            # that fallback raised `MissingGreenlet` instead of the real
+            # failure, burying `cause` under a second, unrelated crash. There
+            # is nothing to mark stale or error on a row that isn't there, so
+            # skip the status mutation instead of guessing at one.
+            repo = await self.repo_manager.get(repo_id)
+            if repo is None:
                 logger.warning(
-                    "Repo %s indexing failed after commit %s; keeping prior "
-                    "graph and marking stale instead of wiping: %s",
-                    repo.name, repo.last_indexed_commit, exc,
+                    "Repo %s not found while handling indexing failure "
+                    "(rollback may have undone its own creation); skipping "
+                    "status update. Cause: %s", repo_id, cause,
                 )
             else:
-                repo.status = "error"
-                repo.status_message = str(exc)[:500]
-                try:
-                    await self._delete_all_repo_data(repo.id)
-                except Exception:
-                    logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
-            await self.session.commit()
+                # last_indexed_commit is only ever advanced on a full success
+                # (below), so it still names the last graph this repo successfully
+                # built. If one exists, a mid-run failure must never destroy it —
+                # the user's symptom for a wiped graph is "my code search went
+                # empty" with no visible error, and it is unrecoverable short of a
+                # full re-index. Keep serving that graph and label it stale instead.
+                # Only a repo that never finished a first index (nothing to lose)
+                # still gets the destructive cleanup.
+                if repo.last_indexed_commit:
+                    repo.status = "stale"
+                    repo.status_message = (
+                        f"Indexing failed; still serving the graph from commit "
+                        f"{repo.last_indexed_commit}. Cause: {cause}"
+                    )
+                    logger.warning(
+                        "Repo %s indexing failed after commit %s; keeping prior "
+                        "graph and marking stale instead of wiping: %s",
+                        repo.name, repo.last_indexed_commit, exc,
+                    )
+                else:
+                    repo.status = "error"
+                    repo.status_message = str(exc)[:500]
+                    try:
+                        await self._delete_all_repo_data(repo.id)
+                    except Exception:
+                        logger.exception("Failed to clean up partial pipeline data for repo %s", repo.id)
+                await self.session.commit()
 
             # Feature 2: record the exception as an unresolved failure
             try:
