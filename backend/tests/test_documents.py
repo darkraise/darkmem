@@ -7,8 +7,9 @@ accident.
 checks the row count is unchanged proves nothing: a writer that re-parsed,
 stripped, re-embedded and wrote an identical-looking tree passes it. So the
 unchanged path is asserted against five independent witnesses — the parse
-callable was never invoked, the engine issued exactly one statement and it was
-a SELECT, every block kept the id it had (ids are minted fresh on every write,
+callable was never invoked, the engine issued exactly one resolving SELECT
+inside the atomic-replace guard's SAVEPOINT/RELEASE pair and nothing else
+(TH1.18), every block kept the id it had (ids are minted fresh on every write,
 so any rewrite renames them all), the document tuple's ``ctid`` did not move
 (any UPDATE relocates it, including one writing the values already there), and
 the journal gained no second row.
@@ -48,14 +49,6 @@ class _StatementRecorder:
 
     def __call__(self, conn, cursor, statement, parameters, context, executemany):
         self.statements.append(statement)
-
-    @property
-    def writes(self) -> list[str]:
-        return [
-            statement
-            for statement in self.statements
-            if not statement.lstrip().upper().startswith(("SELECT", "WITH"))
-        ]
 
 
 class _Parser:
@@ -150,13 +143,14 @@ async def test_reingesting_an_unchanged_document_does_zero_work(session):
     # 1. the expensive half of the pipeline never ran
     assert second_parser.calls == 0, "the parser ran behind the change gate"
 
-    # 2. nothing was written — not a row, not a journal entry, not a savepoint
-    assert recorder.writes == [], (
-        "the unchanged path issued write statements:\n" + "\n".join(recorder.writes)
-    )
-    assert len(recorder.statements) == 1, (
-        "the unchanged path should cost exactly one resolving SELECT, got:\n"
-        + "\n".join(recorder.statements)
+    # 2. nothing was written — not a row, not a journal entry. The whole cost
+    #    is one resolving SELECT plus the atomic-replace guard's SAVEPOINT and
+    #    RELEASE, two statements that write nothing (TH1.18). The sequence is
+    #    pinned rather than counted, so a write cannot hide inside the pair.
+    kinds = [statement.split()[0].upper() for statement in recorder.statements]
+    assert kinds == ["SAVEPOINT", "SELECT", "RELEASE"], (
+        "the unchanged path should cost one resolving SELECT inside the "
+        "savepoint pair, got:\n" + "\n".join(recorder.statements)
     )
 
     # 3. no block was rewritten — ids are minted fresh on every write, so an
