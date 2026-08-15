@@ -124,10 +124,10 @@ green.
 | E2 — Truth core | 105 | 0 | 0 | 0 | 0 | 105 | 0 | G-C, G-D open |
 | E3 — Synthesis & reach | 26 | 1 | 0 | 0 | 0 | 25 | 0 | G-E open |
 | E4 — Hardening & scale | 10 | 7 | 0 | 0 | 0 | 3 | 0 | demand-gated |
-| EH1 — Documents / PKM | 15 | 15 | 0 | 0 | 0 | 0 | 0 | G-F open |
+| EH1 — Documents / PKM | 15 | 14 | 1 | 0 | 0 | 0 | 0 | G-F open |
 | M1 — Measurement phase | 33 | 5 | 1 | 0 | 1 | 25 | 1 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **297** | **28** | **1** | **0** | **1** | **265** | **2** | |
+| **Total** | **297** | **27** | **2** | **0** | **1** | **265** | **2** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
@@ -471,7 +471,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 
 | Task | Title | Size | Model | Effort | Version | Owner | Status | Commit | Review | Note |
 |---|---|---|---|---|---|---|---|---|---|---|
-| TH1.01 | Faithfulness metric definition (before any build) | M | Fable | high | — | | todo | | | |
+| TH1.01 | Faithfulness metric definition (before any build) | M | Fable | high | — | claude/th1.01 | wip | | | Claimed 2026-08-15; EH1 unparked into v1.0 by owner instruction, G-F appetite stated |
 | TH1.02 | `documents` / `blocks` first writer | M | Opus | high | — | | todo | | | |
 | TH1.03 | Parser stack (PDF, markdown, notes) | M | Sonnet | high | — | | todo | | | |
 | TH1.04 | Block tree + strip-before-rewrite by `document_id` | L | Opus | high | — | | todo | | | |
