@@ -4,6 +4,114 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v0.5 — 2026-08-15
+
+**An agent can now research a subject and file what it found as ordinary
+memories, with one origin per source it actually read.** That last clause is the
+whole feature: corroboration counts distinct origins, so a loop that refetches
+the same page twice would manufacture its own agreement. The loop is **built and
+not armed** — `research_run` refuses while the `auto_research` config row is
+disabled, which is the default, and pointing it at real subjects is a separate
+decision.
+
+### Added
+- The research loop, filing through the ordinary capture door (`T3.07`). One
+  batch call per run, so a run either lands whole or does not land: an
+  over-budget run refuses rather than filing a truncated version of what it
+  found. It ships with **no `JobRegistry` job on purpose** — a cron'd research
+  pass would refetch the same sources every tick, which is exactly the
+  manufactured-corroboration hazard the origin rule exists to prevent.
+- Its one door is MCP, and that is an argument rather than a convenience
+  (`T3.27`). `research_run` files evidence *the caller* gathered:
+  `ResearchGatherer` has no in-tree implementation by design, because a model
+  without web access would invent sources. On MCP the caller is a gatherer; on
+  REST neither caller is, so an honest REST shape would need the gatherer the
+  design refuses. The tool takes no `source`, no `origin_key` and no `ctx`, so
+  the header ladder that steers every other capture's identity has no route in,
+  and a finding naming either field is a loud error rather than a dropped key.
+- Distinct-origin stamping for researched sources (`T3.08`). One origin per
+  evidence **source** — the identity is the source's, never the run's and never
+  the finding's — and the canonicalisation is merge-only by construction, so a
+  refetch, a re-run or a paraphrase of one page adds no origin. Researched
+  origins stay machine-distinguishable from observed ones, so a measurement that
+  pools them does it on purpose.
+
+### Changed
+- The census's independence disclosure counts by connected component rather than
+  by row (`T2.123`). A component of k mutually-duplicate rows yields k(k−1)/2
+  findings and collapses k−1 rows, so the old arithmetic was right only while
+  every component was exactly two wide. Entailed corrected 166 → 167;
+  contradicted unchanged at 80/78.
+- `SINGLE_VALUED_RELATIONS` stays empty, and now says why (`T2.120`). All
+  sixteen relations fail the at-most-one-object-per-subject test, and every
+  exclusive slot in the misses that motivated it is an **attribute** — port,
+  version, TTL, scrape interval — which this taxonomy does not store as a
+  relation at all. The hoped-for capacity cannot be added at any membership,
+  so the argument lives beside the frozenset rather than being quietly dropped.
+
+### Fixed
+- **The origin canonicaliser split one page into two origins**, found by review
+  before the loop was armed (`T3.08`). Six spellings did it —
+  percent-encoded paths, percent-encoded unreserved characters, dot-segments,
+  punycode versus unicode, NFC versus NFD, a duplicated identical parameter —
+  and each is a
+  spelling this repo's own `httpx` produces. Two variants seven days apart met
+  the two-origin bar, which is a promotion off a single page. Repaired
+  merge-only, with all seven failing shapes proven red first and three
+  over-merge controls guarding the other direction.
+- Two fail-open defects in the research loop, also found by review (`T3.07`).
+  `bool("false")` is `True`, so a malformed `enabled` value armed the master
+  switch — the one field where failing closed matters most was the one without a
+  strict guard. And the run committed twice, so a raise in the journal window
+  reported a durable filing as failed and would have double-filed on retry.
+- The judge-verdicts directory leaked synthetic files under real judge
+  identities (`T2.122`). It held 96 files rather than the 80 first measured — a
+  stray `verdicts/verdicts/` subdirectory carried 16 more, left by an earlier
+  unfinished manual quarantine. 95 removed, the 1 genuine artifact kept with its
+  sha recorded outside the gitignored directory.
+
+### Known limits
+- **Built is not armed, and armed is not measured.** The loop refuses by
+  default. When it is armed, the origins it mints are weaker corroboration than
+  independent capture produces: two same-day research origins carry the same
+  source kind, so there is no kind diversity between them and they hold at three
+  rather than promoting at two.
+- **The entailment census is not clean, and the disclosure stands even though
+  the verdict does not move** (`T2.118`). Five duplicated entailed propositions
+  across seven findings, one component three rows wide, and five of Rule B's 72
+  entailed rows restate propositions from the contacted population. The minimum
+  pass is 156/173 rows against a measured 0.9827, so the verdict is
+  unthreatened — that is a reason to report the duplication, not to stop
+  counting it.
+- G-C and G-D are still open, so a promoted fact still serves as `candidate`
+  with `verification_unmeasured`. Nothing in this release changes what a badge
+  means.
+
+### Also in this tag
+Gate-track work that landed after v0.5's scope closed. It ships here without
+being part of the headline, because the gate track is not a version
+(`docs/planning/RELEASES.md`):
+- The homelab instance is provisioned fresh on the baseline, with nightly
+  backups that actually prune — the dump script had no retention, and an
+  unpruned nightly cadence on the host that also runs the database is a slow
+  disk-fill that takes production down with it (`T1.54`).
+- Qualification records are per consumer **role** over one judge identity, so
+  the article consumer stops being gated on a discrimination it never makes
+  (`T2.117`).
+- G-C's and the judge's bars are floors at runtime, not only in source: a
+  `config` row below a floor clamps back unless a licence names the parameter
+  and cites its argument, the direction is carried **per bar** because G-C's six
+  do not share one, and a clamped run now says so in the artifact rather than
+  only in a log nobody configured (`T2.126`, `T2.127`, `T2.128`).
+- The promotion corpus grew past the decidable band and the deterministic
+  contradiction detector was armed, giving the false-promotion audit a
+  numerator for the first time (`T2.129`). Measuring what that verdict was
+  worth showed the rule itself was a coin flip at the bar at every sample
+  size, so it is now scored on the exact Clopper-Pearson upper bound rather
+  than the observed
+  rate — a strict tightening that moved no bar and flipped the audit axis from
+  a pass to a fail (`T2.130`, `T2.132`).
+
 ## v0.4 — 2026-08-12
 
 **The vault writes articles about your subjects, and every sentence has to earn
