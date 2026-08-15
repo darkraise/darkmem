@@ -5,7 +5,14 @@ plus the false-promotion audit (doc 17 §5.1).
 **Plumbing, not judgment.** This script produces numbers; it states no bar
 and renders no pass/fail verdict — T2.40 (Fable, adversarial) designs the
 bar and reads what this emits (runbook §2's standing rule: measurement
-design and measurement plumbing are different tasks). The one judgment this
+design and measurement plumbing are different tasks). That sentence was
+briefly false and is now enforced rather than asserted: T2.132 made the
+audit-power block verdict-bearing, and this runner resolves no bars, so the
+block would have printed a pass or fail computed from a module constant
+beside **production** numbers. `render_report` is called with no
+``audit_verdict``, which renders that line **UNSCORED** and says in the
+artifact that no bars were resolved; a test fails the build if this file
+ever passes a verdict without resolving the bars behind it. The one judgment this
 script does make is statistical power: a 0/0 (or any bucket below
 ``promotion_metrics.UNDER_POWERED_THRESHOLD``) is reported as under-powered,
 never as a pass or a bare percentage.

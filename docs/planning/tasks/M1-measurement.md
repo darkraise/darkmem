@@ -1297,6 +1297,27 @@ the fact; and the subsumption above is proven by derivation rather than asserted
 drills: reverting the predicate to the point estimate, dropping the decidability guard,
 weakening the confidence, and rendering a verdict the predicate disagrees with.
 
+**Fix round, 2026-08-15, after the review returned REWORK** (spec compliance ❌ on box
+4's third clause; 1 Critical, 1 Important, 5 Minors —
+`docs/planning/reviews/2026-08-15-t2.132-task-review.md`). The Critical was the defect
+this task existed to close, reintroduced one layer up by the task itself: the report
+block became verdict-bearing while still computing its own answer from a module
+constant, and consulting no decidability floor, so three honoured `config` rows made the
+artifact contradict the gate. **The fix removes the second rule rather than aligning
+it** — `render_report` takes an `AuditVerdict` carrying the predicate's answer and the
+bar it was scored against, and holds no comparison of its own; a caller that resolved no
+bars renders **UNSCORED** rather than a manufactured verdict. That default also restores
+`run_promotion_metrics.py`'s docstring contract, broken outside the diff, now enforced by
+test. Also: six-decimal bound rendering (0.009969 and 0.010002 both printed `0.0100`), a
+vacuous test that passed with the bound stubbed to always clear now asserts the bound
+directly, a monotonicity-in-k pin for the "at any observed count" half of the subsumption
+claim, and the probe's 0.5 override pinned inside the licensable domain. Two Minors
+carried rather than fixed with the reason recorded: `scored_on` stays a literal (pinned
+to the predicate by AST so it cannot silently lie), and `k ≤ n` is structural per
+snapshot but not across the two statements a live-DB probe issues under READ COMMITTED —
+unreachable on the bench path where the verdict is computed, and loud rather than wrong
+if it ever fires. Benchlib 893 → 902; four further mutation drills, all caught.
+
 ---
 
 #### T2.124 — A fresh entailment gold, justified without citing a result

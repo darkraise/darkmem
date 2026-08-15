@@ -230,7 +230,21 @@ async def main(argv: list[str] | None = None) -> int:
             print(promotion_corpus.render_read_back(back))
 
         print()
-        print(pm.render_report(report))
+        # The predicate's own answer, carried into the report rather than
+        # recomputed there. `render_report` holds no bar comparison, so the
+        # printed verdict and the scored verdict cannot be two resolutions.
+        fp = report.false_promotion
+        print(pm.render_report(
+            report,
+            audit_verdict=pm.AuditVerdict(
+                clears=promotion_bars.audit_clears(
+                    fp.false_promotions,
+                    fp.total_corroborations,
+                    bars,
+                ),
+                bar=bars["verification_false_promotion_bar"],
+            ),
+        ))
 
         print("== journal completeness (promotion_bars.JOURNAL_COMPLETENESS_SQL) ==")
         print(
@@ -262,7 +276,6 @@ async def main(argv: list[str] | None = None) -> int:
                         f"{promotion_bars.slice_powered(s.eligible, bars)} "
                         f"clears={promotion_bars.slice_clears(s.promoted, s.eligible, bars)}"
                     )
-        fp = report.false_promotion
         bound = fp.upper_bound(pm.FALSE_PROMOTION_CONFIDENCE)
         print(
             f"false-promotion audit: decidable="

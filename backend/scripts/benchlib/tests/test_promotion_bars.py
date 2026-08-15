@@ -98,6 +98,19 @@ class TestDefaultsArePinned:
             "promotion_journal_completeness_bar": 1.0,
         }
 
+    def test_the_decidability_probes_override_stays_inside_the_licensable_domain(self):
+        """The floor's probe holds the ceiling at 0.5 to make the floor decide.
+
+        That is only an honest probe while 0.5 is a configuration the machinery
+        would actually honour — i.e. inside the ceiling's licensable domain. If
+        the limit ever tightened below it, the probe would be deriving the
+        floor's direction from a state no operator could reach (T2.132 review,
+        Minor 7).
+        """
+        ceiling = pb.PROMOTION_BARS["verification_false_promotion_bar"]
+        assert ceiling.bound_is_coherent(0.5)
+        assert 0.5 < ceiling.licence_limit
+
     def test_min_eligible_is_the_harness_power_floor_not_a_retype(self):
         assert (
             pb.PROMOTION_BAR_DEFAULTS["promotion_rate_min_eligible"]
@@ -546,6 +559,31 @@ class TestTheDerivationIsStructuralNotIncidental:
                 "rate cannot be bounded"
             )
 
+    def test_a_runner_that_resolves_no_bars_renders_no_verdict(self):
+        """`run_promotion_metrics.py` targets the **production** database and
+        resolves no bars, while its docstring promises it "renders no pass/fail
+        verdict". T2.132 made the audit block verdict-bearing and silently
+        falsified that sentence (review, Important). The renderer's default is
+        now the safe one; this pins the runner to it, because the failure is a
+        verdict computed from a constant nobody resolved, printed beside
+        production numbers.
+        """
+        tree = ast.parse(
+            Path(pb.__file__).with_name("run_promotion_metrics.py").read_text()
+        )
+        source = ast.unparse(tree)
+        passes_verdict = any(
+            kw.arg == "audit_verdict"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            for kw in node.keywords
+        )
+        if passes_verdict:
+            assert "get_promotion_bar_report" in source, (
+                "this runner may render a verdict only if it resolves the bars "
+                "that verdict is scored against"
+            )
+
     def test_the_runner_reads_the_report_it_prints(self):
         """The other half: run_gc_evidence must not resolve twice either."""
         source = (
@@ -677,10 +715,35 @@ class TestTheDecidabilityFloorIsSubsumed:
         assert cleanest > self.BARS["false_promotion_min_corroborations"]
 
     def test_no_window_below_the_floor_can_clear_the_bound(self):
+        """Asserts the **bound**, not the decidability guard.
+
+        This read `assert not audit_clears(k, n, BARS)` and was vacuous: every
+        below-floor refusal comes from the guard, so the test passed with
+        `clopper_pearson_upper` stubbed to return 0.0 — a bound that clears
+        everything — while its name claimed to be about the bound (T2.132
+        review, Minor 3). Going through the bound directly is what makes it
+        able to fail.
+        """
+        bar = self.BARS["verification_false_promotion_bar"]
         floor = int(self.BARS["false_promotion_min_corroborations"])
         for n in range(1, floor):
             for k in range(n + 1):
-                assert not pb.audit_clears(k, n, self.BARS)
+                assert clopper_pearson_upper(k, n, FALSE_PROMOTION_CONFIDENCE) >= bar
+
+    def test_the_bound_rises_with_the_observed_count(self):
+        """The "at **any** observed count" half of the subsumption claim.
+
+        The companion test derives 299 at k = 0 only; the general statement
+        rests on the bound being non-decreasing in k, which nothing pinned.
+        Observing more false promotions in a fixed window cannot make the
+        evidence for a low true rate stronger.
+        """
+        for n in (20, 149, 298, 299, 473):
+            bounds = [
+                clopper_pearson_upper(k, n, FALSE_PROMOTION_CONFIDENCE)
+                for k in range(min(n, 8) + 1)
+            ]
+            assert bounds == sorted(bounds), f"n={n} bound not monotone in k"
 
 
 class TestTheNonMonotoneBar:

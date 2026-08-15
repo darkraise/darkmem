@@ -771,27 +771,59 @@ _AUDIT_BAR_FOR_POWER = 0.01
 FALSE_PROMOTION_CONFIDENCE = 0.95
 
 
-def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
+@dataclass(frozen=True)
+class AuditVerdict:
+    """The predicate's answer, carried to the renderer rather than recomputed.
+
+    **This type exists because recomputing was a defect** (T2.132 review,
+    Critical). The renderer compared the bound against the module constant
+    `_AUDIT_BAR_FOR_POWER` and consulted no decidability floor, while
+    `promotion_bars.audit_clears` read both resolved bars — so an honoured
+    `config` row moving either one made the ledger-quotable artifact print a
+    verdict the gate had not reached, in both directions and silently. That is
+    the same two-resolutions class `resolve_promotion_bars` is AST-pinned
+    against, reintroduced one layer up.
+
+    So the renderer no longer *has* a rule: it prints `clears` as given and
+    `bar` as given. The divergence is not guarded against, it is unspeakable —
+    there is no second comparison left to disagree. `promotion_bars` cannot be
+    imported here (it imports this module), which is why the verdict arrives as
+    data from the caller that already resolved the bars.
+    """
+
+    clears: bool
+    #: The bar the verdict was actually scored against — the *resolved* value,
+    #: which a free tightening or a licensed loosening may move off 0.01.
+    bar: float
+
+
+def _render_audit_power(
+    fp: FalsePromotionAudit, verdict: AuditVerdict | None
+) -> list[str]:
     """The scored line, with the superseded rule's worth printed beside it.
 
     Exists because `decidable=True clears=True` was quotable forty lines above
     the caveats explaining that it meant almost nothing. **Since T2.132 this
-    block reports the verdict rather than annotating it** — the bound is what
-    `promotion_bars.audit_clears` scores, and the two are pinned to each other
-    by test, because a report and a predicate that render one rule separately
-    are two rules the day one of them moves.
+    block reports the verdict rather than annotating it** — and reports it
+    rather than computing it, per `AuditVerdict`.
+
+    `verdict=None` means the caller resolved no bars, which is the honest state
+    of `run_promotion_metrics.py`: it targets the production database, resolves
+    nothing, and its docstring promises it renders no pass/fail verdict. It
+    therefore gets no verdict rather than one manufactured from a constant.
     """
     if not fp.total_corroborations:
         return []
     n = fp.total_corroborations
     upper = fp.upper_bound(FALSE_PROMOTION_CONFIDENCE)
-    supported = fp.clears_with_confidence(_AUDIT_BAR_FOR_POWER, FALSE_PROMOTION_CONFIDENCE)
-    naive = at_bar_pass_probability(n, _AUDIT_BAR_FOR_POWER)
-    strict = at_bar_pass_probability(
-        n, _AUDIT_BAR_FOR_POWER, confidence=FALSE_PROMOTION_CONFIDENCE
-    )
+    # The bar every line below is stated against. When a verdict was supplied
+    # it is the bar that verdict was scored against; with none, the committed
+    # default, labelled as such — never a resolved value this function guessed.
+    bar = verdict.bar if verdict is not None else _AUDIT_BAR_FOR_POWER
+    naive = at_bar_pass_probability(n, bar)
+    strict = at_bar_pass_probability(n, bar, confidence=FALSE_PROMOTION_CONFIDENCE)
     need = corroborations_required(
-        fp.false_promotions, _AUDIT_BAR_FOR_POWER, FALSE_PROMOTION_CONFIDENCE
+        fp.false_promotions, bar, FALSE_PROMOTION_CONFIDENCE
     )
     # A window too small for the bound to clear at ANY observed count reports
     # 0.0 here, which reads like excellent specificity rather than a window
@@ -801,14 +833,30 @@ def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
         else "**unreachable** — at this window size the bound cannot clear "
              "even at zero observed false promotions"
     )
+    # Six decimals, not four: 0.009969 (n=299, clears) and 0.010002 (n=298,
+    # fails) both render as `0.0100 against bar 0.01` at four — two identical
+    # lines with opposite verdicts, the clearing one reading as 0.0100 < 0.01.
+    if verdict is None:
+        scored_line = (
+            f"- **UNSCORED** — {FALSE_PROMOTION_CONFIDENCE:.0%} upper "
+            f"confidence bound on the TRUE rate: **{upper:.6f}**. **No verdict: "
+            f"no bars were resolved by this runner**, so the committed default "
+            f"({bar}) is quoted below for orientation and nothing here is a "
+            f"pass or a fail. A run that resolves bars renders the gate's own "
+            f"verdict instead.\n"
+        )
+    else:
+        scored_line = (
+            f"- **SCORED** — {FALSE_PROMOTION_CONFIDENCE:.0%} upper confidence "
+            f"bound on the TRUE rate: **{upper:.6f}** against bar "
+            f"{bar} "
+            f"{'→ CLEARS' if verdict.clears else '→ does NOT clear'}\n"
+        )
     return [
         "**The scored rule is the confidence bound, not the rate above "
         "(T2.132).**\n",
         "\n",
-        f"- **SCORED** — {FALSE_PROMOTION_CONFIDENCE:.0%} upper confidence "
-        f"bound on the TRUE rate: **{upper:.4f}** against bar "
-        f"{_AUDIT_BAR_FOR_POWER} "
-        f"{'→ CLEARS' if supported else '→ does NOT clear'}\n",
+        scored_line,
         f"- P(this window passes | the system's true rate is exactly the bar):\n",
         f"    - under `rate < bar` (superseded 2026-08-15): **{naive:.4f}**\n",
         f"    - under `upper bound < bar` (scored): {strict_note}\n",
@@ -1016,7 +1064,15 @@ def _render_slice_table(slices: tuple[SliceResult, ...]) -> str:
     return "".join(lines)
 
 
-def render_report(report: PromotionMetricsReport) -> str:
+def render_report(
+    report: PromotionMetricsReport, *, audit_verdict: AuditVerdict | None = None
+) -> str:
+    """Render the measurement. `audit_verdict` is the gate's own answer.
+
+    Defaulting to `None` is deliberate and is the safe direction: a caller that
+    has not resolved bars renders no verdict rather than one derived from a
+    constant it never checked (T2.132 review, Critical + Important).
+    """
     fp = report.false_promotion
     fp_rate = f"{fp.rate:.4f}" if fp.rate is not None else "n/a"
     fp_powered = "" if fp.powered else " **UNDER-POWERED**"
@@ -1098,7 +1154,7 @@ def render_report(report: PromotionMetricsReport) -> str:
         f"- corroborated facts later expired (R2 companion): "
         f"{fp.expired_after_corroboration}\n",
         "\n",
-        *_render_audit_power(fp),
+        *_render_audit_power(fp, audit_verdict),
         "**The last line is `promotion_bars` ruling R2's companion, and the "
         "rate above must not be quoted without it.** An entity-merge fact fold "
         "keeps one row's id and retires the other, so a corroboration and a "

@@ -5,12 +5,17 @@ against a system sitting exactly at the bar, **at every sample size**, so a
 "clears" from it carried almost no information. These tests pin the arithmetic
 behind that claim and the behaviour of the confidence rule that replaced it.
 """
+import ast
+import inspect
+import textwrap
+
 import pytest
 
 from benchlib import promotion_bars as pb
 from benchlib.promotion_metrics import (
     _AUDIT_BAR_FOR_POWER,
     FALSE_PROMOTION_CONFIDENCE,
+    AuditVerdict,
     FalsePromotionAudit,
     _render_audit_power,
     at_bar_pass_probability,
@@ -134,7 +139,9 @@ def test_the_report_marks_the_bound_as_the_scored_line():
     "the rule scored above". Left standing, it invites a reader to quote the
     superseded number out of a run whose verdict came from the other one."""
     scored = [
-        line for line in "".join(_render_audit_power(_audit(1, 149))).splitlines()
+        line for line in "".join(
+            _render_audit_power(_audit(1, 149), _verdict(1, 149, {}))
+        ).splitlines()
         if "SCORED" in line
     ]
     assert len(scored) == 1, "exactly one line may claim to be the scored rule"
@@ -142,11 +149,100 @@ def test_the_report_marks_the_bound_as_the_scored_line():
     assert "point estimate" not in scored[0]
 
 
+def _verdict(k, n, rows):
+    """The predicate's answer, resolved exactly as a runner resolves it."""
+    bars = pb.resolve_promotion_bars(rows)
+    return AuditVerdict(
+        clears=pb.audit_clears(k, n, bars),
+        bar=bars["verification_false_promotion_bar"],
+    )
+
+
 @pytest.mark.parametrize("k,n", [(1, 149), (1, 473), (0, 299), (0, 20), (3, 500)])
 def test_the_rendered_verdict_is_the_predicates_verdict(k, n):
     """Two renderings of one rule drift; `resolve_promotion_bars` was
     restructured for exactly this reason and this block has the same shape."""
-    block = "".join(_render_audit_power(_audit(k, n)))
+    block = "".join(_render_audit_power(_audit(k, n), _verdict(k, n, {})))
     rendered_clears = "→ CLEARS" in block
     assert "→ does NOT clear" in block or rendered_clears
     assert rendered_clears is pb.audit_clears(k, n, pb.resolve_promotion_bars({}))
+
+
+# The three configurations T2.132's review reproduced the divergence in. Each is
+# an **honoured** config row -- two free tightenings and one valid licence -- so
+# every one is reachable without defeating a single guard.
+DIVERGENCE_CONFIGS = [
+    ({"verification_false_promotion_bar": 0.005}, 0, 299),
+    ({"false_promotion_min_corroborations": 400}, 0, 350),
+    (
+        {
+            "verification_false_promotion_bar": 0.05,
+            pb.PROMOTION_BAR_LICENCES_KEY: {
+                "licensed": {
+                    "verification_false_promotion_bar": {
+                        "value": 0.05,
+                        "argument": "gate-ledger.md, T2.132 review fixture",
+                    }
+                }
+            },
+        },
+        1,
+        149,
+    ),
+]
+
+
+@pytest.mark.parametrize("rows,k,n", DIVERGENCE_CONFIGS)
+def test_the_rendered_verdict_holds_off_default_bars(rows, k, n):
+    """The property has to be pinned where it can actually fail.
+
+    The original test resolved `{}` and so could only ever compare the
+    renderer's constant against a predicate reading the same constant. Every
+    row here moves a bar the predicate reads, in a direction the clamp
+    honours -- which is exactly where the two resolutions came apart.
+    """
+    bars = pb.resolve_promotion_bars(rows)
+    scored = pb.audit_clears(k, n, bars)
+    block = "".join(_render_audit_power(_audit(k, n), _verdict(k, n, rows)))
+    assert ("→ CLEARS" in block) is scored
+    # And the bar it prints must be the one it was scored against, not 0.01.
+    assert f"against bar {bars['verification_false_promotion_bar']}" in block
+
+
+def test_no_resolution_renders_no_verdict():
+    """`run_promotion_metrics.py` resolves no bars and targets production, and
+    its docstring promises it "renders no pass/fail verdict". Once this block
+    became verdict-bearing that sentence was false. A renderer given nothing to
+    score against must say so rather than reach for a constant."""
+    block = "".join(_render_audit_power(_audit(1, 149), None))
+    assert "→ CLEARS" not in block
+    assert "→ does NOT clear" not in block
+    assert "no bars were resolved" in block
+    # The measurement itself still reports -- only the verdict is withheld.
+    assert "0.031441" in block
+
+
+def test_the_bound_prints_enough_digits_to_separate_its_own_verdicts():
+    """0.009969 (n=299, clears) and 0.010002 (n=298, fails) both rendered as
+    `0.0100 against bar 0.01` at four decimals -- two identical lines with
+    opposite verdicts, the clearing one reading as `0.0100 < 0.01`."""
+    clears = "".join(_render_audit_power(_audit(0, 299), _verdict(0, 299, {})))
+    fails = "".join(_render_audit_power(_audit(0, 298), _verdict(0, 298, {})))
+    assert "0.009969" in clears
+    assert "0.010002" in fails
+
+
+def test_the_recorded_scored_on_matches_the_rule_the_predicate_runs():
+    """`scored_on` is a literal in the durable row. Pin it to the predicate's
+    actual call so a future rule change cannot leave stored rows asserting a
+    provenance the code stopped having."""
+    source = textwrap.dedent(inspect.getsource(pb.audit_clears))
+    calls = {
+        node.func.id
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "clopper_pearson_upper" in calls, (
+        "the ledger row records scored_on='upper_bound'; if the predicate stops "
+        "computing that bound, the recorded provenance is a lie"
+    )

@@ -990,6 +990,52 @@ harness's simulated capture clock. A better-powered rule over the same evidence
 measures the same evidence. Every limit recorded in the sections above survives
 this change unchanged.
 
+**The first landing shipped the defect it was closing, one layer up — found by
+review, fixed, recorded here because the artifact is what this ledger quotes**
+(`docs/planning/reviews/2026-08-15-t2.132-task-review.md`, Critical). Making the
+audit block verdict-bearing left it computing its own answer: it compared the
+bound against the module constant `_AUDIT_BAR_FOR_POWER` and **consulted no
+decidability floor at all**, while `audit_clears` read both resolved bars. Three
+reachable configurations diverged, every one an *honoured* `config` row — two
+free tightenings and one valid licence:
+
+| config row | artifact printed | gate actually scored |
+|---|---|---|
+| bar tightened to 0.005 | `→ CLEARS` (0/299) | **False** |
+| decidability floor raised to 400 | `→ CLEARS` (0/350) | **False** |
+| bar licensed to 0.05 | `→ does NOT clear` (1/149) | **True** |
+
+So a ledger-quotable body could carry a line *claiming to be the scored rule*
+asserting a pass the gate refused — the same two-resolutions class T2.128 closed
+for the bar block, reintroduced by the change that exists to stop a verdict
+reading cleaner than its evidence. **The author disclosed the bar channel in the
+review brief and had not found the decidability channel or the reverse
+direction.** Disclosure is recorded as what it was: incomplete, and not
+mitigation.
+
+**The fix removes the rule rather than aligning the two copies.** The renderer
+now takes an `AuditVerdict` — the predicate's own answer plus the bar it was
+scored against — and holds **no bar comparison of its own**, so divergence is
+not guarded against but unspeakable. A caller that resolved no bars passes
+nothing and the line renders **UNSCORED**, saying in the artifact that no bars
+were resolved.
+
+That default also repairs a contract broken outside the diff (review,
+Important): `run_promotion_metrics.py` prints the same block against the
+**production** database, resolves no bars, and its docstring promises it
+"renders no pass/fail verdict" — true again, and now enforced by a test rather
+than asserted in prose. Also fixed: the bound prints at six decimals, because
+0.009969 (clears) and 0.010002 (fails) both rendered as `0.0100 against bar
+0.01`, two identical lines with opposite verdicts.
+
+**One test was coverage it did not provide.** `test_no_window_below_the_floor_can_clear_the_bound`
+passed with `clopper_pearson_upper` stubbed to clear everything — every
+below-floor refusal came from the decidability guard, never the bound its name
+claimed. It now asserts the bound directly, and the "at *any* observed count"
+half of the subsumption claim is pinned by a monotonicity-in-k test rather than
+resting on an unstated property. The subsumption arithmetic itself was
+independently re-derived in closed form by the review and holds exactly: 299.
+
 ### The corpus-growth route is taken, and its target is 490 — not the 300 that was suggested, and not the 473 first recorded here (owner instruction 2026-08-15, T2.131)
 
 **The owner directed the lane down the independent probe's route — grow the
