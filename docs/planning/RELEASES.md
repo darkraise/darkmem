@@ -236,6 +236,7 @@ would silently overwrite the label, since this section is parsed after it.
 - `TH1.14` — Single-document summary (unbadged)
 - `TH1.15` — Emergent cross-document connections
 - `TH1.16` — Documents UI, horizon-labelled
+- `T4.11` — `seed_partition` leaves a half-registered fingerprint
 - `TH1.18` — Make `file_document` atomic by default
 
 **The schema freeze is *not* in this version and must not be inferred from it.**
