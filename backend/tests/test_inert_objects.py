@@ -21,7 +21,19 @@ from app.services.embedder_registry import _AUX_INDEXES, _TABLE_TEMPLATES
 BACKEND = Path(__file__).resolve().parent.parent
 
 # The inert objects, with the task that will first write to each.
-INERT_TABLES = {"documents": "TH1.02", "blocks": "TH1.02"}
+#
+# `documents` and `blocks` are no longer here: TH1.02, their declared first
+# writer (schema inventory §7), landed `app/services/document_ingest.py` and
+# `app/repositories/documents.py`. Filing a document resolves its identity on
+# the partial `UNIQUE (project, uri)` and gates the pipeline on `content_hash`;
+# `tests/test_documents.py` exercises both tables against real rows, which is
+# strictly stronger than asserting they stay empty.
+#
+# The set is now EMPTY, so every test below that loops over it quantifies over
+# nothing. As with INERT_COLUMNS, each of those skips with a reason rather than
+# passing silently: a green tick on a vacuous loop reads exactly like a green
+# tick on a real one. The scaffold is kept for the next table that lands inert.
+INERT_TABLES: dict[str, str] = {}
 # repositories.index_debt is no longer here: T1.39, its declared first writer
 # (schema inventory §7), landed the re-trace drain that writes it.
 # entities.repo_ids and entity_relations.repo_ids are no longer here: T2.27,
@@ -55,6 +67,8 @@ INERT_TEMPLATES = {
 
 @pytest.mark.asyncio
 async def test_inert_tables_exist(session):
+    if not INERT_TABLES:
+        pytest.skip("no inert table remains — see INERT_TABLES")
     for table in INERT_TABLES:
         found = (await session.execute(
             text("SELECT to_regclass(:t)"), {"t": f"public.{table}"}
@@ -85,6 +99,8 @@ def test_inert_templates_are_registered():
 
 @pytest.mark.asyncio
 async def test_inert_tables_are_empty(session):
+    if not INERT_TABLES:
+        pytest.skip("no inert table remains — see INERT_TABLES")
     for table in INERT_TABLES:
         count = (await session.execute(text(f"SELECT count(*) FROM {table}"))).scalar()
         assert count == 0, f"{table} is not empty — something wrote to an inert table"
@@ -135,6 +151,8 @@ def test_no_app_code_writes_the_inert_columns():
 
 
 def test_no_app_code_writes_the_inert_tables():
+    if not INERT_TABLES:
+        pytest.skip("no inert table remains — see INERT_TABLES")
     offenders: list[str] = []
     for path in _app_sources():
         for lineno, line in enumerate(path.read_text().splitlines(), 1):

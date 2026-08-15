@@ -1165,8 +1165,14 @@ excluded from `testpaths`, so a plain `pytest -q` does not collect it).
 `Model: Opus 5` · `Effort: high` · `Size: L` · `Depends: T2.129, T2.130` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: G-C (produces)`
 
 **Minted 2026-08-15 on the owner's instruction to take the independent probe's route**
-— grow the corpus — rather than T2.130's bound-rule switch, which stays open and
-untaken. The route is the owner's to choose and is chosen; what follows is only the
+— grow the corpus — rather than T2.130's bound-rule switch. **That switch was
+then taken the same day (T2.132, `949cd34d`), which changes this task's
+standing rather than its content**: the targets below were derived from the
+Clopper-Pearson bound while the gate still scored the point estimate, so they
+were a self-imposed aim and are now the gate's own requirement — reaching the
+window and clearing the audit are one event. The progress row's copy of this
+sentence was corrected when the switch landed; this one was missed, and the
+delta check found it (2026-08-15). The route is the owner's to choose and is chosen; what follows is only the
 arithmetic of executing it.
 
 **The suggested number is not the target, and the task exists partly to stop it being

@@ -1,14 +1,16 @@
 """The closed vocabularies and their pure normalisers (doc 06 §3).
 
-Five vocabularies govern the model. Four live here — ``ENTITY_TYPES``,
-``RELATIONSHIP_TYPES``, ``MEMORY_TYPES``, ``MEMORY_RELATION_TYPES`` — and
-``TECH_TYPES`` (the ``ENTITY_TYPES`` subset feeding the ``memories.technologies``
-denorm) lives in ``app.services.relations`` beside the graph code that reads it.
+Six vocabularies govern the model. Five live here — ``ENTITY_TYPES``,
+``RELATIONSHIP_TYPES``, ``MEMORY_TYPES``, ``MEMORY_RELATION_TYPES``,
+``BLOCK_TYPES`` — and ``TECH_TYPES`` (the ``ENTITY_TYPES`` subset feeding the
+``memories.technologies`` denorm) lives in ``app.services.relations`` beside the
+graph code that reads it.
 
-Every value the LLM or a caller emits passes through a normaliser before it is
-stored. Each normaliser is a **three-step fallthrough**: exact match against the
-closed set, then a ``LEGACY_*_TYPE_MAP`` rewrite of a historical name, then a
-safe default (``concept`` / ``RELATED_TO`` / ``fact`` / ``RELATES_TO``).
+Every value the LLM, a parser or a caller emits passes through a normaliser
+before it is stored. Each normaliser is a **three-step fallthrough**: exact match
+against the closed set, then a ``LEGACY_*_TYPE_MAP`` rewrite of a historical
+name, then a safe default (``concept`` / ``RELATED_TO`` / ``fact`` /
+``RELATES_TO`` / ``paragraph``).
 
 The normalisers are **pure functions of a single raw string**. That purity is
 load-bearing for idempotent re-extraction: the same content must normalise the
@@ -365,3 +367,65 @@ def is_projected_memory_relation_type(raw_type: str | None) -> bool:
     stored. A writer that reaches one of these is asking for a row that must not
     exist, and the normaliser will not produce it."""
     return (raw_type or "").strip().upper() in PROJECTED_MEMORY_RELATION_TYPES
+
+
+# ── Block types (doc 16 §2, §9; the sixth vocabulary) ────────────────
+# `blocks.type` is closed for the same reason the entity types are: retrieval
+# and rendering reason about block kind, and a free-form column drifts one
+# parser at a time. The set is doc 16 §9's minimal five, and it is the *writer*
+# that normalises — TH1.02 is the first writer, so the vocabulary lands with it
+# rather than with the parsers that will emit into it (taxonomy-first).
+#
+# Unlike the four above, no LLM emits these: a parser does. That changes who
+# gets it wrong, not whether the fallback is needed — a markdown token stream
+# and a PDF layout heuristic name the same shapes differently, which is exactly
+# the drift a fallback absorbs.
+BLOCK_TYPES: list[str] = [
+    "paragraph",
+    "heading",
+    "list",
+    "code",
+    "quote",
+]
+
+_BLOCK_TYPE_SET: frozenset[str] = frozenset(BLOCK_TYPES)
+
+LEGACY_BLOCK_TYPE_MAP: dict[str, str] = {
+    # markdown-it / mistune token names, and the plain-English spellings a
+    # native segmenter reaches for.
+    "text": "paragraph",
+    "para": "paragraph",
+    "p": "paragraph",
+    "title": "heading",
+    "header": "heading",
+    "h1": "heading",
+    "h2": "heading",
+    "h3": "heading",
+    "h4": "heading",
+    "h5": "heading",
+    "h6": "heading",
+    "bullet_list": "list",
+    "ordered_list": "list",
+    "list_item": "list",
+    "fence": "code",
+    "code_block": "code",
+    "blockquote": "quote",
+}
+
+
+def normalize_block_type(raw_type: str | None) -> str:
+    """Return one of the five stored ``BLOCK_TYPES``.
+
+    Unknown values fall back to ``paragraph``: a block whose kind is unrecognised
+    is still retrievable prose, and dropping it would lose the text along with
+    the label.
+    """
+    if not raw_type:
+        return "paragraph"
+    t = raw_type.strip().lower()
+    if t in _BLOCK_TYPE_SET:
+        return t
+    mapped = LEGACY_BLOCK_TYPE_MAP.get(t)
+    if mapped:
+        return mapped
+    return "paragraph"

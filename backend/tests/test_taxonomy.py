@@ -1,4 +1,4 @@
-"""The five closed vocabularies, their normalisers, and the LEGACY_* maps.
+"""The six closed vocabularies, their normalisers, and the LEGACY_* maps.
 
 These tests exist to make invariant 5 — *only tabled values are ever stored* —
 fail loudly rather than silently. Three failure modes they are built to catch:
@@ -24,7 +24,9 @@ from pathlib import Path
 import pytest
 
 from app.taxonomy import (
+    BLOCK_TYPES,
     ENTITY_TYPES,
+    LEGACY_BLOCK_TYPE_MAP,
     LEGACY_ENTITY_TYPE_MAP,
     LEGACY_MEMORY_RELATION_TYPE_MAP,
     LEGACY_MEMORY_TYPE_MAP,
@@ -34,6 +36,7 @@ from app.taxonomy import (
     PROJECTED_MEMORY_RELATION_TYPES,
     RELATIONSHIP_TYPES,
     is_projected_memory_relation_type,
+    normalize_block_type,
     normalize_entity_type,
     normalize_memory_relation_type,
     normalize_memory_type,
@@ -56,6 +59,9 @@ def test_vocabularies_have_their_documented_sizes():
     assert len(TECH_TYPES) == 5
     assert len(MEMORY_TYPES) == 9
     assert len(MEMORY_RELATION_TYPES) == 5
+    # Doc 16 §9's minimal block set. Widening it is TH1.03's to justify from a
+    # parser that genuinely emits a sixth shape, not a convenience.
+    assert len(BLOCK_TYPES) == 5
 
 
 def test_memory_types_carry_the_two_layer_zero_recall_kinds():
@@ -73,7 +79,8 @@ def test_insight_and_profile_are_not_memory_types():
 
 
 @pytest.mark.parametrize(
-    "vocab", [ENTITY_TYPES, RELATIONSHIP_TYPES, MEMORY_TYPES, MEMORY_RELATION_TYPES]
+    "vocab",
+    [ENTITY_TYPES, RELATIONSHIP_TYPES, MEMORY_TYPES, MEMORY_RELATION_TYPES, BLOCK_TYPES],
 )
 def test_vocabularies_have_no_duplicates(vocab):
     assert len(vocab) == len(set(vocab))
@@ -84,6 +91,7 @@ def test_case_conventions_hold():
     # The supersession detector and the `technologies` denorm both assume it.
     assert all(t == t.lower() for t in ENTITY_TYPES)
     assert all(t == t.lower() for t in MEMORY_TYPES)
+    assert all(t == t.lower() for t in BLOCK_TYPES)
     assert all(t == t.upper() for t in RELATIONSHIP_TYPES)
     assert all(t == t.upper() for t in MEMORY_RELATION_TYPES)
 
@@ -104,6 +112,7 @@ def test_tech_types_are_a_subset_of_entity_types():
         (LEGACY_RELATION_TYPE_MAP, RELATIONSHIP_TYPES),
         (LEGACY_MEMORY_TYPE_MAP, MEMORY_TYPES),
         (LEGACY_MEMORY_RELATION_TYPE_MAP, MEMORY_RELATION_TYPES),
+        (LEGACY_BLOCK_TYPE_MAP, BLOCK_TYPES),
     ],
 )
 def test_every_legacy_value_is_a_member_of_its_closed_set(legacy_map, closed_set):
@@ -118,6 +127,7 @@ def test_every_legacy_value_is_a_member_of_its_closed_set(legacy_map, closed_set
         (LEGACY_RELATION_TYPE_MAP, RELATIONSHIP_TYPES),
         (LEGACY_MEMORY_TYPE_MAP, MEMORY_TYPES),
         (LEGACY_MEMORY_RELATION_TYPE_MAP, MEMORY_RELATION_TYPES),
+        (LEGACY_BLOCK_TYPE_MAP, BLOCK_TYPES),
     ],
 )
 def test_no_legacy_key_shadows_a_first_class_type(legacy_map, closed_set):
@@ -181,6 +191,7 @@ def test_new_memory_kinds_absorb_their_aliases():
         (normalize_relation_type, "QUASAR_DRIVES", "RELATED_TO"),
         (normalize_memory_type, "quasar-drive", "fact"),
         (normalize_memory_relation_type, "QUASAR_DRIVES", "RELATES_TO"),
+        (normalize_block_type, "quasar-block", "paragraph"),
     ],
 )
 def test_unknown_values_fall_to_the_safe_default(fn, unknown, default):
@@ -194,6 +205,7 @@ def test_unknown_values_fall_to_the_safe_default(fn, unknown, default):
         (normalize_relation_type, "RELATED_TO"),
         (normalize_memory_type, "fact"),
         (normalize_memory_relation_type, "RELATES_TO"),
+        (normalize_block_type, "paragraph"),
     ],
 )
 def test_empty_and_none_fall_to_the_safe_default(fn, default):
@@ -209,6 +221,7 @@ def test_empty_and_none_fall_to_the_safe_default(fn, default):
         (normalize_relation_type, "  uses  ", "USES"),
         (normalize_memory_type, "  Decision ", "decision"),
         (normalize_memory_relation_type, "  follows ", "FOLLOWS"),
+        (normalize_block_type, "  Heading ", "heading"),
     ],
 )
 def test_normalisers_strip_and_case_fold(fn, raw, expected):
@@ -222,6 +235,7 @@ def test_normalisers_strip_and_case_fold(fn, raw, expected):
         normalize_relation_type,
         normalize_memory_type,
         normalize_memory_relation_type,
+        normalize_block_type,
     ],
 )
 def test_normalisers_take_exactly_one_argument(fn):
@@ -239,6 +253,7 @@ def test_normalisers_take_exactly_one_argument(fn):
         (normalize_relation_type, "RUNS_ON"),
         (normalize_memory_type, "workflow"),
         (normalize_memory_relation_type, "SUPPORTS"),
+        (normalize_block_type, "fence"),
     ],
 )
 def test_normalisers_are_deterministic_across_calls(fn, raw):
@@ -253,6 +268,7 @@ def test_normalised_output_is_always_a_member_of_the_closed_set():
     assert all(
         normalize_memory_relation_type(v) in set(MEMORY_RELATION_TYPES) for v in junk
     )
+    assert all(normalize_block_type(v) in set(BLOCK_TYPES) for v in junk)
 
 
 def test_refine_entity_type_is_the_only_name_aware_nudge():

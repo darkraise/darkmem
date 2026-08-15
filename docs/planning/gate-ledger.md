@@ -1045,7 +1045,7 @@ the committed instrument (`promotion_metrics.clopper_pearson_upper`,
 `at_bar_pass_probability`, `corroborations_required`), at the corpus's actual
 **k = 1** observed false promotion:
 
-| n | point estimate | clears the scored rule? | 95% upper bound | clears the bound? | at-bar pass (point rule) |
+| n | point estimate | clears the *then*-scored point rule? | 95% upper bound | clears the bound (**scored since T2.132**)? | at-bar pass (point rule) |
 |---|---|---|---|---|---|
 | 131 (today, unsimulated) | 0.0076 | yes | 0.03570 | no | 0.6227 |
 | 149 (today, simulated) | 0.0067 | yes | 0.03144 | no | 0.5604 |
