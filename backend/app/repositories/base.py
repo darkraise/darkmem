@@ -44,4 +44,12 @@ class TagRepositoryBase(ABC):
 
 class AuditRepositoryBase(ABC):
     @abstractmethod
-    async def log(self, action: str, memory_id: UUID | None = None, api_key_id: UUID | None = None, details: dict | None = None) -> None: ...
+    async def log(
+        self,
+        action: str,
+        memory_id: UUID | None = None,
+        api_key_id: UUID | None = None,
+        details: dict | None = None,
+        *,
+        actor: str | None = None,
+    ) -> None: ...

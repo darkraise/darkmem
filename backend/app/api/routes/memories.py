@@ -96,7 +96,7 @@ async def create_memory(
     request: Request,
     response: Response,
     wait_process: bool = False,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Tier-A buffered accept (doc 05 §2): durably buffers the capture and
@@ -116,7 +116,9 @@ async def create_memory(
         "source_agent": resolve_source_agent(body.source_agent, headers=request.headers),
         "origin_key": _resolve_request_origin_key(body, request, source),
     })
-    result = await service.create_memory(resolved, api_key_id=None, wait_process=wait_process)
+    result = await service.create_memory(
+        resolved, api_key_id=None, wait_process=wait_process, actor=user.sub,
+    )
     if result.memory is not None:
         response.status_code = status.HTTP_201_CREATED
         return _to_response(result.memory)
@@ -166,7 +168,7 @@ async def get_memory(
 async def update_memory(
     memory_id: UUID,
     body: MemoryUpdate,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     # 'superseded' requires an atomically-set superseded_by (enforced by
@@ -178,7 +180,7 @@ async def update_memory(
             status_code=400,
             detail="status 'superseded' is managed by the pipeline and cannot be set directly",
         )
-    memory = await service.update_memory(memory_id, body, api_key_id=None)
+    memory = await service.update_memory(memory_id, body, api_key_id=None, actor=user.sub)
     if not memory:
         raise HTTPException(status_code=404, detail="Memory not found")
     return _to_response(memory)
@@ -187,7 +189,7 @@ async def update_memory(
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_memory(
     memory_id: UUID,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Delete a memory row. **This is not a content purge** (T2.59, ruled
@@ -213,20 +215,20 @@ async def delete_memory(
     an in-app path: giving the application a journal-rewriting code path would
     cost more than the residue it removes.
     """
-    if not await service.delete_memory(memory_id, api_key_id=None):
+    if not await service.delete_memory(memory_id, api_key_id=None, actor=user.sub):
         raise HTTPException(status_code=404, detail="Memory not found")
 
 
 @router.post("/delete", response_model=MemoryBulkDeleteResponse)
 async def bulk_delete(
     body: MemoryBulkDelete,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Delete multiple memories in one request (processed server-side in series
     to avoid the deadlock that concurrent per-row deletes hit on shared graph
     rows). Missing ids are reported, not fatal."""
-    result = await service.bulk_delete_memories(body.ids, api_key_id=None)
+    result = await service.bulk_delete_memories(body.ids, api_key_id=None, actor=user.sub)
     return MemoryBulkDeleteResponse(**result)
 
 
@@ -278,7 +280,7 @@ async def batch_create(
     request: Request,
     response: Response,
     wait_process: bool = False,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Batch counterpart of ``POST /memories`` — one 202-buffered accept per
@@ -308,7 +310,9 @@ async def batch_create(
         entry.model_copy(update={"project": entry.project or "default"})
         for entry in body.entries
     ]
-    results = await service.batch_create_memories(entries, api_key_id=None, wait_process=wait_process)
+    results = await service.batch_create_memories(
+        entries, api_key_id=None, wait_process=wait_process, actor=user.sub,
+    )
     response.status_code = (
         status.HTTP_201_CREATED
         if wait_process and all(r.memory is not None for r in results)
@@ -324,10 +328,12 @@ async def batch_create(
 async def merge_memory(
     memory_id: UUID,
     body: MemoryMergeRequest,
-    _user=Depends(require_auth),
+    user=Depends(require_auth),
     service: MemoryService = Depends(get_memory_service),
 ):
-    memory = await service.merge_memories(memory_id, body.target_id, api_key_id=None)
+    memory = await service.merge_memories(
+        memory_id, body.target_id, api_key_id=None, actor=user.sub,
+    )
     if not memory:
         raise HTTPException(status_code=404, detail="One or both memories not found")
     return _to_response(memory)
