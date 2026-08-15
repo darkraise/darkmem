@@ -178,6 +178,67 @@ has a named mitigation; if not taken, the single-worker constraint is re-asserte
 
 ---
 
+## Lane E — floor hazards
+
+#### T4.11 — `seed_partition` leaves a half-registered fingerprint
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 04 §5.3` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-16**, found by T4.05 while its own new test crashed on it. T4.05
+worked around it locally (`vector_repo=None`, the `test_code_fail_stale.py` idiom)
+rather than reaching into pipeline internals, which was right for its tier.
+
+**What.** `tests/test_memory_dream.py`'s `seed_partition` helper (`:92`) inserts an
+`embedders` row and creates **only** the `memory_embeddings__<slug>` child table.
+`embedder_registry.register` creates the **full** partition set for a fingerprint;
+this helper bypasses it. The result is a registered fingerprint whose other
+partitions — `code_chunk_embeddings__t212_embedder_4` among them — do not exist.
+
+The reported symptom: any later test in the same suite that runs a real first-index
+`CodePipeline.run` with a live `vector_repo` crashes, plus a secondary
+`MissingGreenlet` out of `code_pipeline.py`'s exception-cleanup path. **The floor is
+green today** — this bites only tests of that shape, which is why it has survived.
+TH1.06 is the next task likely to write one.
+
+**The mechanism is established** — traced end to end by T4.05's Fable review
+(2026-08-16), so this task implements rather than investigates:
+
+1. `build_pair` (`test_memory_dream.py:758`) calls `seed_partition` on the
+   **`committing`** factory, so the `embedders` row is durable rather than rolled
+   back — that is how a helper documented as living "inside the rollback-isolated
+   session" leaves residue.
+2. The `committing` fixture's teardown (`:728-743`) cleans memories, tags and
+   config — **not** the `embedders` row and not the partition.
+3. `delete_code_chunks_by_repo` / `delete_code_chunks_by_file`
+   (`repositories/vector.py:735-757`) iterate **every** `embedders` fingerprint and
+   DELETE against `code_chunk_embeddings__<slug>`. A fingerprint with no such child
+   table raises `UndefinedTable`.
+
+**It is wider than first reported:** `test_the_canary_beats_a_configured_sentinel`
+(`:996`) durably seeds `t212-embedder|0` the same way.
+
+**The production invariant is intact.** `embedder_registry.register` always creates
+the full partition set; this is purely a test fixture violating that invariant. So
+**hardening `delete_code_chunks_by_repo` would be treating the symptom** — do not.
+The fix belongs to `test_memory_dream.py` (T2.12's suite).
+
+**Done when:**
+- [ ] No half-registered fingerprint survives a test — either the committing
+      teardown removes the `embedders` rows and their partitions, or
+      `seed_partition` seeds all four child tables
+- [ ] Both durable seeds are covered (`t212-embedder|4` and `t212-embedder|0`)
+- [ ] The helper's offline property is preserved (the suite must not need a live
+      embedder)
+- [ ] A regression test fails without the fix — a real first-index
+      `CodePipeline.run` with a live `vector_repo` after `test_memory_dream`
+- [ ] `delete_code_chunks_by_repo` is **not** modified
+- [ ] The secondary `MissingGreenlet` in `code_pipeline.py`'s exception-cleanup path
+      is either fixed or recorded with its own reason
+
+**Verify.** `cd backend && python -m pytest tests/test_memory_dream.py tests/test_push_webhook.py -q`, then the full floor.
+
+---
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
