@@ -155,7 +155,12 @@ move. (b) Measured judge false-refusal makes the label unearnable at qualifying
 recall *and* the owner judges the labelled path insufficient for the product —
 that is the licence path, bounded at 0.95, because below 0.95 the corpus has no
 argument at all: the twin's own rule-derived value is the floor of any coherent
-loosening. (c) Answers become long-form by design — which makes the sub-1.0
+loosening. **That licence buys nothing in the short regime, and saying otherwise
+would over-promise it** (TH1.01 review, Important-2): by §2's own regime
+arithmetic a 0.95 bar demands the same all-claims-entailed predicate for every
+answer under twenty sentences, so at n = 8 loosening to 0.95 changes no verdict
+whatsoever. The only repair available where answers actually live is judge
+recall — the licence reaches the long regime alone. (c) Answers become long-form by design — which makes the sub-1.0
 leak larger, so it argues for this bar, not against it.
 
 ## 3. The ship-gate bars — the faithfulness role's judge qualification

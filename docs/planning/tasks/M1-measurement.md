@@ -781,6 +781,18 @@ to "nothing automated touches `darkmem`" — it is **read-only** and may never w
 
 `Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: TH1.01, T2.26` · `Doc: 17 §6` · `Tag: horizon` · `Gate: G-F (produces)`
 
+**Import the faithfulness bars; never restate them** (TH1.01, 2026-08-15). The
+role's two gate bars live in `app/services/faithfulness_bars.py` and
+deliberately sit *outside* `BAR_METRICS` until this task and TH1.09 wire the
+role. Wiring means importing `FAITHFULNESS_BAR_DEFAULTS`, not copying its
+numbers: a second declaration of a bar is the drift shape this repo has already
+paid for twice — `RRF_K`, which needed two AST scans to close, and G-C's
+mirrored bar constant, which rendered a verdict the predicate had not reached.
+TH1.01's review graded the prose-only version of this instruction Important on
+exactly that history, so if you find yourself typing `0.95` or `0.90` in this
+runner, import instead — and add the restatement scan that makes the next
+person unable to.
+
 **What.** The plumbing behind TH1.10's verify, built by Sonnet so the Fable gate task only
 designs the bar and reads the number (runbook §2).
 

@@ -89,6 +89,15 @@ class Conservative(Enum):
     """Which way a bar has to move to make its gate harder to clear."""
 
     HIGHER = "higher"
+    # No faithfulness bar is a ceiling today, and this member exists anyway:
+    # with only one direction defined, `conservative` could hold exactly one
+    # value, so the field carried no information and `loosens` could not have
+    # read it even in principle. G-C's `verification_false_promotion_bar` is
+    # the worked example of the bar this defends — a ceiling whose laundering
+    # move is *upward*, which a direction-blind clamp waves through as a
+    # tightening (T2.127). Defining it now is what makes the direction claim
+    # true rather than aspirational; `loosens` is tested against both.
+    LOWER = "lower"
 
 
 @dataclass(frozen=True)
@@ -99,6 +108,14 @@ class FaithfulnessBarSpec:
     conservative: Conservative
 
     def loosens(self, candidate: float) -> bool:
+        # Dispatches on the direction this spec carries rather than assuming
+        # one. Every bar here is a HIGHER floor today, so a hardcoded `<`
+        # agreed with the field and no test could separate them — which is how
+        # a guard reads as enforced while being decorative. T2.127's finding,
+        # cited above, is precisely that a direction-blind clamp reads a
+        # *ceiling* bar's abuse upward as a tightening.
+        if self.conservative is Conservative.LOWER:
+            return candidate > self.default
         return candidate < self.default
 
 

@@ -222,3 +222,64 @@ async def test_get_faithfulness_bars_reads_the_config_table(session):
     assert bars["faithfulness_gate_recall_bar"] == 0.94   # tightening honoured
     assert bars["faithfulness_coverage_bar"] == 1.0       # loosening clamped
     assert bars["faithfulness_gate_precision_bar"] == 0.95
+
+
+class TestLoosensReadsTheDirectionItCarries:
+    """`loosens` hardcoded `<` while the type carried a `conservative` field.
+
+    Every shipped bar is a HIGHER floor, so the two agreed and no test could
+    tell them apart — which is exactly how a guard reads as enforced while
+    being decorative. The module's own docstring cites T2.127, whose finding
+    was that a direction-blind clamp reads a ceiling bar's abuse *upward* as a
+    tightening; G-C's `verification_false_promotion_bar` is that ceiling, and
+    a faithfulness ceiling added later would have inherited the same hole
+    (TH1.01 review, Important-1).
+    """
+
+    def test_a_floor_loosens_downward(self):
+        spec = fb.FaithfulnessBarSpec(0.90, fb.Conservative.HIGHER)
+        assert spec.loosens(0.80)
+        assert not spec.loosens(0.95)
+
+    def test_a_ceiling_loosens_upward(self):
+        """The case the hardcoded `<` got backwards."""
+        spec = fb.FaithfulnessBarSpec(0.01, fb.Conservative.LOWER)
+        assert spec.loosens(0.05), (
+            "a ceiling is loosened by being raised; a direction-blind guard "
+            "waves that through as a tightening"
+        )
+        assert not spec.loosens(0.005)
+
+    def test_the_direction_is_read_rather_than_assumed(self):
+        """Structural: `loosens` must consult the field it stores."""
+        import ast, inspect, textwrap
+        src = textwrap.dedent(inspect.getsource(fb.FaithfulnessBarSpec.loosens))
+        names = {
+            node.attr for node in ast.walk(ast.parse(src))
+            if isinstance(node, ast.Attribute)
+        }
+        assert "conservative" in names, (
+            "loosens must dispatch on the direction the spec carries, not on a "
+            "comparison that happens to match every bar shipped today"
+        )
+
+
+def test_the_licence_row_is_actually_fetched_from_the_database():
+    """A mutant dropping the licence key from `_BARS_SQL` survived all 32
+    tests (TH1.01 review, Minor-1): every licence test fed rows in directly,
+    so nothing proved the resolver *asks* the database for the row it clamps
+    against. The failure direction is conservative — a licence that never
+    arrives clamps a loosening back — but an unlicensable bar is not the
+    documented contract."""
+    import app.services.faithfulness_bars as fb
+    sql = str(fb._BARS_SQL)
+    assert fb.FAITHFULNESS_BAR_LICENCES_KEY in sql or ":keys" in sql, (
+        "the bars query must reach for the licence row too"
+    )
+    # And the key must be in the parameter set the caller binds.
+    import ast, inspect, textwrap
+    src = textwrap.dedent(inspect.getsource(fb.get_faithfulness_bars))
+    assert "FAITHFULNESS_BAR_LICENCES_KEY" in src, (
+        "the licence key must be bound into the query's keys, or the row is "
+        "never read and the licence path is decorative"
+    )
