@@ -18,6 +18,18 @@ restatement risk exists in either.
 ``FAITHFULNESS_BARS`` is read at collection time, so a fourth bar joining
 the module is scanned for automatically — nobody has to remember to widen
 this file when the goalposts do.
+
+**Known limit, inherited from the ``RRF_K`` scans this mirrors, not closed
+here.** Both legs key on the word "faithfulness" (or on one of the three
+committed bar-key strings for the dict-key leg); a neutrally-named
+restatement such as ``PRECISION_BAR = 0.95`` in some other module matches
+neither leg and passes the scan undetected. The dict-key leg is strictly
+*stronger* than its ``RRF_K`` counterpart (it also catches a copy-pasted
+dict literal under any variable name, so long as the *keys* are the bar
+strings), but a bare neutrally-named numeric constant that happens to equal
+a bar's value is a restatement no AST scan here can distinguish from an
+unrelated number. Do not widen this scan to chase that; it is the same
+inherent limit doc 07's parity discussion already accepts for ``RRF_K``.
 """
 from __future__ import annotations
 
