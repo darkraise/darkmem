@@ -290,12 +290,16 @@ def _canonical_host(netloc: str) -> str:
         # No port, or the colon belonged to an IPv6 literal.
         host, port = netloc.rsplit("@", 1)[-1].lower(), ""
     elif port:
-        # Numeric, so `:0443` is the same default port as `:443`. A
-        # non-default port is part of the identity and is put back.
+        # Compared numerically, so `:0443` is the same default port as `:443`.
         try:
-            if int(port) not in (80, 443):
-                host = f"{host}:{int(port)}"
+            is_default = int(port) in (80, 443)
         except ValueError:
+            is_default = False
+        if not is_default:
+            # Put back **verbatim**. Rewriting it through `int()` would drop a
+            # leading zero, and the digits after a colon are not always a port:
+            # `urn:isbn:0451450523` lands here too, and normalising it would
+            # merge two distinct identifiers.
             host = f"{host}:{port}"
 
     host = host.rstrip(".")

@@ -339,6 +339,9 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
          "a genuinely different host that IDNA2003 would have conflated"),
         ("https://[2001:db8::1]/a", "https://[2001:db8::2]/a",
          "two different addresses"),
+        ("urn:isbn:0451450523", "urn:isbn:451450523",
+         "a non-URL id whose digits sit where a port would: normalising them "
+         "through int() drops the leading zero and merges two identifiers"),
         ("https://xn--nxasmm1c.example/a", "https://xn--nxasmq6b.example/a",
          "the IDNA2003 spelling of a final-sigma host decodes to a different "
          "label and is a different domain under IDNA2008"),
