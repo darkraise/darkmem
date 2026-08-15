@@ -164,6 +164,17 @@ def test_score_span_judgments_precision_recall_arithmetic():
     assert score.entailed_recall == pytest.approx(4 / 5)
 
 
+def test_recall_is_none_symmetric_with_precision_when_gold_has_no_positives():
+    """m1: precision already returns None, never a fabricated 0.0, when
+    tp+fp == 0. Recall must do the same when gold_positive == 0 -- 'unmeasured
+    is not zero' applied asymmetrically was the defect."""
+    all_not_entailed = [p for p in PAIRS if p["verdict"] == "not-entailed"]
+    assert all_not_entailed, "fixture must carry at least one not-entailed pair"
+    verdicts = {p["id"]: _verdict("unsupported") for p in all_not_entailed}
+    score = fg.score_span_judgments(all_not_entailed, verdicts)
+    assert score.entailed_recall is None
+
+
 def test_invalid_verdicts_count_as_a_miss_and_never_an_accept():
     verdicts = perfect_verdicts(PAIRS)
     entailed_pair = next(p for p in PAIRS if p["verdict"] == "entailed")

@@ -188,7 +188,7 @@ class FaithfulnessScore:
     invalid: int
     confusion: dict[str, dict[str, int]]
     entailed_precision: float | None
-    entailed_recall: float
+    entailed_recall: float | None
     per_slice: dict[str, dict]
 
 
@@ -235,7 +235,10 @@ def score_span_judgments(
         bucket["accuracy"] = bucket["correct"] / bucket["n"]
 
     precision = tp / (tp + fp) if (tp + fp) else None
-    recall = tp / gold_positive if gold_positive else 0.0
+    # Symmetric with precision: "unmeasured is not zero" applies to both
+    # sides. A gold with no entailed pairs at all leaves recall undefined,
+    # not fabricated as a real 0.0 the judge somehow earned.
+    recall = tp / gold_positive if gold_positive else None
 
     return FaithfulnessScore(
         n_pairs=len(pairs),
