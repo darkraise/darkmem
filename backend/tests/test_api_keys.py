@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import re
+import types
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -29,6 +30,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI
+from fastapi.dependencies.utils import get_dependant
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
@@ -889,3 +892,132 @@ class TestPostureIsUnchanged:
         source = (APP_ROOT / "api" / "mcp" / "server.py").read_text(encoding="utf-8")
         assert "require_scope" not in source
         assert "api_keys" not in source
+
+
+# --------------------------------------------------------------------------
+# Which route the one sanctioned require_scope binding actually reaches
+# --------------------------------------------------------------------------
+#
+# `TestPostureIsUnchanged` above proves there is exactly one `require_scope`
+# *call site*. It says nothing about which route the closure that call built
+# is wired to -- a reviewer can repoint a second route at the same
+# `_require_repo_admin` object (`Depends(_require_repo_admin)` on
+# `delete_repo` instead of `Depends(require_auth)`) without adding a call
+# site or changing the binding string, and every JWT-based test on the
+# mutated route stays green because `require_scope`'s fallthrough accepts a
+# session too (`auth.py:208-213`). The tests below walk the dependency
+# closure FastAPI itself resolves for every route, so they see that
+# mutation -- and any alias or indirect call reaching the same closure --
+# regardless of how the source text spells it.
+
+
+def _require_scope_dependency_code() -> types.CodeType:
+    """The code object shared by every closure `require_scope(...)` builds.
+
+    A nested function's code object is compiled once per source location,
+    not once per call of the enclosing factory, so identity against this
+    object survives an alias (`rs = require_scope; rs("read")`), an
+    indirect call (`TABLE[0](repo)`), and binding reuse (a second route
+    pointed at the same already-built closure) -- none of which a
+    source-text scan can see.
+    """
+    return next(
+        const
+        for const in require_scope.__code__.co_consts
+        if isinstance(const, types.CodeType) and const.co_name == "_require_scope"
+    )
+
+
+def _iter_api_routes(routes):
+    """Recurse through the app's route tree down to concrete `APIRoute`
+    objects, including FastAPI's lazy `_IncludedRouter` wrappers around each
+    `include_router` call."""
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif hasattr(route, "original_router"):
+            yield from _iter_api_routes(route.original_router.routes)
+        elif hasattr(route, "routes"):
+            yield from _iter_api_routes(route.routes)
+
+
+def _iter_dependant_calls(dependant, seen=None):
+    """Walk one route's full dependency closure -- the tree FastAPI itself
+    resolves at request time, sub-dependencies included -- not just the
+    `Depends(...)` arguments named directly in the route signature."""
+    if seen is None:
+        seen = set()
+    if id(dependant) in seen:
+        return
+    seen.add(id(dependant))
+    if dependant.call is not None:
+        yield dependant.call
+    for sub in dependant.dependencies:
+        yield from _iter_dependant_calls(sub, seen)
+
+
+def _routes_gated_by_require_scope(app) -> set[tuple[str, str]]:
+    """Every `(method, path)` whose runtime dependency closure contains a
+    require_scope-built dependency."""
+    target_code = _require_scope_dependency_code()
+    gated: set[tuple[str, str]] = set()
+    for route in _iter_api_routes(app.router.routes):
+        for call in _iter_dependant_calls(route.dependant):
+            if getattr(call, "__code__", None) is target_code:
+                for method in route.methods or ():
+                    gated.add((method, route.path))
+                break
+    return gated
+
+
+class TestRuntimeScopeGatedRoutes:
+    """Important 3, fix round 2 (`docs/planning/briefs/2026-08-16-t4.05-fix-round-2.md`)."""
+
+    def test_only_the_webhook_route_is_scope_gated(self):
+        from app.main import app
+
+        assert _routes_gated_by_require_scope(app) == {
+            ("POST", "/api/v1/repos/{repo_id}/webhook"),
+        }
+
+    def test_the_assertion_catches_delete_repo_reusing_the_binding(self):
+        """The drill: reproduce the reviewer's exact mutation -- `delete_repo`
+        repointed at the already-built `_require_repo_admin` closure, no new
+        call site -- against the real app's route table, and confirm the
+        runtime assertion goes red, then green again once restored.
+
+        Reconstructing the dependant with `get_dependant` (the same analysis
+        FastAPI runs when it processes `Depends(...)` on a route signature)
+        and swapping it onto the live `delete_repo` route object is what
+        makes this the reviewer's mutation and not a synthetic stand-in --
+        the walk below sees exactly what FastAPI would have resolved had
+        `repos.py` actually been edited this way.
+        """
+        from app.api.routes.repos import _require_repo_admin
+        from app.main import app
+
+        async def mutated_delete_repo(repo_id: uuid.UUID, _principal=Depends(_require_repo_admin)):
+            ...
+
+        mutated_dependant = get_dependant(
+            path="/api/v1/repos/{repo_id}", call=mutated_delete_repo
+        )
+
+        target = next(
+            route
+            for route in _iter_api_routes(app.router.routes)
+            if route.path == "/api/v1/repos/{repo_id}" and "DELETE" in (route.methods or ())
+        )
+        original_dependant = target.dependant
+        target.dependant = mutated_dependant
+        try:
+            assert _routes_gated_by_require_scope(app) == {
+                ("POST", "/api/v1/repos/{repo_id}/webhook"),
+                ("DELETE", "/api/v1/repos/{repo_id}"),
+            }, "the mutant must be caught -- both routes now carry the binding"
+        finally:
+            target.dependant = original_dependant
+
+        assert _routes_gated_by_require_scope(app) == {
+            ("POST", "/api/v1/repos/{repo_id}/webhook"),
+        }, "restoring the original dependant must clear the finding again"
