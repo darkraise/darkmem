@@ -579,9 +579,63 @@ class TestTheDerivationIsStructuralNotIncidental:
             for kw in node.keywords
         )
         if passes_verdict:
-            assert "get_promotion_bar_report" in source, (
+            # A *call*, not the name appearing anywhere: the first version of
+            # this guard checked `"get_promotion_bar_report" in source`, which a
+            # docstring mention satisfies. A tripwire that a comment can arm is
+            # not a proof (T2.132 rescope, Minor 3).
+            resolves = any(
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr in {
+                    "get_promotion_bar_report", "resolve_promotion_bar_report"
+                }
+                or isinstance(node.func, ast.Name)
+                and node.func.id in {
+                    "get_promotion_bar_report", "resolve_promotion_bar_report"
+                }
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+            )
+            assert resolves, (
                 "this runner may render a verdict only if it resolves the bars "
                 "that verdict is scored against"
+            )
+
+    def test_the_gate_artifacts_verdict_is_the_predicate_not_a_literal(self):
+        """The verdict is data now, so its one gate-feeding producer needs a pin.
+
+        The fix made the renderer divergence-free by giving it nothing to
+        compare — but that moved the trust to the construction site, and a
+        hardcoded `clears=True` in `run_gc_evidence.py` survived the whole suite
+        (T2.132 rescope, Minor 1). The sibling runner was AST-pinned in the same
+        round for this exact hazard class; this closes the other half.
+        """
+        tree = ast.parse(
+            Path(pb.__file__).with_name("run_gc_evidence.py").read_text()
+        )
+        verdicts = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and (
+                (isinstance(node.func, ast.Attribute)
+                 and node.func.attr == "AuditVerdict")
+                or (isinstance(node.func, ast.Name) and node.func.id == "AuditVerdict")
+            )
+        ]
+        assert verdicts, "the evidence run must construct the verdict it prints"
+        for call in verdicts:
+            clears = [kw.value for kw in call.keywords if kw.arg == "clears"]
+            assert len(clears) == 1, "`clears` must be passed by keyword"
+            expr = clears[0]
+            assert isinstance(expr, ast.Call), (
+                "`clears` must be the predicate's return value, never a literal "
+                "or a variable a reader has to chase"
+            )
+            name = (
+                expr.func.attr if isinstance(expr.func, ast.Attribute)
+                else getattr(expr.func, "id", None)
+            )
+            assert name == "audit_clears", (
+                f"the artifact's verdict must come from audit_clears, got {name}"
             )
 
     def test_the_runner_reads_the_report_it_prints(self):

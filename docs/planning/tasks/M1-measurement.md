@@ -1318,6 +1318,24 @@ snapshot but not across the two statements a live-DB probe issues under READ COM
 unreachable on the bench path where the verdict is computed, and loud rather than wrong
 if it ever fires. Benchlib 893 → 902; four further mutation drills, all caught.
 
+**Rescope, same day: all seven findings resolved** (five ADDRESSED, the two above carried
+defensibly, no Critical or Important breakage introduced —
+`docs/planning/reviews/2026-08-15-t2.132-fix-round-rescope.md`). It re-drove the three
+divergence configurations plus five nobody had tried, including both channels moved at
+once and a bar licensed onto the bound's strict-`<` edge; rendered verdict, printed bar
+and `audit_clears` agree in all eight. **Two of its three new Minors are closed here.**
+Making the renderer divergence-free moved the trust to the *construction* site, and a
+hardcoded `clears=True` in `run_gc_evidence.py` survived all 902 tests — the artifact's
+verdict is now AST-pinned to `audit_clears`, closing the half of the hazard the sibling
+runner had already been pinned against. That sibling's own guard was name-presence in
+unparsed source, which a docstring mention would arm, and is now a check for a real call.
+**And a correction: the fix round's commit message claimed the bound-stub drill went from
+0 failures to 19. Measured at the pre-fix commit with the identical stub it is 17, not 0**
+— "zero before" was true of the one vacuous test, never of the suite, and the drill's real
+yield this round is three new catching tests. The number appeared only in that message; no
+durable record carried it. Third Minor left open by choice: nothing pins the *runtime*
+construction, only its shape.
+
 ---
 
 #### T2.124 — A fresh entailment gold, justified without citing a result
