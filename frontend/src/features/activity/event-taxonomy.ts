@@ -138,6 +138,14 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   "auth_password_change",
   "auth_lockout",
   "setup_complete",
+  // The API-key lifecycle (T4.01). Same reasoning as the auth family above,
+  // and the same destination: a credential mint or revocation is a security
+  // event about the box, not a memory, fact or repo lifecycle step, so none
+  // of the five tabs models it. Doc 18 section 5 puts it on the Settings key
+  // list beside `last_used_at`; T4.04 owns rendering the keyed calls
+  // themselves on the per-object timeline, which is a different surface again.
+  "api_key_created",
+  "api_key_revoked",
 ])
 
 export function categoryOfEventType(eventType: string): FeedCategory | null {

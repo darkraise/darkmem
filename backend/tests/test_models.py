@@ -29,9 +29,16 @@ async def test_memory_with_tags(session):
 
 
 async def test_create_api_key(session):
-    key = ApiKey(name="my-key", key_hash="abc123", scopes=["read", "write"])
+    # `write` was never a scope in doc 18 section 5's closed set and the model
+    # no longer defaults to it; `capture` is the write half. Minting goes
+    # through `app.services.api_keys.issue_key`, which is what validates the
+    # scopes -- this stays an ORM smoke test of the row's shape.
+    key = ApiKey(
+        name="my-key", key_id="a" * 16, key_hash="abc123", scopes=["read", "capture"]
+    )
     session.add(key)
     await session.flush()
 
     assert key.id is not None
-    assert key.scopes == ["read", "write"]
+    assert key.scopes == ["read", "capture"]
+    assert key.revoked_at is None

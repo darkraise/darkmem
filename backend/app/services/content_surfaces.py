@@ -585,6 +585,13 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "PUT /api/v1/distribution/policy",
     "POST /api/v1/checkpoints",
     "GET /api/v1/checkpoints/latest",
+    # Key management (T4.01). No memory content crosses: these read and write
+    # `api_keys` and nothing else. The scoping question does not arise -- a
+    # credential is box-level, not project-scoped, which is also why its
+    # lifecycle journals under `object_type='system'`.
+    "POST /api/v1/api-keys",
+    "GET /api/v1/api-keys",
+    "DELETE /api/v1/api-keys/{key_id}",
     "GET /health",
     "GET /api/v1/analytics/stats",
     "POST /api/v1/analytics/reprocess",

@@ -629,6 +629,28 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="api_keys.manage",
+        status=REST_ONLY,
+        rest=(
+            ("POST", f"{V1}/api-keys"),
+            ("GET", f"{V1}/api-keys"),
+            ("DELETE", f"{V1}/api-keys/{{key_id}}"),
+        ),
+        reason=(
+            "The second of doc 12 section 3's sanctioned single-door kinds, "
+            "and doc 18 section 5 fixes it in the same words it uses for "
+            "ratification: 'a credential mint is confirmed-grade power'. The "
+            "posture argument is the one that holds for knowledge.ratify and "
+            "not for the vault reads -- a twin on the unauthenticated LAN MCP "
+            "door would let any peer on the network mint itself a credential, "
+            "which is strictly worse than the surface it would be minting "
+            "access to. It is also why 'admin' is not the scope of this "
+            "surface: a key holding admin still cannot reach it, so a stolen "
+            "key cannot mint its own successor and outlive its revocation "
+            "(T4.01). Recorded here so nobody completes the symmetry later."
+        ),
+    ),
+    Surface(
         name="knowledge.topics",
         status=REST_ONLY,
         rest=(

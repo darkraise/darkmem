@@ -43,6 +43,14 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/analytics/reprocess"): 200,
     ("POST", "/api/v1/analytics/reprocess/stream"): 200,
     ("GET", "/api/v1/analytics/stats"): 200,
+    ("POST", "/api/v1/api-keys"): 201,
+    ("GET", "/api/v1/api-keys"): 200,
+    # 204 and a revocation rather than a row removal: `events.api_key_id`
+    # takes no foreign key, so deleting the row would orphan the history of
+    # every call the key made. The verb and the status still match the
+    # convention -- the resource stops being usable, which is what DELETE
+    # means to a caller.
+    ("DELETE", "/api/v1/api-keys/{key_id}"): 204,
     ("GET", "/api/v1/auth/audit"): 200,
     ("POST", "/api/v1/auth/change-password"): 200,
     ("POST", "/api/v1/auth/login"): 200,
