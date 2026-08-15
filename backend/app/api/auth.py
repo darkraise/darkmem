@@ -1,3 +1,5 @@
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_session
+from app.services.api_key_scopes import API_KEY_SCOPES, FORBIDDEN_SCOPES
+from app.services.api_keys import authenticate, looks_like_credential
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
@@ -128,6 +132,84 @@ async def require_auth(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked")
 
     return token_data
+
+
+@dataclass(frozen=True)
+class Principal:
+    """Who is making a request, once one of the two credentials has resolved.
+
+    ``api_key_id`` is ``None`` for a human session and is what T4.02 stamps on
+    ``events``. ``scopes`` is present on both so a caller reads one shape, but
+    it never carries ``ratify``: confirmed power is not expressible as a scope,
+    it is the absence of a key, and ``require_auth`` alone is what guards it.
+    """
+
+    actor: str
+    api_key_id: uuid.UUID | None
+    scopes: frozenset[str]
+
+    @property
+    def is_human(self) -> bool:
+        return self.api_key_id is None
+
+
+def require_scope(scope: str):
+    """Build a dependency admitting a human session, or a key holding ``scope``.
+
+    **This is opt-in, and that is the fail-closed half of the activation.**
+    ``require_auth`` is unchanged and still decodes a login JWT and nothing
+    else, so every route that declares it stays unreachable by any key. A key
+    reaches exactly the routes that name a scope here — which today is none in
+    ``app/api/routes``; assigning scopes to the existing surface is T4.03's,
+    and doing it by widening ``require_auth`` instead would have made every
+    route keyed at once, silently.
+
+    The scope literal is validated at decoration time, so a typo is a startup
+    failure rather than a route that quietly admits nobody. ``ratify`` fails
+    here twice over — it is forbidden, and it is not in the closed set.
+    """
+    if scope in FORBIDDEN_SCOPES or scope not in API_KEY_SCOPES:
+        raise ValueError(
+            f"{scope!r} is not an API-key scope; the closed set is "
+            f"{', '.join(API_KEY_SCOPES)}"
+        )
+
+    async def _require_scope(
+        request: Request,
+        session: AsyncSession = Depends(get_session),
+    ) -> Principal:
+        # Cookie first, matching `_extract_token`: a browser session wins over
+        # anything in the Authorization header, exactly as it does today.
+        if not request.cookies.get(COOKIE_NAME):
+            presented = request.headers.get("authorization", "")
+            if presented.startswith("Bearer "):
+                bearer = presented[7:].strip()
+                if looks_like_credential(bearer):
+                    principal = await authenticate(session, bearer)
+                    if principal is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid API key",
+                        )
+                    if scope not in principal.scopes:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Key lacks the '{scope}' scope",
+                        )
+                    return Principal(
+                        actor=principal.name,
+                        api_key_id=principal.api_key_id,
+                        scopes=principal.scopes,
+                    )
+
+        token_data = await require_auth(request, session)
+        return Principal(
+            actor=token_data.sub,
+            api_key_id=None,
+            scopes=frozenset(API_KEY_SCOPES),
+        )
+
+    return _require_scope
 
 
 async def require_uninitialized(

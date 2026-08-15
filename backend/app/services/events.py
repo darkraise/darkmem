@@ -99,6 +99,23 @@ ARTICLE_STALE = "article_stale"
 # that keeps `contradiction_dismissed` out of `HUMAN_VERDICTS`.
 RESYNTHESIS_HELD = "resynthesis_held"
 
+# Doc 18 §5's key lifecycle, landed with their emitters (T4.01) on the rule
+# T3.16 settled for `resumed`: a vocabulary value with no writer is
+# indistinguishable from one whose writer was deleted.
+#
+# `object_type='system'`, matching `setup_complete` and `auth_lockout` under doc
+# 18 §10 — a credential is box-level, not one of the ten domain objects, and
+# widening `OBJECT_TYPES` for it would put a non-domain member in a set every
+# timeline read enumerates. `object_id` still names the key, so the two rows
+# reconstruct one credential's life through the ordinary object index.
+#
+# `api_key_id` on these two rows is deliberately null. That column means "the
+# key that made this call"; a mint and a revocation are made by a human session
+# over the single door, so stamping it would attribute a key's creation to
+# itself and put a row in doc 17's keyed-call population that no key made.
+API_KEY_CREATED = "api_key_created"
+API_KEY_REVOKED = "api_key_revoked"
+
 # Doc 04 §8.1's list is explicitly non-exhaustive ("..."); this is the subset
 # named there plus the values T1.07's call sites (capture, extraction,
 # supersession, pipeline outcomes) actually emit. Widening it is
@@ -157,6 +174,8 @@ EVENT_TYPES: list[str] = [
     # `object_type='system'`: a run is not any one memory, and the memories it
     # filed are named in the payload.
     "research_run",
+    API_KEY_CREATED,
+    API_KEY_REVOKED,
 ]
 
 OBJECT_TYPES: list[str] = [

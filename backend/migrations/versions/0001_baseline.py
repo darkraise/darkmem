@@ -1025,19 +1025,34 @@ def _pass_two() -> None:
         """
     )
 
-    # Exists, unwired — a named gap, not a shipped feature. The activation is
-    # a later phase's read path, so the schema carries over unchanged.
+    # Wired by T4.01 (doc 18 §5) — this comment read "Exists, unwired … the
+    # schema carries over unchanged" until the activation landed, which is the
+    # invariant-23 honesty label going stale in the direction that presents a
+    # shipped path as dormant. The two added columns are the whole schema
+    # cost of the activation, which doc 04 §9 caps at "adding columns to the
+    # existing table, never a new table".
+    #
+    # `key_id` is the public half of `dmk_<key_id>_<secret>` and exists because
+    # bcrypt salts per row: hashing a presented secret does not reproduce the
+    # stored hash, so without an indexed lookup handle the only way to verify a
+    # key is to bcrypt it against every row.
+    #
+    # `revoked_at` rather than a DELETE: `events.api_key_id` carries no foreign
+    # key here, so removing the row would leave every call the key ever made
+    # attributed to an id nothing explains.
     op.execute(
         """
         CREATE TABLE api_keys (
             id           UUID NOT NULL,
             name         VARCHAR(255) NOT NULL,
+            key_id       VARCHAR(32) NOT NULL UNIQUE,
             key_hash     VARCHAR(255) NOT NULL UNIQUE,
             scopes       JSONB NOT NULL,
             profile      VARCHAR(100),
             created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
             last_used_at TIMESTAMPTZ,
             expires_at   TIMESTAMPTZ,
+            revoked_at   TIMESTAMPTZ,
             CONSTRAINT api_keys_pkey PRIMARY KEY (id)
         )
         """
