@@ -31,9 +31,9 @@ decision.
   and a finding naming either field is a loud error rather than a dropped key.
 - Distinct-origin stamping for researched sources (`T3.08`). One origin per
   evidence **source** — the identity is the source's, never the run's and never
-  the finding's — and the canonicalisation is merge-only against every input
-  anyone has attacked it with, so a refetch, a re-run or a paraphrase of one
-  page adds no origin. Researched
+  the finding's — and the canonicalisation collapses the variation a fetcher
+  produces mechanically, so a refetch, a re-run or a paraphrase of one page
+  adds no origin. Researched
   origins stay machine-distinguishable from observed ones, so a measurement that
   pools them does it on purpose.
 
@@ -75,6 +75,15 @@ decision.
   the URL spec strips, dot-segments popping past the root and gluing the path
   onto the host, and an unparseable id falling back to its pre-normalisation
   spelling.
+- **And that repair needed a repair, which is the part worth reading.** It
+  reattached a non-default port to the host *before* the trailing-dot, IPv6 and
+  IDNA passes ran — so it relocated the ordering bug rather than removing it,
+  and every one of those passes stopped working whenever a port was present.
+  Worse, strict `idna.encode` raises on the embedded colon where the old
+  IDNA2003 codec had tolerated it, so the fix for "one page must not become two
+  origins" *created* exactly that failure for an IDN host carrying a port. The
+  port is now split off before any canonicalisation and reattached at the end.
+  Found by the review of the fix, not by the fix's own tests.
 - Two fail-open defects in the research loop, also found by review (`T3.07`).
   `bool("false")` is `True`, so a malformed `enabled` value armed the master
   switch — the one field where failing closed matters most was the one without a

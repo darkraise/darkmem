@@ -319,6 +319,34 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
         assert left_id is not None, why
         assert left_id == right_id, f"{why} split one source into two origins"
 
+    @pytest.mark.parametrize("left,right,why", [
+        ("https://bücher.example:8443/a", "https://xn--bcher-kva.example:8443/a",
+         "an IDN host carrying a non-default port"),
+        ("https://example.test.:8443/a", "https://example.test:8443/a",
+         "a trailing-dot FQDN carrying a non-default port"),
+        ("https://[2001:db8::1]:8443/a", "https://[2001:db8:0:0:0:0:0:1]:8443/a",
+         "an IPv6 literal carrying a non-default port"),
+        ("https:/example.test/a", "https://example.test/a",
+         "a scheme written with a single slash"),
+    ])
+    def test_a_port_does_not_stop_the_host_being_canonicalised(self, left, right, why):
+        """The first repair moved the ordering bug instead of removing it.
+
+        A non-default port was reattached to the host *before* the trailing-dot
+        strip, the IPv6 pass and the IDNA pass ran, so every one of those
+        stopped working the moment a port was present. The IDN case is the
+        serious one and the fix for the original finding created it: strict
+        `idna.encode` raises on an embedded colon where the IDNA2003 codec had
+        tolerated it, so one page under its unicode and its `httpx` spelling
+        became two attributable origins — the exact failure class the repair
+        was for. The port is now split off, the bare host canonicalised, and
+        the port reattached at the end.
+        """
+        left_id = research_origin_id(_finding(source_id=left))
+        right_id = research_origin_id(_finding(source_id=right))
+        assert left_id is not None, why
+        assert left_id == right_id, f"{why} split one source into two origins"
+
     def test_the_opaque_fallback_normalises_before_it_gives_up(self):
         """An id `urlsplit` refuses still has to reach one form.
 
@@ -339,6 +367,9 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
          "a genuinely different host that IDNA2003 would have conflated"),
         ("https://[2001:db8::1]/a", "https://[2001:db8::2]/a",
          "two different addresses"),
+        ("https:///example.test/a", "https://example.test/a",
+         "three slashes are not folded: `file:///tmp/a.pdf` means an empty "
+         "authority, and collapsing them would make `tmp` its host"),
         ("urn:isbn:0451450523", "urn:isbn:451450523",
          "a non-URL id whose digits sit where a port would: normalising them "
          "through int() drops the leading zero and merges two identifiers"),

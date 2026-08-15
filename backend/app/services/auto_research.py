@@ -103,7 +103,10 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # Removed outright rather than replaced: the WHATWG URL parser strips these
 # from a URL, so one href wrapped across lines is one locator.
 _URL_STRIPPED_RE = re.compile(r"[\t\r\n]")
-_SCHEME_NO_SLASHES_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):(?!//)")
+# Folds `scheme:` and `scheme:/` to `scheme://`. Deliberately not three or
+# more: `file:///tmp/a.pdf` means an *empty* authority, and collapsing those
+# slashes would make `tmp` its host.
+_SCHEME_NO_SLASHES_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):/{0,1}(?!/)")
 _REPEATED_SLASH_RE = re.compile(r"/{2,}")
 
 # Fail closed. Building the loop is not running it (T3.07 brief): pointing it
@@ -277,6 +280,27 @@ def _canonical_path(path: str) -> str:
     return _REPEATED_SLASH_RE.sub("/", "/".join(segments))
 
 
+def _split_port(host: str) -> tuple[str, str]:
+    """``(host, port)``, with a default port dropped and any other kept verbatim.
+
+    Verbatim because the digits after a colon are not always a port:
+    ``urn:isbn:0451450523`` lands here too, and normalising through ``int()``
+    would drop its leading zero and merge two distinct identifiers.
+    """
+    if host.endswith("]"):
+        # A bracketed IPv6 literal with no port; every colon in it is address.
+        return host, ""
+    head, separator, tail = host.rpartition(":")
+    if not separator or not head or "]" in tail:
+        return host, ""
+    try:
+        if int(tail) in (80, 443):
+            return head, ""
+    except ValueError:
+        pass
+    return head, tail
+
+
 def _canonical_host(netloc: str) -> str:
     # Credentials are not identity, and a fetcher that carries them on one
     # request and not the next would otherwise mint two origins for one page.
@@ -285,22 +309,17 @@ def _canonical_host(netloc: str) -> str:
     # **Port before dots.** `rstrip(".")` used to run first, so a trailing-dot
     # FQDN carrying an explicit default port kept its dot once the port came
     # off and split from the same host written plainly.
-    host, _, port = host.rpartition(":")
-    if not host or "]" in port:
-        # No port, or the colon belonged to an IPv6 literal.
-        host, port = netloc.rsplit("@", 1)[-1].lower(), ""
-    elif port:
-        # Compared numerically, so `:0443` is the same default port as `:443`.
-        try:
-            is_default = int(port) in (80, 443)
-        except ValueError:
-            is_default = False
-        if not is_default:
-            # Put back **verbatim**. Rewriting it through `int()` would drop a
-            # leading zero, and the digits after a colon are not always a port:
-            # `urn:isbn:0451450523` lands here too, and normalising it would
-            # merge two distinct identifiers.
-            host = f"{host}:{port}"
+    # **The port comes off first and goes back on last.** The first repair of
+    # this function reattached a non-default port before the passes below ran,
+    # which did not fix the ordering bug so much as move it one step later:
+    # every canonicalisation here stopped working the moment a port was
+    # present, and strict `idna.encode` *raises* on the embedded colon where
+    # the old IDNA2003 codec had tolerated it — so the fix for one page
+    # becoming two origins created exactly that failure for IDN hosts carrying
+    # a port. Splitting the port off is what removes the ordering hazard
+    # instead of relocating it.
+    host, port = _split_port(host)
+    suffix = f":{port}" if port else ""
 
     host = host.rstrip(".")
     host = host[4:] if host.startswith("www.") else host
@@ -310,9 +329,9 @@ def _canonical_host(netloc: str) -> str:
     # it refuses is left as written rather than guessed at.
     if host.startswith("[") and host.endswith("]"):
         try:
-            return f"[{ipaddress.IPv6Address(host[1:-1]).compressed}]"
+            return f"[{ipaddress.IPv6Address(host[1:-1]).compressed}]{suffix}"
         except ValueError:
-            return host
+            return f"{host}{suffix}"
 
     # **IDNA2008 via the `idna` package, which is what `httpx` uses.** This ran
     # through Python's built-in codec, i.e. IDNA2003, and the two standards
@@ -330,7 +349,7 @@ def _canonical_host(netloc: str) -> str:
             # An unencodable name is not two names; it is one this pass cannot
             # normalise, and leaving it merges no worse than before.
             pass
-    return host
+    return f"{host}{suffix}"
 
 
 def _canonical_locator(value: str) -> str:
