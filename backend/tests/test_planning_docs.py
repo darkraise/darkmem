@@ -284,6 +284,43 @@ def test_progress_version_column_agrees_with_the_ladder():
     )
 
 
+def test_every_open_task_is_assigned_a_version():
+    """Open work with no version is the visibility hole the column was added to
+    close, and every other test here is blind to it.
+
+    The checks above compare the column against the ladder, so they pass loudest
+    exactly when the ladder assigns nothing: the cell is `—`, the derivation
+    agrees, and the two are consistently empty. That is not a hypothetical. v1.0
+    was minted 2026-08-15 with its scope written as prose — four bullets naming
+    their tasks inside sentences — and both parsers own only `` - `Tid` `` list
+    items, so all nineteen open tasks it carries read `—` until 2026-08-16 while
+    this file stayed green.
+
+    Done and dropped rows are excluded deliberately: v0.1 ships no list items on
+    the stated ground that the column answers "which release?" for *open* work.
+    """
+    row = re.compile(rf"^\| ({TASK_ID}) \|")
+    unassigned = []
+    for line in _read_from_master("docs/planning/progress.md").split("\n"):
+        match = row.match(line)
+        if not match:
+            continue
+        cells = [c.strip() for c in CELL.split(line)]
+        if len(cells) <= 8:
+            continue
+        version, status = cells[6], cells[8]
+        if status in {"done", "dropped"}:
+            continue
+        if version in {"—", "-", ""}:
+            unassigned.append(f"{match.group(1)} ({status})")
+
+    assert unassigned == [], (
+        "open tasks carry no version — add them as `- `Tid`` list items under "
+        "their `### vN.N` or `### Gate track` section in RELEASES.md; naming "
+        f"them in prose assigns nothing: {unassigned}"
+    )
+
+
 # ------------------------------------------------------------- generator behaviour
 # These run the generator itself, from the working tree, so an edit is tested
 # before it is committed. `progress.md` is read from master and the generator is
