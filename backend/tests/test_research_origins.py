@@ -26,10 +26,14 @@ nothing corroborates. These tests pin the arithmetic from both ends.
 """
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 import unicodedata
 
+import httpx
+import idna
 import pytest
 from sqlalchemy import select, text
 
@@ -367,9 +371,12 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
          "a genuinely different host that IDNA2003 would have conflated"),
         ("https://[2001:db8::1]/a", "https://[2001:db8::2]/a",
          "two different addresses"),
-        ("https:///example.test/a", "https://example.test/a",
-         "three slashes are not folded: `file:///tmp/a.pdf` means an empty "
-         "authority, and collapsing them would make `tmp` its host"),
+        ("file:/tmp/a.pdf", "file://tmp/a.pdf",
+         "RFC 8089: one slash means an empty authority and two mean a host, "
+         "so `tmp` the host is a different resource from `/tmp` the path"),
+        ("https://[2001:db8::1]:8443/a", "https://[2001:db8::1]/a",
+         "a non-default port is part of an IPv6 literal's identity too — "
+         "nothing else pairs the bracketed form with and without its port"),
         ("urn:isbn:0451450523", "urn:isbn:451450523",
          "a non-URL id whose digits sit where a port would: normalising them "
          "through int() drops the leading zero and merges two identifiers"),
@@ -389,6 +396,232 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
         """
         assert research_origin_id(_finding(source_id=left)) != \
             research_origin_id(_finding(source_id=right)), why
+
+
+class TestTheSlashFoldAfterTheFourthFalsification:
+    """Rounds three and four: each repair introduced the split it was closing.
+
+    Round three reattached a non-default port before the host passes ran and
+    thereby split IDN-with-port pairs; round four widened the slash fold to one
+    slash and thereby split ``file:`` empty-authority pairs — ``httpx`` itself
+    emits ``file:/tmp/a.pdf`` for ``file:///tmp/a.pdf``, and the fold read that
+    spelling as host ``tmp``. No scheme-agnostic slash rule is correct for both
+    ``https:`` (browsers fold any slash count to ``//``) and ``file:`` (one and
+    three slashes mean an empty authority; two mean a host), so the fold is now
+    scheme-aware. These pins were red before that change landed.
+    """
+
+    @pytest.mark.parametrize("left,right,why", [
+        ("file:///tmp/a.pdf", "file:/tmp/a.pdf",
+         "httpx emits the one-slash spelling for the canonical three-slash "
+         "form; RFC 8089 makes them one resource with an empty authority"),
+        ("file:doc.pdf", "file:///doc.pdf",
+         "a slashless file URL resolves to the empty-authority form, per the "
+         "URL standard's file-scheme parser"),
+        ("file://localhost/tmp/a.pdf", "file:///tmp/a.pdf",
+         "RFC 8089 §2 and the URL standard both define `localhost` as the "
+         "empty authority"),
+        ("https:///example.test/a", "https://example.test/a",
+         "browsers fold any slash count after an authority-mandatory scheme"),
+        ("https:///example.test/a", "https:/example.test/a",
+         "httpx emits the one-slash spelling for the three-slash href"),
+        ("https:////example.test/a", "https://example.test/a",
+         "four slashes, which httpx itself reads as the host form"),
+        ("https://example.test:08443/a", "https://example.test:8443/a",
+         "httpx reads `:08443` as port 8443 and emits the plain form, so the "
+         "leading zero split the raw href from the client's own spelling"),
+        ("https://stra%C3%9Fe.example/a", "https://straße.example/a",
+         "a percent-encoded host, which the URL standard's host parser "
+         "decodes before IDNA and which httpx emits for the zero-slash "
+         "spelling of this href — found by the generated-spelling property, "
+         "not by a reviewer"),
+        ("https://example.test/cafe%CC%81", "https://example.test/caf%C3%A9",
+         "NFD and NFC percent-encoded in a path: httpx emits the NFD bytes "
+         "for an NFD href, and unquoting after the module's NFC pass let "
+         "them through unnormalised — found by the generated-spelling "
+         "property, not by a reviewer"),
+        ("https://example.test/a?q=cafe%CC%81", "https://example.test/a?q=caf%C3%A9",
+         "the same class in a query value"),
+    ])
+    def test_one_page_under_two_spellings_is_one_origin(self, left, right, why):
+        left_id = research_origin_id(_finding(source_id=left))
+        right_id = research_origin_id(_finding(source_id=right))
+        assert left_id is not None, why
+        assert left_id == right_id, f"{why} split one source into two origins"
+
+
+def _corpus_host_port(netloc: str) -> tuple[str, str]:
+    if netloc.startswith("["):
+        end = netloc.index("]")
+        rest = netloc[end + 1:]
+        return netloc[: end + 1], rest[1:] if rest.startswith(":") else ""
+    host, _, port = netloc.partition(":")
+    return host, port
+
+
+def _generated_spellings(seed: str) -> list[tuple[str, str]]:
+    """Mechanical spellings of ``seed``, each preserving the resource.
+
+    Every transform here has a real-world producer — a fetcher, a browser, a
+    clipboard, a query builder — which is the admission rule: a spelling with
+    no producer (``;`` for ``&``, a percent-encoded host colon) does not
+    belong, because merging it is not required and may not even be right.
+    """
+    parts = urlsplit(seed)
+    scheme, netloc = parts.scheme, parts.netloc
+    host, port = _corpus_host_port(netloc)
+    named_host = bool(host) and not host.startswith("[")
+
+    def rebuild(new_netloc=None, new_path=None, new_query=None) -> str:
+        return urlunsplit((
+            scheme,
+            netloc if new_netloc is None else new_netloc,
+            parts.path if new_path is None else new_path,
+            parts.query if new_query is None else new_query,
+            "",
+        ))
+
+    spellings: list[tuple[str, str]] = []
+
+    def add(label: str, value: str | None) -> None:
+        if value is not None and value != seed:
+            spellings.append((label, value))
+
+    add("upper scheme", scheme.upper() + seed[len(scheme):])
+    if named_host and host.isascii():
+        # Not for non-ASCII hosts: `str.upper` maps `ß` to `SS`, which is a
+        # genuinely different host under IDNA2008, not a spelling.
+        add("upper host", rebuild(new_netloc=netloc.upper()))
+    if named_host and not host.startswith("www.") and scheme in ("http", "https"):
+        add("www alias", rebuild(new_netloc=f"www.{netloc}"))
+    if named_host:
+        suffix = f":{port}" if port else ""
+        add("trailing host dot", rebuild(new_netloc=f"{host}.{suffix}"))
+    if scheme == "https" and not port:
+        add("explicit default port", rebuild(new_netloc=f"{netloc}:443"))
+    if port:
+        base = netloc[: -len(port)]
+        add("leading-zero port", rebuild(new_netloc=f"{base}0{port}"))
+    if host.startswith("["):
+        expanded = ipaddress.IPv6Address(host[1:-1]).exploded
+        suffix = f":{port}" if port else ""
+        add("expanded IPv6", rebuild(new_netloc=f"[{expanded}]{suffix}"))
+    if named_host and not host.isascii():
+        punycode = idna.encode(host, uts46=True, transitional=False).decode("ascii")
+        suffix = f":{port}" if port else ""
+        add("punycode host", rebuild(new_netloc=f"{punycode}{suffix}"))
+    if parts.path and not parts.path.endswith("/"):
+        add("trailing slash", rebuild(new_path=parts.path + "/"))
+    if parts.path.startswith("/") and netloc:
+        # Only behind a real authority: on `file:///` the leading slash count
+        # *is* the (empty) authority, and parsers genuinely disagree on what
+        # `file:////x` means (httpx reads host `x`, Firefox a UNC path), so
+        # doubling it does not preserve the resource.
+        add("doubled slash", rebuild(new_path="/" + parts.path))
+    if parts.path.startswith("/"):
+        add("dot segment", rebuild(new_path="/x/.." + parts.path))
+    for index, character in enumerate(parts.path):
+        if character.isascii() and character.isalpha():
+            encoded = parts.path[:index] + f"%{ord(character):02X}" + parts.path[index + 1:]
+            add("percent-encoded path letter", rebuild(new_path=encoded))
+            break
+    add("fragment", seed + "#sec")
+    add("tracking parameter", seed + ("&" if parts.query else "?") + "utm_source=x")
+    add("NFD form", unicodedata.normalize("NFD", seed))
+    if scheme in ("http", "https"):
+        for label, spelt in (
+            ("zero-slash scheme", seed.replace("://", ":", 1)),
+            ("one-slash scheme", seed.replace("://", ":/", 1)),
+            ("three-slash scheme", seed.replace("://", ":///", 1)),
+        ):
+            add(label, spelt)
+    if seed.startswith("file:///"):
+        add("one-slash file", "file:/" + seed[len("file:///"):])
+        add("localhost file", "file://localhost/" + seed[len("file:///"):])
+    try:
+        add("httpx spelling", str(httpx.URL(seed)))
+    except Exception:
+        pass
+    return spellings
+
+
+class TestMergeOnlyIsAGeneratedProperty:
+    """Spelling variation generated mechanically, with ``httpx`` as the oracle.
+
+    Four rounds of hand-written pairs each closed the splits they knew about,
+    and three of the four shipped a new one they did not — found every time by
+    the *review* of the fix, through ``str(httpx.URL(...))``. These tests move
+    that instrument into the suite: every generated spelling must agree with
+    the spelling ``httpx`` itself emits for it, and every transform known to
+    preserve the resource must agree with its seed. An edit that splits any
+    generated pair fails here rather than in the fifth review.
+    """
+
+    SEEDS = (
+        "https://example.test/a",
+        "https://example.test/docs/pg?id=7",
+        "https://straße.example/a",
+        "https://bücher.example:8443/a",
+        "https://[2001:db8::1]:8080/a",
+        "https://example.test:8443/b?q=café",
+        "file:///tmp/a.pdf",
+        "file://fileserver.test/share/b.pdf",
+    )
+
+    def _all_spellings(self) -> list[tuple[str, str, str]]:
+        return [
+            (seed, label, spelling)
+            for seed in self.SEEDS
+            for label, spelling in _generated_spellings(seed)
+        ]
+
+    def test_the_generator_generates(self):
+        """A generator quietly producing nothing would pass everything."""
+        corpus = self._all_spellings()
+        assert len(corpus) >= 80, f"only {len(corpus)} generated spellings"
+
+    @pytest.mark.parametrize("seed", SEEDS)
+    def test_every_generated_spelling_of_one_seed_is_one_origin(self, seed):
+        seed_id = research_origin_id(_finding(source_id=seed))
+        assert seed_id is not None
+        for label, spelling in _generated_spellings(seed):
+            spelt_id = research_origin_id(_finding(source_id=spelling))
+            assert spelt_id == seed_id, (
+                f"{label}: {spelling!r} -> {spelt_id!r}, "
+                f"but {seed!r} -> {seed_id!r}"
+            )
+
+    def test_every_spelling_agrees_with_its_own_httpx_spelling(self):
+        """The instrument that falsified three consecutive repairs.
+
+        A gatherer storing ``str(response.url)`` and one storing the raw href
+        hold two spellings of one fetch, so for every spelling the client
+        accepts, the id of the input and the id of what ``httpx`` emits for it
+        must be one origin.
+        """
+        checked = 0
+        for seed, label, spelling in self._all_spellings():
+            for candidate in (seed, spelling):
+                try:
+                    emitted = str(httpx.URL(candidate))
+                except Exception:
+                    continue
+                checked += 1
+                raw_id = research_origin_id(_finding(source_id=candidate))
+                emitted_id = research_origin_id(_finding(source_id=emitted))
+                assert raw_id == emitted_id, (
+                    f"({label}) {candidate!r} -> {raw_id!r}, but httpx emits "
+                    f"{emitted!r} -> {emitted_id!r}"
+                )
+        assert checked >= 80, f"httpx accepted only {checked} spellings"
+
+    def test_the_generator_does_not_merge_the_corpus(self):
+        """The over-merge control on the property itself: distinct seeds stay
+        distinct, so a canonicaliser that merged everything would fail here
+        rather than pass the closure tests vacuously."""
+        ids = [research_origin_id(_finding(source_id=seed)) for seed in self.SEEDS]
+        assert None not in ids
+        assert len(set(ids)) == len(self.SEEDS)
 
 
 class TestUnknownIdentity:

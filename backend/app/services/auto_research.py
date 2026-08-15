@@ -103,11 +103,42 @@ _WHITESPACE_RE = re.compile(r"\s+")
 # Removed outright rather than replaced: the WHATWG URL parser strips these
 # from a URL, so one href wrapped across lines is one locator.
 _URL_STRIPPED_RE = re.compile(r"[\t\r\n]")
-# Folds `scheme:` and `scheme:/` to `scheme://`. Deliberately not three or
-# more: `file:///tmp/a.pdf` means an *empty* authority, and collapsing those
-# slashes would make `tmp` its host.
-_SCHEME_NO_SLASHES_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):/{0,1}(?!/)")
+# The URL standard's authority-mandatory schemes: its parser skips any run of
+# slashes after the colon for exactly these, which is why a browser reads
+# `https:example.test/a`, `https:/…` and `https:///…` as one locator.
+_AUTHORITY_SCHEMES = frozenset({"http", "https", "ws", "wss", "ftp"})
+_SCHEME_SLASHES_RE = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*):(/*)")
 _REPEATED_SLASH_RE = re.compile(r"/{2,}")
+
+
+def _fold_scheme_slashes(value: str) -> str:
+    """One slash rule per scheme family, because no single rule is correct.
+
+    The scheme-agnostic fold this replaces read `file:/tmp/a.pdf` — the
+    spelling `httpx` itself emits for `file:///tmp/a.pdf` — as host `tmp`,
+    splitting the pair it existed to merge, while its own comment cited
+    `file:///`'s empty authority as the reason not to fold three slashes. For
+    `https:` and friends every slash count is one locator, so all fold to
+    `//`; for `file:`, RFC 8089 gives one and three-plus slashes an *empty*
+    authority and exactly two a host, so those rewrite onto the canonical
+    `file:///` form and the two-slash host form stays distinct —
+    `file://localhost/` included, which both RFC 8089 §2 and the URL
+    standard's file-host rule define as the empty authority. Every other
+    scheme keeps the old behaviour: zero or one slash folds to `//`.
+    """
+    match = _SCHEME_SLASHES_RE.match(value)
+    if match is None:
+        return value
+    scheme, slashes = match.group(1).lower(), match.group(2)
+    rest = value[match.end():]
+    if scheme in _AUTHORITY_SCHEMES:
+        return f"{scheme}://{rest}"
+    if scheme == "file":
+        if len(slashes) != 2:
+            return f"file:///{rest}"
+        host, _, path = rest.partition("/")
+        return f"file:///{path}" if host.lower() == "localhost" else value
+    return f"{scheme}://{rest}" if len(slashes) <= 1 else value
 
 # Fail closed. Building the loop is not running it (T3.07 brief): pointing it
 # at a live instance is a separate, owner-owned decision, so an install that
@@ -239,8 +270,14 @@ async def load_budget(session: AsyncSession) -> ResearchBudget:
 
 
 def _canonical_query(query: str) -> str:
+    # NFC after the decode, not only before the parse: percent-encoded NFD
+    # bytes — which `httpx` emits for an NFD href — survive the module's
+    # NFC pass and only become comparable text here.
     kept = {
-        (key.lower(), value.lower())
+        (
+            unicodedata.normalize("NFC", key).lower(),
+            unicodedata.normalize("NFC", value).lower(),
+        )
         for key, value in parse_qsl(query, keep_blank_values=True)
         if key.lower() not in _TRACKING_QUERY_KEYS
         and not key.lower().startswith(_TRACKING_QUERY_PREFIXES)
@@ -263,7 +300,10 @@ def _canonical_path(path: str) -> str:
     becomes ``/`` — because doubt resolves toward merging, which delays a
     promotion rather than fabricating one.
     """
-    decoded = unquote(path)
+    # NFC after the decode as well as before the parse: percent-encoded NFD
+    # bytes — httpx's spelling of an NFD href — are invisible to the NFC pass
+    # that runs over the raw value.
+    decoded = unicodedata.normalize("NFC", unquote(path))
     segments: list[str] = []
     for segment in decoded.split("/"):
         if segment == ".":
@@ -297,7 +337,14 @@ def _split_port(host: str) -> tuple[str, str]:
         if int(tail) in (80, 443):
             return head, ""
     except ValueError:
-        pass
+        return head, tail
+    # A leading zero is a spelling, not an identity: `httpx` reads `:08443` as
+    # port 8443 and emits the plain form, so keeping the zero verbatim split a
+    # raw href from the client's own spelling of it. Only an unambiguous ASCII
+    # digit run in port range is rewritten — `urn:isbn:0451450523`'s ten
+    # digits exceed it and stay verbatim, keeping two distinct identifiers two.
+    if tail.isascii() and tail.isdigit() and int(tail) <= 65535:
+        return head, str(int(tail))
     return head, tail
 
 
@@ -320,6 +367,13 @@ def _canonical_host(netloc: str) -> str:
     # instead of relocating it.
     host, port = _split_port(host)
     suffix = f":{port}" if port else ""
+
+    # The URL standard's host parser percent-decodes before IDNA, and `httpx`
+    # emits `https:stra%C3%9Fe.example/a` for the zero-slash spelling of a
+    # non-ASCII href — leaving the triplets in place split that emission from
+    # the decoded form. Decoded on the *bare* host, after the port is off, so
+    # a decoded byte cannot masquerade as a port separator.
+    host = unquote(host)
 
     host = host.rstrip(".")
     host = host[4:] if host.startswith("www.") else host
@@ -361,10 +415,7 @@ def _canonical_locator(value: str) -> str:
     # NFC first: two Unicode spellings of one host or path are one locator, and
     # the encoding steps below have to run over a settled form.
     value = unicodedata.normalize("NFC", value)
-    # `https:example.test/a` is a legal spelling of `https://example.test/a`
-    # and appears in hand-written hrefs. Without this the scheme lands in the
-    # host slot and the two split.
-    value = _SCHEME_NO_SLASHES_RE.sub(r"\1://", value, count=1)
+    value = _fold_scheme_slashes(value)
     prefixed = value if "://" in value or value.startswith("//") else f"//{value}"
     parts = urlsplit(prefixed)
     host = _canonical_host(parts.netloc)
@@ -406,13 +457,19 @@ def research_origin_id(finding: ResearchFinding) -> str | None:
     show the audit a distinction the count does not honour.
 
     **Merge-only is a tested property, not a structural guarantee, and the
-    difference has cost twice.** Stated as holding "by construction", it was
-    falsified by T3.08's review (six splitting inputs) and again by v0.5's
-    version review (nine more, 2026-08-15) — most seriously an IDNA2003 host
-    pass against the IDNA2008 punycode ``httpx`` emits, which made one page two
-    attributable origins. Every one is pinned in
-    ``tests/test_research_origins.py``. Assume more exist that nobody has
-    looked for, and add a red-first pin before extending anything here.
+    difference has cost four times.** Stated as holding "by construction", it
+    was falsified by T3.08's review (six splitting inputs), by v0.5's version
+    review (nine more, 2026-08-15 — most seriously an IDNA2003 host pass
+    against the IDNA2008 punycode ``httpx`` emits), and then twice by the
+    repairs themselves: reattaching a port before the host passes split
+    IDN-with-port pairs, and widening the slash fold split ``file:``
+    empty-authority pairs. Three consecutive hand-written repairs each
+    introduced the failure class they were closing, so the suite now carries
+    the reviewers' own instrument: ``tests/test_research_origins.py``
+    generates spellings mechanically and asserts every one agrees with the
+    spelling ``httpx`` itself emits for it, alongside the named pins for
+    every falsification so far. Extend the generator (and add a red-first
+    pin) before extending anything here.
 
     **Its bound, stated rather than left to be discovered.** Identity here is the
     *locator's*, not the content's: one wire story syndicated under two
