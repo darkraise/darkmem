@@ -850,3 +850,76 @@ def test_the_arming_window_clause_ignores_the_blocked_hold_group(pinned_entries)
     cutoff = _ARMING_RUN_CLOCK - timedelta(days=relations.SUPERSESSION_WINDOW_DAYS)
     for entry in _blocked(pinned_entries):
         assert datetime.fromisoformat(entry["created_at"]) >= cutoff
+
+
+class TestTheTwinPrintsTokensItActuallyHas:
+    """`_print_twin` read `prompt_tokens` / `completion_tokens`, which
+    `PurposeUsage` has never had — its fields are split live/cache_known.
+
+    Both columns therefore printed 0 unconditionally, and the artifact was
+    correct only because the measured run was fully replayed and the true
+    values *were* zero. The first cold run would have printed
+    `live=246 prompt=0 completion=0` — the paid zero rule 2's twin exists to
+    refuse — with nothing to notice it. No test covered the printer
+    (T2.129 review, Critical C-1).
+    """
+
+    def _twin_output(self, usage: dict, capsys):
+        from dataclasses import dataclass, field
+        from benchlib.run_gc_evidence import _print_twin
+
+        @dataclass
+        class _Prepared:
+            wall_seconds: float = 1.0
+            live_calls: int = 3
+            tokens_by_purpose: dict = field(default_factory=dict)
+
+        _print_twin(_Prepared(tokens_by_purpose={"extraction": usage}))
+        return capsys.readouterr().out
+
+    def test_paid_tokens_reach_the_artifact(self, capsys):
+        """The assertion the old printer fails: non-zero paid tokens must
+        appear. Against the pre-fix code these render as 0."""
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        usage = asdict(PurposeUsage())
+        usage.update(
+            live_calls=246, live_prompt_tokens=91234, live_completion_tokens=5678,
+            cache_known_prompt_tokens=11, cache_known_completion_tokens=22,
+        )
+        out = self._twin_output(usage, capsys)
+        assert "91234" in out, "paid prompt tokens must reach the artifact"
+        assert "5678" in out, "paid completion tokens must reach the artifact"
+
+    def test_the_printer_reads_only_keys_the_ledger_emits(self):
+        """Structural: every key the printer asks for must exist on
+        `PurposeUsage`, so a field rename cannot silently zero a column."""
+        import ast, inspect, textwrap
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        from benchlib import run_gc_evidence
+
+        real = set(asdict(PurposeUsage()))
+        src = textwrap.dedent(inspect.getsource(run_gc_evidence._print_twin))
+        asked = {
+            node.args[0].value
+            for node in ast.walk(ast.parse(src))
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute) and node.func.attr == "get"
+            and node.args and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        }
+        unknown = asked - real
+        assert not unknown, (
+            f"the twin asks for keys the ledger does not emit: {sorted(unknown)} "
+            f"— each renders 0 forever and reads as a free call"
+        )
+
+    def test_live_unknown_calls_is_disclosed(self, capsys):
+        """A live call whose usage the vendor did not report is not free, and
+        this is the field built to say so."""
+        from dataclasses import asdict
+        from benchlib.twin import PurposeUsage
+        usage = asdict(PurposeUsage())
+        usage.update(live_calls=5, live_unknown_calls=4)
+        assert "live_unknown=4" in self._twin_output(usage, capsys)

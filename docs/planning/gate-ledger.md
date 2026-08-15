@@ -841,7 +841,9 @@ on the same corpus (`69dbb717b0476167`) so the clock is the only variable.
 | | simulated | unsimulated |
 |---|---|---|
 | corroborations | 149 | **131** |
-| `gate_fired` eligibles | [98, 33, 18] | **[98, 35]** |
+| `gate_fired` eligibles | [98, **35**, 18] | **[98, 35]** |
+
+**Units corrected 2026-08-15 (T2.129's final-commit review, I-2).** The left cell read `[98, 33, 18]` under an *eligibles* label, and 33 is the **promoted** count — the simulated run's eligibles were `[98, 35, 18]`, its own artifact says so, because the 2 blocked holds were already in that denominator. Mixing promoted into an eligibles row understates the very denominator the blocked-hold group was built to populate. The `time_gap`-disappears conclusion survives either reading, and the wrong figure propagated to the commit message and the task row.
 
 **The `time_gap` bucket does not shrink — it disappears.** All 18 of its
 promotions exist only under the simulated clock, exactly as `promotion_corpus`'s
