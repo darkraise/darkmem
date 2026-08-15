@@ -12,6 +12,8 @@ import pytest
 from benchlib import faithfulness_gate as fg, run_faithfulness_gate as rfg
 from benchlib.tests.fixtures import faithfulness_gate_fixture as fx
 
+from app.services.verification_judge import JUDGE_ROLES
+
 
 async def test_default_run_reports_gold_absent_and_exits_zero(capsys):
     code = await rfg._run([])
@@ -92,3 +94,33 @@ async def test_an_unreadable_bar_row_fails_closed_and_never_reads_as_a_clean_run
 
     assert code == 1
     assert "FAIL_CLOSED (unreadable bar row)" in out
+
+
+# ── I-1: the qualification banner tracks the registry, never frozen prose ──
+
+
+def test_missing_qualification_banner_matches_todays_registry_state():
+    """Today "faithfulness" is not in JUDGE_ROLES, so the banner must say
+    FAIL_CLOSED -- this is the state the frozen-prose defect happened to be
+    correct about by accident."""
+    assert "faithfulness" not in JUDGE_ROLES
+
+
+def test_qualification_banner_flips_the_moment_the_role_is_wired(
+    monkeypatch, capsys,
+):
+    """The pin: if this guard were still frozen prose (as it was before this
+    fix round), this test would fail, because the banner would keep printing
+    FAIL_CLOSED even after the role landed in JUDGE_ROLES -- exactly the
+    false report TH1.09 would trigger on every gate run, including TH1.10's."""
+    monkeypatch.setitem(rfg.JUDGE_ROLES, "faithfulness", ("some_bar",))
+    rfg._print_missing_qualification()
+    out = capsys.readouterr().out
+    assert "FAIL_CLOSED" not in out
+    assert "role wired" in out
+
+
+def test_qualification_banner_still_fails_closed_when_role_is_absent(capsys):
+    rfg._print_missing_qualification()
+    out = capsys.readouterr().out
+    assert "FAIL_CLOSED (missing qualification)" in out

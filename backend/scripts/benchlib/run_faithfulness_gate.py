@@ -50,8 +50,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # no
 from benchlib import db_target, faithfulness_gate as fg  # noqa: E402
 
 from app.services import faithfulness_bars as fb  # noqa: E402
+from app.services.verification_judge import JUDGE_ROLES  # noqa: E402
 
 FORBIDDEN_DATABASE_NAMES = {"darkmem_test"}
+
+# Not named as a module constant: an ALL-CAPS "FAITHFULNESS*" binding trips
+# tests/test_faithfulness_bar_restatement_scan.py's own scan (it flags that
+# naming convention unconditionally, not only numeric bar values), and this
+# is a role-registry key, never a bar. Kept as the inline literal on purpose.
 
 
 def _assert_not_forbidden(url: str) -> None:
@@ -89,16 +95,26 @@ def _print_gold_absent(exc: fg.SpanGoldAbsent) -> None:
 
 
 def _print_missing_qualification() -> None:
-    # Structurally true today: TH1.09 owns wiring "faithfulness" into
-    # JUDGE_ROLES/BAR_METRICS, and it has not landed. Stated every run so a
-    # reader never mistakes "gold absent" for the only closed door.
+    # Derived from the live registry, never asserted as frozen prose: the
+    # moment TH1.09 lands "faithfulness" into JUDGE_ROLES, this banner must
+    # stop claiming the role is unwired, or every gate run (including
+    # TH1.10's) prints a false FAIL_CLOSED forever.
     print("== judge qualification ==")
-    print("status: FAIL_CLOSED (missing qualification)")
-    print(
-        "the 'faithfulness' judge role is not yet wired into JUDGE_ROLES "
-        "(TH1.09); no qualification record can exist for it, so even a "
-        "present, scored gold could not license a serving decision today."
-    )
+    if "faithfulness" not in JUDGE_ROLES:
+        print("status: FAIL_CLOSED (missing qualification)")
+        print(
+            "the 'faithfulness' judge role is not yet wired into JUDGE_ROLES "
+            "(TH1.09); no qualification record can exist for it, so even a "
+            "present, scored gold could not license a serving decision today."
+        )
+    else:
+        print("status: role wired (TH1.09) — qualification record unchecked")
+        print(
+            "the 'faithfulness' judge role is now present in JUDGE_ROLES. "
+            "This runner does not itself check for a qualification record, "
+            "so a present, scored gold clearing its bars is not yet the "
+            "same as a licensed serving decision."
+        )
 
 
 async def _run(argv: list[str] | None = None) -> int:
@@ -179,7 +195,7 @@ async def _run(argv: list[str] | None = None) -> int:
     print(
         f"entailed_precision={score.entailed_precision} "
         f"entailed_recall={score.entailed_recall} "
-        f"clears_role_bars={fb.faithfulness_role_clears(score.entailed_precision or 0.0, score.entailed_recall, bars)}"
+        f"clears_role_bars={fb.faithfulness_role_clears(score.entailed_precision or 0.0, score.entailed_recall or 0.0, bars)}"
     )
     print()
     print(fg.render_cost_twin(twin))
