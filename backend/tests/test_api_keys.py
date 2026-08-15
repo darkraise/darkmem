@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import re
+import types
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -29,6 +30,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI
+from fastapi.dependencies.utils import get_dependant
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
@@ -198,6 +201,33 @@ def _require_scope_arguments() -> list[tuple[str, ast.expr]]:
             ):
                 found.append((rel, node.args[0]))
     return found
+
+
+def _routes_source_files() -> list[tuple[str, str]]:
+    """`(relative_path, source_text)` for every module under app/api/routes."""
+    routes = APP_ROOT / "api" / "routes"
+    return [
+        (str(path.relative_to(APP_ROOT)), path.read_text(encoding="utf-8"))
+        for path in sorted(routes.rglob("*.py"))
+    ]
+
+
+def _require_scope_call_sites(files: list[tuple[str, str]]) -> list[tuple[str, int]]:
+    """How many `require_scope(...)` call sites each file has -- binding
+    granularity, not a substring match on the file text, so a second call
+    site added to an already-offending file still moves the count."""
+    sites: list[tuple[str, int]] = []
+    for rel, text in files:
+        tree = ast.parse(text, filename=rel)
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "require_scope"
+        ]
+        if calls:
+            sites.append((rel, len(calls)))
+    return sites
 
 
 def _offending_scope_arguments(arguments) -> list[str]:
@@ -814,20 +844,180 @@ class TestPostureIsUnchanged:
         assert "authenticate" not in called
         assert "looks_like_credential" not in called
 
-    def test_no_shipped_route_is_keyed_yet(self):
-        """T4.01 lands the mechanism; T4.03 assigns scopes to the surface.
-        A route appearing here before then is a posture change nobody argued
-        for, so this asserts the count rather than trusting the intent."""
-        routes = APP_ROOT / "api" / "routes"
-        offenders = [
-            str(path.relative_to(APP_ROOT))
-            for path in sorted(routes.rglob("*.py"))
-            if "require_scope" in path.read_text(encoding="utf-8")
+    def test_no_shipped_route_is_keyed_yet_beyond_the_sanctioned_call_site(self):
+        """T4.01 lands the mechanism; T4.03 assigns scopes to the *existing*
+        surface. T4.05's push-webhook receiver is a genuinely new route, not
+        a retrofit of one already reachable by a human session -- doc 18 §5
+        (18-security-auth-and-trust.md:138, 261) names the push-webhook
+        receiver as one of the two triggers for this activation -- so it is
+        the one sanctioned exception, pinned to the exact binding rather than
+        to file membership: a file-level check would pass unchanged if a
+        second, unargued `require_scope` call landed anywhere else in
+        `repos.py` (see the drills below)."""
+        sites = _require_scope_call_sites(_routes_source_files())
+        assert sites == [("api/routes/repos.py", 1)]
+
+        repos_source = (APP_ROOT / "api" / "routes" / "repos.py").read_text(encoding="utf-8")
+        assert '_require_repo_admin = require_scope("admin")' in repos_source
+
+    def test_the_scan_flags_a_call_site_planted_in_another_route(self):
+        """The fail-closed direction: a require_scope call anywhere else in
+        the tree still fails the positive assertion above, even though it is
+        no longer a bare file-membership check."""
+        files = _routes_source_files() + [
+            (
+                "api/routes/tags.py",
+                "from app.api.auth import require_scope\n_x = require_scope('admin')\n",
+            ),
         ]
-        assert offenders == []
+        sites = _require_scope_call_sites(files)
+        assert sites != [("api/routes/repos.py", 1)]
+        assert ("api/routes/tags.py", 1) in sites
+
+    def test_the_scan_flags_a_second_call_site_in_repos_py_itself(self):
+        """What file-granularity membership would have missed: a second
+        require_scope call added to repos.py -- a DELETE route quietly
+        gaining a scope nobody argued for, say -- leaves the file list
+        unchanged but must move the call count."""
+        patched = [
+            (rel, text + "\n_extra = require_scope('read')\n") if rel == "api/routes/repos.py" else (rel, text)
+            for rel, text in _routes_source_files()
+        ]
+        sites = _require_scope_call_sites(patched)
+        assert sites == [("api/routes/repos.py", 2)]
+        assert sites != [("api/routes/repos.py", 1)]
 
     def test_the_mcp_door_gained_no_bearer_requirement(self):
         # Doc 18 §11's stance: the MCP bearer is a second, independent flip.
         source = (APP_ROOT / "api" / "mcp" / "server.py").read_text(encoding="utf-8")
         assert "require_scope" not in source
         assert "api_keys" not in source
+
+
+# --------------------------------------------------------------------------
+# Which route the one sanctioned require_scope binding actually reaches
+# --------------------------------------------------------------------------
+#
+# `TestPostureIsUnchanged` above proves there is exactly one `require_scope`
+# *call site*. It says nothing about which route the closure that call built
+# is wired to -- a reviewer can repoint a second route at the same
+# `_require_repo_admin` object (`Depends(_require_repo_admin)` on
+# `delete_repo` instead of `Depends(require_auth)`) without adding a call
+# site or changing the binding string, and every JWT-based test on the
+# mutated route stays green because `require_scope`'s fallthrough accepts a
+# session too (`auth.py:208-213`). The tests below walk the dependency
+# closure FastAPI itself resolves for every route, so they see that
+# mutation -- and any alias or indirect call reaching the same closure --
+# regardless of how the source text spells it.
+
+
+def _require_scope_dependency_code() -> types.CodeType:
+    """The code object shared by every closure `require_scope(...)` builds.
+
+    A nested function's code object is compiled once per source location,
+    not once per call of the enclosing factory, so identity against this
+    object survives an alias (`rs = require_scope; rs("read")`), an
+    indirect call (`TABLE[0](repo)`), and binding reuse (a second route
+    pointed at the same already-built closure) -- none of which a
+    source-text scan can see.
+    """
+    return next(
+        const
+        for const in require_scope.__code__.co_consts
+        if isinstance(const, types.CodeType) and const.co_name == "_require_scope"
+    )
+
+
+def _iter_api_routes(routes):
+    """Recurse through the app's route tree down to concrete `APIRoute`
+    objects, including FastAPI's lazy `_IncludedRouter` wrappers around each
+    `include_router` call."""
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif hasattr(route, "original_router"):
+            yield from _iter_api_routes(route.original_router.routes)
+        elif hasattr(route, "routes"):
+            yield from _iter_api_routes(route.routes)
+
+
+def _iter_dependant_calls(dependant, seen=None):
+    """Walk one route's full dependency closure -- the tree FastAPI itself
+    resolves at request time, sub-dependencies included -- not just the
+    `Depends(...)` arguments named directly in the route signature."""
+    if seen is None:
+        seen = set()
+    if id(dependant) in seen:
+        return
+    seen.add(id(dependant))
+    if dependant.call is not None:
+        yield dependant.call
+    for sub in dependant.dependencies:
+        yield from _iter_dependant_calls(sub, seen)
+
+
+def _routes_gated_by_require_scope(app) -> set[tuple[str, str]]:
+    """Every `(method, path)` whose runtime dependency closure contains a
+    require_scope-built dependency."""
+    target_code = _require_scope_dependency_code()
+    gated: set[tuple[str, str]] = set()
+    for route in _iter_api_routes(app.router.routes):
+        for call in _iter_dependant_calls(route.dependant):
+            if getattr(call, "__code__", None) is target_code:
+                for method in route.methods or ():
+                    gated.add((method, route.path))
+                break
+    return gated
+
+
+class TestRuntimeScopeGatedRoutes:
+    """Important 3, fix round 2 (`docs/planning/briefs/2026-08-16-t4.05-fix-round-2.md`)."""
+
+    def test_only_the_webhook_route_is_scope_gated(self):
+        from app.main import app
+
+        assert _routes_gated_by_require_scope(app) == {
+            ("POST", "/api/v1/repos/{repo_id}/webhook"),
+        }
+
+    def test_the_assertion_catches_delete_repo_reusing_the_binding(self):
+        """The drill: reproduce the reviewer's exact mutation -- `delete_repo`
+        repointed at the already-built `_require_repo_admin` closure, no new
+        call site -- against the real app's route table, and confirm the
+        runtime assertion goes red, then green again once restored.
+
+        Reconstructing the dependant with `get_dependant` (the same analysis
+        FastAPI runs when it processes `Depends(...)` on a route signature)
+        and swapping it onto the live `delete_repo` route object is what
+        makes this the reviewer's mutation and not a synthetic stand-in --
+        the walk below sees exactly what FastAPI would have resolved had
+        `repos.py` actually been edited this way.
+        """
+        from app.api.routes.repos import _require_repo_admin
+        from app.main import app
+
+        async def mutated_delete_repo(repo_id: uuid.UUID, _principal=Depends(_require_repo_admin)):
+            ...
+
+        mutated_dependant = get_dependant(
+            path="/api/v1/repos/{repo_id}", call=mutated_delete_repo
+        )
+
+        target = next(
+            route
+            for route in _iter_api_routes(app.router.routes)
+            if route.path == "/api/v1/repos/{repo_id}" and "DELETE" in (route.methods or ())
+        )
+        original_dependant = target.dependant
+        target.dependant = mutated_dependant
+        try:
+            assert _routes_gated_by_require_scope(app) == {
+                ("POST", "/api/v1/repos/{repo_id}/webhook"),
+                ("DELETE", "/api/v1/repos/{repo_id}"),
+            }, "the mutant must be caught -- both routes now carry the binding"
+        finally:
+            target.dependant = original_dependant
+
+        assert _routes_gated_by_require_scope(app) == {
+            ("POST", "/api/v1/repos/{repo_id}/webhook"),
+        }, "restoring the original dependant must clear the finding again"

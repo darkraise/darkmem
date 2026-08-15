@@ -800,6 +800,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("PUT", f"{V1}/repos/{{repo_id}}"),
             ("DELETE", f"{V1}/repos/{{repo_id}}"),
             ("POST", f"{V1}/repos/{{repo_id}}/reindex"),
+            ("POST", f"{V1}/repos/{{repo_id}}/webhook"),
             ("GET", f"{V1}/repos/{{repo_id}}/tasks"),
             ("DELETE", f"{V1}/repos/{{repo_id}}/tasks/{{task_id}}"),
         ),
@@ -810,7 +811,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "carry indexing-operations detail -- index debt, the task queue, "
             "the HEAD sha -- that belongs to the operator dashboard, while "
             "list_repos already gives an agent the id, name and counts it "
-            "needs to scope a code query."
+            "needs to scope a code query. The push webhook (T4.05, doc 10 "
+            "§5) is the same reindex control surfaced for an external CI "
+            "system rather than the UI's Reindex button -- an externally "
+            "reachable receiver, gated on the same `admin` scope, calling "
+            "the identical `CodePipeline.run` polling and the Reindex "
+            "button both call; it earns no MCP twin for the same reason "
+            "reindex doesn't."
         ),
     ),
     Surface(

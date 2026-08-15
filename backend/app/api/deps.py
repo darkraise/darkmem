@@ -1,7 +1,7 @@
 from fastapi import Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.database import get_session
+from app.database import async_session_factory, get_session
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.relational import PostgresTagRepository
 from app.repositories.vector import PostgresVectorRepository
@@ -57,6 +57,14 @@ async def get_code_pipeline(request: Request, session: AsyncSession = Depends(ge
 
 async def get_repo_manager(session: AsyncSession = Depends(get_session)) -> RepoManager:
     return RepoManager(session)
+
+
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """The sessionmaker a detached background task opens its own session
+    from — never the request-scoped ``session`` above, which closes when the
+    request returns. A dependency (not a hardcoded import) so a test can
+    substitute a factory bound to its own engine."""
+    return async_session_factory
 
 
 async def get_tag_repository(session: AsyncSession = Depends(get_session)) -> PostgresTagRepository:
