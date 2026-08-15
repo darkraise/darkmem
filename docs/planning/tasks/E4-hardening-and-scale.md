@@ -282,6 +282,51 @@ conflate them; that flake is separately open with four refuted hypotheses.
 **Verify.** `cd frontend && npm test`, then `./scripts/gate.sh` on a host whose
 `uptime` is recorded alongside the result.
 
+#### T4.13 — The same fixture residue in T2.16's suite
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T4.11` · `Doc: 04 §5.3` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-16.** T4.11 fixed the residue in `test_memory_dream.py` and its
+new regression test — correctly, being general rather than special-cased —
+immediately caught **a second instance of the identical defect** in
+`tests/test_memory_relation_derivation.py` (T2.16's suite). T4.11 attempted the
+same fix there, **broke 11 of that file's own tests, and reverted rather than
+guessing at a suite it was not briefed on.** That was the right call and this task
+is the consequence.
+
+**What.** `test_memory_relation_derivation.py` carries the same shape as the one
+T4.11 closed: `FP = "t216-embedder|4"` (`:35`), its own `committing` fixture
+(`:52`) whose teardown (`:63-69`) deletes `memory_relations`, `entities` and
+`memories` but **not** the `embedders` row or its partitions, and its own
+`seed_partition` (`:151`). The durable half-registered fingerprint then makes
+`delete_code_chunks_by_repo` raise `UndefinedTable` for any later test that drives
+a real first-index with a live `vector_repo`.
+
+**Why it is Opus-tier and not a copy-paste of T4.11.** The naive port fails, and
+the reason is a real difference in the suite: **several of its tests rely on an
+earlier test's partition surviving across test boundaries within the file**,
+rather than reseeding it themselves. `test_memory_dream.py` does not share that
+assumption. So a teardown that drops the partitions per test breaks them. The task
+is to make the residue not escape the *file* while preserving whatever
+within-file sharing its tests actually depend on — or to remove that dependency
+deliberately, if the sharing turns out to be incidental rather than load-bearing.
+Establish which it is before choosing.
+
+**Done when:**
+- [ ] No `t216-` embedder row or partition survives the file
+- [ ] T4.11's regression test passes with this file in the same run
+- [ ] Every test in `test_memory_relation_derivation.py` still passes, and any
+      within-file partition sharing you removed is shown to have been incidental
+- [ ] `delete_code_chunks_by_repo` is **not** modified — the production invariant
+      is intact and this remains a fixture defect
+- [ ] The full floor is green
+
+**A third instance may exist.** Two suites had this independently, so sweep for the
+pattern — a `committing` fixture plus a local `seed_partition` — rather than
+assuming these are the only two. Report what the sweep found either way.
+
+**Verify.** `cd backend && python -m pytest tests/test_memory_relation_derivation.py tests/test_memory_dream.py tests/test_push_webhook.py -q`, then the full floor.
+
 ---
 
 ## Amendment log
