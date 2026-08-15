@@ -934,10 +934,22 @@ clear the bound even at zero observed. Three limits belong beside the number
 rather than after it: the numerator is **one** fact, the corpus is authored end
 to end by the measured party, and the unsimulated pass shows one of the three
 gate paths (`time_gap`) exists only under the harness's simulated capture clock —
-it does not shrink without the simulation, it disappears. Switching the scored
-rule to the bound is a **strict tightening** and therefore needs no loosening
-licence, but it changes what the gate decides and is the owner's; the numbers
-land beside the existing verdict until then. Every figure and its provenance is
+it does not shrink without the simulation, it disappears. **The scored rule is
+now the bound, and the point estimate is context** (T2.132, owner's ruling
+2026-08-15 — this paragraph said the switch "is the owner's" and that the
+numbers "land beside the existing verdict until then", which stopped being true
+the day it was taken). `audit_clears` takes **counts, not a rate**, because
+1/149 and 20/2980 are the same 0.0067 and bound to 0.0314 and 0.0097 — opposite
+verdicts from one observation. It is a strict tightening, so no bar moved and no
+licence is involved; its visible effect is that **the audit axis now reports
+`clears=False` where it reported `clears=True`**, retiring a pass this file had
+already disowned. Two consequences worth carrying: the corpus-growth targets
+T2.131 derives (299 / 473 / the 490 floor) were computed off this bound while
+the gate still scored the estimate, so reaching that target and clearing the
+audit are now one event rather than two; and `false_promotion_min_corroborations`
+= 20 is **subsumed** — nothing clears 0.01 below 299 corroborations at any
+observed count — kept for the empty-window guard and for the licensed-ceiling
+case, not because it decides anything today. Every figure and its provenance is
 in the gate ledger's G-C sections. The bars are stated as
 config rows over pinned defaults in `scripts/benchlib/promotion_bars.py`
 (committed before the first measurement; the pin test makes moving one a

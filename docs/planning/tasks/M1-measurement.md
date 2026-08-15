@@ -1244,6 +1244,61 @@ evidence run per `docs/planning/briefs/2026-08-13-gc-bench-arm-evidence.md`, bot
 
 ---
 
+#### T2.132 — Score the false-promotion audit on the bound, not the observation
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T2.130` · `Doc: 17 §5.1` · `Tag: target-new` · `Gate: —`
+
+*(`Gate: —` follows T2.130's precedent and is not an oversight: the three
+qualifiers say whether a task's code is blocked by a gate, whether its label
+waits on one, or whether it produces one's evidence. This task does none — it
+changes G-C's own decision rule, which is a fourth relationship the field has no
+spelling for. The relationship is stated in the body instead, where it can be
+read.)*
+
+**Minted and executed 2026-08-15 on the owner's instruction to take the switch T2.130
+measured and deliberately did not make.** T2.130 established that `observed rate < bar`
+passes a system sitting exactly at the failing bar about half the time at *every* sample
+size (0.5604 at n = 149, 0.4865 at n = 10 000), reported the bound beside it, and left the
+verdict alone on the stated ground that changing what a gate decides is the owner's call
+and not a side effect of a reporting task. This is that call, taken.
+
+**`audit_clears` scores the 95 % Clopper-Pearson upper bound.** It takes **counts, not a
+rate**, because a rate cannot be bounded: 1/149 and 20/2980 are the same 0.0067 and their
+bounds are 0.0314 and 0.0097 — opposite verdicts from an identical point estimate, which
+the old signature could not express.
+
+**No bar moved, and no licence is involved.** The bound is never below the point estimate,
+so the switch can only refuse windows the old rule cleared. It is a strict tightening
+under `promotion_bars`' own floors discipline.
+
+**Two consequences, recorded rather than discovered later.** (1) **The audit axis flips
+from `clears=True` to `clears=False` on the corpus as it stands** — 1/149 bounds to
+0.0314 against 0.01. G-C did not clear before this and does not clear now; what changes is
+that the audit axis stops reporting a pass that T2.130 had already shown was worth
+approximately nothing. (2) **`false_promotion_min_corroborations` (20) is subsumed at the
+committed bars**: the bound cannot clear 0.01 below 299 corroborations at any observed
+count, so the floor refuses nothing the bound would have cleared. It is kept — it still
+guards the empty window the bound cannot be computed for, still labels `decidable`, and
+decides again the moment the ceiling is licensed up, which is the configuration an abuse
+would reach for.
+
+**Done-when.** The predicate scores the bound and is pinned by a test that fails under a
+revert to the point estimate; the confidence level is a committed constant with no
+`config` surface (a resolvable number needs a clamp, a direction and a domain edge to
+defend it, and the cheaper defence for one nobody has asked to tune is no surface at all)
+and is pinned by test; the evidence runner passes counts, asserted structurally because a
+stale rate argument type-checks and dies at `math.comb` after every query is paid for; the
+report marks exactly one line as SCORED and that line is the bound, with the rendered
+verdict pinned to the predicate's; the durable ledger row carries the bound, the
+confidence and which quantity was scored, because `rate` alone cannot be re-bounded after
+the fact; and the subsumption above is proven by derivation rather than asserted.
+
+**Verify.** `cd backend && python -m pytest scripts/benchlib/tests -q`, plus four mutation
+drills: reverting the predicate to the point estimate, dropping the decidability guard,
+weakening the confidence, and rendering a verdict the predicate disagrees with.
+
+---
+
 #### T2.124 — A fresh entailment gold, justified without citing a result
 
 `Model: Fable 5` · `Effort: xhigh` · `Size: L` · `Depends: T2.118, T2.123` · `Doc: 17 §6, 17 §11` · `Tag: target-new` · `Gate: —`

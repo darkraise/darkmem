@@ -758,26 +758,40 @@ def corroborations_required(k: int, bar: float, confidence: float = 0.95,
 #: can be rendered without threading the resolved bars through the renderer.
 #: `promotion_bars` remains the authority; a mismatch is caught by test.
 _AUDIT_BAR_FOR_POWER = 0.01
-_AUDIT_CONFIDENCE = 0.95
+
+#: The confidence the scored verdict is computed at (T2.132). It lives here
+#: rather than beside the bars because `promotion_bars` imports this module,
+#: and it is a committed constant rather than a `config`-resolved bar on
+#: purpose: a resolvable number needs a clamp, a licence direction and a
+#: domain edge to defend it, and the cheaper defence for one nobody has asked
+#: to tune is to give it no config surface to be moved through. Lowering it
+#: would loosen the gate — the bound shrinks toward the point estimate — so
+#: it is pinned by test and printed in every report, which is the trace the
+#: clamp buys the six bars that do carry rows.
+FALSE_PROMOTION_CONFIDENCE = 0.95
 
 
 def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
-    """What the point estimate above is worth, printed beside it.
+    """The scored line, with the superseded rule's worth printed beside it.
 
     Exists because `decidable=True clears=True` was quotable forty lines above
-    the caveats explaining that it meant almost nothing.
+    the caveats explaining that it meant almost nothing. **Since T2.132 this
+    block reports the verdict rather than annotating it** — the bound is what
+    `promotion_bars.audit_clears` scores, and the two are pinned to each other
+    by test, because a report and a predicate that render one rule separately
+    are two rules the day one of them moves.
     """
     if not fp.total_corroborations:
         return []
     n = fp.total_corroborations
-    upper = fp.upper_bound(_AUDIT_CONFIDENCE)
-    supported = fp.clears_with_confidence(_AUDIT_BAR_FOR_POWER, _AUDIT_CONFIDENCE)
+    upper = fp.upper_bound(FALSE_PROMOTION_CONFIDENCE)
+    supported = fp.clears_with_confidence(_AUDIT_BAR_FOR_POWER, FALSE_PROMOTION_CONFIDENCE)
     naive = at_bar_pass_probability(n, _AUDIT_BAR_FOR_POWER)
     strict = at_bar_pass_probability(
-        n, _AUDIT_BAR_FOR_POWER, confidence=_AUDIT_CONFIDENCE
+        n, _AUDIT_BAR_FOR_POWER, confidence=FALSE_PROMOTION_CONFIDENCE
     )
     need = corroborations_required(
-        fp.false_promotions, _AUDIT_BAR_FOR_POWER, _AUDIT_CONFIDENCE
+        fp.false_promotions, _AUDIT_BAR_FOR_POWER, FALSE_PROMOTION_CONFIDENCE
     )
     # A window too small for the bound to clear at ANY observed count reports
     # 0.0 here, which reads like excellent specificity rather than a window
@@ -788,15 +802,16 @@ def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
              "even at zero observed false promotions"
     )
     return [
-        "**What that point estimate is worth (T2.130).**\n",
+        "**The scored rule is the confidence bound, not the rate above "
+        "(T2.132).**\n",
         "\n",
-        f"- 95% upper confidence bound on the TRUE rate: **{upper:.4f}**"
-        f" (bar {_AUDIT_BAR_FOR_POWER})\n",
-        f"- evidence supports a true rate under the bar: "
-        f"**{'YES' if supported else 'NO'}**\n",
+        f"- **SCORED** — {FALSE_PROMOTION_CONFIDENCE:.0%} upper confidence "
+        f"bound on the TRUE rate: **{upper:.4f}** against bar "
+        f"{_AUDIT_BAR_FOR_POWER} "
+        f"{'→ CLEARS' if supported else '→ does NOT clear'}\n",
         f"- P(this window passes | the system's true rate is exactly the bar):\n",
-        f"    - under `rate < bar` (the rule scored above): **{naive:.4f}**\n",
-        f"    - under `upper bound < bar`: {strict_note}\n",
+        f"    - under `rate < bar` (superseded 2026-08-15): **{naive:.4f}**\n",
+        f"    - under `upper bound < bar` (scored): {strict_note}\n",
         f"- corroborations needed for the bound to clear at "
         f"{fp.false_promotions} observed: "
         f"**{need if need is not None else 'unreachable'}** (have {n})\n",
@@ -805,9 +820,10 @@ def _render_audit_power(fp: FalsePromotionAudit) -> list[str]:
         "the bar.** Comparing an observed rate to the bar it is centred on is a "
         "coin flip at the boundary *at every sample size* — measured 0.56 at "
         "n = 149 and 0.49 at n = 10000, so more corroborations do not repair "
-        "it. The upper-bound line is the one that answers the gate's actual "
-        "question, and it is strictly the more conservative of the two: it can "
-        "never clear a window the point estimate fails.\n",
+        "it. The upper-bound line answers the gate's actual question and has "
+        "been the scored one since the owner's call of 2026-08-15; it is "
+        "strictly the more conservative of the two, so the switch can only "
+        "refuse windows the old rule cleared, never the reverse.\n",
         "\n",
     ]
 
@@ -1152,6 +1168,16 @@ def to_ledger_row(report: PromotionMetricsReport, *, extra: dict | None = None) 
             # module was fixed to stop doing.
             "false_promotions": report.false_promotion.false_promotions,
             "rate": report.false_promotion.rate,
+            # The verdict's own quantity, recorded beside the rule that
+            # produced it (T2.132). Without these a stored row can only be
+            # re-read under the superseded rule — and `rate` cannot be
+            # re-bounded after the fact, because 1/149 and 20/2980 are one
+            # number in it and their evidence is not remotely the same.
+            "upper_bound": report.false_promotion.upper_bound(
+                FALSE_PROMOTION_CONFIDENCE
+            ),
+            "confidence": FALSE_PROMOTION_CONFIDENCE,
+            "scored_on": "upper_bound",
             "powered": report.false_promotion.powered,
             # R2's companion. A recorded rate without it cannot be re-read
             # later for the fold blind spot, and the ruling forbids quoting

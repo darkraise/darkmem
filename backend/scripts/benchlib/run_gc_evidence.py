@@ -263,11 +263,21 @@ async def main(argv: list[str] | None = None) -> int:
                         f"clears={promotion_bars.slice_clears(s.promoted, s.eligible, bars)}"
                     )
         fp = report.false_promotion
+        bound = fp.upper_bound(pm.FALSE_PROMOTION_CONFIDENCE)
         print(
             f"false-promotion audit: decidable="
             f"{promotion_bars.audit_decidable(fp.total_corroborations, bars)} "
-            f"clears={promotion_bars.audit_clears(fp.rate, fp.total_corroborations, bars)} "
-            f"(corroborations: {fp.total_corroborations}, rate: {fp.rate}, "
+            f"clears="
+            f"{promotion_bars.audit_clears(fp.false_promotions, fp.total_corroborations, bars)} "
+            f"(corroborations: {fp.total_corroborations}, "
+            f"false promotions: {fp.false_promotions}, "
+            # The scored quantity first, the point estimate after it: since
+            # T2.132 the verdict is the bound, and printing the rate in the
+            # slot a reader's eye goes to is how a superseded rule keeps
+            # getting quoted.
+            f"scored bound: {bound if bound is None else round(bound, 6)} "
+            f"at {pm.FALSE_PROMOTION_CONFIDENCE:.0%} confidence, "
+            f"point estimate: {fp.rate}, "
             f"R2 companion -- corroborated facts later expired: "
             f"{fp.expired_after_corroboration})"
         )

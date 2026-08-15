@@ -22,6 +22,7 @@ construction.
 """
 from __future__ import annotations
 
+import dataclasses
 import uuid as _uuid
 from datetime import datetime, timedelta, timezone
 
@@ -1064,3 +1065,43 @@ class TestRenderReport:
         rendered = pm.render_report(report)
         assert "no `events` table" in rendered
         assert "UNDER-POWERED" in rendered
+
+    def test_the_ledger_row_carries_the_scored_bound_not_only_the_rate(self):
+        """A recorded run must carry the number its verdict came from.
+
+        The row held `rate` alone. That was the scored quantity until T2.132
+        and is context now, so a reader re-deriving a verdict from a stored
+        row would re-derive the superseded one — and `1/149` and `20/2980`
+        are the same number in it, which is the exact distinction the switch
+        was made to draw.
+        """
+        base = pm.no_schema_report(
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            until=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            database_identity="host:5433/darkmem",
+        )
+        report = dataclasses.replace(
+            base,
+            schema_present=True,
+            false_promotion=pm.FalsePromotionAudit(
+                total_corroborations=149,
+                disputed_after_corroboration=1,
+                human_rejected=0,
+                false_promoted_facts=1,
+            ),
+        )
+        fp = pm.to_ledger_row(report)["false_promotion"]
+        assert fp["rate"] == pytest.approx(0.006711, abs=1e-5)
+        assert fp["upper_bound"] == pytest.approx(0.0314, abs=5e-4)
+        assert fp["confidence"] == pm.FALSE_PROMOTION_CONFIDENCE
+        assert fp["scored_on"] == "upper_bound"
+
+    def test_an_empty_window_records_no_bound_rather_than_a_zero(self):
+        base = pm.no_schema_report(
+            since=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            until=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            database_identity="host:5433/darkmem",
+        )
+        fp = pm.to_ledger_row(base)["false_promotion"]
+        assert fp["rate"] is None
+        assert fp["upper_bound"] is None

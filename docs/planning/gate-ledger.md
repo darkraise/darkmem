@@ -926,6 +926,70 @@ measured party, and a `blocked`-arm denominator still inflates with wall-clock
 instrument measuring the same thing. It buys honesty about what a "clears"
 means, not a cleared gate.
 
+**The proposal above was ruled on and taken — see the next section. The
+paragraph saying "this lane has not switched the verdict" describes T2.130's
+scope and stays true of it; it is no longer true of the tree.**
+
+### The audit is scored on the bound (owner's ruling 2026-08-15, T2.132)
+
+**The owner took T2.130's proposed switch.** `promotion_bars.audit_clears` now
+scores the **95 % Clopper-Pearson upper bound** on the false-promotion rate
+against the same 0.01 bar. **No bar moved**, and no licence is involved: the
+bound is never below the point estimate, so this can only refuse windows the old
+rule cleared — a strict tightening under this ledger's floors discipline.
+
+**The predicate takes counts, not a rate, and that is not a refactor.** A rate
+cannot be bounded after the fact. 1/149 and 20/2980 are both 0.006711; their
+bounds are **0.0314** and **0.0097** — opposite verdicts from an identical
+observation. The old signature could not express the rule, which is why the
+stored ledger row now carries `upper_bound`, `confidence` and `scored_on`
+beside `rate`: a row holding only the rate cannot be re-scored under the rule
+that produced its own verdict.
+
+**The consequence, stated where the number lives: the audit axis flips from
+`clears=True` to `clears=False` on the corpus as it stands.** 1/149 bounds to
+0.0314 against 0.01. This is the switch working, not a regression — the pass it
+retires is the one T2.130 had already measured as worth approximately nothing,
+and the axis it flips was the only G-C axis reporting a clear on a number this
+ledger had itself disowned. **G-C did not clear before the switch and does not
+clear after it.** No `promotion_metrics_record.json` was minted at any point, so
+no served badge changes.
+
+**It also settles what T2.131 is for.** That task's targets — 299 at zero
+observed, 473 at one, the 490 floor it sized to — were derived from
+`corroborations_required`, i.e. from the bound, while the gate was still scoring
+the point estimate. So the corpus-growth route was aimed at a rule the gate did
+not yet apply. It now applies it: reaching the target and clearing the audit are
+the same event, where before they were two.
+
+**A second bar became inert and is kept anyway.**
+`false_promotion_min_corroborations` = 20 is **subsumed at the committed bars** —
+the bound cannot clear 0.01 below 299 corroborations at any observed count, so
+the floor refuses nothing the bound would have cleared. It is retained because
+it still guards the empty window the bound cannot be computed for, still labels
+`decidable` in the report, and becomes live again the moment the ceiling is
+licensed upward, which is exactly the configuration an abuse of these bars would
+reach for. Its clamp is therefore worth more than its current liveness suggests.
+This is recorded rather than left to be discovered: a bar that decides nothing
+while a table says it does is the same defect class as a stale count on a
+"here is the full list" sentence.
+
+**One repair to a claim this ledger relied on.** `promotion_metrics`' mirrored
+copies of the bar and the confidence carried a comment reading "`promotion_bars`
+remains the authority; a mismatch is caught by test", and **no test referenced
+either constant**. That mattered little while the block was commentary; it
+decides what a cleared run's report *says* now, so the mirror is pinned to
+`PROMOTION_BAR_DEFAULTS` by test, and the rendered verdict is pinned to the
+predicate's verdict across five windows. Found while making the switch, fixed
+with it, recorded because the sentence had been load-bearing and false.
+
+**What this does not buy, restated so the switch is not over-read.** The
+numerator is still **one** fact, the corpus is still authored end to end by the
+measured party, and the `time_gap` gate path still exists only under the
+harness's simulated capture clock. A better-powered rule over the same evidence
+measures the same evidence. Every limit recorded in the sections above survives
+this change unchanged.
+
 ### The corpus-growth route is taken, and its target is 490 — not the 300 that was suggested, and not the 473 first recorded here (owner instruction 2026-08-15, T2.131)
 
 **The owner directed the lane down the independent probe's route — grow the

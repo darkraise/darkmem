@@ -51,18 +51,32 @@ The four probes and their bars
 
 3. **False-promotion audit** (``_FALSE_PROMOTED_FACTS_SQL``):
 
-   - *Bar*: rate **< 0.01**, strict, under the key doc 17 §5.1 itself
-     names (``verification_false_promotion_bar``, recommended start 1%).
-     The rate is the harness's implemented quantity: DISTINCT corroborated
-     facts later disputed or human-rejected, over DISTINCT facts
-     corroborated in the window.
-   - *Decidability*: ``false_promotion_min_corroborations`` (20). Below
-     100 corroborations a single false promotion already breaches 1%, so
-     within the decidable band this bar effectively demands **zero**
-     observed false promotions — the same small-set granularity G-D's
-     interim recorded ("one false accept ≈ 0.944", i.e. the bar is
-     "zero errors" until the set grows). 20 is where a zero stops being
-     an artifact of an empty window and starts being an observation.
+   - *Bar*: **< 0.01**, strict, under the key doc 17 §5.1 itself names
+     (``verification_false_promotion_bar``, recommended start 1%). The
+     quantity is DISTINCT corroborated facts later disputed or
+     human-rejected, over DISTINCT facts corroborated in the window.
+   - *The scored quantity is the 95 % Clopper-Pearson upper bound on that
+     rate, not the rate itself* (T2.132, owner's call 2026-08-15, on
+     T2.130's measurement). The observed rate is a property of one window;
+     the bar is a claim about the system, and comparing the two passed an
+     at-the-bar system about half the time **at every sample size** —
+     0.56 at n = 149, 0.49 at n = 10 000 — so it converged to a coin flip
+     rather than to a decision, and no corpus size repaired it. Scoring
+     the bound caps that at-the-bar pass rate at ``1 - confidence`` while
+     still clearing a system five times under the bar ~95 % of the time at
+     n = 1000. It is strictly a tightening, so no licence is involved and
+     **the bar itself did not move**.
+   - *Decidability*: ``false_promotion_min_corroborations`` (20) — kept,
+     and **subsumed at the committed bars**. The bound cannot clear 0.01
+     below 299 corroborations at any observed count, so every window this
+     floor would refuse the bound refuses first, and no verdict turns on
+     it today. It still labels ``decidable`` in the report, still guards
+     the empty window the bound cannot be computed for, and becomes live
+     again if the ceiling is ever licensed far enough up. Its old
+     justification — "20 is where a zero stops being an artifact of an
+     empty window and starts being an observation" — was a stated
+     judgement that the bound now derives instead: 299 for a clean window,
+     473 at one observed, 628 at two (``corroborations_required``).
 
 4. **Every ladder transition journaled** — bar **100 %**
    (``promotion_journal_completeness_bar`` = 1.0), measured as the
@@ -166,7 +180,7 @@ table from the predicates, so a mis-stated direction fails the build):
 ===================================== ========= ================== =========================
 bar                                   compared  conservative       loosening it does
 ===================================== ========= ================== =========================
-verification_false_promotion_bar      ``rate <``  **lower**        tolerates a higher
+verification_false_promotion_bar      ``bound <`` **lower**        tolerates a higher
                                                   (a ceiling)      false-promotion rate
 false_promotion_min_corroborations    ``>=``      higher           lets a thinner window
                                                   (a floor)        become decidable
@@ -186,12 +200,20 @@ times the false-promotion rate and would pass such a guard as a
 
 **Two things this clamp does not do, stated rather than discovered.**
 
-*One:* ``promotion_journal_completeness_bar`` is read by **nothing**.
-``journal_completeness_clears`` takes no ``bars`` at all — the 100 % bar
-is spelled as its only satisfiable form, zero unexplained rows — so a
-``config`` row moving that bar changes no verdict today. Its direction is
-stated and its clamp holds for a future consumer; it is prophylactic, and
-calling it a live protection would overstate what is here.
+*One:* **two of the six decide nothing today, for different reasons, and
+calling either clamp a live protection would overstate what is here.**
+``promotion_journal_completeness_bar`` is read by **nothing** —
+``journal_completeness_clears`` takes no ``bars`` at all, the 100 % bar
+being spelled as its only satisfiable form, zero unexplained rows — so a
+``config`` row moving it changes no verdict. Its direction is stated and
+its clamp holds for a future consumer. ``false_promotion_min_corroborations``
+is read, and is **subsumed**: since T2.132 scored the confidence bound, no
+window under 299 corroborations can clear the committed ceiling at any
+observed count, so the floor at 20 refuses nothing the bound would have
+cleared. Unlike the completeness bar it is not inert by construction — it
+decides again the moment the ceiling is licensed up, which is precisely
+the configuration an abuse would reach for, so its clamp is worth more
+than its current liveness suggests.
 
 *Two:* tightening is free **except where a bar has no conservative
 direction**, and this module has one such bar. The first version of this
@@ -245,7 +267,11 @@ from enum import Enum
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from benchlib.promotion_metrics import UNDER_POWERED_THRESHOLD
+from benchlib.promotion_metrics import (
+    FALSE_PROMOTION_CONFIDENCE,
+    UNDER_POWERED_THRESHOLD,
+    clopper_pearson_upper,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -706,11 +732,35 @@ def audit_decidable(total_corroborations: int, bars: dict[str, float]) -> bool:
 
 
 def audit_clears(
-    rate: float | None, total_corroborations: int, bars: dict[str, float]
+    false_promotions: int, total_corroborations: int, bars: dict[str, float]
 ) -> bool:
-    if rate is None or not audit_decidable(total_corroborations, bars):
+    """Does the evidence *support* a true false-promotion rate under the bar?
+
+    **Scored on the confidence bound since T2.132, not on the observed rate**
+    (owner's call, 2026-08-15, on T2.130's measurement). The old rule compared
+    the point estimate to the bar it is centred on, which a system sitting
+    exactly at the failing bar passes about half the time — 0.56 at n = 149,
+    0.49 at n = 10 000 — so it converged to a coin flip rather than to a
+    decision, and no corpus size repaired it. Scoring the bound instead bounds
+    that at-the-bar pass rate by ``1 - FALSE_PROMOTION_CONFIDENCE``.
+
+    It takes **counts, not a rate**, because a rate cannot be bounded: 1/149
+    and 20/2980 are the same 0.0067 and the evidence behind them is not
+    remotely the same (bounds 0.0314 and 0.0097). The old signature could not
+    have expressed this rule.
+
+    Strictly a tightening — the bound is never below the point estimate, so
+    this can only refuse windows the old rule cleared, never the reverse. That
+    is why it needs no licence. The bar itself did not move.
+    """
+    if not audit_decidable(total_corroborations, bars):
         return False
-    return rate < bars["verification_false_promotion_bar"]
+    return (
+        clopper_pearson_upper(
+            false_promotions, total_corroborations, FALSE_PROMOTION_CONFIDENCE
+        )
+        < bars["verification_false_promotion_bar"]
+    )
 
 
 def slice_powered(eligible: int, bars: dict[str, float]) -> bool:

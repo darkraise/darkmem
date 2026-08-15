@@ -24,7 +24,12 @@ from pathlib import Path
 import pytest
 
 from benchlib import promotion_bars as pb
-from benchlib.promotion_metrics import UNDER_POWERED_THRESHOLD
+from benchlib.promotion_metrics import (
+    FALSE_PROMOTION_CONFIDENCE,
+    UNDER_POWERED_THRESHOLD,
+    clopper_pearson_upper,
+    corroborations_required,
+)
 
 LEDGER = "gate-ledger.md, 'G-C re-measurement'"
 
@@ -38,11 +43,25 @@ def _licence(entries: dict) -> dict:
 # the one that moves the other way. Nothing here states a direction — the
 # direction is read back out of `PROMOTION_BARS` and checked against these.
 LIVE_PROBES = {
+    # T2.129's measured window. Its bound is 0.0314 — refused at the
+    # committed 0.01, cleared at a loosened 0.05.
     "verification_false_promotion_bar": (
-        lambda bars: pb.audit_clears(0.02, 200, bars), 0.05, 0.005,
+        lambda bars: pb.audit_clears(1, 149, bars), 0.05, 0.005,
     ),
+    # **This probe holds the false-promotion bar loose on purpose, and that is
+    # a statement about the switch rather than a convenience.** Since T2.132
+    # the audit scores a confidence bound, which cannot clear the committed
+    # 0.01 bar below 299 corroborations at any observed count — so at the
+    # committed bars no window exists that this floor refuses and the bound
+    # would have cleared, and a probe against them could not move. The floor
+    # still decides under a loosened ceiling, which is the configuration that
+    # isolates its direction. `TestTheDecidabilityFloorIsSubsumed` records
+    # what that means for its liveness today.
     "false_promotion_min_corroborations": (
-        lambda bars: pb.audit_clears(0.0, 10, bars), 5, 50,
+        lambda bars: pb.audit_clears(
+            0, 10, {**bars, "verification_false_promotion_bar": 0.5}
+        ),
+        5, 50,
     ),
     "promotion_rate_floor": (
         lambda bars: pb.slice_clears(2, 5, bars), 0.3, 0.9,
@@ -503,6 +522,30 @@ class TestTheDerivationIsStructuralNotIncidental:
         assert isinstance(call, ast.Call)
         assert getattr(call.func, "id", None) == "resolve_promotion_bar_report"
 
+    def test_the_runner_scores_the_count_not_the_rate(self):
+        """The switch's one call site, and it fails silently at type level.
+
+        `audit_clears` took a rate until T2.132 and takes a count now. Both
+        are numbers, so a stale `fp.rate` argument type-checks, reaches
+        `math.comb` as a float and raises at the last step of an evidence run
+        — after every query has been paid for.
+        """
+        tree = ast.parse(
+            Path(pb.__file__).with_name("run_gc_evidence.py").read_text()
+        )
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "audit_clears"
+        ]
+        assert calls, "the runner must score the audit somewhere"
+        for call in calls:
+            assert ast.unparse(call.args[0]) == "fp.false_promotions", (
+                "the audit is scored on the observed count and its window; a "
+                "rate cannot be bounded"
+            )
+
     def test_the_runner_reads_the_report_it_prints(self):
         """The other half: run_gc_evidence must not resolve twice either."""
         source = (
@@ -519,18 +562,36 @@ class TestPredicates:
     BARS = pb.resolve_promotion_bars({})
 
     def test_audit_underpowered_never_clears_even_at_zero(self):
-        assert not pb.audit_clears(0.0, 19, self.BARS)
+        assert not pb.audit_clears(0, 19, self.BARS)
         assert not pb.audit_decidable(19, self.BARS)
 
-    def test_audit_zero_rate_clears_at_the_floor(self):
-        assert pb.audit_clears(0.0, 20, self.BARS)
+    def test_audit_a_thin_clean_window_is_decidable_and_still_fails(self):
+        """Read `audit_clears(0.0, 20)` and *cleared* while the point estimate
+        was the scored quantity: 20 corroborations with nothing wrong in them
+        passed the audit outright. Decidability is not evidence."""
+        assert pb.audit_decidable(20, self.BARS)
+        assert not pb.audit_clears(0, 20, self.BARS)
 
     def test_audit_bar_is_strict(self):
-        assert not pb.audit_clears(0.01, 200, self.BARS)
-        assert pb.audit_clears(0.0099, 200, self.BARS)
+        """A bound sitting exactly on the bar does not clear.
 
-    def test_audit_none_rate_never_clears(self):
-        assert not pb.audit_clears(None, 200, self.BARS)
+        Constructed against the bar rather than the window, because no integer
+        (k, n) puts a bound exactly on 0.01.
+        """
+        bound = clopper_pearson_upper(1, 300, FALSE_PROMOTION_CONFIDENCE)
+        at_bar = {**self.BARS, "verification_false_promotion_bar": bound}
+        just_over = {**self.BARS, "verification_false_promotion_bar": bound * 1.001}
+        assert not pb.audit_clears(1, 300, at_bar)
+        assert pb.audit_clears(1, 300, just_over)
+
+    def test_audit_empty_window_never_clears_and_never_raises(self):
+        """The job the removed `rate is None` guard actually did.
+
+        `clopper_pearson_upper` refuses n = 0, so decidability has to catch an
+        empty window before the bound is computed — a predicate that raises
+        takes the whole evidence run down.
+        """
+        assert not pb.audit_clears(0, 0, self.BARS)
 
     def test_slice_floor_and_power(self):
         assert not pb.slice_clears(4, 4, self.BARS)  # unpowered, rate 1.0
@@ -545,6 +606,81 @@ class TestPredicates:
     def test_journal_completeness_is_zero_violations(self):
         assert pb.journal_completeness_clears(0)
         assert not pb.journal_completeness_clears(1)
+
+
+class TestTheScoredRuleIsTheConfidenceBound:
+    """The audit scores the evidence, not the one observation (T2.132).
+
+    Owner's call, 2026-08-15, on T2.130's measurement: under `rate < bar` a
+    system whose TRUE rate sits exactly at the failing bar passed about half
+    the time at *every* sample size, so a clear was worth almost nothing. The
+    scored quantity is now the one-sided 95 % Clopper-Pearson upper bound on
+    the true rate. Strictly a tightening — the bound is never below the point
+    estimate — so no licence is involved and no bar moved.
+    """
+
+    BARS = pb.resolve_promotion_bars({})
+
+    def test_the_same_point_estimate_scores_two_ways_by_window_size(self):
+        """The whole switch in one assertion.
+
+        Both windows observe a rate of 0.006711, under the 0.01 bar, so the
+        old rule cleared both identically — the denominator was invisible to
+        it. 1/149 bounds to 0.0314 and 20/2980 to 0.0097.
+        """
+        assert 1 / 149 == pytest.approx(20 / 2980)
+        assert not pb.audit_clears(1, 149, self.BARS)
+        assert pb.audit_clears(20, 2980, self.BARS)
+
+    def test_the_measured_corpus_does_not_clear(self):
+        """T2.129's window — the number this switch was made about."""
+        assert not pb.audit_clears(1, 149, self.BARS)
+
+    def test_one_observation_settles_at_the_derived_window(self):
+        assert not pb.audit_clears(1, 472, self.BARS)
+        assert pb.audit_clears(1, 473, self.BARS)
+
+    def test_a_clean_window_is_not_evidence_until_it_is_big_enough(self):
+        assert not pb.audit_clears(0, 298, self.BARS)
+        assert pb.audit_clears(0, 299, self.BARS)
+
+    def test_it_never_clears_where_the_point_estimate_failed(self):
+        """Strictly stronger, checked rather than asserted in prose."""
+        bar = self.BARS["verification_false_promotion_bar"]
+        for n in range(20, 1200, 37):
+            for k in range(0, min(n, 12)):
+                if pb.audit_clears(k, n, self.BARS):
+                    assert k / n < bar, f"bound cleared where {k}/{n} did not"
+
+
+class TestTheDecidabilityFloorIsSubsumed:
+    """`false_promotion_min_corroborations` decides nothing at the committed
+    bars, and that is a consequence of the switch rather than a defect.
+
+    The bound cannot clear the 0.01 bar below 299 corroborations at *any*
+    observed count, and 299 > 20, so every window the floor would refuse the
+    bound refuses first. The floor is kept — it still labels `decidable` in
+    the report, and it becomes live again if the false-promotion bar is ever
+    licensed far enough up — but calling it a live protection today would
+    overstate it, exactly as `promotion_journal_completeness_bar` would.
+    """
+
+    BARS = pb.resolve_promotion_bars({})
+
+    def test_the_bound_needs_a_wider_window_than_the_floor_demands(self):
+        cleanest = corroborations_required(
+            0,
+            self.BARS["verification_false_promotion_bar"],
+            FALSE_PROMOTION_CONFIDENCE,
+        )
+        assert cleanest is not None
+        assert cleanest > self.BARS["false_promotion_min_corroborations"]
+
+    def test_no_window_below_the_floor_can_clear_the_bound(self):
+        floor = int(self.BARS["false_promotion_min_corroborations"])
+        for n in range(1, floor):
+            for k in range(n + 1):
+                assert not pb.audit_clears(k, n, self.BARS)
 
 
 class TestTheNonMonotoneBar:
