@@ -212,3 +212,39 @@ async def test_run_live_with_only_model_override_does_not_crash(monkeypatch, tmp
         "--gold", str(gold_path), "--live", "--api-key", "k", "--model", "gpt-5.5",
     ])
     assert code == 0
+
+
+# ── m4: the read-only DB posture is proved, not merely asserted ─────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_bench_db")
+async def test_fetch_bar_rows_actually_refuses_a_write():
+    """Done-when proved rather than asserted, mirroring T3.24's equivalent
+    for `run_coverage_distribution.py`. `_fetch_bar_rows` itself is driven
+    for a real read, and the same `connect_args` it uses is proved to make
+    Postgres itself refuse a write -- not merely present in source."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from benchlib import bench_db
+
+    rows = await rfg._fetch_bar_rows(bench_db.BENCH_DATABASE_URL)
+    assert isinstance(rows, dict)
+
+    engine = create_async_engine(
+        bench_db.BENCH_DATABASE_URL,
+        connect_args={"server_settings": {"default_transaction_read_only": "on"}},
+    )
+    try:
+        async with async_sessionmaker(engine)() as session:
+            await session.execute(text("SELECT count(*) FROM config"))
+            with pytest.raises(DBAPIError) as caught:
+                await session.execute(
+                    text("INSERT INTO config (key, value) "
+                         "VALUES ('th1_17_ro_probe', '1')")
+                )
+    finally:
+        await engine.dispose()
+    assert "read-only" in str(caught.value).lower()
