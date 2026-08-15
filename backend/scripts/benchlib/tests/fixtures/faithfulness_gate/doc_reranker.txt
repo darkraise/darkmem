@@ -1,0 +1,1 @@
+The reranker scores the top forty RRF-ranked rows on a scale from zero to ten. This stage runs only when reranker_enabled is set in the config table.
