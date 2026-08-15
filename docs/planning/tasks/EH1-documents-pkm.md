@@ -105,6 +105,37 @@ char spans; this path never enters `process_batch`.
 `child_table(parent, fingerprint)` only; no cross-fingerprint comparison (invariant 2).
 **Verify.** `cd backend && python -m pytest tests/test_block_embeddings.py -q`
 
+#### TH1.18 — Make `file_document` atomic by default
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: TH1.04` · `Doc: 16 §3` · `Tag: horizon` · `Gate: —`
+
+**Minted 2026-08-16 on the owner's ruling**, closing the live data-loss path TH1.04 found
+and deliberately did not close. TH1.04 guarded only the module it owned, so the foot-gun
+stays live for **any other direct caller** — and EH1 is adding callers now.
+
+**What.** `file_document` owns no savepoint. On the failure path the document row keeps
+the **new** `content_hash` while the strip has already deleted the old blocks and the
+replacement never landed, so the next re-file short-circuits on a gate that agrees with a
+tree nobody wrote. The blocks are gone permanently and nothing reports it. The hash move
+is the worse half: block loss alone would at least be re-fileable.
+
+**The default flips; TH1.03's naive helper opts out.** That helper is the standing
+regression drill proving failure isolation — it runs the identical three-document scenario
+with no SAVEPOINT and asserts the blocks come back empty. Making atomicity unconditional
+would delete that drill, which is why the opt-out is part of the ruling rather than a
+concession to it. The opt-out must be reachable only from the test helper, and a test must
+prove the production path cannot take it.
+
+**Done when:**
+- [ ] `file_document` is atomic by default: a failed parse leaves the old blocks **and**
+      the old `content_hash`, so the replay re-files rather than short-circuiting
+- [ ] TH1.03's naive helper opts out explicitly and its standing drill still fails the way
+      it was written to fail — proven by running it, not by inspection
+- [ ] `test_without_the_savepoint_the_same_failure_destroys_both` still pins both halves
+- [ ] No production caller can reach the opt-out, proven by test
+
+**Verify.** `cd backend && python -m pytest tests/test_block_pipeline.py tests/test_document_parsers.py -q`
+
 ---
 
 ## Lane B — block retrieval
