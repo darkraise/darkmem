@@ -130,6 +130,17 @@ def resolve_anchor_text(anchor: SpanAnchor, base_dir: Path) -> str:
             f"document moved under this anchor; retire and re-anchor the pair"
         )
     start, end = anchor.char_span
+    # Bounds only -- an out-of-range span on a hash-matching document must
+    # refuse rather than silently slice a truncated or empty premise. Note
+    # `end == start` (an empty range) is deliberately NOT refused here: that
+    # is a known, separate defect in `_span_literal`'s storage (TH1.04) and
+    # is the owner's to fix, not this loader's.
+    if start < 0 or end < start or end > len(content):
+        raise ValueError(
+            f"{anchor.fixture_path}: char_span {anchor.char_span} is out of "
+            f"bounds for a document of length {len(content)} — refusing to "
+            f"resolve a span this loader cannot read faithfully"
+        )
     return content[start:end]
 
 

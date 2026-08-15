@@ -207,6 +207,61 @@ def test_span_anchor_drift_is_detected():
     fg.resolve_anchor_text(good, fx.FIXTURE_DIR)
 
 
+# ── m3: an out-of-range char_span refuses rather than silently truncating ──
+
+
+def test_resolve_anchor_text_refuses_an_end_past_document_length():
+    good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
+    doc_len = len((fx.FIXTURE_DIR / good.fixture_path).read_text(encoding="utf-8"))
+    out_of_range = fg.SpanAnchor(
+        fixture_path=good.fixture_path,
+        content_hash=good.content_hash,
+        block_id=good.block_id,
+        char_span=(good.char_span[0], doc_len + 1000),
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        fg.resolve_anchor_text(out_of_range, fx.FIXTURE_DIR)
+
+
+def test_resolve_anchor_text_refuses_a_negative_start():
+    good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
+    negative = fg.SpanAnchor(
+        fixture_path=good.fixture_path,
+        content_hash=good.content_hash,
+        block_id=good.block_id,
+        char_span=(-1, good.char_span[1]),
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        fg.resolve_anchor_text(negative, fx.FIXTURE_DIR)
+
+
+def test_resolve_anchor_text_refuses_end_before_start():
+    good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
+    reversed_span = fg.SpanAnchor(
+        fixture_path=good.fixture_path,
+        content_hash=good.content_hash,
+        block_id=good.block_id,
+        char_span=(good.char_span[1], good.char_span[0]),
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        fg.resolve_anchor_text(reversed_span, fx.FIXTURE_DIR)
+
+
+def test_resolve_anchor_text_still_permits_an_empty_end_equals_start_span():
+    """Deliberately NOT fixed here -- TH1.04's known, separate defect
+    (`_span_literal` accepting `end == start`) is the owner's. This loader's
+    job is only to refuse a span it cannot resolve; an empty range still
+    resolves to an empty string."""
+    good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
+    empty = fg.SpanAnchor(
+        fixture_path=good.fixture_path,
+        content_hash=good.content_hash,
+        block_id=good.block_id,
+        char_span=(good.char_span[0], good.char_span[0]),
+    )
+    assert fg.resolve_anchor_text(empty, fx.FIXTURE_DIR) == ""
+
+
 # ── scoring: precision/recall/invalid/per-slice ──────────────────────────
 
 
