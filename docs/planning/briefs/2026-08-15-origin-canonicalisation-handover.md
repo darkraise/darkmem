@@ -22,7 +22,7 @@ attacked it deliberately, and never once by its author's own tests.**
 | Round | Found by | What it found |
 |---|---|---|
 | T3.08 review | adversarial review | 6 splitting inputs, each a spelling this repo's `httpx` produces |
-| v0.5 version review | adversarial review | 9 more over 26 same-source pairs, incl. IDNA2003-vs-2008 |
+| v0.5 version review | adversarial review | 11 over 26 same-source pairs (2 headline + 9 further), incl. IDNA2003-vs-2008 |
 | rescope 1 | adversarial review | the repair **relocated** the ordering bug; and *created* an IDN+port split |
 | rescope 2 | adversarial review | the repair's scheme fold **created** a `file:` split |
 
@@ -98,6 +98,17 @@ rather than not mentioning it.
   this box has 8 GB and vitest forks per core, so a loaded run times out the
   frontend step for reasons no diff caused.
 - **Do not cut the release.** `v0.5` is drafted and unreleased on purpose.
+
+## Corrections to this brief, recorded after it was handed over
+
+- The table above read "9 more" for the v0.5 review; the review itself reports
+  **11** (two headline plus nine further). A miscount on a summary row, in a
+  brief whose whole subject is claims that do not survive checking.
+- The environment snapshot accompanying the dispatch named branch `master` at
+  `904e3a49`; the real branch is `feat/m1-measurement` and that sha resolves to
+  a **pre-fix-wave** module. The implementer's first differential silently
+  baselined the wrong tree until the IDNA results exposed it. Anyone diffing
+  "against the snapshot's HEAD" will mismeasure.
 
 ## Artifacts
 
