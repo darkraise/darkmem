@@ -32,6 +32,22 @@ Layout:
 """
 from __future__ import annotations
 
+import os
+
+# The Ollama endpoint the seeds pin, overridable by environment.
+#
+# **Localhost is the right product default and the wrong one for this machine.**
+# A fresh install has no LAN embedder to find, so the default must stay
+# `localhost`. But the embedder this repo actually runs against lives at
+# `192.168.0.196:11434` (recorded under "Live model endpoints" in CLAUDE.md),
+# and the API e2e suite boots a disposable stack that posts a bare password to
+# `/api/v1/setup` — so it gets these seeds verbatim, with no overlay, and
+# every embed call went to a localhost Ollama that is not there. That is what
+# reduced the v0.5 release's e2e step to a skip whose own message read
+# "search cannot be proven without a reachable embedder", green with its
+# load-bearing assertion never run.
+OLLAMA_BASE_URL = os.getenv("DARKMEM_OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -68,7 +84,7 @@ class PurposeConfigSeed:
 
 
 DEFAULT_PROVIDERS: list[ProviderSeed] = [
-    ProviderSeed("ollama",    "ollama",    "http://localhost:11434/v1",                              "ollama",    True),
+    ProviderSeed("ollama",    "ollama",    OLLAMA_BASE_URL,                              "ollama",    True),
     ProviderSeed("openai",    "openai",    "https://api.openai.com/v1",                              "openai",    True),
     ProviderSeed("anthropic", "anthropic", "https://api.anthropic.com/v1",                           "anthropic", False),
     ProviderSeed("google",    "google",    "https://generativelanguage.googleapis.com/v1beta/openai", "google",   True),
@@ -131,21 +147,23 @@ DEFAULT_PROFILES: list[ProfileSeed] = [
 ]
 
 
+
+
 # Default purpose configs: all six purposes pinned to the local Ollama
 # install so a fresh deploy with no cloud credentials still runs the
 # pipeline end-to-end. The wizard's finalize handler overlays user
 # choices on top of these for whichever purposes the user filled in.
 DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
-    PurposeConfigSeed("embedding",      "ollama", "qwen3-embedding:0.6b", "openai", "http://localhost:11434/v1", dimensions=1024, params={}),
-    PurposeConfigSeed("extraction",     "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
-    PurposeConfigSeed("classification", "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
-    PurposeConfigSeed("reasoning",      "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.7}),
-    PurposeConfigSeed("summarization",  "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.3}),
-    PurposeConfigSeed("reranker",       "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
+    PurposeConfigSeed("embedding",      "ollama", "qwen3-embedding:0.6b", "openai", OLLAMA_BASE_URL, dimensions=1024, params={}),
+    PurposeConfigSeed("extraction",     "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0}),
+    PurposeConfigSeed("classification", "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0}),
+    PurposeConfigSeed("reasoning",      "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0.7}),
+    PurposeConfigSeed("summarization",  "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0.3}),
+    PurposeConfigSeed("reranker",       "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0}),
     # Inert (T1.05, doc 11 §6): seeded and resolvable, dispatched by nothing.
     # First writers are T3.02 (synthesis) and T2.26 (verification).
-    PurposeConfigSeed("synthesis",      "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0.3}),
-    PurposeConfigSeed("verification",   "ollama", "qwen2.5:3b",           "openai", "http://localhost:11434/v1", params={"temperature": 0}),
+    PurposeConfigSeed("synthesis",      "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0.3}),
+    PurposeConfigSeed("verification",   "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0}),
 ]
 
 

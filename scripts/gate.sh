@@ -285,9 +285,18 @@ if [ "$FULL" -eq 1 ]; then
     # step below. Exit 2 means every collected test skipped this run (BLOCKED
     # — no API-level assertion executed) and is treated as a failure here
     # like any other nonzero exit, never silently green.
+    # The embedder this repo runs against is on the LAN, not on localhost
+    # (CLAUDE.md, "Live model endpoints"). The e2e stack posts a bare password
+    # to /api/v1/setup and so gets `llm_seed`'s defaults verbatim, which pin
+    # localhost — during the v0.5 release that meant every embed call failed
+    # and the one test that proves search *skipped itself*, leaving this step
+    # green with its load-bearing assertion never run. The check above catches
+    # a total skip; a partial one like that reads as a pass. Pointing the seed
+    # at the real endpoint removes the skip rather than reclassifying it.
     run_gate "API e2e suite" 900 "$BACKEND" \
         env -C "$BACKEND" \
             TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+            DARKMEM_OLLAMA_BASE_URL="${DARKMEM_OLLAMA_BASE_URL:-http://192.168.0.196:11434/v1}" \
             "$PY" scripts/e2e/run_e2e.py
 
     # Boots its own disposable stack on :8000 (matching vite.config.ts's

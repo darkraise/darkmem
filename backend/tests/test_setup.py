@@ -142,3 +142,47 @@ async def test_setup_finalize_password_only_reopen_is_idempotent(client, session
         )
     ).scalar_one_or_none()
     assert config is not None
+
+
+class TestTheSeedsOllamaEndpointIsOverridable:
+    """The seed pinned `localhost:11434` for every Ollama purpose, and the
+    embedder on this network is not on localhost.
+
+    That is what took the v0.5 release's API e2e step down to
+    `ConnectError: All connection attempts failed` — the e2e boots a
+    disposable stack, posts a password to `/api/v1/setup`, and the wizard
+    seeds localhost. One test then *skipped* itself with "search cannot be
+    proven without a reachable embedder", so the step reported green with its
+    load-bearing assertion never run and the release shipped on it.
+
+    Localhost stays the default, because a fresh install elsewhere has no LAN
+    embedder to find. The override is what lets this machine's gate reach the
+    one recorded in CLAUDE.md.
+    """
+
+    ENV = "DARKMEM_OLLAMA_BASE_URL"
+
+    def test_default_is_localhost_when_unset(self, monkeypatch):
+        monkeypatch.delenv(self.ENV, raising=False)
+        import importlib
+        from app.services import llm_seed
+        importlib.reload(llm_seed)
+        ollama = [c for c in llm_seed.DEFAULT_PURPOSE_CONFIGS if c.provider_name == "ollama"]
+        assert ollama, "the seed must still pin the Ollama purposes"
+        assert all(c.base_url == "http://localhost:11434/v1" for c in ollama)
+
+    def test_the_override_reaches_every_ollama_purpose(self, monkeypatch):
+        monkeypatch.setenv(self.ENV, "http://192.168.0.196:11434/v1")
+        import importlib
+        from app.services import llm_seed
+        importlib.reload(llm_seed)
+        ollama = [c for c in llm_seed.DEFAULT_PURPOSE_CONFIGS if c.provider_name == "ollama"]
+        assert all(c.base_url == "http://192.168.0.196:11434/v1" for c in ollama), (
+            "an override that reaches some purposes and not others splits the "
+            "stack across two hosts, which is worse than not overriding at all"
+        )
+        # The embedding purpose is the one the e2e proves search with.
+        embedding = next(c for c in ollama if c.purpose == "embedding")
+        assert embedding.model == "qwen3-embedding:0.6b"
+        assert embedding.dimensions == 1024
+        importlib.reload(llm_seed)
