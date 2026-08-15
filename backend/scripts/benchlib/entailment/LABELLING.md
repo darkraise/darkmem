@@ -187,6 +187,69 @@ this same file — collapsing it to a binary would throw that away.
   when the reverse is merely unasserted and not excluded: dependency,
   load-balancing roles (eg-0023, eg-0025).
 
+- **Frame rule** (ruled 2026-08-15, rule-then-pairs on eg-0510). A
+  hypothesis that generalises a premise entity into a quantified phrase
+  usually supplies a frame noun — "at least one component of the estate",
+  "somewhere in the environment", "a component of the nimbus deployment".
+  Whether the frame counts as asserted content depends on whether it
+  **differentiates**.
+  - A **universal discourse frame** — "the estate", "the environment",
+    "the stack", or any phrase naming the whole world the premise
+    describes rather than a distinguished part of it — is vacuous:
+    restricting a quantifier to the discourse domain restricts nothing,
+    and the frame's head noun ("component", "system") is part of the
+    frame and vacuous with it. Such a frame moves no verdict; an
+    existential so framed is ordinary weakening and is `entailed` when
+    its witness is in the premise (eg-0452, eg-0459, eg-0513, eg-0520).
+  - A **proper-subset frame** — a named deployment, cluster, tier, or any
+    phrase some entities of the premise's world could fail to satisfy —
+    is asserted content, because it sits in the restrictor of the
+    asserted existential; a definite article does not shelter it. The
+    exhaustivity rule protects *presupposed* content, and the definite's
+    existence presupposition is indeed not asserted — but the witness's
+    membership in the frame is not presupposed by anything; it is the
+    existential's own restrictor. Membership must be established **by the
+    premise**; lexical resemblance between witness and frame (eg-0510's
+    "nimbus-02" / "the nimbus deployment") is world knowledge and
+    inadmissible under procedure 2. Unestablished membership makes the
+    pair `unsupported` — never `contradicted`: absence is not exclusion
+    (procedure 4).
+  - The test: *could an entity of the premise's world fail to be in the
+    frame without any further fact being false?* If no — the frame is the
+    world — it is vacuous. If yes, it differentiates and must be earned.
+
+- **Dependency-strength rule** (ruled 2026-08-15, rule-then-pairs on
+  eg-0506 and eg-0499). The reversal table classifies `DEPENDS_ON`
+  without stating its forward strength; this rule states it.
+  `DEPENDS_ON` asserts a **generic requirement for intended operation**:
+  X needs Y for X to work as intended. It fixes no timing, no failure
+  mode, and no condition on Y.
+  - Renderings at the same generic level are paraphrase and `entailed`:
+    "needs Y in order to run", "requires Y to function", "relies on Y"
+    (eg-0506, eg-0591). "Run" and "function" are read here at the
+    relation's own generic level — "operate as intended" — never as a
+    claim about process start-up.
+  - Renderings that fix *when* the need bites (start-up versus first
+    use), *how* absence manifests (cannot start, crashes, degrades), or
+    *which condition on Y* matters (reachable, available, healthy) assert
+    a failure mechanism the relation does not carry: a lazily-bound or
+    degraded-mode dependency makes the premise true and the hypothesis
+    false. These are `unsupported` (eg-0499, eg-0525, eg-0636) — and
+    never `contradicted` from the bare relation, by procedure 4.
+  - The test: *could X depend on Y and the hypothesis still be false?* No
+    for a generic requirement rendering; yes for a mechanism-specific one.
+  - **Cross-relation vocabulary is decided by relation entailment, not
+    synonym feel.** Rendering a premise's relation with another taxonomy
+    relation's characteristic vocabulary is rewording only when the
+    premise's relation semantically guarantees the hypothesis's. `USES`
+    does not guarantee `DEPENDS_ON` — use without dependence is coherent
+    — so necessity vocabulary ("relies on", "requires", "needs") over a
+    `USES` premise is strengthening, `unsupported` (eg-0634). The forcing
+    argument: "needs Y to function" is paraphrase-level for "relies on";
+    if "uses" entailed "relies on", transitivity would make "uses" entail
+    "needs Y to function", which is false on its face.
+
+
 ## The eight slices
 
 One slice tag per pair (v1 discipline, inherited from the retrieval gold).
