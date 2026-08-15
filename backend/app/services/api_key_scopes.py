@@ -157,9 +157,16 @@ def read_scopes(stored: object) -> frozenset[str]:
 def has_scope(stored: object, required: str) -> bool:
     """True when a stored scope set covers ``required``.
 
+    ``stored`` is the **raw jsonb** off an ``api_keys`` row, not an
+    already-parsed set: ``KeyPrincipal.scopes`` has been through
+    ``read_scopes`` and is a frozenset, which this refuses along with every
+    other non-list. A caller holding a principal tests membership directly.
+
     ``required`` is itself checked against the closed set, so a caller asking
     for ``ratify`` — or for a scope that was renamed out from under it — is
-    denied even when the stored set is well-formed and generous.
+    denied even when the stored set is well-formed and generous. That check is
+    the "no code path can *check* a ratify scope" half of the guard; the
+    parser's refusal is the "grant" half.
     """
     if required in FORBIDDEN_SCOPES or required not in _SCOPE_SET:
         return False

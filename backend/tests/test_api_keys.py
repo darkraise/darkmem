@@ -162,6 +162,13 @@ class TestStoredScopesAreUntrusted:
     def test_a_generous_row_still_cannot_grant_ratify(self):
         assert has_scope(["read", "admin", "ratify"], "ratify") is False
 
+    def test_an_already_parsed_set_is_not_a_stored_value(self):
+        # `has_scope` reads the raw jsonb. `KeyPrincipal.scopes` is a frozenset
+        # that has already been through `read_scopes`, so passing one here is a
+        # caller error, and the strict reader answers it by denying rather than
+        # by appearing to work.
+        assert has_scope(frozenset({"read"}), "read") is False
+
     def test_scopes_do_not_imply_one_another(self):
         # `admin` is config/jobs/repos, not a superset. An implication ladder
         # is a privilege-escalation design this module declines to invent.
