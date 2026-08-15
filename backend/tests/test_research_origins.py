@@ -386,6 +386,10 @@ class TestTheMergeOnlyClaimAfterTheSecondFalsification:
         ("https://example.test/a?x=1;y=2", "https://example.test/a?x=1&y=2",
          "`;` is not a separator a fetcher substitutes — servers may serve "
          "different content, so these stay two"),
+        ("com.example.app:1234/x", "org.other.b:1234/x",
+         "two dotted opaque ids — a Java package ref, a Maven coordinate — "
+         "used to be read as scheme-plus-authority and both collapsed to "
+         "`1234/x`, colliding every such id on its digits alone"),
     ])
     def test_the_repairs_did_not_become_merge_everything(self, left, right, why):
         """The control, widened with the fix.
@@ -442,6 +446,10 @@ class TestTheSlashFoldAfterTheFourthFalsification:
          "property, not by a reviewer"),
         ("https://example.test/a?q=cafe%CC%81", "https://example.test/a?q=caf%C3%A9",
          "the same class in a query value"),
+        ("example.test:8443/a", "https://example.test:8443/a",
+         "a scheme-relative reference carrying a port: the dotted token "
+         "before the colon is a host, and reading it as a scheme made the "
+         "port the host — found by probing the fold, not by a reviewer"),
     ])
     def test_one_page_under_two_spellings_is_one_origin(self, left, right, why):
         left_id = research_origin_id(_finding(source_id=left))

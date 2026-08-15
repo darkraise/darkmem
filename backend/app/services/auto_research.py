@@ -138,6 +138,15 @@ def _fold_scheme_slashes(value: str) -> str:
             return f"file:///{rest}"
         host, _, path = rest.partition("/")
         return f"file:///{path}" if host.lower() == "localhost" else value
+    if "." in scheme:
+        # A dotted token before the colon is a host, not a scheme: no real
+        # producer emits a dotted scheme, while `example.test:8443/a` — a
+        # scheme-relative reference with a port — is ordinary. Folding it made
+        # the port the host, splitting the bare spelling from the scheme'd
+        # one, and collapsed every `dotted.name:1234/x` opaque id — a Java
+        # package ref, a Maven coordinate — to its digits alone, colliding
+        # unrelated sources on one origin.
+        return value
     return f"{scheme}://{rest}" if len(slashes) <= 1 else value
 
 # Fail closed. Building the loop is not running it (T3.07 brief): pointing it
