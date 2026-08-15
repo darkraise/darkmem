@@ -174,10 +174,43 @@ G-C and G-D ships as its own version whose headline is "badges go live".
 - `TH1.10` — Faithfulness ship gate (G-F evidence)
 - `TH1.17` — Faithfulness-gate runner
 
+### v1.0 — Everything, and the gates carry verdicts
+
+**Minted 2026-08-15 on the owner's instruction that everything remaining ships in
+v1.0.** The ladder had no rung above v0.5; this is it, and it unparks what was
+parked. Nothing below is horizon work any more.
+
+**The gate rule, ruled the same day: _both_.** Each of G-C, G-D, G-E and G-F must
+carry a verdict — M1's own done-when has always accepted a measured miss as an
+outcome — **and** the target is that each one clears. The distinction is kept
+because one half is not fully in our control: G-D needs a judge to pass bars two
+models have already missed, and no amount of work guarantees a model clears 0.95.
+A miss, measured and recorded, is a shipped outcome; an *unmeasured* gate is not.
+
+Scope, all of it:
+
+- **EH1 — documents / PKM**, all fifteen (`TH1.01`–`TH1.16`), unparked. The
+  largest unstarted block; `TH1.01` no longer gates `TH1.02`–`TH1.08`, so the
+  parsers and block writers can run beside the metric definition.
+- **E4 — hardening**, all seven: API keys and webhooks (`T4.01`–`T4.05`) and the
+  two audit records (`T4.09`, `T4.10`). Unparked; "demand-gated" is satisfied.
+- **M1 — measurement**, the remainder: `T2.124` → `T2.125` (G-D), `T2.131` (G-C),
+  `T2.129`'s owed review, `T3.22` (G-E), `TH1.17` → `TH1.10` (G-F).
+- **The research loop becomes operable, not just built** — a new task for the
+  configuration and trigger surface on the web UI, because today `auto_research`
+  has no writer anywhere in the tree and arming it means a manual database write.
+
+**The schema freeze is *not* in this version and must not be inferred from it.**
+It happens after v1.0 ships and after the owner's review of the visual web UI
+passes (owner ruling 2026-08-15, recorded in `CLAUDE.md`).
+
 ## Parked — kept, not dropped, no version assigned
 
-EH1 documents/PKM (15 tasks), API keys
-and webhooks (`T4.01`–`T4.05`), and the two audit records (`T4.09`, `T4.10`).
+**Nothing is parked any more.** EH1 documents/PKM (15 tasks), API keys and
+webhooks (`T4.01`–`T4.05`) and the two audit records (`T4.09`, `T4.10`) were
+parked here and were **unparked into v1.0 on 2026-08-15** by the owner's
+instruction that everything remaining ships in that version. This section is kept
+for the rule it states rather than for its contents.
 **`T1.54` was on this list and is not parked — it shipped `done` and rides in
 v0.5's tag** (corrected 2026-08-15, found by that version's review: a "here is
 the full list" sentence naming a task that had already landed).

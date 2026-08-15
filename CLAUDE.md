@@ -52,7 +52,12 @@ behavior change, not a cleanup.
   date** — the first deploy whose data must survive (the homelab
   cutover). At that event the revision is tagged `schema-frozen`, the
   gate assertion stands down, and every later change is an ordinary
-  additive revision forever. **Freeze date: not yet frozen.** Full
+  additive revision forever. **Freeze date: not yet frozen, and the trigger is now
+  stated rather than inferred (owner ruling 2026-08-15).** This is a greenfield
+  project, so a deploy carrying disposable data is *not* the trigger — v0.5 is
+  deployed and did not fire it. The freeze happens **after v1.0 ships and after
+  the owner's review of the visual web UI passes**, and not before. Do not read
+  "the corpus can begin" or any deploy as the event. Full
   protocol and the object inventory the baseline implements:
   `docs/planning/baseline-schema-inventory.md`.
 - Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
@@ -1079,7 +1084,11 @@ the REST case alone.
 
 Recorded at the owner's explicit instruction, 2026-07-28 (DeepSeek, Ollama) and
 2026-08-10 (OpenAI). **The keys below are real credentials in a private repo;
-they are committed knowingly and are to be rotated before the repo is ever
+they are committed knowingly. **Owner ruling 2026-08-15: they stay in this file
+and stay committed, and nothing is pushed to a remote until the release is
+confirmed good; the owner removes and rotates them at that point.** Until then a
+push is the thing that would make rotation urgent, so do not push. They are to
+be rotated before the repo is ever
 published.** Note that removing one in a later commit does not remove it from
 git history — that needs a history rewrite or a rotated key. Both were also
 pasted into a chat transcript, which is a second copy outside this repo's

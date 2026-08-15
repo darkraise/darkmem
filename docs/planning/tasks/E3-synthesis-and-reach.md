@@ -543,3 +543,47 @@ per-install `origin_key` is stable across restarts; no site adapter is required 
 | 2026-08-11 | T3.04, T3.05 | 3 | **Doc 09 §4.4's invalidation contradiction, ruled and applied.** §4.4 enumerated four staleness triggers and stated a predicate that could fire three: invalidation writes `invalid_at` alone, touching neither `verification_status` nor `expired_at`, so an invalidated fact stayed inside the hashed set and the article was never labelled stale. Escalated Tier-3 rather than decided in the loop (analysis: `analyses/2026-08-11-t3.04-staleness-on-invalidation.md`), **owner-ruled 2026-08-11 for the enumeration**: the L3 supporting set is the verified *and still believed* set, on the repo's canonical `OPEN_BELIEF_PREDICATE`. Applied through one shared `SUPPORTING_BELIEF_PREDICATE` on **all four** L3 queries — both hash bases, §4.2's gather, §4.1's eligibility count — not on the hash alone. §4.2 and §4.4 amended in place. T3.04's third clause is delivered by it; T3.05 inherits the basis rather than choosing it | The predicate was frozen into `knowledge_articles.fact_set_hash` by T3.02 and read by T3.03, so the next task to touch it would have inherited the choice silently. Applying the ruling to the hash alone would have been the worst outcome available: a basis stricter than the gather's labels the article stale on the invalidation, then the re-synthesis that label triggers gathers the disbelieved fact again and writes the same claim back — clearing the label without curing what it was for. The accepted cost is a wider staleness definition, so hub subjects re-synthesise more often; the rejected reading (staleness tracks the verification axis only) leaves an article standing on a claim the vault no longer believes |
 | 2026-08-11 | T3.05 | 2 | **Re-synthesis measures coverage before it stores, inverting T3.03's order, and an *unmeasured* draft still supersedes.** T3.03 measures after the article commits so a judge outage cannot destroy stored work; that order is unavailable here because `ux_knowledge_articles_live` admits one live row per subject, so storing a re-synthesis means superseding the standing article first — the outcome §4.4 forbids for an ungrounded draft. The judge therefore runs on the draft, and only a **measured** failure holds the supersession: with G-D open every measurement returns `unmeasured`, and holding on that would freeze L3 at whatever it first wrote, on every install, permanently, for a gate that governs a badge. **Narrowed on 2026-08-12** by the T3.05 review's F2 and corrected here rather than left standing: an unmeasured draft supersedes an *unmeasured* article and nothing else. As first written the rule let one transient judge outage retire a **measured** article for prose nothing measured, with no path that would ever measure it back — the freeze argument only ever covered candidate-replacing-candidate. Under an open G-D both readings behave identically, which is precisely why the wider one could have shipped unnoticed. Also recorded: the staleness half lives **in** `article_synthesis.py` rather than in its own module, because invariant 15's scan derives family bodies one hop off `dream_jobs`' imports and fails the build when one body imports another | Both are execution discoveries, not preferences, and both are the kind that would otherwise be found by a reader wondering why the code disagrees with T3.03's D9. The module-layout half was found *by* the guard rather than by review — the first shape imported the synthesis body from a second body module and the invariant-15 scan caught it, which is the guard working exactly as intended. Doc 09 §4.4's "it routes to review" clause is escalated separately (Tier 3, `analyses/2026-08-11-t3.05-held-resynthesis-review-routing.md`) — it cannot be satisfied without violating either the one-live-article index or the sentence's own purpose, and T3.05 ships the conservative half: the standing article never moves |
 | 2026-08-11 | T3.06 | 2→**3** | **T3.06 inherited an unbuilt dependency and grew a backend half.** The task is written as a UI surface (`Model: Sonnet 5`, doc 13 §5.2) but **no read door for articles existed** — doc 12 §2's route table names `GET /knowledge/articles/{id}` and its `article_get` MCP twin, and no task in any epic file owned either. T3.06 built both, plus the list door on the precedent its own sibling set (`GET /knowledge/facts` is likewise absent from that table and shipped, because a browsing page is not a semantic search). Tier escalated in effect: the door serves a verification rung, so it passes `row_labels` and the judge's gate exactly as the review queue's arm does, and both surfaces' allowlist membership is now re-proved by one parametrized test | Recorded because it changes what a reader of the plan believes is startable: anyone picking up T3.06 as a Sonnet-tier UI task would have found the surface has nothing to read from, and the honest response is a door built against the contract rather than a tab wired to a fixture. Two doc-12 gaps are recorded rather than silently filled — the route table omits both list doors it has shipped siblings for, which is a doc gap to close, not permission to invent shapes. **Re-tiered 2→3 on 2026-08-12**, after a Fable-tier sweep ruled the original filing an under-tiering and measured how far the drift actually ran. Doc 12 §1 declares it fixes *every* REST route and MCP tool, so a table falsified by measurement is runbook §5's Tier-3 test verbatim — and both prior corrections to these same claims (T1.42a, T1.42d) were filed Tier-3. The sweep, derived from the live router and FastMCP registry rather than from `rg`, found **34 shipped routes and 2 tools absent** from the doc and — the direction nobody had checked — **two phantom routes it names that would 404 a client**, one of whose stated semantics (`PATCH .../review`, "clear or set `review_state`") contradicts the derived-never-written design the rest of the corpus settled on. Doc 12 §2 and §3 amended in place; report at `analyses/2026-08-11-doc12-route-table-gap.md`. The task also found a real defect by way of the isolation probe, which the *gate* caught and the floor could not: `pyproject.toml` scopes pytest to `tests/`, so declaring a content surface without its probe driver leaves the harness broken behind a green floor |
+
+---
+
+#### T3.28 — Arm the research loop from the UI: configure, enable, trigger
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: T3.07, T3.27, T3.08` · `Doc: 09 §6` · `Tag: target-new` · `Gate: —`
+
+**Minted 2026-08-15 on the owner's instruction to "implement the auto research
+feature and allow to configure/trigger it on web UI".** T3.07 built the loop,
+T3.27 gave it its one door and T3.08 gave it origin discipline — but **nothing in
+the tree writes the `auto_research` config row**, so arming it today means a
+manual database write. That was deliberate ("building the door is not arming the
+loop"); the owner has now asked for the operator surface, which is a different
+thing from arming it by default.
+
+**Two halves, and the second is the one with teeth.**
+
+*The config surface.* `auto_research` (`enabled`, `max_findings_per_run`,
+`max_content_chars`) gets a writer and a Settings surface beside the existing
+jobs and flags tabs, validated against `AUTO_RESEARCH_DEFAULTS`' own shape.
+`enabled` must **fail closed on every malformed value** — T3.07's review found
+`bool("false")` arming the master switch, so the strict parse is a regression
+test, not a nicety.
+
+*The trigger.* `research_run` is an MCP tool by a ratified argument: the caller
+must be the gatherer, because `ResearchGatherer` has no in-tree implementation
+and a model without web access would invent sources (T3.27). **A UI button
+cannot gather**, so "trigger it from the web UI" cannot mean the SPA calling a
+server-side gatherer — that is exactly the shape doc 09 §6 refuses. The honest
+reading, and this task's scope: the UI triggers a run whose *evidence is
+supplied by an MCP agent*, or it surfaces and re-runs a previously filed run's
+subject. **Settle the shape at step 0 with the owner before building** — an
+implementer who quietly adds an in-tree gatherer to make a button work has
+defeated the loop's central defence.
+
+**Done-when.** The config row has exactly one writer; `enabled` fails closed on
+every non-boolean; the surface shows the disarmed state honestly rather than as
+an error; the trigger path files through the ordinary capture door with
+`RESEARCH_SOURCE` and an `is_researched_origin` key intact; invariant 15's scan
+still passes (no new capture/retrieval crossing); and arming remains an explicit
+operator act with the default `False` untouched. The manufactured-origin
+disclosure stays machine-sliceable.
+
+**Verify.** `cd backend && python -m pytest tests/test_auto_research.py tests/test_research_origins.py -q`, `cd frontend && npm run typecheck && npm test`, then `./scripts/gate.sh`.
