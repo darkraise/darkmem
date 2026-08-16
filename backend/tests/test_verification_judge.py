@@ -132,7 +132,21 @@ def test_bar_defaults_are_the_stated_values():
         "contradiction_recall_bar": 0.95,
         # Not a truth number since 2026-08-08: a review-load floor.
         "contradiction_precision_bar": 0.70,
+        # TH1.09 landed the faithfulness role, so its two bars join the barred
+        # set here. Same numbers as the groundedness pair because the rule and
+        # the discrimination are the same; the record, the gold and the sitting
+        # are not shared. The values are imported from `faithfulness_bars`
+        # rather than restated, so this pin and TH1.01's pin cannot disagree.
+        "faithfulness_gate_precision_bar": 0.95,
+        "faithfulness_gate_recall_bar": 0.90,
     }
+    from app.services import faithfulness_bars as fb
+
+    for key in ("faithfulness_gate_precision_bar", "faithfulness_gate_recall_bar"):
+        assert vj.VERIFICATION_BAR_DEFAULTS[key] == fb.FAITHFULNESS_BAR_DEFAULTS[key], (
+            "the judge's bar and the metric definition's bar have become two "
+            "values — they must be one import, never two literals"
+        )
 
 
 def test_contradiction_recall_is_gated_and_barred_by_derivation():
@@ -545,6 +559,10 @@ def test_each_role_is_gated_on_the_discrimination_its_consumer_makes():
     assert vj.ROLE_VERDICTS == {
         vj.ENTAILMENT_ROLE: "entailed",
         vj.CONTRADICTION_ROLE: "contradicted",
+        # Same verdict as the entailment role, different premise distribution
+        # — which is exactly why it is a separate role rather than a reuse:
+        # the record, the gold and the sitting are not shared (TH1.01 §3).
+        vj.FAITHFULNESS_ROLE: "entailed",
     }
     assert set(vj.ROLE_VERDICTS) == set(vj.JUDGE_ROLES)
     assert set(vj.ROLE_VERDICTS.values()) <= vj.JUDGE_VERDICTS
@@ -697,9 +715,13 @@ async def test_a_barred_metric_in_no_role_fails_every_role_closed(
 async def test_an_unknown_role_raises_rather_than_reading_a_record(session, tmp_path):
     cfg = _judge_config()
     path = _write_record(tmp_path, _record(cfg))
+    # Was "faithfulness" until TH1.09 landed that role — an unknown-role test
+    # whose example became known is a test that stops testing anything, so the
+    # literal moves to one that is still not a role rather than the assertion
+    # being relaxed.
     with pytest.raises(ValueError, match="unknown judge role"):
         await vj.qualification_state(
-            session, cfg, role="faithfulness", record_path=path,
+            session, cfg, role="summarisation", record_path=path,
         )
 
 
@@ -1183,6 +1205,11 @@ _QUOTED_TOKEN_ALLOWLIST = {
 # tests/test_contradiction_scan.py.
 _JUDGE_REFERENCE_ALLOWLIST = {
     "app/services/verification_judge.py",
+    # TH1.09's faithfulness gate: the third consumer, and — like the
+    # contradiction scan below — gated by the judge's own refusal rather than
+    # by this list. It is here because it calls `judge(role=FAITHFULNESS_ROLE)`
+    # through the single door, not around it.
+    "app/services/faithfulness_gate.py",
     # T2.11's Tier-C contradiction scan: the first consumer, and gated by the
     # judge's own refusal rather than by this list.
     "app/services/contradiction_scan.py",
@@ -1432,7 +1459,21 @@ import ast as _ast  # noqa: E402
 _ROLE_CONSUMERS = {
     "app/services/claim_entailment.py": "entailment",
     "app/services/contradiction_scan.py": "contradiction",
+    # TH1.09. Its discrimination is `entailed` on a claim/span premise — the
+    # same word as the entailment consumer's and a different distribution,
+    # which is why it is a third role rather than a reuse of that record.
+    "app/services/faithfulness_gate.py": "faithfulness",
 }
+
+
+def test_every_role_has_a_consumer_the_scan_covers():
+    """The floor under the parametrisation: a role added to `JUDGE_ROLES` with
+    no entry here would be a consumer nobody's discrimination was checked
+    against, and the parametrised test would simply not run for it."""
+    assert set(_ROLE_CONSUMERS.values()) == set(vj.JUDGE_ROLES), (
+        "a judge role has no consumer in the scan, or a consumer names a role "
+        "that no longer exists"
+    )
 
 
 def _judge_calls(tree) -> list[_ast.Call]:
@@ -1460,7 +1501,9 @@ def _role_keyword(call: _ast.Call) -> str | None:
     return None
 
 
-_ROLE_CONSTANTS = ("ENTAILMENT_ROLE", "CONTRADICTION_ROLE")
+# Derived from the roles, so a role added without its constant appearing
+# here cannot slip past the binding resolution below.
+_ROLE_CONSTANTS = tuple(f"{role.upper()}_ROLE" for role in sorted(vj.JUDGE_ROLES))
 
 
 def _role_bindings(tree) -> dict[str, str]:
@@ -1524,7 +1567,7 @@ def test_each_consumer_names_one_discrimination_and_asks_as_its_role(module, rol
 
     calls = _judge_calls(tree)
     assert calls, f"{module} no longer calls the gated door"
-    expected = {"entailment": "ENTAILMENT_ROLE", "contradiction": "CONTRADICTION_ROLE"}[role]
+    expected = f"{role.upper()}_ROLE"
 
     # The binding, not the spelling: an aliased import or a later assignment
     # makes `role=ENTAILMENT_ROLE` mean whatever the module wants it to.
@@ -1548,7 +1591,10 @@ def test_no_module_under_app_reaches_the_judge_without_naming_a_role():
     """The floor under the per-module scan above: a third consumer cannot
     appear with no role, or with a role spelled as a bare string that dodges
     the constant."""
-    role_constants = {"ENTAILMENT_ROLE", "CONTRADICTION_ROLE"}
+    # Derived from the roles themselves rather than listed: this set was
+    # written when there were two roles and went stale the moment a third
+    # landed, which is the drift the scan exists to prevent one level down.
+    role_constants = {f"{role.upper()}_ROLE" for role in vj.JUDGE_ROLES}
     offenders = []
     for path in _app_sources():
         rel = _rel(path, _BACKEND)

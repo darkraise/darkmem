@@ -47,6 +47,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
 from app.services.extraction_clean import _content_seed
+from app.services.faithfulness_bars import (
+    FAITHFULNESS_BAR_DEFAULTS as _FAITHFULNESS_DEFAULTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +218,11 @@ def judge_identity_hash(identity: dict) -> str:
 
 ENTAILMENT_ROLE = "entailment"
 CONTRADICTION_ROLE = "contradiction"
+# The third consumer (TH1.09, doc 16 §4). Its own role rather than a reuse of
+# the entailment one: the discrimination is the same word and a different
+# premise distribution — raw document span text, which the claim/fact gold does
+# not represent — so the entailment record qualifies articles and not this.
+FAITHFULNESS_ROLE = "faithfulness"
 
 # The judge verdict each role's consumer branches on. This is the premise the
 # amendment derives from — "each consumer's gate depends on a discrimination it
@@ -224,6 +232,7 @@ CONTRADICTION_ROLE = "contradiction"
 ROLE_VERDICTS = {
     ENTAILMENT_ROLE: "entailed",
     CONTRADICTION_ROLE: "contradicted",
+    FAITHFULNESS_ROLE: "entailed",
 }
 
 # role -> the bar keys that role's discrimination is measured by. The split is
@@ -238,6 +247,10 @@ JUDGE_ROLES: dict[str, tuple[str, ...]] = {
     CONTRADICTION_ROLE: (
         "contradiction_precision_bar",
         "contradiction_recall_bar",
+    ),
+    FAITHFULNESS_ROLE: (
+        "faithfulness_gate_precision_bar",
+        "faithfulness_gate_recall_bar",
     ),
 }
 
@@ -323,6 +336,13 @@ BAR_METRICS = {
     "groundedness_gate_recall_bar": "entailed_recall",
     "contradiction_precision_bar": "contradiction_precision",
     "contradiction_recall_bar": "contradiction_recall",
+    # TH1.09 lands the faithfulness role, so its two keys join here rather than
+    # living alone in `faithfulness_bars` — a bar orphaned into no role's gate
+    # is what the partition test forbids. The values are **imported** from that
+    # module below, never restated: the numbers TH1.01 stated and the numbers
+    # enforced here cannot be allowed to become two values.
+    "faithfulness_gate_precision_bar": "entailed_precision",
+    "faithfulness_gate_recall_bar": "entailed_recall",
 }
 
 
@@ -407,10 +427,16 @@ async def article_claim_gate(
 # record must at minimum *state* it: an undisclosed leak fails the role closed
 # rather than passing on a number the reader cannot see.
 LEAK_DISCLOSURE_METRIC = "contradicted_judged_entailed"
+# The claim/span analogue, owed by a faithfulness-role record (TH1.01's spec
+# §3). Same shape, different premise distribution: the cell that matters is a
+# span that does *not* support the sentence being judged as if it did, because
+# that is the one that serves a hallucination under the grounded badge.
+SPAN_LEAK_DISCLOSURE_METRIC = "unsupported_judged_entailed"
 
 ROLE_REQUIRED_DISCLOSURES: dict[str, tuple[str, ...]] = {
     ENTAILMENT_ROLE: (LEAK_DISCLOSURE_METRIC,),
     CONTRADICTION_ROLE: (),
+    FAITHFULNESS_ROLE: (SPAN_LEAK_DISCLOSURE_METRIC,),
 }
 
 
@@ -583,6 +609,13 @@ VERIFICATION_BAR_DEFAULTS: dict[str, float] = {
     "groundedness_gate_precision_bar": 0.95,
     "groundedness_gate_recall_bar": 0.90,
     "contradiction_precision_bar": 0.70,
+    # Imported, never restated (TH1.01's spec §3 is explicit about this): the
+    # bars stated when the metric was defined and the bars enforced when the
+    # role landed must not be able to become two values.
+    **{
+        key: _FAITHFULNESS_DEFAULTS[key]
+        for key in ("faithfulness_gate_precision_bar", "faithfulness_gate_recall_bar")
+    },
 }
 
 # T2.126, owner-ruled 2026-08-13: the shipped defaults above are **floors**, on
