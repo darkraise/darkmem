@@ -13,6 +13,7 @@ import { JobsSettingsTab } from "@/features/settings/components/jobs-settings-ta
 import { SecurityTab } from "@/features/settings/components/security-tab"
 import { MaintenanceTab } from "@/features/settings/components/maintenance-tab"
 import { DistributionTab } from "@/features/settings/components/distribution-tab"
+import { ResearchTab } from "@/features/settings/components/research-tab"
 
 const TAB_VALUES = [
   "flags",
@@ -21,6 +22,7 @@ const TAB_VALUES = [
   "security",
   "maintenance",
   "distribution",
+  "research",
 ] as const
 export type SettingsTab = (typeof TAB_VALUES)[number]
 
@@ -62,6 +64,7 @@ function SettingsPage() {
             <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
             <TabsTrigger value="distribution">Distribution</TabsTrigger>
+            <TabsTrigger value="research">Research</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="flags" className="pt-4">
@@ -81,6 +84,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="distribution" className="pt-4">
           <DistributionTab />
+        </TabsContent>
+        <TabsContent value="research" className="pt-4">
+          <ResearchTab />
         </TabsContent>
       </Tabs>
     </div>

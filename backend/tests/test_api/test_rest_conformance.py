@@ -88,6 +88,10 @@ EXPECTED_STATUS = {
     # siblings, left as POST because fixing it breaks the frontend.
     ("POST", "/api/v1/config/llm"): 200,
     ("GET", "/api/v1/config/repo-allowlist"): 200,
+    # T3.28: the auto_research operator surface. A PUT that updates a
+    # config row in place, so 200 rather than 201 — nothing is created.
+    ("GET", "/api/v1/config/auto-research"): 200,
+    ("PUT", "/api/v1/config/auto-research"): 200,
     ("PUT", "/api/v1/config/repo-allowlist"): 200,
     ("GET", "/api/v1/config/repos-path"): 200,
     ("PUT", "/api/v1/config/repos-path"): 200,

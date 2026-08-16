@@ -68,6 +68,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.mcp.client_identity import resolve_origin_key
 from app.models.config import Config
+# Configuration, moved to its own module (T3.28) so a config surface can
+# reach the row without importing this one — invariant 15's scan forbids
+# that reach, and the loop's configuration is not the loop.
+from app.services.research_config import (  # noqa: F401
+    AUTO_RESEARCH_CONFIG_KEY,
+    AUTO_RESEARCH_DEFAULTS,
+    MAX_FINDINGS_CEILING,
+    ResearchBudget,
+    load_budget,
+    write_auto_research_config,
+)
 from app.schemas.memory import MemoryBatchCreate, MemoryCreate
 from app.services.events import record_event
 from app.services.memory import MemoryService
@@ -149,22 +160,15 @@ def _fold_scheme_slashes(value: str) -> str:
         return value
     return f"{scheme}://{rest}" if len(slashes) <= 1 else value
 
-# Fail closed. Building the loop is not running it (T3.07 brief): pointing it
-# at a live instance is a separate, owner-owned decision, so an install that
-# has never been configured refuses every run.
-AUTO_RESEARCH_DEFAULTS: dict[str, object] = {
-    "enabled": False,
-    "max_findings_per_run": 20,
-    "max_content_chars": 8000,
-}
-
-# The batch door's own cap, read off the schema rather than re-typed, so the
-# budget cannot quietly authorise a batch the front door would reject.
-MAX_FINDINGS_CEILING: int = next(
-    meta.max_length
-    for meta in MemoryBatchCreate.model_fields["entries"].metadata
-    if getattr(meta, "max_length", None) is not None
-)
+@dataclass(frozen=True)
+class ResearchRunResult:
+    run_id: UUID
+    subject: str
+    project: str
+    gathered: int
+    filed: int
+    memory_ids: tuple[UUID, ...]
+    journalled: bool
 
 
 class ResearchBudgetExceeded(Exception):
@@ -208,74 +212,6 @@ class ResearchGatherer(Protocol):
 
     async def gather(self, subject: str, *, limit: int) -> Sequence[ResearchFinding]:
         ...
-
-
-@dataclass(frozen=True)
-class ResearchBudget:
-    enabled: bool
-    max_findings_per_run: int
-    max_content_chars: int
-
-
-@dataclass(frozen=True)
-class ResearchRunResult:
-    run_id: UUID
-    subject: str
-    project: str
-    gathered: int
-    filed: int
-    memory_ids: tuple[UUID, ...]
-    journalled: bool
-
-
-def _positive_int(value: object, default: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        return default
-    return value
-
-
-async def load_budget(session: AsyncSession) -> ResearchBudget:
-    """The per-run budget, from the `auto_research` config row over defaults.
-
-    A malformed row degrades to the defaults rather than raising: the budget
-    bounds a run, and an unreadable bound must never read as "unbounded".
-    """
-    row = (await session.execute(
-        select(Config).where(Config.key == AUTO_RESEARCH_CONFIG_KEY)
-    )).scalar_one_or_none()
-    stored = row.value if row is not None and isinstance(row.value, dict) else {}
-
-    max_findings = _positive_int(
-        stored.get("max_findings_per_run"),
-        int(AUTO_RESEARCH_DEFAULTS["max_findings_per_run"]),
-    )
-    if max_findings > MAX_FINDINGS_CEILING:
-        logger.warning(
-            "%s.max_findings_per_run=%d exceeds the capture batch cap %d; clamping",
-            AUTO_RESEARCH_CONFIG_KEY, max_findings, MAX_FINDINGS_CEILING,
-        )
-        max_findings = MAX_FINDINGS_CEILING
-
-    # `bool()` is the wrong coercion for the master switch: `{"enabled":
-    # "false"}` — the most natural malformed shape an operator writes — is
-    # truthy, so the one field where failing closed matters most would fail
-    # open. The int fields already get this treatment from `_positive_int`.
-    enabled = stored.get("enabled", AUTO_RESEARCH_DEFAULTS["enabled"])
-    if not isinstance(enabled, bool):
-        logger.warning(
-            "%s.enabled=%r is not a boolean; falling back to the default",
-            AUTO_RESEARCH_CONFIG_KEY, enabled,
-        )
-        enabled = AUTO_RESEARCH_DEFAULTS["enabled"]
-
-    return ResearchBudget(
-        enabled=bool(enabled),
-        max_findings_per_run=max_findings,
-        max_content_chars=_positive_int(
-            stored.get("max_content_chars"),
-            int(AUTO_RESEARCH_DEFAULTS["max_content_chars"]),
-        ),
-    )
 
 
 def _canonical_query(query: str) -> str:

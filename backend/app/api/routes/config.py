@@ -26,6 +26,10 @@ from app.services.config import (
     PURPOSES,
     cfg_to_schema,
 )
+from app.services.research_config import (
+    load_budget as load_research_budget,
+    write_auto_research_config,
+)
 from app.services.config import get_llm_config as fetch_llm_config
 from app.services.feature_flags import (
     FEATURE_FLAGS_KEY,
@@ -355,6 +359,66 @@ class RepoAllowlistResponse(BaseModel):
 
 class RepoAllowlistUpdate(BaseModel):
     patterns: list[str] = Field(default_factory=list)
+
+
+class AutoResearchResponse(BaseModel):
+    """The budget as the *reader* resolves it, never an echo of the request.
+
+    A response built from what was sent could disagree with what a run will
+    actually do — the clamps and the fail-closed parse live on the read path,
+    so the operator must see their output rather than their own input.
+    """
+
+    enabled: bool
+    max_findings_per_run: int
+    max_content_chars: int
+    # The default is False and stays False: this surface makes arming an
+    # explicit operator act, which is a different thing from arming it.
+    default_enabled: bool = False
+
+
+class AutoResearchUpdate(BaseModel):
+    # All optional: a partial update must not silently reset the fields it
+    # omits. `enabled` is typed `bool | None` rather than `bool` so a string
+    # reaches the writer's strict check with its shape intact instead of being
+    # coerced by pydantic on the way in.
+    enabled: bool | None = None
+    max_findings_per_run: int | None = None
+    max_content_chars: int | None = None
+
+
+@router.get("/auto-research", response_model=AutoResearchResponse)
+async def get_auto_research(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """The live budget. A never-configured install reads disarmed, which is an
+    honest state rather than an error — the loop refuses every run until an
+    operator arms it."""
+    budget = await load_research_budget(session)
+    return AutoResearchResponse(
+        enabled=budget.enabled,
+        max_findings_per_run=budget.max_findings_per_run,
+        max_content_chars=budget.max_content_chars,
+    )
+
+
+@router.put("/auto-research", response_model=AutoResearchResponse)
+async def update_auto_research(
+    body: AutoResearchUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    try:
+        budget = await write_auto_research_config(session, patch)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return AutoResearchResponse(
+        enabled=budget.enabled,
+        max_findings_per_run=budget.max_findings_per_run,
+        max_content_chars=budget.max_content_chars,
+    )
 
 
 @router.get("/repo-allowlist", response_model=RepoAllowlistResponse)

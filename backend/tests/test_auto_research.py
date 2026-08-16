@@ -74,6 +74,11 @@ ALLOWED_APP_IMPORTS = {
     "app.schemas.memory",
     "app.services.events",
     "app.services.memory",
+    # T3.28 split the `auto_research` config row into its own module so a
+    # config surface could reach it without importing this one. The loop still
+    # reads its budget, so the whitelist gains the split half rather than the
+    # loop keeping a second copy of the reader.
+    "app.services.research_config",
     "app.utils.ids",
 }
 
@@ -333,12 +338,61 @@ def _research_door_exempt_node_ids(rel: str, tree: ast.Module) -> set[int]:
     return exempt
 
 
+CONFIG_MODULE = "app/services/research_config.py"
+
+
+def _config_key_exempt_node_ids(rel: str, tree: ast.Module) -> set[int]:
+    """The config row's own key constant, and nothing else (T3.28).
+
+    `auto_research` is in `forbidden_literals` as the loop module's basename,
+    and it is *also* the `config` row key — so the module that owns that key
+    trips the literal route by holding its own name. The exemption is scoped to
+    the single assignment `AUTO_RESEARCH_CONFIG_KEY = "auto_research"`, not to
+    the file: an import of the loop, an attribute reach through the package, or
+    the same literal anywhere else in this module is still an offender.
+
+    Splitting the config out of the loop is what made this necessary and is
+    also why it is safe: a config surface must be able to read and write the
+    row without importing the Tier-C module, and the alternative — exempting
+    the *route* — would have widened a guard that is doing its job.
+    """
+    if rel != CONFIG_MODULE:
+        return set()
+    exempt: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {t.id for t in node.targets if isinstance(t, ast.Name)}
+        if "AUTO_RESEARCH_CONFIG_KEY" in names:
+            exempt.update(id(child) for child in ast.walk(node))
+    return exempt
+
+
 def _loop_reach_offenders(paths: list[Path], root: Path) -> list[str]:
+    def exempt(rel: str, tree: ast.Module) -> set[int]:
+        return _research_door_exempt_node_ids(rel, tree) | _config_key_exempt_node_ids(rel, tree)
+
     return find_forbidden_reach(
         paths, root, _LOOP_RULES,
         skip_files=frozenset({LOOP_MODULE}),
-        exempt_node_ids=_research_door_exempt_node_ids,
+        exempt_node_ids=exempt,
     )
+
+
+def test_the_config_key_exemption_is_one_assignment_not_the_file():
+    """The drill: the identical literal elsewhere in the config module is still
+    an offender, so the exemption cannot become a whole-file pass."""
+    tree = ast.parse(
+        'AUTO_RESEARCH_CONFIG_KEY = "auto_research"\n'
+        'SNEAKY = "auto_research"\n'
+    )
+    exempt = _config_key_exempt_node_ids(CONFIG_MODULE, tree)
+    literals = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and n.value == "auto_research"
+    ]
+    assert len(literals) == 2
+    assert sum(1 for n in literals if id(n) in exempt) == 1
 
 
 def test_no_app_code_reaches_the_research_loop():
