@@ -57,9 +57,9 @@ def _client_ip(request: Request) -> str:
     # logins would share one rate-limit bucket. When a trusted proxy fronts us,
     # use the address IT observed — NOT the leftmost X-Forwarded-For entry, which
     # the client supplies and can rotate per request to land every guess in a
-    # fresh bucket and defeat the lockout. The bundled nginx sets X-Real-IP to
-    # its own $remote_addr (an overwrite the client can't forge through nginx);
-    # fall back to the rightmost XFF hop (the value the trusted proxy appended,
+    # fresh bucket and defeat the lockout. A trusted proxy sets X-Real-IP to its
+    # own view of the peer, an overwrite the client cannot forge through it;
+    # fall back to the rightmost XFF hop (the value that proxy appended,
     # not the spoofable leftmost) when X-Real-IP is absent.
     if settings.trust_proxy_headers:
         real_ip = request.headers.get("x-real-ip")
@@ -216,6 +216,9 @@ class SecurityPostureResponse(BaseModel):
     trust_proxy_headers: bool
     cookie_secure: bool
     cookie_secure_explicit: bool
+    # Without this an operator cannot tell an enforced Secure flag from one
+    # that overrode their own explicit false — the two render identically.
+    cookie_secure_clamped: bool
     environment: str
     mcp_allowed_hosts: list[str]
     rate_limit_max_failures: int
@@ -248,6 +251,7 @@ async def auth_security_posture(
         trust_proxy_headers=settings.trust_proxy_headers,
         cookie_secure=settings.session_cookie_secure,
         cookie_secure_explicit=settings.cookie_secure is not None,
+        cookie_secure_clamped=settings.session_cookie_secure_clamped,
         environment=settings.environment,
         mcp_allowed_hosts=_parse_mcp_allowed_hosts(settings.mcp_allowed_hosts),
         rate_limit_max_failures=login_rate_limiter.max_failures,

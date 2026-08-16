@@ -25,10 +25,14 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
+// The exposed posture, and therefore coherent rather than merely convenient:
+// with trust_proxy_headers on the backend collapses the tri-state, so
+// cookie_secure=false alongside it is a state no server can report (T4.03).
 const POSTURE_FIXTURE = {
   trust_proxy_headers: true,
-  cookie_secure: false,
+  cookie_secure: true,
   cookie_secure_explicit: true,
+  cookie_secure_clamped: true,
   environment: "development",
   mcp_allowed_hosts: ["192.168.0.195:8000"],
   rate_limit_max_failures: 5,
@@ -81,7 +85,9 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     expect(screen.getByText("192.168.0.195:8000")).toBeInTheDocument()
     expect(screen.getByText(/5 failed attempts/)).toBeInTheDocument()
     expect(screen.getByText("5 minutes")).toBeInTheDocument()
-    expect(screen.getByText(/false — explicit/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/true — enforced by the exposed posture, overriding an explicit false/),
+    ).toBeInTheDocument()
   })
 
   it("mutation proof: flipping trust_proxy_headers in the response flips the rendered IP strategy", async () => {
@@ -89,7 +95,14 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
       if (path === "/setup/status") return Promise.resolve({ initialized: true })
       if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
       if (path === "/auth/security-posture") {
-        return Promise.resolve({ ...POSTURE_FIXTURE, trust_proxy_headers: false })
+        // The whole LAN triple moves together: with the proxy untrusted the
+        // backend honours the explicit false and nothing is clamped.
+        return Promise.resolve({
+          ...POSTURE_FIXTURE,
+          trust_proxy_headers: false,
+          cookie_secure: false,
+          cookie_secure_clamped: false,
+        })
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
@@ -99,6 +112,29 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     )
     expect(
       screen.queryByText(/X-Real-IP \(trusted proxy — trust_proxy_headers on\)/),
+    ).not.toBeInTheDocument()
+  })
+
+  it("T4.03: the LAN posture still renders the honoured explicit false, never the clamp copy", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/setup/status") return Promise.resolve({ initialized: true })
+      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
+      if (path === "/auth/security-posture") {
+        return Promise.resolve({
+          ...POSTURE_FIXTURE,
+          trust_proxy_headers: false,
+          cookie_secure: false,
+          cookie_secure_clamped: false,
+        })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<SecurityTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByText(/false — explicit/)).toBeInTheDocument(),
+    )
+    expect(
+      screen.queryByText(/enforced by the exposed posture/),
     ).not.toBeInTheDocument()
   })
 
