@@ -56,6 +56,7 @@ interface SecurityPostureResponse {
   trust_proxy_headers: boolean
   cookie_secure: boolean
   cookie_secure_explicit: boolean
+  cookie_secure_clamped: boolean
   environment: string
   mcp_allowed_hosts: string[]
   rate_limit_max_failures: number
@@ -140,19 +141,22 @@ export function useSecurityTabBinding(): SecurityTabBinding {
       ? posture.trust_proxy_headers
         ? "X-Real-IP (trust_proxy_headers is on) — the leftmost X-Forwarded-For is never trusted"
         : "the raw transport-socket peer (trust_proxy_headers is off)"
-      : "X-Real-IP when trust_proxy_headers is on (the bundled-nginx posture) — the leftmost X-Forwarded-For is never trusted",
+      : "X-Real-IP when trust_proxy_headers is on (an operator TLS proxy in front) — the leftmost X-Forwarded-For is never trusted",
     rateLimitAttemptThreshold: posture?.rate_limit_max_failures ?? null,
     rateLimitLockoutWindow: posture ? formatSeconds(posture.rate_limit_lockout_seconds) : null,
     rateLimitJournaled: null,
     cookieSecureValue: posture
       ? `${posture.cookie_secure} — ${
-          posture.cookie_secure_explicit
-            ? "explicit"
-            : `default for environment=${posture.environment}`
+          posture.cookie_secure_clamped
+            ? "enforced by the exposed posture, overriding an explicit false"
+            : posture.cookie_secure_explicit
+              ? "explicit"
+              : `default for environment=${posture.environment}`
         }`
       : null,
     cookieSecureNote:
-      "Unset means Secure-only when environment=production; explicit false permits login over plain-HTTP LAN.",
+      "Unset means Secure-only when environment=production; explicit false permits login over plain-HTTP LAN. " +
+      "With trust_proxy_headers on the tri-state collapses to enforced — an explicit false is overridden, not honoured.",
     tofuClaimed: statusQuery.data?.initialized ?? null,
     tofuClaimedLabel: statusQuery.data
       ? statusQuery.data.initialized

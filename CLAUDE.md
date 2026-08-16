@@ -1075,9 +1075,19 @@ the REST case alone.
   `trust_proxy_headers` defaults to False — the app is the network edge and
   serves the SPA itself, so nothing trustworthy sits in front; the prod
   compose passes it through so a posture change stays a config flip.
-  `cookie_secure` is tri-state: unset = Secure
+  `cookie_secure` is tri-state **in the LAN posture only**: unset = Secure
   only when `environment=production`; explicit false allows login
-  over plain-HTTP LAN. There are no `LLM_*` env vars — all LLM config
+  over plain-HTTP LAN. **`trust_proxy_headers` is the exposed-deployment
+  switch, not only a limiter setting (T4.03, doc 18 §9)** — with it on the
+  tri-state collapses to enforced and an explicit `cookie_secure=false` is
+  **clamped** to true rather than honoured, because in this tree the only live
+  reason to trust proxy headers is an operator TLS proxy in front (the
+  nginx-in-image fallback is recorded and not taken). The clamp is reported,
+  never silent: a boot warning, `session_cookie_secure_clamped`, and
+  `cookie_secure_clamped` on `GET /auth/security-posture`. Operator procedure:
+  `docs/runbook-exposed-deployment.md`, which also records that `/mcp` must not
+  be routed from the public side — its bearer-required option is designed
+  (doc 18 §5) and **not shipped**, so the Host allowlist is its only defence. There are no `LLM_*` env vars — all LLM config
   lives in the DB via the setup wizard.
 
 ## Live model endpoints (dev machine)

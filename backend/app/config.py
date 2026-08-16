@@ -73,8 +73,11 @@ class Settings(BaseSettings):
     # with nothing trustworthy in front. So proxy headers are ignored and the
     # transport peer decides the login rate limiter's bucket — a client that
     # could name its own IP could rotate buckets per guess and never lock out.
-    # Set true only when a trusted proxy really is in front (the
-    # nginx-in-image fallback, or an operator's TLS proxy).
+    # Set true only when a trusted proxy really is in front (an operator's TLS
+    # proxy; the nginx-in-image fallback is recorded and not taken). This is
+    # the exposed-deployment switch, not only a limiter setting: it also
+    # collapses the ``cookie_secure`` tri-state to enforced — see
+    # ``session_cookie_secure`` and docs/runbook-exposed-deployment.md.
     trust_proxy_headers: bool = False
     # Session-cookie Secure flag. None derives it from ``environment`` (Secure
     # in production). Set false to allow login over plain HTTP on a trusted LAN.
@@ -112,6 +115,16 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def _warn_cookie_secure_clamped(self):
+        if self.trust_proxy_headers and self.cookie_secure is False:
+            _config_logger.warning(
+                "COOKIE_SECURE=false is clamped to true: TRUST_PROXY_HEADERS=true is "
+                "the exposed posture, where the session cookie must not travel "
+                "unprotected. A plain-HTTP LAN deployment leaves TRUST_PROXY_HEADERS off."
+            )
+        return self
+
+    @model_validator(mode="after")
     def _derive_database_url(self):
         if not self.database_url:
             # Percent-encode the credentials so URL-significant characters in a
@@ -133,10 +146,27 @@ class Settings(BaseSettings):
         security validators while still serving login over plain HTTP on a
         trusted LAN. ``None`` (the default) preserves the historical behavior:
         Secure only in production.
+
+        The tri-state collapses to enforced in the exposed posture (doc 18 §9).
+        In this tree the only live reason to trust proxy headers is an operator
+        TLS proxy in front — the nginx-in-image fallback is recorded and not
+        taken (doc 03 (b)), and the app is the edge otherwise — so
+        ``trust_proxy_headers`` *is* the "TLS exists" signal, and an explicit
+        false is clamped rather than honoured: it would ship the session cookie
+        unprotected on a deployment reachable beyond the LAN. The clamp is
+        reported rather than silent — ``session_cookie_secure_clamped``, a
+        boot warning, and ``GET /auth/security-posture``.
         """
+        if self.trust_proxy_headers:
+            return True
         if self.cookie_secure is not None:
             return self.cookie_secure
         return self.environment == "production"
+
+    @property
+    def session_cookie_secure_clamped(self) -> bool:
+        """Whether the exposed posture overrode an explicit ``cookie_secure=false``."""
+        return self.trust_proxy_headers and self.cookie_secure is False
 
     llm_embedding: LLMPurposeConfig = LLMPurposeConfig(
         base_url="http://localhost:11434/v1",

@@ -56,9 +56,14 @@ async def test_cookie_secure_tri_state_resolution(
     client, auth_headers, monkeypatch,
     cookie_secure, environment, expected_value, expected_explicit,
 ):
-    """Unset derives Secure-only-in-production; an explicit value always
+    """LAN posture only — `trust_proxy_headers` is pinned off because T4.03
+    collapses the tri-state to enforced when it is on, so leaving it to the
+    ambient default would make these rows depend on a setting they do not name.
+
+    Unset derives Secure-only-in-production; an explicit value always
     wins over the environment, matching `settings.session_cookie_secure`
     exactly (this route must never recompute the rule itself)."""
+    monkeypatch.setattr(settings, "trust_proxy_headers", False)
     monkeypatch.setattr(settings, "cookie_secure", cookie_secure)
     monkeypatch.setattr(settings, "environment", environment)
 
