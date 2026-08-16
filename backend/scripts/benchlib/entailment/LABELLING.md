@@ -249,6 +249,59 @@ this same file — collapsing it to a binary would throw that away.
     if "uses" entailed "relies on", transitivity would make "uses" entail
     "needs Y to function", which is false on its face.
 
+- **Bare-sortal clause** (extends the Frame rule; ruled 2026-08-17,
+  rule-then-pairs on eg-0486, eg-0475 and eg-0699). A quantified
+  hypothesis often carries no frame phrase at all — "at least one
+  component", "at least one service". **The Frame rule's differentiation
+  test applies to the bare noun itself**: *could an entity of the
+  premise's world fail to satisfy this noun without any further fact
+  being false?*
+  - A noun **every** entity of the premise's world satisfies —
+    "component", "system", and kin, the same head nouns the
+    universal-frame branch already treats as vacuous — restricts nothing,
+    with or without a frame phrase. An existential built on it is
+    ordinary weakening: `entailed` when its witness is in the premise
+    (eg-0420, eg-0428, eg-0546).
+  - A noun that **partitions** the premise's world — "service",
+    "software", "database" — is asserted content in the existential's
+    restrictor and must be established **by the premise**. What syncthing
+    or nginx "obviously is" is world knowledge and inadmissible
+    (procedure 2). Unestablished, the pair is `unsupported` — never
+    `contradicted`, by procedure 4.
+  - **A relation's own generic semantics count as establishment.** A
+    sortal naming the role a slot necessarily plays is earned by the
+    relation: `DEPLOYED_ON` makes its target a "host" (eg-0592, eg-0650),
+    `DEPENDS_ON` makes its object a "dependency" (eg-0516), `HAS_PART`
+    makes its part a "part". The test mirrors the dependency-strength
+    rule's: *could the relation hold and the slot-filler fail the
+    sortal?* No for the "host" of a deployment; **yes** for a deployed
+    thing being a "service" — deployment does not make a thing a service.
+    Restrictor modifiers ("other", "named") are content judged the same
+    way: established when the premise's witness demonstrably satisfies
+    them.
+
+- **Possessive-existential clause** (same ruling). "X **has** at least
+  one N (that VPs)" is **not** the bare existential "at least one N VPs
+  X": the *have*-construction asserts the N stands in the
+  possession/part relation to X, projecting the implicit frame "N **of
+  X**" — a proper-subset frame whose membership must be earned exactly
+  like an explicit one. `DEPENDS_ON` earns "X has a dependency"
+  (eg-0516); `DEPLOYED_ON` earns "X has a component deployed on it",
+  because deployment on X places the subject in X's hosted stack
+  (eg-0424); **nothing earns** "X has a component that depends on it" —
+  a dependent of X is not thereby a component *of* X (eg-0486).
+
+  **The bound on both clauses, recorded rather than smoothed over.**
+  eg-0465 ("idx-03 hosts at least one deployed service") and eg-0475
+  ("At least one service is deployed on spire-01") are semantically
+  equivalent — same relation, same sortal — and **both measured
+  instruments split them the same way**, accepting the first and
+  rejecting the second. No rule can match both members, so the clause
+  above rules both `unsupported` and the gold carries the correction on
+  both. At this boundary the instruments are surface-form sensitive; the
+  repetition study on eg-0650 (3 `entailed` / 2 `unsupported` on
+  identical input, same seed) is the independent confirmation.
+
 
 ## The eight slices
 
