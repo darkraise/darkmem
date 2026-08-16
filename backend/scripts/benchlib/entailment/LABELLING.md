@@ -162,6 +162,26 @@ this same file — collapsing it to a binary would throw that away.
     putting the *new* state before X is `contradicted`, on the same footing
     as the window rule's named-successor case.
 
+  **The backward direction — "until X" (ruled 2026-08-17, rule-then-pairs
+  on eg-0681).** The two bullets above are written for "since X" and decide
+  claims about the *new* state. The mirror case is a premise that renders
+  the **old** state's close — "pushed to Docker Hub **until** the 22 January
+  2026 move; since that date, Harbor" — against a claim putting the **old**
+  state at an earlier date. **"Until X" fixes the window's close and asserts
+  no start**, so a claim dated before X is `unsupported` unless the premise
+  also fixes when the state began. Absence of a start is not establishment
+  of one, by the same procedure 4 the bullets above rest on.
+
+  This was ruled against the recorded label. eg-0681 cited the
+  predecessor-named bullet for `entailed`, but that bullet licenses
+  `contradicted` for the **new** state placed early — a different inference
+  from `entailed` for the **old** state placed early, and the file already
+  records that bullet as governing no live pair, "written because the
+  question needed deciding, not because a pair needs it". Both blind passes
+  reached `unsupported` independently and both said they were extending the
+  rule in mirror image rather than citing it, which is what an unruled
+  direction looks like from outside.
+
   The asymmetry is deliberate and is the one procedure 4 draws everywhere
   else: a premise earns a `contradicted` only by asserting the thing the
   hypothesis denies. An inception date alone asserts a beginning, not a

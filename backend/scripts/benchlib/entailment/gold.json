@@ -4744,7 +4744,9 @@
    ],
    "provenance": "hand-authored-synthetic-fact",
    "label_source": "adjudicated",
-   "rationale": "Inception-window rule, predecessor-named branch: the premise names the state the 22 January 2026 inception displaced, so it asserts what held before that date and the claim scoped to November 2025 follows."
+   "rationale": "Inception-window rule, predecessor-named branch: the premise names the state the 22 January 2026 inception displaced, so it asserts what held before that date and the claim scoped to November 2025 follows.",
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the backward-direction ruling made the same day. Its rationale cited the inception-window rule's predecessor-named bullet, which licenses `contradicted` for the NEW state placed before the inception — not `entailed` for the OLD state placed before it. \"Until X\" fixes the close and asserts no start, so November 2025 is not established. Both blind passes reached `unsupported` independently. Replaced by eg-0716."
   },
   {
    "id": "eg-0682",
@@ -5273,6 +5275,18 @@
     "object_name": "garage",
     "project": "default"
    }
+  },
+  {
+   "id": "eg-0716",
+   "premise": "The staging cluster ran Kubernetes 1.29 from 4 March 2026 until the 12 June 2026 upgrade to 1.31.",
+   "hypothesis": "In April 2026 the staging cluster was running Kubernetes 1.29.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "temporal"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "label_source": "author",
+   "rationale": "Window rule, entailed case: the premise fixes **both** boundaries — a start of 4 March 2026 and a close at the 12 June upgrade — so April 2026 is time-scoped inside an established window. Replaces eg-0681, which fixed only the close and so left its claimed date unestablished; the contrast is what makes the backward-direction ruling readable off the set."
   }
  ]
 }
