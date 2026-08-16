@@ -644,6 +644,100 @@ class RequestBodyLimitMiddleware:
         await self.app(scope, receive, send)
 
 
+# How often a refusal may write a journal row. The refusal itself is bounded by
+# nothing an attacker controls; the journal is, so a public scanner must not be
+# able to grow the events table one row per probe. In-process state, which is
+# valid for the same reason the login limiter's is (invariant 13).
+_PROXIED_MCP_JOURNAL_INTERVAL_SECONDS = 60.0
+_last_proxied_mcp_journal = 0.0
+
+# The headers that mean "this request reached us through the proxy". Read only
+# to answer that yes/no question — never to derive an address, which is
+# `_client_ip`'s job and is a different decision with different rules.
+_FORWARDED_MARKERS = ("x-forwarded-for", "x-real-ip", "x-forwarded-proto")
+
+
+class ProxiedMcpGuardMiddleware:
+    """Refuse `/mcp` when it arrives through the proxy (T4.17).
+
+    `/mcp` is unauthenticated by design — the local-network trust model — and
+    its bearer-required option is designed but unshipped (doc 18 §5). Under
+    `trust_proxy_headers` the box is exposed, and the E4 epic review's
+    objection is precise: the gap was one allowlist entry from armed, and the
+    standing advice for a LAN `421` ("extend the allowlist") points at exactly
+    that entry. A runbook sentence is the wrong weight for a hole an operator
+    can open by following unrelated correct advice.
+
+    So this closes it in the direction that can only ever refuse more: with the
+    exposed switch off, the middleware does nothing at all, and with it on, a
+    request that did *not* come through the proxy is untouched. A local or LAN
+    agent reaching `/mcp` directly keeps working in both postures.
+
+    This is **not** the Host allowlist and does not replace it. That guard
+    answers "is this Host one I serve" and its refusal is `421`, fixed by
+    extending the allowlist. This one answers "did this arrive from outside",
+    and extending the allowlist does not fix it — which is the whole point.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] != "http"
+            or not is_mcp_path(scope.get("path", ""))
+            or not settings.trust_proxy_headers
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        if not any(headers.get(marker) for marker in _FORWARDED_MARKERS):
+            await self.app(scope, receive, send)
+            return
+
+        await self._journal(headers)
+        response = _error_response(
+            403,
+            "mcp_not_exposed",
+            "/mcp is not served through a proxy: it is unauthenticated by "
+            "design and must not be routed from outside the trusted network. "
+            "See docs/runbook-exposed-deployment.md.",
+        )
+        await response(scope, receive, send)
+
+    async def _journal(self, headers) -> None:
+        global _last_proxied_mcp_journal
+        import time as _time  # noqa: PLC0415
+
+        logger.warning(
+            "Refused a proxied /mcp request — /mcp must not be routed publicly"
+        )
+        now = _time.monotonic()
+        if now - _last_proxied_mcp_journal < _PROXIED_MCP_JOURNAL_INTERVAL_SECONDS:
+            return
+        _last_proxied_mcp_journal = now
+        try:
+            from app.database import async_session_factory  # noqa: PLC0415
+            from app.services.events import record_event  # noqa: PLC0415
+
+            async with async_session_factory() as journal_session:
+                await record_event(
+                    journal_session,
+                    event_type="mcp_proxied_refused",
+                    object_type="system",
+                    source="mcp",
+                    # No address and no Host: the point of the row is that it
+                    # happened at all, and copying attacker-controlled strings
+                    # into an append-only substrate is the write-time
+                    # minimization rule saying no.
+                    payload={"throttled_seconds": _PROXIED_MCP_JOURNAL_INTERVAL_SECONDS},
+                )
+                await journal_session.commit()
+        except Exception:  # pragma: no cover - journalling must never refuse the refusal
+            logger.warning("Could not journal the proxied /mcp refusal", exc_info=True)
+
+
 app = FastAPI(title="darkmem", version="0.5.0", description="Centralized memory system for AI agents", lifespan=lifespan)
 
 app.add_middleware(
@@ -660,6 +754,9 @@ app.add_middleware(
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ScopedGZipMiddleware)
 app.add_middleware(RequestBodyLimitMiddleware)
+# Outermost of the MCP-relevant guards: a request refused here must not reach
+# the mount at all.
+app.add_middleware(ProxiedMcpGuardMiddleware)
 
 _HTTP_ERROR_CODES = {
     400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
