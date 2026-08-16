@@ -481,7 +481,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | T4.18 | Replica-knob tripwire test | S | Haiku | high | v1.0 | claude/t4.18-replica-tripwire | wip | | | |
 | T4.19 | Owner docs pass | S | Haiku | high | v1.0 | | todo | | | **Owner-gated (runbook §5 Tier 3)** — doc 18 still calls `api_keys` dormant in three places |
 | T4.20 | Minors sweep | S | Sonnet | high | v1.0 | claude/t4.20-minors | wip | | | |
-| T4.21 | Assign `capture` and `read`, or retire them | M | Opus | high | v1.0 | | todo | | | Split from `T4.15` so it cannot be lost inside another task's scope a second time — the review found the original assignment had been handed T4.01 → T4.03, dropped, and left owned by a closed task |
+| T4.21 | Assign `capture` and `read`, or retire them | M | Opus | high | v1.0 | claude/t4.21-scope-assignment | wip | | | Split from `T4.15` so it cannot be lost inside another task's scope a second time — the review found the original assignment had been handed T4.01 → T4.03, dropped, and left owned by a closed task |
 
 ## EH1 — Documents / PKM (16 tasks)
 
