@@ -906,7 +906,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "idx-03",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under retire-and-replace, per the bare-sortal / possessive-existential clauses ruled that day. Semantically equivalent to eg-0475 (same relation, same sortal) and retired with it for consistency, although both instruments *accepted* this surface form. That split is the recorded bound on the clause, not a defect in it. Replaced by eg-0702."
   },
   {
    "id": "eg-0466",
@@ -1096,7 +1098,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "spire-01",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under retire-and-replace, per the bare-sortal / possessive-existential clauses ruled that day. \"service\" partitions the premise's world and `DEPLOYED_ON` does not earn it — deployment does not make a thing a service — so the sortal is asserted content the premise never establishes. Both instruments rejected it. Replaced by eg-0701."
   },
   {
    "id": "eg-0476",
@@ -1305,7 +1309,9 @@
     "rel_type": "DEPENDS_ON",
     "object_name": "ledger-02",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under retire-and-replace, per the bare-sortal / possessive-existential clauses ruled that day. The recorded `entailed` is wrong under the possessive-existential clause: \"ledger-02 **has** at least one component that depends on it\" projects the implicit frame \"component *of* ledger-02\", and `DEPENDS_ON` does not earn it — a dependent of X is external to X. Both measured instruments rejected it, stably under repetition. Replaced by eg-0700."
   },
   {
    "id": "eg-0487",
@@ -4949,6 +4955,84 @@
     "subject_name": "grafana",
     "rel_type": "USES",
     "object_name": "nginx",
+    "project": "default"
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under retire-and-replace, per the bare-sortal / possessive-existential clauses ruled that day. \"one of the pieces of software\" applies a partitioning sortal to nginx that `USES` never establishes — procedure 2's world-knowledge bar. Authored 2026-08-16 as a replacement in this same round, which is how readily the unwritten reading propagated before the clause existed. Replaced by eg-0703."
+  },
+  {
+   "id": "eg-0700",
+   "premise": "auth-01 depends on kv-01",
+   "hypothesis": "At least one component depends on kv-01.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3 with the bare-sortal clause: the subject is generalised to an existential whose only restrictor is \"component\", a noun every entity of the premise's world satisfies, so it differentiates nothing and moves no verdict; auth-01 is the witness. Replaces eg-0486, which put the same generalisation inside a *possessive* frame the relation could not earn — the two together are what make the possessive clause readable off the set.",
+   "fact_key": {
+    "triple_key": "46072f92-f15a-5667-9985-27e17c1ef62b",
+    "subject_name": "auth-01",
+    "rel_type": "DEPENDS_ON",
+    "object_name": "kv-01",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0701",
+   "premise": "jenkins deployed on ci-01",
+   "hypothesis": "At least one component is deployed on ci-01.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "Bare-sortal clause, generic branch: \"component\" restricts nothing, so this is ordinary weakening with jenkins as the witness. The minimal edit of eg-0475, which used \"service\" — a noun that partitions the world and that `DEPLOYED_ON` does not earn.",
+   "fact_key": {
+    "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
+    "subject_name": "jenkins",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "ci-01",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0702",
+   "premise": "typesense deployed on search-01",
+   "hypothesis": "search-01 hosts at least one deployed component.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "Bare-sortal clause on both counts: \"host\" is the role `DEPLOYED_ON` necessarily assigns search-01, and \"component\" is generic, so neither restrictor is asserted content. Replaces eg-0465, which carried the partitioning \"service\" in the same frame.",
+   "fact_key": {
+    "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
+    "subject_name": "typesense",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "search-01",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0703",
+   "premise": "telegraf uses influxdb",
+   "hypothesis": "influxdb is employed by telegraf.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3: a full rewording at the same use-level strength, framed from the object endpoint, carrying no sortal at all. Replaces eg-0699, whose verb was never the problem — \"employs\" is retained deliberately to show the defect was the classificatory sortal \"one of the pieces of software\", which `USES` cannot establish.",
+   "fact_key": {
+    "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
+    "subject_name": "telegraf",
+    "rel_type": "USES",
+    "object_name": "influxdb",
     "project": "default"
    }
   }
