@@ -221,6 +221,39 @@ def pytest_configure(config):
     )
 
 
+@pytest.fixture(autouse=True)
+def _corroboration_gate_closed_by_default(tmp_path, monkeypatch):
+    """Pin the gate CLOSED for every test that does not deliberately open it.
+
+    The suppression tests were written unfixtured on purpose — driving the real
+    doors is the shape a review found missing — but "unfixtured" silently meant
+    "reads whatever `app/services/` happens to contain", and the tree contained
+    no record only because G-C had never cleared. **On 2026-08-16 it cleared and
+    the record was minted, and 28 suppression assertions inverted in one commit
+    without a single one of them being about the mint.** They did not catch a
+    regression; they stopped testing suppression, which is the failure this
+    fixture forecloses.
+
+    So the precondition is stated rather than inherited. `PROMOTION_RECORD_PATH`
+    points at a path that does not exist, and a test wanting the gate open asks
+    for :func:`cleared_promotion_record`, which is requested after this one and
+    therefore wins. The default direction matters and is the conservative one:
+    autouse-*opening* would leave suppression untested everywhere at once, which
+    is why the sibling fixture refuses to be autouse; autouse-*closing* makes
+    every door drive assert the withheld rung unless it says otherwise.
+
+    What this deliberately stops covering is whether the *shipped* record is
+    well-formed — that is a property of the artifact, not of the gate, and
+    `test_claim_serving_gates.test_the_shipped_record_if_present_is_one_the_gate_can_read`
+    asserts it directly against the real path instead.
+    """
+    from app.services import claim_gates
+
+    monkeypatch.setattr(
+        claim_gates, "PROMOTION_RECORD_PATH", tmp_path / "no-such-record.json"
+    )
+
+
 @pytest.fixture
 def cleared_promotion_record(tmp_path, monkeypatch):
     """Open T2.95's corroboration gate for a test that is not about the gate.

@@ -2233,3 +2233,32 @@ async def test_an_open_gate_passed_in_is_actually_read():
     assert withheld["verification_status"] == SUPPRESSED
     assert served["verification_status"] == PROMOTED
     assert served["label_suppressed"] is None
+
+
+def test_the_shipped_record_if_present_is_one_the_gate_can_read():
+    """The artifact's own guard, which no other test can carry any more.
+
+    Every test in the suite now runs with `PROMOTION_RECORD_PATH` pinned at an
+    absent path (`_corroboration_gate_closed_by_default`), so nothing else looks
+    at the file the repository actually ships. That is right for the gate's
+    behaviour and wrong for the artifact: a minted record with a trailing comma,
+    a `"gate_eligible": "true"` string, or bad UTF-8 fails **closed** and
+    silently — the label simply stays withheld and reads exactly like a gate
+    nobody has cleared yet, which is the one confusion T2.95 exists to prevent.
+
+    Absent is a legitimate state and passes here: it means G-C has not cleared.
+    Present-but-unreadable is not, and neither is present-but-not-eligible,
+    because minting is a deliberate act and a half-minted record records
+    nothing.
+    """
+    path = BACKEND / "app" / "services" / "promotion_metrics_record.json"
+    if not path.exists():
+        pytest.skip("no record minted; the gate is closed, which is a valid state")
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(record, dict), "a record the loader cannot treat as a dict"
+    assert record.get("gate_eligible") is True, (
+        "a minted record must say `true`, not a truthy string: the gate compares "
+        "with `is True` precisely so an INTERIM branding cannot read as a pass"
+    )
+    assert claim_gates.corroboration_gate(path).open is True

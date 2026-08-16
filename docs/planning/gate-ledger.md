@@ -497,7 +497,7 @@ never silently absorbed.
 | False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
 | Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
 
-### G-C on the grown corpus (2026-08-16, T2.131): every pre-stated axis **clears**; the gate verdict is owed to Step 5
+### G-C on the grown corpus (2026-08-16, T2.131): **CLEARED** — every pre-stated axis clears, independently verdicted, record minted
 
 The owner authorised the run on 2026-08-16, conditioned on closing the owed
 review's two open findings first (both closed: `6d0453d1`, `7a2f9801`). Corpus
@@ -514,7 +514,9 @@ sha256 `78dbc4c5c8756dcd`, 849 captures — a new corpus, not a re-run of
 | False-promotion point estimate | 0.0020 | 0.0019 |
 | **95% Clopper-Pearson upper bound (SCORED)** | **0.009286** vs 0.01 → clears | **0.008953** vs 0.01 → clears |
 | `gate_fired` eligibles | [363, 147] — diversity, none | [363, 146, 20] — diversity, none, time_gap |
-| Diversity-arm conversion | 364/365 = **0.9973** | 365/365 = **1.0000** |
+| Diversity-arm conversion, as the instrument prints it | 364/365 = 0.9973 | 365/365 = 1.0000 |
+| Diversity-arm conversion, **authored claims only** | 363/365 = **0.9945** | 363/365 = **0.9945** |
+| `none`-arm conversion (no instrument prints this) | 144/145 = **0.9931** | 144/145 = **0.9931** |
 | Journal completeness | 682 facts, 74 carve-out, **0 violations** | identical |
 
 All four axes report `clears=True` in both passes, on bars every run printed as
@@ -557,16 +559,54 @@ every one was written to be counted. T2.130's limit is unlifted: a well-powered
 rule over authored evidence is a better instrument measuring the same thing, and
 this task sharpened the instrument without widening what it can see.
 
-**This section records a measurement, not a gate verdict.** Two things are
-deliberately absent. Step 5 requires the verdict be recorded by a party that did
-not author the growth or run the measurement, and that has not happened — the
-session that ran these passes must not also be the one that declares them
-sufficient, which is the contamination class stop condition 4 names.
-`app/services/promotion_metrics_record.json` is **unminted**, so every promoted
-and born badge still serves as `candidate` with `verification_unmeasured`; the
-runner never mints it by design, and minting is the gate owner's deliberate act
-on a confirmed verdict. Artifacts:
-`docs/eval/2026-08-16-gc-evidence-t2.131-pass1-unsimulated.md` and
+**Step 5's independent verdict: CLEARED** — recorded 2026-08-16 by a party that
+neither authored the growth nor ran the passes, which is the requirement's whole
+point. It recomputed every axis with its own SQL against both measured
+databases, reproduced the run end to end in its own lane
+(`darkmem_bench_t2131verify`, 0 live calls, byte-identical on every gate number),
+audited the bars through `git` rather than through the run's own print (unchanged
+since `57f07d52`, 2026-08-07, before any measurement), and confirmed R2's fold cap
+at 0 expired events. Full report:
+`docs/planning/reviews/2026-08-16-t2.131-gc-independent-verdict.md`.
+
+**It answered the denominator-honesty question the task text called the real
+risk, and the corpus passed**: 849 memories share **156** distinct origin keys
+(max reuse 20), the code kind has exactly 6 origins, and there are zero
+anonymous, blank or `unknown:*` origins — so "one assertion relabelled 473
+times" is not what happened.
+
+**Two claims in an earlier draft of this section were overstated and are
+corrected above rather than quietly dropped.** (1) The **`none` arm did not
+convert at 1.000**: basalt authored 22 claims and 21 corroborated, because
+`bs-h3` produced **no fact at all** — no `h3` entity was ever extracted. True
+conversion 144/145. The running session reported 1.000 from a hand-count that
+mis-attributed a `default` fact to that arm, and **the runner prints no `none`
+reconciliation**, so nothing was watching — the silent shape plan §7 predicted.
+(2) The **diversity aggregate is inflated by unauthored promotions**: the
+instrument counts any promoted fact whose subject is a fleet repo name, so
+`merchant-portal USES dashboard` — nobody's claim, promoted on the `none` gate —
+counts as a diversity conversion, which is how pass 2 prints 1.0000 while the two
+known authored misses still failed. Authored-claim conversion is 363/365 in both
+passes. Structurally the instrument can mask a real authored miss 1:1 against a
+noise promotion.
+
+**Neither correction moves the verdict.** Two of the 509 corroborations are
+undesigned; stripped, the bound still clears at 507 → 0.009322 (pass 2:
+526 → 0.008987). One non-determinism is disclosed rather than smoothed: pass 1
+printed `scheduler superseded=1 of 3`, pass 2 and the reproduction print `2 of 3`
+— the known T2.129 Phase-5 race, confined to the blocked-hold group, arming
+project 0 everywhere.
+
+**On the strength of that verdict the gate owner minted
+`app/services/promotion_metrics_record.json`** (2026-08-16). Promoted and born
+fact statuses now reach readers; the badge is lit by an evidence record, not by
+a code change, which is the T2.95/T2.100 design. The record names the corpus sha,
+both passes, the scored rule and the independent verdict that licensed it.
+**What it does not license is recorded beside it**, in the reviewer's words as
+well as §6's: the detector has never fired on an unauthored contradiction, the
+human-rejection arm has never met a human, and the kind diversity carrying 363 of
+the 509 promotions means the same hand wrote the assertion twice in two formats.
+Artifacts: `docs/eval/2026-08-16-gc-evidence-t2.131-pass1-unsimulated.md` and
 `…-pass2-simulated.md`, verbatim.
 
 ### G-C bench-arm evidence run (2026-08-13): **NOT CLEARED — operable and powered for the first time, and still not clearable**
