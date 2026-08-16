@@ -1436,7 +1436,9 @@
     "rel_type": "USES",
     "object_name": "garage",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 by mechanical application of the cross-relation vocabulary test already in the rulebook: `USES` does not guarantee a commissioning act, so \"Garage is **put into service by** data-06\" asserts that data-06 commissioned it when the premise says only that data-06 uses it — someone else could have put it into service. Both blind labellers reached `unsupported` independently and both named it the hardest pair in the batch. Note the controller's shape-free sortal scan had flagged this pair and the controller EXEMPTED it as an idiom; the exemption was right about the sortal — \"service\" there is not a kind predicated of Garage — and wrong about the pair, which is defective for a different reason the scan cannot see. Replaced by eg-0715."
   },
   {
    "id": "eg-0494",
@@ -5132,7 +5134,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0708",
@@ -5151,7 +5153,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0709",
@@ -5170,7 +5172,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0710",
@@ -5189,7 +5191,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0711",
@@ -5208,7 +5210,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0712",
@@ -5227,7 +5229,7 @@
     "project": "default"
    },
    "provenance": "l2-fact",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0713",
@@ -5239,7 +5241,7 @@
    ],
    "provenance": "hand-authored-synthetic-fact",
    "rationale": "Open-ended window: the premise fixes the suspension's start but leaves its close to an event with no stated date, so 20 March sits neither inside nor outside the window. Neither established nor excluded, so `unsupported` by procedure 4 — replacing eg-0691, whose durative premise the 2026-08-17 ruling made `contradicted`.",
-   "label_source": "author"
+   "label_source": "adjudicated"
   },
   {
    "id": "eg-0714",
@@ -5251,7 +5253,26 @@
    ],
    "provenance": "hand-authored-synthetic-fact",
    "rationale": "The premise locates the completion inside a three-month window without fixing which month, so April is one admissible reading among three and is not established. \"During\" is used deliberately rather than \"for the duration of\": the 2026-08-17 ruling separates them, and this pair tests the locating sense the implicature rule already calibrates. Replaces eg-0686, whose durative premise the same ruling unsettled.",
-   "label_source": "author"
+   "label_source": "adjudicated"
+  },
+  {
+   "id": "eg-0715",
+   "premise": "data-06 uses garage",
+   "hypothesis": "data-06 makes use of Garage.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3: a plain rewording at `USES`'s own level, asserting use and nothing about who commissioned the thing used. The minimal edit of eg-0493, whose \"put into service by\" attributed a commissioning act the relation does not carry.",
+   "fact_key": {
+    "triple_key": "0fb10de6-b28d-5cf5-aaa8-1b0ae07a48f5",
+    "subject_name": "data-06",
+    "rel_type": "USES",
+    "object_name": "garage",
+    "project": "default"
+   }
   }
  ]
 }

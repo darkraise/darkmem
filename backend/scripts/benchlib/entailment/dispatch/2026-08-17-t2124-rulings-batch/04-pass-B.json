@@ -1,0 +1,122 @@
+{
+ "eg-0586": {
+  "verdict": "entailed",
+  "rationale": "Passive-voice restatement of the same USES assertion with all content preserved (general procedure 3: voice change is rewording, not strengthening)."
+ },
+ "eg-0638": {
+  "verdict": "contradicted",
+  "rationale": "Reversal of DEPLOYED_ON, which the reversal-exclusivity table classes exclusive: host and guest cannot swap for the same pair (reversal rule, exclusive case)."
+ },
+ "eg-0707": {
+  "verdict": "entailed",
+  "rationale": "DEPLOYED_ON earns 'host' for its target and 'installation' for its subject (bare-sortal clause, relation-earned branch, eg-0469/eg-0704), and the definite predicate nominal 'the host' carries exhaustivity only by information structure, which is presupposed and does not break entailment (exhaustivity rule)."
+ },
+ "eg-0709": {
+  "verdict": "entailed",
+  "rationale": "'Component' is a vacuous head noun every entity of the premise's world satisfies, so the existential is ordinary weakening with its witness (directory replica) in the premise (bare-sortal clause, vacuous branch)."
+ },
+ "eg-0493": {
+  "verdict": "unsupported",
+  "rationale": "'Put into service by' attributes a commissioning/activation agency the bare USES relation leaves open — garage could have been put into service by another party and merely used by data-06 — so the rendering strengthens, on the engagement/invocation-vocabulary ruling's test ('calls on ... to do its work' fixes a mechanism USES does not carry)."
+ },
+ "eg-0505": {
+  "verdict": "unsupported",
+  "rationale": "'For all of its virtualisation' carries exhaustivity lexically ('all'), which is asserted content and strengthens the bare DEPENDS_ON relation (exhaustivity rule, lexical branch; general procedure 3)."
+ },
+ "eg-0442": {
+  "verdict": "unsupported",
+  "rationale": "The premise (a deployment fact) bears on nothing in the hypothesis (a query-blocking rate); absence is not exclusion (general procedure 4), and corpus plausibility is inadmissible (procedure 2)."
+ },
+ "eg-0679": {
+  "verdict": "entailed",
+  "rationale": "The premise fixes an open window ('since its rebuild on 11 May 2026, and no later version has been deployed'), and an open window entails the same state at any later reference date including 'currently' (open-window rule)."
+ },
+ "eg-0711": {
+  "verdict": "entailed",
+  "rationale": "'Is among what restic makes use of' is a non-exhaustive passive rendering of the same USES assertion — rewording plus weakening, both of which preserve entailment (general procedure 3)."
+ },
+ "eg-0710": {
+  "verdict": "entailed",
+  "rationale": "DEPLOYED_ON earns 'installation' for its subject and 'host' for its target (bare-sortal clause, relation-earned branch, eg-0469/eg-0704, eg-0592), so the possessive frame 'has lab-vm-3 as its host' asserts only the role the relation itself creates."
+ },
+ "eg-0509": {
+  "verdict": "unsupported",
+  "rationale": "The hypothesis adds a purpose ('to store its long-term metrics history') the bare USES relation does not carry — added content is strengthening (general procedure 3; overreach shape)."
+ },
+ "eg-0692": {
+  "verdict": "unsupported",
+  "rationale": "The hypothesis pushes the state's start back before the premise's inception date (January vs 8 March 2026) and the premise names no predecessor state, so it asserts a beginning, not a prior absence — unsupported by the inception-window rule's no-predecessor branch (procedure 4: absence is not exclusion)."
+ },
+ "eg-0712": {
+  "verdict": "entailed",
+  "rationale": "'Component' is a vacuous head noun (bare-sortal clause, vacuous branch) and the restrictor modifier 'other' is demonstrably satisfied by the premise's witness — vite is a distinct named entity from the status dashboard in the premise's own triple (bare-sortal clause, restrictor-modifier sentence)."
+ },
+ "eg-0433": {
+  "verdict": "entailed",
+  "rationale": "Passive-voice restatement of the same USES assertion with all content preserved (general procedure 3)."
+ },
+ "eg-0660": {
+  "verdict": "contradicted",
+  "rationale": "The premise names the state the cutover displaced (Filebeat handled log shipping up to 2025-05-19), so placing the new state (Vector) before the inception date is contradicted under the inception-window rule's predecessor-named branch."
+ },
+ "eg-0594": {
+  "verdict": "entailed",
+  "rationale": "'Draws on' renders USES at its own generic passive-resource level with no necessity, interaction or invocation mechanism added, 'component' is a vacuous head noun, and 'one of the' is non-exhaustive weakening (general procedure 3; bare-sortal clause, vacuous branch)."
+ },
+ "eg-0676": {
+  "verdict": "contradicted",
+  "rationale": "A present-tense validity claim over a window the premise explicitly closes ('expired on 2025-08-30 without being renewed') is contradicted under the window rule's closed-window case."
+ },
+ "eg-0485": {
+  "verdict": "unsupported",
+  "rationale": "'The only component' carries exhaustivity lexically ('only', 'sole' class), which is asserted content and strengthens the bare DEPENDS_ON relation; the premise does not exclude other dependencies, so not contradicted (exhaustivity rule, lexical branch; procedure 4)."
+ },
+ "eg-0713": {
+  "verdict": "unsupported",
+  "rationale": "The suspension window closes at an event ('until the vault migration completed') whose date the premise does not fix, so whether backups were running on 20 March 2026 depends on a date the premise does not contain — neither established nor excluded (evaluation-time rule's principle; procedure 4)."
+ },
+ "eg-0472": {
+  "verdict": "unsupported",
+  "rationale": "'For every zone transfer it performs' adds a purpose and carries exhaustivity lexically ('every'), both strengthening over the bare USES relation (exhaustivity rule, lexical branch; general procedure 3)."
+ },
+ "eg-0714": {
+  "verdict": "unsupported",
+  "rationale": "Completion 'during Q2 2026' does not fix the month; tightening the span to April 2026 is strengthening, and April lies inside Q2 so nothing is excluded (general procedure 3; procedure 4)."
+ },
+ "eg-0455": {
+  "verdict": "entailed",
+  "rationale": "Passive-voice restatement of the same USES assertion with all content preserved (general procedure 3)."
+ },
+ "eg-0555": {
+  "verdict": "contradicted",
+  "rationale": "Reversal of DEPLOYED_ON, exclusive per the reversal-exclusivity table — a platform is not deployed on its own workload (reversal rule, exclusive case)."
+ },
+ "eg-0476": {
+  "verdict": "unsupported",
+  "rationale": "'Sole' carries exhaustivity lexically and strengthens, and 'storage backend' is a partitioning sortal USES does not earn (engagement/invocation-vocabulary ruling), unestablished by the premise — unsupported, never contradicted, by procedure 4."
+ },
+ "eg-0689": {
+  "verdict": "unsupported",
+  "rationale": "The claim is dated before the window's start (March 2025 vs 1 July 2025) and the premise names no state that preceded the window, so it asserts nothing about the earlier date — inception-window rule, no-predecessor branch (procedure 4: absence is not exclusion)."
+ },
+ "eg-0549": {
+  "verdict": "contradicted",
+  "rationale": "Reversal of DEPLOYED_ON, exclusive per the reversal-exclusivity table: host and guest cannot swap for the same pair (reversal rule, exclusive case)."
+ },
+ "eg-0628": {
+  "verdict": "unsupported",
+  "rationale": "The first conjunct (Graylog runs on log-02) is entailed, but the second (ingests the syslog stream from every rack switch) is added content the premise does not establish, and the whole hypothesis must be entailed (general procedure 1, eg-0028 shape)."
+ },
+ "eg-0708": {
+  "verdict": "entailed",
+  "rationale": "'Runs on' renders DEPLOYED_ON at its generic level, and the sortal 'host' inside the definite naming gpu-01 is asserted content (referential-definite clause) but is earned by DEPLOYED_ON for its target (bare-sortal clause, relation-earned branch, eg-0592/eg-0650)."
+ },
+ "eg-0448": {
+  "verdict": "contradicted",
+  "rationale": "Reversal of DEPLOYED_ON, exclusive per the reversal-exclusivity table; 'host' for umbra-04 is relation-earned, but the swapped direction contradicts (reversal rule, exclusive case)."
+ },
+ "eg-0563": {
+  "verdict": "entailed",
+  "rationale": "'Brought about by' is a passive synonym rendering of CAUSES with nothing strengthened — no exhaustivity marked either way (general procedure 3; exhaustivity rule's bare-relation note)."
+ }
+}

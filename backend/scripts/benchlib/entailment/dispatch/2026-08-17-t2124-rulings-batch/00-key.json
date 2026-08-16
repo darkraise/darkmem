@@ -1,0 +1,136 @@
+{
+ "_notes": "Recorded labels, held OUT of the export. The 8 replacements authored under the 2026-08-17 rulings, plus 22 adjudicated covers not cited in the rulebook.",
+ "seed": 717202608,
+ "under_adjudication": [
+  "eg-0707",
+  "eg-0708",
+  "eg-0709",
+  "eg-0710",
+  "eg-0711",
+  "eg-0712",
+  "eg-0713",
+  "eg-0714"
+ ],
+ "key": {
+  "eg-0586": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0638": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0707": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0709": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0493": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0505": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0442": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0679": {
+   "verdict": "entailed",
+   "slice": "temporal"
+  },
+  "eg-0711": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0710": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0509": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0692": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0712": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0433": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0660": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0594": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0676": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0485": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0713": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0472": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0714": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0455": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0555": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0476": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0689": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0549": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0628": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0708": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0448": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0563": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  }
+ }
+}

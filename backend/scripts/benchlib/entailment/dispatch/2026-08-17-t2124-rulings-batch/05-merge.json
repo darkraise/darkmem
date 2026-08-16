@@ -1,0 +1,30 @@
+{
+ "_notes": "Layer 2 merge. A-vs-B agreement 30/30 and all eight replacements unanimous, DESPITE each labeller flagging five constructions the rulebook does not enumerate. Both applied the cross-relation vocabulary test to that vocabulary and landed identically ('put into service by' -> unsupported, 'draws on' -> entailed, 'carries' -> entailed). The general tests decide; the enumeration gaps produce flagged-but-consistent judgement, not divergence. One escalation, on a cover.",
+ "merged_at": "2026-08-17",
+ "under_adjudication": [
+  "eg-0707",
+  "eg-0708",
+  "eg-0709",
+  "eg-0710",
+  "eg-0711",
+  "eg-0712",
+  "eg-0713",
+  "eg-0714"
+ ],
+ "adjudicated": [
+  "eg-0707",
+  "eg-0708",
+  "eg-0709",
+  "eg-0710",
+  "eg-0711",
+  "eg-0712",
+  "eg-0713",
+  "eg-0714"
+ ],
+ "escalations": [
+  "eg-0493"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 1.0
+ }
+}
