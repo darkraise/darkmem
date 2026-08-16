@@ -86,6 +86,22 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason: "params.project is caller-supplied, not yet the global switcher",
   },
 
+  documents: {
+    kind: "manual",
+    reason:
+      "GET /documents takes an explicit `project` the Documents surface supplies, the same posture its Facts and Articles siblings carry (TH1.16, doc 16 §6)",
+  },
+  documentSummary: {
+    kind: "global",
+    reason:
+      "Addressed by document id and carrying no project param: the document's own project is what scopes the read server-side, so a project-keyed cache entry would key on something the request does not send",
+  },
+  documentConnections: {
+    kind: "global",
+    reason:
+      "Addressed by document id, and the connections query scopes itself to that document's project in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary",
+  },
+
   // ── deferred: named gaps ──
   tags: {
     kind: "deferred",

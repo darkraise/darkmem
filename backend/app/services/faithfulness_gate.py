@@ -88,7 +88,27 @@ class GatedAnswer:
 
 
 class FaithfulnessGate:
-    def __init__(self, session: AsyncSession, judge) -> None:
+    """Construct with an `llm` and it builds the judge itself.
+
+    Deliberate: the single-door scans forbid a module outside the judge's own
+    allowlist from naming `VerificationJudge`, and a *door* that constructed
+    one would be a second place deciding which judge a serving check runs
+    against. The door asks for a gate and hands it the orchestrator; which
+    judge that means is this module's business.
+
+    `judge=` stays for tests, which need to drive the outcomes an unqualified
+    judge makes unreachable.
+    """
+
+    def __init__(self, session: AsyncSession, judge=None, *, llm=None) -> None:
+        if judge is None:
+            if llm is None:
+                raise ValueError("FaithfulnessGate needs either a judge or an llm")
+            from app.services.verification_judge import (  # noqa: PLC0415
+                VerificationJudge,
+            )
+
+            judge = VerificationJudge(llm)
         self.session = session
         self.judge = judge
 

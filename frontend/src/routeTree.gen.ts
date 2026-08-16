@@ -19,6 +19,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedMemoryGraphRouteImport } from './routes/_authenticated/memory-graph'
 import { Route as AuthenticatedMemoriesRouteImport } from './routes/_authenticated/memories'
 import { Route as AuthenticatedKnowledgeRouteImport } from './routes/_authenticated/knowledge'
+import { Route as AuthenticatedDocumentsRouteImport } from './routes/_authenticated/documents'
 import { Route as AuthenticatedCodeRouteImport } from './routes/_authenticated/code'
 import { Route as AuthenticatedChatRouteImport } from './routes/_authenticated/chat'
 import { Route as AuthenticatedActivityRouteImport } from './routes/_authenticated/activity'
@@ -81,6 +82,11 @@ const AuthenticatedMemoriesRoute = AuthenticatedMemoriesRouteImport.update({
 const AuthenticatedKnowledgeRoute = AuthenticatedKnowledgeRouteImport.update({
   id: '/knowledge',
   path: '/knowledge',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedDocumentsRoute = AuthenticatedDocumentsRouteImport.update({
+  id: '/documents',
+  path: '/documents',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedCodeRoute = AuthenticatedCodeRouteImport.update({
@@ -162,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
+  '/documents': typeof AuthenticatedDocumentsRoute
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -185,6 +192,7 @@ export interface FileRoutesByTo {
   '/activity': typeof AuthenticatedActivityRoute
   '/chat': typeof AuthenticatedChatRoute
   '/code': typeof AuthenticatedCodeRoute
+  '/documents': typeof AuthenticatedDocumentsRoute
   '/knowledge': typeof AuthenticatedKnowledgeRoute
   '/memories': typeof AuthenticatedMemoriesRoute
   '/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -210,6 +218,7 @@ export interface FileRoutesById {
   '/_authenticated/activity': typeof AuthenticatedActivityRoute
   '/_authenticated/chat': typeof AuthenticatedChatRoute
   '/_authenticated/code': typeof AuthenticatedCodeRoute
+  '/_authenticated/documents': typeof AuthenticatedDocumentsRoute
   '/_authenticated/knowledge': typeof AuthenticatedKnowledgeRoute
   '/_authenticated/memories': typeof AuthenticatedMemoriesRoute
   '/_authenticated/memory-graph': typeof AuthenticatedMemoryGraphRoute
@@ -236,6 +245,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/chat'
     | '/code'
+    | '/documents'
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/activity'
     | '/chat'
     | '/code'
+    | '/documents'
     | '/knowledge'
     | '/memories'
     | '/memory-graph'
@@ -283,6 +294,7 @@ export interface FileRouteTypes {
     | '/_authenticated/activity'
     | '/_authenticated/chat'
     | '/_authenticated/code'
+    | '/_authenticated/documents'
     | '/_authenticated/knowledge'
     | '/_authenticated/memories'
     | '/_authenticated/memory-graph'
@@ -378,6 +390,13 @@ declare module '@tanstack/react-router' {
       path: '/knowledge'
       fullPath: '/knowledge'
       preLoaderRoute: typeof AuthenticatedKnowledgeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/documents': {
+      id: '/_authenticated/documents'
+      path: '/documents'
+      fullPath: '/documents'
+      preLoaderRoute: typeof AuthenticatedDocumentsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/code': {
@@ -478,6 +497,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedActivityRoute: typeof AuthenticatedActivityRoute
   AuthenticatedChatRoute: typeof AuthenticatedChatRoute
   AuthenticatedCodeRoute: typeof AuthenticatedCodeRoute
+  AuthenticatedDocumentsRoute: typeof AuthenticatedDocumentsRoute
   AuthenticatedKnowledgeRoute: typeof AuthenticatedKnowledgeRoute
   AuthenticatedMemoriesRoute: typeof AuthenticatedMemoriesRoute
   AuthenticatedMemoryGraphRoute: typeof AuthenticatedMemoryGraphRoute
@@ -500,6 +520,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedActivityRoute: AuthenticatedActivityRoute,
   AuthenticatedChatRoute: AuthenticatedChatRoute,
   AuthenticatedCodeRoute: AuthenticatedCodeRoute,
+  AuthenticatedDocumentsRoute: AuthenticatedDocumentsRoute,
   AuthenticatedKnowledgeRoute: AuthenticatedKnowledgeRoute,
   AuthenticatedMemoriesRoute: AuthenticatedMemoriesRoute,
   AuthenticatedMemoryGraphRoute: AuthenticatedMemoryGraphRoute,

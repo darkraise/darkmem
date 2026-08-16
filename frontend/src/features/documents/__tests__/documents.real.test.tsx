@@ -1,0 +1,240 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ReactNode } from "react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
+vi.mock("@/lib/api", () => {
+  class ApiError extends Error {
+    status: number
+    constructor(message: string, status: number) {
+      super(message)
+      this.status = status
+    }
+  }
+  return { apiFetch: vi.fn(), ApiError }
+})
+
+import { apiFetch, ApiError } from "@/lib/api"
+import { DocumentsView } from "../components/documents-view"
+
+/**
+ * TH1.16's four done-when clauses, each tested for the reason it exists.
+ *
+ * The withheld case is the one that matters: a client that rendered the answer
+ * and appended a caveat would satisfy "shows the outcome" while serving
+ * ungrounded prose. So the assertion is that the prose is *absent*, not that a
+ * label is present alongside it.
+ */
+
+const DOCUMENT = {
+  id: "11111111-1111-1111-1111-111111111111",
+  title: "Design notes",
+  uri: "file:///notes.md",
+  source_type: "note",
+  project: "default",
+  block_count: 3,
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+}
+
+function mockApi(overrides: Record<string, unknown> = {}) {
+  vi.mocked(apiFetch).mockImplementation((path: string) => {
+    if (path.startsWith("/documents?") || path === "/documents") {
+      return Promise.resolve(overrides.list ?? { items: [DOCUMENT], horizon: true })
+    }
+    if (path.endsWith("/summary")) {
+      if (overrides.summary === "missing") {
+        return Promise.reject(new ApiError("not found", 404))
+      }
+      return Promise.resolve(
+        overrides.summary ?? {
+          document_id: DOCUMENT.id,
+          text: "A report over one document.",
+          generated_at: "2026-08-16T00:00:00Z",
+          block_count: 3,
+          badged: false,
+        },
+      )
+    }
+    if (path.endsWith("/connections")) {
+      return Promise.resolve(overrides.connections ?? { items: [], horizon: true })
+    }
+    if (path === "/documents/qa") {
+      return Promise.resolve(overrides.qa ?? WITHHELD)
+    }
+    return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+  })
+}
+
+const WITHHELD = {
+  question: "q",
+  outcome: "withheld",
+  grounded: false,
+  label: "answer withheld: not grounded",
+  entailed: 0,
+  total: 1,
+  judged: false,
+  reason: "no faithfulness record on this branch",
+  sentences: [],
+  horizon: true,
+}
+
+const SERVED = {
+  question: "q",
+  outcome: "served",
+  grounded: true,
+  label: null,
+  entailed: 1,
+  total: 1,
+  judged: true,
+  reason: null,
+  sentences: [
+    {
+      text: "The sky is blue.",
+      citation: {
+        block_id: "22222222-2222-2222-2222-222222222222",
+        document_id: DOCUMENT.id,
+        span_start: 4,
+        span_end: 19,
+      },
+    },
+  ],
+  horizon: true,
+}
+
+async function ask() {
+  fireEvent.change(screen.getByLabelText("Question"), {
+    target: { value: "what colour is the sky" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: /Ask/ }))
+}
+
+afterEach(() => vi.clearAllMocks())
+
+describe("DocumentsView — the horizon surface", () => {
+  it("labels itself horizon in the IA", async () => {
+    mockApi()
+    render(<DocumentsView />, { wrapper })
+    expect(screen.getByText("horizon")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("Design notes")).toBeInTheDocument())
+  })
+
+  it("renders an empty corpus honestly rather than as a failure", async () => {
+    mockApi({ list: { items: [], horizon: true } })
+    render(<DocumentsView />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByText("No documents filed")).toBeInTheDocument(),
+    )
+  })
+})
+
+describe("DocumentsView — grounded Q&A", () => {
+  it("a withheld answer says so plainly and carries no prose", async () => {
+    mockApi({ qa: WITHHELD })
+    render(<DocumentsView />, { wrapper })
+    await ask()
+
+    await waitFor(() =>
+      expect(screen.getByText(/Answer withheld — not grounded/)).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(/faithfulness judge is not qualified/),
+    ).toBeInTheDocument()
+    // The point of the clause: nothing answer-shaped is on the page.
+    expect(screen.queryByText(/The sky is blue\./)).not.toBeInTheDocument()
+  })
+
+  it("a served answer shows every sentence with its block span", async () => {
+    mockApi({ qa: SERVED })
+    render(<DocumentsView />, { wrapper })
+    await ask()
+
+    await waitFor(() =>
+      expect(screen.getByText("The sky is blue.")).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/block 22222222 · 4–19/)).toBeInTheDocument()
+  })
+
+  it("a labelled answer names how far short it fell and marks the uncited sentence", async () => {
+    mockApi({
+      qa: {
+        ...SERVED,
+        outcome: "labelled",
+        grounded: false,
+        label: "could not fully ground this answer",
+        entailed: 1,
+        total: 2,
+        sentences: [
+          ...SERVED.sentences,
+          { text: "Unsupported claim.", citation: null },
+        ],
+      },
+    })
+    render(<DocumentsView />, { wrapper })
+    await ask()
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Could not fully ground this answer/),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/1 of 2 sentences are supported/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/no citation — this sentence is not grounded/),
+    ).toBeInTheDocument()
+  })
+})
+
+describe("DocumentsView — summary and connections", () => {
+  it("a summary renders visibly unbadged", async () => {
+    mockApi()
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("Design notes"))
+
+    await waitFor(() =>
+      expect(screen.getByText("A report over one document.")).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(/not a verified claim, and never/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/corroborated|confirmed|verified claim badge/)).toBeNull()
+  })
+
+  it("a document with no summary says one has not been generated", async () => {
+    mockApi({ summary: "missing" })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("Design notes"))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/no summary has been generated/),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it("connections render their shared entities", async () => {
+    mockApi({
+      connections: {
+        items: [
+          {
+            document_id: "33333333-3333-3333-3333-333333333333",
+            title: "Other notes",
+            shared_entities: ["postgres", "linux"],
+          },
+        ],
+        horizon: true,
+      },
+    })
+    render(<DocumentsView />, { wrapper })
+    fireEvent.click(await screen.findByText("Design notes"))
+
+    await waitFor(() => expect(screen.getByText("Other notes")).toBeInTheDocument())
+    expect(screen.getByText("postgres · linux")).toBeInTheDocument()
+  })
+})

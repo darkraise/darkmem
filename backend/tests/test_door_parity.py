@@ -74,6 +74,37 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="documents.reads",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/documents"),
+            ("GET", f"{V1}/documents/{{document_id}}/summary"),
+            ("GET", f"{V1}/documents/{{document_id}}/connections"),
+        ),
+        mcp=(),
+        reason=(
+            "EH1 is a horizon lane behind its own eval gate (doc 16 §1's "
+            "firewall), and an MCP twin would put an unshipped surface in "
+            "front of every agent before the gate that governs it has run. "
+            "Single-door until G-F clears, then re-decided on its merits "
+            "rather than inherited."
+        ),
+    ),
+    Surface(
+        name="documents.grounded_qa",
+        status=REST_ONLY,
+        rest=(("POST", f"{V1}/documents/qa"),),
+        mcp=(),
+        reason=(
+            "Same firewall as the reads above, plus a sharper reason of its "
+            "own: the answer is served, labelled or withheld by the "
+            "faithfulness gate, and an agent twin would be a second consumer "
+            "of a judge role that has no qualification record yet. Every "
+            "answer is withheld today; publishing that to agents as a tool "
+            "would advertise a capability the gate does not license."
+        ),
+    ),
+    Surface(
         name="checkpoint.save",
         status=TWO_DOOR,
         rest=(("POST", f"{V1}/checkpoints"),),

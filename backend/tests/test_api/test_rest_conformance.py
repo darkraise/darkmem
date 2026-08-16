@@ -43,6 +43,13 @@ EXPECTED_STATUS = {
     ("POST", "/api/v1/analytics/reprocess"): 200,
     ("POST", "/api/v1/analytics/reprocess/stream"): 200,
     ("GET", "/api/v1/analytics/stats"): 200,
+    # TH1.16's horizon surface. All reads plus one POST that reads: the Q&A
+    # door creates nothing, so 200 rather than 201 — the convention's 201 is
+    # for a resource that now exists, and a grounded answer is not stored.
+    ("GET", "/api/v1/documents"): 200,
+    ("GET", "/api/v1/documents/{document_id}/summary"): 200,
+    ("GET", "/api/v1/documents/{document_id}/connections"): 200,
+    ("POST", "/api/v1/documents/qa"): 200,
     ("POST", "/api/v1/api-keys"): 201,
     ("GET", "/api/v1/api-keys"): 200,
     # 204 and a revocation rather than a row removal: `events.api_key_id`

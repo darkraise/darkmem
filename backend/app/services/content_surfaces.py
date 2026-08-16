@@ -573,6 +573,24 @@ CONTENT_SURFACES: tuple[ContentSurface, ...] = (
 
 
 ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
+    # The EH1 documents surface (TH1.16). **Document** content crosses these —
+    # block spans, a summary, entity names — but no `memories` row does, and
+    # this registry's claim is about memory content, exactly as it is for the
+    # code browser's own routes below. Classified here rather than as a
+    # content surface because a content-surface entry obliges an isolation
+    # probe driver over the memory fixture corpus, and driving these doors
+    # against memory fixtures would produce zero sightings and a permanently
+    # vacuous "clean" result — a worse answer than a stated classification.
+    #
+    # The scoping question is still answered, just not by this registry: the
+    # block channel joins `documents` and filters `project` in SQL
+    # (`tests/test_block_retrieval.py` proves a foreign project's blocks
+    # cannot consume the probe's limit), and the connections query scopes the
+    # same way (`tests/test_document_connections.py`).
+    "GET /api/v1/documents",
+    "GET /api/v1/documents/{document_id}/summary",
+    "GET /api/v1/documents/{document_id}/connections",
+    "POST /api/v1/documents/qa",
     # Session checkpoints (T3.16). No memory content crosses: a checkpoint is
     # the agent's own note about its run, written by the agent and never
     # derived from a `memories` row — this surface reads that table and no
