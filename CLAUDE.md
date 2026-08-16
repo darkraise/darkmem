@@ -746,9 +746,16 @@ runners** (corrected 2026-08-06, when this paragraph's "its body is a
 `PlaceholderJobRunner`" had been stale through four landings and read as
 a claim that the whole family was inert): `fact_lift`,
 `verification_recompute`, `contradiction_scan`, `memory_dream` and
-`topic_detection` are live bodies. **`article_synthesis` is the one
-remaining placeholder** — its productive run is a Phase-3 task behind
-G-D, and T2.14 landed only its inert registration. **Invariant 15 binds the family: none of the
+`topic_detection` are live bodies. **All six have shipped and the family
+holds no placeholders** — corrected 2026-08-16. This paragraph said
+`article_synthesis` was "the one remaining placeholder" whose productive run
+was "a Phase-3 task behind G-D", and both halves were false from the day T3.02
+landed: `_make_article_runner` is its runner, `SHIPPED_DREAM_JOBS` lists the
+key, and `test_the_family_holds_no_placeholders_left` asserts the whole set. It
+is the same stale-count shape as the job roster two paragraphs down, and it
+cost more than tidiness — the G-E gate's blocker was recorded as "T3.02 is
+unshipped", which sent a reader looking for code to write instead of at the
+empty corpus that is the real one. **Invariant 15 binds the family: none of the
 six may be reached from capture or retrieval** to "accelerate" a gate,
 and a source scan over `backend/app` fails the build if one is. Five-field
 expressions are minute-precision; six-field expressions put the seconds
