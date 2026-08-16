@@ -117,7 +117,9 @@
     "rel_type": "USES",
     "object_name": "imagemagick",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 by the same ruling that retired eg-0699 and eg-0512: \"is among the **software** that anvil-render calls on\" applies a partitioning sortal to imagemagick that USES never establishes. The THIRD instance of one defect in one gold, and the one no human sweep found — the first cost a resample sitting, the second needed a labeller's flag to widen the pattern, and this one was returned by test_no_live_pair_carries_a_partitioning_sortal_unearned on its first run. Replaced by eg-0706."
   },
   {
    "id": "eg-0423",
@@ -5075,6 +5077,25 @@
     "subject_name": "log-02",
     "rel_type": "USES",
     "object_name": "concourse",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0706",
+   "premise": "anvil-render uses imagemagick",
+   "hypothesis": "ImageMagick is among what anvil-render calls on to do its work.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3: a full rewording at use-level strength with the classificatory sortal removed entirely — \"what anvil-render calls on\" restricts to nothing the premise does not already assert. The minimal edit of eg-0422, which differed only in classifying imagemagick as \"software\", a kind USES cannot establish.",
+   "fact_key": {
+    "triple_key": "4b436166-597c-58bc-bf88-698ae2aa337c",
+    "subject_name": "anvil-render",
+    "rel_type": "USES",
+    "object_name": "imagemagick",
     "project": "default"
    }
   }

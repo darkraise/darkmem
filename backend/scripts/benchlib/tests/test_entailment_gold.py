@@ -695,3 +695,99 @@ def test_the_contradicted_census_carries_exactly_two_duplicated_propositions(gol
     }
 
     assert contradicted == CONTRADICTED_DUPLICATES
+
+
+# ── the bare-sortal clause, enforced rather than swept for ───────────────
+
+#: Sortals the 2026-08-17 bare-sortal clause places, by branch. Kept beside the
+#: test rather than derived from LABELLING.md: a regex over prose would pass by
+#: matching the clause's own examples, which is not the same as knowing a noun
+#: was ruled on.
+VACUOUS_SORTALS = frozenset({
+    "component", "components", "system", "systems", "thing", "things",
+    "something", "entity", "entities",
+})
+PARTITIONING_SORTALS = frozenset({
+    "service", "services", "software", "database", "databases",
+    "machine", "machines",
+})
+RELATION_EARNED_SORTALS = frozenset({
+    "host", "hosts", "deployed", "installation", "installations",
+    "dependency", "dependencies", "dependent", "dependents",
+    "part", "parts", "constituent", "constituents",
+    "resource", "resources", "consumer", "consumers",
+    "prerequisite", "prerequisites", "connection", "connections",
+})
+
+#: Both shapes the clause reaches. **Two patterns, not one** — the first sweep
+#: for this defect matched only quantified forms, and that is exactly how
+#: eg-0512 ("Concourse is a piece of software that log-02 makes use of")
+#: survived the round that retired eg-0699 for the identical sortal. A guard
+#: that covers one shape is how the class comes back.
+_SORTAL_PATTERNS = (
+    r"(?:at least one|one of the)\s+(?:other\s+|named\s+|deployed\s+)*([a-z-]+)",
+    r"\bis (?:a|an|one of the)\s+(?:other\s+|named\s+|deployed\s+)*([a-z-]+)",
+    r"\bis among the\s+([a-z-]+)",
+    r"\bthere is a\s+([a-z-]+)",
+)
+
+
+def test_every_sortal_a_live_pair_uses_is_one_the_clause_places(gold):
+    """No live pair may rest on a sortal nobody ruled on.
+
+    The clause decides a pair by asking whether its sortal restricts the
+    premise's world. A sortal the clause does not place leaves that pair's
+    label resting on an unwritten reading — which is the exact state the
+    2026-08-16 resample miss measured, over 29 pairs at once.
+
+    This fails on the *authoring* of such a pair rather than on a resample
+    sitting that costs a measurement attempt to discover it.
+    """
+    import re
+
+    placed = VACUOUS_SORTALS | PARTITIONING_SORTALS | RELATION_EARNED_SORTALS
+    unplaced: dict[str, list[str]] = {}
+    for pair in gold["pairs"]:
+        if pair.get("retired"):
+            continue
+        hypothesis = pair["hypothesis"].lower()
+        for pattern in _SORTAL_PATTERNS:
+            for match in re.finditer(pattern, hypothesis):
+                sortal = match.group(1)
+                if sortal not in placed:
+                    unplaced.setdefault(sortal, []).append(pair["id"])
+
+    assert not unplaced, (
+        "live pairs use sortals the bare-sortal clause does not place: "
+        f"{unplaced}. Rule the sortal in LABELLING.md first (rule-then-pairs), "
+        "then label the pair -- never the other way round."
+    )
+
+
+def test_no_live_pair_carries_a_partitioning_sortal_unearned(gold):
+    """The eg-0699 / eg-0512 defect, refused at the file rather than by a model.
+
+    A partitioning sortal is asserted restrictor content, so a hypothesis
+    applying one to a witness the premise never classifies is `unsupported` --
+    and both of this gold's instances were labelled `entailed`, one of them
+    authored as a *replacement* in the round that retired the other. Neither
+    was caught by a rule; the first cost a resample sitting and the second was
+    found only by widening a sweep.
+    """
+    import re
+
+    offenders = []
+    for pair in gold["pairs"]:
+        if pair.get("retired") or pair["verdict"] != "entailed":
+            continue
+        hypothesis = pair["hypothesis"].lower()
+        for pattern in _SORTAL_PATTERNS:
+            for match in re.finditer(pattern, hypothesis):
+                if match.group(1) in PARTITIONING_SORTALS:
+                    offenders.append((pair["id"], match.group(1)))
+
+    assert not offenders, (
+        f"entailed pairs applying a partitioning sortal: {offenders}. The "
+        "premise must establish the kind; what the witness 'obviously is' is "
+        "world knowledge (procedure 2)."
+    )
