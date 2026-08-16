@@ -230,6 +230,18 @@ async def test_a_genuine_no_match_is_an_empty_list_not_an_error(session):
     assert hits == []
 
 
+@pytest.mark.asyncio
+async def test_an_install_that_never_embedded_a_block_gets_no_results_not_a_fault(session):
+    """The partition does not exist until something is embedded into it, and an
+    empty corpus must read as empty rather than as a 500. Checked explicitly
+    rather than by catching the error, so a query that fails against a table
+    that *does* exist still raises."""
+    hits = await BlockQueryService(session, DirectionalEmbedder()).search(
+        "alpha", project=PROJECT,
+    )
+    assert hits == []
+
+
 # ── never fused: structural, because behaviour cannot prove "cannot" ──
 
 FUSION_MODULES = (

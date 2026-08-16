@@ -199,6 +199,20 @@ async def search_blocks(
     it a driver object nothing downstream speaks.
     """
     table = child_table(PARENT_TABLE, fingerprint)
+
+    # An install that has never embedded a block has no child table, and that
+    # is an empty corpus rather than a fault: the probe must answer "nothing
+    # matched", not raise UndefinedTable at whoever asked. Checked explicitly
+    # rather than caught, so a genuine query failure against a table that DOES
+    # exist still raises — swallowing the exception would make the two
+    # indistinguishable, which is the failure this channel's one-arm rule is
+    # about (TH1.08 found this; the channel's own tests all seeded first).
+    exists = (await session.execute(
+        text("SELECT to_regclass(:name)"), {"name": table},
+    )).scalar_one_or_none()
+    if exists is None:
+        return []
+
     params: dict = {
         "vec": str(list(vector)),
         "project": project,
