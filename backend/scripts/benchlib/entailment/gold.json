@@ -4969,7 +4969,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3 with the bare-sortal clause: the subject is generalised to an existential whose only restrictor is \"component\", a noun every entity of the premise's world satisfies, so it differentiates nothing and moves no verdict; auth-01 is the witness. Replaces eg-0486, which put the same generalisation inside a *possessive* frame the relation could not earn — the two together are what make the possessive clause readable off the set.",
    "fact_key": {
     "triple_key": "46072f92-f15a-5667-9985-27e17c1ef62b",
@@ -4988,7 +4988,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Bare-sortal clause, generic branch: \"component\" restricts nothing, so this is ordinary weakening with jenkins as the witness. The minimal edit of eg-0475, which used \"service\" — a noun that partitions the world and that `DEPLOYED_ON` does not earn.",
    "fact_key": {
     "triple_key": "1a1c7fc4-cd11-506a-8209-4a372ee02b5a",
@@ -5007,7 +5007,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Bare-sortal clause on both counts: \"host\" is the role `DEPLOYED_ON` necessarily assigns search-01, and \"component\" is generic, so neither restrictor is asserted content. Replaces eg-0465, which carried the partitioning \"service\" in the same frame.",
    "fact_key": {
     "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
@@ -5026,7 +5026,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3: a full rewording at the same use-level strength, framed from the object endpoint, carrying no sortal at all. Replaces eg-0699, whose verb was never the problem — \"employs\" is retained deliberately to show the defect was the classificatory sortal \"one of the pieces of software\", which `USES` cannot establish.",
    "fact_key": {
     "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
