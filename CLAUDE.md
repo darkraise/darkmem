@@ -950,24 +950,33 @@ and the gate ledger says so where the number lives.
 T2.95/T2.100): a promoted fact status reaches a reader only while
 `app/services/promotion_metrics_record.json` exists with `gate_eligible`
 exactly `true` — minted only by a cleared G-C run, never by hand.
-**The record stays unminted and every promoted or born badge still serves as
-`candidate` with the `verification_unmeasured` reason, scan-enforced — but the
-reason is no longer that a measurement misses.** On **2026-08-16** T2.131's
-authorised run measured the grown corpus (sha `78dbc4c5c8756dcd`, 849 captures)
-and **every pre-stated axis cleared in both passes**: 509 in-window corroborations
-with a 95% Clopper-Pearson upper bound of **0.009286** against the 0.01 bar on the
-unsimulated pass that carries the target, 528 and **0.008953** with the capture
-clock on, all `gate_fired` buckets powered and clearing, 0 journal-completeness
-violations, and every bar printing its committed default with no `config` row and
-no licence anywhere. What is now owed is not evidence but **adjudication**: the
-plan's Step 5 requires the verdict be recorded by a party that did not author the
-growth or run the measurement, and minting
-`promotion_metrics_record.json` is the gate owner's deliberate act on a confirmed
-verdict — the runner never mints it. So **"the axes clear" and "G-C has cleared"
-are two different statements today, and only the first is true.** Numbers,
-artifacts and the disclosure that travels with them are in the gate ledger's
-"G-C on the grown corpus" section. **What changed before that is the reason,
-twice, and this paragraph carried the old one until 2026-08-15.** It read "not
+**G-C CLEARED on 2026-08-16 (T2.131) and the record is minted, so promoted and
+born fact statuses now reach readers.** This paragraph said the opposite from
+T2.111 until that date and the reversal is recent — read it, not a memory of it.
+T2.131's authorised run measured the grown corpus (sha `78dbc4c5c8756dcd`, 849
+captures) and every pre-stated axis cleared in both passes: **509** in-window
+corroborations with a 95% Clopper-Pearson upper bound of **0.009286** against the
+0.01 bar on the unsimulated pass that carries the target, **528** and **0.008953**
+with the capture clock on, all `gate_fired` buckets powered and clearing, 0
+journal-completeness violations over 682 facts, and every bar at its committed
+default — no `config` row for any bar and no licence row in either measured
+database. An independent party that neither authored the growth nor ran the
+passes verdicted it CLEARED after recomputing every axis itself and reproducing
+the run byte-identically at 0 live calls, and the gate owner minted
+`promotion_metrics_record.json` on that verdict. The runner still never mints it.
+**What the clear does not license is part of the result, not a footnote**: every
+capture, origin, repo and the single dispute were authored by the measured party,
+the deterministic detector has never fired on an unauthored contradiction, the
+human-rejection arm has never met a human, the `time_gap` path exists only under
+the harness's simulated clock, and the kind diversity carrying 363 of the 509
+promotions means one hand wrote the assertion twice in two formats. Two
+instrument defects surfaced and are recorded rather than smoothed: the `none` arm
+converted **144/145** (basalt's `bs-h3` produced no fact and *no instrument
+prints a `none` reconciliation*), and the diversity aggregate counts unauthored
+promotions, so authored-claim conversion is **363/365**, not the printed 0.9973 /
+1.0000. Numbers, artifacts and the full disclosure are in the gate ledger's
+"G-C on the grown corpus" section. **Note `groundedness_gate` is unaffected and
+stays closed** — that is G-D's, and no article may be served labelled grounded. It read "not
 evaluable: under-powered on every probe — no fact has ever exited `candidate` in
 any journal this machine can see" from T2.111 (2026-08-08), and that stopped
 being true on **2026-08-13**, when the bench-arm run became the first powered
