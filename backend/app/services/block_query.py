@@ -28,9 +28,20 @@ side there is no honest degradation left, and returning `[]` would be
 indistinguishable from "your corpus has no match" (invariant 14). So nothing
 here catches — the caller sees the failure.
 
-The trace addendum (`block` id-kind, `document` layer) is **TH1.07's**, not
-this module's: until it lands, this channel emits no trace at all rather than
-stamping a kind the shared enum does not yet carry (invariant 23).
+**The trace addendum is additive and stays outside the composition's closed
+vocabulary** (TH1.07, doc 16 §4). Every hit is labelled `id_kind="block"` and
+`layer="document"` — the same shape the four-layer composition labels its own
+rows with — but `block` is deliberately *not* a member of
+`layer_composition.ID_KINDS` and `document` is not one of its layers. That is
+the whole point: the labels let a block row be read and rendered by anything
+generic over `id_kind`, while the composition still refuses one outright rather
+than fusing it (`composition_key("block", …)` raises). A horizon kind that
+joined the closed enum would make every core consumer's exhaustiveness
+silently wrong.
+
+Nothing in the core trace schema (`app.schemas.retrieval_trace`) changes, so a
+consumer that does not speak this channel never sees a `block` row at all —
+which is what "additive" has to mean for a horizon lane (invariant 23).
 """
 from __future__ import annotations
 
@@ -40,7 +51,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import search_blocks
 
-__all__ = ["BlockHit", "BlockQueryService"]
+__all__ = ["BLOCK_ID_KIND", "BLOCK_LAYER", "BlockHit", "BlockQueryService"]
+
+# The addendum's two labels. Named here rather than inlined so a reader can
+# find every use, and so the test that asserts they are *absent* from the
+# composition's vocabulary can import the real strings instead of restating
+# them — a restated constant is how the two drift into agreement on paper.
+BLOCK_ID_KIND = "block"
+BLOCK_LAYER = "document"
 
 
 @dataclass(frozen=True)
@@ -61,6 +79,11 @@ class BlockHit:
     order_index: int | None
     char_span: tuple[int, int] | None
     score: float
+    # Constant per row, and on the row rather than on the envelope on purpose:
+    # a row that travels alone — into a citation, a log line, a future document
+    # surface — has to carry what kind of thing it is with it.
+    id_kind: str = BLOCK_ID_KIND
+    layer: str = BLOCK_LAYER
 
 
 class BlockQueryService:
