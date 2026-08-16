@@ -240,6 +240,14 @@ would silently overwrite the label, since this section is parsed after it.
 - `T4.12` — The `frontend test` gate step must degrade in duration, not in verdict
 - `T4.13` — The same fixture residue in T2.16's suite
 - `TH1.18` — Make `file_document` atomic by default
+- `T4.14` — A keyed call must be observable
+- `T4.15` — Scope honesty: `capture` and `read` gate nothing
+- `T4.16` — Polling and the webhook can still double-index
+- `T4.17` — `/mcp` under exposure is one allowlist entry from armed
+- `T4.18` — Replica-knob tripwire test
+- `T4.19` — Owner docs pass
+- `T4.20` — Minors sweep
+- `T4.21` — Assign `capture` and `read`, or retire them
 
 **The schema freeze is *not* in this version and must not be inferred from it.**
 It happens after v1.0 ships and after the owner's review of the visual web UI
