@@ -360,10 +360,11 @@ this same file — collapsing it to a binary would throw that away.
   interaction connotes bidirectional exchange a passive-resource use does
   not carry — and does **not** earn "calls on ... to do its work", which
   fixes an invocation mechanism the relation leaves open. Both are
-  `unsupported` over a bare `USES` premise. **"storage backend"** and
+  `unsupported` over a bare `USES` premise. **"backend"** (as in "storage backend") and
   **"datastore"** are likewise **partitioning**, not earned: they sit
   between "resource" and "database" and the ruling puts them on the
-  partitioning side.
+  partitioning side. The head noun is what is ruled on — a guard scans
+  words, so naming only the compound would leave the head unplaced.
 
   **The bound on both clauses, recorded rather than smoothed over.**
   eg-0465 ("idx-03 hosts at least one deployed service") and eg-0475

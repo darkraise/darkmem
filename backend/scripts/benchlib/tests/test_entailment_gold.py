@@ -710,6 +710,9 @@ VACUOUS_SORTALS = frozenset({
 PARTITIONING_SORTALS = frozenset({
     "service", "services", "software", "database", "databases",
     "machine", "machines",
+    # Ruled 2026-08-17: these sit between the earned "resource" and the
+    # partitioning "database", and the ruling put them on this side.
+    "datastore", "datastores", "backend", "backends",
 })
 RELATION_EARNED_SORTALS = frozenset({
     "host", "hosts", "installation", "installations",
@@ -776,15 +779,31 @@ def test_no_live_pair_carries_a_partitioning_sortal_unearned(gold):
     """
     import re
 
+    #: Verb-phrase idioms where a partitioning word is not a kind predicated of
+    #: an entity. Narrowing the SCAN to the behaviour it is about, rather than
+    #: exempting the pairs it misfires on: "Garage is put into service by
+    #: data-06" says Garage is *used*, not that Garage is a service.
+    idioms = (r"put into service", r"back into service", r"\bin service\b",
+              r"out of service")
+
     offenders = []
     for pair in gold["pairs"]:
         if pair.get("retired") or pair["verdict"] != "entailed":
             continue
         hypothesis = pair["hypothesis"].lower()
-        for pattern in _SORTAL_PATTERNS:
-            for match in re.finditer(pattern, hypothesis):
-                if match.group(1) in PARTITIONING_SORTALS:
-                    offenders.append((pair["id"], match.group(1)))
+        for idiom in idioms:
+            hypothesis = re.sub(idiom, " ", hypothesis)
+        premise = pair["premise"].lower()
+        # SHAPE-FREE on purpose. Three pattern-scoped sweeps each missed a
+        # shape the next one found -- existentials missed predicate nominals
+        # (eg-0512), and both missed the referential definite (eg-0450). A
+        # scan that enumerates syntactic frames can only catch the frames
+        # somebody thought of, so this one looks at every word and asks
+        # instead whether the PREMISE establishes the kind.
+        for word in re.findall(r"[a-z]+", hypothesis):
+            if word in PARTITIONING_SORTALS and word.rstrip("s") not in premise:
+                offenders.append((pair["id"], word))
+                break
 
     assert not offenders, (
         f"entailed pairs applying a partitioning sortal: {offenders}. The "
