@@ -9,10 +9,18 @@ import config, { MAX_WORKERS } from "../../vitest.config"
 // property of the suite, not a preference, so removing it must fail loudly
 // rather than show up as an unexplained red weeks later.
 describe("the vitest worker pool is bounded", () => {
-  it("never takes more than half the host, and never more than four workers", () => {
+  it("never takes more than four workers, nor more than half the host above two cores", () => {
+    // The title says "above two cores" because the bound has a floor of 2:
+    // on a 1- or 2-core host the pool is the whole host, deliberately, since
+    // serialising the suite onto a single worker there costs more than the
+    // contention it avoids. The earlier title claimed "never more than half
+    // the host" flatly, which its own assertion did not check (E4 review, M6).
     expect(MAX_WORKERS).toBeLessThanOrEqual(4)
     expect(MAX_WORKERS).toBeLessThanOrEqual(Math.max(2, Math.floor(availableParallelism() / 2)))
     expect(MAX_WORKERS).toBeGreaterThanOrEqual(1)
+    if (availableParallelism() > 4) {
+      expect(MAX_WORKERS).toBeLessThanOrEqual(availableParallelism() / 2)
+    }
   })
 
   it("the bound is wired into the config, not merely exported from it", () => {

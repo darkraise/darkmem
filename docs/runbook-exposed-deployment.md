@@ -30,6 +30,18 @@ logged at startup, and `GET /api/v1/auth/security-posture` reports
 `TRUST_PROXY_HEADERS` off; the two settings describe the same fact and must
 agree.
 
+**One topology is unsupported, and it is worth saying plainly: a reverse proxy
+that does not terminate TLS.** Neither setting is right for it. With the switch
+on, the clamped Secure cookie is dropped by the browser over plain HTTP and
+login silently loops. With it off, every client shares the proxy's single
+limiter bucket, so one attacker locks out everyone. Put TLS on the proxy, or
+put nothing in front and let the app be the edge.
+
+**If login loops after you turn the switch on, suspect the clamp first.** Every
+report of it except the startup log — the posture endpoint, the settings card —
+sits behind the login it just broke, so the boot warning is the one you can
+still read. Check the container log for `COOKIE_SECURE=false is clamped`.
+
 ## 2. What your proxy must do
 
 - **Terminate TLS**, and redirect plain HTTP to it.
@@ -39,6 +51,13 @@ agree.
   leaving it off.
 - **Append to `X-Forwarded-For`, never replace it** — the app reads the
   rightmost hop, which must be the one your proxy added.
+- **Send the credential as `Authorization: Bearer`.** The webhook authenticates
+  the *caller*, not a signature over the payload — which it never parses, since
+  the pipeline re-derives the true state with its own `git pull` and HEAD
+  compare. The consequence to plan around: **GitHub.com's native webhook
+  delivery cannot set an `Authorization` header**, so it cannot reach this
+  receiver. Self-hosted senders that can — Gitea, a `post-receive` script,
+  a small relay — can.
 - **Do not route `/mcp` from the public side.** `/mcp` is unauthenticated by
   design (local-network trust model); its only network defence is the
   DNS-rebinding Host allowlist, and the bearer-required option for that door is

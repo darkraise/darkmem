@@ -132,6 +132,42 @@ async def test_the_lockout_is_per_proxied_ip_not_one_bucket_for_the_whole_proxy(
 
 
 @pytest.mark.asyncio
+async def test_the_rightmost_xff_fallback_buckets_through_the_limiter_too(
+    client, session, monkeypatch
+):
+    """E4 review M3: both lockout tests above always send `X-Real-IP`, so the
+    fallback arm was pinned as a unit in `test_client_ip_attribution.py` and
+    never driven through the limiter. A proxy that appends to
+    `X-Forwarded-For` without setting `X-Real-IP` is an ordinary
+    configuration, and its composition with the bucket was unproven."""
+    monkeypatch.setattr(settings, "trust_proxy_headers", True)
+    _install_limiter(monkeypatch, max_failures=3)
+    await _seed_admin(session)
+
+    for attempt in range(3):
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"password": "wrong"},
+            headers={"x-forwarded-for": f"{_spoofed(attempt)}, {APPENDED_HOP}"},
+        )
+        assert response.status_code == 401, response.text
+
+    locked = await client.post(
+        "/api/v1/auth/login",
+        json={"password": "wrong"},
+        headers={"x-forwarded-for": f"{_spoofed(99)}, {APPENDED_HOP}"},
+    )
+    assert locked.status_code == 429, "the appended hop must be the bucket"
+
+    other_proxy = await client.post(
+        "/api/v1/auth/login",
+        json={"password": "wrong"},
+        headers={"x-forwarded-for": f"{_spoofed(7)}, {PROXY_SAW_B}"},
+    )
+    assert other_proxy.status_code == 401, "a different appended hop is a different bucket"
+
+
+@pytest.mark.asyncio
 async def test_lan_posture_ignores_a_spoofed_header_and_still_locks_out(
     client, session, monkeypatch
 ):
