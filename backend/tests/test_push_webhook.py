@@ -56,7 +56,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import Depends
 from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.database as database_module
 from app.api.auth import Principal
@@ -184,11 +184,16 @@ class TestSharedEntryPoint:
 
         attr_calls, name_calls = _collect_call_targets(func)
 
-        # manager.get is the existence check; manager.session.flush/commit
-        # land the in-route status='indexing' write; logger.error is the
-        # schedule-failure recovery path `reindex_repo` also carries.
-        # Nothing else may be called on any service object.
-        assert set(attr_calls) <= {"get", "flush", "commit", "error"}
+        # manager.get is the existence check; claim_for_indexing takes the
+        # in-route status='indexing' write atomically (T4.16 — it replaced the
+        # flush/commit pair that used to do it non-atomically, and is a status
+        # write, not an indexing path); manager.session.commit lands the
+        # schedule-failure recovery, alongside logger.error which
+        # `reindex_repo` also carries. Nothing else may be called on any
+        # service object.
+        assert set(attr_calls) <= {
+            "get", "claim_for_indexing", "flush", "commit", "error",
+        }
 
         assert name_calls.count("_spawn_repo_index") == 1
         for name in name_calls:
@@ -342,6 +347,153 @@ class TestPollingCallShapeStaysAsserted:
         assert len(call.args) == 1
         assert isinstance(call.args[0], ast.Attribute) and call.args[0].attr == "id"
         assert call.keywords == []
+
+
+@pytest.fixture
+async def committed_repo():
+    """A repository row visible to sessions other than the fixture's.
+
+    The claim is a cross-caller guard, so testing it needs callers that can
+    actually see each other's writes — and a repo created through the API in
+    the rollback-isolated fixture transaction is visible to nobody else, which
+    makes every claim against it match zero rows and return False for the wrong
+    reason. Inserted and cleaned up on its own committed session.
+    """
+    from sqlalchemy import text as sql_text
+    from tests.conftest import test_engine
+
+    created: list[str] = []
+
+    async def _make(name: str, *, auto_sync: bool = False, status: str = "ready") -> str:
+        repo_id = str(uuid.uuid4())
+        async with AsyncSession(test_engine) as own:
+            await own.execute(
+                sql_text(
+                    "INSERT INTO repositories (id, name, provider, default_branch, "
+                    "status, auto_sync, local_path) VALUES (CAST(:id AS uuid), :name, "
+                    "'local', 'main', :status, :auto_sync, :path)"
+                ),
+                {
+                    "id": repo_id, "name": name, "status": status,
+                    "auto_sync": auto_sync, "path": f"/tmp/{name}",
+                },
+            )
+            await own.commit()
+        created.append(repo_id)
+        return repo_id
+
+    yield _make
+
+    async with AsyncSession(test_engine) as cleanup:
+        for repo_id in created:
+            await cleanup.execute(
+                sql_text("DELETE FROM repositories WHERE id = CAST(:id AS uuid)"),
+                {"id": repo_id},
+            )
+        await cleanup.commit()
+
+
+class TestTheIndexClaimIsAtomic:
+    """T4.16 — "the two never double-index", finally proven against polling.
+
+    The epic review's I2: `repo_sync` never read `repo.status` and
+    `CodePipeline.run` had no compare-and-set, so a poll tick landing inside a
+    webhook run indexed the same repository twice, concurrently. Both routes
+    also claimed by reading the status and then assigning it, which two
+    simultaneous deliveries can both pass.
+    """
+
+    async def test_only_one_of_two_simultaneous_claims_wins(self, committed_repo):
+        """The claim is one UPDATE with the predicate inside it, so the second
+        caller's statement matches no row. A read-then-write lets both through
+        and this is the test that says so."""
+        from app.services.repo_manager import RepoManager
+        from tests.conftest import test_engine
+
+        repo_id = await committed_repo("claim-race")
+
+        async with AsyncSession(test_engine) as first, AsyncSession(test_engine) as second:
+            first_won = await RepoManager(first).claim_for_indexing(
+                uuid.UUID(repo_id), message="first"
+            )
+            second_won = await RepoManager(second).claim_for_indexing(
+                uuid.UUID(repo_id), message="second"
+            )
+
+        assert first_won is True
+        assert second_won is False, "two callers both took the indexing claim"
+
+    async def test_polling_skips_a_repo_a_webhook_is_already_indexing(
+        self, committed_repo, monkeypatch,
+    ):
+        """The double-index the review named: a repository whose indexing claim
+        is already held must not be indexed again by the polling tick."""
+        from app.services import job_runners as job_runners_module
+        from app.services.code_pipeline import CodePipeline
+        from tests.conftest import test_engine
+
+        await committed_repo("polled-repo", auto_sync=True, status="indexing")
+
+        polled: list = []
+
+        async def _tracking_run(self, *args, **kwargs):
+            polled.append(args)
+            return {"status": "up_to_date"}
+
+        monkeypatch.setattr(CodePipeline, "run", _tracking_run)
+        factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
+        class _App:
+            class state:
+                llm = None
+
+        await job_runners_module.make_repo_sync_runner(_App, factory)()
+
+        assert polled == [], (
+            "polling indexed a repository whose indexing claim was already held "
+            "— this is the concurrent double-index"
+        )
+
+    async def test_polling_does_index_a_repo_nobody_has_claimed(
+        self, committed_repo, monkeypatch,
+    ):
+        """Without this the test above passes against a polling loop that
+        stopped indexing anything at all."""
+        from app.services import job_runners as job_runners_module
+        from app.services.code_pipeline import CodePipeline
+        from tests.conftest import test_engine
+
+        await committed_repo("free-polled-repo", auto_sync=True, status="ready")
+
+        polled: list = []
+
+        async def _tracking_run(self, *args, **kwargs):
+            polled.append(args)
+            return {"status": "up_to_date"}
+
+        monkeypatch.setattr(CodePipeline, "run", _tracking_run)
+        factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
+        class _App:
+            class state:
+                llm = None
+
+        await job_runners_module.make_repo_sync_runner(_App, factory)()
+
+        assert len(polled) == 1, "polling must still index a repository nobody holds"
+
+    async def test_a_free_repo_is_still_claimable(self, committed_repo):
+        """The counterpart: the guard must not refuse everything. Without this
+        the test above passes against a claim that always returns False."""
+        from app.services.repo_manager import RepoManager
+        from tests.conftest import test_engine
+
+        repo_id = await committed_repo("claimable-repo")
+
+        async with AsyncSession(test_engine) as own:
+            assert await RepoManager(own).claim_for_indexing(
+                uuid.UUID(repo_id), message="free"
+            ) is True
 
 
 # ---------------------------------------------------------------------------

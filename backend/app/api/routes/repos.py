@@ -243,16 +243,11 @@ async def reindex_repo(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repo.status in ("indexing", "cloning"):
+    if not await manager.claim_for_indexing(repo_id, message="Queued for indexing..."):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository is already indexing",
         )
-
-    repo.status = "indexing"
-    repo.status_message = "Queued for indexing..."
-    await manager.session.flush()
-    await manager.session.commit()
 
     try:
         _spawn_repo_index(
@@ -326,20 +321,17 @@ async def repo_push_webhook(
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")
 
-    if repo.status in ("indexing", "cloning"):
-        # A sync (from polling or an earlier webhook delivery) is already in
-        # flight for this repo -- the same conflict this module's own
-        # `reindex_repo` guards against, and the same status code
-        # docs/api-rest-conventions.md names for exactly this case.
+    # A sync (from polling or an earlier webhook delivery) may already be in
+    # flight for this repo -- the same conflict this module's own
+    # `reindex_repo` guards against, and the same status code
+    # docs/api-rest-conventions.md names for exactly this case. The claim is
+    # one atomic UPDATE rather than a read followed by an assignment, so two
+    # simultaneous deliveries cannot both observe a free repo (T4.16).
+    if not await manager.claim_for_indexing(repo_id, message="Queued for indexing..."):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Repository is already indexing",
         )
-
-    repo.status = "indexing"
-    repo.status_message = "Queued for indexing..."
-    await manager.session.flush()
-    await manager.session.commit()
 
     try:
         _spawn_repo_index(repo_id, pipeline, session_factory, kind="webhook")

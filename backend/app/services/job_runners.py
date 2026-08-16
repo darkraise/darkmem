@@ -43,11 +43,24 @@ def make_repo_sync_runner(
         for repo in repos_to_sync:
             async with session_factory() as repo_session:
                 try:
+                    manager = RepoManager(repo_session)
+                    # T4.16: this loop used to read no status at all, so a tick
+                    # landing inside a webhook or reindex run indexed the same
+                    # repository a second time, concurrently. Losing the claim
+                    # is the ordinary case, not an error — the run that holds
+                    # it is doing this tick's work.
+                    if not await manager.claim_for_indexing(
+                        repo.id, message="Periodic sync..."
+                    ):
+                        logger.info(
+                            "Periodic sync skipped for %s: already indexing", repo.name
+                        )
+                        continue
                     code_vector_repo = PostgresVectorRepository(repo_session, "code_chunks")
                     pipeline = CodePipeline(
                         session=repo_session, llm=active_llm,
                         vector_repo=code_vector_repo,
-                        repo_manager=RepoManager(repo_session),
+                        repo_manager=manager,
                     )
                     await pipeline.run(repo.id)
                     await repo_session.commit()
