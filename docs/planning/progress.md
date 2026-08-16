@@ -500,7 +500,7 @@ normal thing to do. The scratch-copy habit is still cheap insurance for a change
 | TH1.11 | On-demand Tier-C lift | M | Opus | high | v1.0 | | todo | | | |
 | TH1.12 | Block-sourced facts, one document = one origin | M | Opus | high | v1.0 | | todo | | | |
 | TH1.13 | Idempotent lifting, keyed on `document_id` | S | Sonnet | high | v1.0 | | todo | | | |
-| TH1.14 | Single-document summary (unbadged) | S | Sonnet | high | v1.0 | | todo | | | |
+| TH1.14 | Single-document summary (unbadged) | S | Sonnet | high | v1.0 | claude/th1.14-doc-summary | wip | | | |
 | TH1.15 | Emergent cross-document connections | M | Sonnet | high | v1.0 | | todo | | | |
 | TH1.16 | Documents UI, horizon-labelled | M | Sonnet | high | v1.0 | | todo | | | |
 
