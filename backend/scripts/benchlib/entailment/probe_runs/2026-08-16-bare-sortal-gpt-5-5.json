@@ -1,0 +1,400 @@
+{
+ "_notes": "Rule-discovery probe, NOT a resample. Certifies nothing, gated by nothing, written into no gold.",
+ "model": "gpt-5.5",
+ "date": "2026-08-16",
+ "params": {
+  "seed": 20260808,
+  "reasoning_effort": "high"
+ },
+ "population": [
+  {
+   "id": "eg-0420",
+   "premise": "batch-01 uses ledger-02",
+   "hypothesis": "batch-01 uses at least one other component.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0423",
+   "premise": "ridge-01 uses quire-03",
+   "hypothesis": "quire-03 is one of the components ridge-01 operates with.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0424",
+   "premise": "codec pack deployed on files-01",
+   "hypothesis": "files-01 has at least one component deployed on it.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0426",
+   "premise": "auth-02 uses authelia",
+   "hypothesis": "Authelia is used by at least one system.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0428",
+   "premise": "mon-05 uses etcd",
+   "hypothesis": "There is at least one component that mon-05 uses.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0465",
+   "premise": "meilisearch deployed on idx-03",
+   "hypothesis": "idx-03 hosts at least one deployed service.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0475",
+   "premise": "syncthing deployed on spire-01",
+   "hypothesis": "At least one service is deployed on spire-01.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0478",
+   "premise": "rabbitmq has part order-events",
+   "hypothesis": "RabbitMQ is one of the parts that make up order-events.",
+   "sortal": "unearned",
+   "gold_verdict": "contradicted",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0486",
+   "premise": "clickhouse depends on ledger-02",
+   "hypothesis": "ledger-02 has at least one component that depends on it.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0516",
+   "premise": "neon-04 depends on nats",
+   "hypothesis": "neon-04 has at least one dependency.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0543",
+   "premise": "concourse depends on garage",
+   "hypothesis": "Concourse has at least one dependency.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0546",
+   "premise": "consul uses etcd",
+   "hypothesis": "Consul uses at least one other component.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0550",
+   "premise": "pallet-02 uses parcel-logs",
+   "hypothesis": "At least one component uses parcel-logs.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0558",
+   "premise": "codec pack deployed on files-01",
+   "hypothesis": "files-01 carries at least one deployed component.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0570",
+   "premise": "vane-01 uses samba",
+   "hypothesis": "Samba is in use by at least one system.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0572",
+   "premise": "jump-01 depends on authelia",
+   "hypothesis": "jump-01 has at least one dependency.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0582",
+   "premise": "qemu has part hypervisor",
+   "hypothesis": "A hypervisor is one of the components that qemu is built from.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0592",
+   "premise": "meilisearch deployed on idx-03",
+   "hypothesis": "Meilisearch is deployed on at least one host.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0594",
+   "premise": "airflow uses clickhouse",
+   "hypothesis": "clickhouse is one of the components airflow draws on.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0601",
+   "premise": "garage uses forge-artifacts",
+   "hypothesis": "Garage uses at least one other named component.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0606",
+   "premise": "rabbitmq has part order-events",
+   "hypothesis": "Order-events is one of the constituents that make up rabbitmq.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0607",
+   "premise": "imagemagick deployed on images-02",
+   "hypothesis": "Images-02 hosts at least one deployed component.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0609",
+   "premise": "parcel-tracker depends on parcel-logs",
+   "hypothesis": "Parcel-tracker depends on at least one other component.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0614",
+   "premise": "clickhouse depends on ledger-02",
+   "hypothesis": "clickhouse has at least one dependency.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0619",
+   "premise": "luigi deployed on batch-01",
+   "hypothesis": "Luigi is deployed on at least one host.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0635",
+   "premise": "quire-03 depends on qemu",
+   "hypothesis": "Quire-03 has at least one dependency.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0650",
+   "premise": "alert storms deployed on lb-01",
+   "hypothesis": "Alert storms are deployed on at least one host.",
+   "sortal": "earned",
+   "gold_verdict": "entailed",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0652",
+   "premise": "core-03 has part consul",
+   "hypothesis": "Consul is one of the components that make up core-03.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0699",
+   "premise": "grafana uses nginx",
+   "hypothesis": "nginx is one of the pieces of software Grafana employs.",
+   "sortal": "unearned",
+   "gold_verdict": "entailed",
+   "slice": "paraphrase"
+  }
+ ],
+ "verdicts": {
+  "eg-0543": {
+   "verdict": "entailed",
+   "rule": "Dependency-strength rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Dependency-strength rule\"}"
+  },
+  "eg-0582": {
+   "verdict": "entailed",
+   "rule": "rewording",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording\"}"
+  },
+  "eg-0652": {
+   "verdict": "entailed",
+   "rule": "Entailment tolerates rewording, never strengthening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Entailment tolerates rewording, never strengthening\"}"
+  },
+  "eg-0428": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0465": {
+   "verdict": "entailed",
+   "rule": "rewording/weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording/weakening\"}"
+  },
+  "eg-0699": {
+   "verdict": "unsupported",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0614": {
+   "verdict": "entailed",
+   "rule": "Dependency-strength rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Dependency-strength rule\"}"
+  },
+  "eg-0609": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0592": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0475": {
+   "verdict": "unsupported",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0420": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0546": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0550": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0594": {
+   "verdict": "entailed",
+   "rule": "rewording",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording\"}"
+  },
+  "eg-0619": {
+   "verdict": "entailed",
+   "rule": "weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"weakening\"}"
+  },
+  "eg-0478": {
+   "verdict": "contradicted",
+   "rule": "Reversal rule (HAS_PART exclusive)",
+   "raw": "{\"verdict\":\"contradicted\",\"rule\":\"Reversal rule (HAS_PART exclusive)\"}"
+  },
+  "eg-0635": {
+   "verdict": "entailed",
+   "rule": "Dependency-strength rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Dependency-strength rule\"}"
+  },
+  "eg-0558": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0601": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0486": {
+   "verdict": "unsupported",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"unsupported\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0606": {
+   "verdict": "entailed",
+   "rule": "rewording",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording\"}"
+  },
+  "eg-0424": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0423": {
+   "verdict": "entailed",
+   "rule": "rewording/weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording/weakening\"}"
+  },
+  "eg-0516": {
+   "verdict": "entailed",
+   "rule": "existential weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"existential weakening\"}"
+  },
+  "eg-0650": {
+   "verdict": "entailed",
+   "rule": "weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"weakening\"}"
+  },
+  "eg-0572": {
+   "verdict": "entailed",
+   "rule": "Dependency-strength rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Dependency-strength rule\"}"
+  },
+  "eg-0570": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  },
+  "eg-0607": {
+   "verdict": "entailed",
+   "rule": "rewording/weakening",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"rewording/weakening\"}"
+  },
+  "eg-0426": {
+   "verdict": "entailed",
+   "rule": "Frame rule",
+   "raw": "{\"verdict\":\"entailed\",\"rule\":\"Frame rule\"}"
+  }
+ },
+ "summary_by_sortal": {
+  "unearned": {
+   "agrees": 14,
+   "reads unsupported": 2
+  },
+  "earned": {
+   "agrees": 12,
+   "reads unsupported": 1
+  }
+ }
+}
