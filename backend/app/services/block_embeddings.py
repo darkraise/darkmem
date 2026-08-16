@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import PostgresVectorRepository
+from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, PostgresVectorRepository
 from app.services.embedder_registry import child_table
 
 logger = logging.getLogger(__name__)
@@ -166,6 +166,71 @@ async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
     proceeding on an unconfirmed key.
     """
     return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
+
+
+async def search_blocks(
+    session: AsyncSession,
+    *,
+    vector: Sequence[float],
+    fingerprint: str,
+    project: str,
+    limit: int = 20,
+    document_id: str | None = None,
+) -> list[dict]:
+    """One ANN probe over ``fingerprint``'s partition, scoped in SQL (TH1.06).
+
+    **Every scope predicate is in this statement, never applied in Python
+    afterwards** (T1.29a–c). The partition carries no ``project`` column — it
+    cannot, since a block's project belongs to its document — so scoping means
+    joining ``blocks`` and ``documents`` and filtering there. Filtering the
+    returned page instead would silently under-fill it: rows from other
+    projects would consume the LIMIT and then be discarded.
+
+    That join makes the predicate a **post-scan filter** over the HNSW
+    candidate stream, exactly as T1.29a records for the semantic channel, so
+    what compensates is the fetch multiplier, not an index plan. The project
+    predicate is never absent, so the probe always over-fetches and trims —
+    and it borrows `SEMANTIC_FETCH_MULTIPLIER` rather than declaring its own,
+    because two copies of one tuning constant drift apart in exactly the way
+    the RRF constant already did.
+
+    ``char_span`` is decomposed here rather than handed out as a range type:
+    the caller needs two integers to slice the source, and asyncpg would give
+    it a driver object nothing downstream speaks.
+    """
+    table = child_table(PARENT_TABLE, fingerprint)
+    params: dict = {
+        "vec": str(list(vector)),
+        "project": project,
+        "limit": limit * SEMANTIC_FETCH_MULTIPLIER,
+    }
+    filters = ""
+    if document_id is not None:
+        filters = " AND d.id = CAST(:document_id AS uuid)"
+        params["document_id"] = str(document_id)
+
+    result = await session.execute(
+        text(f"""
+            SELECT CAST(b.id AS text)          AS block_id,
+                   CAST(d.id AS text)          AS document_id,
+                   d.project                   AS project,
+                   d.uri                       AS uri,
+                   b.type                      AS type,
+                   b.text                      AS text,
+                   b.order_index               AS order_index,
+                   lower(b.char_span)          AS span_start,
+                   upper(b.char_span)          AS span_end,
+                   1 - (e.embedding <=> CAST(:vec AS vector)) AS score
+            FROM {table} e
+            JOIN blocks b    ON b.id = e.block_id
+            JOIN documents d ON d.id = b.document_id
+            WHERE d.project = :project {filters}
+            ORDER BY e.embedding <=> CAST(:vec AS vector)
+            LIMIT :limit
+        """),
+        params,
+    )
+    return [dict(mapping) for mapping in result.mappings()][:limit]
 
 
 async def block_vectors(
