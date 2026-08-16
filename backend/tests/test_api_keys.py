@@ -844,21 +844,27 @@ class TestPostureIsUnchanged:
         assert "authenticate" not in called
         assert "looks_like_credential" not in called
 
-    def test_no_shipped_route_is_keyed_yet_beyond_the_sanctioned_call_site(self):
-        """T4.01 lands the mechanism; T4.03 assigns scopes to the *existing*
-        surface. T4.05's push-webhook receiver is a genuinely new route, not
-        a retrofit of one already reachable by a human session -- doc 18 §5
-        (18-security-auth-and-trust.md:138, 261) names the push-webhook
-        receiver as one of the two triggers for this activation -- so it is
-        the one sanctioned exception, pinned to the exact binding rather than
-        to file membership: a file-level check would pass unchanged if a
-        second, unargued `require_scope` call landed anywhere else in
-        `repos.py` (see the drills below)."""
+    def test_key_reach_is_pinned_to_the_call_sites_that_were_argued_for(self):
+        """T4.01 landed the mechanism; T4.05's push-webhook receiver was the
+        one sanctioned exception; T4.21 assigned the two scopes that had been
+        grantable and reached nothing.
+
+        Pinned to the exact call sites rather than to file membership: a
+        file-level check would pass unchanged if a second, unargued
+        `require_scope` call landed anywhere in a file already on the list
+        (see the drills below). The number is the point — widening key reach
+        must be a diff someone has to justify, not a line that slips in."""
         sites = _require_scope_call_sites(_routes_source_files())
-        assert sites == [("api/routes/repos.py", 1)]
+        assert sites == [
+            ("api/routes/memories.py", 2),
+            ("api/routes/repos.py", 1),
+        ]
 
         repos_source = (APP_ROOT / "api" / "routes" / "repos.py").read_text(encoding="utf-8")
         assert '_require_repo_admin = require_scope("admin")' in repos_source
+        memories_source = (APP_ROOT / "api" / "routes" / "memories.py").read_text(encoding="utf-8")
+        assert '_require_capture = require_scope("capture")' in memories_source
+        assert '_require_read = require_scope("read")' in memories_source
 
     def test_the_scan_flags_a_call_site_planted_in_another_route(self):
         """The fail-closed direction: a require_scope call anywhere else in
@@ -871,7 +877,6 @@ class TestPostureIsUnchanged:
             ),
         ]
         sites = _require_scope_call_sites(files)
-        assert sites != [("api/routes/repos.py", 1)]
         assert ("api/routes/tags.py", 1) in sites
 
     def test_the_scan_flags_a_second_call_site_in_repos_py_itself(self):
@@ -884,8 +889,8 @@ class TestPostureIsUnchanged:
             for rel, text in _routes_source_files()
         ]
         sites = _require_scope_call_sites(patched)
-        assert sites == [("api/routes/repos.py", 2)]
-        assert sites != [("api/routes/repos.py", 1)]
+        assert ("api/routes/repos.py", 2) in sites
+        assert ("api/routes/repos.py", 1) not in sites
 
     def test_the_mcp_door_gained_no_bearer_requirement(self):
         # Doc 18 §11's stance: the MCP bearer is a second, independent flip.
@@ -973,12 +978,46 @@ def _routes_gated_by_require_scope(app) -> set[tuple[str, str]]:
 class TestRuntimeScopeGatedRoutes:
     """Important 3, fix round 2 (`docs/planning/briefs/2026-08-16-t4.05-fix-round-2.md`)."""
 
-    def test_only_the_webhook_route_is_scope_gated(self):
+    def test_exactly_the_intended_routes_are_scope_gated(self):
+        """The set is pinned, not bounded, so widening key reach is a visible
+        diff rather than a side effect.
+
+        T4.21 added the three memory doors: the boundary is the surface the
+        minimal client speaks (`sdks/generate.py` binds `capture` to
+        POST /memories and `search` to POST /memories/search/paginated), plus
+        `/batch` because doc 18 §5 defines `capture` as "write memories" and a
+        key that may write one but not many is an arbitrary line. Widening
+        `read` to the vault or the code surface is a decision about what a
+        leaked key can exfiltrate, and it is demand-gated rather than taken
+        because the word fits.
+        """
         from app.main import app
 
         assert _routes_gated_by_require_scope(app) == {
             ("POST", "/api/v1/repos/{repo_id}/webhook"),
+            ("POST", "/api/v1/memories"),
+            ("POST", "/api/v1/memories/batch"),
+            ("POST", "/api/v1/memories/search/paginated"),
         }
+
+    def test_no_scope_in_the_closed_set_gates_nothing(self):
+        """Doc 18 §5's set is closed, and a scope that reaches no route is a
+        credential the UI can mint and the server refuses everywhere — which is
+        what `capture` and `read` were until T4.21, advertised on the settings
+        card the whole time."""
+        from app.api.routes import memories as memories_module
+        from app.api.routes import repos as repos_module
+        from app.services.api_key_scopes import API_KEY_SCOPES
+
+        bound = {
+            "capture": memories_module._require_capture,
+            "read": memories_module._require_read,
+            "admin": repos_module._require_repo_admin,
+        }
+        assert set(bound) == set(API_KEY_SCOPES), (
+            "a scope gained or lost its binding — every member of the closed "
+            "set must gate at least one route, or leave the set"
+        )
 
     def test_the_assertion_catches_delete_repo_reusing_the_binding(self):
         """The drill: reproduce the reviewer's exact mutation -- `delete_repo`
@@ -1008,16 +1047,151 @@ class TestRuntimeScopeGatedRoutes:
             for route in _iter_api_routes(app.router.routes)
             if route.path == "/api/v1/repos/{repo_id}" and "DELETE" in (route.methods or ())
         )
+        expected = {
+            ("POST", "/api/v1/repos/{repo_id}/webhook"),
+            ("POST", "/api/v1/memories"),
+            ("POST", "/api/v1/memories/batch"),
+            ("POST", "/api/v1/memories/search/paginated"),
+        }
         original_dependant = target.dependant
         target.dependant = mutated_dependant
         try:
-            assert _routes_gated_by_require_scope(app) == {
-                ("POST", "/api/v1/repos/{repo_id}/webhook"),
+            assert _routes_gated_by_require_scope(app) == expected | {
                 ("DELETE", "/api/v1/repos/{repo_id}"),
-            }, "the mutant must be caught -- both routes now carry the binding"
+            }, "the mutant must be caught -- the delete route now carries the binding"
         finally:
             target.dependant = original_dependant
 
-        assert _routes_gated_by_require_scope(app) == {
-            ("POST", "/api/v1/repos/{repo_id}/webhook"),
-        }, "restoring the original dependant must clear the finding again"
+        assert _routes_gated_by_require_scope(app) == expected, (
+            "restoring the original dependant must clear the finding again"
+        )
+
+# --------------------------------------------------------------------------
+# T4.21 — the two scopes now reach the client surface, and only it
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestScopeAssignment:
+    """`capture` and `read` were grantable, advertised, and gated nothing.
+
+    The boundary chosen is the surface the minimal client speaks. These tests
+    drive the **real** routes rather than a throwaway app, because what T4.21
+    decides is which shipped doors a credential reaches — a throwaway app can
+    prove the mechanism and says nothing about that.
+    """
+
+    async def _key(self, session, scopes):
+        _row, token = await issue_key(session, name=f"t421-{'-'.join(scopes)}", scopes=scopes)
+        return {"Authorization": f"Bearer {token}"}
+
+    async def test_a_capture_key_writes_but_cannot_search(self, client, session):
+        headers = await self._key(session, ["capture"])
+
+        wrote = await client.post(
+            "/api/v1/memories", json={"content": "keyed capture"}, headers=headers
+        )
+        assert wrote.status_code in (200, 201, 202), wrote.text
+
+        searched = await client.post(
+            "/api/v1/memories/search/paginated", json={"query": "keyed"}, headers=headers
+        )
+        assert searched.status_code == 403, "a capture key must not read the corpus"
+
+    async def test_a_read_key_searches_but_cannot_write(self, client, session):
+        headers = await self._key(session, ["read"])
+
+        searched = await client.post(
+            "/api/v1/memories/search/paginated", json={"query": "keyed"}, headers=headers
+        )
+        assert searched.status_code == 200, searched.text
+
+        wrote = await client.post(
+            "/api/v1/memories", json={"content": "should not land"}, headers=headers
+        )
+        assert wrote.status_code == 403, "a read key must not write to the corpus"
+
+    async def test_batch_is_capture_not_read(self, client, session):
+        read_headers = await self._key(session, ["read"])
+        capture_headers = await self._key(session, ["capture"])
+
+        refused = await client.post(
+            "/api/v1/memories/batch", json={"entries": [{"content": "x"}]},
+            headers=read_headers,
+        )
+        assert refused.status_code == 403
+
+        allowed = await client.post(
+            "/api/v1/memories/batch", json={"entries": [{"content": "x"}]},
+            headers=capture_headers,
+        )
+        assert allowed.status_code in (200, 201, 202), allowed.text
+
+    async def test_the_human_session_still_reaches_all_three(self, client, auth_headers):
+        """The fallthrough that makes this change additive rather than a
+        migration: `require_scope` accepts a cookie session, so the SPA is
+        untouched. Without this the change could gate the UI out of its own
+        capture door and every keyed test above would still pass."""
+        wrote = await client.post(
+            "/api/v1/memories", json={"content": "human capture"}, headers=auth_headers
+        )
+        assert wrote.status_code in (200, 201, 202), wrote.text
+
+        searched = await client.post(
+            "/api/v1/memories/search/paginated", json={"query": "human"}, headers=auth_headers
+        )
+        assert searched.status_code == 200, searched.text
+
+        batched = await client.post(
+            "/api/v1/memories/batch", json={"entries": [{"content": "human batch"}]},
+            headers=auth_headers,
+        )
+        assert batched.status_code in (200, 201, 202), batched.text
+
+    async def test_a_keyed_capture_stamps_its_key_on_the_journal(self, client, session):
+        """Found by a drill that passed when it should not have: removing the
+        stamp left every test green, because nothing asserted the door doc 18
+        §5 convention 8 is actually about. A keyed door that journals
+        `api_key_id=None` is the same defect the epic review's C1 named on the
+        webhook, one route over."""
+        from sqlalchemy import text as sql_text
+
+        row, token = await issue_key(session, name="t421-stamp", scopes=["capture"])
+        response = await client.post(
+            "/api/v1/memories",
+            json={"content": "stamped capture"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code in (200, 201, 202), response.text
+
+        stamped = (await session.execute(
+            sql_text(
+                "SELECT actor FROM events WHERE api_key_id = CAST(:kid AS uuid)"
+            ),
+            {"kid": str(row.id)},
+        )).scalars().all()
+        assert stamped, "the keyed capture journalled no row naming its key"
+        assert "t421-stamp" in stamped
+
+    async def test_a_human_capture_stamps_no_key(self, client, session, auth_headers):
+        """The counterpart: the stamp must be the caller's identity, not a
+        constant that happens to be non-null."""
+        from sqlalchemy import text as sql_text
+
+        before = (await session.execute(
+            sql_text("SELECT count(*) FROM events WHERE api_key_id IS NOT NULL")
+        )).scalar_one()
+
+        response = await client.post(
+            "/api/v1/memories", json={"content": "human capture"}, headers=auth_headers
+        )
+        assert response.status_code in (200, 201, 202), response.text
+
+        after = (await session.execute(
+            sql_text("SELECT count(*) FROM events WHERE api_key_id IS NOT NULL")
+        )).scalar_one()
+        assert after == before, "a human capture must stamp no key"
+
+    async def test_an_unkeyed_unauthenticated_call_is_still_refused(self, client):
+        response = await client.post("/api/v1/memories", json={"content": "anonymous"})
+        assert response.status_code == 401
