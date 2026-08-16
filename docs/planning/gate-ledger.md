@@ -864,6 +864,34 @@ noting as a live demonstration of T2.130: dropping 18 corroborations moves the
 point estimate by 0.0009 and the bound by 0.0043. The point estimate is nearly
 insensitive to how much evidence stands behind it; the bound is not.
 
+**Disclosed, because the artifact contradicts a sentence above it (T2.129's
+final-commit review, I-1, 2026-08-16).** The two runs differ where the clock
+cannot reach: the simulated artifact records `scheduler superseded=2 of 3`, the
+unsimulated one `superseded=1 of 3`. The blocked-hold design pre-registered
+**exactly 2 of 3**, and its stated mechanism — each capture retired by the next
+— did not reproduce. The clock cannot explain it: supersession runs at ingest
+off `memories.created_at`, which the flag never touches, app code is identical
+between the runs, and extraction was fully cache-replayed. The structural
+suspect is a commit-ordering race — Phase-5 writes are concurrent
+(`asyncio.gather` under a semaphore) and `detect_supersessions`' overlap guard
+reads a sibling's `technologies`, which that sibling's own Phase-5 write
+populates, so within the in-flight window the count can be 2 (oldest first), 1
+(mixed) or 0 (newest first). **Three things follow, and none of them moves a
+number.** The hold demonstration survives, because one superseded source
+suffices to fire `supersession_hold` — 2 hold events, `none` blocked = 2,
+unchanged, which is why every quoted figure still reconciles. But "the clock is
+the only variable" is too strong as a description of these two runs and should
+be read as "the clock is the only *intended* variable". And the harness's
+mechanism claims are pre-registered against a quantity that is not
+deterministic, so the two byte-identical reproductions of the simulated run
+were partly luck. **What would settle it is a re-run of the unsimulated pass to
+see whether the count flaps — and that re-run is not free on this machine**:
+`backend/scripts/benchlib/promotion/cache/` is gitignored and absent, so the
+pass would pay for its extraction calls rather than replaying them. Recorded
+here rather than settled, with the alternative remedy named: an ordering
+guarantee in Phase 5 for same-project REPLACES chains would make the
+pre-registered 2 of 3 a property rather than an observation.
+
 **Rule 2's twin is present for the first time in four runs** — 15.97 s wall, 0
 live calls, extraction `cache_unknown=246`. The runner had never carried twin
 instrumentation at all, which is why the ledger's notice of the omission never
