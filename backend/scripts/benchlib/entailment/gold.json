@@ -1772,7 +1772,9 @@
     "rel_type": "USES",
     "object_name": "concourse",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 by mechanical application of the bare-sortal clause already ruled that day: \"a piece of **software**\" applies a partitioning sortal to concourse that USES never establishes — the identical defect that retired eg-0699, in a predicate nominal rather than an existential. Found by widening the sweep after a blind labeller flagged the clause's silence on USES-earned roles; the first sweep pattern matched only existentials and would never have seen it. Replaced by eg-0705."
   },
   {
    "id": "eg-0513",
@@ -5047,13 +5049,32 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3 with the bare-sortal clause's relation-establishment branch: \"host\" is the role DEPLOYED_ON necessarily assigns tether-02 — a deployment target cannot fail to be the host of what is deployed on it — and \"installation\" names the deployed thing's own role, so neither restrictor is asserted content. The minimal edit of eg-0534, which differed only in reaching for \"machine\", a kind the relation does not establish.",
    "fact_key": {
     "triple_key": "1899947d-a0b3-561b-9899-71723a4ede11",
     "subject_name": "woodpecker ci",
     "rel_type": "DEPLOYED_ON",
     "object_name": "tether-02",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0705",
+   "premise": "log-02 uses concourse",
+   "hypothesis": "Concourse is something that log-02 makes use of.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3: a full rewording at use-level strength carrying no classificatory sortal at all — \"something\" is the limiting vacuous case of the bare-sortal clause's generic branch, satisfied by every entity of the premise's world. The minimal edit of eg-0512, which reached for \"a piece of software\", a kind USES cannot establish.",
+   "fact_key": {
+    "triple_key": "cd4d47ac-bfc9-57d4-8fa2-d4e55a64ad36",
+    "subject_name": "log-02",
+    "rel_type": "USES",
+    "object_name": "concourse",
     "project": "default"
    }
   }

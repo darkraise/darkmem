@@ -281,7 +281,22 @@ this same file — collapsing it to a binary would throw that away.
     relation: `DEPLOYED_ON` makes its target a "host" (eg-0592, eg-0650),
     `DEPENDS_ON` makes its object a "dependency" (eg-0516), `HAS_PART`
     makes its part a "part" or **"constituent"** (synonyms of the role the
-    relation creates are earned with it — eg-0606). The test mirrors the dependency-strength
+    relation creates are earned with it — eg-0606), `USES` makes its
+    object a **"resource"** and its subject a **"consumer"** (eg-0640,
+    eg-0468), `DEPENDS_ON` makes its object a **"prerequisite"**
+    (eg-0430), and `RELATED_TO` licenses **"a connection between"** its
+    endpoints (eg-0524). These were placed 2026-08-17 by applying the
+    branch above rather than by a fresh ruling: each names the role the
+    relation itself creates, so the relation cannot hold while the slot
+    filler fails the noun.
+
+    **The clause reaches predicate nominals, not only existentials.**
+    "Y **is a** software/service/machine that X uses" asserts the same
+    partitioning kind as "at least one service", and the first sweep for
+    this class matched only quantified forms — which is how eg-0512
+    ("Concourse is **a piece of software** that log-02 makes use of")
+    survived the round that retired eg-0699 for the identical sortal. A
+    sweep for this defect must cover both shapes. The test mirrors the dependency-strength
     rule's: *could the relation hold and the slot-filler fail the
     sortal?* No for the "host" of a deployment; **yes** for a deployed
     thing being a "service" — deployment does not make a thing a service.
