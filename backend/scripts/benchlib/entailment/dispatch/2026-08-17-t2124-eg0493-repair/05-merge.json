@@ -1,0 +1,16 @@
+{
+ "_notes": "Layer 2 merge for eg-0715.",
+ "merged_at": "2026-08-17",
+ "under_adjudication": [
+  "eg-0715"
+ ],
+ "adjudicated": [
+  "eg-0715"
+ ],
+ "escalations": [
+  "eg-0681"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 1.0
+ }
+}

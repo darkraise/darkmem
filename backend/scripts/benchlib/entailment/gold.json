@@ -5264,7 +5264,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3: a plain rewording at `USES`'s own level, asserting use and nothing about who commissioned the thing used. The minimal edit of eg-0493, whose \"put into service by\" attributed a commissioning act the relation does not carry.",
    "fact_key": {
     "triple_key": "0fb10de6-b28d-5cf5-aaa8-1b0ae07a48f5",

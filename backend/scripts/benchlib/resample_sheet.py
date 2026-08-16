@@ -123,9 +123,25 @@ def _sections(markdown: str) -> dict[str, str]:
 # naming an example id is stripped; the rule text itself is untouched.
 _EXAMPLE_ID_RE = re.compile(r"\s*\([^()]*\beg-\d{4}\b[^()]*\)")
 
+# A parenthetical is not the only way prose names a pair, and assuming it was
+# let five ids through on 2026-08-17: rulings written that day cite examples
+# mid-sentence ("the repetition study on eg-0650 (3 `entailed` / 2
+# `unsupported` ...)"), which the parenthetical rule cannot see because the id
+# sits *outside* the parens. That one printed a live entailed pair's own
+# verdict distribution beside its id. Any surviving bare id is replaced by a
+# neutral phrase rather than deleted, so the rule text stays readable.
+_BARE_EXAMPLE_ID_RE = re.compile(r"\beg-\d{4}\b")
+
 
 def _redact_example_ids(text: str) -> str:
-    return _EXAMPLE_ID_RE.sub("", text)
+    """Strip every way the rulebook names an example pair.
+
+    Parentheticals go whole; bare ids left in prose are replaced. Order
+    matters -- stripping parentheticals first keeps their surrounding commas
+    from being orphaned by a replacement inside them.
+    """
+    text = _EXAMPLE_ID_RE.sub("", text)
+    return _BARE_EXAMPLE_ID_RE.sub("a cited example", text)
 
 
 def rulebook_excerpt(labelling_path: Path | str = LABELLING_PATH) -> str:
