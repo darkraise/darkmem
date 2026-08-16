@@ -1,0 +1,102 @@
+{
+ "eg-0595": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive — host and guest cannot swap for the same pair — so the reversed claim is contradicted."
+ },
+ "eg-0652": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause: HAS_PART's generic semantics earn the constituent/composition renderings ('components that make up', the same role as 'built from'), and 'one of the components' is ordinary weakening whose witness is the premise's part."
+ },
+ "eg-0423": {
+  "verdict": "entailed",
+  "rationale": "Cross-relation vocabulary test plus the bare-sortal clause: 'component' is a vacuous universal head noun, and instrumental 'operates with' is a generic-level rendering USES guarantees — it fixes no mechanism and no bidirectional exchange, so X cannot use Y while failing to operate with it."
+ },
+ "eg-0635": {
+  "verdict": "entailed",
+  "rationale": "Possessive-existential clause: DEPENDS_ON earns 'X has a dependency', so the existential's witness (qemu) is established by the premise's own relation."
+ },
+ "eg-0496": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3 via the dependency-strength rule's test: 'polls ... every thirty seconds' fixes an interaction mechanism and an interval the bare USES relation does not carry, which is strengthening, never contradiction (procedure 4)."
+ },
+ "eg-0547": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 (weakening): dropping the relation's direction to 'there is a dependency relationship between' the two endpoints is strictly weaker than the premise's asserted DEPENDS_ON, whose forward direction is the witness."
+ },
+ "eg-0515": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive, so swapping host and guest for the same pair is contradicted."
+ },
+ "eg-0716": {
+  "verdict": "entailed",
+  "rationale": "Window rule: April 2026 lies inside the explicitly rendered validity window (4 March 2026 to the 12 June 2026 upgrade), and a claim time-scoped inside the window is entailed."
+ },
+ "eg-0538": {
+  "verdict": "entailed",
+  "rationale": "Near-literal restatement (verbatim/paraphrase): the hypothesis asserts exactly the premise's relation with only copula and casing changed, nothing strengthened."
+ },
+ "eg-0675": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, predecessor-named bullet: the premise names the state the 2026-04-12 split displaced (shared core schema), so a claim putting the new own-schema state before the split is contradicted."
+ },
+ "eg-0605": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4 (unrelated): the premise shares only an entity with the hypothesis and asserts nothing about a rebuild or a maintenance window — absence is not exclusion."
+ },
+ "eg-0633": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 1: a conjunction with one entailed conjunct (the deployment) and one unasserted conjunct (outage-free traffic since rollout) is unsupported as a whole."
+ },
+ "eg-0544": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3 via the dependency-strength rule's test: 'for its nightly off-site snapshots' fixes a purpose and cadence the bare USES relation leaves open, so the rendering is strengthening, not paraphrase."
+ },
+ "eg-0449": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4: the premise asserts only that xenon-02 uses xenon-snapshots and says nothing about replication cadence or an offsite provider — unasserted content, and absence is not exclusion."
+ },
+ "eg-0545": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 1: the first conjunct is earned (HAS_PART makes infisical a component of keys-01) but 'handles its secret storage' is a functional role the premise never asserts, and one unsupported conjunct makes the whole claim unsupported."
+ },
+ "eg-0438": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive, so the host/guest swap is contradicted."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: 'auth-01 is hosted on Authelia' puts the premise's host in the guest slot, and DEPLOYED_ON is exclusive — one pair cannot carry both directions."
+ },
+ "eg-0644": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive, so deploying the host on its own workload is contradicted."
+ },
+ "eg-0711": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 (paraphrase/weakening): 'is among what restic makes use of' rewords USES at its own generic level and the 'among' existential is ordinary weakening with the premise's object as witness."
+ },
+ "eg-0625": {
+  "verdict": "unsupported",
+  "rationale": "Dependency-strength rule's test applied cross-relation (with the engagement/invocation ruling): 'as part of its normal operation' fixes when the use occurs, and a use confined to exceptional operation would make the premise true and the hypothesis false — strengthening, never contradiction by procedure 4."
+ },
+ "eg-0669": {
+  "verdict": "contradicted",
+  "rationale": "Open-window rule: the state holds since 2026-01-26 with no closing event and the premise asserts no rotation has occurred, so the same signing state is entailed at May 2026 and a claim that it stopped then must be rejected."
+ },
+ "eg-0660": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, predecessor-named bullet: the premise names the displaced handler (Filebeat, up to the 2025-05-19 cutover), so placing the new state (Vector) before the cutover is contradicted, on the window rule's named-successor footing."
+ },
+ "eg-0503": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive, so the reversed deployment claim is contradicted."
+ },
+ "eg-0451": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4 (unrelated): the premise asserts a USES relation and nothing about rclone's configuration or a bandwidth ceiling — the hypothesis is unasserted content, not excluded content."
+ },
+ "eg-0536": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under the possessive-existential clause's DEPLOYED_ON earning: 'files-01 has data-06 deployed on it' restates the premise's own relation with roles preserved — deployment on files-01 is exactly what places data-06 in its hosted stack."
+ }
+}
