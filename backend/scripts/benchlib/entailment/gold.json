@@ -176,7 +176,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "media-04",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The referential-definite clause: \"the **machine** that carries the Celery installation\" asserts a kind DEPLOYED_ON does not earn, riding attributively inside a definite that names media-04. Replaced by eg-0707."
   },
   {
    "id": "eg-0426",
@@ -644,7 +646,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "data-06",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The referential-definite clause, the pair it was ruled on: \"the data-06 **machine**\" asserts a kind the relation does not earn. Replaced by eg-0708."
   },
   {
    "id": "eg-0451",
@@ -1696,7 +1700,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "auth-02",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The referential-definite clause: \"The auth-01 **service**\" asserts a kind DEPLOYED_ON does not earn — the clause's own counterexample says deployment does not make a thing a service. Replaced by eg-0709."
   },
   {
    "id": "eg-0509",
@@ -3615,7 +3621,9 @@
     "rel_type": "USES",
     "object_name": "ticket-router",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The engagement-vocabulary ruling: `USES` does not earn \"interacts with\", which connotes bidirectional exchange a passive-resource use does not carry. Replaced by eg-0712."
   },
   {
    "id": "eg-0613",
@@ -4337,7 +4345,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "etl-02",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The referential-definite clause: \"its **host machine**\" earns \"host\" and not \"machine\". Replaced by eg-0710."
   },
   {
    "id": "eg-0652",
@@ -4792,7 +4802,9 @@
    ],
    "provenance": "hand-authored-synthetic-fact",
    "label_source": "adjudicated",
-   "rationale": "Implicature-is-not-contradiction rule: a freeze scoped to a named period implicates that it ended with that period but does not assert the resumption, and non-asserted content establishes nothing."
+   "rationale": "Implicature-is-not-contradiction rule: a freeze scoped to a named period implicates that it ended with that period but does not assert the resumption, and non-asserted content establishes nothing.",
+   "retired": true,
+   "notes": "Retired 2026-08-17 as a consequence of the durative-adverbial ruling made the same day, not as an authoring defect. Its premise uses \"frozen **for the duration of** the Q1 2026 audit\", and once that construction asserts coextension the freeze ends with the audit, so the recorded `unsupported` no longer holds. Whether \"resumed after\" then follows raises a SECOND question the rulebook has not decided — does resumption need evidence beyond the freeze lifting? — so the pair is retired rather than relabelled on a call nobody made. Replaced by eg-0714."
   },
   {
    "id": "eg-0687",
@@ -4852,7 +4864,9 @@
    ],
    "provenance": "hand-authored-synthetic-fact",
    "label_source": "adjudicated",
-   "rationale": "Implicature-is-not-contradiction rule: the premise scopes the pause to the rebuild and only implicates that it ended there, so neither the continuation nor its denial is asserted for late December 2025."
+   "rationale": "Implicature-is-not-contradiction rule: the premise scopes the pause to the rebuild and only implicates that it ended there, so neither the continuation nor its denial is asserted for late December 2025.",
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The durative-adverbial ruling: \"paused **for the duration of** the rebuild\" asserts coextension, so a hypothesis putting the pause past the rebuild's close is `contradicted`, not `unsupported`. The label is wrong rather than the pair, but `temporal` carries a fixed share of the ratified matrix, so relabelling in place would move contradicted to 81 and unsupported to 89. Retired and replaced by a genuinely unsupported temporal pair instead, which keeps 80/110/90. Replaced by eg-0713."
   },
   {
    "id": "eg-0692",
@@ -5097,7 +5111,147 @@
     "rel_type": "USES",
     "object_name": "imagemagick",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the owner rulings of that day. The invocation-vocabulary ruling: \"calls on ... to do its work\" fixes an invocation mechanism `USES` leaves open. Authored earlier the same day as the eg-0422 replacement, and condemned by a ruling made hours later — the round's clearest evidence that authoring ahead of the rulebook reproduces the defect. Replaced by eg-0711."
+  },
+  {
+   "id": "eg-0707",
+   "premise": "postfix deployed on mail-01",
+   "hypothesis": "mail-01 is the host that carries the postfix installation.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "rationale": "Procedure 3 with the bare-sortal clause: \"host\" is the role DEPLOYED_ON necessarily assigns mail-01 and \"installation\" is owner-ratified as earned for its subject, so neither noun asserts an unearned kind. The minimal edit of eg-0425, which said \"machine\".",
+   "fact_key": {
+    "triple_key": "60502a4d-76a9-5004-8d26-c94a05c4557b",
+    "subject_name": "postfix",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "mail-01",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0708",
+   "premise": "ocr worker deployed on gpu-01",
+   "hypothesis": "the ocr worker runs on the gpu-01 host.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "rationale": "Procedure 3: the attributive sortal inside the definite is \"host\", which DEPLOYED_ON earns, so the referential-definite clause is satisfied rather than breached. The minimal edit of eg-0450, the pair that clause was ruled on.",
+   "fact_key": {
+    "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
+    "subject_name": "ocr worker",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "gpu-01",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0709",
+   "premise": "directory replica deployed on acs-01",
+   "hypothesis": "At least one component is deployed on acs-01.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "rationale": "Bare-sortal clause, generic branch: \"component\" restricts nothing, and the witness is in the premise. The minimal edit of eg-0508, which named its subject \"the auth-01 service\" and so asserted a kind deployment does not confer.",
+   "fact_key": {
+    "triple_key": "0cb4c678-60b3-5302-a1d6-946382b61fe0",
+    "subject_name": "directory replica",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "acs-01",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0710",
+   "premise": "team wiki deployed on lab-vm-3",
+   "hypothesis": "The team wiki installation has lab-vm-3 as its host.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "rationale": "Procedure 3: both sortals are earned — \"installation\" for the deployed subject, \"host\" for the target. The minimal edit of eg-0651, which wrote \"host machine\" and thereby smuggled the unearned kind in beside the earned role.",
+   "fact_key": {
+    "triple_key": "b41579f0-3b76-5b77-b8d9-dd6267c51416",
+    "subject_name": "team wiki",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "lab-vm-3",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0711",
+   "premise": "restic uses nas",
+   "hypothesis": "nas is among what restic makes use of.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "rationale": "Procedure 3: a rewording at USES's own generic level with no sortal and no invocation mechanism. The minimal edit of eg-0706, whose \"calls on ... to do its work\" fixes an invocation the relation leaves open.",
+   "fact_key": {
+    "triple_key": "09ab4ffb-3316-56d5-baa9-58e750835481",
+    "subject_name": "restic",
+    "rel_type": "USES",
+    "object_name": "nas",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0712",
+   "premise": "status dashboard uses vite",
+   "hypothesis": "The status dashboard makes use of at least one other component.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "rationale": "Bare-sortal clause, generic branch, with the object weakened to an existential over a vacuous sortal. The minimal edit of eg-0612, which reworded USES as \"interacts with\" and thereby asserted an exchange the relation does not carry.",
+   "fact_key": {
+    "triple_key": "1a01b5f5-2533-5737-a884-89a789b27b65",
+    "subject_name": "status dashboard",
+    "rel_type": "USES",
+    "object_name": "vite",
+    "project": "default"
+   },
+   "provenance": "l2-fact",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0713",
+   "premise": "Nightly backups to the offsite vault were suspended from 2 March 2026 until the vault migration completed.",
+   "hypothesis": "Nightly backups to the offsite vault were running on 20 March 2026.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "temporal"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "rationale": "Open-ended window: the premise fixes the suspension's start but leaves its close to an event with no stated date, so 20 March sits neither inside nor outside the window. Neither established nor excluded, so `unsupported` by procedure 4 — replacing eg-0691, whose durative premise the 2026-08-17 ruling made `contradicted`.",
+   "label_source": "author"
+  },
+  {
+   "id": "eg-0714",
+   "premise": "Access reviews for the finance group were completed during Q2 2026.",
+   "hypothesis": "Access reviews for the finance group were completed in April 2026.",
+   "verdict": "unsupported",
+   "slice_tags": [
+    "temporal"
+   ],
+   "provenance": "hand-authored-synthetic-fact",
+   "rationale": "The premise locates the completion inside a three-month window without fixing which month, so April is one admissible reading among three and is not established. \"During\" is used deliberately rather than \"for the duration of\": the 2026-08-17 ruling separates them, and this pair tests the locating sense the implicature rule already calibrates. Replaces eg-0686, whose durative premise the same ruling unsettled.",
+   "label_source": "author"
   }
  ]
 }

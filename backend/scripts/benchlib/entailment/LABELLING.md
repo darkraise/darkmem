@@ -329,6 +329,42 @@ this same file — collapsing it to a binary would throw that away.
   (eg-0424); **nothing earns** "X has a component that depends on it" —
   a dependent of X is not thereby a component *of* X (eg-0486).
 
+  **Referential-definite clause** (ruled 2026-08-17, owner, rule-then-pairs
+  on eg-0450). A partitioning sortal riding attributively inside a definite
+  that *names* an entity — "the data-06 **machine**", "the auth-01
+  **service**" — is **asserted content**, not presupposed, and must be
+  earned exactly as it would be in an existential's restrictor. This is a
+  **third surface shape**, after quantified restrictors and predicate
+  nominals, and it was ruled against the opposite reading: a sortal in a
+  referring expression patterns presupposition-wise with the exhaustivity
+  rule's protected class, and the Frame rule's "a definite article does not
+  shelter it" was argued from an asserted existential. The owner ruled the
+  Frame rule's reach controlling. **Scan all three shapes; a shape-scoped
+  sweep is how this class survived three rounds** (eg-0699, eg-0512,
+  eg-0422, then eg-0425/eg-0450/eg-0508/eg-0651).
+
+  **Instance-hood default** (ruled 2026-08-17, owner, on eg-0529). The
+  exclusive-slot rule's "a single named instance" has a stated test at
+  last: **any entity the harvest names is a single named instance**,
+  including plural or phenomenon-like subjects ("alert storms"). A
+  labeller never has to decide instance-versus-product from the premise,
+  which they could not do without harvest evidence procedure 2 bars.
+
+  **Durative adverbials** (ruled 2026-08-17, owner, on eg-0691). "Paused
+  **for the duration of** X" **asserts** coextension with X, unlike
+  "during", which merely locates within it. A hypothesis putting the state
+  past X's close is `contradicted`, not `unsupported`.
+
+  **Engagement and invocation vocabulary** (ruled 2026-08-17, owner, on
+  eg-0612 and eg-0706). `USES` does **not** earn "interacts with" —
+  interaction connotes bidirectional exchange a passive-resource use does
+  not carry — and does **not** earn "calls on ... to do its work", which
+  fixes an invocation mechanism the relation leaves open. Both are
+  `unsupported` over a bare `USES` premise. **"storage backend"** and
+  **"datastore"** are likewise **partitioning**, not earned: they sit
+  between "resource" and "database" and the ruling puts them on the
+  partitioning side.
+
   **The bound on both clauses, recorded rather than smoothed over.**
   eg-0465 ("idx-03 hosts at least one deployed service") and eg-0475
   ("At least one service is deployed on spire-01") are semantically
