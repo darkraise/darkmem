@@ -497,6 +497,78 @@ never silently absorbed.
 | False-promotion audit (corroborated later disputed or human-rejected) | Rate **< 0.01**, strict (`verification_false_promotion_bar`, doc 17 §5.1's own key and recommended start); decidable only at ≥ 20 in-window distinct corroborated facts (`false_promotion_min_corroborations`) — below 100 corroborations one false promotion already breaches 1%, so within the decidable band the bar demands zero observed; stated 2026-08-07, before any gate run | 0 corroborations, 0 disputed-after, 0 human-rejected, rate n/a on both targets; R2's fold count in window: **0** `expired` fact events. **Structural finding:** both numerator arms are unreachable today — the contradiction scan aborts on the unqualified judge (no qualification record until T2.54 → T2.41), and the review queue only fills from disputes/blocked holds, so even a corroborating corpus would yield a *vacuous* zero, not a measured one | same, plus `contradiction_scan.py`'s one-door refusal (its module docstring) and `verification_judge.QUALIFICATION_RECORD_PATH` absent | **UNDER-POWERED — not evaluable; and not honestly evaluable before the judge qualifies (see verdict)** |
 | Every ladder transition journaled | 100% (`promotion_journal_completeness_bar` = 1.0): zero `knowledge_triples` rows whose `verification_status` the `verified` journal cannot explain, per `promotion_bars.JOURNAL_COMPLETENESS_SQL` (committed with the bar, before any run); R3's born-rung carve-out counted and reported beside the number; stated 2026-08-07, before any gate run | Production: 0 facts, 0 violations (vacuous). Bench: **62 facts, 0 violations, 0 born-rung carve-out rows** — every row's column state is journal-explained, but 0 transitions occurred, so 100%-of-transitions is 0/0. The behavioural evidence that transitions journal is `tests/test_ladder_journaling.py` (mutation-pinned), which is test evidence, not corpus evidence | same; SQL committed in `promotion_bars.py` | **CONSISTENT BUT VACUOUS — cannot evidence the 100% bar; gate stays open** |
 
+### G-C on the grown corpus (2026-08-16, T2.131): every pre-stated axis **clears**; the gate verdict is owed to Step 5
+
+The owner authorised the run on 2026-08-16, conditioned on closing the owed
+review's two open findings first (both closed: `6d0453d1`, `7a2f9801`). Corpus
+sha256 `78dbc4c5c8756dcd`, 849 captures — a new corpus, not a re-run of
+`2840651b597da347`. Both passes ran, unsimulated first as the plan binds.
+
+| Metric | Pass 1 (unsimulated) | Pass 2 (simulated clock) |
+|---|---|---|
+| Bench lane | `darkmem_bench_t2131` | `darkmem_bench_t2131sim` |
+| Live model calls | **913** (extraction 849) | **0** — replayed from pass 1's cache |
+| Wall clock | 303.11s | 45.84s |
+| In-window corroborations | **509** | **528** |
+| Later disputed / human-rejected | 1 / 0 | 1 / 0 |
+| False-promotion point estimate | 0.0020 | 0.0019 |
+| **95% Clopper-Pearson upper bound (SCORED)** | **0.009286** vs 0.01 → clears | **0.008953** vs 0.01 → clears |
+| `gate_fired` eligibles | [363, 147] — diversity, none | [363, 146, 20] — diversity, none, time_gap |
+| Diversity-arm conversion | 364/365 = **0.9973** | 365/365 = **1.0000** |
+| Journal completeness | 682 facts, 74 carve-out, **0 violations** | identical |
+
+All four axes report `clears=True` in both passes, on bars every run printed as
+committed defaults: the measured databases carry **no `config` row for any G-C
+bar and no `promotion_bar_licences` row**, so nothing was moved, clamped or
+licensed. The corpus was sized against a 0.9703 diversity conversion and
+delivered 0.9973, which is why 509 landed above both the 473 requirement and the
+490 self-imposed floor rather than near them.
+
+**What actually changed, stated precisely.** The audit's problem was never the
+point estimate — T2.130 established that comparing an estimate to the bar it is
+centred on is a coin flip at *every* sample size, and this run reproduces that
+diagnosis rather than escaping it: pass 1 prints P(pass | true rate = bar) as
+**0.6001** under the superseded rule and **0.0369** under the scored one. What
+moved is that 149 corroborations could not clear the bound at zero observed,
+and 509 clears it at one observed. The k = 1 numerator is unchanged; the
+denominator is what grew.
+
+**The designed refusals and controls held in both passes.** `avro` (under-sourced,
+2 origins) and `cassandra` (echo, 1 origin over 3 provenance rows) both stayed
+`candidate`; the `warehouse` inverse-replacement pair disputed as designed with
+`corroborated_first=True` on the counterpart; the only superseded rows sit inside
+the `scheduler` blocked-hold group, and the arming project reads 0.
+
+**The simulation dependency, measured rather than asserted.** Pass 1 disables the
+capture-time stamp, and the `time_gap` bucket does not shrink — it is **absent**,
+its 20 promotions and 18 `atlas` facts staying `candidate` at two same-day
+origins. That is the T2.129 finding reproduced on the grown corpus: one of G-C's
+three gate paths exists only under the harness's simulated clock. The pass that
+carries the target is therefore pass 1, and it clears without that path.
+
+**§6's disclosure, written before the number existed and quoted here as Step 6
+requires.** A cleared bound at ~500 makes the audit **decisive about a corpus its
+own measurer wrote**: one authored dispute over ~500 authored corroborations.
+The composition is concentrated — diversity claims cannot leave project `default`
+(`fact_lift.CODE_FACT_PROJECT`), so `default` holds 365 of the 509 promoting
+claims, against one stand-in repository fleet of six. A reader meeting
+"509 corroborations, bound 0.009286, clears" must meet in the same breath that
+every one was written to be counted. T2.130's limit is unlifted: a well-powered
+rule over authored evidence is a better instrument measuring the same thing, and
+this task sharpened the instrument without widening what it can see.
+
+**This section records a measurement, not a gate verdict.** Two things are
+deliberately absent. Step 5 requires the verdict be recorded by a party that did
+not author the growth or run the measurement, and that has not happened — the
+session that ran these passes must not also be the one that declares them
+sufficient, which is the contamination class stop condition 4 names.
+`app/services/promotion_metrics_record.json` is **unminted**, so every promoted
+and born badge still serves as `candidate` with `verification_unmeasured`; the
+runner never mints it by design, and minting is the gate owner's deliberate act
+on a confirmed verdict. Artifacts:
+`docs/eval/2026-08-16-gc-evidence-t2.131-pass1-unsimulated.md` and
+`…-pass2-simulated.md`, verbatim.
+
 ### G-C bench-arm evidence run (2026-08-13): **NOT CLEARED — operable and powered for the first time, and still not clearable**
 
 The first G-C verdict driven from T2.108's promotion corpus (`--corpus
