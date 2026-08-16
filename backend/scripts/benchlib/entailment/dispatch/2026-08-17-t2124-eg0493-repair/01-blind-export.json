@@ -1,0 +1,127 @@
+[
+ {
+  "id": "eg-0643",
+  "premise": "quota-watcher uses powerdns",
+  "hypothesis": "PowerDNS uses quota-watcher."
+ },
+ {
+  "id": "eg-0693",
+  "premise": "The orchard staging cluster was rebuilt onto Talos 1.7 at some point during the maintenance sprint of 2 to 20 March 2026.",
+  "hypothesis": "The orchard staging cluster was running Talos 1.7 on 5 March 2026."
+ },
+ {
+  "id": "eg-0681",
+  "premise": "Container images for the atlas-api service were pushed to Docker Hub until the registry move on 22 January 2026; since that date they have been pushed to the self-hosted Harbor registry at reg.hl.internal.",
+  "hypothesis": "In November 2025, atlas-api container images were being pushed to Docker Hub."
+ },
+ {
+  "id": "eg-0514",
+  "premise": "warden-02 uses warehouse vlan",
+  "hypothesis": "warden-02 is a consumer of the warehouse VLAN."
+ },
+ {
+  "id": "eg-0673",
+  "premise": "The Ambleside monitoring stack sent alerts through PagerDuty from 2023-09-14 until 2026-02-28, after which alerting was routed to Opsgenie.",
+  "hypothesis": "During 2025 the Ambleside monitoring stack routed alerts to Opsgenie."
+ },
+ {
+  "id": "eg-0490",
+  "premise": "lb-01 uses haproxy",
+  "hypothesis": "HAProxy uses lb-01."
+ },
+ {
+  "id": "eg-0685",
+  "premise": "Since the 14 February 2026 rollout, TLS certificates for *.hl.internal have been issued by the internal step-ca instance.",
+  "hypothesis": "In September 2025, TLS certificates for *.hl.internal were issued by the internal step-ca instance."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0715",
+  "premise": "data-06 uses garage",
+  "hypothesis": "data-06 makes use of Garage."
+ },
+ {
+  "id": "eg-0441",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is where Authelia runs."
+ },
+ {
+  "id": "eg-0672",
+  "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
+  "hypothesis": "hexley-cdn currently caches edge objects for 24 hours."
+ },
+ {
+  "id": "eg-0703",
+  "premise": "telegraf uses influxdb",
+  "hypothesis": "influxdb is employed by telegraf."
+ },
+ {
+  "id": "eg-0695",
+  "premise": "The DHCP reservation for printer-hall was granted on 18 June 2026 with a 30-day lease and no static binding.",
+  "hypothesis": "printer-hall now holds the same DHCP-assigned address it was granted on 18 June 2026."
+ },
+ {
+  "id": "eg-0697",
+  "premise": "The quarry analytics job was scheduled for retirement on 31 May 2026 as part of the Q2 cleanup.",
+  "hypothesis": "The quarry analytics job stopped running on 31 May 2026."
+ },
+ {
+  "id": "eg-0419",
+  "premise": "uptime kuma uses quota-watcher",
+  "hypothesis": "Uptime Kuma makes use of quota-watcher."
+ },
+ {
+  "id": "eg-0708",
+  "premise": "ocr worker deployed on gpu-01",
+  "hypothesis": "the ocr worker runs on the gpu-01 host."
+ },
+ {
+  "id": "eg-0436",
+  "premise": "ticket-router depends on zulip",
+  "hypothesis": "Zulip is ticket-router's only dependency."
+ },
+ {
+  "id": "eg-0711",
+  "premise": "restic uses nas",
+  "hypothesis": "nas is among what restic makes use of."
+ },
+ {
+  "id": "eg-0528",
+  "premise": "teleport deployed on warden-02",
+  "hypothesis": "Teleport is deployed on wisp-01."
+ },
+ {
+  "id": "eg-0437",
+  "premise": "consul uses jobs-05",
+  "hypothesis": "Consul uses jobs-05 to schedule its periodic health checks."
+ },
+ {
+  "id": "eg-0541",
+  "premise": "warden-02 uses warden-audit",
+  "hypothesis": "warden-audit is employed by warden-02."
+ },
+ {
+  "id": "eg-0567",
+  "premise": "roster-sync deployed on tether-02",
+  "hypothesis": "roster-sync is deployed on tether-05."
+ },
+ {
+  "id": "eg-0669",
+  "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
+  "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key."
+ },
+ {
+  "id": "eg-0556",
+  "premise": "anvil-render uses imagemagick",
+  "hypothesis": "ImageMagick is used by anvil-render."
+ },
+ {
+  "id": "eg-0698",
+  "premise": "terraform uses minio",
+  "hypothesis": "At least one component of the estate makes use of MinIO."
+ }
+]
