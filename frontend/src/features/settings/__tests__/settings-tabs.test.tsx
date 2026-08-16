@@ -30,17 +30,26 @@ afterEach(() => {
 
 // FlagsTab's own tests live in settings-flags.test.tsx / .real.test.tsx.
 
-describe("SecurityTab — dormant ApiKey honesty", () => {
-  it("renders the Phase-4 card with every control disabled", () => {
+// T4.04 rewrote this block rather than deleting it. It used to assert the
+// dormancy claim — "Phase-4 · designed, not wired", every control disabled —
+// which was true until T4.01 wired the credential and T4.02 stamped the
+// columns, and afterwards was a test pinning a false statement about the
+// system. What it protects is unchanged: that this card says what is actually
+// true of the box, in whichever direction that runs.
+describe("SecurityTab — ApiKey honesty", () => {
+  it("renders the credential path as live, with its controls usable", () => {
     render(<SecurityTab />, { wrapper })
-    expect(screen.getByText(/Phase-4 · designed, not wired/)).toBeInTheDocument()
-    expect(screen.getByLabelText("Key label")).toBeDisabled()
-    expect(
-      screen.getByRole("button", { name: /Create key — unavailable/ }),
-    ).toBeDisabled()
+    expect(screen.queryByText(/designed, not wired/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not available in this deployment/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Key label")).not.toBeDisabled()
     expect(
       screen.getByText(/ratify — never a scope, human cookie session only/),
     ).toBeInTheDocument()
+  })
+
+  it("cannot create a key without a label — the mint is never a bare click", () => {
+    render(<SecurityTab />, { wrapper })
+    expect(screen.getByRole("button", { name: /Create key/ })).toBeDisabled()
   })
 
   it("renders the three LAN doors and the TOFU claim", () => {
