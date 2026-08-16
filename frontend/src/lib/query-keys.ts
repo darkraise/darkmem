@@ -102,6 +102,12 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
       "Addressed by document id, and the connections query scopes itself to that document's project in SQL — deliberately, since a cross-project suggestion surface is the worst place to leak an isolation boundary",
   },
 
+  autoResearch: {
+    kind: "global",
+    reason:
+      "The research loop's arm switch and budgets are per-installation, not per-project: the loop files evidence a caller gathered, and arming it for one project while another stays disarmed is not a distinction the config row can express (T3.28, doc 09 §6)",
+  },
+
   // ── deferred: named gaps ──
   tags: {
     kind: "deferred",

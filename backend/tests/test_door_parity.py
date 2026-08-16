@@ -74,6 +74,22 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="config.auto_research",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/config/auto-research"),
+            ("PUT", f"{V1}/config/auto-research"),
+        ),
+        mcp=(),
+        reason=(
+            "Arming the research loop is an operator act, and the loop's own "
+            "door is an MCP tool — so an MCP twin here would let the caller "
+            "that runs the loop also switch it on, which is the control this "
+            "row exists to keep with the human. Same shape as the "
+            "distribution config above and for the same reason."
+        ),
+    ),
+    Surface(
         name="documents.reads",
         status=REST_ONLY,
         rest=(

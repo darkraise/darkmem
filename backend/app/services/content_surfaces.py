@@ -587,6 +587,11 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # (`tests/test_block_retrieval.py` proves a foreign project's blocks
     # cannot consume the probe's limit), and the connections query scopes the
     # same way (`tests/test_document_connections.py`).
+    # The auto_research config row (T3.28): an arm switch and two budgets.
+    # No memory content crosses — it configures whether the research loop may
+    # run at all, and the rows a run files are the capture doors' surface.
+    "GET /api/v1/config/auto-research",
+    "PUT /api/v1/config/auto-research",
     "GET /api/v1/documents",
     "GET /api/v1/documents/{document_id}/summary",
     "GET /api/v1/documents/{document_id}/connections",
