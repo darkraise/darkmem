@@ -12,8 +12,12 @@ unattributable. `TestNullKeyNeverDrops` proves the opposite: an unattributed
 call still produces an `events` row with both columns `NULL`, never zero
 rows. `TestKeyedCallStampsBoth` proves the other end — a real `dmk_`
 credential's id and name land on the row — using the same throwaway
-`require_scope`-gated app `test_api_keys.py` uses, since no shipped route
-assigns a scope yet (T4.03).
+`require_scope`-gated app `test_api_keys.py` uses. That was originally because
+no shipped route assigned a scope; T4.05 wired the push webhook, so one does
+(E4 review, M5). The throwaway app is kept because it exercises the *stamping*
+against an arbitrary keyed route rather than against the single route that
+happens to exist — `tests/test_keyed_call_observability.py` covers the real one
+end to end.
 """
 from __future__ import annotations
 

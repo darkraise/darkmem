@@ -154,6 +154,27 @@ describe("per-memory timeline — who did what, with which key", () => {
     ).not.toBeInTheDocument()
   })
 
+  it("a keyed row says the key list was unreadable, never nothing at all", async () => {
+    // E4 review M1: a *failed* key-list read left `keys` undefined forever,
+    // which the loading guard then read as "still loading" — so a keyed row
+    // rendered with no key indication, attributing a programmatic call to the
+    // human. The failure is decided and must say so.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path.startsWith("/events")) {
+        return Promise.resolve({ items: [event()], total: 1 })
+      }
+      if (path === "/api-keys") return Promise.reject(new Error("boom"))
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<MemoryEventTimeline memoryId={MEMORY_ID} />, { wrapper })
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("key: unresolvable — key list unreadable"),
+      ).toBeInTheDocument(),
+    )
+  })
+
   it("does not flag every keyed row as unresolved while the key list is still loading", async () => {
     vi.mocked(apiFetch).mockImplementation((path: string) => {
       if (path.startsWith("/events")) {

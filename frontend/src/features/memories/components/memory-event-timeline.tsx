@@ -9,23 +9,33 @@ function formatDateTime(iso: string): string {
 
 /** What a row says about who made the call.
  *
- * Three states, never two: keyed, session, and *keyed by a key this box can no
- * longer name*. The third exists because `events.api_key_id` carries no
- * foreign key — a row deleted straight from the database leaves history
- * pointing at nothing — and collapsing it into "session" would attribute a
- * programmatic call to the human. Ordinary revocation is not this case:
- * revoking keeps the row, so a revoked key still names itself here.
+ * Four states, never two: keyed, session, *keyed by a key this box can no
+ * longer name*, and *keyed but the key list could not be read*. The third
+ * exists because `events.api_key_id` carries no foreign key — a row deleted
+ * straight from the database leaves history pointing at nothing — and
+ * collapsing it into "session" would attribute a programmatic call to the
+ * human. Ordinary revocation is not this case: revoking keeps the row, so a
+ * revoked key still names itself here.
+ *
+ * The fourth was the collapse this docstring already forbade and the code
+ * still performed (E4 epic review, M1): on a *failed* key-list read `keys`
+ * stays undefined forever, which is indistinguishable from the still-loading
+ * case unless the error is threaded in — so a keyed row rendered with no key
+ * indication at all, exactly the attribution to the human that the third state
+ * exists to prevent.
  */
 export interface ActorAttribution {
   actor: string | null
   keyLabel: string | null
   keyRevoked: boolean
   keyUnresolved: boolean
+  keyListUnreadable: boolean
 }
 
 export function attributeEvent(
   event: { actor: string | null; api_key_id: string | null },
   keys: ApiKeySummary[] | undefined,
+  keyListFailed = false,
 ): ActorAttribution {
   if (!event.api_key_id) {
     return {
@@ -33,6 +43,7 @@ export function attributeEvent(
       keyLabel: null,
       keyRevoked: false,
       keyUnresolved: false,
+      keyListUnreadable: false,
     }
   }
   const key = keys?.find((candidate) => candidate.id === event.api_key_id)
@@ -42,8 +53,10 @@ export function attributeEvent(
       keyLabel: null,
       keyRevoked: false,
       // Undecided while the list is still loading — an unresolved marker shown
-      // then would flicker onto every keyed row and read as data loss.
+      // then would flicker onto every keyed row and read as data loss. A read
+      // that *failed* is decided, and says so.
       keyUnresolved: keys !== undefined,
+      keyListUnreadable: keys === undefined && keyListFailed,
     }
   }
   return {
@@ -51,11 +64,12 @@ export function attributeEvent(
     keyLabel: key.name,
     keyRevoked: key.revoked_at !== null,
     keyUnresolved: false,
+    keyListUnreadable: false,
   }
 }
 
 function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
-  const { actor, keyLabel, keyRevoked, keyUnresolved } = attribution
+  const { actor, keyLabel, keyRevoked, keyUnresolved, keyListUnreadable } = attribution
   return (
     <span className="flex flex-wrap items-center gap-1.5">
       {keyLabel !== null ? (
@@ -72,6 +86,10 @@ function AttributionCell({ attribution }: { attribution: ActorAttribution }) {
       ) : keyUnresolved ? (
         <Badge variant="outline" size="sm" className="font-mono">
           key: no longer listed
+        </Badge>
+      ) : keyListUnreadable ? (
+        <Badge variant="outline" size="sm" className="font-mono">
+          key: unresolvable — key list unreadable
         </Badge>
       ) : null}
       {actor ? (
@@ -103,7 +121,7 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
   // Revoked keys included — see `useApiKeys`. Its failure is not this card's
   // failure: an unlabelled key is worse than no card, but a missing card for
   // rows that exist is worse still, so the timeline renders either way.
-  const { data: keys } = useApiKeys()
+  const { data: keys, isError: keyListFailed } = useApiKeys()
 
   if (isLoading) return <Skeleton className="h-24 w-full rounded-md" />
 
@@ -138,7 +156,9 @@ export function MemoryEventTimeline({ memoryId }: { memoryId: string }) {
           <Badge variant="outline" size="sm" className="shrink-0 font-mono">
             {event.event_type}
           </Badge>
-          <AttributionCell attribution={attributeEvent(event, keys)} />
+          <AttributionCell
+            attribution={attributeEvent(event, keys, keyListFailed)}
+          />
         </div>
       ))}
       {events && events.total > rows.length && (
