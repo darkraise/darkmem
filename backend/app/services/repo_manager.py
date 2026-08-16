@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
@@ -207,6 +207,38 @@ class RepoManager:
 
     async def get(self, repo_id: UUID) -> Repository | None:
         return await self.session.get(Repository, repo_id)
+
+    # The statuses that mean "a run already owns this repo". Named once: the
+    # webhook route, the reindex route and the polling job all have to agree,
+    # and they used to agree by three copies of the same tuple.
+    BUSY_STATUSES = ("indexing", "cloning")
+
+    async def claim_for_indexing(self, repo_id: UUID, *, message: str) -> bool:
+        """Atomically take the indexing claim. False means someone else holds it.
+
+        Read-then-write is not enough and that is the whole point of this method
+        (T4.16). The webhook route, the reindex route and `repo_sync` each used
+        to check `repo.status` and then assign it, so two callers could both
+        read `ready` and both proceed — `repo_sync` did not read the status at
+        all, so a poll tick landing inside a webhook run indexed the same
+        repository twice concurrently. The predicate lives in the UPDATE, so
+        exactly one caller's statement can match.
+
+        Commits, because the claim is only worth anything once it is visible to
+        the other callers — a claim held in an uncommitted transaction is a
+        claim nobody else can lose.
+        """
+        claimed = (await self.session.execute(
+            update(Repository)
+            .where(
+                Repository.id == repo_id,
+                Repository.status.notin_(self.BUSY_STATUSES),
+            )
+            .values(status="indexing", status_message=message)
+            .returning(Repository.id)
+        )).scalar_one_or_none()
+        await self.session.commit()
+        return claimed is not None
 
     async def list_all(self) -> list[dict]:
         repos = (await self.session.execute(select(Repository))).scalars().all()
