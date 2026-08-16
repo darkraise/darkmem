@@ -1,33 +1,18 @@
 [
   {
-    "id": "eg-0466",
-    "premise": "powerdns deployed on quire-03",
-    "hypothesis": "powerdns is deployed on spire-01."
+    "id": "eg-0669",
+    "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
+    "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key."
   },
   {
-    "id": "eg-0467",
-    "premise": "wisp-01 deployed on port 9500",
-    "hypothesis": "Port 9500 is deployed on wisp-01."
+    "id": "eg-0666",
+    "premise": "The quill-worker fleet ran on Ubuntu 22.04 from 2023-11-20 until the rebuild of 2025-09-12, which moved every node in the fleet to Debian 12.",
+    "hypothesis": "The quill-worker fleet now runs on Ubuntu 22.04."
   },
   {
-    "id": "eg-0667",
-    "premise": "The Whitlock community Matrix homeserver accepted new registrations from 2021-07-02 until registrations were closed permanently on 2025-04-30.",
-    "hypothesis": "The Whitlock community Matrix homeserver accepts new registrations."
-  },
-  {
-    "id": "eg-0503",
-    "premise": "graph-01 deployed on lb-01",
-    "hypothesis": "lb-01 is deployed on graph-01."
-  },
-  {
-    "id": "eg-0448",
-    "premise": "wazuh deployed on umbra-04",
-    "hypothesis": "The umbra-04 host is deployed on wazuh."
-  },
-  {
-    "id": "eg-0660",
-    "premise": "Since the 2025-05-19 cutover, log shipping out of the Thornwood rack has been handled by Vector; up to that cutover it was handled by Filebeat.",
-    "hypothesis": "Vector was shipping logs out of the Thornwood rack in February 2025."
+    "id": "eg-0517",
+    "premise": "rabbitmq deployed on nimbus-02",
+    "hypothesis": "nimbus-02 is deployed on RabbitMQ."
   },
   {
     "id": "eg-0676",
@@ -35,29 +20,9 @@
     "hypothesis": "The wildcard TLS certificate for *.tarnwood.dev is valid."
   },
   {
-    "id": "eg-0546",
-    "premise": "consul uses etcd",
-    "hypothesis": "Consul uses at least one other component."
-  },
-  {
-    "id": "eg-0630",
-    "premise": "order-sync deployed on nimbus-02",
-    "hypothesis": "Order-sync is deployed on ledger-02."
-  },
-  {
-    "id": "eg-0567",
-    "premise": "roster-sync deployed on tether-02",
-    "hypothesis": "roster-sync is deployed on tether-05."
-  },
-  {
-    "id": "eg-0583",
-    "premise": "The terraform state file for the platform stack is held in the s3 bucket tf-state-prod.",
-    "hypothesis": "The terraform state file for the platform stack is held in the s3 bucket tf-state-staging."
-  },
-  {
-    "id": "eg-0595",
-    "premise": "ansible deployed on infra-02",
-    "hypothesis": "infra-02 is deployed on ansible."
+    "id": "eg-0439",
+    "premise": "opentelemetry deployed on onyx-03",
+    "hypothesis": "onyx-03 is deployed on OpenTelemetry."
   },
   {
     "id": "eg-0574",
@@ -65,54 +30,29 @@
     "hypothesis": "tether-02 is deployed on caddy."
   },
   {
-    "id": "eg-0673",
-    "premise": "The Ambleside monitoring stack sent alerts through PagerDuty from 2023-09-14 until 2026-02-28, after which alerting was routed to Opsgenie.",
-    "hypothesis": "During 2025 the Ambleside monitoring stack routed alerts to Opsgenie."
+    "id": "eg-0646",
+    "premise": "the nightly index rebuild for search-02 runs at 02:15 UTC",
+    "hypothesis": "The nightly index rebuild for search-02 runs at 03:45 UTC."
   },
   {
-    "id": "eg-0522",
-    "premise": "haproxy deployed on memgraph",
-    "hypothesis": "Memgraph is deployed on HAProxy."
+    "id": "eg-0503",
+    "premise": "graph-01 deployed on lb-01",
+    "hypothesis": "lb-01 is deployed on graph-01."
   },
   {
-    "id": "eg-0535",
-    "premise": "concourse deployed on build-04",
-    "hypothesis": "build-04 is deployed on Concourse."
+    "id": "eg-0647",
+    "premise": "the postgres instance backing the metrics warehouse runs version 15.4",
+    "hypothesis": "The postgres instance backing the metrics warehouse runs version 14.9."
   },
   {
-    "id": "eg-0599",
-    "premise": "syncthing deployed on spire-01",
-    "hypothesis": "It is on spire-01 that syncthing is deployed."
+    "id": "eg-0498",
+    "premise": "graylog deployed on log-02",
+    "hypothesis": "Graylog has been deployed on log-02."
   },
   {
-    "id": "eg-0491",
-    "premise": "The Gitea HTTP listener on forge-01 is bound to port 3000.",
-    "hypothesis": "The Gitea HTTP listener on forge-01 is bound to port 8080."
-  },
-  {
-    "id": "eg-0568",
-    "premise": "infisical replaces .env files",
-    "hypothesis": "Infisical replaces HashiCorp Vault."
-  },
-  {
-    "id": "eg-0439",
-    "premise": "opentelemetry deployed on onyx-03",
-    "hypothesis": "onyx-03 is deployed on OpenTelemetry."
-  },
-  {
-    "id": "eg-0531",
-    "premise": "core-03 has part consul",
-    "hypothesis": "core-03 is a component of Consul."
-  },
-  {
-    "id": "eg-0642",
-    "premise": "ticket-router deployed on wisp-01",
-    "hypothesis": "Wisp-01 runs as a workload on ticket-router."
-  },
-  {
-    "id": "eg-0662",
-    "premise": "The Ferndale office VPN used WireGuard from 2023-02-01 through 2026-01-09, when it was replaced by a Tailscale tailnet.",
-    "hypothesis": "In August 2024 the Ferndale office VPN was a Tailscale tailnet."
+    "id": "eg-0515",
+    "premise": "quota-watcher deployed on cpu",
+    "hypothesis": "The CPU is deployed on quota-watcher."
   },
   {
     "id": "eg-0631",
@@ -120,14 +60,69 @@
     "hypothesis": "Etcd is deployed on core-03."
   },
   {
-    "id": "eg-0672",
-    "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
-    "hypothesis": "hexley-cdn currently caches edge objects for 24 hours."
+    "id": "eg-0664",
+    "premise": "Since the 2026-02-03 storage migration, the media-archive share has been backed by a ZFS mirror; until that migration it sat on a single ext4 disk.",
+    "hypothesis": "In late 2025 the media-archive share was backed by a ZFS mirror."
   },
   {
-    "id": "eg-0669",
-    "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
-    "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key."
+    "id": "eg-0667",
+    "premise": "The Whitlock community Matrix homeserver accepted new registrations from 2021-07-02 until registrations were closed permanently on 2025-04-30.",
+    "hypothesis": "The Whitlock community Matrix homeserver accepts new registrations."
+  },
+  {
+    "id": "eg-0630",
+    "premise": "order-sync deployed on nimbus-02",
+    "hypothesis": "Order-sync is deployed on ledger-02."
+  },
+  {
+    "id": "eg-0537",
+    "premise": "The Redis instance on cache-04 is configured with a 512 MB maxmemory limit.",
+    "hypothesis": "The Redis instance on cache-04 is configured with a 2 GB maxmemory limit."
+  },
+  {
+    "id": "eg-0552",
+    "premise": "files-01 deployed on batch-01",
+    "hypothesis": "batch-01 runs as a deployment on files-01."
+  },
+  {
+    "id": "eg-0462",
+    "premise": "The ansible controller authenticates to files-01 with a token whose lifetime is 12 hours.",
+    "hypothesis": "The ansible controller authenticates to files-01 with a token whose lifetime is 24 hours."
+  },
+  {
+    "id": "eg-0438",
+    "premise": "celery deployed on jobs-05",
+    "hypothesis": "jobs-05 is deployed on Celery."
+  },
+  {
+    "id": "eg-0448",
+    "premise": "wazuh deployed on umbra-04",
+    "hypothesis": "The umbra-04 host is deployed on wazuh."
+  },
+  {
+    "id": "eg-0675",
+    "premise": "Since the tenancy split of 2026-04-12 the Hollowmere billing service has stored invoices in its own Postgres schema; before the split it shared the core schema with the account service.",
+    "hypothesis": "The Hollowmere billing service stored invoices in its own Postgres schema in January 2026."
+  },
+  {
+    "id": "eg-0477",
+    "premise": "lb-01 deployed on memgraph",
+    "hypothesis": "memgraph is deployed on lb-01."
+  },
+  {
+    "id": "eg-0645",
+    "premise": "invoice-render deployed on tabby-03",
+    "hypothesis": "Invoice-render is deployed on tabby-01."
+  },
+  {
+    "id": "eg-0506",
+    "premise": "airflow depends on clickhouse",
+    "hypothesis": "Airflow needs ClickHouse in order to run."
+  },
+  {
+    "id": "eg-0661",
+    "premise": "The atlas-db primary has been running PostgreSQL 16.3 since 2025-08-22, and no upgrade has been scheduled.",
+    "hypothesis": "By March 2026 the atlas-db primary was no longer running PostgreSQL 16.3."
   },
   {
     "id": "eg-0518",
@@ -135,19 +130,29 @@
     "hypothesis": "The PostgreSQL instance on ledger-02 runs version 13.9."
   },
   {
-    "id": "eg-0620",
-    "premise": "osquery deployed on pivot-01",
-    "hypothesis": "Pivot-01 is deployed on osquery."
+    "id": "eg-0535",
+    "premise": "concourse deployed on build-04",
+    "hypothesis": "build-04 is deployed on Concourse."
   },
   {
-    "id": "eg-0519",
-    "premise": "ticket-router deployed on wisp-01",
-    "hypothesis": "ticket-router is deployed on tether-02."
+    "id": "eg-0656",
+    "premise": "concourse deployed on build-04",
+    "hypothesis": "All of Concourse's pipelines execute on build-04."
   },
   {
-    "id": "eg-0474",
-    "premise": "jump-01 uses meridian",
-    "hypothesis": "meridian is used by jump-01."
+    "id": "eg-0655",
+    "premise": "woodpecker ci deployed on tether-02",
+    "hypothesis": "Tether-02 is deployed on Woodpecker CI."
+  },
+  {
+    "id": "eg-0624",
+    "premise": "memgraph deployed on graph-01",
+    "hypothesis": "Memgraph is deployed on data-06."
+  },
+  {
+    "id": "eg-0707",
+    "premise": "postfix deployed on mail-01",
+    "hypothesis": "mail-01 is the host that carries the postfix installation."
   },
   {
     "id": "eg-0644",
@@ -155,9 +160,279 @@
     "hypothesis": "Lb-01 is deployed on HAProxy."
   },
   {
+    "id": "eg-0611",
+    "premise": "consul deployed on core-03",
+    "hypothesis": "Consul is deployed on spire-01."
+  },
+  {
+    "id": "eg-0467",
+    "premise": "wisp-01 deployed on port 9500",
+    "hypothesis": "Port 9500 is deployed on wisp-01."
+  },
+  {
+    "id": "eg-0471",
+    "premise": "etcd deployed on core-03",
+    "hypothesis": "etcd is deployed on infra-02."
+  },
+  {
+    "id": "eg-0522",
+    "premise": "haproxy deployed on memgraph",
+    "hypothesis": "Memgraph is deployed on HAProxy."
+  },
+  {
+    "id": "eg-0444",
+    "premise": "The gitea instance on forge-02 serves its web interface on port 3000.",
+    "hypothesis": "The gitea instance on forge-02 serves its web interface on port 8080."
+  },
+  {
+    "id": "eg-0568",
+    "premise": "infisical replaces .env files",
+    "hypothesis": "Infisical replaces HashiCorp Vault."
+  },
+  {
+    "id": "eg-0529",
+    "premise": "alert storms deployed on lb-01",
+    "hypothesis": "Alert storms are deployed on etl-02."
+  },
+  {
+    "id": "eg-0670",
+    "premise": "Since 2025-03-09 the Ridgeline CI runners have been provisioned by Terraform; up to that date they were provisioned by hand-maintained Ansible playbooks.",
+    "hypothesis": "Ridgeline's CI runners were provisioned by Terraform in October 2024."
+  },
+  {
     "id": "eg-0565",
     "premise": "authelia deployed on auth-01",
     "hypothesis": "auth-01 is hosted on Authelia."
+  },
+  {
+    "id": "eg-0618",
+    "premise": "notify-relay deployed on neon-04",
+    "hypothesis": "Notify-relay is deployed on talon-01."
+  },
+  {
+    "id": "eg-0457",
+    "premise": "The graylog deployment on log-02 runs version 5.2.7.",
+    "hypothesis": "The graylog deployment on log-02 runs version 4.3.9."
+  },
+  {
+    "id": "eg-0623",
+    "premise": "pgadmin deployed on quire-03",
+    "hypothesis": "Pgadmin is deployed on core-03."
+  },
+  {
+    "id": "eg-0579",
+    "premise": "The postgres-01 instance listens on port 5433.",
+    "hypothesis": "The postgres-01 instance listens on port 5432."
+  },
+  {
+    "id": "eg-0502",
+    "premise": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of twelve hours.",
+    "hypothesis": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of two hours."
+  },
+  {
+    "id": "eg-0588",
+    "premise": "The images-02 worker pool runs anvil-render version 2.4.",
+    "hypothesis": "The images-02 worker pool runs anvil-render version 2.9."
+  },
+  {
+    "id": "eg-0672",
+    "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
+    "hypothesis": "hexley-cdn currently caches edge objects for 24 hours."
+  },
+  {
+    "id": "eg-0472",
+    "premise": "powerdns uses fulfillment network",
+    "hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs."
+  },
+  {
+    "id": "eg-0500",
+    "premise": "The wiki-render worker is deployed on the plum-06 host.",
+    "hypothesis": "The plum-06 host is deployed on the wiki-render worker."
+  },
+  {
+    "id": "eg-0635",
+    "premise": "quire-03 depends on qemu",
+    "hypothesis": "Quire-03 has at least one dependency."
+  },
+  {
+    "id": "eg-0466",
+    "premise": "powerdns deployed on quire-03",
+    "hypothesis": "powerdns is deployed on spire-01."
+  },
+  {
+    "id": "eg-0671",
+    "premise": "Dalia Fenwick chaired the Sparrow Foundation's infrastructure working group from 2024-05-01 until stepping down on 2026-06-30, when Idris Alarcon took the chair.",
+    "hypothesis": "Dalia Fenwick chairs the Sparrow Foundation's infrastructure working group."
+  },
+  {
+    "id": "eg-0491",
+    "premise": "The Gitea HTTP listener on forge-01 is bound to port 3000.",
+    "hypothesis": "The Gitea HTTP listener on forge-01 is bound to port 8080."
+  },
+  {
+    "id": "eg-0542",
+    "premise": "loki deployed on obs-02",
+    "hypothesis": "Loki is deployed on obs-04."
+  },
+  {
+    "id": "eg-0617",
+    "premise": "rclone deployed on slate-03",
+    "hypothesis": "Rclone is deployed on onyx-03."
+  },
+  {
+    "id": "eg-0620",
+    "premise": "osquery deployed on pivot-01",
+    "hypothesis": "Pivot-01 is deployed on osquery."
+  },
+  {
+    "id": "eg-0674",
+    "premise": "The Corvid pipeline has published an SBOM attestation with every release since the supply-chain review of 2025-10-07, an arrangement that remains in force with no end date set.",
+    "hypothesis": "By July 2026 the Corvid pipeline had stopped publishing SBOM attestations with its releases."
+  },
+  {
+    "id": "eg-0673",
+    "premise": "The Ambleside monitoring stack sent alerts through PagerDuty from 2023-09-14 until 2026-02-28, after which alerting was routed to Opsgenie.",
+    "hypothesis": "During 2025 the Ambleside monitoring stack routed alerts to Opsgenie."
+  },
+  {
+    "id": "eg-0519",
+    "premise": "ticket-router deployed on wisp-01",
+    "hypothesis": "ticket-router is deployed on tether-02."
+  },
+  {
+    "id": "eg-0454",
+    "premise": "qemu has part hypervisor",
+    "hypothesis": "The hypervisor has qemu as one of its parts."
+  },
+  {
+    "id": "eg-0643",
+    "premise": "quota-watcher uses powerdns",
+    "hypothesis": "PowerDNS uses quota-watcher."
+  },
+  {
+    "id": "eg-0533",
+    "premise": "The deploy pipeline for atlas-api tracks the release-2026.03 branch.",
+    "hypothesis": "The deploy pipeline for atlas-api tracks the release-2026.01 branch."
+  },
+  {
+    "id": "eg-0665",
+    "premise": "Ravenna Systems has distributed the sable-agent collector under the Apache-2.0 licence since its first release on 2024-04-16, and the licence has not changed since.",
+    "hypothesis": "As of January 2026, sable-agent was not distributed under the Apache-2.0 licence."
+  },
+  {
+    "id": "eg-0659",
+    "premise": "Between 2024-01-08 and 2025-10-03 the orchard-api service authenticated clients with HMAC-signed session cookies. The cookie scheme was retired on 2025-10-03 in favour of OAuth 2.1 bearer tokens.",
+    "hypothesis": "orchard-api currently authenticates clients with HMAC-signed session cookies."
+  },
+  {
+    "id": "eg-0662",
+    "premise": "The Ferndale office VPN used WireGuard from 2023-02-01 through 2026-01-09, when it was replaced by a Tailscale tailnet.",
+    "hypothesis": "In August 2024 the Ferndale office VPN was a Tailscale tailnet."
+  },
+  {
+    "id": "eg-0569",
+    "premise": "icinga deployed on mon-05",
+    "hypothesis": "Icinga is deployed on mon-07."
+  },
+  {
+    "id": "eg-0525",
+    "premise": "anvil-render depends on files-01",
+    "hypothesis": "anvil-render cannot start at all while files-01 is unavailable."
+  },
+  {
+    "id": "eg-0660",
+    "premise": "Since the 2025-05-19 cutover, log shipping out of the Thornwood rack has been handled by Vector; up to that cutover it was handled by Filebeat.",
+    "hypothesis": "Vector was shipping logs out of the Thornwood rack in February 2025."
+  },
+  {
+    "id": "eg-0642",
+    "premise": "ticket-router deployed on wisp-01",
+    "hypothesis": "Wisp-01 runs as a workload on ticket-router."
+  },
+  {
+    "id": "eg-0528",
+    "premise": "teleport deployed on warden-02",
+    "hypothesis": "Teleport is deployed on wisp-01."
+  },
+  {
+    "id": "eg-0567",
+    "premise": "roster-sync deployed on tether-02",
+    "hypothesis": "roster-sync is deployed on tether-05."
+  },
+  {
+    "id": "eg-0607",
+    "premise": "imagemagick deployed on images-02",
+    "hypothesis": "Images-02 hosts at least one deployed component."
+  },
+  {
+    "id": "eg-0434",
+    "premise": "syncthing uses vane-01",
+    "hypothesis": "vane-01 is scheduled for a memory upgrade next quarter."
+  },
+  {
+    "id": "eg-0478",
+    "premise": "rabbitmq has part order-events",
+    "hypothesis": "RabbitMQ is one of the parts that make up order-events."
+  },
+  {
+    "id": "eg-0526",
+    "premise": "The nightly backup job for wren-02 writes its archives to the backups-cold bucket.",
+    "hypothesis": "The nightly backup job for wren-02 writes its archives to the backups-warm bucket."
+  },
+  {
+    "id": "eg-0587",
+    "premise": "clickhouse deployed on data-06",
+    "hypothesis": "data-06 is deployed on clickhouse."
+  },
+  {
+    "id": "eg-0663",
+    "premise": "Grafana dashboards for the Cobalt homelab were served from dash.cobalt.internal between 2024-10-05 and 2026-03-31. The hostname was retired on 2026-04-01 in favour of grafana.cobalt.internal.",
+    "hypothesis": "The Cobalt homelab's Grafana dashboards are served from dash.cobalt.internal."
+  },
+  {
+    "id": "eg-0583",
+    "premise": "The terraform state file for the platform stack is held in the s3 bucket tf-state-prod.",
+    "hypothesis": "The terraform state file for the platform stack is held in the s3 bucket tf-state-staging."
+  },
+  {
+    "id": "eg-0549",
+    "premise": "authelia deployed on auth-02",
+    "hypothesis": "auth-02 is deployed on Authelia."
+  },
+  {
+    "id": "eg-0633",
+    "premise": "graph-01 deployed on lb-01",
+    "hypothesis": "Graph-01 is deployed on lb-01 and has served traffic there without an unplanned outage since rollout."
+  },
+  {
+    "id": "eg-0488",
+    "premise": "Syncthing is deployed on the studio-05 host.",
+    "hypothesis": "The studio-05 host is deployed on Syncthing."
+  },
+  {
+    "id": "eg-0595",
+    "premise": "ansible deployed on infra-02",
+    "hypothesis": "infra-02 is deployed on ansible."
+  },
+  {
+    "id": "eg-0507",
+    "premise": "parcel-tracker deployed on pallet-02",
+    "hypothesis": "pallet-02 is where parcel-tracker is deployed."
+  },
+  {
+    "id": "eg-0668",
+    "premise": "Nightly index rebuilds for the Larkspur search cluster ran at 02:00 UTC from 2024-06-01 until 2025-12-14; since 2025-12-15 they have run at 04:30 UTC.",
+    "hypothesis": "Throughout 2024, Larkspur's nightly index rebuilds ran at 04:30 UTC."
+  },
+  {
+    "id": "eg-0657",
+    "premise": "From 2024-03-11 until 2025-11-30 the Halberd cluster's ingress was terminated by Traefik v2.10. On 2025-12-01 Traefik was replaced by Caddy 2.8, which has terminated Halberd ingress since.",
+    "hypothesis": "Ingress for the Halberd cluster is terminated by Traefik v2.10."
+  },
+  {
+    "id": "eg-0638",
+    "premise": "auth-01 deployed on auth-02",
+    "hypothesis": "Auth-02 is deployed on auth-01."
   },
   {
     "id": "eg-0494",
@@ -170,298 +445,23 @@
     "hypothesis": "The images-02 render queue writes its state file to the bucket anvil-cache."
   },
   {
-    "id": "eg-0506",
-    "premise": "airflow depends on clickhouse",
-    "hypothesis": "Airflow needs ClickHouse in order to run."
-  },
-  {
-    "id": "eg-0549",
-    "premise": "authelia deployed on auth-02",
-    "hypothesis": "auth-02 is deployed on Authelia."
-  },
-  {
-    "id": "eg-0477",
-    "premise": "lb-01 deployed on memgraph",
-    "hypothesis": "memgraph is deployed on lb-01."
-  },
-  {
-    "id": "eg-0542",
-    "premise": "loki deployed on obs-02",
-    "hypothesis": "Loki is deployed on obs-04."
-  },
-  {
-    "id": "eg-0462",
-    "premise": "The ansible controller authenticates to files-01 with a token whose lifetime is 12 hours.",
-    "hypothesis": "The ansible controller authenticates to files-01 with a token whose lifetime is 24 hours."
-  },
-  {
-    "id": "eg-0588",
-    "premise": "The images-02 worker pool runs anvil-render version 2.4.",
-    "hypothesis": "The images-02 worker pool runs anvil-render version 2.9."
-  },
-  {
-    "id": "eg-0675",
-    "premise": "Since the tenancy split of 2026-04-12 the Hollowmere billing service has stored invoices in its own Postgres schema; before the split it shared the core schema with the account service.",
-    "hypothesis": "The Hollowmere billing service stored invoices in its own Postgres schema in January 2026."
-  },
-  {
-    "id": "eg-0650",
-    "premise": "alert storms deployed on lb-01",
-    "hypothesis": "Alert storms are deployed on at least one host."
-  },
-  {
-    "id": "eg-0659",
-    "premise": "Between 2024-01-08 and 2025-10-03 the orchard-api service authenticated clients with HMAC-signed session cookies. The cookie scheme was retired on 2025-10-03 in favour of OAuth 2.1 bearer tokens.",
-    "hypothesis": "orchard-api currently authenticates clients with HMAC-signed session cookies."
-  },
-  {
-    "id": "eg-0451",
-    "premise": "rclone uses nimbus-archive",
-    "hypothesis": "rclone is configured with a bandwidth ceiling of 40 MiB/s."
-  },
-  {
-    "id": "eg-0529",
-    "premise": "alert storms deployed on lb-01",
-    "hypothesis": "Alert storms are deployed on etl-02."
-  },
-  {
-    "id": "eg-0569",
-    "premise": "icinga deployed on mon-05",
-    "hypothesis": "Icinga is deployed on mon-07."
-  },
-  {
-    "id": "eg-0657",
-    "premise": "From 2024-03-11 until 2025-11-30 the Halberd cluster's ingress was terminated by Traefik v2.10. On 2025-12-01 Traefik was replaced by Caddy 2.8, which has terminated Halberd ingress since.",
-    "hypothesis": "Ingress for the Halberd cluster is terminated by Traefik v2.10."
-  },
-  {
-    "id": "eg-0579",
-    "premise": "The postgres-01 instance listens on port 5433.",
-    "hypothesis": "The postgres-01 instance listens on port 5432."
-  },
-  {
-    "id": "eg-0478",
-    "premise": "rabbitmq has part order-events",
-    "hypothesis": "RabbitMQ is one of the parts that make up order-events."
-  },
-  {
-    "id": "eg-0663",
-    "premise": "Grafana dashboards for the Cobalt homelab were served from dash.cobalt.internal between 2024-10-05 and 2026-03-31. The hostname was retired on 2026-04-01 in favour of grafana.cobalt.internal.",
-    "hypothesis": "The Cobalt homelab's Grafana dashboards are served from dash.cobalt.internal."
-  },
-  {
-    "id": "eg-0457",
-    "premise": "The graylog deployment on log-02 runs version 5.2.7.",
-    "hypothesis": "The graylog deployment on log-02 runs version 4.3.9."
-  },
-  {
-    "id": "eg-0665",
-    "premise": "Ravenna Systems has distributed the sable-agent collector under the Apache-2.0 licence since its first release on 2024-04-16, and the licence has not changed since.",
-    "hypothesis": "As of January 2026, sable-agent was not distributed under the Apache-2.0 licence."
-  },
-  {
-    "id": "eg-0655",
-    "premise": "woodpecker ci deployed on tether-02",
-    "hypothesis": "Tether-02 is deployed on Woodpecker CI."
-  },
-  {
-    "id": "eg-0484",
-    "premise": "zulip uses ticket-router",
-    "hypothesis": "Zulip uses ticket-router to route every inbound support request."
-  },
-  {
-    "id": "eg-0555",
-    "premise": "ffmpeg deployed on media-04",
-    "hypothesis": "media-04 is deployed on top of FFmpeg."
-  },
-  {
-    "id": "eg-0671",
-    "premise": "Dalia Fenwick chaired the Sparrow Foundation's infrastructure working group from 2024-05-01 until stepping down on 2026-06-30, when Idris Alarcon took the chair.",
-    "hypothesis": "Dalia Fenwick chairs the Sparrow Foundation's infrastructure working group."
-  },
-  {
-    "id": "eg-0646",
-    "premise": "the nightly index rebuild for search-02 runs at 02:15 UTC",
-    "hypothesis": "The nightly index rebuild for search-02 runs at 03:45 UTC."
-  },
-  {
-    "id": "eg-0515",
-    "premise": "quota-watcher deployed on cpu",
-    "hypothesis": "The CPU is deployed on quota-watcher."
-  },
-  {
-    "id": "eg-0429",
-    "premise": "osquery causes quota-watcher",
-    "hypothesis": "Osquery ships a scheduled query pack for file-integrity monitoring."
-  },
-  {
-    "id": "eg-0537",
-    "premise": "The Redis instance on cache-04 is configured with a 512 MB maxmemory limit.",
-    "hypothesis": "The Redis instance on cache-04 is configured with a 2 GB maxmemory limit."
-  },
-  {
-    "id": "eg-0664",
-    "premise": "Since the 2026-02-03 storage migration, the media-archive share has been backed by a ZFS mirror; until that migration it sat on a single ext4 disk.",
-    "hypothesis": "In late 2025 the media-archive share was backed by a ZFS mirror."
-  },
-  {
-    "id": "eg-0661",
-    "premise": "The atlas-db primary has been running PostgreSQL 16.3 since 2025-08-22, and no upgrade has been scheduled.",
-    "hypothesis": "By March 2026 the atlas-db primary was no longer running PostgreSQL 16.3."
-  },
-  {
-    "id": "eg-0647",
-    "premise": "the postgres instance backing the metrics warehouse runs version 15.4",
-    "hypothesis": "The postgres instance backing the metrics warehouse runs version 14.9."
-  },
-  {
-    "id": "eg-0552",
-    "premise": "files-01 deployed on batch-01",
-    "hypothesis": "batch-01 runs as a deployment on files-01."
-  },
-  {
-    "id": "eg-0502",
-    "premise": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of twelve hours.",
-    "hypothesis": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of two hours."
-  },
-  {
-    "id": "eg-0668",
-    "premise": "Nightly index rebuilds for the Larkspur search cluster ran at 02:00 UTC from 2024-06-01 until 2025-12-14; since 2025-12-15 they have run at 04:30 UTC.",
-    "hypothesis": "Throughout 2024, Larkspur's nightly index rebuilds ran at 04:30 UTC."
-  },
-  {
-    "id": "eg-0528",
-    "premise": "teleport deployed on warden-02",
-    "hypothesis": "Teleport is deployed on wisp-01."
-  },
-  {
-    "id": "eg-0500",
-    "premise": "The wiki-render worker is deployed on the plum-06 host.",
-    "hypothesis": "The plum-06 host is deployed on the wiki-render worker."
-  },
-  {
-    "id": "eg-0587",
-    "premise": "clickhouse deployed on data-06",
-    "hypothesis": "data-06 is deployed on clickhouse."
-  },
-  {
-    "id": "eg-0533",
-    "premise": "The deploy pipeline for atlas-api tracks the release-2026.03 branch.",
-    "hypothesis": "The deploy pipeline for atlas-api tracks the release-2026.01 branch."
-  },
-  {
     "id": "eg-0658",
     "premise": "Marlowe Labs operated the pkg-mirror-eu Debian package mirror between 2022-09-01 and 2025-07-15, when the mirror was shut down at the expiry of its hosting grant.",
     "hypothesis": "Marlowe Labs operates the pkg-mirror-eu Debian package mirror."
   },
   {
-    "id": "eg-0670",
-    "premise": "Since 2025-03-09 the Ridgeline CI runners have been provisioned by Terraform; up to that date they were provisioned by hand-maintained Ansible playbooks.",
-    "hypothesis": "Ridgeline's CI runners were provisioned by Terraform in October 2024."
+    "id": "eg-0559",
+    "premise": "celery deployed on media-04",
+    "hypothesis": "media-04 is the host Celery runs on."
   },
   {
-    "id": "eg-0623",
-    "premise": "pgadmin deployed on quire-03",
-    "hypothesis": "Pgadmin is deployed on core-03."
+    "id": "eg-0531",
+    "premise": "core-03 has part consul",
+    "hypothesis": "core-03 is a component of Consul."
   },
   {
-    "id": "eg-0526",
-    "premise": "The nightly backup job for wren-02 writes its archives to the backups-cold bucket.",
-    "hypothesis": "The nightly backup job for wren-02 writes its archives to the backups-warm bucket."
-  },
-  {
-    "id": "eg-0517",
-    "premise": "rabbitmq deployed on nimbus-02",
-    "hypothesis": "nimbus-02 is deployed on RabbitMQ."
-  },
-  {
-    "id": "eg-0692",
-    "premise": "The iris-mail relay has run Postfix 3.9 with DANE enabled since 8 March 2026.",
-    "hypothesis": "The iris-mail relay has had DANE enabled since January 2026."
-  },
-  {
-    "id": "eg-0666",
-    "premise": "The quill-worker fleet ran on Ubuntu 22.04 from 2023-11-20 until the rebuild of 2025-09-12, which moved every node in the fleet to Debian 12.",
-    "hypothesis": "The quill-worker fleet now runs on Ubuntu 22.04."
-  },
-  {
-    "id": "eg-0624",
-    "premise": "memgraph deployed on graph-01",
-    "hypothesis": "Memgraph is deployed on data-06."
-  },
-  {
-    "id": "eg-0645",
-    "premise": "invoice-render deployed on tabby-03",
-    "hypothesis": "Invoice-render is deployed on tabby-01."
-  },
-  {
-    "id": "eg-0488",
-    "premise": "Syncthing is deployed on the studio-05 host.",
-    "hypothesis": "The studio-05 host is deployed on Syncthing."
-  },
-  {
-    "id": "eg-0471",
-    "premise": "etcd deployed on core-03",
-    "hypothesis": "etcd is deployed on infra-02."
-  },
-  {
-    "id": "eg-0444",
-    "premise": "The gitea instance on forge-02 serves its web interface on port 3000.",
-    "hypothesis": "The gitea instance on forge-02 serves its web interface on port 8080."
-  },
-  {
-    "id": "eg-0656",
-    "premise": "concourse deployed on build-04",
-    "hypothesis": "All of Concourse's pipelines execute on build-04."
-  },
-  {
-    "id": "eg-0695",
-    "premise": "The DHCP reservation for printer-hall was granted on 18 June 2026 with a 30-day lease and no static binding.",
-    "hypothesis": "printer-hall now holds the same DHCP-assigned address it was granted on 18 June 2026."
-  },
-  {
-    "id": "eg-0617",
-    "premise": "rclone deployed on slate-03",
-    "hypothesis": "Rclone is deployed on onyx-03."
-  },
-  {
-    "id": "eg-0486",
-    "premise": "clickhouse depends on ledger-02",
-    "hypothesis": "ledger-02 has at least one component that depends on it."
-  },
-  {
-    "id": "eg-0418",
-    "premise": "nimbus-02 uses rabbitmq",
-    "hypothesis": "RabbitMQ is used by nimbus-02."
-  },
-  {
-    "id": "eg-0438",
-    "premise": "celery deployed on jobs-05",
-    "hypothesis": "jobs-05 is deployed on Celery."
-  },
-  {
-    "id": "eg-0611",
-    "premise": "consul deployed on core-03",
-    "hypothesis": "Consul is deployed on spire-01."
-  },
-  {
-    "id": "eg-0638",
-    "premise": "auth-01 deployed on auth-02",
-    "hypothesis": "Auth-02 is deployed on auth-01."
-  },
-  {
-    "id": "eg-0674",
-    "premise": "The Corvid pipeline has published an SBOM attestation with every release since the supply-chain review of 2025-10-07, an arrangement that remains in force with no end date set.",
-    "hypothesis": "By July 2026 the Corvid pipeline had stopped publishing SBOM attestations with its releases."
-  },
-  {
-    "id": "eg-0618",
-    "premise": "notify-relay deployed on neon-04",
-    "hypothesis": "Notify-relay is deployed on talon-01."
-  },
-  {
-    "id": "eg-0454",
-    "premise": "qemu has part hypervisor",
-    "hypothesis": "The hypervisor has qemu as one of its parts."
+    "id": "eg-0555",
+    "premise": "ffmpeg deployed on media-04",
+    "hypothesis": "media-04 is deployed on top of FFmpeg."
   }
 ]
