@@ -32,11 +32,12 @@ import {
 // and so stays a constant. `ratify` is listed precisely because it is *not* a
 // scope: a reader must be able to see that the omission is deliberate.
 const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
-  // `capture` and `read` are grantable and gate no route yet — the assignment
-  // was handed from T4.01 to T4.03 and T4.03 shipped posture only. Rendering
-  // them like `admin` would advertise reach they do not have.
-  { label: "capture — grantable, gates no route yet", inert: true },
-  { label: "read — grantable, gates no route yet", inert: true },
+  // Each scope names the surface it actually reaches (T4.21). The boundary is
+  // the surface the minimal client speaks; widening `read` to the vault or the
+  // code graph is a decision about what a leaked key can exfiltrate, and it is
+  // demand-gated rather than taken because the word fits.
+  { label: "capture — write memories (POST /memories, /memories/batch)" },
+  { label: "read — search memories (POST /memories/search/paginated)" },
   { label: "admin — the push webhook" },
   { label: "ratify — never a scope, human cookie session only", never: true },
 ]

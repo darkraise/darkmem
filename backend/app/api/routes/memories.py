@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
-from app.api.auth import require_auth
+from app.api.auth import require_auth, require_scope
 from app.api.deps import get_memory_service
 from app.api.mcp.client_identity import (
     ORIGIN_HEADER,
@@ -90,13 +90,33 @@ def _resolve_request_origin_key(entry: MemoryCreate, request: Request, source: s
     )
 
 
+# T4.21 assigns the two scopes doc 18 §5 defined and nothing gated. The
+# boundary is the surface the minimal client speaks: `sdks/generate.py` binds
+# `capture` to POST /memories and `search` to POST /memories/search/paginated,
+# and a non-human credential exists precisely so a non-human client can call
+# those verbs. `/batch` joins `capture` because doc 18 §5 defines that scope as
+# "write memories" and a key that may write one but not many is an arbitrary
+# line, not a boundary.
+#
+# Everything else stays human-only and is demand-gated, deliberately: `read`
+# could be widened to the vault and code reads on doc 18 §5's own wording, and
+# widening it is a decision about what a leaked key can exfiltrate. It gets
+# made when something needs it, not pre-emptively because the word fits.
+#
+# Built as module-level objects for the reason `repos.py:31` records: a
+# `require_scope(...)` call written inline in a signature builds a fresh
+# dependency per import, which `app.dependency_overrides` cannot address.
+_require_capture = require_scope("capture")
+_require_read = require_scope("read")
+
+
 @router.post("")
 async def create_memory(
     body: MemoryCreate,
     request: Request,
     response: Response,
     wait_process: bool = False,
-    user=Depends(require_auth),
+    user=Depends(_require_capture),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Tier-A buffered accept (doc 05 §2): durably buffers the capture and
@@ -117,7 +137,12 @@ async def create_memory(
         "origin_key": _resolve_request_origin_key(body, request, source),
     })
     result = await service.create_memory(
-        resolved, api_key_id=None, wait_process=wait_process, actor=user.sub,
+        # A `Principal`, not a `TokenPayload`: `require_scope` returns the
+        # resolved caller either way, so the key id is finally a real value
+        # here rather than the hardcoded None doc 18 §5 convention 8 was
+        # waiting on (T4.21, same gap T4.14 closed on the webhook).
+        resolved, api_key_id=user.api_key_id, wait_process=wait_process,
+        actor=user.actor,
     )
     if result.memory is not None:
         response.status_code = status.HTTP_201_CREATED
@@ -246,7 +271,7 @@ async def search_memories(
 async def search_memories_paginated(
     body: MemorySearchRequest,
     request: Request,
-    _user=Depends(require_auth),
+    _user=Depends(_require_read),
     service: MemoryService = Depends(get_memory_service),
 ):
     result = await service.search_memories_paginated(body, headers=request.headers)
@@ -280,7 +305,7 @@ async def batch_create(
     request: Request,
     response: Response,
     wait_process: bool = False,
-    user=Depends(require_auth),
+    user=Depends(_require_capture),
     service: MemoryService = Depends(get_memory_service),
 ):
     """Batch counterpart of ``POST /memories`` — one 202-buffered accept per
@@ -311,7 +336,8 @@ async def batch_create(
         for entry in body.entries
     ]
     results = await service.batch_create_memories(
-        entries, api_key_id=None, wait_process=wait_process, actor=user.sub,
+        entries, api_key_id=user.api_key_id, wait_process=wait_process,
+        actor=user.actor,
     )
     response.status_code = (
         status.HTTP_201_CREATED
