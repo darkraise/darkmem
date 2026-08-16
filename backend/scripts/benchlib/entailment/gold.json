@@ -5070,7 +5070,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3: a full rewording at use-level strength carrying no classificatory sortal at all — \"something\" is the limiting vacuous case of the bare-sortal clause's generic branch, satisfied by every entity of the premise's world. The minimal edit of eg-0512, which reached for \"a piece of software\", a kind USES cannot establish.",
    "fact_key": {
     "triple_key": "cd4d47ac-bfc9-57d4-8fa2-d4e55a64ad36",

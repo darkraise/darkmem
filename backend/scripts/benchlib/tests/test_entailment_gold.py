@@ -705,14 +705,14 @@ def test_the_contradicted_census_carries_exactly_two_duplicated_propositions(gol
 #: was ruled on.
 VACUOUS_SORTALS = frozenset({
     "component", "components", "system", "systems", "thing", "things",
-    "something", "entity", "entities",
+    "something",
 })
 PARTITIONING_SORTALS = frozenset({
     "service", "services", "software", "database", "databases",
     "machine", "machines",
 })
 RELATION_EARNED_SORTALS = frozenset({
-    "host", "hosts", "deployed", "installation", "installations",
+    "host", "hosts", "installation", "installations",
     "dependency", "dependencies", "dependent", "dependents",
     "part", "parts", "constituent", "constituents",
     "resource", "resources", "consumer", "consumers",
@@ -790,4 +790,37 @@ def test_no_live_pair_carries_a_partitioning_sortal_unearned(gold):
         f"entailed pairs applying a partitioning sortal: {offenders}. The "
         "premise must establish the kind; what the witness 'obviously is' is "
         "world knowledge (procedure 2)."
+    )
+
+
+def test_every_sortal_the_guard_places_is_named_in_the_rulebook():
+    """The guard's vocabulary and the clause's prose must not drift apart.
+
+    The guard above decides pairs from three frozensets. If a noun enters
+    those sets without entering LABELLING.md, a pair using it passes the
+    build while still resting on a reading no committed rule states — which
+    is precisely the condition the clause was written to end, reintroduced
+    through the guard meant to enforce it.
+
+    Found by a blind labeller, not by design: two replacements authored on
+    2026-08-17 used "installation" and "something", both of which the guard
+    accepted and the clause did not name.
+    """
+    rulebook = (entailment_gold.ENTAILMENT_DIR / "LABELLING.md").read_text(
+        encoding="utf-8"
+    ).lower()
+    # Singulars only: the clause names a noun once, not once per inflection.
+    placed = VACUOUS_SORTALS | PARTITIONING_SORTALS | RELATION_EARNED_SORTALS
+
+    def is_plural_of_a_placed_noun(word: str) -> bool:
+        if word.endswith("ies") and f"{word[:-3]}y" in placed:
+            return True
+        return word.endswith("s") and word[:-1] in placed
+
+    singulars = {s for s in placed if not is_plural_of_a_placed_noun(s)}
+    missing = sorted(s for s in singulars if f'"{s}"' not in rulebook)
+    assert not missing, (
+        f"sortals the guard places but LABELLING.md never names: {missing}. "
+        "Rule the noun in the clause first; the guard enforces the rule, it "
+        "is not the rule."
     )

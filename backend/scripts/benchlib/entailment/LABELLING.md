@@ -257,8 +257,9 @@ this same file — collapsing it to a binary would throw that away.
   premise's world fail to satisfy this noun without any further fact
   being false?*
   - A noun **every** entity of the premise's world satisfies —
-    "component", "system", and kin, the same head nouns the
-    universal-frame branch already treats as vacuous — restricts nothing,
+    "component", "system", **"thing"**, **"something"**, and kin, the same
+    head nouns the universal-frame branch already treats as vacuous —
+    restricts nothing,
     with or without a frame phrase. An existential built on it is
     ordinary weakening: `entailed` when its witness is in the premise
     (eg-0420, eg-0428, eg-0546).
@@ -283,9 +284,15 @@ this same file — collapsing it to a binary would throw that away.
     makes its part a "part" or **"constituent"** (synonyms of the role the
     relation creates are earned with it — eg-0606), `USES` makes its
     object a **"resource"** and its subject a **"consumer"** (eg-0640,
-    eg-0468), `DEPENDS_ON` makes its object a **"prerequisite"**
-    (eg-0430), and `RELATED_TO` licenses **"a connection between"** its
-    endpoints (eg-0524). These were placed 2026-08-17 by applying the
+    eg-0468), `DEPENDS_ON` makes its object a **"prerequisite"** and
+    the other endpoint a **"dependent"** (eg-0430), and `RELATED_TO` earns **"connection"** — "there is a
+    connection between" its endpoints (eg-0524), and `DEPLOYED_ON` earns **"installation"** for
+    its *subject* as well as "host" for its target — a thing deployed on
+    a host cannot fail to be an installation there, where it can easily
+    fail to be a "service" (eg-0469, eg-0704). `HAS_PART`'s generic
+    semantics also carry the composition renderings of that role, so
+    **"built from"** is inside it and needs no separate earning
+    (eg-0582). These were placed 2026-08-17 by applying the
     branch above rather than by a fresh ruling: each names the role the
     relation itself creates, so the relation cannot hold while the slot
     filler fails the noun.

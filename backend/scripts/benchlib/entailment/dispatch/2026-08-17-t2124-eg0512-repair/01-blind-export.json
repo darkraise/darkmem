@@ -1,0 +1,127 @@
+[
+ {
+  "id": "eg-0658",
+  "premise": "Marlowe Labs operated the pkg-mirror-eu Debian package mirror between 2022-09-01 and 2025-07-15, when the mirror was shut down at the expiry of its hosting grant.",
+  "hypothesis": "Marlowe Labs operates the pkg-mirror-eu Debian package mirror."
+ },
+ {
+  "id": "eg-0705",
+  "premise": "log-02 uses concourse",
+  "hypothesis": "Concourse is something that log-02 makes use of."
+ },
+ {
+  "id": "eg-0667",
+  "premise": "The Whitlock community Matrix homeserver accepted new registrations from 2021-07-02 until registrations were closed permanently on 2025-04-30.",
+  "hypothesis": "The Whitlock community Matrix homeserver accepts new registrations."
+ },
+ {
+  "id": "eg-0489",
+  "premise": "notify-relay deployed on neon-04",
+  "hypothesis": "notify-relay delivers its alerts over a webhook transport."
+ },
+ {
+  "id": "eg-0622",
+  "premise": "icinga uses haproxy",
+  "hypothesis": "Icinga is a consumer of haproxy."
+ },
+ {
+  "id": "eg-0670",
+  "premise": "Since 2025-03-09 the Ridgeline CI runners have been provisioned by Terraform; up to that date they were provisioned by hand-maintained Ansible playbooks.",
+  "hypothesis": "Ridgeline's CI runners were provisioned by Terraform in October 2024."
+ },
+ {
+  "id": "eg-0599",
+  "premise": "syncthing deployed on spire-01",
+  "hypothesis": "It is on spire-01 that syncthing is deployed."
+ },
+ {
+  "id": "eg-0600",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "Anvil-render draws on files-01 as part of its operation."
+ },
+ {
+  "id": "eg-0702",
+  "premise": "typesense deployed on search-01",
+  "hypothesis": "search-01 hosts at least one deployed component."
+ },
+ {
+  "id": "eg-0704",
+  "premise": "woodpecker ci deployed on tether-02",
+  "hypothesis": "tether-02 is the host of the Woodpecker CI installation."
+ },
+ {
+  "id": "eg-0672",
+  "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
+  "hypothesis": "hexley-cdn currently caches edge objects for 24 hours."
+ },
+ {
+  "id": "eg-0624",
+  "premise": "memgraph deployed on graph-01",
+  "hypothesis": "Memgraph is deployed on data-06."
+ },
+ {
+  "id": "eg-0684",
+  "premise": "Throughout the winter maintenance window of 1 December 2025 to 28 February 2026, the mistral-gpu node was reserved exclusively for thermal rework and served no scheduled jobs.",
+  "hypothesis": "The mistral-gpu node served no scheduled jobs in January 2026."
+ },
+ {
+  "id": "eg-0435",
+  "premise": "media-04 uses ffmpeg",
+  "hypothesis": "media-04 uses ffmpeg for every transcoding job it runs."
+ },
+ {
+  "id": "eg-0541",
+  "premise": "warden-02 uses warden-audit",
+  "hypothesis": "warden-audit is employed by warden-02."
+ },
+ {
+  "id": "eg-0582",
+  "premise": "qemu has part hypervisor",
+  "hypothesis": "A hypervisor is one of the components that qemu is built from."
+ },
+ {
+  "id": "eg-0674",
+  "premise": "The Corvid pipeline has published an SBOM attestation with every release since the supply-chain review of 2025-10-07, an arrangement that remains in force with no end date set.",
+  "hypothesis": "By July 2026 the Corvid pipeline had stopped publishing SBOM attestations with its releases."
+ },
+ {
+  "id": "eg-0572",
+  "premise": "jump-01 depends on authelia",
+  "hypothesis": "jump-01 has at least one dependency."
+ },
+ {
+  "id": "eg-0473",
+  "premise": "syncthing uses design archive",
+  "hypothesis": "The design archive is used by syncthing."
+ },
+ {
+  "id": "eg-0580",
+  "premise": "alert storms related to lb-01",
+  "hypothesis": "lb-01 is related to alert storms."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0657",
+  "premise": "From 2024-03-11 until 2025-11-30 the Halberd cluster's ingress was terminated by Traefik v2.10. On 2025-12-01 Traefik was replaced by Caddy 2.8, which has terminated Halberd ingress since.",
+  "hypothesis": "Ingress for the Halberd cluster is terminated by Traefik v2.10."
+ },
+ {
+  "id": "eg-0562",
+  "premise": "mon-05 uses etcd",
+  "hypothesis": "etcd uses mon-05."
+ },
+ {
+  "id": "eg-0691",
+  "premise": "Ingest into the chronicle search index was paused for the duration of the 12 to 14 December 2025 storage rebuild.",
+  "hypothesis": "Chronicle search-index ingest was still paused at the end of December 2025."
+ },
+ {
+  "id": "eg-0575",
+  "premise": "files-01 causes images-02",
+  "hypothesis": "files-01 has a causal role in images-02."
+ }
+]
