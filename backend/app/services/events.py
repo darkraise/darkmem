@@ -148,6 +148,10 @@ EVENT_TYPES: list[str] = [
     # exactly the deliveries an operator most wants to see — probes, conflicts
     # — unrecorded (E4 epic review, C1).
     "repo_webhook_received",
+    # A /mcp request that arrived through the proxy while the exposed
+    # switch is on, and was refused (T4.17). Journalled at most once a
+    # minute: the refusal is unbounded, the record of it must not be.
+    "mcp_proxied_refused",
     "inject",
     "inject_curbed",
     # "setup_completed" carried a spelling drift against the literal

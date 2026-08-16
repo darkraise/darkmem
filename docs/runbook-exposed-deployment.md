@@ -58,11 +58,22 @@ still read. Check the container log for `COOKIE_SECURE=false is clamped`.
   delivery cannot set an `Authorization` header**, so it cannot reach this
   receiver. Self-hosted senders that can — Gitea, a `post-receive` script,
   a small relay — can.
-- **Do not route `/mcp` from the public side.** `/mcp` is unauthenticated by
-  design (local-network trust model); its only network defence is the
-  DNS-rebinding Host allowlist, and the bearer-required option for that door is
-  designed but **not shipped** (doc 18 §5). Publishing `/mcp` publishes every
-  MCP tool to anyone who can reach it. Restrict it at the proxy.
+- **Do not route `/mcp` from the public side** — and the app now refuses it
+  rather than trusting you not to. `/mcp` is unauthenticated by design
+  (local-network trust model); its only network defence is the DNS-rebinding
+  Host allowlist, and the bearer-required option for that door is designed but
+  **not shipped** (doc 18 §5). Publishing `/mcp` would publish every MCP tool
+  to anyone who can reach it. So with `TRUST_PROXY_HEADERS=true`, a `/mcp`
+  request carrying proxy headers is answered `403 mcp_not_exposed` and
+  journalled as `mcp_proxied_refused` (throttled to one row a minute, so a
+  scanner cannot grow the journal). Restrict it at the proxy as well; this
+  guard is the backstop, not the plan.
+
+  **Extending `MCP_ALLOWED_HOSTS` does not lift it.** That is deliberate. The
+  standing advice for a LAN `421` is to extend the allowlist, and without this
+  guard that advice — correct for its own problem — was one entry away from
+  publishing `/mcp`. A LAN or local agent reaching the box directly is
+  untouched in both postures.
 
 ## 3. Credentials for programmatic callers
 
