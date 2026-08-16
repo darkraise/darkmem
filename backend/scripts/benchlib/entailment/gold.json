@@ -2169,7 +2169,9 @@
     "rel_type": "DEPLOYED_ON",
     "object_name": "tether-02",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-17 under the bare-sortal clause: \"machine\" partitions this corpus's world — nine of its 56 distinct DEPLOYED_ON targets are not machines — and DEPLOYED_ON earns only the \"host\" role, not the kind. Found by a *cover* in the 2026-08-17 Layer-2 batch, where the two blind passes split on it, so it is a boundary the clause's own examples did not settle rather than an authoring slip. Replaced by eg-0704."
   },
   {
    "id": "eg-0535",
@@ -5033,6 +5035,25 @@
     "subject_name": "telegraf",
     "rel_type": "USES",
     "object_name": "influxdb",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0704",
+   "premise": "woodpecker ci deployed on tether-02",
+   "hypothesis": "tether-02 is the host of the Woodpecker CI installation.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "author",
+   "rationale": "General procedure 3 with the bare-sortal clause's relation-establishment branch: \"host\" is the role DEPLOYED_ON necessarily assigns tether-02 — a deployment target cannot fail to be the host of what is deployed on it — and \"installation\" names the deployed thing's own role, so neither restrictor is asserted content. The minimal edit of eg-0534, which differed only in reaching for \"machine\", a kind the relation does not establish.",
+   "fact_key": {
+    "triple_key": "1899947d-a0b3-561b-9899-71723a4ede11",
+    "subject_name": "woodpecker ci",
+    "rel_type": "DEPLOYED_ON",
+    "object_name": "tether-02",
     "project": "default"
    }
   }

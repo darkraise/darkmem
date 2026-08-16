@@ -263,8 +263,16 @@ this same file — collapsing it to a binary would throw that away.
     ordinary weakening: `entailed` when its witness is in the premise
     (eg-0420, eg-0428, eg-0546).
   - A noun that **partitions** the premise's world — "service",
-    "software", "database" — is asserted content in the existential's
-    restrictor and must be established **by the premise**. What syncthing
+    "software", "database", **"machine"** — is asserted content in the
+    existential's restrictor and must be established **by the premise**.
+    *"Machine" was placed here by ruling on 2026-08-17 (rule-then-pairs on
+    eg-0534), on this corpus's own evidence rather than on intuition: nine
+    of its 56 distinct `DEPLOYED_ON` targets — `cpu`, `garage`, `minio`,
+    `postgres`, `rack ups`, `udp`, `port 9500`, `traefik`, `memgraph` —
+    are plainly not machines, so a deployment target can fail the noun
+    with no further fact being false. "Host" survives the same test on the
+    same data: those nine are hosts without being machines, which is
+    exactly the line between an earned role and a partitioning kind.* What syncthing
     or nginx "obviously is" is world knowledge and inadmissible
     (procedure 2). Unestablished, the pair is `unsupported` — never
     `contradicted`, by procedure 4.
@@ -272,7 +280,8 @@ this same file — collapsing it to a binary would throw that away.
     sortal naming the role a slot necessarily plays is earned by the
     relation: `DEPLOYED_ON` makes its target a "host" (eg-0592, eg-0650),
     `DEPENDS_ON` makes its object a "dependency" (eg-0516), `HAS_PART`
-    makes its part a "part". The test mirrors the dependency-strength
+    makes its part a "part" or **"constituent"** (synonyms of the role the
+    relation creates are earned with it — eg-0606). The test mirrors the dependency-strength
     rule's: *could the relation hold and the slot-filler fail the
     sortal?* No for the "host" of a deployment; **yes** for a deployed
     thing being a "service" — deployment does not make a thing a service.

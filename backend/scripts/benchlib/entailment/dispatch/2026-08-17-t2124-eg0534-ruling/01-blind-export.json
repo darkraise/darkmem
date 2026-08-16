@@ -1,0 +1,127 @@
+[
+ {
+  "id": "eg-0690",
+  "premise": "Vendor security support for firmware branch 2.14, the branch the firewalla-gw appliance runs, ends on 30 September 2026.",
+  "hypothesis": "The firewalla-gw appliance's firmware branch is currently within its vendor security support period."
+ },
+ {
+  "id": "eg-0607",
+  "premise": "imagemagick deployed on images-02",
+  "hypothesis": "Images-02 hosts at least one deployed component."
+ },
+ {
+  "id": "eg-0439",
+  "premise": "opentelemetry deployed on onyx-03",
+  "hypothesis": "onyx-03 is deployed on OpenTelemetry."
+ },
+ {
+  "id": "eg-0473",
+  "premise": "syncthing uses design archive",
+  "hypothesis": "The design archive is used by syncthing."
+ },
+ {
+  "id": "eg-0601",
+  "premise": "garage uses forge-artifacts",
+  "hypothesis": "Garage uses at least one other named component."
+ },
+ {
+  "id": "eg-0640",
+  "premise": "nimbus-02 uses nimbus-archive",
+  "hypothesis": "Nimbus-archive is a resource that nimbus-02 makes use of."
+ },
+ {
+  "id": "eg-0658",
+  "premise": "Marlowe Labs operated the pkg-mirror-eu Debian package mirror between 2022-09-01 and 2025-07-15, when the mirror was shut down at the expiry of its hosting grant.",
+  "hypothesis": "Marlowe Labs operates the pkg-mirror-eu Debian package mirror."
+ },
+ {
+  "id": "eg-0467",
+  "premise": "wisp-01 deployed on port 9500",
+  "hypothesis": "Port 9500 is deployed on wisp-01."
+ },
+ {
+  "id": "eg-0535",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "build-04 is deployed on Concourse."
+ },
+ {
+  "id": "eg-0625",
+  "premise": "netdata uses onyx-03",
+  "hypothesis": "Onyx-03 is put to work by netdata as part of its normal operation."
+ },
+ {
+  "id": "eg-0589",
+  "premise": "ansible depends on files-01",
+  "hypothesis": "Ansible playbooks in the estate are linted in CI before merge."
+ },
+ {
+  "id": "eg-0643",
+  "premise": "quota-watcher uses powerdns",
+  "hypothesis": "PowerDNS uses quota-watcher."
+ },
+ {
+  "id": "eg-0469",
+  "premise": "ansible deployed on infra-02",
+  "hypothesis": "infra-02 hosts the ansible installation."
+ },
+ {
+  "id": "eg-0667",
+  "premise": "The Whitlock community Matrix homeserver accepted new registrations from 2021-07-02 until registrations were closed permanently on 2025-04-30.",
+  "hypothesis": "The Whitlock community Matrix homeserver accepts new registrations."
+ },
+ {
+  "id": "eg-0483",
+  "premise": "consul deployed on core-03",
+  "hypothesis": "Consul's configuration is managed through a Git-backed workflow."
+ },
+ {
+  "id": "eg-0435",
+  "premise": "media-04 uses ffmpeg",
+  "hypothesis": "media-04 uses ffmpeg for every transcoding job it runs."
+ },
+ {
+  "id": "eg-0704",
+  "premise": "woodpecker ci deployed on tether-02",
+  "hypothesis": "tether-02 is the host of the Woodpecker CI installation."
+ },
+ {
+  "id": "eg-0627",
+  "premise": "consul uses authelia",
+  "hypothesis": "Authelia enforces two-factor authentication for administrative logins."
+ },
+ {
+  "id": "eg-0574",
+  "premise": "tether-02 deployed on traefik",
+  "hypothesis": "tether-02 is deployed on caddy."
+ },
+ {
+  "id": "eg-0443",
+  "premise": "vane-01 uses samba",
+  "hypothesis": "Samba uses vane-01."
+ },
+ {
+  "id": "eg-0432",
+  "premise": "wisp-01 uses ticket-router",
+  "hypothesis": "ticket-router uses wisp-01."
+ },
+ {
+  "id": "eg-0569",
+  "premise": "icinga deployed on mon-05",
+  "hypothesis": "Icinga is deployed on mon-07."
+ },
+ {
+  "id": "eg-0702",
+  "premise": "typesense deployed on search-01",
+  "hypothesis": "search-01 hosts at least one deployed component."
+ },
+ {
+  "id": "eg-0464",
+  "premise": "authelia depends on kv-01",
+  "hypothesis": "kv-01 relies on authelia in order to operate."
+ },
+ {
+  "id": "eg-0594",
+  "premise": "airflow uses clickhouse",
+  "hypothesis": "clickhouse is one of the components airflow draws on."
+ }
+]
