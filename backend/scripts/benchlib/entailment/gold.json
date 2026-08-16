@@ -5089,7 +5089,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3: a full rewording at use-level strength with the classificatory sortal removed entirely — \"what anvil-render calls on\" restricts to nothing the premise does not already assert. The minimal edit of eg-0422, which differed only in classifying imagemagick as \"software\", a kind USES cannot establish.",
    "fact_key": {
     "triple_key": "4b436166-597c-58bc-bf88-698ae2aa337c",

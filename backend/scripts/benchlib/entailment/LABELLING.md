@@ -289,7 +289,14 @@ this same file — collapsing it to a binary would throw that away.
     connection between" its endpoints (eg-0524), and `DEPLOYED_ON` earns **"installation"** for
     its *subject* as well as "host" for its target — a thing deployed on
     a host cannot fail to be an installation there, where it can easily
-    fail to be a "service" (eg-0469, eg-0704). `HAS_PART`'s generic
+    fail to be a "service" (eg-0469, eg-0704). **Owner-ratified
+    2026-08-17**, on a blind labeller's explicit request: it is the one
+    placement in this clause that sits close to the counterexample, since
+    "deployment does not make a thing a service" and one could read
+    "installation" as implying a deliberate install process rather than a
+    workload scheduled onto a node. Both blind passes reached `earned`
+    independently by the clause's own test before the ruling was sought,
+    so the ratification confirms a reading rather than choosing one. `HAS_PART`'s generic
     semantics also carry the composition renderings of that role, so
     **"built from"** is inside it and needs no separate earning
     (eg-0582). These were placed 2026-08-17 by applying the

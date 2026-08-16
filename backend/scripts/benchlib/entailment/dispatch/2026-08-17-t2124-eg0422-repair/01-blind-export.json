@@ -1,0 +1,127 @@
+[
+ {
+  "id": "eg-0620",
+  "premise": "osquery deployed on pivot-01",
+  "hypothesis": "Pivot-01 is deployed on osquery."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0529",
+  "premise": "alert storms deployed on lb-01",
+  "hypothesis": "Alert storms are deployed on etl-02."
+ },
+ {
+  "id": "eg-0482",
+  "premise": "infisical deployed on keys-01",
+  "hypothesis": "keys-01 has Infisical deployed on it."
+ },
+ {
+  "id": "eg-0611",
+  "premise": "consul deployed on core-03",
+  "hypothesis": "Consul is deployed on spire-01."
+ },
+ {
+  "id": "eg-0544",
+  "premise": "talon-01 uses talon-backups",
+  "hypothesis": "talon-01 uses talon-backups for its nightly off-site snapshots."
+ },
+ {
+  "id": "eg-0703",
+  "premise": "telegraf uses influxdb",
+  "hypothesis": "influxdb is employed by telegraf."
+ },
+ {
+  "id": "eg-0700",
+  "premise": "auth-01 depends on kv-01",
+  "hypothesis": "At least one component depends on kv-01."
+ },
+ {
+  "id": "eg-0447",
+  "premise": "tether-02 deployed on traefik",
+  "hypothesis": "Traefik's dashboard is exposed only on the internal network."
+ },
+ {
+  "id": "eg-0578",
+  "premise": "airflow deployed on data-06",
+  "hypothesis": "Airflow has been deployed on data-06 since the cluster was commissioned."
+ },
+ {
+  "id": "eg-0560",
+  "premise": "auth-02 uses authelia",
+  "hypothesis": "Authelia is used by auth-02."
+ },
+ {
+  "id": "eg-0549",
+  "premise": "authelia deployed on auth-02",
+  "hypothesis": "auth-02 is deployed on Authelia."
+ },
+ {
+  "id": "eg-0586",
+  "premise": "media-04 uses files-01",
+  "hypothesis": "files-01 is used by media-04."
+ },
+ {
+  "id": "eg-0515",
+  "premise": "quota-watcher deployed on cpu",
+  "hypothesis": "The CPU is deployed on quota-watcher."
+ },
+ {
+  "id": "eg-0450",
+  "premise": "airflow deployed on data-06",
+  "hypothesis": "airflow runs on the data-06 machine."
+ },
+ {
+  "id": "eg-0509",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "data-06 uses ClickHouse to store its long-term metrics history."
+ },
+ {
+  "id": "eg-0517",
+  "premise": "rabbitmq deployed on nimbus-02",
+  "hypothesis": "nimbus-02 is deployed on RabbitMQ."
+ },
+ {
+  "id": "eg-0472",
+  "premise": "powerdns uses fulfillment network",
+  "hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs."
+ },
+ {
+  "id": "eg-0691",
+  "premise": "Ingest into the chronicle search index was paused for the duration of the 12 to 14 December 2025 storage rebuild.",
+  "hypothesis": "Chronicle search-index ingest was still paused at the end of December 2025."
+ },
+ {
+  "id": "eg-0612",
+  "premise": "zulip uses ticket-router",
+  "hypothesis": "Zulip interacts with ticket-router."
+ },
+ {
+  "id": "eg-0706",
+  "premise": "anvil-render uses imagemagick",
+  "hypothesis": "ImageMagick is among what anvil-render calls on to do its work."
+ },
+ {
+  "id": "eg-0551",
+  "premise": "vane-01 uses design archive",
+  "hypothesis": "The design archive is used by vane-01."
+ },
+ {
+  "id": "eg-0476",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "files-01 is the sole storage backend anvil-render uses."
+ },
+ {
+  "id": "eg-0639",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "ClickHouse is the only datastore data-06 queries."
+ },
+ {
+  "id": "eg-0656",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "All of Concourse's pipelines execute on build-04."
+ }
+]

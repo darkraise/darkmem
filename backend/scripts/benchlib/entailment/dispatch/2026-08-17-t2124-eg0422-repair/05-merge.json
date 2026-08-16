@@ -1,0 +1,15 @@
+{
+ "_notes": "Layer 2 merge. eg-0706 adjudicated. THREE escalations, all on covers, and they are rule gaps rather than authoring slips — see 06-OPEN-RULE-QUESTIONS.md.",
+ "merged_at": "2026-08-17",
+ "under_adjudication": [
+  "eg-0706"
+ ],
+ "adjudicated": [
+  "eg-0706"
+ ],
+ "escalations": [
+  "eg-0529",
+  "eg-0450",
+  "eg-0691"
+ ]
+}
