@@ -127,12 +127,12 @@ green.
 | E0 — Baseline & harness | 23 | 0 | 0 | 0 | 0 | 23 | 0 | **G-A CLEARED 2026-07-27** |
 | E1 — Engine core | 85 | 0 | 0 | 0 | 0 | 84 | 1 | **G-B CLEARED 2026-07-28** |
 | E2 — Truth core | 105 | 0 | 0 | 0 | 0 | 105 | 0 | G-C, G-D open |
-| E3 — Synthesis & reach | 26 | 1 | 0 | 0 | 0 | 25 | 0 | G-E open |
+| E3 — Synthesis & reach | 26 | 0 | 0 | 1 | 0 | 25 | 0 | G-E open |
 | E4 — Hardening & scale | 21 | 1 | 0 | 0 | 0 | 20 | 0 | demand-gated |
 | EH1 — Documents / PKM | 16 | 0 | 0 | 0 | 0 | 16 | 0 | G-F open |
 | M1 — Measurement phase | 33 | 3 | 1 | 0 | 2 | 26 | 1 | consumes implementation; gates nothing |
 | EH2 — .NET migration | outline | — | — | — | — | — | — | G-G closed |
-| **Total** | **309** | **5** | **1** | **0** | **2** | **299** | **2** | |
+| **Total** | **309** | **4** | **1** | **1** | **2** | **299** | **2** | |
 
 These counts are **derived from the section tables below**, not maintained by hand;
 E0, E2 and M1 had all drifted (recounted 2026-08-07). E2's implementation is complete —
