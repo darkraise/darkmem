@@ -359,21 +359,50 @@ def test_fixture_loader_refuses_an_import_from_an_undeclared_file(tmp_path, fixt
         pc.load_repo_fixtures(path)
 
 
-def test_the_fleet_stays_inside_its_adjudicated_ceiling(fixtures):
+#: The T2.129-era repository, claim-saturated at 101 of 101 by construction.
+#: §0(a)'s per-repo band and unclaimed floor are conditions on the five repos
+#: T2.131 *added* — they are what the ceiling was adjudicated for — so holding
+#: the pre-existing one to them would demand rewriting the corpus the growth
+#: extends, which is a different act from bounding the growth.
+PRE_EXISTING_REPO = "payments-gateway"
+
+
+def test_the_fleet_stays_inside_its_adjudicated_ceiling(entries, fixtures):
     """§0(a)'s decided shape, asserted rather than described.
 
     Manufactured-ness is a shape, not a count: a fleet of pairwise-disjoint
     dependency sets is itself the signature, and a repository claiming every
     import it has is a claim manifest wearing a repository's clothes.
+
+    Four of §0(a)'s five conditions are mechanical and all four are asserted
+    here; only role-coherence is a judgement no test can make. The band and
+    the unclaimed floor were described rather than asserted until the owed
+    review found it — under the weaker form a new repo claimed to 100% of its
+    imports passed every test, which is precisely the shape the adjudication
+    named.
     """
     assert len(fixtures) <= 6
     imports = {
-        f["repo"]["name"]: {e["target_key"] for e in f["imports"]} for f in fixtures
+        f["repo"]["name"].strip().lower(): {e["target_key"] for e in f["imports"]}
+        for f in fixtures
     }
     for name, deps in imports.items():
         assert len(deps) <= 101, name
     core = set.intersection(*imports.values())
     assert core, "sibling repos must share a common core"
+
+    claimed: dict[str, int] = {}
+    for repo, _dependency in pc.validate_diversity_group_against_fixture(
+        entries, fixtures
+    ).values():
+        claimed[repo] = claimed.get(repo, 0) + 1
+
+    for name, deps in imports.items():
+        if name == PRE_EXISTING_REPO:
+            continue
+        assert 40 <= len(deps) <= 90, (name, len(deps))
+        unclaimed = len(deps) - claimed.get(name, 0)
+        assert unclaimed / len(deps) >= 0.10, (name, unclaimed, len(deps))
 
 
 def test_every_claimed_dependency_asserts_the_relation_the_memory_does(entries, fixtures):
