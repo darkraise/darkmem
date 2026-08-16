@@ -1,0 +1,172 @@
+{
+ "_notes": "Layer 2 merge, round 2 (round 1 VOID -- see 00-VOID-NOTE.md). Rule: both blind passes agree with the recorded label -> adjudicated; anything else -> escalation queue, untouched by this merge. Only eg-0698/eg-0699 were under adjudication; the 28 covers were already adjudicated and are re-labelled here as a check on the labellers, never as a re-opening of a settled pair.",
+ "merged_at": "2026-08-16",
+ "round": 2,
+ "n_batch": 30,
+ "under_adjudication": [
+  "eg-0698",
+  "eg-0699"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 1.0,
+  "pass_a_vs_recorded": 1.0,
+  "pass_b_vs_recorded": 1.0
+ },
+ "adjudicated": [
+  "eg-0698",
+  "eg-0699"
+ ],
+ "escalations": [],
+ "verdicts": {
+  "eg-0421": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0437": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0458": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0466": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0479": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0485": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0508": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0522": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0530": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0532": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0538": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0540": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0546": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0565": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0566": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0567": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0571": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0602": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0622": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0639": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0649": {
+   "recorded": "unsupported",
+   "pass_a": "unsupported",
+   "pass_b": "unsupported"
+  },
+  "eg-0652": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0661": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0664": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0670": {
+   "recorded": "contradicted",
+   "pass_a": "contradicted",
+   "pass_b": "contradicted"
+  },
+  "eg-0678": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0681": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0684": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0698": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  },
+  "eg-0699": {
+   "recorded": "entailed",
+   "pass_a": "entailed",
+   "pass_b": "entailed"
+  }
+ }
+}

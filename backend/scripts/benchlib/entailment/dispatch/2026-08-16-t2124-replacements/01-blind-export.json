@@ -1,0 +1,152 @@
+[
+ {
+  "id": "eg-0532",
+  "premise": "vane-01 uses warehouse floor terminals",
+  "hypothesis": "vane-01 uses every terminal on the warehouse floor."
+ },
+ {
+  "id": "eg-0664",
+  "premise": "Since the 2026-02-03 storage migration, the media-archive share has been backed by a ZFS mirror; until that migration it sat on a single ext4 disk.",
+  "hypothesis": "In late 2025 the media-archive share was backed by a ZFS mirror."
+ },
+ {
+  "id": "eg-0546",
+  "premise": "consul uses etcd",
+  "hypothesis": "Consul uses at least one other component."
+ },
+ {
+  "id": "eg-0652",
+  "premise": "core-03 has part consul",
+  "hypothesis": "Consul is one of the components that make up core-03."
+ },
+ {
+  "id": "eg-0678",
+  "premise": "Since 3 April 2026, nightly restic snapshots of the /srv/vault dataset have been written to the Wasabi bucket hl-vault-cold, and no later change of destination has been made.",
+  "hypothesis": "As of August 2026, nightly restic snapshots of /srv/vault were still being written to the hl-vault-cold bucket."
+ },
+ {
+  "id": "eg-0699",
+  "premise": "grafana uses nginx",
+  "hypothesis": "nginx is one of the pieces of software Grafana employs."
+ },
+ {
+  "id": "eg-0485",
+  "premise": "ffmpeg depends on codec pack",
+  "hypothesis": "The codec pack is the only component FFmpeg depends on."
+ },
+ {
+  "id": "eg-0479",
+  "premise": "imagemagick deployed on images-02",
+  "hypothesis": "images-02 is the host on which ImageMagick is deployed."
+ },
+ {
+  "id": "eg-0540",
+  "premise": "etl-02 deployed on files-01",
+  "hypothesis": "etl-02 processes the nightly billing exports on a four-hour schedule."
+ },
+ {
+  "id": "eg-0681",
+  "premise": "Container images for the atlas-api service were pushed to Docker Hub until the registry move on 22 January 2026; since that date they have been pushed to the self-hosted Harbor registry at reg.hl.internal.",
+  "hypothesis": "In November 2025, atlas-api container images were being pushed to Docker Hub."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0421",
+  "premise": "ffmpeg deployed on media-04",
+  "hypothesis": "FFmpeg has been deployed on media-04."
+ },
+ {
+  "id": "eg-0538",
+  "premise": "forge-artifacts deployed on garage",
+  "hypothesis": "forge-artifacts is deployed on garage."
+ },
+ {
+  "id": "eg-0622",
+  "premise": "icinga uses haproxy",
+  "hypothesis": "Icinga is a consumer of haproxy."
+ },
+ {
+  "id": "eg-0466",
+  "premise": "powerdns deployed on quire-03",
+  "hypothesis": "powerdns is deployed on spire-01."
+ },
+ {
+  "id": "eg-0661",
+  "premise": "The atlas-db primary has been running PostgreSQL 16.3 since 2025-08-22, and no upgrade has been scheduled.",
+  "hypothesis": "By March 2026 the atlas-db primary was no longer running PostgreSQL 16.3."
+ },
+ {
+  "id": "eg-0566",
+  "premise": "pi-hole deployed on ridge-01",
+  "hypothesis": "Pi-hole is deployed on ridge-01."
+ },
+ {
+  "id": "eg-0698",
+  "premise": "terraform uses minio",
+  "hypothesis": "At least one component of the estate makes use of MinIO."
+ },
+ {
+  "id": "eg-0567",
+  "premise": "roster-sync deployed on tether-02",
+  "hypothesis": "roster-sync is deployed on tether-05."
+ },
+ {
+  "id": "eg-0602",
+  "premise": "lb-01 deployed on memgraph",
+  "hypothesis": "Lb-01 runs on memgraph as a containerised workload."
+ },
+ {
+  "id": "eg-0639",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "ClickHouse is the only datastore data-06 queries."
+ },
+ {
+  "id": "eg-0670",
+  "premise": "Since 2025-03-09 the Ridgeline CI runners have been provisioned by Terraform; up to that date they were provisioned by hand-maintained Ansible playbooks.",
+  "hypothesis": "Ridgeline's CI runners were provisioned by Terraform in October 2024."
+ },
+ {
+  "id": "eg-0508",
+  "premise": "auth-01 deployed on auth-02",
+  "hypothesis": "The auth-01 service is deployed onto a host system."
+ },
+ {
+  "id": "eg-0649",
+  "premise": "teleport deployed on warden-02",
+  "hypothesis": "Every Teleport component runs on warden-02."
+ },
+ {
+  "id": "eg-0571",
+  "premise": "warden-02 uses tailscale",
+  "hypothesis": "warden-02 was rebuilt during the spring hardware refresh."
+ },
+ {
+  "id": "eg-0684",
+  "premise": "Throughout the winter maintenance window of 1 December 2025 to 28 February 2026, the mistral-gpu node was reserved exclusively for thermal rework and served no scheduled jobs.",
+  "hypothesis": "The mistral-gpu node served no scheduled jobs in January 2026."
+ },
+ {
+  "id": "eg-0458",
+  "premise": "media-04 uses files-01",
+  "hypothesis": "media-04 uses files-01 to store its transcoded output."
+ },
+ {
+  "id": "eg-0522",
+  "premise": "haproxy deployed on memgraph",
+  "hypothesis": "Memgraph is deployed on HAProxy."
+ },
+ {
+  "id": "eg-0437",
+  "premise": "consul uses jobs-05",
+  "hypothesis": "Consul uses jobs-05 to schedule its periodic health checks."
+ },
+ {
+  "id": "eg-0530",
+  "premise": "airflow deployed on etl-02",
+  "hypothesis": "Airflow is deployed on etl-02 as a containerised workload."
+ }
+]

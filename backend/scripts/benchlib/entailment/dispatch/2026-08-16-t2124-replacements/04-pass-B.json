@@ -1,0 +1,122 @@
+{
+ "eg-0532": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case: 'every terminal' asserts exhaustivity the bare 'uses warehouse floor terminals' premise does not carry, which is strengthening under procedure 3, and no exclusion is crossed so it is not contradicted."
+ },
+ "eg-0664": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, second bullet: the premise names the state the 2026-02-03 migration displaced (single ext4 disk until then), so a claim putting the new ZFS-mirror state before the inception is contradicted, on the window rule's named-successor footing."
+ },
+ "eg-0546": {
+  "verdict": "entailed",
+  "rationale": "Frame rule plus ordinary weakening: 'at least one other component' carries only a vacuous universal-frame head noun, and the existential's witness (etcd, distinct from consul) is in the premise, so the generalisation restricts nothing."
+ },
+ "eg-0652": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: 'one of the components that make up core-03' restates HAS_PART in the premise's own direction, and 'one of' asserts no exhaustivity, so nothing is strengthened."
+ },
+ "eg-0678": {
+  "verdict": "entailed",
+  "rationale": "Open-window rule: the fact holds since 3 April 2026 with the closing explicitly ruled out ('no later change of destination'), so the same state is entailed at the later August 2026 reference date."
+ },
+ "eg-0699": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: 'one of the pieces of software Grafana employs' rewords USES at the same generic level with a vacuous frame head noun and no exhaustivity, direction preserved."
+ },
+ "eg-0485": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case: 'the only component FFmpeg depends on' asserts exhaustivity lexically over a bare DEPENDS_ON premise that marks it neither way, which is strengthening, and absence of other dependencies is not asserted so no contradiction (procedure 4)."
+ },
+ "eg-0479": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase preserving direction, and the exhaustivity rule's information-structure case: the definite predicate nominal 'the host on which ImageMagick is deployed' presupposes rather than asserts exhaustivity, so it does not break entailment."
+ },
+ "eg-0540": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 / unrelated construction: the premise fixes only where etl-02 is deployed and bears on nothing about billing exports or schedules, sharing only the entity, so nothing is established and nothing is excluded."
+ },
+ "eg-0681": {
+  "verdict": "entailed",
+  "rationale": "Window rule: the premise asserts the Docker Hub destination held until the explicitly named 22 January 2026 close (the same until-X footing the inception-window rule reads as asserting the prior state), and November 2025 is time-scoped inside that window."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: DEPLOYED_ON is classified exclusive in the reversal-exclusivity table (host and guest cannot swap for the same pair), and the hypothesis puts auth-01 as the host of Authelia, reversing the premise's direction."
+ },
+ "eg-0421": {
+  "verdict": "entailed",
+  "rationale": "Near-literal restatement under procedure 3: 'FFmpeg has been deployed on media-04' rewords the premise's deployment fact with only a tense/aspect change and drops nothing, adds nothing."
+ },
+ "eg-0538": {
+  "verdict": "entailed",
+  "rationale": "Verbatim restatement: the hypothesis states the premise's own triple in the same direction with only surface normalisation, so entailment holds trivially under procedure 3."
+ },
+ "eg-0622": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase at the relation's own level: 'is a consumer of haproxy' rewords USES without importing another relation's necessity vocabulary (Dependency-strength rule's cross-relation clause is not triggered — no 'relies on'/'requires'), so nothing is strengthened."
+ },
+ "eg-0466": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance, ratified 2026-08-06): the premise fixes quire-03 as the host of the named powerdns instance, so the differing host spire-01 in the same sentence shape is contradicted, not unsupported."
+ },
+ "eg-0661": {
+  "verdict": "contradicted",
+  "rationale": "Open-window rule: PostgreSQL 16.3 holds since 2025-08-22 with no closing event and an upgrade explicitly not scheduled, so the premise entails the same state at March 2026, and the hypothesis asserts that state's negation."
+ },
+ "eg-0566": {
+  "verdict": "entailed",
+  "rationale": "Verbatim restatement: the hypothesis is the premise's own triple in the same direction with only casing and copula surface changes, entailed under procedure 3."
+ },
+ "eg-0698": {
+  "verdict": "entailed",
+  "rationale": "Frame rule, universal-discourse-frame case: 'the estate' names the whole world the premise describes, so the frame and its head noun 'component' are vacuous, and the existential's witness (terraform uses minio) is in the premise — ordinary weakening."
+ },
+ "eg-0567": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance): the premise fixes tether-02 as the host of the named roster-sync instance, so the differing host tether-05 with the sentence shape preserved is contradicted."
+ },
+ "eg-0602": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening: 'as a containerised workload' asserts a packaging detail the DEPLOYED_ON premise does not carry; direction is preserved so no reversal, and the addition crosses no exclusive slot, so it is unsupported rather than contradicted."
+ },
+ "eg-0639": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case: 'the only datastore data-06 queries' asserts exhaustivity lexically over a bare USES premise, which is strengthening; absence of other datastores is not asserted, so procedure 4 blocks contradiction."
+ },
+ "eg-0670": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, second bullet: the premise names the displaced state (hand-maintained Ansible up to 2025-03-09), so the claim putting the new Terraform state at October 2024, before the inception, is contradicted."
+ },
+ "eg-0508": {
+  "verdict": "entailed",
+  "rationale": "Weakening under procedure 3 with the Frame rule: 'a host system' abstracts the named host, and the witness's membership is established by the premise itself — DEPLOYED_ON's object position is the host by the relation's own semantics (reversal table), so nothing unearned is asserted."
+ },
+ "eg-0649": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case: 'Every Teleport component' asserts a universal the bare deployment fact does not carry, which is strengthening under procedure 3, and the premise excludes nothing about other components' hosts (procedure 4)."
+ },
+ "eg-0571": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 / unrelated construction: the premise asserts only that warden-02 uses tailscale and bears on nothing about a rebuild or a hardware refresh, sharing only the entity, so the claim is neither established nor excluded."
+ },
+ "eg-0684": {
+  "verdict": "entailed",
+  "rationale": "Window rule: January 2026 is time-scoped inside the explicitly bounded 1 December 2025 to 28 February 2026 window during which the premise asserts the node served no scheduled jobs."
+ },
+ "eg-0458": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening: 'to store its transcoded output' asserts a purpose the bare USES premise does not carry; the addition crosses no exclusion, so it is unsupported rather than contradicted (procedure 4)."
+ },
+ "eg-0522": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: DEPLOYED_ON is exclusive in the reversal-exclusivity table — host and guest cannot swap for one pair — and the hypothesis reverses the premise's haproxy-on-memgraph direction."
+ },
+ "eg-0437": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening: 'to schedule its periodic health checks' asserts a purpose the bare USES premise does not carry, added content that no exclusion turns into a contradiction (procedure 4)."
+ },
+ "eg-0530": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening: 'as a containerised workload' adds a packaging detail the DEPLOYED_ON premise does not assert; direction preserved and no exclusive slot crossed, so unsupported."
+ }
+}

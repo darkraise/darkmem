@@ -1,0 +1,161 @@
+{
+ "_notes": "Round 2. Recorded labels, held OUT of the blind export. 2 pairs are the eg-0510/eg-0634 replacements awaiting Layer-2 adjudication; 28 are adjudicated covers, sampled seeded from the pairs LABELLING.md does NOT cite by id, so serving the full rulebook cannot hand a labeller a cover's recorded label.",
+ "seed": 20260816,
+ "round": 2,
+ "under_adjudication": [
+  "eg-0698",
+  "eg-0699"
+ ],
+ "key": {
+  "eg-0532": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0664": {
+   "verdict": "contradicted",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0546": {
+   "verdict": "entailed",
+   "slice": "weakening",
+   "label_source": "adjudicated"
+  },
+  "eg-0652": {
+   "verdict": "entailed",
+   "slice": "paraphrase",
+   "label_source": "adjudicated"
+  },
+  "eg-0678": {
+   "verdict": "entailed",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0699": {
+   "verdict": "entailed",
+   "slice": "paraphrase",
+   "label_source": "author"
+  },
+  "eg-0485": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0479": {
+   "verdict": "entailed",
+   "slice": "verbatim",
+   "label_source": "adjudicated"
+  },
+  "eg-0540": {
+   "verdict": "unsupported",
+   "slice": "unrelated",
+   "label_source": "adjudicated"
+  },
+  "eg-0681": {
+   "verdict": "entailed",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0565": {
+   "verdict": "contradicted",
+   "slice": "direction",
+   "label_source": "adjudicated"
+  },
+  "eg-0421": {
+   "verdict": "entailed",
+   "slice": "verbatim",
+   "label_source": "adjudicated"
+  },
+  "eg-0538": {
+   "verdict": "entailed",
+   "slice": "verbatim",
+   "label_source": "adjudicated"
+  },
+  "eg-0622": {
+   "verdict": "entailed",
+   "slice": "paraphrase",
+   "label_source": "adjudicated"
+  },
+  "eg-0466": {
+   "verdict": "contradicted",
+   "slice": "value-swap",
+   "label_source": "adjudicated"
+  },
+  "eg-0661": {
+   "verdict": "contradicted",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0566": {
+   "verdict": "entailed",
+   "slice": "verbatim",
+   "label_source": "adjudicated"
+  },
+  "eg-0698": {
+   "verdict": "entailed",
+   "slice": "weakening",
+   "label_source": "author"
+  },
+  "eg-0567": {
+   "verdict": "contradicted",
+   "slice": "value-swap",
+   "label_source": "adjudicated"
+  },
+  "eg-0602": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0639": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0670": {
+   "verdict": "contradicted",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0508": {
+   "verdict": "entailed",
+   "slice": "weakening",
+   "label_source": "adjudicated"
+  },
+  "eg-0649": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0571": {
+   "verdict": "unsupported",
+   "slice": "unrelated",
+   "label_source": "adjudicated"
+  },
+  "eg-0684": {
+   "verdict": "entailed",
+   "slice": "temporal",
+   "label_source": "adjudicated"
+  },
+  "eg-0458": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0522": {
+   "verdict": "contradicted",
+   "slice": "direction",
+   "label_source": "adjudicated"
+  },
+  "eg-0437": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  },
+  "eg-0530": {
+   "verdict": "unsupported",
+   "slice": "overreach",
+   "label_source": "adjudicated"
+  }
+ }
+}

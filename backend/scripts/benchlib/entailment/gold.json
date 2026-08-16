@@ -1726,7 +1726,9 @@
     "rel_type": "USES",
     "object_name": "nimbus-archive",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-16 under retire-and-replace, per the 2026-08-15 rule-then-pairs ruling (dispatch/2026-08-15-t2124-step10/07-readjudication.json). The recorded `entailed` is wrong under the rule added that day, and the slice admits only `entailed`, so an in-place flip would break both the slice contract and the ratified matrix. Replaced by eg-0698."
   },
   {
    "id": "eg-0511",
@@ -4019,7 +4021,9 @@
     "rel_type": "USES",
     "object_name": "quota-watcher",
     "project": "default"
-   }
+   },
+   "retired": true,
+   "notes": "Retired 2026-08-16 under retire-and-replace, per the 2026-08-15 rule-then-pairs ruling (dispatch/2026-08-15-t2124-step10/07-readjudication.json). The recorded `entailed` is wrong under the rule added that day, and the slice admits only `entailed`, so an in-place flip would break both the slice contract and the ratified matrix. Replaced by eg-0699."
   },
   {
    "id": "eg-0635",
@@ -4909,6 +4913,44 @@
    "provenance": "hand-authored-synthetic-fact",
    "label_source": "adjudicated",
    "rationale": "Window rule: a scheduled retirement announces a planned closing boundary rather than closing the window with a named end event, so the state on and after that date is unasserted."
+  },
+  {
+   "id": "eg-0698",
+   "premise": "terraform uses minio",
+   "hypothesis": "At least one component of the estate makes use of MinIO.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "weakening"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "adjudicated",
+   "rationale": "General procedure 3 with the Frame rule's universal-discourse-frame branch: the subject is weakened to an existential and the object is kept intact, and the only restrictor on that existential is 'the estate' -- a phrase naming the whole world the premise describes rather than a distinguished part of it, so it differentiates nothing and moves no verdict. terraform is the witness, present in the premise, so the hypothesis is strictly weaker and follows. Authored 2026-08-16 as the replacement for eg-0510, which put a *named deployment* in the same restrictor slot; the two together are what makes the Frame rule's distinction readable off the set rather than only off this file.",
+   "fact_key": {
+    "triple_key": "519cf15a-5746-54cb-ba07-9055d074cdb4",
+    "subject_name": "terraform",
+    "rel_type": "USES",
+    "object_name": "minio",
+    "project": "default"
+   }
+  },
+  {
+   "id": "eg-0699",
+   "premise": "grafana uses nginx",
+   "hypothesis": "nginx is one of the pieces of software Grafana employs.",
+   "verdict": "entailed",
+   "slice_tags": [
+    "paraphrase"
+   ],
+   "provenance": "l2-fact",
+   "label_source": "adjudicated",
+   "rationale": "General procedure 3: a full rewording of the same assertion at the same strength, framed from the object endpoint rather than the direct subject-first construction -- the construction eg-0634 was built to test. 'Employs' is use-level vocabulary and carries no necessity: the Dependency-strength rule's cross-relation clause bars 'relies on', 'requires' and 'needs' over a USES premise because USES does not guarantee DEPENDS_ON, and none of them is used here. Authored 2026-08-16 as the replacement for eg-0634, which failed exactly that clause.",
+   "fact_key": {
+    "triple_key": "08cf924b-93e6-552d-a645-3064a950cba1",
+    "subject_name": "grafana",
+    "rel_type": "USES",
+    "object_name": "nginx",
+    "project": "default"
+   }
   }
  ]
 }
