@@ -883,12 +883,15 @@ def test_minting_lock_four_legs(tmp_path, monkeypatch):
 
     # Leg 5: an unknown role refuses before anything is written — the record's
     # role is what the reader gates on, so it may not be free-form.
+    # The example was "faithfulness" until TH1.09 wired that role; an
+    # unknown-role leg whose example became known stops testing the leg, so
+    # the literal moved rather than the assertion being relaxed.
     with pytest.raises(ValueError, match="unknown judge role"):
         jq.write_qualification_record(
-            tmp_path / "faithfulness.json",
-            **{**common, "role": "faithfulness", "gold_path": fixture_gold},
+            tmp_path / "summarisation.json",
+            **{**common, "role": "summarisation", "gold_path": fixture_gold},
         )
-    assert not (tmp_path / "faithfulness.json").exists()
+    assert not (tmp_path / "summarisation.json").exists()
 
 
 # ── the runner (Task 6): stub-driven, no live LLM, no DB ─────────────────

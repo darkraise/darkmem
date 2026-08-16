@@ -54,7 +54,12 @@ DEFAULT_NAMES = ("FAITHFULNESS_BAR_DEFAULTS", "FAITHFULNESS_BARS")
 # convention -- an ordinary variable computed from a call
 # (``faithfulness_coverage = compute()``) is a use, not a restatement.
 FAITHFULNESS_NAME = re.compile(r"faithfulness", re.IGNORECASE)
-CONSTANT_NAME = re.compile(r"FAITHFULNESS")
+# Bar constants only. `FAITHFULNESS_ROLE` is a judge-role name carrying a
+# string, not a bar carrying a number, and TH1.09 has to declare it in
+# `verification_judge` — that is where roles live. Narrowed to exclude it by
+# name rather than by loosening the pattern to "any non-numeric", which
+# would let a genuine bar restated as a string through.
+CONSTANT_NAME = re.compile(r"FAITHFULNESS(?!_ROLE\b)")
 
 
 def _scanned_sources() -> list[pathlib.Path]:

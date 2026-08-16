@@ -99,11 +99,19 @@ async def test_an_unreadable_bar_row_fails_closed_and_never_reads_as_a_clean_run
 # ── I-1: the qualification banner tracks the registry, never frozen prose ──
 
 
-def test_missing_qualification_banner_matches_todays_registry_state():
-    """Today "faithfulness" is not in JUDGE_ROLES, so the banner must say
-    FAIL_CLOSED -- this is the state the frozen-prose defect happened to be
-    correct about by accident."""
-    assert "faithfulness" not in JUDGE_ROLES
+def test_missing_qualification_banner_matches_todays_registry_state(capsys):
+    """TH1.09 wired the role, so today's banner is the *other* branch.
+
+    This assertion was `"faithfulness" not in JUDGE_ROLES` until that landed —
+    which is the whole reason the banner was derived from the registry rather
+    than written as prose. The test tracks the same fact and had to move with
+    it; what it must never become is an assertion that passes in both states.
+    """
+    assert "faithfulness" in JUDGE_ROLES
+    rfg._print_missing_qualification()
+    out = capsys.readouterr().out
+    assert "FAIL_CLOSED" not in out
+    assert "role wired" in out
 
 
 def test_qualification_banner_flips_the_moment_the_role_is_wired(
@@ -120,7 +128,13 @@ def test_qualification_banner_flips_the_moment_the_role_is_wired(
     assert "role wired" in out
 
 
-def test_qualification_banner_still_fails_closed_when_role_is_absent(capsys):
+def test_qualification_banner_still_fails_closed_when_role_is_absent(
+    monkeypatch, capsys,
+):
+    """The other direction, now reachable only by simulation: with the role
+    removed the banner must fail closed again. Kept rather than deleted — a
+    banner that can only ever print one branch is not derived from anything."""
+    monkeypatch.delitem(rfg.JUDGE_ROLES, "faithfulness")
     rfg._print_missing_qualification()
     out = capsys.readouterr().out
     assert "FAIL_CLOSED (missing qualification)" in out
