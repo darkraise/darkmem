@@ -16,6 +16,7 @@ from app.schemas.code import (
 )
 from app.services import index_debt
 from app.services.code_pipeline import CodePipeline
+from app.services.events import record_event
 from app.services.repo_manager import RepoManager
 from app.services.task_registry import TaskRegistry
 
@@ -276,7 +277,7 @@ async def reindex_repo(
 @router.post("/{repo_id}/webhook", status_code=status.HTTP_202_ACCEPTED)
 async def repo_push_webhook(
     repo_id: UUID,
-    _principal=Depends(_require_repo_admin),
+    principal=Depends(_require_repo_admin),
     pipeline: CodePipeline = Depends(get_code_pipeline),
     manager: RepoManager = Depends(get_repo_manager),
     session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
@@ -302,6 +303,25 @@ async def repo_push_webhook(
     the route body rather than leaving it as wide as the pipeline's own
     ``git pull``.
     """
+    # Journalled before the lookup, in its own committed session, so *every*
+    # keyed delivery leaves a row — including the 404 probe against a repo id
+    # that does not exist and the 409 against one already indexing, which are
+    # precisely the deliveries a leaked credential produces and precisely the
+    # ones whose request transaction never commits. This is the keyed act;
+    # the `repo_indexed` row the spawned run writes is the system's own work.
+    async with session_factory() as journal_session:
+        await record_event(
+            journal_session,
+            event_type="repo_webhook_received",
+            object_type="repository",
+            object_id=repo_id,
+            actor=principal.actor,
+            api_key_id=principal.api_key_id,
+            source="webhook",
+            payload={"keyed": principal.api_key_id is not None},
+        )
+        await journal_session.commit()
+
     repo = await manager.get(repo_id)
     if not repo:
         raise HTTPException(status_code=404, detail="Repository not found")

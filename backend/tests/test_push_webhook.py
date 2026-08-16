@@ -152,7 +152,16 @@ def _collect_call_targets(func_ast: ast.AST) -> tuple[list[str], list[str]]:
 # The webhook handler's only sanctioned bare-name calls: raising one of the
 # closed set of HTTPExceptions, dispatching into the one shared background
 # path, and `str(repo_id)` in the response body.
-ALLOWED_NAME_CALLS = {"HTTPException", "_spawn_repo_index", "str"}
+# `record_event` and `session_factory` joined this set with E4.F1, and the
+# extension is deliberate rather than accommodating: the guard's subject is a
+# *second indexing path*, and a journal write is not one. It reads nothing
+# about the repository, spawns nothing, and touches no pipeline — it records
+# that a credential presented itself, which is the observability doc 18 §5
+# requires and the C1 finding said was absent. The forbidden-prefix check
+# below is untouched and still fails on any parse/clone/phase call.
+ALLOWED_NAME_CALLS = {
+    "HTTPException", "_spawn_repo_index", "str", "record_event", "session_factory",
+}
 
 
 # ---------------------------------------------------------------------------

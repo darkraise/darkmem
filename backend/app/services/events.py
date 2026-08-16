@@ -141,6 +141,13 @@ EVENT_TYPES: list[str] = [
     "repo_registered",
     "repo_synced",
     "repo_indexed",
+    # The keyed act, distinct from the indexing it triggers: the webhook is
+    # the only route a credential reaches, and the index that follows is the
+    # system's own work (it may short-circuit on an unchanged HEAD, or never
+    # start at all on a 409). Attributing the *index* to the key would leave
+    # exactly the deliveries an operator most wants to see — probes, conflicts
+    # — unrecorded (E4 epic review, C1).
+    "repo_webhook_received",
     "inject",
     "inject_curbed",
     # "setup_completed" carried a spelling drift against the literal

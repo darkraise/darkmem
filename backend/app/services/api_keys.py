@@ -28,11 +28,16 @@ homoglyphs, so a hand-copied key fails to parse rather than silently matching
 nothing; and it is single-case, so a transport that folds case does not
 invalidate a credential.
 
-``last_used_at`` is deliberately left unwritten here. Bumping it belongs beside
-T4.02's per-call stamping, which already touches every keyed call, rather than
-inside the authentication path where it would put a write on every read
-request. The column has been unwritten since the baseline; this does not
-regress it.
+``last_used_at`` is bumped by :func:`mark_key_used`, which the scope
+dependency calls after a credential authenticates — **not** by the
+authentication routine itself, which also runs for calls that then fail a
+scope check. This module previously deferred the bump to "T4.02's per-call
+stamping"; T4.02 closed without it, leaving the column with zero writers while
+the settings card rendered "never used" as a verdict, which is how an
+operator would have failed to notice a leaked key in daily use (E4 epic
+review, C1). The write goes through its own committed session for the reason
+``auth.py``'s audit rows do: a request that raises must not roll back the
+record that it happened.
 """
 
 from __future__ import annotations
@@ -44,7 +49,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import bcrypt
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.api_key import ApiKey
@@ -244,6 +249,35 @@ async def issue_key(
         payload={"name": name, "scopes": list(granted)},
     )
     return row, credential.token
+
+
+async def mark_key_used(
+    api_key_id: uuid.UUID, *, now: datetime | None = None,
+) -> None:
+    """Record that this key just authenticated a call.
+
+    Opens its own session and commits, so the bump survives a request that
+    later raises — a probe against a nonexistent repository is exactly the
+    traffic an operator most wants to see from a leaked key, and it is also
+    the traffic whose request transaction never commits.
+
+    Degrades loudly and never raises into the caller: a failed bump must not
+    turn an authenticated request into a 500. The `events` row written beside
+    it is the authoritative record; this column is the operator's index into
+    it.
+    """
+    from app.database import async_session_factory  # noqa: PLC0415
+
+    try:
+        async with async_session_factory() as session:
+            await session.execute(
+                update(ApiKey)
+                .where(ApiKey.id == api_key_id)
+                .values(last_used_at=now or datetime.now(timezone.utc))
+            )
+            await session.commit()
+    except Exception:
+        logger.warning("api_keys: could not bump last_used_at for %s", api_key_id, exc_info=True)
 
 
 async def revoke_key(

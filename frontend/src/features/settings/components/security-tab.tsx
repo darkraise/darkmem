@@ -31,10 +31,13 @@ import {
 // The closed scope set itself, which is design rather than per-instance data
 // and so stays a constant. `ratify` is listed precisely because it is *not* a
 // scope: a reader must be able to see that the omission is deliberate.
-const API_KEY_SCOPES: { label: string; never?: boolean }[] = [
-  { label: "capture" },
-  { label: "read" },
-  { label: "admin" },
+const API_KEY_SCOPES: { label: string; inert?: boolean; never?: boolean }[] = [
+  // `capture` and `read` are grantable and gate no route yet — the assignment
+  // was handed from T4.01 to T4.03 and T4.03 shipped posture only. Rendering
+  // them like `admin` would advertise reach they do not have.
+  { label: "capture — grantable, gates no route yet", inert: true },
+  { label: "read — grantable, gates no route yet", inert: true },
+  { label: "admin — the push webhook" },
   { label: "ratify — never a scope, human cookie session only", never: true },
 ]
 
@@ -592,6 +595,7 @@ function ApiKeyCard() {
             key={scope.label}
             className={cn(
               "text-muted-foreground border-muted-foreground/50 rounded-full border border-dashed px-2 py-0.5 font-mono text-sm",
+              scope.inert && "opacity-60",
               scope.never && "border-destructive/50 text-destructive",
             )}
           >

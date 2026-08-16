@@ -53,8 +53,29 @@ Non-human callers use an API key — `Authorization: Bearer dmk_<key_id>_<secret
 never becomes one: confirming a fact stays a human cookie session on the REST
 door.
 
+**Only `admin` reaches anything today, and only one route.** The push-webhook
+receiver (`POST /repos/{id}/webhook`) is the single scope-gated route in the
+tree. `capture` and `read` can be granted and are refused everywhere, so a key
+holding them is inert — that is a gap in the activation, not a restriction you
+have configured, and it means an exposed deployment cannot yet serve a
+programmatic capture or read client. Grant `admin` for the webhook; do not plan
+around the other two until they gate something.
+
 Revoke a key from the same surface. Revocation sets `revoked_at` and keeps the
-row, so the key's history in the timeline survives its revocation.
+row rather than deleting it, so calls the key already made keep a resolvable
+name instead of pointing at an id nothing explains.
+
+**Detecting a key you did not expect to be in use.** Every keyed delivery
+journals a `repo_webhook_received` event carrying the key id and its label —
+including deliveries that are refused as conflicts or that name a repository
+that does not exist, which is what a probing credential mostly produces. The
+settings card's last-used column is the quick signal; the events journal is the
+record. A key whose last-used time moves when you are not deploying is the
+signal to revoke.
+
+Note the scope of that: the webhook is currently the **only** route a key
+reaches, so key activity appears in the events journal and not on a memory's
+own timeline — no keyed call can write a memory today.
 
 ## 4. Verify the posture you think you have
 

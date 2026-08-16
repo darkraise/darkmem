@@ -329,6 +329,129 @@ assuming these are the only two. Report what the sweep found either way.
 
 ---
 
+## Lane F — the epic review's follow-ups
+
+**Minted 2026-08-16** from the E4 epic-completion review
+(`docs/planning/reviews/2026-08-16-e4-epic-review.md`), which reviewed the
+closed 13/13 epic through the honest-security-posture lens and found 1 Critical
+and 4 Important, every one of them a **cross-task seam** no per-task review
+could see. The epic is already merged per task, so these are follow-ups to
+land, not a merge block.
+
+#### E4.F1 — A keyed call must be observable
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T4.01, T4.02, T4.04` · `Doc: 18 §5` · `Tag: activation` · `Gate: —`
+
+**What.** Doc 18 §5 convention 8 requires every keyed call to stamp
+`events.api_key_id` / `events.actor`, and the settings surface to show
+`last_used_at` "so a stale key is visible before it is a liability". Neither
+signal was written: `api_keys.last_used_at` had zero writers (the bump was
+deferred T4.01 → T4.02 and dropped), and the one keyed route discarded its
+`Principal`. Three shipped surfaces asserted otherwise, so an operator could
+not detect a leaked credential in daily use.
+
+**Done when:**
+- [ ] A keyed call bumps `last_used_at`, and a call that fails the scope gate does not
+- [ ] Every keyed webhook delivery journals its key and actor, including the
+      404 and 409 deliveries a probing credential mostly produces
+- [ ] A human delivery journals no key rather than a fabricated one
+- [ ] The runbook and the settings card describe what is actually observable
+
+**Verify.** `cd backend && python -m pytest tests/test_keyed_call_observability.py -q`
+
+#### E4.F2 — Scope honesty: `capture` and `read` gate nothing
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T4.01` · `Doc: 18 §5` · `Tag: activation` · `Gate: —`
+
+**What.** Both scopes are grantable and advertised, and `require_scope` has
+exactly one consumer (`admin`, the webhook). The assignment work was handed
+from T4.01 to T4.03, T4.03 shipped posture only, and the epic closed — leaving
+the work assigned to a closed task, i.e. to nobody. This task takes the
+**copy** branch: say what is true. Assigning the two scopes for real is
+`E4.F8`, deliberately separate because it decides which routes become
+key-reachable.
+
+**Done when:** the card and the runbook both say keys reach only the webhook today.
+**Verify.** `cd frontend && npm test -- settings-security`
+
+#### E4.F3 — Polling and the webhook can still double-index
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: T4.05` · `Doc: 10 §5` · `Tag: target-new` · `Gate: —`
+
+**What.** "The two never double-index" is unproven against polling: `repo_sync`
+never reads `repo.status` and `CodePipeline.run` has no compare-and-set, so a
+poll tick landing inside a webhook run indexes twice. Recorded twice already
+(T4.05's review, T4.10's record) with a named close and no owner.
+
+**Done when:** the status claim is a CAS in `CodePipeline.run` and polling reads it; a
+test drives the interleaving.
+**Verify.** `cd backend && python -m pytest tests/test_push_webhook.py -q`
+
+#### E4.F4 — `/mcp` under exposure is one allowlist entry from armed
+
+`Model: Opus 5` · `Effort: high` · `Size: S` · `Depends: T4.03` · `Doc: 18 §2, §5` · `Tag: activation` · `Gate: —`
+
+**What.** `/mcp` is unauthenticated by design and its bearer option is designed
+but unshipped, so `docs/runbook-exposed-deployment.md` tells the operator not
+to route it publicly. The review's objection is that the standing advice for a
+LAN `421` — extend the allowlist — points at exactly the entry that would arm
+it. Either refuse or journal a proxied `/mcp` request under
+`trust_proxy_headers`, or record an owner ruling accepting runbook-only weight.
+
+**Done when:** the decision is taken and recorded; if enforcement is chosen, a test drives it.
+**Verify.** `cd backend && python -m pytest tests/test_mcp_host_allowlist.py -q`
+
+#### E4.F5 — Replica-knob tripwire test
+
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: T4.10` · `Doc: 19 §5` · `Tag: target-new` · `Gate: —`
+
+**What.** T4.10 recorded this recommendation and deliberately left it unarmed.
+Invariant 13's knob has three silent spellings (`--workers`, `WEB_CONCURRENCY`,
+compose `deploy.replicas`); a test should fail the build if any appears.
+
+**Done when:** all three spellings are scanned across every launch path.
+**Verify.** `cd backend && python -m pytest tests/test_single_worker_invariant.py -q`
+
+#### E4.F6 — Owner docs pass
+
+`Model: Haiku 4.5` · `Effort: high` · `Size: S` · `Depends: —` · `Doc: 18, 02` · `Tag: docs` · `Gate: —`
+
+**What.** Owner-gated by runbook §5 Tier 3. Doc 18 still calls `api_keys`
+"dormant, unwired" in three places — the underclaim direction, in the document
+an operator reads before exposing the box. Plus T4.09's three doc 02
+divergences and the bearer-vs-signature decision record.
+
+**Done when:** the owner has ruled on each; the corrections land or are recorded as declined.
+**Verify.** review only.
+
+#### E4.F7 — Minors sweep
+
+`Model: Sonnet 5` · `Effort: high` · `Size: S` · `Depends: E4.F1` · `Doc: —` · `Tag: target-new` · `Gate: —`
+
+**What.** The review's seven minors, including the fifth attribution state it
+found: a persistent key-list read failure collapses keyed rows into session
+presentation forever in `memory-event-timeline.tsx`, which is the collapse that
+component's own docstring forbids.
+
+**Done when:** each minor is fixed or recorded as declined with a reason.
+**Verify.** `cd frontend && npm test -- timeline`
+
+#### E4.F8 — Assign `capture` and `read`, or retire them
+
+`Model: Opus 5` · `Effort: high` · `Size: M` · `Depends: E4.F2` · `Doc: 18 §5` · `Tag: activation` · `Gate: —`
+
+**What.** The half `E4.F2` deliberately did not take. Decide which routes each
+scope gates — a decision about which surface becomes key-reachable, which is
+why it is not a copy edit — or retire the two from the closed set. **Minted as
+its own task precisely because the last attempt to carry this work inside
+another task's scope lost it**: T4.01 handed it to T4.03, T4.03 shipped posture
+only, and E4 closed with the work belonging to nobody.
+
+**Done when:** every scope in the closed set gates at least one route, or is removed from the set.
+**Verify.** `cd backend && python -m pytest tests/test_api_keys.py -q`
+
+---
+
 ## Amendment log
 
 | Date | Task | Tier | Change | Why |
@@ -337,3 +460,4 @@ assuming these are the only two. Report what the sweep found either way.
 | 2026-08-16 | T4.01 | 2 | **Two honesty statements about `api_keys` are now false and were corrected in the same change**: doc 18 §5's parenthetical *"exists today, unwired — every write passes `api_key_id=None`"* (repeated at §1 line 17 and §10's invariant-23 bullet) and the comment at `0001_baseline.py:1028` saying *"Exists, unwired … the schema carries over unchanged"*. The baseline comment is corrected here; **doc 18's three are surfaced, not edited** — see the row below. Separately, **T4.03's `Done when` now inherits a shipped mechanism rather than a blank**: `require_scope` exists and is opt-in, so T4.03's work is assigning scopes to the existing surface, not designing the dependency. And **T4.05's entry condition is met**: the webhook's *"externally reachable authenticated receiver"* now has a credential to authenticate against | The activation is exactly what invariant 23's *named gap* language was holding open, so leaving those sentences would present a shipped path as dormant — the mirror of the failure that language exists to prevent. Recorded at Tier 2 rather than Tier 1 because it changes what T4.02–T4.05 inherit |
 | 2026-08-16 | T4.01 | 3 (surfaced, **not** corrected) | **Doc 18 §5, §1 and §10 describe `api_keys` as dormant and unwired, which stopped being true with this commit.** §5's *"nothing claims this path is shipped"*, §1's honesty table entry, and §10's invariant-23 bullet each need the tense moved. The design itself needed no amendment — §5 was written to be a wiring task and it was one — so this is a staleness correction, not a design divergence. Also surfaced: **§11's stance that the first activation ships the REST bearer and leaves the MCP bearer to a second independent flip is what this task followed**, so T4.01's own `What` field (*"plus an optional MCP bearer"*) reads as if both ship together and should be re-scoped to T4.03 | Runbook §5 Tier 3: a design doc's text is the corpus, and the corpus wins until a human decides otherwise. Editing doc 18 to describe the tree is the right correction but it is the owner's, not an implementer's — and the divergence is one of tense, so nothing downstream is blocked on it |
 | 2026-08-16 | T4.09 | 2 | **The 2026-08-15 T4.09 row above is superseded on its numbers: the inventory is 38 assumptions — 17 BREAKS / 13 DEGRADES / 8 ALREADY SAFE — and §11's remedy pair therefore addresses 1 of 38, not 1 of 35.** Two review rounds added three rows the original sweep missed: `reembed_locks`' 409-busy contract (item 36, BREAKS), the pipeline's 30-second classifier-resolution cache (item 37, DEGRADES — named in the audit's own §7 divergence list and then left out of its own census), and `entrypoint.sh`'s unserialised `alembic upgrade head` at container start (item 38, DEGRADES today and BREAKS after the schema freeze). Separately, **item 6's cursor census was short by four and is now seven**: `memory_dream_state`, `verification_recompute_state`, `contradiction_scan_state` and `article_synthesis_state` join the three it named, so a T4.10 mitigation scoped to "the three cursors item 6 names" would have left four unserialised. The seven are now derived by two committed greps rather than by eye, and the derivation is written into the analysis so the closure can be re-run. Item 33's *"the ladder needs nothing from T4.10"* is qualified in the same edit — true of the rung transition, false of the subsystem, since `verification_recompute`'s watermark is one of the four that were missing | Recorded as its own row rather than by editing the 2026-08-15 one, per this log's append-only rule (E1's 2026-07-28 T1.51 row states it). The number matters because doc 02 §11's option set is judged against it: "1 of 35" and "1 of 38" argue the same way, but a corpus stating one task's headline three different ways is the staleness shape invariant 23 exists for — and this was the **third** consecutive undercount of an enumeration whose completeness was the point, inside the document that convicts doc 02 §7 of exactly that. Which is why the fix is a mechanical derivation rather than a fourth careful reading. **No grade moved and no reasoning was revised**; the audit's verdicts and both ALREADY-SAFE exonerations survived review intact |
+| 2026-08-16 | E4 epic review | 2 | **Lane F minted (`E4.F1`–`E4.F8`)** from the epic-completion review: 1 Critical (the keyed path journals nothing while three surfaces claim it does) and 4 Important, every one a cross-task seam. `E4.F1` and `E4.F2` landed the same day; `E4.F8` exists because the review found the `capture`/`read` assignment had been handed T4.01 → T4.03, dropped, and left owned by a closed task | The epic closed 13/13 with its own audit surfaces overclaiming — the failure mode this epic exists to prevent, in the direction its earlier fix (T4.04's stale-dormancy correction) ran the other way. Recorded as scope rather than as a note, because work named only in a review report is work assigned to nobody, which is the exact defect `E4.F8` was minted to repair |

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_session
 from app.services.api_key_scopes import API_KEY_SCOPES, FORBIDDEN_SCOPES
-from app.services.api_keys import authenticate, looks_like_credential
+from app.services.api_keys import authenticate, looks_like_credential, mark_key_used
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
@@ -199,6 +199,10 @@ def require_scope(scope: str):
                             status_code=status.HTTP_403_FORBIDDEN,
                             detail=f"Key lacks the '{scope}' scope",
                         )
+                    # After the scope check, not inside `authenticate`: a
+                    # call that authenticates and then fails the scope gate
+                    # did not use the key for anything.
+                    await mark_key_used(principal.api_key_id)
                     return Principal(
                         actor=principal.name,
                         api_key_id=principal.api_key_id,
