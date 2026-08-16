@@ -118,17 +118,26 @@ logger = logging.getLogger(__name__)
 # exception covers.
 CODE_SOURCE_KIND = "code"
 
+# Document content, spelled once for the same reason `code` is: the provenance
+# writer, the one-document-one-origin rule and the withdrawal that closes a
+# document's window all key on it (TH1.12).
+BLOCK_SOURCE_KIND = "block"
+
 # The kinds that may assert a fact today. Doc 04 §8.3's vocabulary is
-# {memory, block, code, human}; `block` is held in _RESERVED_SOURCE_KINDS below
-# because no producer writes one yet.
-SOURCE_KINDS = frozenset({MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, "human"})
+# {memory, block, code, human}, and `block` joined it when TH1.12 shipped its
+# producer — the reserved entry below said "no producer writes one yet", which
+# stopped being true rather than being relaxed.
+SOURCE_KINDS = frozenset(
+    {MEMORY_SOURCE_KIND, CODE_SOURCE_KIND, BLOCK_SOURCE_KIND, "human"}
+)
 
 _RESERVED_SOURCE_KINDS = {
-    "block": "no producer writes one yet",
     # Doc 08 §4.1 names a `document` origin ("document -> document_id"); doc 04
     # §8.3's column vocabulary has no such value, so document content arrives
-    # under the `block` kind. A caller following the former deserves to be told.
-    "document": "document content arrives under the 'block' kind, which has no producer yet",
+    # under the `block` kind — with the *document* as the origin_key, which is
+    # what makes a 400-block document one origin rather than 400. A caller
+    # following the former deserves to be told.
+    "document": "document content arrives under the 'block' kind, with the document id as its origin_key",
 }
 
 # Named only to make the refusal legible. Anything outside SOURCE_KINDS is

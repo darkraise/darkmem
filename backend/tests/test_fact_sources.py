@@ -267,9 +267,16 @@ async def test_an_unrecognised_kind_is_rejected_and_writes_nothing(session):
     assert await _row_count(session, fact_id) == 0
 
 
-@pytest.mark.parametrize("kind,hint", [("block", "producer"), ("document", "'block'")])
+@pytest.mark.parametrize("kind,hint", [("document", "'block'")])
 async def test_a_reserved_kind_names_its_missing_producer(session, kind, hint):
-    """`document` is doc 08 §4.1's wording for content that arrives as `block`."""
+    """`document` is doc 08 §4.1's wording for content that arrives as `block`.
+
+    `block` was the other row here until TH1.12 shipped its producer — the
+    reservation read "no producer writes one yet", which stopped being true
+    rather than being relaxed. `document` stays reserved because doc 04 §8.3's
+    column vocabulary still has no such value, and a caller following doc 08's
+    wording deserves to be pointed at where document content actually lands.
+    """
     repo = FactSourceRepository(session)
     fact_id = await _fact(session)
 
@@ -306,7 +313,7 @@ async def test_an_empty_identity_field_is_rejected(session, field, kwargs):
 async def test_each_source_kind_round_trips(session):
     repo = FactSourceRepository(session)
     fact_id = await _fact(session)
-    assert SOURCE_KINDS == {"memory", "code", "human"}
+    assert SOURCE_KINDS == {"memory", "code", "block", "human"}
 
     await _add(repo, fact_id, kind="memory", ref="memory-1", origin="mcp:agent-run-1")
     await _add(
@@ -317,15 +324,19 @@ async def test_each_source_kind_round_trips(session):
         origin="repo-42",
         detail={"commit_sha": "abc123", "file_path": "app.py"},
     )
+    # TH1.12: the ref is the block, the origin is its document — which is what
+    # makes a many-block document one origin rather than many.
+    await _add(repo, fact_id, kind="block", ref="block-9", origin="document-3")
     human = await _add(repo, fact_id, kind="human", ref="user-7", origin="human:user-7")
 
     profile = await repo.origin_profile(fact_id)
-    assert profile.source_kinds == ("code", "human", "memory")
-    assert profile.origin_count == 3
+    assert profile.source_kinds == ("block", "code", "human", "memory")
+    assert profile.origin_count == 4
     assert human["source_kind"] == "human"
     assert human["source_ref"] == "user-7"
 
     stored = {o.origin_key: o.source_kinds for o in profile.origins}
+    assert stored["document-3"] == ("block",)
     assert stored["repo-42"] == ("code",)
     assert stored["human:user-7"] == ("human",)
     assert stored["mcp:agent-run-1"] == ("memory",)
@@ -628,7 +639,9 @@ async def test_facts_for_source_does_not_cross_projects(session):
     ) == [theirs]
 
 
-@pytest.mark.parametrize("kind", ["article", "block", "memories"])
+# `block` left this list when TH1.12 gave it a producer; it is a writable
+# kind now, so refusing it would refuse a real withdrawal sweep.
+@pytest.mark.parametrize("kind", ["article", "document", "memories"])
 async def test_facts_for_source_refuses_a_kind_add_source_could_not_write(session, kind):
     """A typo must raise, not answer "nothing to withdraw" with an empty list."""
     repo = FactSourceRepository(session)
