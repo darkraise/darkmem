@@ -173,13 +173,57 @@ def test_no_module_under_app_triggers_a_summary():
     for path in sources:
         if path == MODULE:
             continue
-        body = path.read_text(encoding="utf-8")
-        if "summarise_document" in body or "document_summary" in body:
-            offenders.append(str(path.relative_to(BACKEND)))
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            named = (
+                (isinstance(func, ast.Name) and func.id == "summarise_document")
+                or (isinstance(func, ast.Attribute) and func.attr == "summarise_document")
+            )
+            if named:
+                offenders.append(str(path.relative_to(BACKEND)))
+                break
     assert not offenders, (
         f"a module under app/ can trigger a summary: {offenders} — regeneration "
         "is explicit by design (doc 16 §6)"
     )
+
+
+def test_the_trigger_scan_separates_generating_from_reading():
+    """Narrowed from a module-name match when TH1.16's read door landed: that
+    door calls `read_summary` and must, while `summarise_document` is the
+    trigger and must not be reachable from `app/`. A scan that cannot tell them
+    apart forces the read surface to be exempted, which is how an exemption
+    list ends up covering the thing it was meant to catch."""
+    import textwrap
+
+    generating = ast.parse(textwrap.dedent("""
+        from app.services.document_summary import summarise_document
+
+        async def go(s, l):
+            await summarise_document(s, l, document_id="d")
+    """))
+    reading = ast.parse(textwrap.dedent("""
+        from app.services.document_summary import read_summary
+
+        async def go(s):
+            return await read_summary(s, document_id="d")
+    """))
+
+    def _triggers(tree):
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func = node.func
+                if isinstance(func, ast.Name) and func.id == "summarise_document":
+                    return True
+                if isinstance(func, ast.Attribute) and func.attr == "summarise_document":
+                    return True
+        return False
+
+    assert _triggers(generating)
+    assert not _triggers(reading)
 
 
 # ── a summary never outlives the text it was made from ───────────────

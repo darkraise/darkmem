@@ -41,6 +41,23 @@ async def get_analytics_service(request: Request, session: AsyncSession = Depend
     return AnalyticsService(session, pipeline, graph_repo)
 
 
+async def get_llm(request: Request):
+    """The orchestrator, or a 503 (TH1.16).
+
+    Fail fast at the boundary rather than pass `None` through: grounded Q&A is
+    a generative read and there is no useful degraded answer — a flow that
+    retrieved blocks and then had no model would have to return something
+    shaped like an answer with nothing in it, which is worse than saying the
+    orchestrator is unavailable.
+    """
+    llm = getattr(request.app.state, "llm", None)
+    if not llm:
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        raise HTTPException(status_code=503, detail="LLM orchestrator is not configured")
+    return llm
+
+
 async def get_graph_service(request: Request, session: AsyncSession = Depends(get_session)) -> GraphService:
     llm = getattr(request.app.state, "llm", None)
     vector_repo = PostgresVectorRepository(session)
