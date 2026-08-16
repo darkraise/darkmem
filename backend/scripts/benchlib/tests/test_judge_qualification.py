@@ -1808,3 +1808,134 @@ def test_the_renderer_never_prints_a_count_with_an_empty_pair_list():
     collapsing = ci["duplicate_pairs"] + ci["adjudicated_duplicate_pairs"]
     assert len(collapsing) == ci["rows"] - ci["independent_propositions"]
     assert collapsing, "a non-zero collapse must name the pairs that caused it"
+
+
+# ── T2.124 step 13: the disclosure is owed for BOTH gated classes ─────────
+
+
+def _independent_census(verdict, n):
+    """`n` rows of `verdict`, every one a distinct proposition."""
+    return [
+        {"id": f"{verdict[:3]}-{i:04d}", "verdict": verdict,
+         "premise": f"subject{i} relates object{i}",
+         "hypothesis": f"a distinct claim about subject{i} number {i}"}
+        for i in range(n)
+    ]
+
+
+def test_the_runner_discloses_the_census_for_both_gated_classes():
+    """Derived from the runner's own AST, not from a copy of its literal.
+
+    The done-when asks for the disclosure for both classes because the two
+    roles are gated on different numbers: `contradiction` on
+    contradiction-recall, `entailment` on the entailed pair. A runner
+    disclosing only the contradicted census tells the entailment role's
+    reader nothing about the census their bar is applied to — and until
+    T2.124 step 13 that is exactly what it did. Asserted structurally so a
+    future edit that drops one class fails here rather than shipping a
+    half-disclosure that still renders cleanly.
+    """
+    import ast
+
+    tree = ast.parse(
+        pathlib.Path(rjq.__file__).read_text(encoding="utf-8")
+    )
+    disclosed = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, ast.Constant) and key.value == "census_independence":
+                disclosed = value
+    assert disclosed is not None, "the runner no longer builds census_independence"
+    assert isinstance(disclosed, ast.List), (
+        "census_independence must be a LIST of per-class disclosures; a bare "
+        "call can only ever carry one class"
+    )
+    classes = {
+        arg.value
+        for call in disclosed.elts
+        if isinstance(call, ast.Call)
+        for arg in call.args
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+    }
+    assert classes == set(jq.CENSUS_RECALL_ATTRS), (
+        f"the runner discloses {sorted(classes)} but CENSUS_RECALL_ATTRS gates "
+        f"{sorted(jq.CENSUS_RECALL_ATTRS)} -- every class whose recall a bar "
+        f"reads must be disclosed"
+    )
+
+
+def test_both_classes_render_their_own_reading_under_their_own_heading():
+    """Two classes, two sections, each naming the class it describes.
+
+    The hazard the heading closes: one class's measured recall rendered under
+    the other's name reads as a disclosure while being a mis-attribution, and
+    the numbers are close enough that nothing downstream would catch it.
+    """
+    census = [
+        jq.census_independence(_census_with_two_duplicates(), "contradicted", 0.95),
+        jq.census_independence(_independent_census("entailed", 40), "entailed", 0.90),
+    ]
+    score = jq.QualificationScore(
+        n_pairs=402, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=76 / 80, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=census),
+    )
+    assert "Census independence (contradicted)" in text
+    assert "Census independence (entailed)" in text
+    assert "contradicted-recall" in text
+    # The contradicted class carries the duplicates, so only it is flagged.
+    assert "not robust to the independence reading" in text
+    assert text.count("not robust to the independence reading") == 1
+
+
+def test_a_rows_equal_propositions_census_says_so_rather_than_going_silent():
+    """Silence and independence must not render alike.
+
+    A reader meeting no section cannot tell "this census is independent" from
+    "nobody computed the disclosure" — and the second is precisely what the
+    2026-08-10 attempt suffered, discovered only in review after the attempt
+    was spent.
+    """
+    census = [jq.census_independence(_independent_census("entailed", 40), "entailed", 0.90)]
+    score = jq.QualificationScore(
+        n_pairs=40, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=1.0, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=census),
+    )
+    assert "Census independence (entailed) — rows == propositions" in text
+    assert "no independence reading is owed" in text
+
+
+def test_a_three_wide_component_collapses_two_rows_not_three_findings():
+    """T2.123's arithmetic, pinned on a synthetic census.
+
+    A component of k mutually-duplicate rows yields k(k-1)/2 findings and
+    collapses k-1 rows. The sibling pin reads the live gold and therefore
+    moves whenever the gold's composition does; this one cannot, so the
+    arithmetic stays guarded across a gold swap.
+    """
+    pairs = _independent_census("entailed", 10)
+    for suffix, hypothesis in (
+        ("a", "The widget has tri as a part."),
+        ("b", "tri is a part of the widget."),
+        ("c", "tri is part of the widget."),
+    ):
+        pairs.append({
+            "id": f"tri-{suffix}", "verdict": "entailed",
+            "premise": "tri has part widget", "hypothesis": hypothesis,
+        })
+    ci = jq.census_independence(pairs, "entailed", 0.90)
+    assert ci["rows"] == 13
+    # Three findings over one three-wide component, but only two rows collapse.
+    assert len(ci["duplicate_pairs"]) == 3
+    assert ci["independent_propositions"] == 11

@@ -174,6 +174,18 @@ def load_adjudicated_duplicates(path: Path | str | None = None) -> dict:
     return data
 
 
+#: Which measured recall the independence reading threatens, per verdict class.
+#: The reading is about a *recall* bar — it says a judge banking correlated hits
+#: gets a wider per-item tolerance than the bar states — so a class is disclosable
+#: here only while its recall is what a bar gates. Adding a class means adding its
+#: recall attribute here and its bar at the call site, never rendering one class's
+#: number under another's name.
+CENSUS_RECALL_ATTRS: dict[str, str] = {
+    "contradicted": "contradiction_recall",
+    "entailed": "entailed_recall",
+}
+
+
 def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
     """What a verdict class's census can actually express against ``bar``.
 
@@ -698,8 +710,14 @@ def render_report(
         "each scored row's twin. Keyed on the gold's PAIRS since 2026-08-12, "
         "so an edit to something no judge was shown cannot reset it."
     )
-    ci = meta.get("census_independence")
-    if ci:
+    # A list since T2.124 step 13: the done-when requires the disclosure for
+    # every class whose recall a bar gates, and a single dict could only ever
+    # carry one of them. A bare dict from an older artifact is read as a
+    # one-element list so a re-render of a recorded run still works.
+    census = meta.get("census_independence") or []
+    if isinstance(census, dict):
+        census = [census]
+    for ci in census:
         # Both sources of collapse, never `duplicate_pairs` alone: the lexical
         # findings can be empty while the adjudicated set is not, and a note
         # reading "8 duplicated proposition(s): []" is worse than no note.
@@ -813,32 +831,55 @@ def render_report(
         )
         lines.append("")
 
-    ci = meta.get("census_independence")
-    if ci and ci["rows"] != ci["independent_propositions"]:
+    # One section per disclosed class, headed by the class, because two
+    # classes rendered under one "contradiction-recall" heading is the
+    # mis-attribution T2.124 step 13 exists to prevent.
+    for ci in census:
+        if ci["rows"] == ci["independent_propositions"]:
+            # Stated rather than skipped: a reader who sees no section cannot
+            # tell "independent census" from "disclosure not computed", and
+            # the second is what the 2026-08-10 attempt actually suffered.
+            lines.append(
+                f"## Census independence ({ci['verdict']}) — rows == propositions"
+            )
+            lines.append("")
+            lines.append(
+                f"- {ci['rows']} {ci['verdict']} rows over "
+                f"{ci['independent_propositions']} independent propositions: no "
+                f"two rows assert one proposition, so the bar means on "
+                f"propositions exactly what it means on rows and no independence "
+                f"reading is owed."
+            )
+            lines.append("")
+            continue
         # The owner ruled 2026-08-12 that independence is handled by
         # reporting rather than retiring, which puts the whole weight of that
         # ruling here: the bar is applied to rows, and a row-pass that the
         # independent reading would fail must say so rather than read as a
         # clear pass. Computed here rather than in `census_independence`,
         # which takes no judge output by construction.
-        hits = round(score.contradiction_recall * ci["rows"])
+        measured = getattr(score, CENSUS_RECALL_ATTRS[ci["verdict"]])
+        hits = round(measured * ci["rows"])
         collapsed = ci["rows"] - ci["independent_propositions"]
         worst_independent = (hits - collapsed) / ci["independent_propositions"]
-        lines.append("## Census independence — read with the recall verdict")
+        lines.append(
+            f"## Census independence ({ci['verdict']}) — read with the recall "
+            f"verdict"
+        )
         lines.append("")
         lines.append(
-            f"- {ci['rows']} contradicted rows over "
+            f"- {ci['rows']} {ci['verdict']} rows over "
             f"{ci['independent_propositions']} independent propositions "
             f"({collapsed} duplicated: {ci['duplicate_pairs']})."
         )
         lines.append(
-            f"- Measured contradiction-recall {score.contradiction_recall:.4f} "
+            f"- Measured {ci['verdict']}-recall {measured:.4f} "
             f"is {hits}/{ci['rows']} on rows. If the judge caught every "
             f"correlated pair, the independent reading is at worst "
             f"{max(hits - collapsed, 0)}/{ci['independent_propositions']} = "
             f"{max(worst_independent, 0.0):.4f}."
         )
-        if score.contradiction_recall >= ci["bar"] > worst_independent:
+        if measured >= ci["bar"] > worst_independent:
             lines.append(
                 f"- **This pass is not robust to the independence reading.** It "
                 f"clears {ci['bar']} on rows and falls below it on independent "
