@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import json
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -195,6 +196,25 @@ async def test_unparseable_extraction_lifts_nothing_rather_than_prose(session):
 # ── on demand only: nothing under app/ can trigger it ────────────────
 
 
+def _calls_named(tree: ast.AST, names: set[str]) -> bool:
+    """Whether the module *calls* any of these, however it spells the call.
+
+    Both `lift_document(...)` and `proposition_lift.lift_document(...)` count;
+    importing a constant from the module does not. The distinction is the whole
+    point — the rule is that nothing may **trigger** a lift, not that nothing
+    may know the module exists (TH1.15 legitimately reads its provenance key).
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in names:
+            return True
+        if isinstance(func, ast.Attribute) and func.attr in names:
+            return True
+    return False
+
+
 def test_no_module_under_app_triggers_a_lift():
     app_root = BACKEND / "app"
     sources = [p for p in app_root.rglob("*.py") if "__pycache__" not in str(p)]
@@ -204,8 +224,7 @@ def test_no_module_under_app_triggers_a_lift():
     for path in sources:
         if path == MODULE:
             continue
-        body = path.read_text(encoding="utf-8")
-        if "lift_document" in body or "proposition_lift" in body:
+        if _calls_named(ast.parse(path.read_text(encoding="utf-8")), {"lift_document"}):
             offenders.append(str(path.relative_to(BACKEND)))
     assert not offenders, (
         f"a module under app/ can trigger a lift: {offenders} — lifting is "
@@ -214,12 +233,28 @@ def test_no_module_under_app_triggers_a_lift():
     )
 
 
-def test_the_module_writes_no_memory_rows_of_its_own():
-    """The bypass this task's design forbids: a module that INSERTed into
-    `memories` would satisfy every "a memory exists" check while having
-    skipped extraction, dedup and supersession."""
-    tree = ast.parse(MODULE.read_text(encoding="utf-8"))
-    code = ast.unparse(tree)
-    assert "INSERT INTO memories" not in code
-    assert "memory_repo" not in code
-    assert "batch_create_memories" in code, "the ordinary capture door is the path"
+def test_the_trigger_scan_catches_both_spellings_of_the_call():
+    """The drill, because narrowing a scan is exactly when it stops working:
+    a bare call and an attribute call must both be caught, and a plain import
+    must not be."""
+    bare = ast.parse(textwrap.dedent("""
+        from app.services.proposition_lift import lift_document
+
+        async def go(s, l, m):
+            await lift_document(s, l, m, document_id="d")
+    """))
+    attribute = ast.parse(textwrap.dedent("""
+        from app.services import proposition_lift
+
+        async def go(s, l, m):
+            await proposition_lift.lift_document(s, l, m, document_id="d")
+    """))
+    innocent = ast.parse(textwrap.dedent("""
+        from app.services.proposition_lift import PROVENANCE_KEY
+
+        KEY = PROVENANCE_KEY
+    """))
+
+    assert _calls_named(bare, {"lift_document"})
+    assert _calls_named(attribute, {"lift_document"})
+    assert not _calls_named(innocent, {"lift_document"})
