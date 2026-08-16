@@ -24,6 +24,19 @@ The `source` is `RESEARCH`-shaped in spirit but its own literal, `document`:
 these rows are attributable to a filed document rather than to a capture
 session, and a reader slicing by source must be able to tell them apart from
 anything a human or an agent typed.
+
+**Lifting is strip-before-rewrite, keyed on `document_id`** (TH1.13). A second
+lift of the same document deletes what the first one minted and writes a fresh
+set, exactly as the block writer replaces a document's blocks — so re-lifting
+an unchanged document leaves one set of propositions, not two, and re-lifting a
+*changed* one cannot leave a claim behind that its source no longer makes.
+
+**The strip is the ordinary delete, never a bespoke one.** It goes through
+`MemoryService.delete_memory`, so each row's graph contributions, fact-source
+provenance and pipeline-failure rows are withdrawn by the same code path a
+human deleting a memory takes. That is also what makes withdrawal self-healing:
+`strip_document_lift` on a removed document is the same call, and nothing has
+to know why the rows are going away.
 """
 from __future__ import annotations
 
@@ -45,6 +58,8 @@ __all__ = [
     "PROVENANCE_KEY",
     "LiftResult",
     "lift_document",
+    "lifted_memory_ids",
+    "strip_document_lift",
 ]
 
 LIFT_SOURCE = "document"
@@ -55,6 +70,14 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 _SCHEMA = """{"propositions": [{"text": "one standalone assertion the block makes",
                                "span_start": 0, "span_end": 0}]}"""
+
+# Keyed on the provenance the lift itself wrote. Deliberately not on `source`
+# alone: every lifted row in the project shares that literal, and a strip that
+# matched on it would delete another document's propositions.
+_LIFTED_SQL = text(
+    "SELECT CAST(id AS text) AS id FROM memories "
+    "WHERE metadata -> :key ->> 'document_id' = :document_id"
+)
 
 _BLOCKS_SQL = text(
     "SELECT CAST(b.id AS text) AS block_id, b.text AS text, d.project AS project "
@@ -69,6 +92,36 @@ class LiftResult:
     project: str
     lifted: int
     memory_ids: list[str]
+    stripped: int = 0
+
+
+async def lifted_memory_ids(
+    session: AsyncSession, *, document_id: UUID | str,
+) -> list[str]:
+    """Every memory this document's lift minted, by its own provenance."""
+    rows = await session.execute(
+        _LIFTED_SQL, {"key": PROVENANCE_KEY, "document_id": str(document_id)}
+    )
+    return [row.id for row in rows]
+
+
+async def strip_document_lift(
+    session: AsyncSession, memory_service, *, document_id: UUID | str,
+    actor: str | None = None,
+) -> int:
+    """Delete every memory this document's lift minted. Returns the count.
+
+    The ordinary delete, once per row: the graph strip, the fact-source
+    withdrawal and the failure-row cleanup are all things `delete_memory`
+    already does, and a bespoke sweep here would be a second implementation of
+    each that drifts from the first.
+    """
+    ids = await lifted_memory_ids(session, document_id=document_id)
+    removed = 0
+    for memory_id in ids:
+        if await memory_service.delete_memory(UUID(memory_id), None, actor=actor):
+            removed += 1
+    return removed
 
 
 async def lift_document(
@@ -88,6 +141,13 @@ async def lift_document(
     rows = (await session.execute(_BLOCKS_SQL, {"id": str(document_id)})).mappings().all()
     if not rows:
         return None
+
+    # Strip before rewrite, keyed on document_id: a second lift replaces the
+    # first rather than adding to it, and a changed document cannot leave
+    # behind a proposition its source no longer makes.
+    stripped = await strip_document_lift(
+        session, memory_service, document_id=document_id, actor=actor,
+    )
 
     project = rows[0]["project"]
     entries: list[MemoryCreate] = []
@@ -112,7 +172,8 @@ async def lift_document(
 
     if not entries:
         return LiftResult(
-            document_id=str(document_id), project=project, lifted=0, memory_ids=[],
+            document_id=str(document_id), project=project, lifted=0,
+            memory_ids=[], stripped=stripped,
         )
 
     acks = await memory_service.batch_create_memories(entries, None, actor=actor)
@@ -121,6 +182,7 @@ async def lift_document(
         project=project,
         lifted=len(entries),
         memory_ids=[str(getattr(ack, "id", "")) for ack in acks],
+        stripped=stripped,
     )
 
 
