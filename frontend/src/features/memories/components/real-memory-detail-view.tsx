@@ -19,6 +19,7 @@ import {
 } from "@/hooks/api/use-memory-api"
 import { LifecycleBadge } from "./lifecycle-badge"
 import { MemoryEditorDialog } from "./memory-editor-dialog"
+import { MemoryEventTimeline } from "./memory-event-timeline"
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -229,6 +230,19 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
         </CardHeader>
         <CardContent>
           <SupersessionLineage memory={memory} />
+        </CardContent>
+      </Card>
+
+      <Card elevation="low">
+        <CardHeader className="pb-3">
+          <p className="text-sm font-semibold">Per-memory timeline</p>
+          <p className="text-muted-foreground text-sm">
+            events by object — timestamp, event type, and the actor and API key
+            each call was made under.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <MemoryEventTimeline memoryId={memory.id} />
         </CardContent>
       </Card>
 

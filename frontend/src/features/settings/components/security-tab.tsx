@@ -16,17 +16,22 @@ import {
   ModuleSurface,
   SurfaceStateChip,
 } from "@/features/activity/components/module-surface"
+import {
+  useApiKeys,
+  useCreateApiKey,
+  useRevokeApiKey,
+  type ApiKeyCreated,
+} from "@/hooks/api"
 import { ConfirmGate } from "./confirm-gate"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
 } from "../use-security-tab-binding"
 
-// Design documentation for the dormant Phase-4 credential, not per-instance
-// data — identical in demo and real mode, so it is a plain constant rather
-// than a fetched value (there is nothing to fetch: the api_keys table is
-// unwired everywhere today).
-const DORMANT_API_KEY_SCOPES: { label: string; never?: boolean }[] = [
+// The closed scope set itself, which is design rather than per-instance data
+// and so stays a constant. `ratify` is listed precisely because it is *not* a
+// scope: a reader must be able to see that the omission is deliberate.
+const API_KEY_SCOPES: { label: string; never?: boolean }[] = [
   { label: "capture" },
   { label: "read" },
   { label: "admin" },
@@ -441,27 +446,36 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
   )
 }
 
-// The load-bearing honesty surface of this board (invariant 23): the
-// api_keys table is dormant and unwired — every control renders disabled,
-// and this card must never read as "on" in any state.
-function DormantApiKeyCard() {
+// The load-bearing honesty surface of this board (invariant 23), and its
+// direction reversed by T4.04: this card declared the api_keys table dormant
+// and every write `api_key_id=None`, which stopped being true when T4.01 wired
+// the credential and T4.02 stamped the columns. A stale dormancy claim is the
+// same defect as a premature shipped claim — it tells an operator a live
+// credential path does not exist.
+function ApiKeyCard() {
+  const { data: keys, isLoading, isError } = useApiKeys()
+  const createKey = useCreateApiKey()
+  const revokeKey = useRevokeApiKey()
+  const [label, setLabel] = useState("")
+  const [scopes, setScopes] = useState("read")
+  // The plaintext exists exactly once, on the create response. Holding it in
+  // component state is what "shown once" means here: a reload loses it, and
+  // there is no read surface that could hand it back.
+  const [issued, setIssued] = useState<ApiKeyCreated | null>(null)
+
+  const parsedScopes = scopes
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+
   return (
     <CardShell
       icon={KeyRound}
       title="Programmatic ApiKey bearer"
-      tag="Phase-4 · designed, not wired"
-      help="This card previews the fixed design so no interim feature invents a second credential shape. It activates on the first genuine off-LAN need — an exposed deployment or the repo push-webhook receiver, whichever comes first. The Host allowlist stays on even after activation; a bearer key is defense in addition to it, never instead of it."
-      dormant
+      tag="live"
+      help="A key is `dmk_<key_id>_<secret>` presented as `Authorization: Bearer`. Scopes are a closed set — capture, read, admin — and `ratify` is deliberately not among them: confirming a fact stays a human cookie session. Minting and revoking are behind the human door, so a key can never mint, list or revoke a key, including one holding admin. The MCP Host allowlist stays on regardless; a bearer is defence in addition to it, never instead of it."
       className="sm:col-span-2"
     >
-      {/* The dormant state stays visible in full — never tooltip-only. */}
-      <p className="text-muted-foreground text-sm">
-        The <code className="font-mono">api_keys</code> table exists in the
-        schema but is dormant — every write on this box today still passes{" "}
-        <code className="font-mono">api_key_id=None</code>. It is{" "}
-        <b className="font-semibold">not available in this deployment</b> and
-        every control below is disabled.
-      </p>
       <div className="flex flex-wrap gap-2.5">
         <div className="flex min-w-40 flex-1 flex-col gap-1">
           <Label htmlFor="apikey-label" className="text-muted-foreground text-sm">
@@ -469,9 +483,9 @@ function DormantApiKeyCard() {
           </Label>
           <Input
             id="apikey-label"
-            placeholder="unavailable until activation"
-            disabled
-            className="border-dashed"
+            placeholder="e.g. push-webhook"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
           />
         </div>
         <div className="flex min-w-40 flex-1 flex-col gap-1">
@@ -481,28 +495,99 @@ function DormantApiKeyCard() {
           <Input
             id="apikey-scope"
             placeholder="capture / read / admin"
-            disabled
-            className="border-dashed"
-          />
-        </div>
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="apikey-expiry" className="text-muted-foreground text-sm">
-            Expiry
-          </Label>
-          <Input
-            id="apikey-expiry"
-            placeholder="optional"
-            disabled
-            className="border-dashed"
+            value={scopes}
+            onChange={(e) => setScopes(e.target.value)}
           />
         </div>
       </div>
-      <Button size="sm" variant="outline" disabled className="w-fit">
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-fit"
+        disabled={!label.trim() || parsedScopes.length === 0 || createKey.isPending}
+        onClick={() =>
+          createKey.mutate(
+            { name: label.trim(), scopes: parsedScopes },
+            {
+              onSuccess: (created) => {
+                setIssued(created)
+                setLabel("")
+              },
+            },
+          )
+        }
+      >
         <KeyRound className="mr-1.5 size-3.5" />
-        Create key — unavailable until activation
+        {createKey.isPending ? "Creating key…" : "Create key"}
       </Button>
+      {createKey.isError && (
+        <p className="text-destructive text-sm">
+          key not created — {createKey.error.message}
+        </p>
+      )}
+      {issued && (
+        <div className="border-border bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
+          <span className="text-sm font-semibold">
+            Copy this now — it is never shown again
+          </span>
+          <code className="font-mono text-sm break-all">{issued.token}</code>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        {isLoading ? (
+          <span className="text-muted-foreground text-sm">loading keys…</span>
+        ) : isError ? (
+          <span className="text-muted-foreground text-sm">
+            the key list could not be read — a failed read, not an empty list
+          </span>
+        ) : (keys ?? []).length === 0 ? (
+          <span className="text-muted-foreground text-sm italic">
+            no keys issued
+          </span>
+        ) : (
+          (keys ?? []).map((key) => (
+            <div
+              key={key.id}
+              className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-1.5 text-sm first:border-t-0 first:pt-0"
+            >
+              <span className="font-mono">{key.name}</span>
+              <span className="text-muted-foreground font-mono text-sm">
+                {key.key_id}
+              </span>
+              <span className="text-muted-foreground font-mono text-sm">
+                {key.scopes.join(" · ")}
+              </span>
+              <span className="text-muted-foreground text-sm">
+                {key.last_used_at
+                  ? `last used ${new Date(key.last_used_at).toLocaleString()}`
+                  : "never used"}
+              </span>
+              {key.revoked_at ? (
+                // Kept listed on purpose: the row survives revocation so the
+                // calls it already made keep a resolvable label in the
+                // per-object timeline.
+                <span className="text-muted-foreground ml-auto text-sm">
+                  revoked {new Date(key.revoked_at).toLocaleString()}
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
+                  disabled={revokeKey.isPending}
+                  onClick={() => revokeKey.mutate(key.id)}
+                >
+                  Revoke
+                </Button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-1.5">
-        {DORMANT_API_KEY_SCOPES.map((scope) => (
+        {API_KEY_SCOPES.map((scope) => (
           <span
             key={scope.label}
             className={cn(
@@ -530,18 +615,19 @@ export function SecurityTab() {
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
           Auth, tokens, the trust-on-first-use claim, the LAN trust model, and
-          the dormant Phase-4 ApiKey path.
+          the programmatic ApiKey bearer.
         </span>
         <HelpTip label="About the Security tab">
           Auth (the admin password-change form and the session&apos;s
           cookie-JWT state), tokens (rotation, blocklist, the
           mass-revocation-by-iat rule a password change triggers), the
-          trust-on-first-use claim, the LAN trust model, and the dormant
-          ApiKey bearer path — kept visibly Phase-4 so nothing here overclaims
-          a credential path that does not exist yet. Fields with no backend
-          read surface (the blocklist count, cookie_secure's actual value,
+          trust-on-first-use claim, the LAN trust model, and the ApiKey
+          bearer path, live since the credential was wired. Fields with no
+          backend read surface (the blocklist count, the lockout count, the
+          session's issue time and jti) render as an honest gap, never a
+          guessed number; the posture fields — cookie_secure,
           trust_proxy_headers, mcp_allowed_hosts, the rate limiter's
-          thresholds) render as an honest gap, never a guessed number.
+          thresholds — are live reads.
         </HelpTip>
       </div>
       <ModuleSurface
@@ -554,7 +640,7 @@ export function SecurityTab() {
           <TokensCard binding={binding} />
           <TofuCard binding={binding} />
           <LanTrustCard binding={binding} />
-          <DormantApiKeyCard />
+          <ApiKeyCard />
         </div>
       </ModuleSurface>
     </div>
