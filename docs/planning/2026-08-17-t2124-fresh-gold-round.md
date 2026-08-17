@@ -4,11 +4,36 @@ The round is complete and the gold is certified. This is the record a reader
 who did not run it needs: what was produced, what it was measured against, and
 what the certification does **not** establish.
 
-**The one sentence the round exists to be able to say:** no judge model
-contacted any pair in this gold at any point in the round. Every label came
-from authoring, blind adjudication, or an owner ruling; the only model to see
-a pair against its recorded label was the Layer-3 resample labeller, which is
-the certification instrument and files no qualification attempt.
+> ## ⚠️ CORRECTED 2026-08-17 — this record described a certification that was superseded
+>
+> Everything below was written against the **pre-repair** certification and was
+> accurate then. After it was written, an adversarial review found ten live pairs
+> standing on premises the round's own D3 rule excluded, the owner ruled
+> retire-and-replace, and the gold was re-certified. The figures in §1 and the
+> pinned shas are corrected in place; **the prose below still describes the older
+> round in places**, and where it conflicts with `gate-ledger.md`'s "The repair
+> round that produced the certified gold", the ledger governs.
+>
+> What changed: 19 retired → **29**, ids to `eg-0716` → **`eg-0726`**, certified
+> file sha `9587dc0f…` → **`fdbe2af9967970b6`**, `pairs_sha256` `01a1bbc5…` →
+> **`4748ac84960fed67`**, and the certifying sitting is **1 disagreement of 93 by
+> `deepseek-v4-pro`**, not 0/93 by `glm-5.2`.
+
+**The one sentence the round exists to be able to say — and it did not survive
+the repair round, so it is retracted here rather than left standing.** It read:
+*no judge model contacted any pair in this gold at any point in the round.* That
+was true of the census round. It is **false of the certified artifact**: two
+non-Claude models have since sat pairs in this file — `deepseek-v4-pro` and
+`gpt-5.5`, over the 93-pair certifying resample and the 29-pair bare-sortal
+rule-discovery probe. `gpt-5.5`, which later qualified as T2.125's judge, had met
+**114 of the 280 live pairs** before that run, and its three known disagreements
+(`eg-0475`, `eg-0486`, `eg-0699`) are among the retired.
+
+Every label still came from authoring, blind adjudication, or an owner ruling —
+no model's verdict was ever written into a label, and the probe was gated by
+nothing and banked into nothing. The disclosure, the worst-case computation
+showing no verdict moves, and the reason the strongest sentence is no longer
+available are in `gate-ledger.md`, "G-D on the fresh gold".
 
 ---
 
@@ -16,10 +41,10 @@ the certification instrument and files no qualification attempt.
 
 | | |
 |---|---|
-| Live pairs | **280** (299 in file, 19 retired in place) |
+| Live pairs | **280** (309 in file, 29 retired in place) |
 | Census | contradicted **80**, entailed **110**, unsupported **90** |
 | Provenance | `l2-fact` **218**, hand-authored **62**, bench-corpus 0, synthesis-draft 0 |
-| Ids | `eg-0418`..`eg-0716` (authored `eg-0418`..`eg-0697`; the rest are replacements) |
+| Ids | `eg-0418`..`eg-0726` (authored `eg-0418`..`eg-0697`; the rest are replacements) |
 | `label_source` | `adjudicated` on all 280; **0 author-labelled** |
 | Eligibility | `gate_eligibility` → `eligible=True`, the composition line its only reason |
 
@@ -30,9 +55,9 @@ the certification instrument and files no qualification attempt.
 | `entailment/round4_frame.json` (ratified matrix) | `ae11bc172bac05e7` |
 | `entailment/round4_excluded_triple_keys.json` | `38cae59683fa57e6` |
 | `entailment/l2_harvest.json` | `d1a3e21ba4ee3969` |
-| `gold.json` at the Layer-3 draw (`gold_sha256`) | `16072f9688209c89` |
-| `gold.json` certified (file) | `9587dc0f4b3563b0` |
-| `pairs_sha256` (the certification's basis) | `01a1bbc5508b8288` |
+| `gold.json` at the Layer-3 draw (`gold_sha256`) | `cac8c9743606…` (the re-sit draw; the pre-repair draw was `16072f9688209c89`) |
+| `gold.json` certified (file) | `fdbe2af9967970b6` |
+| `pairs_sha256` (the certification's basis) | `4748ac84960fed67` |
 
 The two file shas differ for two reasons, both benign and both recorded: the
 certification block is written into the file, and `resample_score.write_gold`
@@ -104,20 +129,37 @@ Notable results, recorded as they came:
 | | |
 |---|---|
 | n | **93** (stratified: full census of contradicted, plus unsupported and the entailed remainder) |
-| Disagreements | **0**, against a bar of ≤ 1 |
-| Seed | `369569686`, derived from the pre-certification file's own bytes |
-| Labeller | **glm-5.2** — non-Claude, owner-directed |
+| Disagreements | **1** (`eg-0423`, gold `entailed` read as `unsupported`), against a bar of ≤ 1 |
+| Seed | `1550309571`, derived from the pre-certification file's own bytes |
+| Labeller | **deepseek-v4-pro** — non-Claude, re-sitting after the excluded-premise repair |
 | Date | 2026-08-17 |
+| Certifies | `pairs_sha256` `4748ac84960fed67` |
+
+> **This table was corrected 2026-08-17.** It recorded the **superseded**
+> certification — 0 disagreements by `glm-5.2` at draw `16072f96…`, which
+> certified the pre-repair pair set `01a1bbc5…`. That sitting happened and its
+> artifact is kept (`resample_runs/2026-08-17-glm-5-2-16072f96.json`); it simply
+> does not certify the shipped gold. The shipped certification is the re-sit
+> above, `resample_runs/2026-08-17-deepseek-v4-pro-5c67d8c3.json`, and it lands
+> **on** the bar rather than under it. Why that is on-protocol rather than a
+> squeaked pass: the `≤ 1` bar was ratified 2026-07-31 and never moved, the seed
+> derives from the file's own bytes, there was one sitting per draw with no
+> re-running until it passed, and the two Layer-2 rounds that were voided were
+> voided **passes**. The single disagreement `eg-0423` is one of the two pairs in
+> the parked bare-sortal vocabulary gap, which cannot flip the qualification
+> (worst case precision 0.981, recall 0.963 — both clear).
 
 Recorded `--from-raw` off the sitting that was actually read, never by a second
 run: `--write-gold` re-sits the model, an LLM sitting is not reproducible, and
 a re-run would certify a sitting nobody inspected. T2.115 measured 1
 disagreement and recorded 0 by exactly this route.
 
-**Both pre-registered risks resolved in the gold's favour.** `eg-0529` was
-guaranteed in the draw as a full-census contradicted pair and read as recorded
-once the instance-hood ruling was in the excerpt. glm-5.2, entirely unmeasured
-on this gold, disagreed with none of the 93.
+**Both pre-registered risks resolved in the gold's favour** — in the `glm-5.2`
+sitting this described, which is the superseded one. `eg-0529` was guaranteed in
+the draw as a full-census contradicted pair and read as recorded once the
+instance-hood ruling was in the excerpt. glm-5.2, entirely unmeasured on this
+gold, disagreed with none of the 93. The **certifying** re-sit is
+`deepseek-v4-pro`'s at 1 of 93, above.
 
 **What the result is evidence for.** The prior sitting — deepseek-v4-pro
 against a rulebook that did not yet contain the bare-sortal clause — rejected
@@ -174,12 +216,21 @@ carrying 415 digests over `pairs_content_hash` `4975c5cc…`.
 the empty set. The digest basis excludes the id, so this catches the
 `eg-0367`/`eg-0404` shape the census has produced twice before.
 
-**No attempt has been filed against this pair set.**
-`count_gold_touching_attempts` returns **0** for `01a1bbc5508b8288…` and **2**
-for the retired `4975c5cc…`, so the counter is answering rather than empty.
-Count it against the run ledger in the **main checkout**: `benchlib/runs/` is
-gitignored, so a worktree's copy is local and near-empty and reads 0 for
-everything.
+**No attempt had been filed against this pair set when this was written.**
+`count_gold_touching_attempts` returned **0** for the then-current
+`01a1bbc5508b8288…` and **2** for the retired `4975c5cc…`, so the counter was
+answering rather than empty. Count it against the run ledger in the **main
+checkout**: `benchlib/runs/` is gitignored, so a worktree's copy is local and
+near-empty and reads 0 for everything.
+
+> **Superseded 2026-08-17.** The certified pair set is now `4748ac84960fed67`,
+> and **T2.125's qualification attempt has been filed against it** — one contact,
+> `gpt-5.5`. Because `benchlib/runs/` is gitignored, that row was written only in
+> the T2.125 worktree and must be carried into the main checkout's ledger at
+> merge, or the anti-tuning counter reads 0 for a pair set that has been judged.
+> Separately, and not counted by this counter at all: the same judge met 114 of
+> these pairs in the certifying resample and the bare-sortal probe, neither of
+> which files an attempt. See `gate-ledger.md`, "G-D on the fresh gold".
 
 ---
 
@@ -195,9 +246,16 @@ stripped export. Genuine label independence enters only at the Layer-3
 resample, on one non-Claude model. **The certification measures inter-model
 agreement more than label truth**, and the runner's own docstring says so.
 
-**glm-5.2 has now joined the circularity-compromised set.** T2.125 needs a
-*fourth* model for the judge it qualifies — deepseek, gpt-5.5 and glm-5.2 have
-all now been spent against this lineage in one role or another.
+**glm-5.2 has now joined the circularity-compromised set.** On this section's
+own reasoning T2.125 would need a *fourth* model for the judge it qualifies —
+deepseek, gpt-5.5 and glm-5.2 have all now been spent against this lineage in one
+role or another.
+
+> **The owner overrode that requirement rather than meeting it** (recorded
+> 2026-08-17): *accept the three available judge models; no fourth is required.*
+> T2.125 ran on `gpt-5.5` under that ruling. The cost above is not withdrawn — it
+> was accepted, which is the owner's to do — but no reader should conclude a
+> fourth model was found. None exists in this tree.
 
 **U2 — "neither references which slices any judge has missed" is a property of
 the artifacts, not of the people.** The miss decompositions are published in

@@ -24,7 +24,11 @@ Granularity at this gold size:
 
 ## Bars on Rule B's second population
 
-LABELLING.md's contacted-pairs rule requires every barred metric on **both** populations, with the gate verdict required to hold on both. The pairs above are all 280 live ones, of which 0 were contacted before; these are the 280 pairs (`eg-0242`+) not contacted before the grown-gold attempt.
+LABELLING.md's contacted-pairs rule requires every barred metric on **both** populations, with the gate verdict required to hold on both. The pairs above are all 280 live ones, of which 0 were contacted in a prior **qualification attempt**; these are the 280 pairs (`eg-0242`+) not contacted before the grown-gold attempt.
+
+**Corrected 2026-08-17.** This line read "of which 0 were contacted before", which is false on any reading wider than qualification attempts and is exactly the reading a later reader would take. The runner emits it from the attempt ledger, which counts qualification runs and cannot see a resample or a probe, so the sentence was generated true-in-its-own-terms and wrong as English. **This judge had already met 114 of these 280 pairs** in two blind sittings on this same gold (93-pair resample `resample_runs/2026-08-16-gpt-5-5-cac8c974.json` and 29-pair bare-sortal probe `probe_runs/2026-08-16-bare-sortal-gpt-5-5.json`; 118 distinct, 4 overlapping, 166 of the 280 never contacted), and **all three pairs it was known to disagree with were retired before this run** — `eg-0475`, `eg-0486`, `eg-0699`, none surviving into the measured set.
+
+Worst case, restoring all three as live `entailed` and assuming the judge misses each: recall **105/113 = 0.9292** vs 0.90, precision unchanged at **105/106 = 0.9906** vs 0.95, `contradicted → entailed` still 0. Both bars clear, so no verdict moves — but the claim available here is "cleared with 41% of the measured pairs previously seen and its known objections retired", never "cleared on pairs it had never seen". Full account and its precedent: `gate-ledger.md`, "G-D on the fresh gold".
 
 - `groundedness_gate_precision_bar` = 0.95 on `entailed_precision`: measured 0.9906 → **PASS**
 - `groundedness_gate_recall_bar` = 0.90 on `entailed_recall`: measured 0.9545 → **PASS**

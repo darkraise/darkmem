@@ -26,7 +26,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-A | Phase 0 → 1 | **CLEARED** | 2026-07-27 | T0.17 — this file, "G-A verdict"; `docs/eval/2026-07-27-T0.17-ga-evidence/`; `docs/eval/2026-07-27-retrieval-eval.md` |
 | G-B | Phase 1 → 2 | **CLEARED** | 2026-07-28 | T1.50 — this file, "G-B — VERDICT"; `docs/eval/2026-07-28-retrieval-eval.md`; `docs/eval/2026-07-28-T1.24f-whole-chain-parity.md`; `backend/scripts/benchlib/run_isolation_probe.py` |
 | G-C | L2 → deriver; Phase 2 exit | **open** (re-measured 2026-08-08 under the ratified veto shape: still not evaluable — under-powered on every probe, unchanged. The audit's arms were **re-derived, not merely re-run**: the machine arm is now judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 no longer holds as written — see "G-C re-measure". No promotion record minted) | — | T2.111 — this file, "G-C re-measure"; T2.40 — "G-C verdict"; `docs/eval/2026-08-0{7,8}-promotion-metrics.md`; `docs/eval/2026-08-07-t2.40-gc-evidence/` |
-| G-D | L2 → L3 | **open — the final sanctioned attempt is spent** (2026-08-12, T2.114, owner-ruled `gpt-5.5`: NOT CLEARED — contradiction-**recall** 0.8875 pooled / 0.8500 Rule B, both vs 0.95; the other six bar readings pass. The stopping rule has fired: no further model is tried on pair set `4975c5cc`, and the remaining moves — a new gold or a bar argument — must stand on grounds that do not cite this result. Prior runs: 0.9375 deepseek on the resized gold (2026-08-10, missed by one pair), 0.9125/0.9200 gpt-5.5 on the grown gold (2026-08-08); under the retired single-precision gate: 0.7937 deepseek / 0.8814 gpt-5.5 vs 0.95 — see "G-D resolution" for why that gate was incoherent) | — | T2.114 — this file, "G-D final attempt"; T2.41 — "G-D re-measure", "G-D verdict", "G-D resolution"; `docs/eval/2026-08-12-judge-qualification-fd39e7b2.md`, `docs/eval/2026-08-10-judge-qualification-4d886440.md`, `docs/eval/2026-08-08-judge-qualification-{4d886440,1bb9d9ba,fd39e7b2}.md` |
+| G-D | L2 → L3 | **CLEARED on the entailment role** (owner ruling 2026-08-17). T2.125 measured both roles on T2.124's fresh gold, pairs `4748ac84960fed67`, 280 live pairs, judge `gpt-5.5` identity `fd39e7b2c47fa375`: entailed precision **0.9906**/0.95, entailed recall **0.9545**/0.90, `contradicted → entailed` **0**, 0 invalid. The **contradiction role FAILS and stays open** — recall **0.7875** vs an unmoved 0.95, the fourth miss across two vendors — and gates only the Tier-C scan, which since T2.109 is not a veto input and so certifies no label G-D guards. No bar moved and the failed role's consumer stays dark. **Independence is dented and disclosed**: the judge had met 114 of the 280 measured pairs in two prior blind sittings on this gold and all three of its known disagreements were retired before the run; the worst-case restoration still clears at recall 105/113 = **0.9292** vs 0.90, so no verdict moves. The 2026-08-12 expiry check is live to **2026-11-12**. Note the record reaches production only with this branch's merge and the next deploy — G-D clearing and a grounded label being served are two events. See "G-D on the fresh gold" and "G-D ruling (2026-08-17)" | 2026-08-17 | T2.125 — this file, "G-D on the fresh gold", "G-D ruling (2026-08-17)", "The repair round"; `docs/eval/2026-08-17-judge-qualification-fd39e7b2.md`; `backend/app/services/verification_qualification.entailment.json`; `docs/planning/reviews/2026-08-17-t2.124-branch-review.md`. Prior: T2.114 — "G-D final attempt"; T2.41 — "G-D verdict", "G-D resolution" |
 | G-E | L3 → F7 | **open** (both bars stated 2026-08-11 by derivation and owner-ratified before any coverage number exists anywhere: runtime threshold **0.95**, corpus share **0.90**. Nothing is measured until T3.24's runner reads production — see "G-E") | — | — |
 | G-F | core → H1 | **open** | — | — |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
@@ -2407,9 +2407,24 @@ near-empty, and a reader who counts there will wrongly read 0 everywhere.
 may never open the round report.** Authors and both blind labellers are
 Claude-family agents, so this measures inter-model agreement more than label
 truth; genuine independence enters only at the one non-Claude resample. glm-5.2
-has therefore **joined the circularity-compromised set**, and T2.125 needs a
-fourth model — deepseek, gpt-5.5 and glm-5.2 are all now spent against this
-lineage. The near-screen covers the archive's *live* pairs only, so a rewording
+has therefore **joined the circularity-compromised set**, and on this paragraph's
+own reasoning T2.125 would need a fourth model — deepseek, gpt-5.5 and glm-5.2
+are all now spent against this lineage.
+
+> **That requirement was not met, and was not silently dropped either — the
+> owner overrode it** (recorded here 2026-08-17, after the branch review found
+> the override living only in commit messages `ffae39fb` and `60953e70` while
+> this paragraph still stated the requirement unqualified). The standing ruling
+> is *accept the three available judge models; no fourth is required*, and
+> T2.125 ran on `gpt-5.5` under it. The reasoning above is not withdrawn: it
+> describes a real cost, the cost was accepted rather than answered, and the
+> accepting is the owner's to do. What a reader must not conclude is that a
+> fourth model was found — none exists in this tree, and no z.ai/glm-5.2
+> credential exists anywhere in it either. See "G-D on the fresh gold" for what
+> the resulting contact cost the independence claim, and the worst-case
+> computation showing it moves no verdict.
+
+The near-screen covers the archive's *live* pairs only, so a rewording
 of one of its 15 lattice-retired pairs is unscreened (exact reuse is not: the
 digest pin covers all 415 distinct contents). And "sized so the bars are
 expressible" covers the two recall bars, never the two precision bars, whose
@@ -2430,9 +2445,68 @@ pairs `4748ac84960fed67`, 280 live pairs. Report:
 | `contradiction_precision_bar` on `contradiction_precision` | 0.70 | **0.9692** | PASS |
 | `contradiction_recall_bar` on `contradiction_recall` | 0.95 | **0.7875** | **FAIL** |
 
-**Both populations, not one.** Rule B's second population is all 280 live pairs —
-none was contacted before this attempt — so the pooled and Rule-B readings
-coincide and every number above holds on both, as LABELLING.md requires.
+**Both populations, not one.** Rule B's second population is all 280 live pairs,
+none of which was contacted *in a qualification attempt* before this one — so the
+pooled and Rule-B readings coincide and every number above holds on both, as
+LABELLING.md requires.
+
+**That sentence is not the whole independence story, and the branch review was
+right to refuse it as written** (corrected 2026-08-17; this paragraph read "none
+was contacted before this attempt" full stop, which is false on any reading wider
+than *qualification attempts*). **The judge had already met 114 of these 280
+pairs**, in two blind sittings on this same gold, both recorded at the time and
+both accepted by the owner in advance:
+
+| Contact | Pairs | Of the 280 measured | Artifact |
+|---|---|---|---|
+| Resample sitting, 2026-08-16 | 93 | 92 | `resample_runs/2026-08-16-gpt-5-5-cac8c974.json` |
+| Bare-sortal rule-discovery probe, 2026-08-16 | 29 | 26 | `probe_runs/2026-08-16-bare-sortal-gpt-5-5.json` |
+| **Union (4 overlap)** | **118** | **114** | — |
+
+166 of the 280 were never contacted by this judge.
+
+**The sharper half, which no surface stated at all: every pair `gpt-5.5` was
+known to disagree with had been retired before the run.** Its three
+disagreements across both sittings — `eg-0475`, `eg-0486`, `eg-0699`, each a
+`entailed` label the judge read as `unsupported` — are all in the 29 retired, and
+**zero survive into the 280 measured**. The retirements were ruled on the
+bare-sortal rule gap and on D3's excluded premises, not on which model had
+objected; but the round is the disagreements' own referee, and the resulting set
+is one this judge had already been observed to agree with.
+
+**The measurement survives the worst case, computed rather than asserted.**
+Restore all three retired disagreements as live `entailed` pairs and assume the
+judge misses every one: entailed recall becomes **105/113 = 0.9292** against the
+0.90 bar, entailed precision is unchanged at **105/106 = 0.9906** against 0.95
+(a miss adds nothing to the numerator or the denominator of precision), and
+`contradicted → entailed` stays 0. Both bars still clear, so the contamination
+changes no verdict on this gold. **What it costs is the strength of the claim,
+not the claim**: "the judge cleared on pairs it had never seen" was never
+available here and must not be written later.
+
+**Precedent, so this reads as the standing discipline rather than an excuse.**
+The 2026-08-10 entry's Finding 3 recorded the same class of dent — five Rule-B
+entailed rows restating propositions the judge had met in the contacted
+population — and disclosed it beside the number instead of reclassifying the
+run. This is that, one order of magnitude larger and about the *model's* prior
+contact rather than the propositions'.
+
+**`gold.json`'s own `_notes` still misstates two of these facts, and is left
+untouched deliberately.** It says every label is `label_source=author` "pending
+the Layer-2 blind adjudication" and that "no judge model has contacted any pair
+in this file". Both were true when written and are false in the certified
+artifact: all 280 live labels are `label_source=adjudicated`, and two non-Claude
+models have sat pairs in the file. **Correcting it is gold surgery and is the
+owner's**, not a documentation fix — it was attempted during this repair and
+reverted on measurement. Editing any byte of that file moves its `gold_sha256`
+from `fdbe2af9967970b6…`, and `resample_score.py` refuses a manifest whose pinned
+`gold_sha256` does not match the file, so a note correction would void the
+certifying resample's binding. That is the T2.116 defect shape exactly — "stamping
+a certification silently moved `gold_sha256`" — arriving from the annotation end.
+The attempt counter itself is safe either way, since T2.116 re-keyed it on
+`pairs_sha256`, which a `_notes` edit does not move. The honest account lives
+here, in the run report, and in the round record; the gold file carries a stale
+note whose correction costs a re-pin.
 
 **The pass is robust to the independence reading.** Entailed recall 0.9545 is
 105/110 on rows; on the 101 independent propositions the worst case is 96/101 =
@@ -2468,6 +2542,19 @@ Writing that row points a production purpose at a paid vendor with a live
 credential. It is an operator act and is left to the owner rather than taken
 here.
 
+> **Resolved 2026-08-17 (owner).** The row was written to production at exactly
+> the qualified invocation and verified read-only: the resolved config hashes to
+> identity `fd39e7b2c47fa375`, matching the record, and `qualification_state`
+> returns qualified with no reasons. `llm_seed.py` is **not** the route — its
+> `verification` seed points at a local Ollama model, so a re-seed does not
+> reproduce this row and a database rebuild must restore it deliberately (it was
+> restored by hand after the 2026-08-17 schema repair, and
+> `docs/planning/analyses/2026-08-17-production-schema-drift.md` says so where a
+> future rebuild will read it). **The record is still absent from the deployed
+> image** — it lives on this branch and arrives with this merge plus the next
+> deploy — so production resolves the purpose correctly and serves no grounded
+> label yet. G-D clearing and a grounded label being served are two events.
+
 **What this entry does not do.** It does not clear G-D. Whether the gate clears
 on the entailment role alone or needs both is a gate-definition question, and
 taking it here — with the scoreboard showing exactly which half failed — is the
@@ -2476,6 +2563,127 @@ unlocks what the failed bar protected"). It is escalated, unruled. The
 2026-08-12 expiry check still rides with it: if the contradiction role is never
 re-attempted within roughly two quarters of that entry, the per-role split reads
 retroactively as burial rather than separation.
+
+> **Ruled 2026-08-17 — see "G-D ruling" below.** Entailment alone; G-D CLEARED.
+> The escalation above stands as written because it is the honest record of what
+> this run refused to decide for itself.
+
+### The repair round that produced the certified gold (2026-08-16/17) — recorded here because it existed only in commit messages
+
+Between the round-4 census and T2.125's run, the gold went through a
+retire-and-replace round that no ledger entry described. The branch review found
+the gap; this is it, stated at the ledger's own grain.
+
+**What happened, in order.** An adversarial review of the certified-at-the-time
+gold found **ten live pairs standing on premises the round's own D3 rule
+excluded** — pairs that should never have been authorable under the ratified
+frame. The owner ruled **retire-and-replace** rather than relabel: ten retired in
+place, ten authored to replace them (`eg-0717`..`eg-0726`), the ratified frame
+matrix restored exactly, Layer 2 re-adjudicated at **30/30**, and Layer 3 re-sat
+at **1 disagreement of 93** against a `≤ 1` bar. Independently re-verified during
+the branch review: all ten retired pairs sit on excluded premises, zero live
+pairs do, the round-3 batch reproduces 30/30 with both passes independently
+flagging `eg-0726`, and `pairs_content_hash` re-derives to `4748ac84960fed67`
+exactly.
+
+**The re-sit landed *on* the bar, which deserves the scrutiny it got and
+survives it.** The `≤ 1` bar was ratified 2026-07-31 and never moved; the draw
+seed derives from the file's own bytes; one sitting per draw, no re-running until
+it passed. Rounds 1 and 2 of Layer 2 were voided **passes**, not voided failures —
+the conservative direction. The single disagreement is `eg-0423`, one of the two
+pairs in the parked bare-sortal vocabulary gap (below).
+
+**Two earlier sittings were deliberately not banked, and that is the round's
+strongest evidence of good faith.** A `gpt-5.5` sitting numerically cleared the
+same bar on 2026-08-16 and was refused
+(`dispatch/2026-08-16-t2124-replacements/07-resample-gpt55-DIAGNOSTIC.md`)
+because banking it would have meant certifying the gold by finding a model that
+agreed with it, while the rule gap the first sitting exposed was still open. The
+refusal is what made the 29-pair bare-sortal probe worth running — and the probe
+is where 26 of the judge's 114 prior contacts came from. The circularity cost was
+stated in that dispatch at the time and accepted by the owner before the run;
+what was missing was any of it reaching this file.
+
+**The blind firewall was weaker in these repair rounds than in the census, and
+the disclosure existed only per-artifact.** The rounds dispatched agents whose
+context auto-injects `CLAUDE.md`, which states the measured judge scores and bar
+values verbatim — the mechanism `dispatch/2026-08-14-t2124/00-README.md` had
+itself measured and rejected as the B1 defect class. **Assessed and bounded:** the
+leak is aggregate scores and bars only, carries no per-slice or per-pair miss
+data, and therefore voids no pin, sitting or certification. It is recorded at
+record level here because it was previously visible only in attestations and one
+commit message, while the round record still claimed the clean room.
+
+**The open rule gap, correctly parked.** Two instruments flagged cross-relation
+vocabulary the rulebook does not enumerate — "operates with" and "connection" for
+`USES` — at `eg-0423` and `eg-0726`. It is owed a rule-then-pairs ruling before
+round 5. It **cannot flip this qualification**: worst case over both pairs is
+precision 0.981 and recall 0.963, both clearing. The analysis is at
+`docs/planning/reviews/2026-08-17-t2124-bare-sortal-rule-analysis.md` (on `master`
+since `118c6bf0`; it reaches this branch on merge) and the brief that chartered
+it at `docs/planning/briefs/2026-08-16-t2124-bare-sortal-rule-analysis.md`,
+committed 2026-08-17 after the branch review found it untracked.
+
+**One document in this chain does not exist anywhere, and that is recorded rather
+than reconstructed.** The adversarial review that found the ten excluded-premise
+pairs — the finding this whole repair round answers — was never committed. Its
+substance survives only in `f6612b57`'s commit message, which is unusually
+complete (the D3 and sitting-1-item-5 exclusion basis, the 62 retired-harvest
+`triple_key`s, the five restated propositions, the replacement draw seed
+`2508708879` over a pool of 81 of 225 harvest facts, and the author-convergence
+defect that forced seven of the ten slots to be re-authored). A commit message is
+a worse home for a finding than a review file — it is not indexed with the other
+reviews and a reader looking for "why were ten pairs retired" will not find it —
+but writing one now from the artifacts would be a reconstruction wearing a
+review's clothes, which is worse. **The gap is the record.**
+
+### G-D ruling (2026-08-17, owner): **the gate clears on the ENTAILMENT role alone. G-D is CLEARED; the contradiction role's miss stands open beside it.**
+
+The question T2.125 escalated and refused to take was put to the owner and ruled
+the same day. **Entailment alone.** G-D is **CLEARED**.
+
+**The grounds, as given.** G-D guards L2 → L3: it certifies that synthesised
+articles may carry a grounded label. The discrimination that label rests on is
+`entailed`, made by the entailment role, and that role clears every bar gating it
+— precision **0.9906**/0.95, recall **0.9545**/0.90, robust to the independence
+reading at 0.9505 over 101 independent propositions, and `contradicted → entailed`
+exactly **0** over 280 pairs. The contradiction role gates the Tier-C scan, and
+**since T2.109 that scan is not a veto input**: its verdict rides
+`contradiction_suspected`, which `decide` holds inert by construction, so it can
+produce no status transition and gates no label G-D certifies. A role that cannot
+move what the gate protects is not what the gate waits for.
+
+**Ruled on the corrected record, not the one first written.** The ruling was
+given, the branch review then found the independence claim false, and the ruling
+was **re-put to the owner against the corrected account** — 114 of the 280
+measured pairs previously contacted by this judge, all three of its known
+disagreements retired before the run, worst-case recall **105/113 = 0.9292**
+against the 0.90 bar with precision unchanged. It stands on that account. Sequence
+recorded because "the ruling came first" is the objection a reader should raise.
+
+**What this ruling does not do, listed because the temptation sits exactly here.**
+It does not move a bar: `contradiction_recall_bar` stays **0.95** and the measured
+**0.7875** stays a miss — the fourth across two vendors (0.7937 / 0.8814 / 0.8875
+/ 0.7875). It does not qualify the contradiction role, and no consumer may ship on
+that role's verdicts. It does not license the scan back onto the veto — routing
+`contradiction_suspected` into `open_contradiction` restores the wiring the
+2026-08-08 amendment removed, and the two parameters are kept separate so that
+mistake must be made deliberately. It does not make a grounded label reachable
+today; that needs this branch merged and deployed.
+
+**It was taken with the scoreboard visible, and that is disclosed rather than
+denied.** Doc 17 §6 forbids fitting a gate's definition to a result, and the
+2026-08-12 ruling names the failure mode — "re-cutting *to pass* unlocks what the
+failed bar protected". T2.125 therefore refused to take it and escalated. The
+owner took it knowing which half had failed. What keeps that from being a re-cut
+is not the timing, which is bad, but what the ruling declines to unlock: the
+failed bar's consumer stays dark, its bar stays where it was, and the only thing
+that ships is the consumer whose own bars cleared.
+
+**The 2026-08-12 expiry check is now live and dated.** If the contradiction role
+is never re-attempted by roughly **2026-11-12**, the per-role split reads
+retroactively as burial rather than separation. Nothing enforces that date; it is
+written here so a reader in November can check it against what happened.
 
 ---
 
