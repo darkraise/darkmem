@@ -1,0 +1,186 @@
+{
+ "_notes": "Label each pair against the rulebook.",
+ "n": 30,
+ "pairs": [
+  {
+   "id": "eg-0469",
+   "premise": "ansible deployed on infra-02",
+   "hypothesis": "infra-02 hosts the ansible installation.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0726",
+   "premise": "consul uses jobs-05",
+   "hypothesis": "There is a connection between consul and jobs-05.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0588",
+   "premise": "The images-02 worker pool runs anvil-render version 2.4.",
+   "hypothesis": "The images-02 worker pool runs anvil-render version 2.9.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0544",
+   "premise": "talon-01 uses talon-backups",
+   "hypothesis": "talon-01 uses talon-backups for its nightly off-site snapshots.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0429",
+   "premise": "osquery causes quota-watcher",
+   "hypothesis": "Osquery ships a scheduled query pack for file-integrity monitoring.",
+   "slice": "unrelated"
+  },
+  {
+   "id": "eg-0723",
+   "premise": "fulfillment application uses talon-01",
+   "hypothesis": "A consumer uses talon-01.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0620",
+   "premise": "osquery deployed on pivot-01",
+   "hypothesis": "Pivot-01 is deployed on osquery.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0511",
+   "premise": "slurm deployed on yarrow-01",
+   "hypothesis": "Slurm is deployed on yarrow-01 in a high-availability configuration.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0485",
+   "premise": "ffmpeg depends on codec pack",
+   "hypothesis": "The codec pack is the only component FFmpeg depends on.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0676",
+   "premise": "The wildcard TLS certificate for *.tarnwood.dev was valid from 2025-06-01 to 2025-08-30 and expired on 2025-08-30 without being renewed.",
+   "hypothesis": "The wildcard TLS certificate for *.tarnwood.dev is valid.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0725",
+   "premise": "opentelemetry deployed on onyx-03",
+   "hypothesis": "Onyx-03 is where OpenTelemetry is deployed.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0595",
+   "premise": "ansible deployed on infra-02",
+   "hypothesis": "infra-02 is deployed on ansible.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0721",
+   "premise": "quota-watcher deployed on cpu",
+   "hypothesis": "quota-watcher runs on cpu",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0717",
+   "premise": "wisp-01 uses ticket-router",
+   "hypothesis": "wisp-01 uses a resource.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0646",
+   "premise": "the nightly index rebuild for search-02 runs at 02:15 UTC",
+   "hypothesis": "The nightly index rebuild for search-02 runs at 03:45 UTC.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0718",
+   "premise": "uptime kuma uses notify-relay",
+   "hypothesis": "notify-relay is used.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0488",
+   "premise": "Syncthing is deployed on the studio-05 host.",
+   "hypothesis": "The studio-05 host is deployed on Syncthing.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0489",
+   "premise": "notify-relay deployed on neon-04",
+   "hypothesis": "notify-relay delivers its alerts over a webhook transport.",
+   "slice": "unrelated"
+  },
+  {
+   "id": "eg-0491",
+   "premise": "The Gitea HTTP listener on forge-01 is bound to port 3000.",
+   "hypothesis": "The Gitea HTTP listener on forge-01 is bound to port 8080.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0570",
+   "premise": "vane-01 uses samba",
+   "hypothesis": "Samba is in use by at least one system.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0719",
+   "premise": "meridian depends on core-03",
+   "hypothesis": "meridian needs core-03 to function",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0671",
+   "premise": "Dalia Fenwick chaired the Sparrow Foundation's infrastructure working group from 2024-05-01 until stepping down on 2026-06-30, when Idris Alarcon took the chair.",
+   "hypothesis": "Dalia Fenwick chairs the Sparrow Foundation's infrastructure working group.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0550",
+   "premise": "pallet-02 uses parcel-logs",
+   "hypothesis": "At least one component uses parcel-logs.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0495",
+   "premise": "netdata uses onyx-03",
+   "hypothesis": "onyx-03 uses Netdata.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0724",
+   "premise": "lb-01 deployed on memgraph",
+   "hypothesis": "memgraph has lb-01 deployed on it",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0516",
+   "premise": "neon-04 depends on nats",
+   "hypothesis": "neon-04 has at least one dependency.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0722",
+   "premise": "concourse deployed on build-04",
+   "hypothesis": "Concourse is an installation on build-04.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0523",
+   "premise": "haproxy deployed on lb-01",
+   "hypothesis": "HAProxy is deployed on lb-01, where it terminates TLS for inbound traffic.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0496",
+   "premise": "uptime kuma uses order-sync",
+   "hypothesis": "Uptime Kuma polls order-sync every thirty seconds.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0720",
+   "premise": "haproxy deployed on memgraph",
+   "hypothesis": "memgraph hosts haproxy",
+   "slice": "paraphrase"
+  }
+ ]
+}

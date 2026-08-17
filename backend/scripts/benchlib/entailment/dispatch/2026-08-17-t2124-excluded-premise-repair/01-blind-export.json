@@ -1,0 +1,187 @@
+{
+ "_notes": "Layer 2 for the 2026-08-17 excluded-premise repair. Ten pairs under adjudication mixed with twenty already-adjudicated covers, seeded off the gold's own bytes and shuffled, so a labeller cannot tell which is which. Verdicts and label_source are stripped.",
+ "seed": 3722352423,
+ "n": 30,
+ "pairs": [
+  {
+   "id": "eg-0622",
+   "premise": "icinga uses haproxy",
+   "hypothesis": "Icinga is a consumer of haproxy.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0726",
+   "premise": "consul uses jobs-05",
+   "hypothesis": "There is a connection between consul and jobs-05.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0718",
+   "premise": "uptime kuma uses notify-relay",
+   "hypothesis": "notify-relay is used.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0572",
+   "premise": "jump-01 depends on authelia",
+   "hypothesis": "jump-01 has at least one dependency.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0725",
+   "premise": "opentelemetry deployed on onyx-03",
+   "hypothesis": "Onyx-03 is where OpenTelemetry is deployed.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0539",
+   "premise": "imagemagick causes images-02",
+   "hypothesis": "images-02 results from ImageMagick.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0609",
+   "premise": "parcel-tracker depends on parcel-logs",
+   "hypothesis": "Parcel-tracker depends on at least one other component.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0705",
+   "premise": "log-02 uses concourse",
+   "hypothesis": "Concourse is something that log-02 makes use of.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0635",
+   "premise": "quire-03 depends on qemu",
+   "hypothesis": "Quire-03 has at least one dependency.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0704",
+   "premise": "woodpecker ci deployed on tether-02",
+   "hypothesis": "tether-02 is the host of the Woodpecker CI installation.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0516",
+   "premise": "neon-04 depends on nats",
+   "hypothesis": "neon-04 has at least one dependency.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0601",
+   "premise": "garage uses forge-artifacts",
+   "hypothesis": "Garage uses at least one other named component.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0717",
+   "premise": "wisp-01 uses ticket-router",
+   "hypothesis": "wisp-01 uses a resource.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0463",
+   "premise": "ledger-02 causes mon-05",
+   "hypothesis": "mon-05 is the effect that ledger-02 produces.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0721",
+   "premise": "quota-watcher deployed on cpu",
+   "hypothesis": "quota-watcher runs on cpu",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0723",
+   "premise": "fulfillment application uses talon-01",
+   "hypothesis": "A consumer uses talon-01.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0570",
+   "premise": "vane-01 uses samba",
+   "hypothesis": "Samba is in use by at least one system.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0558",
+   "premise": "codec pack deployed on files-01",
+   "hypothesis": "files-01 carries at least one deployed component.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0700",
+   "premise": "auth-01 depends on kv-01",
+   "hypothesis": "At least one component depends on kv-01.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0564",
+   "premise": "The staging deploy of ledger-api is blocked until quota-guard finishes its checks.",
+   "hypothesis": "quota-guard must complete its verification before ledger-api can be rolled out to staging.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0722",
+   "premise": "concourse deployed on build-04",
+   "hypothesis": "Concourse is an installation on build-04.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0606",
+   "premise": "rabbitmq has part order-events",
+   "hypothesis": "Order-events is one of the constituents that make up rabbitmq.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0720",
+   "premise": "haproxy deployed on memgraph",
+   "hypothesis": "memgraph hosts haproxy",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0430",
+   "premise": "media-04 depends on jobs-05",
+   "hypothesis": "jobs-05 is a prerequisite for media-04.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0470",
+   "premise": "huginn deployed on hooks-03",
+   "hypothesis": "hooks-03 is where huginn runs.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0550",
+   "premise": "pallet-02 uses parcel-logs",
+   "hypothesis": "At least one component uses parcel-logs.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0547",
+   "premise": "slurm depends on zephyr-03",
+   "hypothesis": "There is a dependency relationship between Slurm and zephyr-03.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0441",
+   "premise": "authelia deployed on auth-01",
+   "hypothesis": "auth-01 is where Authelia runs.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0719",
+   "premise": "meridian depends on core-03",
+   "hypothesis": "meridian needs core-03 to function",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0724",
+   "premise": "lb-01 deployed on memgraph",
+   "hypothesis": "memgraph has lb-01 deployed on it",
+   "slice": "paraphrase"
+  }
+ ]
+}

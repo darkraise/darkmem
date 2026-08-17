@@ -5317,7 +5317,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Dropping the specific identity of ticket-router and existentially quantifying over what wisp-01 uses is ordinary weakening under general procedure 3. The bare-sortal clause specifically earns \"resource\" as the noun for a USES relation's object from the relation's own generic semantics, so the existential's restrictor is established by the premise itself rather than by world knowledge, and the pair is entailed rather than unsupported.",
    "fact_key": {
     "triple_key": "009e95f0-2e4d-5833-9fad-63d6ed5ac6e5",
@@ -5336,7 +5336,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General decision procedure 3 lists voice change and dropping content as entailment-preserving weakenings distinct from each other. This pair applies both together: passive voice with the agent phrase omitted entirely, so 'uptime kuma' is dropped rather than generalised into any existential or bare-sortal phrase. No new noun (e.g. 'a resource', 'something', 'a consumer') is introduced on either slot, so the bare-sortal clause and the frame rule are not implicated at all. This is a different axis from the existential-generalisation-over-object construction ('uses a resource') already used elsewhere in the batch: that axis keeps the subject and replaces the object with a bare sortal; this one keeps the object and removes the subject via passive agent-drop, adding no sortal noun anywhere.",
    "fact_key": {
     "triple_key": "f045efcf-ee09-50ae-ab8d-ddf34f5eb38d",
@@ -5355,7 +5355,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "The dependency-strength rule states DEPENDS_ON asserts a generic requirement for intended operation, and lists 'requires Y to function' as a paraphrase-level rendering at the same generic level as the bare relation — not a mechanism-specific claim about timing or failure mode, so it stays entailed rather than strengthening. No sortal, kind, or property is added to either entity beyond what the premise states, satisfying the bare-sortal clause.",
    "fact_key": {
     "triple_key": "e70bf199-7ae3-5f1c-a1b0-7c3730799eb9",
@@ -5374,7 +5374,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Voice/verb rewording of the same DEPLOYED_ON fact, not a reversal: memgraph remains the target/host and haproxy remains the deployed subject, so the relational direction is preserved (reversal-exclusivity table's DEPLOYED_ON entry does not apply). The word 'hosts' is licensed by the bare-sortal clause's earned-vocabulary provision -- 'DEPLOYED_ON makes its target a host' -- rather than by any noun the premise itself supplies, so no unsupported sortal (e.g. 'machine') is introduced; the clause's own worked example notes memgraph is one of the nine DEPLOYED_ON targets that is a host without being a machine, so 'host' is safe where 'machine' would not be.",
    "fact_key": {
     "triple_key": "807b756f-e1cc-5851-abf9-83b65a0d11c2",
@@ -5393,7 +5393,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3 tolerates rewording (voice/lexical substitution) without strengthening; 'runs on' is a bare-verb paraphrase of 'deployed on' that introduces no sortal noun for either entity, so the bare-sortal clause's partitioning-noun hazard (e.g. calling 'cpu' a 'machine' or 'host') is avoided entirely rather than needing to be earned.",
    "fact_key": {
     "triple_key": "011907db-f20b-5b82-9df2-81a333af0485",
@@ -5412,7 +5412,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Uses a copula predicate-nominal construction ('X is an installation on Y') rather than a transitive verb clause, structurally distinct from the already-used 'X runs on Y' and 'Y hosts X' shapes. Grounded by the bare-sortal clause's earned-sortal sub-rule: DEPLOYED_ON's own generic semantics earn 'installation' for its subject ('a thing deployed on a host cannot fail to be an installation there'), so the noun is not unsupported added content but relation-earned establishment. Procedure 3 permits this rewording since nothing is strengthened, weakened beyond the source, or reversed; direction and entities are unchanged.",
    "fact_key": {
     "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded",
@@ -5431,7 +5431,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Weakening axis used: existential generalisation over the SUBJECT (not the object, which the excluded prior pair already used). The bare-sortal clause states that 'a relation's own generic semantics count as establishment' and specifically that USES makes its subject a 'consumer' -- so dropping the named subject 'fulfillment application' to the earned bare sortal 'consumer' introduces no unearned content and passes the differentiation test (an entity in USES-subject position cannot fail to be a consumer of what it uses). talon-01 stays named and unchanged, so this pair exercises a different content-drop than the excluded object-side existential generalisation, per general procedure 3's 'dropping content (weakening)' preserving entailment.",
    "fact_key": {
     "triple_key": "e9c765d2-625b-5a2c-bc39-789ca1392e78",
@@ -5450,7 +5450,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Uses the possessive-existential construction ('Y has X deployed on it'), structurally distinct from the taken 'X runs on Y' (subject-verb-locative) and 'Y hosts X' (transitive SVO) constructions. The possessive-existential clause names exactly this rendering as earned for DEPLOYED_ON ('DEPLOYED_ON earns \"X has a component deployed on it\", because deployment on X places the subject in X's hosted stack'); here the deployed entity is named directly with no inserted sortal noun at all, so the bare-sortal clause is not even implicated. General procedure 3 (rewording preserves entailment, nothing added or strengthened) is otherwise satisfied: same direction, same two entities, no new content.",
    "fact_key": {
     "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8",
@@ -5469,7 +5469,7 @@
     "paraphrase"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "General procedure 3 (rewording preserves entailment) licenses this recasting of the premise's DEPLOYED_ON assertion; the sentence adds no content, no differing value for the host slot, and no unearned sortal on either entity. The construction is a locative pseudo-cleft ('Onyx-03 is where X is deployed'), specificational rather than the plain subject-verb-PP clause ('X runs on Y') or the transitive verb-object clause ('Y hosts X') already used elsewhere in this batch — a distinct syntactic frame, not just a synonym swap. Under the exhaustivity rule, a pseudo-cleft carries its exhaustivity (if any) as presupposed/defeasible information structure, not asserted content, so it does not strengthen the claim into 'only onyx-03' and does not block entailment.",
    "fact_key": {
     "triple_key": "fc3294b6-697a-57af-8c06-e769a0630fe9",
@@ -5488,7 +5488,7 @@
     "weakening"
    ],
    "provenance": "l2-fact",
-   "label_source": "author",
+   "label_source": "adjudicated",
    "rationale": "Fourth weakening axis: relation genericization, not entity quantification or voice. Both entities stay named and neither argument position is existentially quantified or dropped (unlike the taken subject-existential and object-existential axes) and no argument is elided via passive (unlike the taken agent-dropped passive). Instead the specific USES relation is weakened to the taxonomy's generic fallback relation, using the bare-sortal clause's own assignment of 'connection' as RELATED_TO's earned noun (\"RELATED_TO earns 'connection' -- 'there is a connection between' its endpoints\"). This is licensed by general procedure 3's 'dropping content (weakening) preserve[s] entailment' together with the cross-relation-vocabulary rule: that rule blocks USES-to-DEPENDS_ON because USES does not semantically guarantee DEPENDS_ON, but the direction here runs the other way -- RELATED_TO is the taxonomy's most generic relation (the documented fallback for any unclassified relation), so any specific, named relation such as USES is a special case of it and semantically guarantees it. Nothing about kind, role or property of either entity beyond what USES already fixes is introduced, so the bare-sortal clause is not implicated.",
    "fact_key": {
     "triple_key": "66e5034b-2ade-5757-be59-ad455fbf2dd6",

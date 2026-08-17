@@ -1,0 +1,19 @@
+{
+ "_notes": "Layer 2 for the 2026-08-17 excluded-premise repair. Rule: both blind passes agree with the recorded label -> adjudicated; anything else -> escalation queue, untouched by this merge. ROUNDS 1 AND 2 ARE VOID AND KEPT, both for defects the controller introduced. Round 1's twenty covers were drawn only from `weakening` and `paraphrase`, which are entailed-only slices, so every pair in the batch was `entailed` and an all-entailed answer sheet scored 30/30 without reading anything. Round 2 fixed the covers but its export's `_notes` explained round 1's defect, and in doing so stated flatly that those two slices are 'entailed-only' — the rulebook makes that conditional on the witness being in the premise, which is the one check the ten pairs under test needed. Pass A cited that note by name. Round 3 carries covers across all three verdicts and an export that says only 'Label each pair against the rulebook.'",
+ "round": 3,
+ "merged_at": "2026-08-17",
+ "n_batch": 30,
+ "n_under_adjudication": 10,
+ "a_vs_b_agreement": "30/30",
+ "both_agree_with_recorded": "30/30",
+ "escalations": [],
+ "verdict_distribution": {
+  "entailed": 14,
+  "contradicted": 8,
+  "unsupported": 8
+ },
+ "flagged_by_both_passes": {
+  "eg-0726": "Both labellers independently flagged the same rule gap: the rulebook earns 'connection' for RELATED_TO and is silent on whether USES earns it by weakening. Both reached `entailed` on the general principle and the label stands, but under rule-then-pairs the gap is the owner's to rule — either LABELLING.md states it, or the pair is re-authored on an enumerated axis. Recorded rather than resolved."
+ },
+ "label_source_flipped": 10
+}
