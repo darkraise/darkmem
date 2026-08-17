@@ -4,6 +4,137 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v1.0 — unreleased
+
+**Everything remaining, and the gates carry verdicts.** Two feature blocks that
+had been parked ship here — documents/PKM and the hardening pass — and the four
+open gates each get a measured answer rather than a hope.
+
+**The version rule, ruled 2026-08-15: _both_.** Each of G-C, G-D, G-E and G-F
+must carry a verdict, **and** the target is that each clears. Those are different
+things, kept apart because one half is not fully in our control: no amount of
+work guarantees a model clears a bar. **A measured miss ships. An unmeasured gate
+does not.**
+
+### Gate verdicts
+
+| Gate | Verdict | Where |
+|---|---|---|
+| G-C — L2 → deriver | **CLEARED** 2026-08-16, independently verdicted | `gate-ledger.md`, "G-C on the grown corpus" |
+| G-D — L2 → L3 | **CLEARED on the entailment role** 2026-08-17; the contradiction role misses and stays open | `gate-ledger.md`, "G-D on the fresh gold", "G-D ruling" |
+| G-E — L3 → F7 | **not yet measured** — production holds no articles to measure | `gate-ledger.md`, "G-E" |
+| G-F — core → H1 | **not yet measured** — the claim/span gold does not exist | `gate-ledger.md`, "G-F" |
+
+**The last two are why this section says `unreleased`.** Both are blocked on
+inputs no amount of coding produces: G-E needs a real corpus accumulating over
+weeks, and G-F needs a gold set only the owner may author (`autonomous-loop.md`
+§7). Cutting the tag before they carry verdicts would break the version's own
+rule on the version that states it.
+
+### Added
+
+- **Documents and PKM, the whole block** — parsers for PDF, markdown and notes;
+  a `documents`/`blocks` writer with strip-before-rewrite keyed on
+  `document_id`; a semantic block retrieval channel; grounded Q&A with a
+  span-support faithfulness check **before** serving; on-demand Tier-C lift;
+  block-sourced facts where one document is one origin; single-document
+  summaries and emergent cross-document connections; and a Documents UI that
+  labels its own horizon.
+- **The faithfulness metric was defined and barred before any of it was built**
+  (`TH1.01`), which is the ordering the whole harness exists to enforce:
+  span-support coverage = entailed answer-claims ÷ total answer-claims, per
+  answer, with `faithfulness_coverage_bar` = 1.0, and the gate's own
+  qualification bars at 0.95 precision / 0.90 recall. The denominator is **every
+  sentence of the served answer body, with no exclusion channel** — any
+  generator-reachable exclusion rule lets the generator move its own
+  denominator, and silencing a claim is the same move as passing it one step
+  earlier.
+- **API keys and webhooks** (`T4.01`–`T4.05`): a bearer credential with a closed
+  scope set, `events.api_key_id`/`actor` stamped on keyed writes, key use
+  surfaced in the per-object timeline, and a push webhook receiver that reuses
+  the ordinary index pipeline.
+- **An exposed-deployment posture** (`T4.03`). `trust_proxy_headers` is now the
+  exposure switch rather than only a rate-limiter setting: with it on, an
+  explicit `cookie_secure=false` is **clamped** to true rather than honoured,
+  and the clamp is reported three ways — a boot warning, a journalled event, and
+  a field on `GET /auth/security-posture`. A silent clamp would be a security
+  posture nobody could audit.
+- **The research loop is armable from the UI** (`T3.28`) — configure, enable and
+  trigger, where arming previously meant a manual database write.
+
+### Changed
+
+- **The re-run trigger re-derives; it does not re-file** (`T3.28`), and the
+  difference is not cosmetic. The journal stores no finding text by design, so
+  the only evidence a re-run can reach is the memories the run filed: a deleted
+  one is unrecoverable, and a surviving one already carries that finding's exact
+  content and origin key — so re-filing writes a duplicate row asserting the
+  same claim under the same origin, and corroboration counts DISTINCT origins.
+  A re-file is therefore either impossible or inert. Re-derivation is neither:
+  the surviving memories go back through the pipeline and are recomputed under
+  the current taxonomy, extractor and dedup while no origin, count or row moves.
+- **Single-worker stays, and now for the measured reason** (`T4.09`, `T4.10`).
+  The audit found 38 in-process assumptions, 17 of which break at two replicas —
+  the WebSocket fan-out, the job scheduler (no lease, so all 21 jobs fire N
+  times per tick), the per-IP login limiter, the live orchestrator swap and
+  seven unlocked job cursors — and `backend/app` holds no cross-process
+  serialisation primitive to build on. The knob has three silent spellings
+  (`--workers`, `WEB_CONCURRENCY`, compose `deploy.replicas`) and a tripwire
+  test now fails the build on any of them.
+
+### Fixed
+
+- **A Playwright suite had been asserting nothing since it shipped.**
+  `frontend/tests/documents.spec.ts` never signed in, so its three assertions
+  ran against a logged-out page and passed vacuously. Found by running the full
+  gate rather than the floor.
+- **`seed_partition` could leave a half-registered fingerprint** (`T4.11`), and
+  the same fixture residue was escaping two other suites (`T4.13`).
+- **Polling and the webhook could still double-index the same push** (`T4.16`).
+- **Two scopes gated nothing** (`T4.15`, `T4.21`). `capture` and `read` were in
+  the closed scope set and enforced nowhere, which is worse than absent: a scope
+  that appears to restrict and does not is a false assurance printed on a
+  credential.
+
+### Known limits
+
+- **G-D cleared on one of its two roles, and the other one failed.** The
+  contradiction role missed recall at 0.7875 against an unmoved 0.95 — the
+  fourth miss across two vendors. It gates the Tier-C contradiction scan, which
+  since T2.109 is not a veto input and so certifies no label G-D guards; that is
+  the ruling's basis. But **"articles may ship" does not imply "a qualified
+  contradiction judge exists"**, and it will not for the foreseeable future. If
+  that role is never re-attempted by roughly 2026-11-12, the per-role split
+  reads retroactively as burial rather than separation.
+- **The judge that qualified had already seen 41% of the pairs it qualified
+  on.** 114 of the 280 measured pairs had been met in two earlier blind
+  sittings on the same gold, and all three pairs the judge was known to disagree
+  with had been retired before the run. Both facts were disclosed at the time in
+  the dispatch that ran them and were then **misstated on every canonical
+  surface** — the ledger and the run report each said no pair had been contacted
+  before, because the runner emits that line from an attempt counter that cannot
+  see a resample or a probe. Corrected, with the worst case computed rather than
+  asserted: restoring all three retired disagreements and assuming the judge
+  misses each gives recall 105/113 = 0.9292 against 0.90, precision unchanged,
+  so no verdict moves. **What is not available is the sentence "cleared on pairs
+  it had never seen."**
+- **G-C's clear is real and its corpus is authored end to end by the measured
+  party.** Every capture, origin, repo and the single dispute; the deterministic
+  detector has never fired on an unauthored contradiction; the human-rejection
+  arm has never met a human; and one of the three gate paths exists only under
+  the harness's simulated clock.
+- **A grounded label still is not served.** G-D clearing and a grounded label
+  reaching a reader are two events, and only the first has happened.
+- **Production's schema had silently drifted from the baseline**, and the
+  mechanism that allowed it is still there. Because the pre-freeze baseline
+  regenerates in place as revision `0001`, `alembic upgrade head` is a no-op on
+  an already-stamped database, so every deploy reported a clean migration while
+  shipping code against a schema it lacked — five columns missing, and the
+  `article_synthesis` job dying on every run because of it. Repaired by the
+  policy's own drop-and-recreate. **Nothing checks that a deployed database
+  matches the baseline its image was built from**, and until something does,
+  this recurs on the next baseline change.
+
 ## v0.5 — 2026-08-15
 
 **An agent can now research a subject and file what it found as ordinary
