@@ -551,6 +551,12 @@ def validate_gold_against_corpus(gold: dict, entries: list[dict]) -> None:
 
 RETIRED_DIGESTS_PATH = ENTAILMENT_DIR / "retired_pair_digests.json"
 
+# D1's audit copy of the retired pair set. Loaded by no production code path:
+# the digest file above is the refusal's reference, and this file exists so
+# the pin can be audited against the pairs it was taken from after the
+# canonical path holds a fresh gold.
+RETIRED_GOLD_ARCHIVE_PATH = ENTAILMENT_DIR / "retired" / "gold-4975c5cc.json"
+
 # Basis without the id, deliberately: the id is the one field a re-author
 # controls freely, and this census has twice reproduced a retired pair's exact
 # premise and hypothesis under a new id (eg-0367, eg-0404). Keying on content
@@ -576,6 +582,19 @@ def retired_pair_digests() -> frozenset[str]:
     digests = raw["digests"]
     if not isinstance(digests, list) or not digests:
         raise ValueError(f"{RETIRED_DIGESTS_PATH} carries no retired digests")
+    count = raw.get("count")
+    if len(digests) != count or len(set(digests)) != count:
+        # The list is the refusal's whole reach; before this check the
+        # embedded count was decorative, so truncating the list to one entry
+        # would silently disarm every other content refusal. The archived
+        # gold's own coverage is asserted by test against
+        # RETIRED_GOLD_ARCHIVE_PATH; this runtime check is the half that
+        # must hold wherever the refusal machinery runs.
+        raise ValueError(
+            f"{RETIRED_DIGESTS_PATH}: 'digests' disagrees with its own "
+            f"'count' ({len(digests)} listed, {len(set(digests))} distinct, "
+            f"count={count!r}) -- the pin has been truncated or padded"
+        )
     return frozenset(digests)
 
 

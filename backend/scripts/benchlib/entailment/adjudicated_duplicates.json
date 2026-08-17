@@ -1,0 +1,131 @@
+{
+  "_note": "Human-tier adjudication of the duplicate-proposition question, for pairs that content-token Jaccard provably cannot separate. `census_independence` unions these into its component counting; without them it reports a class fully independent while known duplicates sit inside it.",
+  "provenance": {
+    "round": "T2.124 round 4, plan step 9",
+    "dated": "2026-08-14",
+    "method": "two independent blind adjudicators, fresh headless CLI sessions from bare directories, neither told which cases carried a prior label",
+    "controls": "5 of 24 cases carried a prior label; both parties recovered all five (3/3 recorded duplicates DUPLICATE, 2/2 owner-ruled-lawful DISTINCT)",
+    "population": "all 24 live pairs sharing a byte-identical premise AND verdict -- the only shape in which two rows can assert one proposition",
+    "record": "backend/scripts/benchlib/entailment/dispatch/2026-08-14-t2124-step9/",
+    "owner_ruling": {
+      "dated": "2026-08-14",
+      "question": "do the two lawful rulings (eg-0465/eg-0592, eg-0486/eg-0614) extend to the six pairs the adjudicators split on?",
+      "ruling": "No. Both lawful pairs generalise OPPOSITE slots -- one drops the subject, the other the object -- so neither entails the other. Each of the six generalises one slot only, against the specific restatement, so one entails the other. The precedent's own stated ground does not reach them: they are duplicate propositions.",
+      "effect": "confirmed duplicates 8 -> 14; entailed independent propositions 102 -> 96; the range collapses to a point. No bar moves and no matrix number moves -- the ratified census is 110 entailed ROWS either way.",
+      "reversal": "one file: move the six rows carrying basis 'owner ruling 2026-08-14' back to `contested` and the range returns to [96, 102]. Both endpoints clear the stated 0.90, so no gate decision depends on this ruling."
+    }
+  },
+  "confirmed_duplicates": [
+    {
+      "left": "eg-0427",
+      "right": "eg-0561",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0424",
+      "right": "eg-0558",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0422",
+      "right": "eg-0556",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0423",
+      "right": "eg-0557",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0425",
+      "right": "eg-0559",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0463",
+      "right": "eg-0590",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high",
+        "medium"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0418",
+      "right": "eg-0554",
+      "verdict_class": "entailed",
+      "confidence": [
+        "high"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0504",
+      "right": "eg-0634",
+      "verdict_class": "entailed",
+      "confidence": [
+        "low",
+        "medium"
+      ],
+      "basis": "unanimous blind adjudication"
+    },
+    {
+      "left": "eg-0475",
+      "right": "eg-0599",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    },
+    {
+      "left": "eg-0452",
+      "right": "eg-0580",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    },
+    {
+      "left": "eg-0479",
+      "right": "eg-0607",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    },
+    {
+      "left": "eg-0426",
+      "right": "eg-0560",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    },
+    {
+      "left": "eg-0510",
+      "right": "eg-0640",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    },
+    {
+      "left": "eg-0456",
+      "right": "eg-0584",
+      "verdict_class": "entailed",
+      "basis": "owner ruling 2026-08-14 (opposite-slot precedent)"
+    }
+  ],
+  "contested": []
+}

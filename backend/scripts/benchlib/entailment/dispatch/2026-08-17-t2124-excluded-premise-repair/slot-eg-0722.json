@@ -1,0 +1,11 @@
+{
+ "id": "eg-0722",
+ "slice": "paraphrase",
+ "verdict": "entailed",
+ "premise": "concourse deployed on build-04",
+ "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded",
+ "rel_type": "DEPLOYED_ON",
+ "subject_name": "concourse",
+ "object_name": "build-04",
+ "project": "default"
+}

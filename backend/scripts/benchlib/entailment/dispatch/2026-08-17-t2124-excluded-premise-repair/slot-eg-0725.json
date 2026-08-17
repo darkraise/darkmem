@@ -1,0 +1,11 @@
+{
+ "id": "eg-0725",
+ "slice": "paraphrase",
+ "verdict": "entailed",
+ "premise": "opentelemetry deployed on onyx-03",
+ "triple_key": "fc3294b6-697a-57af-8c06-e769a0630fe9",
+ "rel_type": "DEPLOYED_ON",
+ "subject_name": "opentelemetry",
+ "object_name": "onyx-03",
+ "project": "default"
+}

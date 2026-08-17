@@ -1,0 +1,11 @@
+{
+ "id": "eg-0721",
+ "slice": "paraphrase",
+ "verdict": "entailed",
+ "premise": "quota-watcher deployed on cpu",
+ "triple_key": "011907db-f20b-5b82-9df2-81a333af0485",
+ "rel_type": "DEPLOYED_ON",
+ "subject_name": "quota-watcher",
+ "object_name": "cpu",
+ "project": "default"
+}

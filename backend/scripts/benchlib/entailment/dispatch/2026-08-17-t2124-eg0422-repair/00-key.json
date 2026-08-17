@@ -1,0 +1,109 @@
+{
+ "_notes": "Recorded labels, held OUT of the export. eg-0706 replaces eg-0422, the third instance of the partitioning-sortal defect and the one the build guard found.",
+ "seed": 422170826,
+ "under_adjudication": [
+  "eg-0706"
+ ],
+ "key": {
+  "eg-0620": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0565": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0529": {
+   "verdict": "contradicted",
+   "slice": "value-swap"
+  },
+  "eg-0482": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0611": {
+   "verdict": "contradicted",
+   "slice": "value-swap"
+  },
+  "eg-0544": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0703": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0700": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0447": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0578": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0560": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0549": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0586": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0515": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0450": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0509": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0517": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0472": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0691": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0612": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0706": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0551": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0476": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0639": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0656": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  }
+ }
+}

@@ -1,0 +1,127 @@
+{
+ "_notes": "The 2026-08-17 excluded-premise repair. Ten pairs retired for resting on retired-harvest premises; ten slots minted in the same slice and verdict, each bound to a premise from the committed draw (`replacement_premise_draw --verdict entailed`). Authors receive one slot and the rulebook prefix, nothing else.",
+ "draw_seed": 2508708879,
+ "pool_size": 81,
+ "slots": [
+  {
+   "id": "eg-0717",
+   "replaces": "eg-0698",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "premise": "wisp-01 uses ticket-router",
+   "triple_key": "009e95f0-2e4d-5833-9fad-63d6ed5ac6e5",
+   "rel_type": "USES",
+   "subject_name": "wisp-01",
+   "object_name": "ticket-router",
+   "project": "default"
+  },
+  {
+   "id": "eg-0718",
+   "replaces": "eg-0701",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "premise": "uptime kuma uses notify-relay",
+   "triple_key": "f045efcf-ee09-50ae-ab8d-ddf34f5eb38d",
+   "rel_type": "USES",
+   "subject_name": "uptime kuma",
+   "object_name": "notify-relay",
+   "project": "default"
+  },
+  {
+   "id": "eg-0719",
+   "replaces": "eg-0702",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "premise": "meridian depends on core-03",
+   "triple_key": "e70bf199-7ae3-5f1c-a1b0-7c3730799eb9",
+   "rel_type": "DEPENDS_ON",
+   "subject_name": "meridian",
+   "object_name": "core-03",
+   "project": "default"
+  },
+  {
+   "id": "eg-0720",
+   "replaces": "eg-0703",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "premise": "haproxy deployed on memgraph",
+   "triple_key": "807b756f-e1cc-5851-abf9-83b65a0d11c2",
+   "rel_type": "DEPLOYED_ON",
+   "subject_name": "haproxy",
+   "object_name": "memgraph",
+   "project": "default"
+  },
+  {
+   "id": "eg-0721",
+   "replaces": "eg-0707",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "premise": "quota-watcher deployed on cpu",
+   "triple_key": "011907db-f20b-5b82-9df2-81a333af0485",
+   "rel_type": "DEPLOYED_ON",
+   "subject_name": "quota-watcher",
+   "object_name": "cpu",
+   "project": "default"
+  },
+  {
+   "id": "eg-0722",
+   "replaces": "eg-0708",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "premise": "concourse deployed on build-04",
+   "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded",
+   "rel_type": "DEPLOYED_ON",
+   "subject_name": "concourse",
+   "object_name": "build-04",
+   "project": "default"
+  },
+  {
+   "id": "eg-0723",
+   "replaces": "eg-0709",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "premise": "fulfillment application uses talon-01",
+   "triple_key": "e9c765d2-625b-5a2c-bc39-789ca1392e78",
+   "rel_type": "USES",
+   "subject_name": "fulfillment application",
+   "object_name": "talon-01",
+   "project": "default"
+  },
+  {
+   "id": "eg-0724",
+   "replaces": "eg-0710",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "premise": "lb-01 deployed on memgraph",
+   "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8",
+   "rel_type": "DEPLOYED_ON",
+   "subject_name": "lb-01",
+   "object_name": "memgraph",
+   "project": "default"
+  },
+  {
+   "id": "eg-0725",
+   "replaces": "eg-0711",
+   "slice": "paraphrase",
+   "verdict": "entailed",
+   "premise": "opentelemetry deployed on onyx-03",
+   "triple_key": "fc3294b6-697a-57af-8c06-e769a0630fe9",
+   "rel_type": "DEPLOYED_ON",
+   "subject_name": "opentelemetry",
+   "object_name": "onyx-03",
+   "project": "default"
+  },
+  {
+   "id": "eg-0726",
+   "replaces": "eg-0712",
+   "slice": "weakening",
+   "verdict": "entailed",
+   "premise": "consul uses jobs-05",
+   "triple_key": "66e5034b-2ade-5757-be59-ad455fbf2dd6",
+   "rel_type": "USES",
+   "subject_name": "consul",
+   "object_name": "jobs-05",
+   "project": "default"
+  }
+ ]
+}

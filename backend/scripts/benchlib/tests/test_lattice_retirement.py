@@ -17,7 +17,21 @@ import pathlib
 from benchlib import entailment_gold, lattice_retirement as lr
 
 
-GOLD = pathlib.Path(entailment_gold.ENTAILMENT_DIR) / "gold.json"
+# The draw operates on the **contacted** population: pairs below Rule B's
+# boundary, outside the protected T2.25 core. Round 4 replaced the gold with a
+# set no judge has ever seen, so the live file holds no such pair and every
+# property below would assert over an empty pool — `largest_remainder` refuses
+# one by design, so the tests failed rather than passing vacuously, which is
+# the behaviour those two pieces were built for.
+#
+# The contacted population still exists; it is in the archive. Pointing these
+# at it is what keeps the procedure tested between rounds instead of being
+# deleted the moment a fresh gold arrives and re-derived by whoever next needs
+# a lattice retirement — which is exactly the after-the-fact choosing clause 3
+# exists to prevent. `test_the_live_gold_has_no_contacted_population` below
+# pins the other half: that the live file really is the reason.
+GOLD = entailment_gold.RETIRED_GOLD_ARCHIVE_PATH
+LIVE_GOLD = pathlib.Path(entailment_gold.ENTAILMENT_DIR) / "gold.json"
 
 
 def _pairs() -> list[dict]:
@@ -97,6 +111,23 @@ def test_clause_5_the_quota_is_largest_remainder_over_the_pool():
             f"{slice_name}: {taken} is not within one of its proportional "
             f"share {exact:.2f} — the allocation is not largest-remainder"
         )
+
+
+def test_the_live_gold_has_no_contacted_population():
+    """Why the tests above read the archive, asserted rather than asserted-of.
+
+    If a later round appends contacted pairs to the live file, or moves Rule
+    B's boundary, this fails and the suite says so instead of quietly checking
+    the procedure against a set that no longer represents what it would run
+    on.
+    """
+    live = json.loads(LIVE_GOLD.read_text(encoding="utf-8"))["pairs"]
+
+    assert lr.eligible_pool(live, "contradicted") == {}
+    assert not [
+        p for p in live
+        if not p.get("retired") and p["id"] < lr.RULE_B_FIRST_ID
+    ]
 
 
 def test_input_order_cannot_move_the_result():

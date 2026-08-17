@@ -30,47 +30,58 @@ from benchlib.entailment_gold import (
     validate_gold_against_corpus,
 )
 from benchlib.retrieval_gold import load_retrieval_corpus
+from benchlib import round4_frame
+from benchlib.entailment_assignment import build_round4_assignment
 
-# The documented claim (LABELLING.md + gold.json's declared counts). A
-# contributor appending pairs updates all of these together -- a silent
-# re-tagging or a drifted count shows up as a failure here.
-DOCUMENTED_SLICE_COUNTS = {
-    "verbatim": 41,
-    "paraphrase": 61,
-    "weakening": 50,
-    "temporal": 57,
-    "direction": 48,
-    "overreach": 61,
-    "value-swap": 42,
-    "unrelated": 42,
-}
+# The documented claim, DERIVED rather than transcribed. Until the round-4
+# gold these three tables were copied from the file they check, so a
+# composition drift and its pin moved together and the test could only catch
+# a hand edit made in one place. They are now computed from the artifacts that
+# decided the composition before any pair existed: the ratified sampling frame
+# (`round4_frame.json`, whose matrix the owner ratified at sitting 2) and the
+# seeded premise assignment. A gold that does not match the frame it was
+# authored against fails here, and no edit to gold.json can move the target.
+_FRAME = json.loads(round4_frame.FRAME_PATH.read_text(encoding="utf-8"))
+
+#: Rule 1's largest-remainder slice targets, straight off the ratified frame.
+DOCUMENTED_SLICE_COUNTS = dict(_FRAME["slice_targets"])
+
 # The contradicted census is 80 BY DESIGN, not by accident of authoring
 # (T2.110): contradiction_recall_bar = 0.95 = 19/20 resolves in steps of
 # 1/census, so the bar sits on the achievable lattice only when the census
 # is a multiple of 20 — and the resample protocol's full-census stratum
-# caps it at 93. 80 is the only multiple of 20 in (55, 93].
-#
-# T2.115 held it at 80 while splitting it 40/40 across Rule B's two
-# populations, so 0.95 lands exactly on BOTH lattices (76/80 and 38/40)
-# rather than only the pooled one. That is why the round retired 15
-# contacted pairs instead of growing: growth alone cannot put 0.95 on both,
-# and the resample's full-census stratum forbids growing past 93 anyway.
-DOCUMENTED_VERDICT_COUNTS = {
-    "entailed": 173,
-    "contradicted": 80,
-    "unsupported": 149,
-}
-# synthesis-draft is PINNED AT ZERO: no producer exists (article_synthesis
-# is a PlaceholderJobRunner until T3.02). l2-fact moved off its zero pin
-# with T2.54's recorded harvest -- each authoring batch moves it again,
-# visibly, and every l2-fact pair is anchored to the harvest manifest by
-# the loader. Provenance honesty is what keeps G-D's numbers meaning what
-# they claim.
+# caps it at 93. 80 is the only multiple of 20 in (55, 93]. The frame's rule
+# 2 encodes that derivation; this reads its output.
+DOCUMENTED_VERDICT_COUNTS = dict(_FRAME["census"])
+
+#: Slots the seeded round-4 assignment handed out, every one drawing a
+#: manifest fact. `temporal` is the only slice it does not assign, because
+#: `fact_lift` renders no validity window (doc 17 §11's exemption), so those
+#: premises are hand-authored by construction rather than by choice.
+_ASSIGNED_SLOTS = len(build_round4_assignment())
+
+#: LABELLING.md, "Skip log (round 4, step 7)": 18 value-swap slots on
+#: multi-valued relations, 2 direction slots whose differentiation note could
+#: not be met, 1 paraphrase duplicate. Every one was re-authored in place for
+#: the same slice and verdict on a hand-authored premise, which is why the
+#: slice and verdict tables above are untouched by them and only the
+#: provenance split moves. A skip that never reached the log would show up
+#: here as a provenance the frame cannot account for.
+ROUND4_LOGGED_SKIPS = 21
+
+# synthesis-draft is PINNED AT ZERO: no producer's output has ever been
+# authored into the gold. `hand-authored-bench-corpus` is zero for round 4 --
+# the fresh round drew its premises from the harvest manifest and its
+# hand-authored premises from the temporal exemption, not from the retrieval
+# corpus -- and the loader's corpus guards are exercised against constructed
+# documents below rather than against whatever a round happens to author.
 DOCUMENTED_PROVENANCE_COUNTS = {
-    "hand-authored-synthetic-fact": 148,
-    "hand-authored-bench-corpus": 16,
+    "hand-authored-synthetic-fact": (
+        _FRAME["total"] - _ASSIGNED_SLOTS + ROUND4_LOGGED_SKIPS
+    ),
+    "hand-authored-bench-corpus": 0,
     "synthesis-draft": 0,
-    "l2-fact": 238,
+    "l2-fact": _ASSIGNED_SLOTS - ROUND4_LOGGED_SKIPS,
 }
 
 
@@ -200,6 +211,48 @@ def _reload_with(tmp_path, gold, mutate):
     return path
 
 
+def _synthetic_ids(doc, count=1):
+    """Live `hand-authored-synthetic-fact` ids, in file order.
+
+    The mutation tests below break one pair and watch a *specific* guard
+    refuse it, so they need a pair no other guard is already holding. An
+    `l2-fact` pair is not that pair: its premise is byte-bound to the harvest
+    manifest, so touching it trips the anchor guard first and the test passes
+    on the wrong refusal. Round 4 made that live -- the retired set happened to
+    open with synthetic pairs and these tests reached for `pairs[0]`.
+    """
+    ids = [
+        p["id"] for p in doc["pairs"]
+        if not p.get("retired")
+        and p["provenance"] == "hand-authored-synthetic-fact"
+    ]
+    assert len(ids) >= count, "the gold must carry synthetic pairs to mutate"
+    return ids[:count]
+
+
+def _as_corpus_pair(doc, corpus, corpus_key=None):
+    """Convert one live synthetic pair into a lawful bench-corpus pair.
+
+    The three corpus guards used to be exercised against whichever pairs a
+    round happened to author with `hand-authored-bench-corpus` provenance.
+    Round 4 authored none -- its premises come from the harvest manifest and
+    from temporal's hand-authored exemption -- so every one of those tests
+    raised `StopIteration` and would have gone on failing for every future
+    round that draws its premises the same way. The guards are properties of
+    the loader, not of a round's composition, so the pair is constructed here.
+    """
+    entry = next(e for e in corpus if e["key"] == corpus_key) if corpus_key \
+        else corpus[0]
+    victim_id = _synthetic_ids(doc)[0]
+    pair = next(p for p in doc["pairs"] if p["id"] == victim_id)
+    pair["provenance"] = "hand-authored-bench-corpus"
+    pair["corpus_key"] = entry["key"]
+    pair["premise"] = entry["content"]
+    doc["declared_provenance_counts"]["hand-authored-synthetic-fact"] -= 1
+    doc["declared_provenance_counts"]["hand-authored-bench-corpus"] += 1
+    return pair
+
+
 def test_loader_rejects_a_wrong_variant(tmp_path, gold):
     path = _reload_with(tmp_path, gold, lambda d: d.update(variant="claim-span"))
     with pytest.raises(ValueError, match="variant"):
@@ -252,11 +305,9 @@ def test_loader_rejects_an_unknown_provenance(tmp_path, gold):
         load_entailment_gold(_reload_with(tmp_path, gold, mutate))
 
 
-def test_loader_rejects_a_corpus_pair_without_its_key(tmp_path, gold):
+def test_loader_rejects_a_corpus_pair_without_its_key(tmp_path, gold, corpus):
     def mutate(doc):
-        pair = next(p for p in doc["pairs"]
-                    if p["provenance"] == "hand-authored-bench-corpus"
-                    and not p.get("retired"))
+        pair = _as_corpus_pair(doc, corpus)
         del pair["corpus_key"]
 
     with pytest.raises(ValueError, match="corpus_key"):
@@ -293,10 +344,10 @@ def test_loader_rejects_an_identical_premise_hypothesis_pair(tmp_path, gold):
 
 def test_loader_rejects_a_duplicate_live_pair(tmp_path, gold):
     def mutate(doc):
-        first = doc["pairs"][0]
-        second = doc["pairs"][1]
-        second["premise"] = first["premise"]
-        second["hypothesis"] = first["hypothesis"]
+        first_id, second_id = _synthetic_ids(doc, 2)
+        by_id = {p["id"]: p for p in doc["pairs"]}
+        by_id[second_id]["premise"] = by_id[first_id]["premise"]
+        by_id[second_id]["hypothesis"] = by_id[first_id]["hypothesis"]
 
     with pytest.raises(ValueError, match="duplicate live"):
         load_entailment_gold(_reload_with(tmp_path, gold, mutate))
@@ -358,8 +409,7 @@ def test_a_retired_pair_leaves_counts_but_stays_in_the_file(tmp_path, gold):
 
 def test_a_dangling_corpus_key_fails_cross_validation(gold, corpus):
     broken = json.loads(json.dumps(gold))
-    pair = next(p for p in broken["pairs"]
-                if p.get("corpus_key") and not p.get("retired"))
+    pair = _as_corpus_pair(broken, corpus)
     pair["corpus_key"] = "zz-not-a-corpus-entry"
     with pytest.raises(ValueError, match="does not resolve"):
         validate_gold_against_corpus(broken, corpus)
@@ -369,14 +419,13 @@ def test_corpus_drift_under_a_pair_fails_cross_validation(gold, corpus):
     """The anchor discipline: if the retrieval corpus entry a premise was
     taken from changes content, the pair must fail validation and be
     re-adjudicated under retire-and-replace, never drift silently."""
-    live_keys = {p["corpus_key"] for p in _live(gold) if p.get("corpus_key")}
+    anchored = json.loads(json.dumps(gold))
+    pair = _as_corpus_pair(anchored, corpus)
     drifted = json.loads(json.dumps(corpus))
-    for entry in drifted:
-        if entry.get("key") in live_keys:
-            entry["content"] = entry["content"] + " (edited)"
-            break
+    entry = next(e for e in drifted if e["key"] == pair["corpus_key"])
+    entry["content"] = entry["content"] + " (edited)"
     with pytest.raises(ValueError, match="retire-and-replace"):
-        validate_gold_against_corpus(gold, drifted)
+        validate_gold_against_corpus(anchored, drifted)
 
 
 def test_default_paths_point_inside_the_entailment_dir():
@@ -637,23 +686,22 @@ def test_the_contradicted_census_keeps_the_recall_bar_on_the_lattice(gold):
 # ---------------------------------------------------------------------------
 
 # Every duplicated proposition currently live in the gold, measured rather than
-# hand-found. Two are `contradicted` and therefore inside the census the G-D
-# recall bar is computed over; the other seven are `entailed`. Recorded as
-# accepted debt by ruling R-B, to be retired at the next round that moves the
-# sha — pinned here so a *new* duplicate fails the build while these do not.
-ACCEPTED_DUPLICATE_PROPOSITIONS = {
-    ("eg-0051", "eg-0322"),
-    ("eg-0063", "eg-0125"),
-    ("eg-0078", "eg-0307"),
-    ("eg-0083", "eg-0247"),
-    ("eg-0093", "eg-0367"),
-    ("eg-0094", "eg-0279"),
-    ("eg-0094", "eg-0323"),
-    ("eg-0194", "eg-0251"),
-    ("eg-0279", "eg-0323"),
-}
+# hand-found. **Empty for round 4, and that is the debt being paid rather than
+# a weaker check.** The retired set carried nine accepted duplicates (two of
+# them `contradicted`, inside the census the G-D recall bar is computed over)
+# as ruling R-B's recorded debt, "to be retired at the next round that moves
+# the sha"; this is that round, and the byte-level screen finds none. A new
+# duplicate therefore fails the build against an empty pin, which is the
+# strongest form this test has ever had.
+#
+# Byte-level is not the whole story: the round's step-9 pass adjudicated
+# duplicates this screen cannot see, and those live in
+# `entailment/adjudicated_duplicates.json` and are asserted in
+# `test_judge_qualification.py`. Nothing here is a claim that the census holds
+# no duplicated proposition — only that none is visible at the bytes.
+ACCEPTED_DUPLICATE_PROPOSITIONS: set[tuple[str, str]] = set()
 
-CONTRADICTED_DUPLICATES = {("eg-0093", "eg-0367"), ("eg-0194", "eg-0251")}
+CONTRADICTED_DUPLICATES: set[tuple[str, str]] = set()
 
 
 def test_no_new_duplicate_proposition_enters_the_gold(gold):
@@ -678,12 +726,14 @@ def test_no_new_duplicate_proposition_enters_the_gold(gold):
     )
 
 
-def test_the_contradicted_census_carries_exactly_two_duplicated_propositions(gold):
+def test_the_contradicted_census_carries_no_duplicated_proposition(gold):
     """The number the G-D reading has to disclose.
 
-    80 scored rows, 78 independent propositions. Asserted separately from the
-    set above because this is the one that changes what the recall bar means:
-    the entailed duplicates sit outside the census the bar is computed over.
+    The retired set scored 80 rows over 78 independent propositions, and the
+    finding arrived in review after the attempt was spent. Round 4 scores 80
+    over 80. Asserted separately from the set above because this is the one
+    that changes what the recall bar means: an entailed duplicate sits outside
+    the census the bar is computed over, a contradicted one does not.
     """
     from benchlib.duplicate_propositions import find_duplicate_propositions
 
@@ -695,3 +745,151 @@ def test_the_contradicted_census_carries_exactly_two_duplicated_propositions(gol
     }
 
     assert contradicted == CONTRADICTED_DUPLICATES
+
+
+# ── the bare-sortal clause, enforced rather than swept for ───────────────
+
+#: Sortals the 2026-08-17 bare-sortal clause places, by branch. Kept beside the
+#: test rather than derived from LABELLING.md: a regex over prose would pass by
+#: matching the clause's own examples, which is not the same as knowing a noun
+#: was ruled on.
+VACUOUS_SORTALS = frozenset({
+    "component", "components", "system", "systems", "thing", "things",
+    "something",
+})
+PARTITIONING_SORTALS = frozenset({
+    "service", "services", "software", "database", "databases",
+    "machine", "machines",
+    # Ruled 2026-08-17: these sit between the earned "resource" and the
+    # partitioning "database", and the ruling put them on this side.
+    "datastore", "datastores", "backend", "backends",
+})
+RELATION_EARNED_SORTALS = frozenset({
+    "host", "hosts", "installation", "installations",
+    "dependency", "dependencies", "dependent", "dependents",
+    "part", "parts", "constituent", "constituents",
+    "resource", "resources", "consumer", "consumers",
+    "prerequisite", "prerequisites", "connection", "connections",
+})
+
+#: Both shapes the clause reaches. **Two patterns, not one** — the first sweep
+#: for this defect matched only quantified forms, and that is exactly how
+#: eg-0512 ("Concourse is a piece of software that log-02 makes use of")
+#: survived the round that retired eg-0699 for the identical sortal. A guard
+#: that covers one shape is how the class comes back.
+_SORTAL_PATTERNS = (
+    r"(?:at least one|one of the)\s+(?:other\s+|named\s+|deployed\s+)*([a-z-]+)",
+    r"\bis (?:a|an|one of the)\s+(?:other\s+|named\s+|deployed\s+)*([a-z-]+)",
+    r"\bis among the\s+([a-z-]+)",
+    r"\bthere is a\s+([a-z-]+)",
+)
+
+
+def test_every_sortal_a_live_pair_uses_is_one_the_clause_places(gold):
+    """No live pair may rest on a sortal nobody ruled on.
+
+    The clause decides a pair by asking whether its sortal restricts the
+    premise's world. A sortal the clause does not place leaves that pair's
+    label resting on an unwritten reading — which is the exact state the
+    2026-08-16 resample miss measured, over 29 pairs at once.
+
+    This fails on the *authoring* of such a pair rather than on a resample
+    sitting that costs a measurement attempt to discover it.
+    """
+    import re
+
+    placed = VACUOUS_SORTALS | PARTITIONING_SORTALS | RELATION_EARNED_SORTALS
+    unplaced: dict[str, list[str]] = {}
+    for pair in gold["pairs"]:
+        if pair.get("retired"):
+            continue
+        hypothesis = pair["hypothesis"].lower()
+        for pattern in _SORTAL_PATTERNS:
+            for match in re.finditer(pattern, hypothesis):
+                sortal = match.group(1)
+                if sortal not in placed:
+                    unplaced.setdefault(sortal, []).append(pair["id"])
+
+    assert not unplaced, (
+        "live pairs use sortals the bare-sortal clause does not place: "
+        f"{unplaced}. Rule the sortal in LABELLING.md first (rule-then-pairs), "
+        "then label the pair -- never the other way round."
+    )
+
+
+def test_no_live_pair_carries_a_partitioning_sortal_unearned(gold):
+    """The eg-0699 / eg-0512 defect, refused at the file rather than by a model.
+
+    A partitioning sortal is asserted restrictor content, so a hypothesis
+    applying one to a witness the premise never classifies is `unsupported` --
+    and both of this gold's instances were labelled `entailed`, one of them
+    authored as a *replacement* in the round that retired the other. Neither
+    was caught by a rule; the first cost a resample sitting and the second was
+    found only by widening a sweep.
+    """
+    import re
+
+    #: Verb-phrase idioms where a partitioning word is not a kind predicated of
+    #: an entity. Narrowing the SCAN to the behaviour it is about, rather than
+    #: exempting the pairs it misfires on: "Garage is put into service by
+    #: data-06" says Garage is *used*, not that Garage is a service.
+    idioms = (r"put into service", r"back into service", r"\bin service\b",
+              r"out of service")
+
+    offenders = []
+    for pair in gold["pairs"]:
+        if pair.get("retired") or pair["verdict"] != "entailed":
+            continue
+        hypothesis = pair["hypothesis"].lower()
+        for idiom in idioms:
+            hypothesis = re.sub(idiom, " ", hypothesis)
+        premise = pair["premise"].lower()
+        # SHAPE-FREE on purpose. Three pattern-scoped sweeps each missed a
+        # shape the next one found -- existentials missed predicate nominals
+        # (eg-0512), and both missed the referential definite (eg-0450). A
+        # scan that enumerates syntactic frames can only catch the frames
+        # somebody thought of, so this one looks at every word and asks
+        # instead whether the PREMISE establishes the kind.
+        for word in re.findall(r"[a-z]+", hypothesis):
+            if word in PARTITIONING_SORTALS and word.rstrip("s") not in premise:
+                offenders.append((pair["id"], word))
+                break
+
+    assert not offenders, (
+        f"entailed pairs applying a partitioning sortal: {offenders}. The "
+        "premise must establish the kind; what the witness 'obviously is' is "
+        "world knowledge (procedure 2)."
+    )
+
+
+def test_every_sortal_the_guard_places_is_named_in_the_rulebook():
+    """The guard's vocabulary and the clause's prose must not drift apart.
+
+    The guard above decides pairs from three frozensets. If a noun enters
+    those sets without entering LABELLING.md, a pair using it passes the
+    build while still resting on a reading no committed rule states — which
+    is precisely the condition the clause was written to end, reintroduced
+    through the guard meant to enforce it.
+
+    Found by a blind labeller, not by design: two replacements authored on
+    2026-08-17 used "installation" and "something", both of which the guard
+    accepted and the clause did not name.
+    """
+    rulebook = (entailment_gold.ENTAILMENT_DIR / "LABELLING.md").read_text(
+        encoding="utf-8"
+    ).lower()
+    # Singulars only: the clause names a noun once, not once per inflection.
+    placed = VACUOUS_SORTALS | PARTITIONING_SORTALS | RELATION_EARNED_SORTALS
+
+    def is_plural_of_a_placed_noun(word: str) -> bool:
+        if word.endswith("ies") and f"{word[:-3]}y" in placed:
+            return True
+        return word.endswith("s") and word[:-1] in placed
+
+    singulars = {s for s in placed if not is_plural_of_a_placed_noun(s)}
+    missing = sorted(s for s in singulars if f'"{s}"' not in rulebook)
+    assert not missing, (
+        f"sortals the guard places but LABELLING.md never names: {missing}. "
+        "Rule the noun in the clause first; the guard enforces the rule, it "
+        "is not the rule."
+    )

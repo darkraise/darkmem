@@ -1,0 +1,9 @@
+{
+  "id": "eg-0722",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "Concourse is an installation on build-04.",
+  "verdict": "entailed",
+  "slice": "paraphrase",
+  "rationale": "Uses a copula predicate-nominal construction ('X is an installation on Y') rather than a transitive verb clause, structurally distinct from the already-used 'X runs on Y' and 'Y hosts X' shapes. Grounded by the bare-sortal clause's earned-sortal sub-rule: DEPLOYED_ON's own generic semantics earn 'installation' for its subject ('a thing deployed on a host cannot fail to be an installation there'), so the noun is not unsupported added content but relation-earned establishment. Procedure 3 permits this rewording since nothing is strengthened, weakened beyond the source, or reversed; direction and entities are unchanged.",
+  "attestation": "Read only the task prompt and 02-labelling-prefix.md at the given path. The worktree's CLAUDE.md was auto-injected into the system context by the environment (not chosen by me) and I did not act on it beyond noting its presence here. No Grep/Glob/Bash exploration was run and no other file was opened."
+}

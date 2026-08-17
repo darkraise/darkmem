@@ -1,0 +1,11 @@
+{
+ "id": "eg-0726",
+ "slice": "weakening",
+ "verdict": "entailed",
+ "premise": "consul uses jobs-05",
+ "triple_key": "66e5034b-2ade-5757-be59-ad455fbf2dd6",
+ "rel_type": "USES",
+ "subject_name": "consul",
+ "object_name": "jobs-05",
+ "project": "default"
+}

@@ -1,0 +1,11 @@
+{
+ "id": "eg-0719",
+ "slice": "weakening",
+ "verdict": "entailed",
+ "premise": "meridian depends on core-03",
+ "triple_key": "e70bf199-7ae3-5f1c-a1b0-7c3730799eb9",
+ "rel_type": "DEPENDS_ON",
+ "subject_name": "meridian",
+ "object_name": "core-03",
+ "project": "default"
+}

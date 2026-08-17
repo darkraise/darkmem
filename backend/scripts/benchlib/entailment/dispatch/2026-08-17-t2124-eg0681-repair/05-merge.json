@@ -1,0 +1,16 @@
+{
+ "_notes": "Layer 2 merge for eg-0716. The one escalation is a COVER on which the two passes split rather than both differing from the gold: A read 'as part of its normal operation' at the relation's generic level per the dependency-strength rule's explicit instruction, B read the 'normal' restrictor as asserted content. Recorded, not resolved.",
+ "merged_at": "2026-08-17",
+ "under_adjudication": [
+  "eg-0716"
+ ],
+ "adjudicated": [
+  "eg-0716"
+ ],
+ "escalations": [
+  "eg-0625"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 0.96
+ }
+}

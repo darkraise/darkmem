@@ -1,0 +1,9 @@
+{
+  "id": "eg-0719",
+  "premise": "meridian depends on core-03",
+  "hypothesis": "meridian needs core-03 to function",
+  "verdict": "entailed",
+  "slice": "weakening",
+  "rationale": "The dependency-strength rule states DEPENDS_ON asserts a generic requirement for intended operation, and lists 'requires Y to function' as a paraphrase-level rendering at the same generic level as the bare relation — not a mechanism-specific claim about timing or failure mode, so it stays entailed rather than strengthening. No sortal, kind, or property is added to either entity beyond what the premise states, satisfying the bare-sortal clause.",
+  "attestation": "This session I read only the assigned task prompt and the file 02-labelling-prefix.md (the labelling rulebook) at the path given in the allowlist. I read nothing else under /root/repositories/ or elsewhere, and I ran no tools other than the Write call producing this file."
+}

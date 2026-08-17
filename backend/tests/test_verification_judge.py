@@ -1151,13 +1151,46 @@ def test_user_template_text_moves_the_identity(monkeypatch):
 
 @pytest.mark.parametrize("role", sorted(vj.JUDGE_ROLES))
 def test_the_canonical_records_are_absent_on_this_branch(role):
-    # The zero-pin, now per role: only a gate-eligible --gate run may mint a
-    # record, so its first appearance must be a deliberate diff that
-    # consciously edits this test. Both are absent for stated reasons — the
-    # contradiction role missed its bar and stays missed, and the owner refused
-    # minting the entailment role from the spent run's artifact (ruling
-    # 2026-08-12), so that record is owed to a fresh gold and to nothing else.
-    assert not vj.qualification_record_path(role).exists()
+    """The zero-pin, per role, and this IS the deliberate diff it demanded.
+
+    Only a gate-eligible `--gate` run may mint a record, so the first
+    appearance of one had to be a change that consciously edits this test.
+    T2.125 is that appearance (2026-08-17): `gpt-5.5` on T2.124's fresh gold
+    cleared both bars gating the **entailment** role — precision 0.9906 against
+    0.95, recall 0.9545 against 0.90, on both Rule-B populations — so that
+    record now exists and is asserted rather than forbidden.
+
+    **The contradiction role stays absent, and that is the load-bearing half.**
+    Its recall measured 0.7875 against an unmoved 0.95, the fourth such miss
+    across two vendors (0.7937 / 0.8814 / 0.8875 / 0.7875). The 2026-08-12
+    ruling holds: the bar does not move, the role stays NOT CLEARED, and the
+    Tier-C scan stays dead. A record appearing here for `contradiction` without
+    a cleared run is the failure this pin exists for.
+    """
+    import json
+
+    path = vj.qualification_record_path(role)
+    if role == "contradiction":
+        assert not path.exists(), (
+            "a contradiction-role record exists; its bar has never been met, so "
+            "nothing may have minted this"
+        )
+        return
+
+    assert path.exists(), "T2.125 minted the entailment record; see the ledger"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["role"] == "entailment"
+    assert record["gate_eligible"] is True
+    # It qualifies against ONE pair set, and carries that set's content hash.
+    # The cross-check against the live gold lives in the benchlib suite, where
+    # `pairs_content_hash` is importable — `benchlib` is not on the path here.
+    assert len(record["gold_pairs_sha256"]) == 64
+    int(record["gold_pairs_sha256"], 16)
+    # Only the two bars that gate this role, never the contradiction pair.
+    assert set(record["bars_gating_this_role"]) == {
+        "groundedness_gate_precision_bar",
+        "groundedness_gate_recall_bar",
+    }
 
 
 def test_the_pre_split_bundled_record_path_is_not_resurrected():

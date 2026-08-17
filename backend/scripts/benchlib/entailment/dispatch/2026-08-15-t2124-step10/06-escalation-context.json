@@ -1,0 +1,79 @@
+{
+ "eg-0510": {
+  "premise": "nimbus-02 uses nimbus-archive",
+  "hypothesis": "At least one component of the nimbus deployment makes use of nimbus-archive.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "unsupported"
+ },
+ "eg-0452": {
+  "premise": "alert storms related to lb-01",
+  "hypothesis": "Alert storms are related to at least one named component of the estate.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0459": {
+  "premise": "infisical uses authelia",
+  "hypothesis": "infisical makes use of at least one other component in the estate.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0513": {
+  "premise": "consul uses memgraph",
+  "hypothesis": "Consul makes use of at least one other system in the stack.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0520": {
+  "premise": "quota-watcher uses powerdns",
+  "hypothesis": "PowerDNS is in use somewhere in the environment.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0506": {
+  "premise": "airflow depends on clickhouse",
+  "hypothesis": "Airflow needs ClickHouse in order to run.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0591": {
+  "premise": "authelia depends on kv-01",
+  "hypothesis": "Authelia requires kv-01 in order to function.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ },
+ "eg-0499": {
+  "premise": "garage depends on batch-01",
+  "hypothesis": "Garage cannot start until batch-01 is available.",
+  "recorded": "unsupported",
+  "A": "unsupported",
+  "B": "unsupported"
+ },
+ "eg-0525": {
+  "premise": "anvil-render depends on files-01",
+  "hypothesis": "anvil-render cannot start at all while files-01 is unavailable.",
+  "recorded": "unsupported",
+  "A": "unsupported",
+  "B": "unsupported"
+ },
+ "eg-0636": {
+  "premise": "airflow depends on clickhouse",
+  "hypothesis": "Airflow cannot start unless ClickHouse is reachable.",
+  "recorded": "unsupported",
+  "A": "unsupported",
+  "B": "unsupported"
+ },
+ "eg-0634": {
+  "premise": "osquery uses quota-watcher",
+  "hypothesis": "Quota-watcher is a component that osquery relies on.",
+  "recorded": "entailed",
+  "A": "entailed",
+  "B": "entailed"
+ }
+}

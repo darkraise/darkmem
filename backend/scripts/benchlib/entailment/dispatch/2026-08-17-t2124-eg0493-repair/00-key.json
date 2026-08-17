@@ -1,0 +1,109 @@
+{
+ "_notes": "Recorded labels, held OUT of the export. eg-0715 replaces eg-0493, condemned by the cross-relation vocabulary test.",
+ "seed": 493170826,
+ "under_adjudication": [
+  "eg-0715"
+ ],
+ "key": {
+  "eg-0643": {
+   "verdict": "unsupported",
+   "slice": "direction"
+  },
+  "eg-0693": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0681": {
+   "verdict": "entailed",
+   "slice": "temporal"
+  },
+  "eg-0514": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0673": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0490": {
+   "verdict": "unsupported",
+   "slice": "direction"
+  },
+  "eg-0685": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0565": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0715": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0441": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0672": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0703": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0695": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0697": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0419": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0708": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0436": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0711": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0528": {
+   "verdict": "contradicted",
+   "slice": "value-swap"
+  },
+  "eg-0437": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0541": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0567": {
+   "verdict": "contradicted",
+   "slice": "value-swap"
+  },
+  "eg-0669": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0556": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0698": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  }
+ }
+}

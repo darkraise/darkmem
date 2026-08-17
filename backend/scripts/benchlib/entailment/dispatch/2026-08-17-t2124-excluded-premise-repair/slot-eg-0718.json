@@ -1,0 +1,11 @@
+{
+ "id": "eg-0718",
+ "slice": "weakening",
+ "verdict": "entailed",
+ "premise": "uptime kuma uses notify-relay",
+ "triple_key": "f045efcf-ee09-50ae-ab8d-ddf34f5eb38d",
+ "rel_type": "USES",
+ "subject_name": "uptime kuma",
+ "object_name": "notify-relay",
+ "project": "default"
+}

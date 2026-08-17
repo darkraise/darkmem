@@ -2,6 +2,42 @@
   "_reproducible": "Everything in this file except header.generated_at and header.git_sha is byte-identical across re-runs on an unchanged tree with a warm cache; the sorted 'facts' section is the forgery detector T2.41's --gate evidence re-derives and diffs.",
   "facts": [
     {
+      "fact": "wisp-01 uses ticket-router",
+      "object_name": "ticket-router",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c68ce301-16ab-5187-88fa-5e9af9bf06a0"
+      ],
+      "subject_name": "wisp-01",
+      "triple_key": "009e95f0-2e4d-5833-9fad-63d6ed5ac6e5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "quota-watcher deployed on cpu",
+      "object_name": "cpu",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "9625a454-cf17-5fb7-864d-d7d26f271c6e"
+      ],
+      "subject_name": "quota-watcher",
+      "triple_key": "011907db-f20b-5b82-9df2-81a333af0485",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "rclone uses slate-media",
+      "object_name": "slate-media",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e98f71a2-92fa-51f2-97b1-ab8321ee4733"
+      ],
+      "subject_name": "rclone",
+      "triple_key": "027f2305-b5a6-5384-ae69-ee6d17529d0e",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "search-01 is a typesense",
       "object_name": "typesense",
       "project": "default",
@@ -14,6 +50,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "ansible depends on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "66702356-1c67-5363-8d31-2ed9a07f79a9"
+      ],
+      "subject_name": "ansible",
+      "triple_key": "05e9faa3-5593-5cae-a0ef-ccf45cc08635",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "github actions replaces jenkins",
       "object_name": "jenkins",
       "project": "default",
@@ -23,6 +71,18 @@
       ],
       "subject_name": "github actions",
       "triple_key": "07025480-5ae2-5262-9214-97aa13ba990d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "anvil-render uses files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "5d015ba3-3dc5-5120-ab98-6062b3da4f4a"
+      ],
+      "subject_name": "anvil-render",
+      "triple_key": "07b0f38c-eff3-5ba7-9458-941366f8664c",
       "verification_status": "candidate"
     },
     {
@@ -62,6 +122,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "rabbitmq has part order-events",
+      "object_name": "order-events",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "2199766c-c77b-548c-9794-d98afb32ce1a"
+      ],
+      "subject_name": "rabbitmq",
+      "triple_key": "0ce45065-ee27-5e6a-bdce-3c611deda3b1",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "kibana has part elk",
       "object_name": "elk",
       "project": "default",
@@ -71,6 +143,30 @@
       ],
       "subject_name": "kibana",
       "triple_key": "0d272cc9-159e-5368-a6bb-9c7d33f4a9a4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "osquery causes quota-watcher",
+      "object_name": "quota-watcher",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "9625a454-cf17-5fb7-864d-d7d26f271c6e"
+      ],
+      "subject_name": "osquery",
+      "triple_key": "0e03f089-99ac-56a5-a358-022462901a04",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "data-06 deployed on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "afa2689a-227c-562b-a56e-ecef521cd536"
+      ],
+      "subject_name": "data-06",
+      "triple_key": "0e82d174-a980-5ee1-a163-aecf596f1e3d",
       "verification_status": "candidate"
     },
     {
@@ -86,6 +182,55 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "auth-02 depends on auth-01",
+      "object_name": "auth-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "8732825a-ea15-57ab-bd4c-2e2d4a301285"
+      ],
+      "subject_name": "auth-02",
+      "triple_key": "0f3cbf48-0cb5-511b-89ff-2edfaea702b6",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "data-06 uses garage",
+      "object_name": "garage",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "afa2689a-227c-562b-a56e-ecef521cd536"
+      ],
+      "subject_name": "data-06",
+      "triple_key": "0fb10de6-b28d-5cf5-aaa8-1b0ae07a48f5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "memgraph deployed on graph-01",
+      "object_name": "graph-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "27e51c66-76b1-53a6-a6b3-6ff4d5af0301",
+        "b053fb83-4dcf-54f2-8556-d947f0cf1052"
+      ],
+      "subject_name": "memgraph",
+      "triple_key": "1086bf0d-031e-56ce-ab8c-07826bb65c94",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ticket-router depends on zulip",
+      "object_name": "zulip",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "24c8dc69-3611-51f5-b121-a59b01663694"
+      ],
+      "subject_name": "ticket-router",
+      "triple_key": "10ac4c04-9882-596c-afbe-750413fdfcf3",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "vector related to telegraf",
       "object_name": "telegraf",
       "project": "default",
@@ -98,6 +243,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "imagemagick causes images-02",
+      "object_name": "images-02",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "5d015ba3-3dc5-5120-ab98-6062b3da4f4a"
+      ],
+      "subject_name": "imagemagick",
+      "triple_key": "12557583-950c-51f8-bdd3-18b228567cda",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "cleanup cron job causes scratch partition",
       "object_name": "scratch partition",
       "project": "default",
@@ -107,6 +264,43 @@
       ],
       "subject_name": "cleanup cron job",
       "triple_key": "12894a6a-ea4c-5811-91e6-5f21705c7917",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ffmpeg deployed on media-04",
+      "object_name": "media-04",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc",
+        "f14b34e6-97f1-5021-8b95-1cff9787df4d"
+      ],
+      "subject_name": "ffmpeg",
+      "triple_key": "1521af2c-eaaa-5471-a449-bf115d26e7e4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "teleport deployed on warden-02",
+      "object_name": "warden-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "87d78d08-5cea-5776-b9e2-18a49926daef"
+      ],
+      "subject_name": "teleport",
+      "triple_key": "1834ccaf-3cc0-5340-88a6-fb4cb70e8ca8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "woodpecker ci deployed on tether-02",
+      "object_name": "tether-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "57ab215e-243b-5926-b22a-26a193ccfe34"
+      ],
+      "subject_name": "woodpecker ci",
+      "triple_key": "1899947d-a0b3-561b-9899-71723a4ede11",
       "verification_status": "candidate"
     },
     {
@@ -134,6 +328,118 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "luigi deployed on batch-01",
+      "object_name": "batch-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "72cc0d09-21a4-5f28-a49d-88c568ea9ffc"
+      ],
+      "subject_name": "luigi",
+      "triple_key": "1dcd54b7-e3d7-5b7f-a514-cb3b680bc360",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "xenon-02 uses xenon-snapshots",
+      "object_name": "xenon-snapshots",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "330c6bef-3955-5433-a04c-4154a76d55ee"
+      ],
+      "subject_name": "xenon-02",
+      "triple_key": "1f17afad-917e-5b34-a989-38c0ef2b799c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "concourse uses garage",
+      "object_name": "garage",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "68eb0fbd-6b29-5a14-a91d-50b1da16922d"
+      ],
+      "subject_name": "concourse",
+      "triple_key": "21e8b762-eb48-5aae-a372-178b11f5f4f2",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "anvil-render depends on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "5b051865-a305-5ecd-bf15-cdf76f3f2e46"
+      ],
+      "subject_name": "anvil-render",
+      "triple_key": "22181cbc-56f4-50ac-803c-e96f295be436",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "huginn deployed on hooks-03",
+      "object_name": "hooks-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "08765527-7176-5ce3-81f3-5ce3e6f819ad",
+        "ead65b73-3e86-5b72-81c2-ca198168dda9"
+      ],
+      "subject_name": "huginn",
+      "triple_key": "2230c333-c361-5ed6-8a1f-cc4ce813a687",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "alert storms deployed on lb-01",
+      "object_name": "lb-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552"
+      ],
+      "subject_name": "alert storms",
+      "triple_key": "227484b1-7555-53ae-a666-2895668718ca",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "syncthing uses vane-01",
+      "object_name": "vane-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "21deefe1-4c51-5e02-b88a-1680443f3a5e"
+      ],
+      "subject_name": "syncthing",
+      "triple_key": "230ebccf-775c-58fc-8c70-9646be482e86",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "lb-01 uses haproxy",
+      "object_name": "haproxy",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c32f4418-3b4e-5239-a05e-a4d5800447e7"
+      ],
+      "subject_name": "lb-01",
+      "triple_key": "248db4bb-0324-5713-a8b0-4733aa44fe21",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul deployed on core-03",
+      "object_name": "core-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "065bfb53-456f-5b80-94a5-1ca2d90125bf",
+        "27e51c66-76b1-53a6-a6b3-6ff4d5af0301",
+        "5e9fe6b7-fa4c-5cac-bc43-80349a592cb6",
+        "ead65b73-3e86-5b72-81c2-ca198168dda9"
+      ],
+      "subject_name": "consul",
+      "triple_key": "295cea68-7196-52c6-8be6-d1fb61170490",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "terraform uses tf-state",
       "object_name": "tf-state",
       "project": "default",
@@ -143,6 +449,43 @@
       ],
       "subject_name": "terraform",
       "triple_key": "2b8fd40f-418b-5234-9981-030377289c8e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "concourse deployed on build-04",
+      "object_name": "build-04",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "586db5fe-2854-526f-bba6-107064713a88",
+        "68eb0fbd-6b29-5a14-a91d-50b1da16922d"
+      ],
+      "subject_name": "concourse",
+      "triple_key": "2c252fb6-a522-557a-9a02-e96c36989ded",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "files-01 uses clickhouse",
+      "object_name": "clickhouse",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "914537ea-1045-5af4-9f59-bfd804c1197a"
+      ],
+      "subject_name": "files-01",
+      "triple_key": "2c73c439-30d1-510d-b26a-541fff181726",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul uses memgraph",
+      "object_name": "memgraph",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "27e51c66-76b1-53a6-a6b3-6ff4d5af0301"
+      ],
+      "subject_name": "consul",
+      "triple_key": "2f4dbf3a-f724-5c95-a5c2-9452ffa7d0cf",
       "verification_status": "candidate"
     },
     {
@@ -167,6 +510,18 @@
       ],
       "subject_name": "nightly integration suite",
       "triple_key": "32a364bc-cf4d-525c-9376-816541ebbeb5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "mon-05 uses etcd",
+      "object_name": "etcd",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552"
+      ],
+      "subject_name": "mon-05",
+      "triple_key": "37363c29-6760-5353-80d1-4b37694c282c",
       "verification_status": "candidate"
     },
     {
@@ -206,6 +561,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "airflow depends on clickhouse",
+      "object_name": "clickhouse",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "35d2da62-c3dd-59de-b8dc-b2e3e19a33c0"
+      ],
+      "subject_name": "airflow",
+      "triple_key": "3bb614e2-818a-5329-bc81-194b78b3cb1d",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "prometheus uses node exporters",
       "object_name": "node exporters",
       "project": "default",
@@ -215,6 +582,20 @@
       ],
       "subject_name": "prometheus",
       "triple_key": "3d8b8266-237f-5431-8f58-691ff67c4f73",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "garage deployed on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "0cb93017-59ea-535e-a250-ed8cf6d0e4e5",
+        "586db5fe-2854-526f-bba6-107064713a88",
+        "68eb0fbd-6b29-5a14-a91d-50b1da16922d"
+      ],
+      "subject_name": "garage",
+      "triple_key": "3dea0e8e-6ab7-551b-99b7-09a93a7de208",
       "verification_status": "candidate"
     },
     {
@@ -230,6 +611,42 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "parcel-tracker depends on parcel-logs",
+      "object_name": "parcel-logs",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "f5d3c481-3d98-534b-9b5e-e01a9563518e"
+      ],
+      "subject_name": "parcel-tracker",
+      "triple_key": "400a6699-44aa-5ce4-9300-9c388f18ff97",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "clickhouse depends on ledger-02",
+      "object_name": "ledger-02",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "a2540c1e-9546-552b-86c8-320fc2745728"
+      ],
+      "subject_name": "clickhouse",
+      "triple_key": "4015fc37-f5a0-5815-8547-22b712d64290",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "design archive related to vane-01",
+      "object_name": "vane-01",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "21deefe1-4c51-5e02-b88a-1680443f3a5e"
+      ],
+      "subject_name": "design archive",
+      "triple_key": "40ee6ae2-37a1-59e2-80ea-96be1ad2fed5",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "ocr worker deployed on gpu-01",
       "object_name": "gpu-01",
       "project": "default",
@@ -239,6 +656,57 @@
       ],
       "subject_name": "ocr worker",
       "triple_key": "420e13ba-2f7d-5b8d-bd57-5fb1834d0667",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "etcd deployed on kv-01",
+      "object_name": "kv-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552",
+        "20154607-177b-55f6-9ec9-084381f548eb",
+        "218857e6-5cdc-5065-be4a-cef31c73dd71",
+        "afa2689a-227c-562b-a56e-ecef521cd536"
+      ],
+      "subject_name": "etcd",
+      "triple_key": "45a57ddf-011d-5f45-9740-646a9d6dd289",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "auth-01 depends on kv-01",
+      "object_name": "kv-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "386b44fb-fd80-56da-b852-9be197af0699"
+      ],
+      "subject_name": "auth-01",
+      "triple_key": "46072f92-f15a-5667-9985-27e17c1ef62b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ticket-router deployed on wisp-01",
+      "object_name": "wisp-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "24c8dc69-3611-51f5-b121-a59b01663694"
+      ],
+      "subject_name": "ticket-router",
+      "triple_key": "48560a22-8784-5515-9499-0afa155a0d07",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vane-01 uses warehouse floor terminals",
+      "object_name": "warehouse floor terminals",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "76b5d433-d211-59e6-ba08-59192ee4f6b9"
+      ],
+      "subject_name": "vane-01",
+      "triple_key": "499d0131-e0cd-53e6-8852-2abee9c4dc36",
       "verification_status": "candidate"
     },
     {
@@ -254,6 +722,66 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "media-04 uses files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc"
+      ],
+      "subject_name": "media-04",
+      "triple_key": "49d735a5-6b35-51cf-a791-c4abfffd4377",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "anvil-render uses imagemagick",
+      "object_name": "imagemagick",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "5b051865-a305-5ecd-bf15-cdf76f3f2e46"
+      ],
+      "subject_name": "anvil-render",
+      "triple_key": "4b436166-597c-58bc-bf88-698ae2aa337c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "codec pack deployed on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "f14b34e6-97f1-5021-8b95-1cff9787df4d"
+      ],
+      "subject_name": "codec pack",
+      "triple_key": "4cbb6d71-6b31-5f2f-9cf6-1cf829c6f6bb",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "images-02 depends on anvil-render",
+      "object_name": "anvil-render",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "5d015ba3-3dc5-5120-ab98-6062b3da4f4a"
+      ],
+      "subject_name": "images-02",
+      "triple_key": "4d0aa886-bbcf-5d1f-8009-ded7a037fcf7",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "graph-01 deployed on lb-01",
+      "object_name": "lb-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "c32f4418-3b4e-5239-a05e-a4d5800447e7"
+      ],
+      "subject_name": "graph-01",
+      "triple_key": "4e52a074-066a-5962-a394-c0722a9527e8",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "customer-portal uses vault",
       "object_name": "vault",
       "project": "default",
@@ -263,6 +791,18 @@
       ],
       "subject_name": "customer-portal",
       "triple_key": "4e7f472b-5da4-545b-8f41-b30558cf9ba0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "keys-01 has part infisical",
+      "object_name": "infisical",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "6b34ef0e-30c6-5922-b098-91c282fd776b"
+      ],
+      "subject_name": "keys-01",
+      "triple_key": "4f741539-9142-5850-a381-40d136e00c0d",
       "verification_status": "candidate"
     },
     {
@@ -290,6 +830,79 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "warden-02 uses tailscale",
+      "object_name": "tailscale",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "79dc3c0b-a72e-5433-a3c1-b2c025c5081c"
+      ],
+      "subject_name": "warden-02",
+      "triple_key": "523763ce-51db-51d8-bab0-2b0e4c4fdc53",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "idx-03 replaces idx-01",
+      "object_name": "idx-01",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "b8b2fbfe-404d-5c34-b2c7-b1d04adf118b"
+      ],
+      "subject_name": "idx-03",
+      "triple_key": "57ae740c-f396-54d5-83d1-a4cd621ad81f",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "zulip uses ticket-router",
+      "object_name": "ticket-router",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "7d7f65f0-800e-5c06-8ffe-117fa9080575"
+      ],
+      "subject_name": "zulip",
+      "triple_key": "5ac560e8-9b78-516c-a29f-0662284792f3",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "orbit-01 uses opensearch",
+      "object_name": "opensearch",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "677b668e-522b-5b31-b9bc-01831665e01d"
+      ],
+      "subject_name": "orbit-01",
+      "triple_key": "5cce8a8b-a0aa-5b7c-9e5f-9b6524add4fd",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "airflow deployed on etl-02",
+      "object_name": "etl-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "35d2da62-c3dd-59de-b8dc-b2e3e19a33c0",
+        "72cc0d09-21a4-5f28-a49d-88c568ea9ffc"
+      ],
+      "subject_name": "airflow",
+      "triple_key": "5d1af690-fd5c-5c62-b8fc-e93aa8902b35",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "celery depends on core-03",
+      "object_name": "core-03",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "06a0bc05-c935-592b-9282-8c810afdee56"
+      ],
+      "subject_name": "celery",
+      "triple_key": "5d612b17-b7d8-58cd-ab1e-607828186712",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "postfix deployed on mail-01",
       "object_name": "mail-01",
       "project": "default",
@@ -314,6 +927,67 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "warden-02 uses warehouse vlan",
+      "object_name": "warehouse vlan",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "79dc3c0b-a72e-5433-a3c1-b2c025c5081c"
+      ],
+      "subject_name": "warden-02",
+      "triple_key": "639c94f4-2340-57b3-8b52-391258035035",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "haproxy deployed on lb-01",
+      "object_name": "lb-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "8be18fdb-2e49-505e-949e-3d826ba75fbe",
+        "9075d958-d3f5-5b96-b890-1edf8255767c"
+      ],
+      "subject_name": "haproxy",
+      "triple_key": "64886d33-2253-5ed0-b49d-f90b92c4c79c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "graylog uses meridian",
+      "object_name": "meridian",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "1ed3ae10-8c9d-526f-a30b-1e9f19a0c56d"
+      ],
+      "subject_name": "graylog",
+      "triple_key": "6500012e-4d20-5a6a-8e5a-71c931223417",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul uses jobs-05",
+      "object_name": "jobs-05",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "065bfb53-456f-5b80-94a5-1ca2d90125bf"
+      ],
+      "subject_name": "consul",
+      "triple_key": "66e5034b-2ade-5757-be59-ad455fbf2dd6",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "files-01 deployed on batch-01",
+      "object_name": "batch-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "c571747e-cf8d-5ad7-a9b3-7bc80834cce1"
+      ],
+      "subject_name": "files-01",
+      "triple_key": "66faaee0-2a87-5dd5-9fc0-f65e7cf947d0",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "apps-02 deployed on rack ups",
       "object_name": "rack ups",
       "project": "default",
@@ -323,6 +997,18 @@
       ],
       "subject_name": "apps-02",
       "triple_key": "66fd8c8e-86e1-51d2-98bd-0e4db22078e1",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "huginn depends on consul",
+      "object_name": "consul",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "ead65b73-3e86-5b72-81c2-ca198168dda9"
+      ],
+      "subject_name": "huginn",
+      "triple_key": "6b0a37f4-730b-58ac-bb85-933e6474a946",
       "verification_status": "candidate"
     },
     {
@@ -338,6 +1024,66 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "celery deployed on media-04",
+      "object_name": "media-04",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc"
+      ],
+      "subject_name": "celery",
+      "triple_key": "6d1f764b-aaf4-55a5-82b5-27afb8c2692d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "data-06 depends on etcd",
+      "object_name": "etcd",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "afa2689a-227c-562b-a56e-ecef521cd536"
+      ],
+      "subject_name": "data-06",
+      "triple_key": "6d500095-d90c-53bd-9ddf-de5034925ac1",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "cockroachdb deployed on ledger-02",
+      "object_name": "ledger-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "6a7ce349-6d67-535e-bcdc-2fe252fb5769"
+      ],
+      "subject_name": "cockroachdb",
+      "triple_key": "6d9e5e73-3b22-5547-b8c2-4996b02ff8eb",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "pgadmin uses fulfillment reporting database",
+      "object_name": "fulfillment reporting database",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b849588a-f28b-5615-9d40-4e9d058c59f6"
+      ],
+      "subject_name": "pgadmin",
+      "triple_key": "6e3d59b0-72df-5894-9bc7-21b025fe2321",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "powerdns deployed on quire-03",
+      "object_name": "quire-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "a0ccc435-c6d4-52b5-9808-f1779c3be670"
+      ],
+      "subject_name": "powerdns",
+      "triple_key": "6e60fcd1-c6a2-5ef9-82ca-58cc3284361b",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "door-badge uses directory replica",
       "object_name": "directory replica",
       "project": "default",
@@ -350,6 +1096,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "infisical deployed on keys-01",
+      "object_name": "keys-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "1392adec-e587-55f8-8f7b-27dae651257b"
+      ],
+      "subject_name": "infisical",
+      "triple_key": "6f81177f-cbc9-52dc-8c18-1e5a959b5617",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "fleet-cfg related to booking schedule",
       "object_name": "booking schedule",
       "project": "default",
@@ -359,6 +1117,54 @@
       ],
       "subject_name": "fleet-cfg",
       "triple_key": "702b3d82-86a3-5ce6-87af-1a869e21ad13",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "media-04 uses celery",
+      "object_name": "celery",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc"
+      ],
+      "subject_name": "media-04",
+      "triple_key": "72d7c97d-b7c2-5d7b-80f7-cf3ea31be469",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nightly report mentions quota-watcher",
+      "object_name": "quota-watcher",
+      "project": "default",
+      "rel_type": "MENTIONS",
+      "source_memory_ids": [
+        "9625a454-cf17-5fb7-864d-d7d26f271c6e"
+      ],
+      "subject_name": "nightly report",
+      "triple_key": "7458915a-9269-542c-8359-1a67d4261aa0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "syncthing deployed on spire-01",
+      "object_name": "spire-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "21deefe1-4c51-5e02-b88a-1680443f3a5e"
+      ],
+      "subject_name": "syncthing",
+      "triple_key": "74c9ff3c-5ca4-5657-ad49-094e19e58d15",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "etcd deployed on core-03",
+      "object_name": "core-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "20154607-177b-55f6-9ec9-084381f548eb"
+      ],
+      "subject_name": "etcd",
+      "triple_key": "75d89555-5e60-5b3e-9198-15aaab8affec",
       "verification_status": "candidate"
     },
     {
@@ -386,6 +1192,90 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "osquery uses quota-watcher",
+      "object_name": "quota-watcher",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e25725bf-d3f6-5145-a9ac-943c5db5e13c"
+      ],
+      "subject_name": "osquery",
+      "triple_key": "779b64d9-4a18-54bc-a811-3b9a4f33ce39",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "teleport uses ssh",
+      "object_name": "ssh",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "87d78d08-5cea-5776-b9e2-18a49926daef"
+      ],
+      "subject_name": "teleport",
+      "triple_key": "792d85d2-5162-5098-a664-10df363cfd72",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "powerdns uses fulfillment network",
+      "object_name": "fulfillment network",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "a0ccc435-c6d4-52b5-9808-f1779c3be670"
+      ],
+      "subject_name": "powerdns",
+      "triple_key": "79a4ea1d-5916-5569-9c83-d1febe313919",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "netdata uses orbit-01",
+      "object_name": "orbit-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4d9e686f-2ed9-5643-b231-9ed93d40be43"
+      ],
+      "subject_name": "netdata",
+      "triple_key": "7d0ca81a-87c1-5146-9e9e-79a021557584",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "garage uses forge-artifacts",
+      "object_name": "forge-artifacts",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "0cb93017-59ea-535e-a250-ed8cf6d0e4e5"
+      ],
+      "subject_name": "garage",
+      "triple_key": "7de46288-aea2-5e22-b812-25eeb08edb9d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "meilisearch depends on huginn",
+      "object_name": "huginn",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "08765527-7176-5ce3-81f3-5ce3e6f819ad"
+      ],
+      "subject_name": "meilisearch",
+      "triple_key": "7e92cf35-dd89-5e98-acb5-91fd5666321e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "notify-relay deployed on neon-04",
+      "object_name": "neon-04",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "dee0d629-648b-5001-b6ad-8cef3f4c9004"
+      ],
+      "subject_name": "notify-relay",
+      "triple_key": "7f067595-4237-5a58-bac6-682e3c429e81",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "sftp-02 uses dns",
       "object_name": "dns",
       "project": "default",
@@ -395,6 +1285,114 @@
       ],
       "subject_name": "sftp-02",
       "triple_key": "7ff82019-0e6e-5ba1-a679-933ebecb9ac0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "haproxy deployed on memgraph",
+      "object_name": "memgraph",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "c32f4418-3b4e-5239-a05e-a4d5800447e7"
+      ],
+      "subject_name": "haproxy",
+      "triple_key": "807b756f-e1cc-5851-abf9-83b65a0d11c2",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "wazuh deployed on umbra-04",
+      "object_name": "umbra-04",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "d1878bda-a2f5-5e47-ada2-3ff8ca868470"
+      ],
+      "subject_name": "wazuh",
+      "triple_key": "819f0979-dfaa-599f-981b-d9c6201b76b7",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "jump-01 depends on authelia",
+      "object_name": "authelia",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "10e856b2-129d-597f-8be7-6ffc3282b621"
+      ],
+      "subject_name": "jump-01",
+      "triple_key": "822dbd63-09db-5b43-bffd-74742d3753f6",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "log-02 uses graylog",
+      "object_name": "graylog",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "1ad4aa2e-8973-5979-9481-41dcf6e3eb0f"
+      ],
+      "subject_name": "log-02",
+      "triple_key": "825981aa-a02e-5e0c-a3ef-51088dd48c14",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "graylog deployed on log-02",
+      "object_name": "log-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "1ed3ae10-8c9d-526f-a30b-1e9f19a0c56d"
+      ],
+      "subject_name": "graylog",
+      "triple_key": "82e225fe-684b-59bf-821d-b65b15bdf167",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "data-06 uses clickhouse",
+      "object_name": "clickhouse",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "afa2689a-227c-562b-a56e-ecef521cd536"
+      ],
+      "subject_name": "data-06",
+      "triple_key": "848c6a68-a24b-53f2-84ae-9c278c58a8ea",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "authelia depends on kv-01",
+      "object_name": "kv-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "386b44fb-fd80-56da-b852-9be197af0699"
+      ],
+      "subject_name": "authelia",
+      "triple_key": "8625ecd7-25b3-5ca2-b02f-27df0067088a",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "pi-hole deployed on ridge-01",
+      "object_name": "ridge-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "a74539c3-903a-5e84-8f6f-3bdaac7f73a1"
+      ],
+      "subject_name": "pi-hole",
+      "triple_key": "8696f9b6-f128-50e7-b015-020e1848d07e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vane-01 uses design archive",
+      "object_name": "design archive",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "76b5d433-d211-59e6-ba08-59192ee4f6b9"
+      ],
+      "subject_name": "vane-01",
+      "triple_key": "86ffb1f8-81a3-5708-a93a-21ab581ef0bf",
       "verification_status": "candidate"
     },
     {
@@ -422,6 +1420,30 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "rclone deployed on slate-03",
+      "object_name": "slate-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "e98f71a2-92fa-51f2-97b1-ab8321ee4733"
+      ],
+      "subject_name": "rclone",
+      "triple_key": "8e392c49-258c-5e62-a613-2364c3beb985",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "alert storms related to lb-01",
+      "object_name": "lb-01",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552"
+      ],
+      "subject_name": "alert storms",
+      "triple_key": "8ee0b1d1-348a-5869-824f-90fb43308a94",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "arc-store deployed on minio",
       "object_name": "minio",
       "project": "default",
@@ -446,6 +1468,162 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "auth-01 depends on etcd",
+      "object_name": "etcd",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "218857e6-5cdc-5065-be4a-cef31c73dd71"
+      ],
+      "subject_name": "auth-01",
+      "triple_key": "90d2887a-a64b-5ec2-861e-53e18126b2f8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "uptime kuma uses order-sync",
+      "object_name": "order-sync",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "7854f96c-e7a1-5120-ac94-0eee086cf633"
+      ],
+      "subject_name": "uptime kuma",
+      "triple_key": "920a89c5-ecb0-5027-8391-8931646e5223",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "xenon-02 uses zfs",
+      "object_name": "zfs",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "6040c6ce-5833-5a8f-9ea9-33626e32022c"
+      ],
+      "subject_name": "xenon-02",
+      "triple_key": "93807305-33c3-5634-9f2f-e91f01814666",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "quota-watcher uses powerdns",
+      "object_name": "powerdns",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "52292aae-f93c-5e5e-8ca8-d4ff91c3bed0"
+      ],
+      "subject_name": "quota-watcher",
+      "triple_key": "93a5febd-a5fc-574d-81fd-b7fc862681f3",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "airflow deployed on data-06",
+      "object_name": "data-06",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "35d2da62-c3dd-59de-b8dc-b2e3e19a33c0"
+      ],
+      "subject_name": "airflow",
+      "triple_key": "9443138f-1549-5de8-a261-96a79af44310",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "batch-01 uses ledger-02",
+      "object_name": "ledger-02",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b829dbb5-70f3-5b01-9495-0c3aeee981f6"
+      ],
+      "subject_name": "batch-01",
+      "triple_key": "948da6ef-ad2f-5d28-b61e-fb2674e9659b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "jump-01 uses meridian",
+      "object_name": "meridian",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "10e856b2-129d-597f-8be7-6ffc3282b621"
+      ],
+      "subject_name": "jump-01",
+      "triple_key": "94d09f3d-6a93-5e92-9fdf-fc0e92f5a73c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "pgadmin deployed on quire-03",
+      "object_name": "quire-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "b849588a-f28b-5615-9d40-4e9d058c59f6"
+      ],
+      "subject_name": "pgadmin",
+      "triple_key": "964acb5e-ff1e-5014-b395-71b010a061a0",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "core-03 has part consul",
+      "object_name": "consul",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "1030a7ee-762a-5a2f-a416-822b66f5b254"
+      ],
+      "subject_name": "core-03",
+      "triple_key": "9699c10f-9029-512a-a09e-0e5cb67a5eb8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "celery deployed on jobs-05",
+      "object_name": "jobs-05",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "06a0bc05-c935-592b-9282-8c810afdee56"
+      ],
+      "subject_name": "celery",
+      "triple_key": "971c93b0-41b5-5073-9121-faa5f127d2e5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "wazuh uses fulfillment fleet",
+      "object_name": "fulfillment fleet",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "d1878bda-a2f5-5e47-ada2-3ff8ca868470"
+      ],
+      "subject_name": "wazuh",
+      "triple_key": "982b716c-6cce-5373-9db6-375e963be7a2",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nimbus-02 uses nimbus-archive",
+      "object_name": "nimbus-archive",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "bb8873c5-1960-5295-a365-8ed05f5c5552"
+      ],
+      "subject_name": "nimbus-02",
+      "triple_key": "9a870025-6ffa-5967-bfe6-3ba047c3ca57",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "files-01 uses garage",
+      "object_name": "garage",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c571747e-cf8d-5ad7-a9b3-7bc80834cce1"
+      ],
+      "subject_name": "files-01",
+      "triple_key": "9bf26140-11ff-5a51-94e5-19d3b644aebb",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "glitchtip replaces sentry",
       "object_name": "sentry",
       "project": "default",
@@ -455,6 +1633,18 @@
       ],
       "subject_name": "glitchtip",
       "triple_key": "9d16fe42-683a-5ffa-935e-c90096dfccdd",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "files-01 causes images-02",
+      "object_name": "images-02",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "5d015ba3-3dc5-5120-ab98-6062b3da4f4a"
+      ],
+      "subject_name": "files-01",
+      "triple_key": "9f1cde10-27d0-566a-877d-64e13fbfbf78",
       "verification_status": "candidate"
     },
     {
@@ -470,6 +1660,90 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "roster-sync deployed on tether-02",
+      "object_name": "tether-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "e9044ccb-f1d8-5d65-af4c-485cc373fea7"
+      ],
+      "subject_name": "roster-sync",
+      "triple_key": "a08a9bac-92a2-588d-9cca-79de7bc38e89",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "netdata uses onyx-03",
+      "object_name": "onyx-03",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4d9e686f-2ed9-5643-b231-9ed93d40be43"
+      ],
+      "subject_name": "netdata",
+      "triple_key": "a0bfbd1a-a71c-5b77-80a2-063dfd047373",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "lb-01 deployed on memgraph",
+      "object_name": "memgraph",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "c32f4418-3b4e-5239-a05e-a4d5800447e7"
+      ],
+      "subject_name": "lb-01",
+      "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ansible deployed on infra-02",
+      "object_name": "infra-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "66702356-1c67-5363-8d31-2ed9a07f79a9"
+      ],
+      "subject_name": "ansible",
+      "triple_key": "a4e7d764-e506-556c-96c0-13b8db3af46a",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul uses authelia",
+      "object_name": "authelia",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "5e9fe6b7-fa4c-5cac-bc43-80349a592cb6"
+      ],
+      "subject_name": "consul",
+      "triple_key": "a5153e11-192e-5736-b1f8-bc6de1b2c9bd",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "zulip deployed on vane-01",
+      "object_name": "vane-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "7d7f65f0-800e-5c06-8ffe-117fa9080575"
+      ],
+      "subject_name": "zulip",
+      "triple_key": "a54d8693-33ce-5b29-b922-a7a3909de0ea",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "slurm depends on zephyr-03",
+      "object_name": "zephyr-03",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "d0cc4e86-c461-55f3-a0eb-ac765547c9ff"
+      ],
+      "subject_name": "slurm",
+      "triple_key": "a748e310-e994-5611-933d-a7c668267885",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "apps/portal uses audit-log",
       "object_name": "audit-log",
       "project": "default",
@@ -479,6 +1753,30 @@
       ],
       "subject_name": "apps/portal",
       "triple_key": "a8abee19-e45b-5503-a90b-709107983352",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "media-04 uses ffmpeg",
+      "object_name": "ffmpeg",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc"
+      ],
+      "subject_name": "media-04",
+      "triple_key": "ac7e3328-a3ff-5268-8a8a-c93e4f53e5c9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "infisical uses authelia",
+      "object_name": "authelia",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "1392adec-e587-55f8-8f7b-27dae651257b"
+      ],
+      "subject_name": "infisical",
+      "triple_key": "ad02a7db-fe79-5dc4-997f-685f37e05954",
       "verification_status": "candidate"
     },
     {
@@ -506,6 +1804,42 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "ffmpeg depends on codec pack",
+      "object_name": "codec pack",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "f14b34e6-97f1-5021-8b95-1cff9787df4d"
+      ],
+      "subject_name": "ffmpeg",
+      "triple_key": "b15ea9e8-100c-5c2a-9d6b-3b2474bf7b5d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "icinga uses haproxy",
+      "object_name": "haproxy",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "9075d958-d3f5-5b96-b890-1edf8255767c"
+      ],
+      "subject_name": "icinga",
+      "triple_key": "b1c30f2b-20cd-5b0a-b504-9ed3c237d03d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "order-sync deployed on nimbus-02",
+      "object_name": "nimbus-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "09ce7617-51de-5952-986f-39cb2e33bd5c"
+      ],
+      "subject_name": "order-sync",
+      "triple_key": "b1e00f7b-81ea-51eb-9442-0510462ff384",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "telegraf uses influxdb",
       "object_name": "influxdb",
       "project": "default",
@@ -515,6 +1849,18 @@
       ],
       "subject_name": "telegraf",
       "triple_key": "b2cf933e-d858-53f4-a542-39c4abba5441",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "quire-03 depends on qemu",
+      "object_name": "qemu",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "f931fdb8-3db1-5753-b183-94c2748f5978"
+      ],
+      "subject_name": "quire-03",
+      "triple_key": "b2e9f7be-b9d3-5677-9190-57cb05e60feb",
       "verification_status": "candidate"
     },
     {
@@ -530,6 +1876,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "infisical replaces .env files",
+      "object_name": ".env files",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "6b34ef0e-30c6-5922-b098-91c282fd776b"
+      ],
+      "subject_name": "infisical",
+      "triple_key": "b5b03967-8d98-5a9e-9569-4597b0065abf",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "mobile app uses edge-cdn-4",
       "object_name": "edge-cdn-4",
       "project": "default",
@@ -542,6 +1900,55 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "auth-02 related to auth-01",
+      "object_name": "auth-01",
+      "project": "default",
+      "rel_type": "RELATED_TO",
+      "source_memory_ids": [
+        "386b44fb-fd80-56da-b852-9be197af0699"
+      ],
+      "subject_name": "auth-02",
+      "triple_key": "b8a7a02f-46d6-51f1-886c-1be0ff0f31c9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "auth-01 deployed on auth-02",
+      "object_name": "auth-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "386b44fb-fd80-56da-b852-9be197af0699"
+      ],
+      "subject_name": "auth-01",
+      "triple_key": "ba50bd6d-ca99-5c27-9ebd-389518aa25e9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "osquery deployed on pivot-01",
+      "object_name": "pivot-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "9625a454-cf17-5fb7-864d-d7d26f271c6e",
+        "e25725bf-d3f6-5145-a9ac-943c5db5e13c"
+      ],
+      "subject_name": "osquery",
+      "triple_key": "ba67fefa-0315-5064-a351-fb9395e08183",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ridge-01 uses quire-03",
+      "object_name": "quire-03",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "9231fbf6-bee4-5317-9b31-05ae39040a2e"
+      ],
+      "subject_name": "ridge-01",
+      "triple_key": "badb2850-36dc-5fc2-b789-d32f0651a363",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "monthly payroll export uses sftp-02",
       "object_name": "sftp-02",
       "project": "default",
@@ -551,6 +1958,18 @@
       ],
       "subject_name": "monthly payroll export",
       "triple_key": "bcafb282-5cd6-5a77-9abd-5d578479b2f9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "media-04 depends on jobs-05",
+      "object_name": "jobs-05",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "4722dbbc-cce6-574e-8ce5-0f0ab59f16bc"
+      ],
+      "subject_name": "media-04",
+      "triple_key": "bcef80fd-5529-5e2d-ac56-28730af1eca6",
       "verification_status": "candidate"
     },
     {
@@ -578,6 +1997,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "slurm deployed on yarrow-01",
+      "object_name": "yarrow-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "d0cc4e86-c461-55f3-a0eb-ac765547c9ff"
+      ],
+      "subject_name": "slurm",
+      "triple_key": "c10a16cf-9c1f-5ef7-9282-e37b54ac277a",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "ntfy related to sms",
       "object_name": "sms",
       "project": "default",
@@ -587,6 +2018,30 @@
       ],
       "subject_name": "ntfy",
       "triple_key": "c2cff8f6-025e-5129-9b47-4d87a3ba9346",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "woodpecker uses quay",
+      "object_name": "quay",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c9d6fa95-6527-589e-964c-b6f3f42444bf"
+      ],
+      "subject_name": "woodpecker",
+      "triple_key": "c414935e-05d4-5107-a921-c59910ee1708",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "garage depends on disk",
+      "object_name": "disk",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "c571747e-cf8d-5ad7-a9b3-7bc80834cce1"
+      ],
+      "subject_name": "garage",
+      "triple_key": "c485a7c4-1644-5763-afe5-a24ee56d469b",
       "verification_status": "candidate"
     },
     {
@@ -602,6 +2057,66 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "ledger-02 uses cockroachdb",
+      "object_name": "cockroachdb",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e3270f17-80d6-507e-8f50-f464443a974d"
+      ],
+      "subject_name": "ledger-02",
+      "triple_key": "c52d8bac-0d23-5d97-a8be-57a5fc1ddc7e",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "jump-01 uses auth-01",
+      "object_name": "auth-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "d0fdb4a9-1152-5b98-a913-5810c96b752c"
+      ],
+      "subject_name": "jump-01",
+      "triple_key": "c5e34c23-0d5e-5164-8d80-452dceddb258",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "etl-02 deployed on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "914537ea-1045-5af4-9f59-bfd804c1197a"
+      ],
+      "subject_name": "etl-02",
+      "triple_key": "c6d74a7e-f926-596a-9eca-c18e972673c6",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "airflow uses clickhouse",
+      "object_name": "clickhouse",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "914537ea-1045-5af4-9f59-bfd804c1197a"
+      ],
+      "subject_name": "airflow",
+      "triple_key": "c73d520a-faef-5c93-b41c-34ace0845554",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "vane-01 uses samba",
+      "object_name": "samba",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "76b5d433-d211-59e6-ba08-59192ee4f6b9"
+      ],
+      "subject_name": "vane-01",
+      "triple_key": "c8157e7f-d4e9-54be-91ea-f7b330b7860f",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "typesense deployed on search-01",
       "object_name": "search-01",
       "project": "default",
@@ -611,6 +2126,54 @@
       ],
       "subject_name": "typesense",
       "triple_key": "c84b1f53-c648-5e04-af0a-3289806947d4",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "mon-05 causes alert storms",
+      "object_name": "alert storms",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552"
+      ],
+      "subject_name": "mon-05",
+      "triple_key": "c965df0e-936e-58bd-912a-687ccde2d42c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "rclone uses nimbus-archive",
+      "object_name": "nimbus-archive",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "e98f71a2-92fa-51f2-97b1-ab8321ee4733"
+      ],
+      "subject_name": "rclone",
+      "triple_key": "ca9df512-aec7-5df5-9750-94a368e0e0a6",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "concourse depends on garage",
+      "object_name": "garage",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "586db5fe-2854-526f-bba6-107064713a88"
+      ],
+      "subject_name": "concourse",
+      "triple_key": "cb049cf5-d410-5c1e-859a-c2ec31869964",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "auth-02 uses authelia",
+      "object_name": "authelia",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "8732825a-ea15-57ab-bd4c-2e2d4a301285"
+      ],
+      "subject_name": "auth-02",
+      "triple_key": "cb601f61-6db0-5ef7-b34f-f4a9481ce748",
       "verification_status": "candidate"
     },
     {
@@ -626,6 +2189,42 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "warden-02 uses warden-audit",
+      "object_name": "warden-audit",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "4a6e2759-1c1d-598e-b5b2-b5f71b03994e"
+      ],
+      "subject_name": "warden-02",
+      "triple_key": "cbf69301-fa94-50f5-880f-900f522d31b8",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "log-02 uses concourse",
+      "object_name": "concourse",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "1ad4aa2e-8973-5979-9481-41dcf6e3eb0f"
+      ],
+      "subject_name": "log-02",
+      "triple_key": "cd4d47ac-bfc9-57d4-8fa2-d4e55a64ad36",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "luigi uses airflow",
+      "object_name": "airflow",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "72cc0d09-21a4-5f28-a49d-88c568ea9ffc"
+      ],
+      "subject_name": "luigi",
+      "triple_key": "cdcebe14-9186-5f36-ae01-e03d24097661",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "unleash uses oidc",
       "object_name": "oidc",
       "project": "default",
@@ -635,6 +2234,30 @@
       ],
       "subject_name": "unleash",
       "triple_key": "cf0723ca-43de-5212-983c-2799f5c28902",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "nimbus-02 uses rabbitmq",
+      "object_name": "rabbitmq",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "09ce7617-51de-5952-986f-39cb2e33bd5c"
+      ],
+      "subject_name": "nimbus-02",
+      "triple_key": "cfafeac7-976f-58b0-8154-3a0314a65932",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "qemu has part hypervisor",
+      "object_name": "hypervisor",
+      "project": "default",
+      "rel_type": "HAS_PART",
+      "source_memory_ids": [
+        "f931fdb8-3db1-5753-b183-94c2748f5978"
+      ],
+      "subject_name": "qemu",
+      "triple_key": "d04a31e7-7340-524b-9c03-0f60ca354516",
       "verification_status": "candidate"
     },
     {
@@ -650,6 +2273,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "imagemagick deployed on images-02",
+      "object_name": "images-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "5b051865-a305-5ecd-bf15-cdf76f3f2e46"
+      ],
+      "subject_name": "imagemagick",
+      "triple_key": "d2e4036b-779a-54fe-a79b-be901cebd88d",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "compactor uses loki",
       "object_name": "loki",
       "project": "default",
@@ -659,6 +2294,31 @@
       ],
       "subject_name": "compactor",
       "triple_key": "d3733844-d4ed-5316-84f2-c41bcef4401d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "rabbitmq deployed on nimbus-02",
+      "object_name": "nimbus-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "2199766c-c77b-548c-9794-d98afb32ce1a"
+      ],
+      "subject_name": "rabbitmq",
+      "triple_key": "da2374d9-f620-53ea-97d8-16841158d91a",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "meilisearch deployed on idx-03",
+      "object_name": "idx-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "08765527-7176-5ce3-81f3-5ce3e6f819ad",
+        "b8b2fbfe-404d-5c34-b2c7-b1d04adf118b"
+      ],
+      "subject_name": "meilisearch",
+      "triple_key": "ddff326b-c4c3-573d-bcdc-1300e1fcdc19",
       "verification_status": "candidate"
     },
     {
@@ -674,6 +2334,18 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "memgraph uses meridian",
+      "object_name": "meridian",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "b053fb83-4dcf-54f2-8556-d947f0cf1052"
+      ],
+      "subject_name": "memgraph",
+      "triple_key": "e2c7787f-5611-566d-9022-767b5fad0cb9",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "restic uses wiki volume",
       "object_name": "wiki volume",
       "project": "default",
@@ -683,6 +2355,42 @@
       ],
       "subject_name": "restic",
       "triple_key": "e31a032d-dfbd-5123-9df0-420e8e07619b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "forge-artifacts deployed on garage",
+      "object_name": "garage",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "2e33e174-1cf8-501f-a6f6-7565a9418135"
+      ],
+      "subject_name": "forge-artifacts",
+      "triple_key": "e4022072-2346-5129-a0bd-3c8a2053b77c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "ledger-02 causes mon-05",
+      "object_name": "mon-05",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "e3270f17-80d6-507e-8f50-f464443a974d"
+      ],
+      "subject_name": "ledger-02",
+      "triple_key": "e53c875f-a5da-56bd-9b63-a7874793d66c",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "syncthing uses design archive",
+      "object_name": "design archive",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "21deefe1-4c51-5e02-b88a-1680443f3a5e"
+      ],
+      "subject_name": "syncthing",
+      "triple_key": "e5555e1a-00e0-598d-9e89-1a5887d070bc",
       "verification_status": "candidate"
     },
     {
@@ -698,6 +2406,44 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "pallet-02 uses parcel-logs",
+      "object_name": "parcel-logs",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "db66a773-6873-59cd-b9a4-4942532fe0a6"
+      ],
+      "subject_name": "pallet-02",
+      "triple_key": "e5af8fd9-e8e9-5b47-8627-61d6a880dc73",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "authelia deployed on auth-01",
+      "object_name": "auth-01",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "022e08d8-05d4-54cb-a3f2-f2b5fa3f23b7",
+        "10e856b2-129d-597f-8be7-6ffc3282b621",
+        "5e9fe6b7-fa4c-5cac-bc43-80349a592cb6"
+      ],
+      "subject_name": "authelia",
+      "triple_key": "e5b64f2b-9721-56fc-939f-b2924e63a143",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "tether-02 deployed on traefik",
+      "object_name": "traefik",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "85487b5c-d6b4-5c62-bc7e-c490ff1f8a56"
+      ],
+      "subject_name": "tether-02",
+      "triple_key": "e621dc18-44e4-57a2-ab96-85205dc45d6d",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "analytics etl depends on orders database",
       "object_name": "orders database",
       "project": "default",
@@ -707,6 +2453,18 @@
       ],
       "subject_name": "analytics etl",
       "triple_key": "e6b5497a-9611-5b9e-92bb-69a6a3fd41e3",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "meridian depends on core-03",
+      "object_name": "core-03",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "5e9fe6b7-fa4c-5cac-bc43-80349a592cb6"
+      ],
+      "subject_name": "meridian",
+      "triple_key": "e70bf199-7ae3-5f1c-a1b0-7c3730799eb9",
       "verification_status": "candidate"
     },
     {
@@ -722,6 +2480,115 @@
       "verification_status": "candidate"
     },
     {
+      "fact": "cockroachdb replaces firebird",
+      "object_name": "firebird",
+      "project": "default",
+      "rel_type": "REPLACES",
+      "source_memory_ids": [
+        "6a7ce349-6d67-535e-bcdc-2fe252fb5769"
+      ],
+      "subject_name": "cockroachdb",
+      "triple_key": "e8069cba-d0bf-5720-aa14-6b9e8917f9ff",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "fulfillment application uses talon-01",
+      "object_name": "talon-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "41fefc5c-1d3e-5c59-a585-0c015ec65f36"
+      ],
+      "subject_name": "fulfillment application",
+      "triple_key": "e9c765d2-625b-5a2c-bc39-789ca1392e78",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul uses etcd",
+      "object_name": "etcd",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "20154607-177b-55f6-9ec9-084381f548eb"
+      ],
+      "subject_name": "consul",
+      "triple_key": "ec5b69b7-7a63-556a-84fc-15b8f169aff3",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "authelia deployed on auth-02",
+      "object_name": "auth-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "386b44fb-fd80-56da-b852-9be197af0699"
+      ],
+      "subject_name": "authelia",
+      "triple_key": "f023bd15-70dc-5f9a-a0f8-7b85163c3944",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "uptime kuma uses notify-relay",
+      "object_name": "notify-relay",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "7854f96c-e7a1-5120-ac94-0eee086cf633"
+      ],
+      "subject_name": "uptime kuma",
+      "triple_key": "f045efcf-ee09-50ae-ab8d-ddf34f5eb38d",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "icinga deployed on mon-05",
+      "object_name": "mon-05",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "0a9384cd-261d-5b68-b2a3-5dc9e4008552",
+        "9075d958-d3f5-5b96-b890-1edf8255767c"
+      ],
+      "subject_name": "icinga",
+      "triple_key": "f11f4257-139e-5c4c-a2ba-e0eb609ccfaa",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "airflow depends on files-01",
+      "object_name": "files-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "914537ea-1045-5af4-9f59-bfd804c1197a"
+      ],
+      "subject_name": "airflow",
+      "triple_key": "f1d66952-3026-5033-88c5-ba4da8e97150",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "garage uses batch-01",
+      "object_name": "batch-01",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "0cb93017-59ea-535e-a250-ed8cf6d0e4e5"
+      ],
+      "subject_name": "garage",
+      "triple_key": "f3b24096-410d-568c-bea3-bb02e0818e40",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "neon-04 depends on nats",
+      "object_name": "nats",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "d27772e6-ee13-5e99-b0a8-9280189dd823"
+      ],
+      "subject_name": "neon-04",
+      "triple_key": "f3c0948c-7bfb-5616-8e7d-d7e7681672c5",
+      "verification_status": "candidate"
+    },
+    {
       "fact": "ci runners uses docker-in-docker",
       "object_name": "docker-in-docker",
       "project": "default",
@@ -731,6 +2598,31 @@
       ],
       "subject_name": "ci runners",
       "triple_key": "f5074b56-a4c5-5004-bdf7-2c9470dce973",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "parcel-tracker deployed on pallet-02",
+      "object_name": "pallet-02",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "fdff8a92-078d-5897-bcf3-7f4e7fcdd4ce"
+      ],
+      "subject_name": "parcel-tracker",
+      "triple_key": "f5c9de8f-27ff-5703-b732-b5ddf3f3723b",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "clickhouse deployed on data-06",
+      "object_name": "data-06",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "914537ea-1045-5af4-9f59-bfd804c1197a",
+        "a2540c1e-9546-552b-86c8-320fc2745728"
+      ],
+      "subject_name": "clickhouse",
+      "triple_key": "f6660040-c3cf-55c8-ab6f-9c754df59cce",
       "verification_status": "candidate"
     },
     {
@@ -744,27 +2636,111 @@
       "subject_name": "nightly dump",
       "triple_key": "f6970044-019e-5aba-b03e-5d8af25af9cf",
       "verification_status": "candidate"
+    },
+    {
+      "fact": "wisp-01 deployed on port 9500",
+      "object_name": "port 9500",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "c68ce301-16ab-5187-88fa-5e9af9bf06a0"
+      ],
+      "subject_name": "wisp-01",
+      "triple_key": "f87a028f-5139-5345-b7bf-53a4d2d5dadd",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "garage depends on batch-01",
+      "object_name": "batch-01",
+      "project": "default",
+      "rel_type": "DEPENDS_ON",
+      "source_memory_ids": [
+        "c571747e-cf8d-5ad7-a9b3-7bc80834cce1"
+      ],
+      "subject_name": "garage",
+      "triple_key": "f9e851dd-dfa7-5337-bf76-dbf294a99af5",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "woodpecker ci uses fulfillment monorepo",
+      "object_name": "fulfillment monorepo",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "57ab215e-243b-5926-b22a-26a193ccfe34"
+      ],
+      "subject_name": "woodpecker ci",
+      "triple_key": "fb8bf494-6e4c-5e36-ac24-f1c188b1d978",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "consul causes idx-03",
+      "object_name": "idx-03",
+      "project": "default",
+      "rel_type": "CAUSES",
+      "source_memory_ids": [
+        "27e51c66-76b1-53a6-a6b3-6ff4d5af0301"
+      ],
+      "subject_name": "consul",
+      "triple_key": "fc29746d-cbb1-5be9-b4cf-6cb9082ed512",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "opentelemetry deployed on onyx-03",
+      "object_name": "onyx-03",
+      "project": "default",
+      "rel_type": "DEPLOYED_ON",
+      "source_memory_ids": [
+        "ac7ca90f-e58a-5aa8-bfa7-1d0384ffb5c4"
+      ],
+      "subject_name": "opentelemetry",
+      "triple_key": "fc3294b6-697a-57af-8c06-e769a0630fe9",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "talon-01 uses talon-backups",
+      "object_name": "talon-backups",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "c27cdf51-e0ca-5a74-9f07-cacda052357b"
+      ],
+      "subject_name": "talon-01",
+      "triple_key": "fd562614-cf2a-5ce7-b58e-c1ea9eaf9ece",
+      "verification_status": "candidate"
+    },
+    {
+      "fact": "uptime kuma uses quota-watcher",
+      "object_name": "quota-watcher",
+      "project": "default",
+      "rel_type": "USES",
+      "source_memory_ids": [
+        "7854f96c-e7a1-5120-ac94-0eee086cf633"
+      ],
+      "subject_name": "uptime kuma",
+      "triple_key": "ff12f5f5-ac07-5502-a2ec-492d74e9c791",
+      "verification_status": "candidate"
     }
   ],
   "header": {
     "assignment_seed": 20260731,
-    "bench_db": "darkmem_bench_1",
-    "corpus_entries": 94,
+    "bench_db": "darkmem_bench_t2124",
+    "corpus_entries": 178,
     "corpus_path": "corpus.json",
-    "corpus_sha256": "1c1d4959d5ae442b8b9b86e5fd5bc285a834956e9bceb775f99943102cfc48be",
+    "corpus_sha256": "624b5d515b1c79c041f6f2210b7bb5f1ea8b9b156d2ccc2c7bbfc7bbe1d46218",
     "embedder_fingerprint": "qwen3-embedding:0.6b|1024",
     "gate_config": {
       "classification_mode": "simple",
       "classifier_kind": null,
       "relation_rescue": true
     },
-    "generated_at": "2026-08-03T10:47:53.806803+00:00",
-    "git_sha": "cd0f685f1e9e12d2acbb7d7756130814811b6f17",
+    "generated_at": "2026-08-13T06:56:35.751704+00:00",
+    "git_sha": "8ef557ce6da5d1ee5fbc51135a490538b58a7f23",
     "ingest_live_calls": 0,
     "lift": {
-      "facts_created": 62,
+      "facts_created": 225,
       "salience_min_asserting_memories": 1,
-      "sources_added": 62,
+      "sources_added": 245,
       "stalled_candidates": 0,
       "ticks": 2
     },

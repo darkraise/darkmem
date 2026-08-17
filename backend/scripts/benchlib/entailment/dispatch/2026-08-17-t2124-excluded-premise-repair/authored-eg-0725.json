@@ -1,0 +1,9 @@
+{
+  "id": "eg-0725",
+  "premise": "opentelemetry deployed on onyx-03",
+  "hypothesis": "Onyx-03 is where OpenTelemetry is deployed.",
+  "verdict": "entailed",
+  "slice": "paraphrase",
+  "rationale": "General procedure 3 (rewording preserves entailment) licenses this recasting of the premise's DEPLOYED_ON assertion; the sentence adds no content, no differing value for the host slot, and no unearned sortal on either entity. The construction is a locative pseudo-cleft ('Onyx-03 is where X is deployed'), specificational rather than the plain subject-verb-PP clause ('X runs on Y') or the transitive verb-object clause ('Y hosts X') already used elsewhere in this batch — a distinct syntactic frame, not just a synonym swap. Under the exhaustivity rule, a pseudo-cleft carries its exhaustivity (if any) as presupposed/defeasible information structure, not asserted content, so it does not strengthen the claim into 'only onyx-03' and does not block entailment.",
+  "attestation": "Read only this prompt and 02-labelling-prefix.md (the labelling rulebook) at scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md. A project CLAUDE.md was auto-injected into context by the environment (system-reminder), not chosen or opened by me. Ran no commands and used no other tools besides the Write call producing this file."
+}

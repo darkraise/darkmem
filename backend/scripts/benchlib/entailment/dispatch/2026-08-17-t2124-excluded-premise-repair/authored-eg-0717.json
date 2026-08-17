@@ -1,0 +1,9 @@
+{
+  "id": "eg-0717",
+  "premise": "wisp-01 uses ticket-router",
+  "hypothesis": "wisp-01 uses a resource.",
+  "verdict": "entailed",
+  "slice": "weakening",
+  "rationale": "Dropping the specific identity of ticket-router and existentially quantifying over what wisp-01 uses is ordinary weakening under general procedure 3. The bare-sortal clause specifically earns \"resource\" as the noun for a USES relation's object from the relation's own generic semantics, so the existential's restrictor is established by the premise itself rather than by world knowledge, and the pair is entailed rather than unsupported.",
+  "attestation": "This session I read only this prompt and the labelling rulebook at scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md, provided via the Read tool. I read nothing else and ran no Bash, Grep, Glob, or other exploration commands."
+}

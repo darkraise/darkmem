@@ -1,0 +1,16 @@
+{
+ "_notes": "Layer 2 merge. Both passes agree with recorded -> adjudicated; else escalation.",
+ "merged_at": "2026-08-17",
+ "n_batch": 25,
+ "under_adjudication": [
+  "eg-0704"
+ ],
+ "adjudicated": [
+  "eg-0704"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 1.0
+ },
+ "escalations": [],
+ "note_eg_0640": "Both passes independently ruled 'resource' an earned role over USES, citing the clause's relation-earned branch. That agreement, plus pass A flagging the branch as silent on USES, is what prompted the wider predicate-nominal sweep below."
+}

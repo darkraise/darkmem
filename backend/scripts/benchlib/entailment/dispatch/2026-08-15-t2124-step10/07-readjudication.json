@@ -1,0 +1,21 @@
+{
+ "ruled": "2026-08-15, Fable escalation target, rule-then-pairs",
+ "rules_added": [
+  "Frame rule",
+  "Dependency-strength rule"
+ ],
+ "adjudicated": 278,
+ "retire_and_replace_required": {
+  "eg-0510": {
+   "slice": "weakening",
+   "recorded": "entailed",
+   "under_rule": "unsupported"
+  },
+  "eg-0634": {
+   "slice": "paraphrase",
+   "recorded": "entailed",
+   "under_rule": "unsupported"
+  }
+ },
+ "why_not_relabelled": "`weakening` and `paraphrase` admit only `entailed`, so an in-place flip would break both the slice contract and the ratified matrix (entailed 110, weakening 34, paraphrase 41). Replacements must be authored, which is gold authoring."
+}

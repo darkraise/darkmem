@@ -308,3 +308,24 @@ def test_parse_completed_ignores_prose_that_is_not_a_fill_in_line():
     )
     parsed = resample_sheet.parse_completed(text)
     assert parsed == {"syn-001": {"verdict": "entailed", "rule": "paraphrase"}}
+
+
+def test_redact_example_ids_strips_a_bare_id_in_prose():
+    """The shape that actually leaked, in the shape it leaked in.
+
+    On 2026-08-17 five ids reached the excerpt because every rule citation
+    written that day named its example mid-sentence rather than in a trailing
+    parenthetical. One of them sat beside its own verdict distribution -- "the
+    repetition study on eg-0650 (3 `entailed` / 2 `unsupported`...)" -- and
+    eg-0650 is live and in the sampled entailed stratum, so the excerpt would
+    have handed the sitting model that item's answer.
+    """
+    source = (
+        "the repetition study on eg-0650 (3 `entailed` / 2 `unsupported`)\n"
+        "eg-0465 (\"idx-03 hosts one\") and eg-0475 are equivalent\n"
+        "which is how eg-0512 survived the round that retired eg-0699.\n"
+    )
+    redacted = resample_sheet._redact_example_ids(source)
+    assert "eg-" not in redacted, redacted
+    # Replaced, not deleted: the sentence must still read as a rule.
+    assert "a cited example" in redacted

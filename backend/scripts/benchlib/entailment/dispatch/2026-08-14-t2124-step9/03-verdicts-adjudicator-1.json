@@ -1,0 +1,149 @@
+{
+  "verdicts": [
+    {
+      "case": 1,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "B is a cleft restatement of the premise (syncthing is deployed on spire-01); A existentially generalises B's service slot (at least one service on spire-01), which B licenses outright and which carries nothing back except the trivial categorisation of syncthing as a service. Pure weakening, no separate claim. What would settle it: whether 'service' is treated as adding a real type assertion about syncthing rather than a label."
+    },
+    {
+      "case": 2,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert exactly that Zulip is deployed on vane-01, A via a definite predicate nominal ('the host on which') and B via 'carries the Zulip installation'. The definiteness in A is presupposed exhaustivity, not asserted content, so neither carries anything the other lacks."
+    },
+    {
+      "case": 3,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts the premise's deployment plus a high-availability configuration; B asserts a power-feed fact about yarrow-01 and says nothing about Slurm at all. Neither licenses the other in either direction."
+    },
+    {
+      "case": 4,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "A ('files-01 has at least one component deployed on it') and B ('files-01 carries at least one deployed component') are the same existential claim about files-01 with the possession verb swapped. Mutually entailing; the difference is wording only."
+    },
+    {
+      "case": 5,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that anvil-render uses ImageMagick — A in an expanded active rendering ('among the software that anvil-render calls on'), B in the plain passive. A's 'among the software' adds only the categorisation of ImageMagick as software, not a separate claim."
+    },
+    {
+      "case": 6,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert the same USES relation from ridge-01 to quire-03: A as 'one of the components ridge-01 operates with', B as 'used by ridge-01'. Same entities, same relation, same direction, no added content on either side."
+    },
+    {
+      "case": 7,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "A ('media-04 is the machine that carries the Celery installation') and B ('media-04 is the host Celery runs on') both assert Celery is deployed on media-04, with 'machine'/'host' and 'carries the installation'/'runs on' as synonym swaps. Mutually entailing."
+    },
+    {
+      "case": 8,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "B restates the premise's relation between lb-01 and alert storms; A existentially generalises B's component slot to 'at least one named component of the estate', which B licenses. A adds only the categorisation of lb-01 as a named estate component. What would settle it: whether that categorisation counts as a separate assertion the premise does not supply."
+    },
+    {
+      "case": 9,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A adds a purpose to the use (storing long-term metrics history); B adds lexical exclusivity ('the only datastore data-06 queries'). Each strengthens the premise along a different axis and neither entails the other — A is compatible with data-06 querying other datastores, B says nothing about metrics history."
+    },
+    {
+      "case": 10,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts nightly offsite replication of xenon-snapshots; B asserts its exclusion from the last disaster-recovery drill. Two unrelated facts about the same entity, neither licensing the other."
+    },
+    {
+      "case": 11,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A generalises the dependent slot (something depends on ledger-02); B generalises the dependee slot (clickhouse depends on something). Both are weakenings of the premise but in opposite directions, so neither entails the other: A is about ledger-02's inbound edges, B about clickhouse's outbound ones."
+    },
+    {
+      "case": 12,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "A is a full definite restatement of the premise (images-02 is the host ImageMagick is deployed on); B existentially generalises A's component slot (images-02 hosts at least one deployed component), which A licenses and which adds only the categorisation of ImageMagick as a component. What would settle it: whether an existential weakening of a co-listed full restatement is treated as one proposition or two."
+    },
+    {
+      "case": 13,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts a thirty-second polling interval from Uptime Kuma to order-sync; B asserts a record volume on order-sync's nightly run and mentions Uptime Kuma not at all. Different relations, different quantities, no entailment either way."
+    },
+    {
+      "case": 14,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "B restates the premise (Authelia is used by auth-02); A is the same claim with the user existentially generalised to 'at least one system', which B licenses and which adds nothing beyond calling auth-02 a system. Pure weakening."
+    },
+    {
+      "case": 15,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts universal authentication of Consul requests through Authelia; B asserts a two-factor policy for administrative logins and says nothing about Consul. Different scope, different subject, neither licenses the other."
+    },
+    {
+      "case": 16,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "B restates the premise (nimbus-02 makes use of nimbus-archive); A generalises the user to 'at least one component of the nimbus deployment', which B licenses given nimbus-02 is such a component. A adds only that membership. What would settle it: whether 'component of the nimbus deployment' is read as an independent grouping claim about nimbus-02."
+    },
+    {
+      "case": 17,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A strengthens the premise with a universal quantifier over powerdns's zone transfers; B asserts round-the-clock on-call monitoring of the fulfillment network and never mentions powerdns. Different relations entirely."
+    },
+    {
+      "case": 18,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A swaps the host value (ticket-router on tether-02 rather than wisp-01); B reverses the deployment direction (wisp-01 running on ticket-router) while keeping both original entities. A names an entity absent from the premise, B names a relation direction absent from A — different failure modes, different propositions."
+    },
+    {
+      "case": 19,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "B restates the premise (files-01 is one of airflow's dependencies); A generalises the dependent to 'at least one dependent component in the estate', which B licenses. A adds only estate membership for airflow. What would settle it: whether 'in the estate' is a substantive scope claim rather than a domain gloss."
+    },
+    {
+      "case": 20,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "A ('mon-05 is the effect that ledger-02 produces') and B ('mon-05 is brought about by ledger-02') both assert the premise's causal relation in the same direction. A's definite 'the effect' carries exhaustivity by information structure, which the rulebook treats as presupposed rather than asserted, so it adds no claim B lacks."
+    },
+    {
+      "case": 21,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that nimbus-02 uses RabbitMQ, in the same passive frame, differing only in 'used by' versus 'called on by'. A pure synonym swap with no change of entity, relation, direction or scope."
+    },
+    {
+      "case": 22,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "Both assert the premise's USES relation from osquery to quota-watcher — A as 'osquery's operation involves quota-watcher', B as 'a component that osquery relies on'. What would settle it: whether 'relies on' is read as reliance/dependency, which is marginally stronger than A's 'involves' and would make B carry something A does not."
+    },
+    {
+      "case": 23,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A generalises the deployed-service slot (idx-03 hosts at least one service); B generalises the host slot (Meilisearch is deployed on at least one host). Each drops the entity the other keeps, so neither licenses the other: A could hold with Meilisearch deployed nowhere, B with idx-03 empty."
+    },
+    {
+      "case": 24,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts ledger-02's placement in the finance team's rack allocation and never mentions CockroachDB; B restates the premise and adds that ledger-02 is provisioned as a dedicated database host. Different added facts about ledger-02, neither entailing the other."
+    }
+  ],
+  "attestation": "I read exactly three files in this directory: BRIEF.md, RULEBOOK.md, and cases.json. I wrote only verdicts.json and edited no other file. I was given no information about which cases were expected to be duplicates, no expected count or rate of duplicates, and no prior adjudication of any case. cases.json does carry each pair's gold entailment verdict (entailed/contradicted/unsupported) and the two eg- ids, but nothing in it or in the brief indicates duplicate status; RULEBOOK.md discusses duplicate propositions in the abstract and names ids eg-0093, eg-0367, eg-0194 and eg-0251, none of which appear in cases.json. Each case was judged solely on its own premise and two hypotheses, and I did not balance the verdicts toward any target rate."
+}

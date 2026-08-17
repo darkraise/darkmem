@@ -1,0 +1,11 @@
+{
+ "id": "eg-0723",
+ "slice": "weakening",
+ "verdict": "entailed",
+ "premise": "fulfillment application uses talon-01",
+ "triple_key": "e9c765d2-625b-5a2c-bc39-789ca1392e78",
+ "rel_type": "USES",
+ "subject_name": "fulfillment application",
+ "object_name": "talon-01",
+ "project": "default"
+}

@@ -96,16 +96,87 @@ def eligible_premises(
     )
 
 
+EXCLUDED_KEYS_PATH = Path(__file__).resolve().parent / "entailment" / "round4_excluded_triple_keys.json"
+
+
+def excluded_triple_keys(path: Path | str = EXCLUDED_KEYS_PATH) -> frozenset[str]:
+    """The retired-harvest premises D3 and sitting-1 item 5 put out of scope.
+
+    Read from the round's own committed artifact rather than recomputed: the
+    exclusion is a ratified input to the frame, and a second derivation of it
+    could disagree with the one the assignment honoured.
+    """
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    keys = raw["triple_keys"] if isinstance(raw, dict) and "triple_keys" in raw else raw
+    return frozenset(keys)
+
+
+def eligible_entailed_premises(
+    gold: dict,
+    harvest: list[dict],
+    *,
+    retiring: frozenset[str] = frozenset(),
+    excluded: frozenset[str] | None = None,
+) -> list[dict]:
+    """Harvest facts that can carry a *new* `entailed` pair.
+
+    The sibling of `eligible_premises` for the 2026-08-17 repair, whose ten
+    condemned pairs are `weakening` and `paraphrase` rather than `direction`,
+    so none of that function's three filters is the right one. Three different
+    ones apply, and each is a ratified rule rather than a judgement:
+
+    1. **Not a retired-harvest premise.** D3 and sitting-1 item 5 excluded all
+       62, because publication contamination transfers through a premise to
+       the propositions it determines. Ignoring this filter is the defect
+       being repaired — ten replacements were authored on excluded premises,
+       five of them restating a published proposition in new words — so the
+       repair must not be able to reproduce it.
+    2. **Funds no live `entailed` slot.** R5's ratified rule (a premise may
+       fund at most one entailed slot across all slices) and round 4's own
+       replacement rule say the same thing here. For `paraphrase` it is
+       load-bearing rather than tidy: the skip log records that a second
+       paraphrase of one premise asserts the same proposition in every
+       wording, which is the collision this filter forecloses.
+    3. **Under the per-premise cap**, as everywhere else.
+
+    ``retiring`` names ids leaving in this same round so the capacity they
+    free is counted — here it matters, since all ten condemned pairs are
+    entailed and filter 2 would otherwise hold their premises occupied by the
+    very pairs being retired.
+    """
+    excluded = excluded_triple_keys() if excluded is None else excluded
+    live = [
+        p for p in gold["pairs"]
+        if "retired" not in p and p["id"] not in retiring
+    ]
+    entailed_on = {
+        p.get("fact_key", {}).get("triple_key")
+        for p in live
+        if p["verdict"] == "entailed"
+    }
+    pairs_on = Counter(p["premise"] for p in live)
+    return sorted(
+        (
+            fact for fact in harvest
+            if fact["triple_key"] not in excluded
+            and fact["triple_key"] not in entailed_on
+            and pairs_on[fact["fact"]] < PAIRS_PER_PREMISE_CAP
+        ),
+        key=lambda f: f["triple_key"],
+    )
+
+
 def draw_premises(
     gold_path: Path,
     harvest_path: Path,
     count: int,
     *,
     retiring: frozenset[str] = frozenset(),
+    pool_fn=None,
 ) -> dict:
     gold = json.loads(gold_path.read_text())
     harvest = json.loads(harvest_path.read_text())["facts"]
-    pool = eligible_premises(gold, harvest, retiring=retiring)
+    pool = (pool_fn or eligible_premises)(gold, harvest, retiring=retiring)
     seed = derive_seed(gold_path)
     if len(pool) < count:
         # Exhaustion is an outcome, not an error: LABELLING.md's skip mechanism
@@ -145,7 +216,19 @@ if __name__ == "__main__":
     parser.add_argument("--gold", default=str(here / "gold.json"))
     parser.add_argument("--harvest", default=str(here / "l2_harvest.json"))
     parser.add_argument("--n", type=int, required=True)
+    parser.add_argument(
+        "--verdict", choices=("contradicted", "entailed"), default="contradicted",
+        help="which pool to draw from; `entailed` applies the 2026-08-17 "
+             "repair's three filters instead of the direction round's",
+    )
+    parser.add_argument("--retiring", default="", help="comma-separated ids leaving now")
     args = parser.parse_args()
+    retiring = frozenset(i for i in args.retiring.split(",") if i)
+    pool_fn = eligible_entailed_premises if args.verdict == "entailed" else None
     print(json.dumps(
-        draw_premises(Path(args.gold), Path(args.harvest), args.n), indent=2
+        draw_premises(
+            Path(args.gold), Path(args.harvest), args.n,
+            retiring=retiring, pool_fn=pool_fn,
+        ),
+        indent=2,
     ))

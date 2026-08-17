@@ -1,0 +1,102 @@
+{
+ "eg-0643": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule with the reversal-exclusivity table: USES is non-exclusive (mutual use is coherent), so the reversed claim is unsupported, not contradicted."
+ },
+ "eg-0693": {
+  "verdict": "unsupported",
+  "rationale": "The rebuild landed 'at some point during' 2-20 March, so the premise can be true with the rebuild on, say, 15 March and the cluster not yet on Talos 1.7 on 5 March; the premise does not fix the state at that date (window rule inapplicable; procedure 4, absence is not exclusion)."
+ },
+ "eg-0681": {
+  "verdict": "unsupported",
+  "rationale": "The window has a named end (22 January 2026) but no stated start, and by the inception-window rule's own asymmetry a boundary date asserts nothing about how far the state reaches on its other side, so a claim dated November 2025 is not established (and nothing excludes it, procedure 4)."
+ },
+ "eg-0514": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, relation-semantics branch: USES earns 'consumer' for its subject (the eg-0468 placement), so the predicate-nominal rendering adds nothing beyond the relation itself."
+ },
+ "eg-0673": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, second bullet: the premise names the state Opsgenie displaced (PagerDuty until 2026-02-28), so putting the new Opsgenie routing inside 2025, before its stated start, is contradicted, on the same footing as the window rule's named-successor case."
+ },
+ "eg-0490": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule with the reversal-exclusivity table: USES is non-exclusive, so the reversed 'HAProxy uses lb-01' is merely unasserted, not excluded."
+ },
+ "eg-0685": {
+  "verdict": "unsupported",
+  "rationale": "Inception-window rule, first bullet: 'since the 14 February 2026 rollout' names no predecessor, so it asserts a beginning and nothing about September 2025; a claim dated before the inception is unsupported, absence not exclusion."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive (host and guest cannot swap for the same pair), so 'auth-01 is hosted on Authelia' is contradicted."
+ },
+ "eg-0715": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: 'makes use of' renders USES at the same generic level with the same endpoints and direction, nothing strengthened."
+ },
+ "eg-0441": {
+  "verdict": "entailed",
+  "rationale": "DEPLOYED_ON's own generic semantics carry 'is where Authelia runs' (the same generic-level reading of 'run' the dependency-strength rule states), direction preserved, and the cleft's exhaustivity is presupposed rather than asserted (exhaustivity rule)."
+ },
+ "eg-0672": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: a present-tense claim over a window the fact explicitly closes (24-hour TTL replaced by a 6-hour TTL on 2026-05-09, a named successor) is contradicted."
+ },
+ "eg-0703": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: 'is employed by telegraf' is a passive synonym rendering of USES with the same direction and no added content (cross-relation test trivially passes, employ = use)."
+ },
+ "eg-0695": {
+  "verdict": "unsupported",
+  "rationale": "Evaluation-time rule: whether printer-hall still holds the same address 'now' depends on an evaluation date the premise does not contain against a 30-day lease with no static binding, so the claim is undecidable from the premise."
+ },
+ "eg-0697": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening: 'scheduled for retirement on 31 May 2026' asserts a plan, and the hypothesis upgrades it to the executed outcome (the job actually stopping that day), which the premise does not assert and does not exclude (procedure 4)."
+ },
+ "eg-0419": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: 'makes use of' is a same-level rewording of USES with endpoints and direction preserved."
+ },
+ "eg-0708": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, relation-semantics branch: DEPLOYED_ON earns 'host' for its target (eg-0592/eg-0650 placement) and 'runs on' is the relation's own generic-level rendering, so nothing beyond the premise is asserted."
+ },
+ "eg-0436": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'only dependency' carries exhaustivity lexically, which is asserted content and strengthens a bare DEPENDS_ON premise; not contradicted because the premise asserts no second dependency (procedure 4)."
+ },
+ "eg-0711": {
+  "verdict": "entailed",
+  "rationale": "Weakening under procedure 3: 'nas is among what restic makes use of' asserts only membership of nas in the set of things restic uses, which the premise's witness establishes directly."
+ },
+ "eg-0528": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance is single-valued, with the instance-hood default making harvest-named teleport a single named instance): a differing host, wisp-01 against warden-02, is contradicted."
+ },
+ "eg-0437": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3, strengthening, on the dependency-strength rule's pattern: the hypothesis fixes a purpose and mechanism ('to schedule its periodic health checks') that a bare USES relation does not carry, and could be false while the premise holds."
+ },
+ "eg-0541": {
+  "verdict": "entailed",
+  "rationale": "Paraphrase under procedure 3: passive 'is employed by warden-02' preserves USES's direction and endpoints with a plain synonym, nothing strengthened."
+ },
+ "eg-0567": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule with the instance-hood default: roster-sync is a single named instance, so its host slot is single-valued and the swapped host tether-05 against tether-02 is contradicted."
+ },
+ "eg-0669": {
+  "verdict": "contradicted",
+  "rationale": "Open-window rule: the signing state holds since 2026-01-26 with no closing event and an explicit 'no key rotation since', so it is entailed current at any later date, and a claim that it stopped in May 2026 asserts the negation of that entailed state."
+ },
+ "eg-0556": {
+  "verdict": "entailed",
+  "rationale": "Near-literal restatement under procedure 3: passive voice swap of the USES premise with endpoints and direction unchanged."
+ },
+ "eg-0698": {
+  "verdict": "entailed",
+  "rationale": "Frame rule, universal-discourse-frame branch: 'the estate' names the whole world the premise describes and its head noun 'component' is vacuous with it, so the existential is ordinary weakening with terraform as the in-premise witness."
+ }
+}

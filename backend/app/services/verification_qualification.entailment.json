@@ -1,0 +1,49 @@
+{
+  "bars_gating_this_role": {
+    "groundedness_gate_precision_bar": 0.95,
+    "groundedness_gate_recall_bar": 0.9
+  },
+  "bars_in_effect": {
+    "contradiction_precision_bar": 0.7,
+    "contradiction_recall_bar": 0.95,
+    "groundedness_gate_precision_bar": 0.95,
+    "groundedness_gate_recall_bar": 0.9
+  },
+  "eligibility": {
+    "author_labelled_pairs": 0,
+    "l2_fact_pairs": 218,
+    "live_pairs": 280,
+    "reasons": [
+      "composition: 280 live pairs; l2-fact: 218/280; author-labelled: 0/280"
+    ]
+  },
+  "gate_eligible": true,
+  "git_sha": "60953e70f1abbf7a5151b49840007392f44d2dd5",
+  "gold_pairs_sha256": "4748ac84960fed6729ade1db21a73f7d6daccee3a9be879954b5de2b00fc21fb",
+  "gold_sha256": "fdbe2af9967970b6c80ee9cf1b9e3699584118f1eb6aac15c3b023b7b365f071",
+  "judge_identity": {
+    "api_kind": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "dimensions": null,
+    "identity_hash": "fd39e7b2c47fa375",
+    "model": "gpt-5.5",
+    "params": {
+      "reasoning_effort": "high"
+    },
+    "prompt_sha": "f99151e4add69b31",
+    "prompt_version": 1,
+    "reasoning": false
+  },
+  "ledger_run_id": "da9ecec8-8ecd-4199-8693-7cc9dc8692a0",
+  "metrics": {
+    "contradicted_judged_entailed": 0,
+    "contradiction_precision": 0.9692307692307692,
+    "contradiction_recall": 0.7875,
+    "entailed_precision": 0.9905660377358491,
+    "entailed_recall": 0.9545454545454546,
+    "invalid": 0,
+    "n_pairs": 280
+  },
+  "recorded_at": "2026-08-17T07:40:04.086348+00:00",
+  "role": "entailment"
+}

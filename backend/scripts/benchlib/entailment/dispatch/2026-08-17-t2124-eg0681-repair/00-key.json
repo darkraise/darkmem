@@ -1,0 +1,109 @@
+{
+ "_notes": "Recorded labels, held OUT of the export. eg-0716 replaces eg-0681 under the backward-direction ruling.",
+ "seed": 681170826,
+ "under_adjudication": [
+  "eg-0716"
+ ],
+ "key": {
+  "eg-0595": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0652": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0423": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0635": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0496": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0547": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0515": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0716": {
+   "verdict": "entailed",
+   "slice": "temporal"
+  },
+  "eg-0538": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0675": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0605": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0633": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0544": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0449": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0545": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0438": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0565": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0644": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0711": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0625": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0669": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0660": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0503": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0451": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0536": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  }
+ }
+}
