@@ -88,6 +88,7 @@ async def test_a_run_re_derives_exactly_the_memories_it_filed(session):
 
     assert reprocess.calls == [sorted((m.id for m in memories), key=str)]
     assert (outcome.filed, outcome.reprocessed, outcome.missing) == (2, 2, 0)
+    assert outcome.pending == 0
     assert outcome.subject == "pgvector HNSW"
 
 
@@ -201,6 +202,108 @@ async def test_errors_from_the_pipeline_ride_the_outcome(session):
     assert (outcome.reprocessed, outcome.errors) == (1, 1)
 
 
+@pytest.mark.asyncio
+async def test_a_missing_pipeline_is_a_503_not_a_clean_zero(session):
+    """The Critical the T3.28 review found.
+
+    `AnalyticsService.reprocess_selected` returns
+    ``{"error": "Pipeline not available", "processed": 0}`` when the app booted
+    without a pipeline, and reading only `processed` off that dict reports
+    "re-derived 0 of 2 filed" — no error, nothing missing, nothing failed. That
+    is a false success on exactly the axis this module's other refusals exist
+    to close, and the sibling `POST /analytics/reprocess` has answered 503 for
+    it since it shipped.
+    """
+    event_id, occurred_at, _ = await _filed_run(session)
+
+    async def pipeline_absent(memory_ids):
+        return {"error": "Pipeline not available", "processed": 0}
+
+    with pytest.raises(research_rerun.RerunUnavailable, match="Pipeline not available"):
+        await research_rerun.rerun_research_run(
+            session, event_id=event_id, occurred_at=occurred_at,
+            reprocess=pipeline_absent,
+        )
+
+
+@pytest.mark.asyncio
+async def test_each_refusal_carries_a_reason_the_route_can_branch_on(session):
+    """Without a discriminant every refusal became a 404, including a run that
+    exists in the listing and has merely lost its evidence — which tells the
+    operator the run does not exist."""
+    event_id, occurred_at, memories = await _filed_run(session)
+
+    with pytest.raises(research_rerun.RerunRefused) as wrong_time:
+        await research_rerun.rerun_research_run(
+            session, event_id=event_id,
+            occurred_at=occurred_at + timedelta(days=1), reprocess=_Reprocessor(),
+        )
+    assert wrong_time.value.reason == "no_such_event"
+
+    for memory in memories:
+        await session.delete(memory)
+    await session.flush()
+    with pytest.raises(research_rerun.RerunRefused) as gone:
+        await research_rerun.rerun_research_run(
+            session, event_id=event_id, occurred_at=occurred_at,
+            reprocess=_Reprocessor(),
+        )
+    assert gone.value.reason == "no_evidence"
+
+
+@pytest.mark.asyncio
+async def test_a_mixed_run_re_derives_only_its_researched_rows(session):
+    """A run whose journalled ids include a row that is not a researched
+    capture. The `source` guard must drop that one and re-derive the rest —
+    the sibling test drives an all-`api` run, which cannot tell a filter that
+    works from one that refuses everything."""
+    event_id, occurred_at, memories = await _filed_run(session)
+    memories[0].source = "api"
+    await session.flush()
+    reprocess = _Reprocessor()
+
+    outcome = await research_rerun.rerun_research_run(
+        session, event_id=event_id, occurred_at=occurred_at, reprocess=reprocess
+    )
+
+    assert reprocess.calls == [[memories[1].id]]
+    assert (outcome.reprocessed, outcome.missing) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_run_still_in_the_capture_buffer_is_not_called_deleted(session):
+    """`run_research` files through the buffered door, which journals the
+    pre-minted ids and acks before the rows exist. Asking only `memories` in
+    that window calls a healthy run "deleted" — false, and the exact wrong
+    statement on a surface whose claim is honest reporting. Normally a
+    seconds-long window; a capture that settles into `error` waits for a human
+    and would have read "deleted" the whole time."""
+    from app.models.memory import MemoryBuffer
+
+    event_id, occurred_at, memories = await _filed_run(session)
+    for memory in memories:
+        await session.delete(memory)
+    await session.flush()
+    # Same run, its captures still queued — the pre-minted id rides metadata_,
+    # never the buffer row's own id (doc 05 §2.2).
+    for memory in memories:
+        session.add(MemoryBuffer(
+            id=uuid.uuid4(), project="default", source=RESEARCH_SOURCE,
+            content="a finding", status="error",
+            metadata_={"memory_id": str(memory.id)},
+        ))
+    await session.flush()
+
+    with pytest.raises(research_rerun.RerunRefused) as refused:
+        await research_rerun.rerun_research_run(
+            session, event_id=event_id, occurred_at=occurred_at,
+            reprocess=_Reprocessor(),
+        )
+    assert refused.value.reason == "not_yet_materialised"
+    assert "still in the capture buffer" in str(refused.value)
+    assert "no evidence left" not in str(refused.value)
+
+
 # ── the property that made this shape worth choosing ─────────────────────
 
 
@@ -225,6 +328,23 @@ def test_the_trigger_never_reaches_the_research_loop():
                     f"{rel} imports the research loop; the re-derivation "
                     "surface must not, and needs nothing from it"
                 )
+            # `import app.services.auto_research` — a plain Import, which the
+            # first version of this scan missed entirely. A review's mutation
+            # driver caught it: the belt had two notches missing while its
+            # docstring claimed to cover the reach.
+            if isinstance(node, ast.Import):
+                assert all(
+                    a.name != "app.services.auto_research" for a in node.names
+                ), f"{rel} imports the research loop by module path"
+            # `importlib.import_module("app.services.auto_research")` — the
+            # other missed shape, and the one a determined edit would reach for
+            # precisely because a naive scan reads only static imports.
+            if isinstance(node, ast.Call):
+                for arg in node.args:
+                    assert not (
+                        isinstance(arg, ast.Constant)
+                        and arg.value == "app.services.auto_research"
+                    ), f"{rel} loads the research loop dynamically"
             if isinstance(node, ast.Attribute):
                 assert node.attr != "auto_research", f"{rel} reaches auto_research"
             if isinstance(node, ast.Constant) and node.value == "auto_research":

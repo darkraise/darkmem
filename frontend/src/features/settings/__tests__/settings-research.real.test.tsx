@@ -220,7 +220,7 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
       if (path === "/config/auto-research/runs/7/rerun") {
         return Promise.resolve({
           event_id: 7, subject: "pgvector HNSW", project: "default",
-          filed: 7, reprocessed: 5, missing: 2, errors: 0,
+          filed: 7, reprocessed: 5, missing: 2, pending: 0, errors: 0,
         })
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
@@ -236,6 +236,32 @@ describe("ResearchTab — the trigger re-derives, it does not gather", () => {
       expect(screen.getByText(/re-derived 5 of 7 filed/)).toBeInTheDocument(),
     )
     expect(screen.getByText(/2 no longer exist/)).toBeInTheDocument()
+  })
+
+  it("distinguishes rows still in the capture buffer from rows that are gone", async () => {
+    // "not yet materialised" and "deleted" are different facts, and only the
+    // second is unrecoverable. A run whose captures are queued — or settled
+    // into buffer error awaiting triage — must not be reported as lost.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/config/auto-research") return Promise.resolve(DISARMED)
+      if (path === "/config/auto-research/runs") return Promise.resolve(RUNS)
+      if (path === "/config/auto-research/runs/7/rerun") {
+        return Promise.resolve({
+          event_id: 7, subject: "pgvector HNSW", project: "default",
+          filed: 7, reprocessed: 4, missing: 3, pending: 2, errors: 0,
+        })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/1 no longer exist/)).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/2 still in the capture buffer/)).toBeInTheDocument()
   })
 
   it("an empty install says so rather than rendering an empty table", async () => {

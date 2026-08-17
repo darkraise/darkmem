@@ -461,6 +461,8 @@ class ResearchRerunResponse(BaseModel):
     filed: int
     reprocessed: int
     missing: int
+    #: Of the missing, those still in the capture buffer rather than deleted.
+    pending: int
     errors: int
 
 
@@ -516,8 +518,17 @@ async def rerun_auto_research_run(
             occurred_at=body.occurred_at,
             reprocess=analytics.reprocess_selected,
         )
+    except research_rerun.RerunUnavailable as exc:
+        # 503, matching the sibling `POST /analytics/reprocess`. A pipeline-less
+        # boot must not answer 200 with a zero tally, which reads to an
+        # operator as "there was nothing to do".
+        raise HTTPException(status_code=503, detail=str(exc))
     except research_rerun.RerunRefused as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        # 409 when the run exists and its evidence is gone — that is a state,
+        # not a missing resource, and a 404 would tell the operator the run
+        # they are looking at does not exist.
+        status = 409 if exc.reason in ("no_evidence", "not_yet_materialised") else 404
+        raise HTTPException(status_code=status, detail=str(exc))
     return ResearchRerunResponse(
         event_id=outcome.event_id,
         subject=outcome.subject,
@@ -525,6 +536,7 @@ async def rerun_auto_research_run(
         filed=outcome.filed,
         reprocessed=outcome.reprocessed,
         missing=outcome.missing,
+        pending=outcome.pending,
         errors=outcome.errors,
     )
 

@@ -223,7 +223,10 @@ export function ResearchTab() {
           {rerun.isSuccess && (
             <p className="text-muted-foreground text-sm">
               re-derived {rerun.data.reprocessed} of {rerun.data.filed} filed
-              {rerun.data.missing > 0 && ` · ${rerun.data.missing} no longer exist`}
+              {rerun.data.missing - rerun.data.pending > 0 &&
+                ` · ${rerun.data.missing - rerun.data.pending} no longer exist`}
+              {rerun.data.pending > 0 &&
+                ` · ${rerun.data.pending} still in the capture buffer`}
               {rerun.data.errors > 0 && ` · ${rerun.data.errors} failed`}
             </p>
           )}

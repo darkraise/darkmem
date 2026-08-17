@@ -52,6 +52,7 @@ __all__ = [
     "ResearchRunSummary",
     "RerunOutcome",
     "RerunRefused",
+    "RerunUnavailable",
     "list_research_runs",
     "load_research_run",
     "rerun_research_run",
@@ -61,9 +62,32 @@ __all__ = [
 class RerunRefused(Exception):
     """The run cannot be re-derived, and nothing was written.
 
-    A distinct type rather than a bare `ValueError` so the route can answer 404
-    or 409 without string-matching, and so an in-process caller can tell "this
-    request was refused" from "the pipeline failed partway".
+    Carries a machine-readable ``reason`` because the docstring used to promise
+    the route could "answer 404 or 409 without string-matching" while giving it
+    nothing to branch on — so every refusal became a 404, including a run that
+    plainly exists in the listing and has simply lost its evidence. A client
+    could not tell "no such run" from "run exists, nothing left" without
+    parsing prose, which is the failure this type exists to prevent.
+    """
+
+    #: "no_such_event" | "wrong_event_type" | "no_evidence"
+    #: | "not_yet_materialised"
+    def __init__(self, message: str, *, reason: str):
+        super().__init__(message)
+        self.reason = reason
+
+
+class RerunUnavailable(Exception):
+    """The re-derivation could not run at all, and nothing was written.
+
+    Distinct from a refusal: a refusal is a fact about the run, this is a fact
+    about the process. `AnalyticsService.reprocess_selected` returns
+    ``{"error": "Pipeline not available", "processed": 0}`` when the app booted
+    without a pipeline (the tree's Postgres-only mode), and reading only
+    ``processed`` off that dict reports a clean "re-derived 0 of N" — a false
+    success on exactly the axis this module's refusals exist to close. The
+    sibling `POST /analytics/reprocess` has answered 503 for this since it
+    shipped; this is that guard, arriving late.
     """
 
 
@@ -101,6 +125,11 @@ class RerunOutcome:
     #: that rather than read a clean "reprocessed" line.
     reprocessed: int
     missing: int
+    #: Of the missing, how many are not gone but still in the capture buffer —
+    #: pending, claimed, or settled into `error` awaiting triage. Counted
+    #: separately because "not yet materialised" and "deleted" are different
+    #: facts and only one of them is unrecoverable.
+    pending: int
     errors: int
 
 
@@ -129,6 +158,36 @@ def _summary_from_row(row: dict, live_ids: set[uuid.UUID]) -> ResearchRunSummary
         memory_ids=memory_ids,
         live=sum(1 for m in memory_ids if m in live_ids),
     )
+
+
+async def _buffered_research_ids(
+    session: AsyncSession, memory_ids: tuple[uuid.UUID, ...]
+) -> set[uuid.UUID]:
+    """Which of these ids are accepted captures that have not materialised yet.
+
+    `run_research` files through the buffered capture door, which journals the
+    **pre-minted** memory ids and acks before the rows exist. In that window a
+    run's memories are not in `memories` at all — so a reader that only asks
+    `memories` calls a healthy run "deleted", which is false and is the exact
+    wrong statement on a surface whose claim is honest reporting. The window is
+    normally seconds, but a capture that settles into `error` waits for a human
+    and reads "deleted" the whole time.
+
+    The pre-minted id rides `metadata_->>'memory_id'`, not the buffer row's own
+    `id` — the two are deliberately distinct (doc 05 §2.2), and conflating them
+    would make this lookup silently match nothing.
+    """
+    if not memory_ids:
+        return set()
+    rows = await session.execute(
+        text(
+            "SELECT metadata->>'memory_id' AS memory_id FROM memory_buffer "
+            "WHERE status <> 'done' "
+            "AND metadata->>'memory_id' = ANY(CAST(:ids AS text[]))"
+        ),
+        {"ids": [str(m) for m in memory_ids]},
+    )
+    return {parsed for parsed in (_as_uuid(r.memory_id) for r in rows) if parsed}
 
 
 async def _live_research_ids(
@@ -189,12 +248,14 @@ async def load_research_run(
         raise RerunRefused(
             f"no event {event_id} at {occurred_at.isoformat()} — the re-run "
             "carries the timestamp the listing gave it, and a wrong one prunes "
-            "to the wrong partition rather than scanning every month"
+            "to the wrong partition rather than scanning every month",
+            reason="no_such_event",
         )
     if row["event_type"] != RESEARCH_RUN_EVENT:
         raise RerunRefused(
             f"event {event_id} is a {row['event_type']!r}, not a "
-            f"{RESEARCH_RUN_EVENT!r}"
+            f"{RESEARCH_RUN_EVENT!r}",
+            reason="wrong_event_type",
         )
     summary = _summary_from_row(dict(row), set())
     live_ids = await _live_research_ids(session, summary.memory_ids)
@@ -222,16 +283,31 @@ async def rerun_research_run(
     summary = await load_research_run(
         session, event_id=event_id, occurred_at=occurred_at
     )
-    if summary.live == 0:
+    live_ids = await _live_research_ids(session, summary.memory_ids)
+    buffered = await _buffered_research_ids(session, summary.memory_ids) - live_ids
+    if not live_ids:
+        if buffered:
+            raise RerunRefused(
+                f"run {event_id} filed {summary.filed} memories and "
+                f"{len(buffered)} are still in the capture buffer — accepted "
+                "but not yet materialised, or settled into error awaiting "
+                "triage. Nothing is lost; re-derivation has nothing to read "
+                "*yet*, which is a different fact from evidence being gone",
+                reason="not_yet_materialised",
+            )
         raise RerunRefused(
             f"none of the {summary.filed} memories run {event_id} filed is "
             "still live, so there is no evidence left to re-derive. The journal "
             "records what it filed but never the finding text, so a deleted "
-            "researched memory cannot be restored from it"
+            "researched memory cannot be restored from it",
+            reason="no_evidence",
         )
-
-    live_ids = await _live_research_ids(session, summary.memory_ids)
     result = await reprocess(sorted(live_ids, key=str))
+    if result.get("error"):
+        # Never fall through to the tally: `processed` is 0 on this dict, and a
+        # 0 that means "nothing ran" is indistinguishable from a 0 that means
+        # "nothing needed to run" once it reaches the operator.
+        raise RerunUnavailable(str(result["error"]))
     return RerunOutcome(
         event_id=summary.event_id,
         subject=summary.subject,
@@ -239,5 +315,6 @@ async def rerun_research_run(
         filed=summary.filed,
         reprocessed=int(result.get("processed", 0)),
         missing=len(summary.memory_ids) - len(live_ids),
+        pending=len(buffered),
         errors=int(result.get("errors", 0)),
     )

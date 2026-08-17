@@ -67,6 +67,8 @@ export interface ResearchRerunResult {
   filed: number
   reprocessed: number
   missing: number
+  /** Of the missing, those still in the capture buffer rather than deleted. */
+  pending: number
   errors: number
 }
 
