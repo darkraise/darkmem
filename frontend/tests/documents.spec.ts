@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
+import { seedAdminPassword } from "./helpers/seed-admin"
 
 /**
  * TH1.16's surface, end to end (doc 16 §6).
@@ -8,9 +9,52 @@ import { test, expect } from "@playwright/test"
  * live door, that the horizon label is on it, and that an empty corpus reads
  * as empty rather than as a failure — the three things a mocked test cannot
  * distinguish from a page that never rendered.
+ *
+ * **These tests never signed in until 2026-08-17, and every one of them
+ * failed for it.** `/documents` sits under the `_authenticated` route branch,
+ * so an unauthenticated `page.goto` bounces to `/login` and every locator
+ * reports "element(s) not found" — which reads exactly like the page mounting
+ * empty, the state test 2 exists to distinguish. The three assertions were
+ * therefore vacuous in the worst direction: they could not have passed on a
+ * healthy install either, so the spec proved nothing about the surface while
+ * looking like it did. It went unnoticed because it only runs under
+ * `gate.sh --full`, and `--full` is run at phase boundaries rather than per
+ * merge.
+ *
+ * The sign-in is the sibling real-mode specs' own, copied deliberately rather
+ * than shared: `knowledge-real-mode.spec.ts` and `code-real-mode.spec.ts`
+ * each carry it, and a fourth copy is cheaper than a helper that would have
+ * to encode the disposable-stack rule below for every caller.
  */
 
+const PASSWORD = process.env.E2E_ADMIN_PASSWORD
+
+async function signIn(page: Page) {
+  await page.goto("/login")
+  await page.getByRole("textbox", { name: "Password" }).fill(PASSWORD!)
+  await page.getByRole("button", { name: /sign in/i }).click()
+  await expect(page).toHaveURL("/")
+}
+
+test.beforeAll(() => {
+  if (!PASSWORD) {
+    throw new Error(
+      "E2E_ADMIN_PASSWORD must be set — this spec never soft-skips for a " +
+        "missing credential. A skip here is what let it read green while " +
+        "asserting nothing.",
+    )
+  }
+  // See auth.spec.ts's header: a disposable stack (T1.64 plan §2.2) must
+  // never reach seedAdminPassword()'s hardcoded darkmem target — that stack
+  // already seeded itself with this exact password through the real
+  // POST /api/v1/setup front door at boot.
+  if (!process.env.E2E_DISPOSABLE_STACK) {
+    seedAdminPassword()
+  }
+})
+
 test("the documents surface is labelled horizon", async ({ page }) => {
+  await signIn(page)
   await page.goto("/documents")
   await expect(page.getByText("horizon").first()).toBeVisible()
   await expect(page.getByText(/ships behind its own eval gate/i)).toBeVisible()
@@ -19,6 +63,7 @@ test("the documents surface is labelled horizon", async ({ page }) => {
 test("an empty corpus reads as empty rather than as a failure", async ({
   page,
 }) => {
+  await signIn(page)
   await page.goto("/documents")
   // Either state is honest; what must never appear is the failed-read copy on
   // a healthy install.
@@ -31,6 +76,17 @@ test("an empty corpus reads as empty rather than as a failure", async ({
 test("the grounded-answer control refuses an empty question", async ({
   page,
 }) => {
+  await signIn(page)
   await page.goto("/documents")
   await expect(page.getByRole("button", { name: /^Ask$/ })).toBeDisabled()
+})
+
+test("an unauthenticated visit bounces to /login rather than rendering", async ({
+  page,
+}) => {
+  // The drill for the defect above: without it, a spec that silently stopped
+  // signing in would go back to asserting nothing, and the three tests would
+  // fail with the same "element(s) not found" that reads as a broken page.
+  await page.goto("/documents")
+  await expect(page).toHaveURL(/\/login/)
 })
