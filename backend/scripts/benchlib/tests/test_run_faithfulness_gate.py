@@ -41,7 +41,7 @@ async def test_a_present_gold_is_reported_but_not_scored_without_live(capsys, tm
 
     assert code == 0
     assert "gold present" in out
-    assert "8 pairs" in out
+    assert f"{len(fx.build_fixture_pairs())} pairs" in out
     assert "--live" in out
     # never scored -- no precision/recall numbers printed
     assert "entailed_precision" not in out
@@ -224,6 +224,7 @@ async def test_run_live_with_only_model_override_does_not_crash(monkeypatch, tmp
 
     code = await rfg._run([
         "--gold", str(gold_path), "--live", "--api-key", "k", "--model", "gpt-5.5",
+        "--manifest", str(fx.MANIFEST_PATH),
     ])
     assert code == 0
 

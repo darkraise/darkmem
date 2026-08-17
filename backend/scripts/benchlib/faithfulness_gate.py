@@ -98,71 +98,155 @@ class SpanGoldAbsent(Exception):
 
 
 class SpanAnchorDrift(Exception):
-    """A pair's recorded span text no longer matches the fixture document
-    it claims to cite — content moved out from under an anchored pair, the
-    same class of failure the claim/fact gold's ``fact_key`` byte-bind
-    guards against, reinterpreted for document bytes instead of a harvest
-    manifest row."""
+    """A pair's anchored block is gone or its text no longer hashes the same —
+    content moved out from under an anchored pair, the same class of failure the
+    claim/fact gold's ``fact_key`` byte-bind guards against, reinterpreted for
+    harvested block text."""
+
+
+class SpanManifestAbsent(Exception):
+    """Raised with the path that was checked, never a bare message — the same
+    posture as ``SpanGoldAbsent``: a caller must be able to report where it
+    looked without re-deriving the default, and must never read "no manifest"
+    as "no anchors to check"."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        super().__init__(str(path))
 
 
 # ── span anchors: TH1.01 §5 item 1 ───────────────────────────────────────
 
 
+# **The anchor resolves in the RUNTIME's coordinate system, and that is the
+# whole point of this shape** (owner ruling 2026-08-17).
+#
+# `faithfulness_gate._entails` puts `block.text[start:end]` to the judge, so a
+# citation's `char_span` is an offset **within one block's own text, from 0**.
+# This module used to resolve a premise by slicing the *document file* instead —
+# `base_dir / fixture_path`, then `content[start:end]` — a second, incompatible
+# coordinate system. The fixture gold was internally consistent (its builder
+# located spans with `content.index`, this loader sliced the same file), which is
+# why its tests passed while neither side matched production.
+#
+# With hand-authored fixtures whose spans were whole sentences the resolved text
+# came out right anyway, so nothing broke. With real parser output the two
+# diverge systematically: every block after the first sits at a non-zero document
+# offset, so a document-coordinate span slices the wrong region of the block or
+# nothing at all. A judge qualified on premises production never constructs is
+# qualified on a different task than the one it licenses.
+#
+# So there is now ONE basis, not two labelled ones: an anchor names a block in a
+# committed harvest manifest and indexes into that block's text. A fixture
+# document is not a special case — it is a harvested source like any other, which
+# is why `tests/fixtures/faithfulness_gate/manifest.json` exists.
+
+
 @dataclass(frozen=True)
 class SpanAnchor:
-    fixture_path: str
-    content_hash: str
-    block_id: str
+    """One cited span: which harvested block, and where inside its text.
+
+    `text_sha256` is the block text's digest at authoring time and is the
+    byte-bind — the analogue of the claim/fact gold's `fact_key`. It catches a
+    source edit *and* a parser change, both of which move a premise out from
+    under a pair that was labelled against the old one.
+    """
+
+    document_uri: str
+    block_key: str
+    text_sha256: str
     char_span: tuple[int, int]
 
 
 def _anchor_from_dict(raw: dict) -> SpanAnchor:
-    start, end = raw["char_span"]
+    try:
+        start, end = raw["char_span"]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(
+            f"span anchor carries no readable char_span: {raw!r}"
+        ) from None
+    missing = [k for k in ("document_uri", "block_key", "text_sha256") if not raw.get(k)]
+    if missing:
+        raise ValueError(
+            f"span anchor is missing {', '.join(missing)}: {raw!r}. Anchors index "
+            "into a harvested block's text; a `fixture_path` anchor is the retired "
+            "document-coordinate shape and cannot be resolved faithfully"
+        )
     return SpanAnchor(
-        fixture_path=raw["fixture_path"],
-        content_hash=raw["content_hash"],
-        block_id=raw["block_id"],
+        document_uri=raw["document_uri"],
+        block_key=raw["block_key"],
+        text_sha256=raw["text_sha256"],
         char_span=(int(start), int(end)),
     )
 
 
-def resolve_anchor_text(anchor: SpanAnchor, base_dir: Path) -> str:
-    """Re-derive the premise bytes from the anchored fixture document and
-    byte-compare against its recorded hash — drift fails loudly rather than
-    silently serving a stale span, exactly as the claim/fact gold's
-    harvest-manifest byte-bind does for ``l2-fact`` premises."""
-    doc_path = base_dir / anchor.fixture_path
-    content = doc_path.read_text(encoding="utf-8")
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    if digest != anchor.content_hash:
+def load_span_manifest(path: str | Path) -> dict:
+    """The committed harvest manifest a gold's anchors resolve against.
+
+    Produced by `scripts/benchlib/span_harvest.py`, which runs the sources
+    through the shipping parser. Indexed here by `(document_uri, block_key)` so
+    resolution is a lookup rather than a scan per anchor.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise SpanManifestAbsent(path)
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    index: dict[tuple[str, str], dict] = {}
+    for document in doc.get("documents", []):
+        uri = document.get("uri")
+        for block in document.get("blocks", []):
+            index[(uri, block.get("block_key"))] = block
+    return {"manifest": doc, "blocks": index}
+
+
+def resolve_anchor_text(anchor: SpanAnchor, manifest: dict) -> str:
+    """The premise bytes, sliced out of the anchored block's text.
+
+    Identical to what `faithfulness_gate._entails` does at serving time
+    (`block.text[start:end]`) — deliberately, so the qualification measures the
+    task the judge is later used for.
+    """
+    block = manifest["blocks"].get((anchor.document_uri, anchor.block_key))
+    if block is None:
         raise SpanAnchorDrift(
-            f"{anchor.fixture_path}: content_hash {anchor.content_hash} does "
-            f"not match the fixture document's current hash {digest} — the "
-            f"document moved under this anchor; retire and re-anchor the pair"
+            f"{anchor.document_uri}#{anchor.block_key} is not in the manifest — "
+            "the block was renumbered, the document was removed, or the parse "
+            "changed shape; retire and re-anchor the pair"
+        )
+    text = block.get("text") or ""
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if digest != anchor.text_sha256:
+        raise SpanAnchorDrift(
+            f"{anchor.document_uri}#{anchor.block_key}: text_sha256 "
+            f"{anchor.text_sha256} does not match the harvested block's current "
+            f"hash {digest} — the source or the parser moved under this anchor; "
+            "retire and re-anchor the pair"
         )
     start, end = anchor.char_span
-    # Bounds only -- an out-of-range span on a hash-matching document must
-    # refuse rather than silently slice a truncated or empty premise. Note
-    # `end == start` (an empty range) is deliberately NOT refused here: that
-    # is a known, separate defect in `_span_literal`'s storage (TH1.04) and
-    # is the owner's to fix, not this loader's.
-    if start < 0 or end < start or end > len(content):
+    # Bounds against the BLOCK's text, which is what the span indexes. An
+    # out-of-range span on a hash-matching block must refuse rather than
+    # silently slice a truncated or empty premise. `end == start` (an empty
+    # range) is deliberately NOT refused: that is a known, separate defect in
+    # `_span_literal`'s storage (TH1.04) and is the owner's to fix.
+    if start < 0 or end < start or end > len(text):
         raise ValueError(
-            f"{anchor.fixture_path}: char_span {anchor.char_span} is out of "
-            f"bounds for a document of length {len(content)} — refusing to "
-            f"resolve a span this loader cannot read faithfully"
+            f"{anchor.document_uri}#{anchor.block_key}: char_span "
+            f"{anchor.char_span} is out of bounds for a block text of length "
+            f"{len(text)} — refusing to resolve a span this loader cannot read "
+            "faithfully. Note the span indexes the BLOCK's text, not the source "
+            "file; `source_char_span` in the manifest is traceability only"
         )
-    return content[start:end]
+    return text[start:end]
 
 
-def build_premise(pair: dict, base_dir: Path) -> str:
+def build_premise(pair: dict, manifest: dict) -> str:
     """The ordered concatenation of exactly the cited span bytes, and
     nothing else (TH1.01 §1) — no surrounding block context, no
     whole-document fallback."""
     anchors = [_anchor_from_dict(raw) for raw in pair["premise_spans"]]
     if not anchors:
         raise ValueError(f"pair {pair.get('id')!r} carries no premise spans")
-    return "\n\n".join(resolve_anchor_text(a, base_dir) for a in anchors)
+    return "\n\n".join(resolve_anchor_text(a, manifest) for a in anchors)
 
 
 def validate_pair_shape(pair: dict) -> None:
@@ -485,7 +569,7 @@ def judge_purpose_config(
 
 async def score_via_live_judge(
     pairs: Sequence[dict],
-    base_dir: Path,
+    manifest: dict,
     config: dict[str, LLMPurposeConfig],
     *,
     cache_dir: str | Path = SPAN_CACHE_DIR,
@@ -505,7 +589,7 @@ async def score_via_live_judge(
     verdicts: dict[str, ProbeVerdict] = {}
 
     for pair in pairs:
-        premise = build_premise(pair, base_dir)
+        premise = build_premise(pair, manifest)
         before = live_call_count(llm)
         started = time.perf_counter()
         verdicts[pair["id"]] = await judge.qualification_probe(premise, pair["hypothesis"])

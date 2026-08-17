@@ -4,6 +4,7 @@ real claim/span entailment gold (which does not exist yet — TH1.01 §5)."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,10 @@ from app.services import faithfulness_bars as fb
 from app.services.verification_judge import ProbeVerdict
 
 PAIRS = fx.build_fixture_pairs()
+# The committed harvest manifest the fixture's anchors resolve against. Anchors
+# index into a block's own text (the runtime's basis), so resolution needs the
+# manifest rather than a directory of documents.
+MANIFEST = fg.load_span_manifest(fx.MANIFEST_PATH)
 
 
 def _verdict(verdict: str, *, valid: bool = True) -> ProbeVerdict:
@@ -46,8 +51,8 @@ def test_load_span_gold_validates_every_pair(tmp_path):
     bad = tmp_path / "span_gold.json"
     bad.write_text(json.dumps({"pairs": [
         {"id": "x", "verdict": "maybe", "provenance": "hand-authored-fixture-span",
-         "premise_spans": [{"fixture_path": "a", "content_hash": "b",
-                             "block_id": "c", "char_span": [0, 1]}]},
+         "premise_spans": [{"document_uri": "a", "block_key": "b0",
+                             "text_sha256": "c", "char_span": [0, 1]}]},
     ]}))
     with pytest.raises(ValueError, match="verdict"):
         fg.load_span_gold(bad)
@@ -64,8 +69,8 @@ def _valid_pair(**overrides) -> dict:
         "verdict": "entailed",
         "provenance": "hand-authored-fixture-span",
         "slice_tags": ["verbatim"],
-        "premise_spans": [{"fixture_path": "a", "content_hash": "b",
-                            "block_id": "c", "char_span": [0, 1]}],
+        "premise_spans": [{"document_uri": "a", "block_key": "b0",
+                            "text_sha256": "c", "char_span": [0, 1]}],
     }
     base.update(overrides)
     return base
@@ -139,8 +144,8 @@ def _pair(**overrides):
         # per-slice number. Every real fixture pair already carried it; only
         # this minimal helper did not, which is why the hole survived.
         "slice_tags": ["verbatim"],
-        "premise_spans": [{"fixture_path": "a", "content_hash": "b",
-                            "block_id": "c", "char_span": [0, 1]}],
+        "premise_spans": [{"document_uri": "a", "block_key": "b0",
+                            "text_sha256": "c", "char_span": [0, 1]}],
     }
     base.update(overrides)
     return base
@@ -230,12 +235,12 @@ def test_resolve_anchor_text_reconstructs_every_fixture_pair_span():
     for pair in PAIRS:
         for raw in pair["premise_spans"]:
             anchor = fg._anchor_from_dict(raw)
-            assert fg.resolve_anchor_text(anchor, fx.FIXTURE_DIR) == raw["text"]
+            assert fg.resolve_anchor_text(anchor, MANIFEST) == raw["text"]
 
 
 def test_build_premise_concatenates_ordered_spans_for_multi_span_pair():
     multi = next(p for p in PAIRS if len(p["premise_spans"]) > 1)
-    premise = fg.build_premise(multi, fx.FIXTURE_DIR)
+    premise = fg.build_premise(multi, MANIFEST)
     for raw in multi["premise_spans"]:
         assert raw["text"] in premise
     # order preserved: the first span's text appears before the second's
@@ -253,16 +258,16 @@ def test_span_anchor_drift_is_detected():
     fixture."""
     good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
     corrupted = fg.SpanAnchor(
-        fixture_path=good.fixture_path,
-        content_hash="0" * 64,
-        block_id=good.block_id,
+        document_uri=good.document_uri,
+        block_key=good.block_key,
+        text_sha256="0" * 64,
         char_span=good.char_span,
     )
     with pytest.raises(fg.SpanAnchorDrift):
-        fg.resolve_anchor_text(corrupted, fx.FIXTURE_DIR)
+        fg.resolve_anchor_text(corrupted, MANIFEST)
     # and the un-corrupted anchor still resolves -- proves the guard is
     # about the mismatch, not about the fixture file being unreadable
-    fg.resolve_anchor_text(good, fx.FIXTURE_DIR)
+    fg.resolve_anchor_text(good, MANIFEST)
 
 
 # ── m3: an out-of-range char_span refuses rather than silently truncating ──
@@ -270,39 +275,41 @@ def test_span_anchor_drift_is_detected():
 
 def test_resolve_anchor_text_refuses_an_end_past_document_length():
     good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
-    doc_len = len((fx.FIXTURE_DIR / good.fixture_path).read_text(encoding="utf-8"))
+    # The bound is the BLOCK's text length, not the document's — that is the
+    # coordinate system a citation indexes.
+    doc_len = len(MANIFEST["blocks"][(good.document_uri, good.block_key)]["text"])
     out_of_range = fg.SpanAnchor(
-        fixture_path=good.fixture_path,
-        content_hash=good.content_hash,
-        block_id=good.block_id,
+        document_uri=good.document_uri,
+        block_key=good.block_key,
+        text_sha256=good.text_sha256,
         char_span=(good.char_span[0], doc_len + 1000),
     )
     with pytest.raises(ValueError, match="out of bounds"):
-        fg.resolve_anchor_text(out_of_range, fx.FIXTURE_DIR)
+        fg.resolve_anchor_text(out_of_range, MANIFEST)
 
 
 def test_resolve_anchor_text_refuses_a_negative_start():
     good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
     negative = fg.SpanAnchor(
-        fixture_path=good.fixture_path,
-        content_hash=good.content_hash,
-        block_id=good.block_id,
+        document_uri=good.document_uri,
+        block_key=good.block_key,
+        text_sha256=good.text_sha256,
         char_span=(-1, good.char_span[1]),
     )
     with pytest.raises(ValueError, match="out of bounds"):
-        fg.resolve_anchor_text(negative, fx.FIXTURE_DIR)
+        fg.resolve_anchor_text(negative, MANIFEST)
 
 
 def test_resolve_anchor_text_refuses_end_before_start():
     good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
     reversed_span = fg.SpanAnchor(
-        fixture_path=good.fixture_path,
-        content_hash=good.content_hash,
-        block_id=good.block_id,
+        document_uri=good.document_uri,
+        block_key=good.block_key,
+        text_sha256=good.text_sha256,
         char_span=(good.char_span[1], good.char_span[0]),
     )
     with pytest.raises(ValueError, match="out of bounds"):
-        fg.resolve_anchor_text(reversed_span, fx.FIXTURE_DIR)
+        fg.resolve_anchor_text(reversed_span, MANIFEST)
 
 
 def test_resolve_anchor_text_still_permits_an_empty_end_equals_start_span():
@@ -312,12 +319,12 @@ def test_resolve_anchor_text_still_permits_an_empty_end_equals_start_span():
     resolves to an empty string."""
     good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
     empty = fg.SpanAnchor(
-        fixture_path=good.fixture_path,
-        content_hash=good.content_hash,
-        block_id=good.block_id,
+        document_uri=good.document_uri,
+        block_key=good.block_key,
+        text_sha256=good.text_sha256,
         char_span=(good.char_span[0], good.char_span[0]),
     )
-    assert fg.resolve_anchor_text(empty, fx.FIXTURE_DIR) == ""
+    assert fg.resolve_anchor_text(empty, MANIFEST) == ""
 
 
 # ── scoring: precision/recall/invalid/per-slice ──────────────────────────
@@ -334,19 +341,32 @@ def test_score_span_judgments_perfect_judge_scores_1_0_1_0():
 
 
 def test_score_span_judgments_precision_recall_arithmetic():
-    """A specific, hand-computed wrong judge, not just pass/fail. The gold
-    has 5 entailed pairs (fx-1, fx-2, fx-5, fx-7, fx-8) and 3 not-entailed
-    (fx-3, fx-4, fx-6). This judge calls fx-3 'entailed' (a false accept)
+    """A specific, hand-computed wrong judge, not just pass/fail. The gold has
+    6 entailed pairs (fx-1, fx-2, fx-5, fx-7, fx-8, fx-9) and 4 not-entailed
+    (fx-3, fx-4, fx-6, fx-10). This judge calls fx-3 'entailed' (a false accept)
     and fx-7 'unsupported' (a false refusal), and answers every other pair
-    correctly."""
+    correctly.
+
+    The census is **asserted** rather than only described. Hand-computed
+    expectations are the point of this test, but they silently couple it to the
+    fixture's composition — when fx-9 and fx-10 were added for the cross-block
+    case, the only symptom was `0.8333 != 0.8`, which reads like a scoring bug
+    rather than "the fixture grew by two pairs". The assertions below fail with
+    the count instead.
+    """
+    entailed = [p["id"] for p in PAIRS if p["verdict"] == "entailed"]
+    not_entailed = [p["id"] for p in PAIRS if p["verdict"] == "not-entailed"]
+    assert len(entailed) == 6, f"fixture entailed census moved: {entailed}"
+    assert len(not_entailed) == 4, f"fixture not-entailed census moved: {not_entailed}"
+
     verdicts = perfect_verdicts(PAIRS)
     verdicts["fx-3"] = _verdict("entailed")
     verdicts["fx-7"] = _verdict("unsupported")
     score = fg.score_span_judgments(PAIRS, verdicts)
-    # tp = 4 (fx-1, fx-2, fx-5, fx-8), fp = 1 (fx-3) -> precision 4/5
-    assert score.entailed_precision == pytest.approx(4 / 5)
-    # gold_positive = 5, tp = 4 -> recall 4/5
-    assert score.entailed_recall == pytest.approx(4 / 5)
+    # tp = 5 (fx-1, fx-2, fx-5, fx-8, fx-9), fp = 1 (fx-3) -> precision 5/6
+    assert score.entailed_precision == pytest.approx(5 / 6)
+    # gold_positive = 6, tp = 5 -> recall 5/6
+    assert score.entailed_recall == pytest.approx(5 / 6)
 
 
 def test_recall_is_none_symmetric_with_precision_when_gold_has_no_positives():
@@ -495,7 +515,7 @@ async def test_score_via_live_judge_probes_every_pair_and_captures_the_twin():
     orchestrator_cls = make_stub_orchestrator(lambda h: by_hypothesis[h])
 
     score, twin, verdicts = await fg.score_via_live_judge(
-        PAIRS, fx.FIXTURE_DIR, config={"verification": object()},
+        PAIRS, MANIFEST, config={"verification": object()},
         cache_dir="/dev/null-unused", orchestrator_cls=orchestrator_cls,
     )
 
@@ -504,3 +524,64 @@ async def test_score_via_live_judge_probes_every_pair_and_captures_the_twin():
     assert score.entailed_recall == 1.0
     assert twin.channels["judge_call"].live.n == len(PAIRS)
     assert twin.tokens_by_purpose["verification"]["live_calls"] == len(PAIRS)
+
+
+# ── the anchor basis: the runtime's coordinate system, not the document's ──
+
+
+def test_an_anchor_resolves_exactly_what_the_runtime_would_slice():
+    """The property the 2026-08-17 ruling bought. `app.services.faithfulness_gate`
+    `._entails` puts `block.text[start:end]` to the judge; this asserts the gold
+    loader produces the identical string from the identical inputs, so a judge
+    qualified here is qualified on the premises production actually constructs."""
+    for pair in PAIRS:
+        for raw in pair["premise_spans"]:
+            anchor = fg._anchor_from_dict(raw)
+            block = MANIFEST["blocks"][(anchor.document_uri, anchor.block_key)]
+            start, end = anchor.char_span
+            runtime_premise = block["text"][start:end]   # what _entails does
+            assert fg.resolve_anchor_text(anchor, MANIFEST) == runtime_premise
+
+
+def test_the_retired_document_coordinate_anchor_is_refused():
+    """A `fixture_path` anchor is the retired basis and must not silently load.
+
+    It cannot be resolved faithfully — it indexes the document file while the
+    runtime indexes block text — so accepting one would reintroduce exactly the
+    divergence the ruling removed, and quietly.
+    """
+    with pytest.raises(ValueError, match="document_uri"):
+        fg._anchor_from_dict(
+            {"fixture_path": "doc_mvcc.txt", "content_hash": "0" * 64,
+             "block_id": "b1", "char_span": [0, 10]}
+        )
+
+
+def test_a_cross_block_pair_spans_two_different_blocks():
+    """The case the retired basis could not express. `doc_pipeline.md` parses to
+    six blocks; a pair citing two of them proves the loader keys on the block,
+    not on a document offset — under the old basis `b2`'s span would have been
+    read against the document and sliced the wrong region."""
+    cross = next(p for p in PAIRS if p["id"] == "fx-9")
+    keys = {(a["document_uri"], a["block_key"]) for a in cross["premise_spans"]}
+    assert len(keys) == 2, "fx-9 must cite two distinct blocks"
+    premise = fg.build_premise(cross, MANIFEST)
+    for raw in cross["premise_spans"]:
+        assert raw["text"] in premise
+
+
+def test_a_block_that_left_the_manifest_is_drift_not_a_silent_miss():
+    good = fg._anchor_from_dict(PAIRS[0]["premise_spans"][0])
+    vanished = fg.SpanAnchor(
+        document_uri=good.document_uri, block_key="b999",
+        text_sha256=good.text_sha256, char_span=good.char_span,
+    )
+    with pytest.raises(fg.SpanAnchorDrift, match="not in the manifest"):
+        fg.resolve_anchor_text(vanished, MANIFEST)
+
+
+def test_load_span_manifest_reports_an_absent_manifest_with_its_path():
+    missing = Path("/nonexistent/span_harvest.json")
+    with pytest.raises(fg.SpanManifestAbsent) as excinfo:
+        fg.load_span_manifest(missing)
+    assert excinfo.value.path == missing
