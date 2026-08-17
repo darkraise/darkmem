@@ -1,0 +1,2329 @@
+{
+ "_notes": "Blocks used by NEITHER authored slot, >=40 chars. Re-anchor only onto these so a fix cannot create a new cross-slot collision.",
+ "blocks": [
+  {
+   "document_uri": "api-rest-conventions.md",
+   "block_key": "b15",
+   "type": "list",
+   "text_length": 252,
+   "text": "**Pluralization:** collections are plural (`memories`, `repos`, `tags`,\n`jobs`, `vectors`, `conversations`, `pipeline-failures`); a sub-resource that\nis one-per-parent is singular (`code/graph/{id}`, `code/wiki/{id}`,\n`vectors/projection`, `config/*`)."
+  },
+  {
+   "document_uri": "api-rest-conventions.md",
+   "block_key": "b8",
+   "type": "heading",
+   "text_length": 73,
+   "text": "Accepted pragmatic patterns (these are conventional REST, not violations)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b101",
+   "type": "list",
+   "text_length": 77,
+   "text": "[ ] Saving a new embedding model triggers the \"Embedding Model Changed\" modal"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b102",
+   "type": "list",
+   "text_length": 78,
+   "text": "[ ] Modal shows per-category obsolete counts (memories, entities, code chunks)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b104",
+   "type": "list",
+   "text_length": 71,
+   "text": "[ ] \"Re-embed now\" triggers `/reembed/all` and navigates to `/pipeline`"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b106",
+   "type": "list",
+   "text_length": 101,
+   "text": "[ ] Enrichment worker card: enable/disable toggle, batch size input, interval input, \"Run Now\" button"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b109",
+   "type": "list",
+   "text_length": 41,
+   "text": "[ ] Mode toggle (Simple / Expanded) works"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b110",
+   "type": "list",
+   "text_length": 61,
+   "text": "[ ] Simple mode shows the 7 universal types with descriptions"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b111",
+   "type": "list",
+   "text_length": 55,
+   "text": "[ ] Expanded mode shows the area switches with dividers"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b112",
+   "type": "list",
+   "text_length": 44,
+   "text": "[ ] Toggling an area persists across refresh"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b113",
+   "type": "list",
+   "text_length": 67,
+   "text": "[ ] Embedding pipeline controls: batch size, concurrency, cache TTL"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b115",
+   "type": "list",
+   "text_length": 67,
+   "text": "[ ] Keyboard focus is visible (outline) on all interactive elements"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b118",
+   "type": "list",
+   "text_length": 45,
+   "text": "[ ] Click-outside closes dropdowns and modals"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b119",
+   "type": "list",
+   "text_length": 52,
+   "text": "[ ] Dark mode: no unreadable text, consistent colors"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b12",
+   "type": "list",
+   "text_length": 61,
+   "text": "[ ] Login with wrong password shows inline error, no redirect"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b121",
+   "type": "list",
+   "text_length": 61,
+   "text": "[ ] Icon-only buttons have aria-labels (inspect via DevTools)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b123",
+   "type": "list",
+   "text_length": 58,
+   "text": "[ ] Loading states: spinners or skeletons, no layout jumps"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b124",
+   "type": "list",
+   "text_length": 59,
+   "text": "[ ] Error toasts show specific error text, not just \"Error\""
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b125",
+   "type": "list",
+   "text_length": 72,
+   "text": "[ ] Destructive buttons (Delete, Forget) use destructive variant styling"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b126",
+   "type": "list",
+   "text_length": 64,
+   "text": "[ ] Form inputs have visible labels (no placeholder-only labels)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b127",
+   "type": "list",
+   "text_length": 69,
+   "text": "[ ] Buttons disable while mutations are in flight (no double-submits)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b13",
+   "type": "list",
+   "text_length": 48,
+   "text": "[ ] Login with correct password redirects to `/`"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b133",
+   "type": "list",
+   "text_length": 73,
+   "text": "[ ] No obvious N+1 HTTP requests (e.g., one request per memory in a list)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b136",
+   "type": "paragraph",
+   "text_length": 40,
+   "text": "In the DevTools Performance tab, verify:"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b138",
+   "type": "list",
+   "text_length": 46,
+   "text": "[ ] Chart animations are smooth (60fps target)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b141",
+   "type": "paragraph",
+   "text_length": 57,
+   "text": "Over a full walkthrough, the browser Console should have:"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b146",
+   "type": "list",
+   "text_length": 46,
+   "text": "[ ] No \"unknown event type\" WebSocket warnings"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b150",
+   "type": "list",
+   "text_length": 49,
+   "text": "Any unexpected behavior not covered by a checkbox"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b153",
+   "type": "paragraph",
+   "text_length": 63,
+   "text": "File issues or update `test-plan.md` with new phases as needed."
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b17",
+   "type": "list",
+   "text_length": 59,
+   "text": "[ ] Activity chart shows \"No activity data yet\" on empty DB"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b20",
+   "type": "list",
+   "text_length": 60,
+   "text": "[ ] Recent memories shows \"No memories yet\" with create hint"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b21",
+   "type": "list",
+   "text_length": 47,
+   "text": "[ ] Toggling 7d/30d on the activity chart works"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b25",
+   "type": "list",
+   "text_length": 41,
+   "text": "[ ] Sources pie renders with color legend"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b26",
+   "type": "list",
+   "text_length": 41,
+   "text": "[ ] Top tags horizontal bar chart renders"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b27",
+   "type": "list",
+   "text_length": 76,
+   "text": "[ ] Recent memories list renders and clicking a row navigates to `/memories`"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b32",
+   "type": "list",
+   "text_length": 56,
+   "text": "[ ] Tag filter chips select/deselect and filter the list"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b33",
+   "type": "list",
+   "text_length": 77,
+   "text": "[ ] Create memory dialog opens, accepts content + tags + type, closes on save"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b34",
+   "type": "list",
+   "text_length": 58,
+   "text": "[ ] New memory appears at the top of the list after create"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b35",
+   "type": "list",
+   "text_length": 52,
+   "text": "[ ] Edit memory loads current content, saves updates"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b36",
+   "type": "list",
+   "text_length": 61,
+   "text": "[ ] Delete memory prompts for confirmation, removes from list"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b37",
+   "type": "list",
+   "text_length": 66,
+   "text": "[ ] Pagination or infinite scroll works if there are > 20 memories"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b38",
+   "type": "list",
+   "text_length": 43,
+   "text": "[ ] Empty search shows \"no results\" message"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b4",
+   "type": "list",
+   "text_length": 94,
+   "text": "Open the frontend in a browser: `http://host.docker.internal:3636` or `http://localhost:3636`."
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b42",
+   "type": "list",
+   "text_length": 47,
+   "text": "[ ] Typing a message and pressing Enter submits"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b45",
+   "type": "list",
+   "text_length": 53,
+   "text": "[ ] Renaming a conversation updates the sidebar title"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b46",
+   "type": "list",
+   "text_length": 95,
+   "text": "[ ] Deleting a conversation removes it and redirects to a different conversation or empty state"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b49",
+   "type": "list",
+   "text_length": 53,
+   "text": "[ ] Clicking an entity shows its neighbors in a panel"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b5",
+   "type": "list",
+   "text_length": 66,
+   "text": "Open DevTools: Console, Network, and Application → Cookies panels."
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b50",
+   "type": "list",
+   "text_length": 48,
+   "text": "[ ] Hovering a neighbor highlights the edge type"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b55",
+   "type": "list",
+   "text_length": 40,
+   "text": "[ ] Clicking a node opens a detail panel"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b56",
+   "type": "list",
+   "text_length": 63,
+   "text": "[ ] Filter controls (node type, edge type) update the rendering"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b58",
+   "type": "list",
+   "text_length": 66,
+   "text": "[ ] Repo selector populated with indexed repos (empty if no repos)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b59",
+   "type": "list",
+   "text_length": 43,
+   "text": "[ ] Selecting a repo renders its call graph"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b60",
+   "type": "list",
+   "text_length": 68,
+   "text": "[ ] Empty state shows \"no repos indexed yet\" with a link to `/repos`"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b63",
+   "type": "list",
+   "text_length": 52,
+   "text": "[ ] Wiki content renders (if generated for the repo)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b64",
+   "type": "list",
+   "text_length": 51,
+   "text": "[ ] Table of contents sidebar navigates to sections"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b66",
+   "type": "list",
+   "text_length": 83,
+   "text": "[ ] List shows indexed repos with status badge (ready / cloning / indexing / error)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b67",
+   "type": "list",
+   "text_length": 54,
+   "text": "[ ] \"Add repo\" dialog opens, accepts local path or URL"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b68",
+   "type": "list",
+   "text_length": 72,
+   "text": "[ ] After submitting, the repo appears in the list with \"cloning\" status"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b7",
+   "type": "list",
+   "text_length": 51,
+   "text": "[ ] On fresh DB, the root URL redirects to `/setup`"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b71",
+   "type": "list",
+   "text_length": 57,
+   "text": "[ ] Delete button asks confirmation then removes the repo"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b72",
+   "type": "list",
+   "text_length": 57,
+   "text": "[ ] Repo detail shows file/symbol counts and recent tasks"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b75",
+   "type": "list",
+   "text_length": 49,
+   "text": "[ ] Hover shows the memory content for each point"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b77",
+   "type": "list",
+   "text_length": 40,
+   "text": "[ ] Empty state when no embeddings exist"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b8",
+   "type": "list",
+   "text_length": 60,
+   "text": "[ ] Setup form has password input with min-length validation"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b83",
+   "type": "list",
+   "text_length": 61,
+   "text": "[ ] Action row has \"Retry Failed\" and \"Reprocess All\" buttons"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b85",
+   "type": "list",
+   "text_length": 81,
+   "text": "[ ] After changing the embedding model, the card appears with per-category counts"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b86",
+   "type": "list",
+   "text_length": 87,
+   "text": "[ ] Per-row Re-embed button triggers the background task; progress bar shows during run"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b87",
+   "type": "list",
+   "text_length": 97,
+   "text": "[ ] \"Re-embed all obsolete\" button runs all three categories sequentially under one progress view"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b88",
+   "type": "list",
+   "text_length": 71,
+   "text": "[ ] \"Prune old cache entries\" button returns a toast with deleted count"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b9",
+   "type": "list",
+   "text_length": 57,
+   "text": "[ ] Submitting valid password redirects to `/` (Overview)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b90",
+   "type": "list",
+   "text_length": 49,
+   "text": "[ ] Filter tabs (All / Memory / Code) show counts"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b91",
+   "type": "list",
+   "text_length": 102,
+   "text": "[ ] Per-row Retry button spins, then the row either animates out (resolved) or updates (still failing)"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b92",
+   "type": "list",
+   "text_length": 53,
+   "text": "[ ] Per-row Forget button removes the row immediately"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b93",
+   "type": "list",
+   "text_length": 65,
+   "text": "[ ] Stats cards at the bottom show Pipeline, pgvector, LLM health"
+  },
+  {
+   "document_uri": "e2e-checklist.md",
+   "block_key": "b94",
+   "type": "list",
+   "text_length": 99,
+   "text": "[ ] Recent Pipeline Executions table shows per-memory status with embed/extract/vector/graph badges"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b10",
+   "type": "list",
+   "text_length": 66,
+   "text": "Ollama running with the configured embedding model and chat model."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b100",
+   "type": "list",
+   "text_length": 62,
+   "text": "MCP endpoint at `/mcp` is unauthenticated — local-network-only"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b102",
+   "type": "paragraph",
+   "text_length": 110,
+   "text": "**Goal:** Verify the Overview (`/`) page renders correctly on a fresh database and populates when data exists."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b104",
+   "type": "list",
+   "text_length": 55,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b105",
+   "type": "list",
+   "text_length": 53,
+   "text": "`browser_snapshot()` — capture all text and structure"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b106",
+   "type": "list",
+   "text_length": 48,
+   "text": "Verify the following text or labels are present:"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b11",
+   "type": "list",
+   "text_length": 80,
+   "text": "Playwright MCP browser process available via `mcp__playwright__browser_*` tools."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b111",
+   "type": "list",
+   "text_length": 51,
+   "text": "Pipeline health: Active + pgvector + LLM green dots"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b117",
+   "type": "list",
+   "text_length": 45,
+   "text": "Expected: chart container updates (no errors)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b118",
+   "type": "list",
+   "text_length": 42,
+   "text": "`browser_resize(768, 1024)` — tablet width"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b119",
+   "type": "list",
+   "text_length": 45,
+   "text": "`browser_snapshot()` — mobile layout kicks in"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b121",
+   "type": "list",
+   "text_length": 54,
+   "text": "`browser_snapshot()` — grid collapses to single column"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b122",
+   "type": "list",
+   "text_length": 45,
+   "text": "`browser_resize(1280, 800)` — back to desktop"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b125",
+   "type": "list",
+   "text_length": 55,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b128",
+   "type": "list",
+   "text_length": 40,
+   "text": "Memory count matches fixture count (20+)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b13",
+   "type": "paragraph",
+   "text_length": 41,
+   "text": "**Fresh state check** (always run first):"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b131",
+   "type": "list",
+   "text_length": 42,
+   "text": "Sources pie renders (e2e-fixtures segment)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b133",
+   "type": "list",
+   "text_length": 57,
+   "text": "Recent Memories list shows real content, not placeholders"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b137",
+   "type": "list",
+   "text_length": 55,
+   "text": "Recent memory rows clickable (navigates to `/memories`)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b138",
+   "type": "list",
+   "text_length": 56,
+   "text": "Layout switches cleanly at breakpoints (no flicker/jump)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b14",
+   "type": "list",
+   "text_length": 74,
+   "text": "`curl http://localhost:8000/api/v1/auth/status` → `{\"initialized\": false}`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b142",
+   "type": "list",
+   "text_length": 86,
+   "text": "**Bash:** `python docs/e2e/scripts/04_memories_batch_mcp.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b144",
+   "type": "list",
+   "text_length": 84,
+   "text": "**Bash:** `python docs/e2e/scripts/00_health_check.py` — re-verify health after load"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b146",
+   "type": "list",
+   "text_length": 63,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/memories\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b148",
+   "type": "list",
+   "text_length": 77,
+   "text": "Verify: list shows ≥20 memories with content, tags, source badges, timestamps"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b15",
+   "type": "list",
+   "text_length": 80,
+   "text": "`curl http://localhost:8000/api/v1/analytics/stats` → zeros (or 401, needs auth)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b150",
+   "type": "list",
+   "text_length": 56,
+   "text": "Click search input, type `\"database\"` → wait for results"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b157",
+   "type": "list",
+   "text_length": 73,
+   "text": "Fill content: `\"E2E UI-created memory about WebSocket\"`, add tag `e2e-ui`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b159",
+   "type": "list",
+   "text_length": 50,
+   "text": "Expected: toast success, new memory at top of list"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b162",
+   "type": "list",
+   "text_length": 68,
+   "text": "Change content to `\"E2E UI-created memory about WebSocket — edited\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b169",
+   "type": "list",
+   "text_length": 104,
+   "text": "**Bash:** `python docs/e2e/scripts/03_memories_crud.py --password \"e2e-admin-pw\"` — full API CRUD matrix"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b171",
+   "type": "list",
+   "text_length": 48,
+   "text": "Empty search shows \"no results\" not a blank area"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b172",
+   "type": "list",
+   "text_length": 43,
+   "text": "Long memory content truncates with ellipsis"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b173",
+   "type": "list",
+   "text_length": 54,
+   "text": "Delete confirmation cannot be bypassed by double-click"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b175",
+   "type": "list",
+   "text_length": 45,
+   "text": "Tag autocomplete exists or manual entry works"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b177",
+   "type": "paragraph",
+   "text_length": 56,
+   "text": "**Goal:** Validate the Chat page and RAG reasoning flow."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b179",
+   "type": "list",
+   "text_length": 59,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/chat\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b182",
+   "type": "list",
+   "text_length": 43,
+   "text": "Type: `\"What database uses MVCC?\"` → Submit"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b184",
+   "type": "list",
+   "text_length": 68,
+   "text": "`browser_snapshot()` — verify message bubbles for user and assistant"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b185",
+   "type": "list",
+   "text_length": 82,
+   "text": "Verify sources/citations appear below the assistant message (if the UI shows them)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b186",
+   "type": "list",
+   "text_length": 60,
+   "text": "Type a follow-up: `\"And which other databases are similar?\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b187",
+   "type": "list",
+   "text_length": 54,
+   "text": "Verify the context from prior messages carries through"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b189",
+   "type": "list",
+   "text_length": 67,
+   "text": "Click \"Rename\" on the conversation → enter `\"E2E chat test\"` → save"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b191",
+   "type": "list",
+   "text_length": 52,
+   "text": "Click Delete → confirm → verify removal and redirect"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b193",
+   "type": "list",
+   "text_length": 79,
+   "text": "**Bash:** `python docs/e2e/scripts/05_reason_chat.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b195",
+   "type": "list",
+   "text_length": 77,
+   "text": "Response streaming visible (tokens appear progressively) or loading indicator"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b198",
+   "type": "list",
+   "text_length": 49,
+   "text": "Empty conversation list has a helpful empty state"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b2",
+   "type": "paragraph",
+   "text_length": 64,
+   "text": "**When the user says \"run phase N\" or \"run the full E2E plan\":**"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b20",
+   "type": "list",
+   "text_length": 45,
+   "text": "Perform the action (navigate / click / type)."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b201",
+   "type": "paragraph",
+   "text_length": 79,
+   "text": "**Goal:** Validate the Graph, Unified Graph, Code Graph pages render correctly."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b203",
+   "type": "list",
+   "text_length": 60,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/graph\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b205",
+   "type": "list",
+   "text_length": 55,
+   "text": "Verify entity list has entries (from ingested fixtures)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b206",
+   "type": "list",
+   "text_length": 57,
+   "text": "Click on an entity → expect a detail panel with neighbors"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b207",
+   "type": "list",
+   "text_length": 57,
+   "text": "Hover over edges → verify edge type is shown (or tooltip)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b208",
+   "type": "list",
+   "text_length": 68,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/unified-graph\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b209",
+   "type": "list",
+   "text_length": 50,
+   "text": "`browser_snapshot()` + `browser_take_screenshot()`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b21",
+   "type": "list",
+   "text_length": 73,
+   "text": "Call `browser_snapshot()` and check the expected element/text is present."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b210",
+   "type": "list",
+   "text_length": 67,
+   "text": "Verify nodes render, pan/zoom works (if interactive controls exist)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b211",
+   "type": "list",
+   "text_length": 65,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/code-graph\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b212",
+   "type": "list",
+   "text_length": 71,
+   "text": "Verify empty state if no repos indexed; otherwise render the code graph"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b214",
+   "type": "list",
+   "text_length": 82,
+   "text": "**Bash:** `python docs/e2e/scripts/06_graph_entities.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b216",
+   "type": "list",
+   "text_length": 44,
+   "text": "Graph performance on first render (any lag?)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b218",
+   "type": "list",
+   "text_length": 59,
+   "text": "Color/shape distinction between memory and code nodes clear"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b22",
+   "type": "list",
+   "text_length": 73,
+   "text": "If a mutation was triggered, wait for the spinner/toast then re-snapshot."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b221",
+   "type": "paragraph",
+   "text_length": 92,
+   "text": "**Goal:** Add a repo, watch indexing progress live via WebSocket, verify the code subsystem."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b223",
+   "type": "list",
+   "text_length": 60,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/repos\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b224",
+   "type": "list",
+   "text_length": 58,
+   "text": "`browser_snapshot()` — verify empty state or existing list"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b226",
+   "type": "list",
+   "text_length": 126,
+   "text": "Fill form: name = `e2e-test-repo`, local_path = `/workspace/darkmem/backend` (or equivalent path reachable from the container)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b228",
+   "type": "list",
+   "text_length": 63,
+   "text": "Verify the new repo appears with \"cloning\" or \"indexing\" status"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b229",
+   "type": "list",
+   "text_length": 106,
+   "text": "**Watch progress:** periodically `browser_snapshot()` every 5–10 seconds until status = \"ready\" or \"error\""
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b230",
+   "type": "list",
+   "text_length": 128,
+   "text": "Alternatively monitor the Pipeline page (`/pipeline`) for `repo.indexing_progress` events — open a second tab or switch and back"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b231",
+   "type": "list",
+   "text_length": 41,
+   "text": "Once ready, click the repo to view detail"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b232",
+   "type": "list",
+   "text_length": 47,
+   "text": "Verify file count and symbol count are non-zero"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b233",
+   "type": "list",
+   "text_length": 65,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/code-graph\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b235",
+   "type": "list",
+   "text_length": 99,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/code-wiki\")` → verify wiki content if generated"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b236",
+   "type": "list",
+   "text_length": 69,
+   "text": "**Delete cleanup:** return to `/repos`, delete the test repo, confirm"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b238",
+   "type": "list",
+   "text_length": 78,
+   "text": "**Bash:** `python docs/e2e/scripts/07_code_repos.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b240",
+   "type": "list",
+   "text_length": 60,
+   "text": "Progress updates are live (via WebSocket) not manual refresh"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b241",
+   "type": "list",
+   "text_length": 43,
+   "text": "Long-running indexing does not block the UI"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b242",
+   "type": "list",
+   "text_length": 55,
+   "text": "Error state (if indexing fails) is clearly communicated"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b243",
+   "type": "list",
+   "text_length": 58,
+   "text": "Repo detail page includes status, file count, recent tasks"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b245",
+   "type": "paragraph",
+   "text_length": 57,
+   "text": "**Goal:** Validate the Analytics page and reprocess flow."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b247",
+   "type": "list",
+   "text_length": 64,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/analytics\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b249",
+   "type": "list",
+   "text_length": 56,
+   "text": "Verify all charts render with real data (post-ingestion)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b254",
+   "type": "list",
+   "text_length": 43,
+   "text": "Verify SSE progress bar appears and updates"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b256",
+   "type": "list",
+   "text_length": 40,
+   "text": "Verify no errors in recent pipeline logs"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b258",
+   "type": "list",
+   "text_length": 87,
+   "text": "**Bash:** `python docs/e2e/scripts/08_analytics_reprocess.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b261",
+   "type": "list",
+   "text_length": 46,
+   "text": "Reprocess progress bar accurate (reaches 100%)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b263",
+   "type": "list",
+   "text_length": 40,
+   "text": "Recent errors count (if any) is accurate"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b267",
+   "type": "list",
+   "text_length": 85,
+   "text": "**Bash:** `python docs/e2e/scripts/09_pipeline_failures.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b270",
+   "type": "list",
+   "text_length": 58,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/llm\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b271",
+   "type": "list",
+   "text_length": 79,
+   "text": "Edit the Embedding card, change `base_url` to `http://invalid-host:99999`, save"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b272",
+   "type": "list",
+   "text_length": 44,
+   "text": "Navigate to `/memories`, create a new memory"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b275",
+   "type": "list",
+   "text_length": 55,
+   "text": "Return to `/llm`, restore the original `base_url`, save"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b277",
+   "type": "list",
+   "text_length": 63,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/pipeline\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b279",
+   "type": "list",
+   "text_length": 58,
+   "text": "Verify \"Unresolved Failures\" card is visible with count ≥1"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b287",
+   "type": "list",
+   "text_length": 66,
+   "text": "If failures remain, click Forget on one → verify immediate removal"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b290",
+   "type": "list",
+   "text_length": 82,
+   "text": "Verify progress bar appears (via `pipeline.retry_batch.progress` WebSocket events)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b292",
+   "type": "list",
+   "text_length": 54,
+   "text": "Failure recorded correctly with accurate `failed_step`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b293",
+   "type": "list",
+   "text_length": 46,
+   "text": "WebSocket updates are live (no manual refresh)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b297",
+   "type": "heading",
+   "text_length": 61,
+   "text": "Phase 10 — Model change and obsolete re-embedding (Feature 3)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b298",
+   "type": "paragraph",
+   "text_length": 112,
+   "text": "**Goal:** Change the embedding model, verify the obsolete modal appears, run the re-embed flow, verify progress."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b3",
+   "type": "list",
+   "text_length": 71,
+   "text": "Verify Playwright MCP is connected (`browser_navigate` etc. available)."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b300",
+   "type": "list",
+   "text_length": 146,
+   "text": "**Pre-change counts:** `browser_navigate(\"http://host.docker.internal:3636/pipeline\")` → verify \"Obsolete Embeddings\" card is hidden (zero counts)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b302",
+   "type": "list",
+   "text_length": 58,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/llm\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b304",
+   "type": "list",
+   "text_length": 83,
+   "text": "Change `model` to a different value (e.g., append `-e2e-test` to the existing name)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b307",
+   "type": "list",
+   "text_length": 73,
+   "text": "`browser_snapshot()` — \"Embedding Model Changed\" dialog should be visible"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b308",
+   "type": "list",
+   "text_length": 74,
+   "text": "Verify counts match actual obsolete rows (memories, entities, code_chunks)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b31",
+   "type": "code",
+   "text_length": 208,
+   "text": "## Phase N — <name>  [PASS | FAIL | PARTIAL]\n\n**Start:** HH:MM:SS\n**Finish:** HH:MM:SS\n**Observations:**\n- <anything notable>\n\n**Issues found:**\n- [category] <description> — [file/component ref if applicable]"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b313",
+   "type": "list",
+   "text_length": 88,
+   "text": "**Re-open by re-navigating to `/llm` and saving the same model again** (modal reappears)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b317",
+   "type": "list",
+   "text_length": 51,
+   "text": "Wait for completion (WebSocket events drive the UI)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b323",
+   "type": "list",
+   "text_length": 70,
+   "text": "On `/pipeline`, if the card is visible click \"Prune old cache entries\""
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b327",
+   "type": "list",
+   "text_length": 106,
+   "text": "Verify new obsolete rows appear (the reverted fingerprint is now different from the just-re-embedded rows)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b328",
+   "type": "list",
+   "text_length": 65,
+   "text": "Click \"Re-embed now\" again to restore to the original fingerprint"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b330",
+   "type": "list",
+   "text_length": 80,
+   "text": "**Bash:** `python docs/e2e/scripts/10_reembed_flow.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b332",
+   "type": "list",
+   "text_length": 45,
+   "text": "Modal content is clear about what will happen"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b333",
+   "type": "list",
+   "text_length": 46,
+   "text": "Progress bars update smoothly (once per chunk)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b334",
+   "type": "list",
+   "text_length": 61,
+   "text": "Per-category re-embed button disables when a batch is running"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b335",
+   "type": "list",
+   "text_length": 127,
+   "text": "Mid-batch concurrent model change is blocked by UI guard (attempt saving while re-embed is running → button should be disabled)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b339",
+   "type": "list",
+   "text_length": 122,
+   "text": "**Bash (background):** Start `python docs/e2e/scripts/11_websocket_listener.py --password \"e2e-admin-pw\" --duration 120 &`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b34",
+   "type": "paragraph",
+   "text_length": 60,
+   "text": "Stop and report to the user (do not silently continue) when:"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b341",
+   "type": "list",
+   "text_length": 57,
+   "text": "Create a memory via UI (`pipeline.completed` should fire)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b343",
+   "type": "list",
+   "text_length": 53,
+   "text": "Add/remove a repo (`repo.clone_*`, `repo.indexing_*`)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b344",
+   "type": "list",
+   "text_length": 88,
+   "text": "Induce and retry a failure (`pipeline.failure.updated`, `pipeline.retry_batch.progress`)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b345",
+   "type": "list",
+   "text_length": 65,
+   "text": "Change LLM model and re-embed (`pipeline.reembed_batch.progress`)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b35",
+   "type": "list",
+   "text_length": 57,
+   "text": "A phase produces a **security** or **bug** category issue"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b354",
+   "type": "list",
+   "text_length": 44,
+   "text": "`repo.clone_started`, `repo.clone_completed`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b355",
+   "type": "list",
+   "text_length": 76,
+   "text": "`repo.indexing_started`, `repo.indexing_progress`, `repo.indexing_completed`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b357",
+   "type": "list",
+   "text_length": 50,
+   "text": "No \"unknown event type\" warnings from the listener"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b358",
+   "type": "list",
+   "text_length": 70,
+   "text": "All event payloads validate (the listener prints schema errors if any)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b36",
+   "type": "list",
+   "text_length": 74,
+   "text": "An expected UI element is completely missing (not just styled differently)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b362",
+   "type": "list",
+   "text_length": 81,
+   "text": "**Bash:** `python docs/e2e/scripts/12_perf_baseline.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b365",
+   "type": "list",
+   "text_length": 55,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b366",
+   "type": "list",
+   "text_length": 73,
+   "text": "`browser_network_requests()` — note initial page load size, request count"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b367",
+   "type": "list",
+   "text_length": 78,
+   "text": "Navigate between pages: `/memories`, `/chat`, `/pipeline`, `/llm`, `/settings`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b368",
+   "type": "list",
+   "text_length": 61,
+   "text": "Watch for repeated fetches of the same data or slow endpoints"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b376",
+   "type": "list",
+   "text_length": 62,
+   "text": "Any obvious N+1 HTTP patterns (e.g., one request per list row)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b378",
+   "type": "list",
+   "text_length": 42,
+   "text": "Requests to external CDNs (should be none)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b38",
+   "type": "list",
+   "text_length": 61,
+   "text": "Playwright MCP becomes disconnected or a browser page crashes"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b382",
+   "type": "list",
+   "text_length": 50,
+   "text": "**Bash:** `python docs/e2e/scripts/13_db_audit.py`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b383",
+   "type": "list",
+   "text_length": 69,
+   "text": "Requires `DARKMEM_BACKEND_DIR` env var pointing to the backend folder"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b384",
+   "type": "list",
+   "text_length": 40,
+   "text": "Or run from inside the backend container"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b386",
+   "type": "list",
+   "text_length": 52,
+   "text": "`memory_embeddings` all have `model_fingerprint` set"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b387",
+   "type": "list",
+   "text_length": 59,
+   "text": "`entities` with embeddings all have `model_fingerprint` set"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b389",
+   "type": "list",
+   "text_length": 49,
+   "text": "`memory_embeddings` is one-to-one with `memories`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b391",
+   "type": "list",
+   "text_length": 53,
+   "text": "`entity_embedding_cache` primary key constraint holds"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b392",
+   "type": "list",
+   "text_length": 46,
+   "text": "`token_blocklist` and `audit_log` have entries"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b393",
+   "type": "heading",
+   "text_length": 49,
+   "text": "Phase 14 — UI design, UX, and accessibility sweep"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b394",
+   "type": "paragraph",
+   "text_length": 100,
+   "text": "**Goal:** Catch design gaps, UX violations, accessibility issues, and responsive/dark-mode problems."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b395",
+   "type": "paragraph",
+   "text_length": 128,
+   "text": "For each of the 14 authenticated routes and the 2 guest routes, run the following checklist. Record issues in the execution log."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b399",
+   "type": "list",
+   "text_length": 50,
+   "text": "`browser_navigate(route)` and `browser_snapshot()`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b4",
+   "type": "list",
+   "text_length": 109,
+   "text": "Follow the phase's steps in order, using Playwright tools for UI interaction and Bash for supporting scripts."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b400",
+   "type": "list",
+   "text_length": 69,
+   "text": "**Empty state:** Does it show a helpful message when there's no data?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b401",
+   "type": "list",
+   "text_length": 73,
+   "text": "**Loading state:** Spinner or skeleton during data fetch? No layout jump?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b402",
+   "type": "list",
+   "text_length": 93,
+   "text": "**Error state:** Inline error on failed fetch (simulate by temporarily breaking the backend)?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b403",
+   "type": "list",
+   "text_length": 95,
+   "text": "**Keyboard focus:** Tab through interactive elements — is focus ring visible and order logical?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b404",
+   "type": "list",
+   "text_length": 46,
+   "text": "**Escape key:** Closes any open modal/dropdown"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b406",
+   "type": "list",
+   "text_length": 79,
+   "text": "**Responsive:** `browser_resize(375, 812)` — does the layout survive on mobile?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b407",
+   "type": "list",
+   "text_length": 62,
+   "text": "**Dark mode:** Any unreadable text? Buttons with bad contrast?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b408",
+   "type": "list",
+   "text_length": 64,
+   "text": "**Icon-only buttons:** Do they have aria-labels? Hover tooltips?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b409",
+   "type": "list",
+   "text_length": 59,
+   "text": "**Destructive actions:** Delete/Forget/Reset confirmations?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b410",
+   "type": "list",
+   "text_length": 53,
+   "text": "**Toast placement:** Corner, auto-dismiss, stackable?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b411",
+   "type": "list",
+   "text_length": 48,
+   "text": "**Console:** Any red errors? React key warnings?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b412",
+   "type": "list",
+   "text_length": 55,
+   "text": "`browser_take_screenshot()` — save for later comparison"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b415",
+   "type": "list",
+   "text_length": 41,
+   "text": "Hard-coded colors instead of theme tokens"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b416",
+   "type": "list",
+   "text_length": 41,
+   "text": "Missing `disabled` state during mutations"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b418",
+   "type": "list",
+   "text_length": 41,
+   "text": "Long content overflows without truncation"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b420",
+   "type": "list",
+   "text_length": 54,
+   "text": "Progress bars reaching 100% before operation completes"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b422",
+   "type": "list",
+   "text_length": 46,
+   "text": "Missing loading state during route transitions"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b423",
+   "type": "list",
+   "text_length": 61,
+   "text": "Page headers inconsistent (some use `PageHeader`, some don't)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b424",
+   "type": "heading",
+   "text_length": 41,
+   "text": "Accessibility deep-dive (if time permits)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b425",
+   "type": "list",
+   "text_length": 57,
+   "text": "Run axe-core via `browser_evaluate()` with the axe bundle"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b426",
+   "type": "list",
+   "text_length": 52,
+   "text": "Tab through forms, verify labels announced correctly"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b43",
+   "type": "list",
+   "text_length": 54,
+   "text": "**Bash:** `python docs/e2e/scripts/00_health_check.py`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b431",
+   "type": "list",
+   "text_length": 63,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/settings\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b432",
+   "type": "list",
+   "text_length": 51,
+   "text": "`browser_snapshot()` — inventory all settings cards"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b434",
+   "type": "list",
+   "text_length": 75,
+   "text": "Toggle `llm_enrichment_enabled` off → save → refresh → verify it stayed off"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b436",
+   "type": "list",
+   "text_length": 52,
+   "text": "Same for `hybrid_search_enabled`, `reranker_enabled`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b440",
+   "type": "list",
+   "text_length": 55,
+   "text": "Switch Simple ↔ Expanded → verify the card body changes"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b441",
+   "type": "list",
+   "text_length": 47,
+   "text": "In Expanded mode, toggle a specific area on/off"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b444",
+   "type": "list",
+   "text_length": 41,
+   "text": "Click \"Run Now\" → verify toast with count"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b452",
+   "type": "list",
+   "text_length": 79,
+   "text": "**Bash:** `python docs/e2e/scripts/02_config_flow.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b455",
+   "type": "list",
+   "text_length": 40,
+   "text": "Invalid values rejected with clear error"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b457",
+   "type": "list",
+   "text_length": 42,
+   "text": "Visual feedback on successful save (toast)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b462",
+   "type": "list",
+   "text_length": 186,
+   "text": "Via API: `curl -b \"darkmem_session=<token>\" -X POST http://localhost:8000/api/v1/memories/search -H \"Content-Type: application/json\" -d '{\"tags_any\": [\"e2e\", \"e2e-fixtures\", \"e2e-ui\"]}'`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b463",
+   "type": "list",
+   "text_length": 117,
+   "text": "For each returned memory id: `curl -X DELETE -b \"darkmem_session=<token>\" http://localhost:8000/api/v1/memories/{id}`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b464",
+   "type": "list",
+   "text_length": 45,
+   "text": "**Delete test repos:** via `/repos` UI or API"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b465",
+   "type": "list",
+   "text_length": 68,
+   "text": "**Prune obsolete cache entries:** `POST /api/v1/reembed/prune-cache`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b470",
+   "type": "list",
+   "text_length": 64,
+   "text": "**`browser_close()`** to release the Playwright browser instance"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b471",
+   "type": "list",
+   "text_length": 86,
+   "text": "**Write final execution log** — summarize the run in `docs/e2e/runs/YYYY-MM-DD-run.md`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b472",
+   "type": "heading",
+   "text_length": 45,
+   "text": "Known intentional gaps (document, don't fail)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b474",
+   "type": "list",
+   "text_length": 68,
+   "text": "**MCP endpoint is unauthenticated** — local-network-only trust model"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b475",
+   "type": "list",
+   "text_length": 49,
+   "text": "**No rate limiting on login** — single-admin tool"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b476",
+   "type": "list",
+   "text_length": 56,
+   "text": "**No re-embed cancellation** — batches run to completion"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b477",
+   "type": "list",
+   "text_length": 87,
+   "text": "**Concurrent LLM config change during re-embed** has a minor race — UI-level guard only"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b478",
+   "type": "list",
+   "text_length": 73,
+   "text": "**`count_obsolete` on huge tables** — no index on `model_fingerprint` yet"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b479",
+   "type": "list",
+   "text_length": 78,
+   "text": "**Bulk retry runs one INSERT per memory** — acceptable for typical batch sizes"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b48",
+   "type": "list",
+   "text_length": 80,
+   "text": "Expected: redirected to `/setup` (fresh state) or `/login` (already initialized)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b482",
+   "type": "list",
+   "text_length": 45,
+   "text": "Multi-user scenarios (single-admin by design)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b485",
+   "type": "list",
+   "text_length": 50,
+   "text": "Cross-browser beyond Playwright's default Chromium"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b488",
+   "type": "list",
+   "text_length": 41,
+   "text": "Mobile-native (desktop web is the target)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b49",
+   "type": "list",
+   "text_length": 44,
+   "text": "**Playwright:** `browser_console_messages()`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b491",
+   "type": "paragraph",
+   "text_length": 67,
+   "text": "When the user says **\"run the e2e plan\"** or **\"execute phase N\"**:"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b492",
+   "type": "list",
+   "text_length": 41,
+   "text": "Read this document to the relevant phase."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b493",
+   "type": "list",
+   "text_length": 57,
+   "text": "For each step: perform the action, snapshot, verify, log."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b494",
+   "type": "list",
+   "text_length": 88,
+   "text": "At each verification point, compare against the expected state and capture observations."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b495",
+   "type": "list",
+   "text_length": 48,
+   "text": "After each phase, write the Execution log entry."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b496",
+   "type": "list",
+   "text_length": 97,
+   "text": "After all phases, produce a final summary: pass/fail per phase, issue inventory, recommendations."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b498",
+   "type": "paragraph",
+   "text_length": 47,
+   "text": "Scripts in `scripts/` can be run independently:"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b5",
+   "type": "list",
+   "text_length": 95,
+   "text": "Capture a `browser_snapshot` at each verification point and compare against the expected state."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b500",
+   "type": "paragraph",
+   "text_length": 90,
+   "text": "UI phases still need Playwright or a human walkthrough per `checklist.md` (short runbook)."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b505",
+   "type": "list",
+   "text_length": 55,
+   "text": "If it has a distinct workflow, create a dedicated phase"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b506",
+   "type": "list",
+   "text_length": 67,
+   "text": "Add a corresponding script in `scripts/` for API-level verification"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b507",
+   "type": "list",
+   "text_length": 51,
+   "text": "Update `README.md` and `checklist.md` if UI-visible"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b58",
+   "type": "list",
+   "text_length": 60,
+   "text": "`browser_navigate(\"http://host.docker.internal:3636/setup\")`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b59",
+   "type": "list",
+   "text_length": 59,
+   "text": "`browser_snapshot()` — note the structure of the setup form"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b6",
+   "type": "list",
+   "text_length": 117,
+   "text": "Write observations into the phase's **Execution log** section (in this doc or a sibling file under `docs/e2e/runs/`)."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b60",
+   "type": "list",
+   "text_length": 53,
+   "text": "`browser_take_screenshot()` — capture baseline design"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b61",
+   "type": "list",
+   "text_length": 76,
+   "text": "**Weak password test:** type `\"short\"` into the password field, click Submit"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b63",
+   "type": "list",
+   "text_length": 67,
+   "text": "**Valid password test:** clear, type `\"e2e-admin-pw\"`, click Submit"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b64",
+   "type": "list",
+   "text_length": 125,
+   "text": "Expected: redirect to `/`, cookie `darkmem_session` is set (verify via `browser_network_requests()` on the Set-Cookie header)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b65",
+   "type": "list",
+   "text_length": 73,
+   "text": "`browser_snapshot()` on `/` — Overview page renders with zero-state stats"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b68",
+   "type": "list",
+   "text_length": 43,
+   "text": "Cookie has `HttpOnly` and `SameSite=strict`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b72",
+   "type": "list",
+   "text_length": 71,
+   "text": "Design: is the setup page visually consistent with the rest of the app?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b73",
+   "type": "list",
+   "text_length": 69,
+   "text": "UX: is the password rule communicated before submit or only on error?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b74",
+   "type": "list",
+   "text_length": 49,
+   "text": "A11y: are input labels associated? Focus visible?"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b75",
+   "type": "heading",
+   "text_length": 43,
+   "text": "Phase 2 — Login, logout, and auth hardening"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b76",
+   "type": "paragraph",
+   "text_length": 95,
+   "text": "**Goal:** Validate login/logout flows plus the hardening decisions from the earlier auth audit."
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b78",
+   "type": "list",
+   "text_length": 77,
+   "text": "**Bash:** `python docs/e2e/scripts/01_auth_flow.py --password \"e2e-admin-pw\"`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b80",
+   "type": "list",
+   "text_length": 43,
+   "text": "Expected: exits 0 with all green PASS lines"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b82",
+   "type": "list",
+   "text_length": 52,
+   "text": "Open the user menu (likely top-right) → click Logout"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b84",
+   "type": "list",
+   "text_length": 41,
+   "text": "`browser_snapshot()` → login form visible"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b87",
+   "type": "list",
+   "text_length": 41,
+   "text": "Expected: inline error, still on `/login`"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b90",
+   "type": "list",
+   "text_length": 43,
+   "text": "Expected: redirect to `/`, Overview renders"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b91",
+   "type": "list",
+   "text_length": 62,
+   "text": "**Refresh the browser page** (`browser_navigate(current_url)`)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b94",
+   "type": "list",
+   "text_length": 43,
+   "text": "Wrong password shows an error (not a crash)"
+  },
+  {
+   "document_uri": "e2e-test-plan.md",
+   "block_key": "b99",
+   "type": "list",
+   "text_length": 45,
+   "text": "No rate limiting on login — single-admin tool"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b12",
+   "type": "paragraph",
+   "text_length": 53,
+   "text": "Open the UI and complete the setup wizard (`/setup`):"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b15",
+   "type": "list",
+   "text_length": 47,
+   "text": "Optionally register a repository path to index."
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b18",
+   "type": "paragraph",
+   "text_length": 98,
+   "text": "All backend settings are environment variables (see `.env.example`). The\nproduction-critical ones:"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b2",
+   "type": "list",
+   "text_length": 61,
+   "text": "**Backend:** FastAPI + SQLAlchemy (async) + Postgres/pgvector"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b3",
+   "type": "list",
+   "text_length": 87,
+   "text": "**Frontend:** React + TanStack Router/Query (built into the API image and\nserved by it)"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b31",
+   "type": "list",
+   "text_length": 58,
+   "text": "Pull the new image tag (bump `DARKMEM_VERSION` in `.env`)."
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b38",
+   "type": "heading",
+   "text_length": 52,
+   "text": "Security checklist (before exposing beyond loopback)"
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b42",
+   "type": "list",
+   "text_length": 131,
+   "text": "[ ] FastAPI `/docs`, `/redoc`, `/openapi.json` are served unauthenticated — keep them behind the loopback bind / your proxy's auth."
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b50",
+   "type": "paragraph",
+   "text_length": 117,
+   "text": "See `CLAUDE.md` for the internal architecture/business-logic contract and `docs/`\nfor design specs and audit reports."
+  },
+  {
+   "document_uri": "readme.md",
+   "block_key": "b7",
+   "type": "paragraph",
+   "text_length": 42,
+   "text": "Prerequisites: Docker + Docker Compose v2."
+  },
+  {
+   "document_uri": "runbook-content-purge.md",
+   "block_key": "b1",
+   "type": "paragraph",
+   "text_length": 156,
+   "text": "**Status:** operator procedure, not an application feature. Written 2026-08-06 as rider R2\nof T2.59's ruling (option D: accept the residue and document it)."
+  },
+  {
+   "document_uri": "runbook-content-purge.md",
+   "block_key": "b4",
+   "type": "heading",
+   "text_length": 40,
+   "text": "Why this is a procedure and not a button"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b0",
+   "type": "heading",
+   "text_length": 41,
+   "text": "Runbook — exposing darkmem beyond the LAN"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b18",
+   "type": "paragraph",
+   "text_length": 131,
+   "text": "**What each scope reaches, exactly.** The scope-gated surface is small on\npurpose, and it is the surface the minimal client speaks:"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b23",
+   "type": "paragraph",
+   "text_length": 205,
+   "text": "Note the scope of that: the webhook is currently the **only** route a key\nreaches, so key activity appears in the events journal and not on a memory's\nown timeline — no keyed call can write a memory today."
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b24",
+   "type": "heading",
+   "text_length": 40,
+   "text": "4. Verify the posture you think you have"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b29",
+   "type": "list",
+   "text_length": 95,
+   "text": "`cookie_secure: true` (and `cookie_secure_clamped: true` if you also set\n`COOKIE_SECURE=false`)"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b3",
+   "type": "heading",
+   "text_length": 42,
+   "text": "1. The one switch, and everything it moves"
+  },
+  {
+   "document_uri": "runbook-exposed-deployment.md",
+   "block_key": "b30",
+   "type": "list",
+   "text_length": 56,
+   "text": "`mcp_allowed_hosts` listing exactly the hosts you intend"
+  }
+ ]
+}
