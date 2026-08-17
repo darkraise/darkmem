@@ -1106,6 +1106,12 @@ JOURNAL_PAYLOAD_REACH = {
     },
     "app/services/layer_composition.py": {"latest_verified_evidence": False},
     "app/services/review_queue.py": {"latest_verified_evidence": True},
+    # `research_rerun` (T3.28) reads the `research_run` payload for a
+    # subject, a filed count and the memory ids to re-derive. It carries no
+    # rung and serves no payload content onward -- the ids go to the
+    # pipeline in-process and what comes back is a tally -- so it does not
+    # gate, for the same reason `fact_badge` and `layer_composition` do not.
+    "app/services/research_rerun.py": {"list_events": False},
 }
 
 

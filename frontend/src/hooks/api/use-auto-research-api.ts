@@ -36,3 +36,59 @@ export function useUpdateAutoResearch() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["autoResearch"] }),
   })
 }
+
+/** One filed run, as the operator surface lists it.
+ *
+ *  `occurred_at` rides back to the re-run deliberately: `events` is
+ *  partitioned by month under a composite `(id, created_at)` key, so the
+ *  client returning the bound it was given is what prunes the lookup to one
+ *  partition instead of scanning every month. */
+export interface ResearchRunSummary {
+  event_id: number
+  occurred_at: string
+  run_id: string | null
+  subject: string
+  project: string
+  /** What the run journalled filing. */
+  filed: number
+  /** How many of those rows still exist — re-derivation reaches no others. */
+  live: number
+}
+
+export interface ResearchRunList {
+  items: ResearchRunSummary[]
+  total: number
+}
+
+export interface ResearchRerunResult {
+  event_id: number
+  subject: string
+  project: string
+  filed: number
+  reprocessed: number
+  missing: number
+  errors: number
+}
+
+export function useResearchRuns() {
+  return useQuery<ResearchRunList>({
+    queryKey: ["autoResearch", "runs"],
+    queryFn: () => apiFetch<ResearchRunList>("/config/auto-research/runs"),
+  })
+}
+
+export function useRerunResearchRun() {
+  const qc = useQueryClient()
+  return useMutation<
+    ResearchRerunResult,
+    Error,
+    { eventId: number; occurredAt: string }
+  >({
+    mutationFn: ({ eventId, occurredAt }) =>
+      apiFetch<ResearchRerunResult>(
+        `/config/auto-research/runs/${eventId}/rerun`,
+        { method: "POST", body: JSON.stringify({ occurred_at: occurredAt }) },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["autoResearch", "runs"] }),
+  })
+}
