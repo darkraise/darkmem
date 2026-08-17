@@ -1240,7 +1240,10 @@
           ],
           "text": "Expected: still authenticated (cookie survives reload)"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to entailed; slice 'context-dependence' admits only not-entailed"
     },
     {
       "id": "sg-0055",
@@ -1543,7 +1546,10 @@
           ],
           "text": "[ ] Each card shows provider, model, base URL, dimensions, api_key masked as `***`"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'multi-span-composition' admits only entailed"
     },
     {
       "id": "sg-0066",
@@ -2038,7 +2044,10 @@
           ],
           "text": "cd frontend && npm ci && npm run typecheck && npx vitest run && npm run build"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "rule gap no amendment reaches"
     },
     {
       "id": "sg-0081",
@@ -3057,6 +3066,95 @@
             152
           ],
           "text": "./scripts/backup.sh /path/to/backups        # writes darkmem-YYYYMMDD-HHMMSS.sql.gz\n./scripts/restore.sh /path/to/backups/darkmem-20260607-030000.sql.gz"
+        }
+      ]
+    },
+    {
+      "id": "sg-0261",
+      "answer_id": "ans-checklist-llm",
+      "hypothesis": "The classification card's Simple mode showing the 7 universal types with descriptions is a listed check.",
+      "verdict": "not-entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "context-dependence"
+      ],
+      "rationale": "the definite-description rule (the anaphora rule extended to descriptions): 'the classification card' imports an identity the cited bytes never state — the card name lives in an uncited neighbouring item; the '[ ]' bytes license 'a listed check' (kind), not the card's name (identity).",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b110",
+          "text_sha256": "3c732e357ddea6774aca33b7ebb0a54bc3e18cd156fd5ac5b0257878735fb6ee",
+          "char_span": [
+            0,
+            61
+          ],
+          "text": "[ ] Simple mode shows the 7 universal types with descriptions"
+        }
+      ]
+    },
+    {
+      "id": "sg-0262",
+      "answer_id": "ans-checklist-console",
+      "hypothesis": "Under the Design and UX section, keyboard focus being visible with an outline on all interactive elements is an item to verify.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "multi-span-composition"
+      ],
+      "rationale": "the multi-span composition rule with heading scope does not travel: the heading span states 'Design and UX', the item span states the focus-outline check, and the '[ ]' bytes license 'an item to verify'; every identity named is stated in a cited span (the definite-description rule is satisfied), and neither span alone entails the claim.",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b114",
+          "text_sha256": "ef779ffeb7eb2ece0fe821e65ff88fb7cf720dd552033dbd79ca38ecfa10c803",
+          "char_span": [
+            0,
+            17
+          ],
+          "text": "15. Design and UX"
+        },
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b115",
+          "text_sha256": "a604e2e933dbb03b5f91cddca2fea99eeb72a53c7134baca355124eaac45afc1",
+          "char_span": [
+            0,
+            67
+          ],
+          "text": "[ ] Keyboard focus is visible (outline) on all interactive elements"
+        }
+      ]
+    },
+    {
+      "id": "sg-0263",
+      "answer_id": "ans-phase-early",
+      "hypothesis": "Phase 2's goal is validating login and logout flows plus the hardening decisions from the earlier auth audit.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "multi-span-composition"
+      ],
+      "rationale": "the multi-span composition rule: 'Phase 2' is stated only by the heading span and the goal only by the goal span, so neither alone entails; 'the earlier auth audit' is stated verbatim in the cited goal bytes, satisfying the definite-description rule, and no exhaustive bare-plural reading is asserted.",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b75",
+          "text_sha256": "9073b1624fb9f4a705184b64e4159e2ef4b442990601ff0580e494040948d14e",
+          "char_span": [
+            0,
+            43
+          ],
+          "text": "Phase 2 — Login, logout, and auth hardening"
+        },
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b76",
+          "text_sha256": "b5d825425af0faa61fbe47342e90564bd9124266271649580c6e0f7a218b68bd",
+          "char_span": [
+            0,
+            95
+          ],
+          "text": "**Goal:** Validate login/logout flows plus the hardening decisions from the earlier auth audit."
         }
       ]
     }

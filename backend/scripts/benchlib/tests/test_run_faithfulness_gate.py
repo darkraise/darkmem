@@ -15,13 +15,25 @@ from benchlib.tests.fixtures import faithfulness_gate_fixture as fx
 from app.services.verification_judge import JUDGE_ROLES
 
 
-async def test_default_run_reports_gold_absent_and_exits_zero(capsys):
+async def test_default_run_reports_the_present_gold_and_never_scores_it(capsys):
+    """This asserted `FAIL_CLOSED (gold absent)` until 2026-08-17, and the gold
+    landing IS the deliberate diff that assertion demanded — the same shape as
+    the qualification-record zero-pin. It is inverted rather than deleted: a
+    test that silently stopped applying would leave the default path unpinned.
+
+    What must hold now: the runner sees the gold, reports its LIVE pair count
+    (260, not the 277 entries the file carries — 17 are retired in place and
+    nothing may score a retired pair), and still spends nothing without --live.
+    """
     code = await rfg._run([])
     out = capsys.readouterr().out
     assert code == 0
-    assert "FAIL_CLOSED (gold absent)" in out
+    assert "gold present" in out
     assert str(fg.SPAN_GOLD_PATH) in out
+    assert "260 pairs" in out
+    # the load-bearing half: a present gold must NOT be scored by a bare run
     assert "not measured" in out
+    assert "--live" in out
 
 
 async def test_missing_gold_at_an_explicit_path_names_that_path(capsys, tmp_path):

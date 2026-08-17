@@ -332,6 +332,22 @@ def load_span_gold(path: str | Path = SPAN_GOLD_PATH) -> dict:
             raise ValueError(f"pair {pair_id!r} carries no 'answer_id'")
         if not pair.get("hypothesis"):
             raise ValueError(f"pair {pair_id!r} carries no 'hypothesis'")
+
+    # **Retired pairs are validated but never returned for scoring.** The
+    # claim/fact gold's module states the rule outright — "nothing anywhere
+    # scores a retired one" — and this loader had no such filter, so a gold
+    # carrying retirements would have scored them as live. That is not a
+    # rounding error: a pair is retired precisely because it is WRONG under the
+    # current rules, so scoring one marks the judge against a label the round
+    # already disowned, in whichever direction the retirement went.
+    #
+    # They stay validated above (a retired pair with a broken anchor is still a
+    # broken file) and stay in the document under `retired_pairs`, because
+    # retire-in-place is the audit trail.
+    live = [pair for pair in doc["pairs"] if not pair.get("retired")]
+    retired = [pair for pair in doc["pairs"] if pair.get("retired")]
+    doc["retired_pairs"] = retired
+    doc["pairs"] = live
     return doc
 
 

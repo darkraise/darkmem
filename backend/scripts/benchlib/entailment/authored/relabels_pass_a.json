@@ -1,0 +1,134 @@
+{
+ "pass": "A",
+ "n": 21,
+ "labels": [
+  {
+   "id": "sg-0039",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'REST' imports checkable identity the bytes never show; round-1 entailed call overturned by the ratified rule"
+  },
+  {
+   "id": "sg-0054",
+   "verdict": "entailed",
+   "rule": "the `Expected:` rule",
+   "note": "expectation kept; 'refresh' rewords the span's own 'reload'"
+  },
+  {
+   "id": "sg-0057",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'the setup wizard' is a named app feature the bytes never state"
+  },
+  {
+   "id": "sg-0065",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'purpose card' imports a property the bytes never show; the cited heading licenses only 'the LLM config page section'"
+  },
+  {
+   "id": "sg-0080",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "'Frontend:' displays the kind; read as the npm command list with 'cd frontend' dropped (weakening). Bare-plural 'the commands given ARE ...' is semantically exhaustive on one reading and no amendment picks the reading",
+   "escalate": true
+  },
+  {
+   "id": "sg-0084",
+   "verdict": "entailed",
+   "rule": "the scope-drop rule",
+   "note": "expectation kept per the Expected: rule; dropping 'in this posture' is the scope-drop rule's licensed weakening"
+  },
+  {
+   "id": "sg-0126",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'the break-glass purge' is the rule's own refused example"
+  },
+  {
+   "id": "sg-0131",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "bytes display the kind 'runbook', not 'checklist'; 'The checklist' imports a kind the bytes never show \u2014 close call, substance otherwise verbatim"
+  },
+  {
+   "id": "sg-0139",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'your proxy' is in the bytes; 'the runbook requires' read as metatextual attribution (the directs side of the imperative rule), backed by the span's stated failure consequence \u2014 not object-level 'must'"
+  },
+  {
+   "id": "sg-0150",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'the bundled topology' is the rule's own worked example"
+  },
+  {
+   "id": "sg-0155",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'The purge' resolves the elided 'Status:' subject with a name the bytes never state"
+  },
+  {
+   "id": "sg-0156",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'before a purge' imports the comparand of 'first' from outside the bytes"
+  },
+  {
+   "id": "sg-0157",
+   "verdict": "not-entailed",
+   "rule": "the imperative rule",
+   "note": "bare imperative does not entail 'must be stopped'; ruled, overturning all three round-1 readings including mine"
+  },
+  {
+   "id": "sg-0168",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'supporting' is an epithet the bytes never show, on all fours with the refused 'bundled topology'; substance otherwise verbatim"
+  },
+  {
+   "id": "sg-0169",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'login' imports which flow the error belongs to; the bytes say only that error text must not leak account existence"
+  },
+  {
+   "id": "sg-0180",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'survives a deletion' imports the identity of the survival event the table's header elides"
+  },
+  {
+   "id": "sg-0183",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'darkmem' is a name the cited bytes never state; the span's subject is only 'a centralized memory system'"
+  },
+  {
+   "id": "sg-0188",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'the quickstart' is a section title whose heading is not cited \u2014 an explicitly refused import; comment content itself is verbatim"
+  },
+  {
+   "id": "sg-0190",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'purge' names the SQL's role from outside the bytes; the kind (example SQL, its comment) is displayed but the identity is not"
+  },
+  {
+   "id": "sg-0225",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'typical batch sizes' widened to 'any batch size' \u2014 quantifier strengthening; fresh pair, labelled from the new bytes only"
+  },
+  {
+   "id": "sg-0233",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "read specificationally: the stated target is '< 2 s', not 'under 5 seconds'. Predicational reading (2s is under 5s) would be entailed weakening, and no amendment picks the reading",
+   "escalate": true
+  }
+ ]
+}

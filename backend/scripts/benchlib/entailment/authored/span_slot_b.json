@@ -136,7 +136,10 @@
           ],
           "text": "Exactly one case: **content that must not exist anywhere** — a pasted credential, a key, a\ntoken, someone else's personal data. Nothing else. Deleting a memory through the API or UI\nis the normal path and is sufficient for ordinary removal."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'verbatim' admits only entailed"
     },
     {
       "id": "sg-0127",
@@ -251,7 +254,10 @@
           ],
           "text": "Runbook for a human tester to walk through the UI after the scripted E2E suite passes. Use in tandem with `test-plan.md`."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'verbatim' admits only entailed"
     },
     {
       "id": "sg-0132",
@@ -435,7 +441,10 @@
           ],
           "text": "**Set `X-Real-IP` to its own view of the peer**, overwriting whatever the\nclient sent. If the client can supply this header through your proxy, the\nlockout is defeated and turning the switch on has made things worse than\nleaving it off."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "labellers split after amendment"
     },
     {
       "id": "sg-0140",
@@ -688,7 +697,10 @@
           ],
           "text": "The app is the network edge in this topology: it trusts no proxy headers, and the\nlogin rate limiter keys on the transport peer. The session cookie is `Secure`\n(HTTPS-only) by default. To serve over plain HTTP on the LAN, set\n`COOKIE_SECURE=false` — note the cookie then travels in cleartext. Putting a\n**TLS-terminating reverse proxy** (nginx/Caddy/Traefik) in front is a different\nposture, not the default one: that proxy becomes the edge, so set\n`TRUST_PROXY_HEADERS=true` as well, or every client will share the proxy's\nrate-limit bucket."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'paraphrase' admits only entailed"
     },
     {
       "id": "sg-0151",
@@ -803,7 +815,10 @@
           ],
           "text": "**Status:** operator procedure, not an application feature. Written 2026-08-06 as rider R2\nof T2.59's ruling (option D: accept the residue and document it)."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'paraphrase' admits only entailed"
     },
     {
       "id": "sg-0156",
@@ -826,7 +841,10 @@
           ],
           "text": "Two remedies already exist and should be tried first: **delete the conversation** (cascades\nits snippets and its prose) and **wait out or shorten the buffer retention** (a config row)."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'paraphrase' admits only entailed"
     },
     {
       "id": "sg-0157",
@@ -849,7 +867,10 @@
           ],
           "text": "**Stop the application.** Both the API and any running jobs — a consolidation pass\nmid-flight will re-derive from rows you are about to edit."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'paraphrase' admits only entailed"
     },
     {
       "id": "sg-0158",
@@ -1102,7 +1123,10 @@
           ],
           "text": "Scripts print PASS/FAIL lines I can read from the output. Log their results in the phase's Execution log."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "labellers split after amendment"
     },
     {
       "id": "sg-0169",
@@ -1125,7 +1149,10 @@
           ],
           "text": "Error text does not leak whether the account exists (single-admin, so less relevant but still check for generic wording)"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'paraphrase' admits only entailed"
     },
     {
       "id": "sg-0170",
@@ -1378,7 +1405,10 @@
           ],
           "text": "| Store | What survives | Bounded? |\n|---|---|---|\n| `events` payloads | content previews; full refine summaries in `consolidated` / `undone`; contradiction counterpart triples in `verified` | No — append-only |\n| `knowledge_triples.fact` | the lifted sentence | No — a fact outlives any one asserting memory |\n| `messages.context` | citation snippets, and cited fact rows untrimmed | Until the conversation is deleted |\n| `memory_buffer` | raw content on `done` rows | Yes — `buffer_done_retention_hours`, default 24 |"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'weakening' admits only entailed"
     },
     {
       "id": "sg-0181",
@@ -1447,7 +1477,10 @@
           ],
           "text": "A centralized memory system for AI agents: stores and retrieves natural-language\n**memories** (semantic + keyword hybrid search over pgvector), builds an\n**entity/relationship knowledge graph** from them, and indexes **code\nrepositories** into a navigable symbol/call graph. It exposes a REST API, a\nWebSocket event stream, and an **MCP** tool endpoint for agents, with a React UI."
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'weakening' admits only entailed"
     },
     {
       "id": "sg-0184",
@@ -1562,7 +1595,10 @@
           ],
           "text": "cp .env.example .env\n# Edit .env and generate the two secrets:\n#   DB_PASSWORD   = openssl rand -base64 24\n#   JWT_SECRET    = openssl rand -hex 32      (must be >= 32 chars)\n# If you reach the UI over plain HTTP on your LAN, also set COOKIE_SECURE=false.\n# Pin the image tag for a real deploy:  DARKMEM_VERSION=0.2.0\n\ndocker compose up -d"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "amendment flips it to not-entailed; slice 'weakening' admits only entailed"
     },
     {
       "id": "sg-0189",
@@ -1608,7 +1644,10 @@
           ],
           "text": "BEGIN;\nSET LOCAL session_replication_role = 'replica';\n-- Prefer redaction over deletion where the row's existence is itself the record:\nUPDATE events SET payload = jsonb_set(payload, '{content_preview}', '\"[redacted]\"')\n  WHERE id = '<id>' AND created_at = '<created_at>';   -- both, always: composite PK\nDELETE FROM memory_buffer WHERE id = '<id>';\nCOMMIT;"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "labellers split after amendment"
     },
     {
       "id": "sg-0191",
@@ -2394,24 +2433,24 @@
     },
     {
       "id": "sg-0225",
-      "answer_id": "ans-b-128",
-      "hypothesis": "The WebSocket connection is established within 500 ms of page load.",
+      "answer_id": "ans-b-138",
+      "hypothesis": "Bulk retry runs one INSERT per memory, which is acceptable at any batch size.",
       "verdict": "not-entailed",
       "provenance": "document-span",
       "slice_tags": [
         "overreach"
       ],
-      "rationale": "the unchecked checklist item rule: the span asserts a thing to verify, not a fact about the system; the hypothesis asserts the system does it",
+      "rationale": "general procedure 3: tightening a quantifier breaks entailment; general procedure 2 — the span says acceptable for typical batch sizes, not any",
       "premise_spans": [
         {
-          "document_uri": "e2e-checklist.md",
-          "block_key": "b132",
-          "text_sha256": "34ac82d78ec4a539f558701eb211c8760fae84f2e04d6cbf2e4fc0661374eb7f",
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b479",
+          "text_sha256": "d3795d995e62bd59e104e0a857615a02bef09027c288b1dd5d3ffe8b658f4db3",
           "char_span": [
             0,
-            63
+            78
           ],
-          "text": "[ ] WebSocket connection established within 500 ms of page load"
+          "text": "**Bulk retry runs one INSERT per memory** — acceptable for typical batch sizes"
         }
       ]
     },
@@ -2597,7 +2636,10 @@
           ],
           "text": "[ ] Initial page load < 2 s"
         }
-      ]
+      ],
+      "retired": true,
+      "retired_on": "2026-08-17",
+      "retired_reason": "rule gap no amendment reaches"
     },
     {
       "id": "sg-0234",
@@ -3217,6 +3259,328 @@
             66
           ],
           "text": "If it has a UI component, add steps to Phase 14 (design sweep) too"
+        }
+      ]
+    },
+    {
+      "id": "sg-0264",
+      "answer_id": "ans-b-130",
+      "hypothesis": "UI phases still require Playwright or a human walkthrough following checklist.md.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment — the hypothesis restates the cited span, naming only what the span names",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b500",
+          "text_sha256": "68f2693774db118f4439685eda3f3a1ff83f29939656da28c2490afcfca67e2d",
+          "char_span": [
+            0,
+            90
+          ],
+          "text": "UI phases still need Playwright or a human walkthrough per `checklist.md` (short runbook)."
+        }
+      ]
+    },
+    {
+      "id": "sg-0265",
+      "answer_id": "ans-b-144",
+      "hypothesis": "The goal is to verify that the Overview page renders correctly on a fresh database and populates when data exists.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity ('Goal:' licenses 'the goal')",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b102",
+          "text_sha256": "11378407379ffa522f4d611911de0694bc3160c4e0599fbc43f9eabccc265adc",
+          "char_span": [
+            0,
+            110
+          ],
+          "text": "**Goal:** Verify the Overview (`/`) page renders correctly on a fresh database and populates when data exists."
+        }
+      ]
+    },
+    {
+      "id": "sg-0266",
+      "answer_id": "ans-b-110",
+      "hypothesis": "Docker and Docker Compose v2 are the prerequisites.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "verbatim"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity ('Prerequisites:' licenses 'the prerequisites')",
+      "premise_spans": [
+        {
+          "document_uri": "readme.md",
+          "block_key": "b7",
+          "text_sha256": "e61802a1cdbd3fce2aa9c9e81566790255c42a88c722a1613a0521b8ab908afd",
+          "char_span": [
+            0,
+            42
+          ],
+          "text": "Prerequisites: Docker + Docker Compose v2."
+        }
+      ]
+    },
+    {
+      "id": "sg-0267",
+      "answer_id": "ans-b-138",
+      "hypothesis": "Login is not rate limited, the tool being single-admin.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "general procedure 3: synonyms, voice and clause order preserve entailment — every named thing is in the bytes",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b475",
+          "text_sha256": "2b38c1fd0c13593be8478f22ee44cb933b3018f29c193a33b53495407e9fcb9e",
+          "char_span": [
+            0,
+            49
+          ],
+          "text": "**No rate limiting on login** — single-admin tool"
+        }
+      ]
+    },
+    {
+      "id": "sg-0268",
+      "answer_id": "ans-b-138",
+      "hypothesis": "count_obsolete on huge tables has no index on model_fingerprint yet.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "general procedure 3: synonyms and clause order preserve entailment; the hedge rule — the span's 'yet' is kept, not upgraded",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b478",
+          "text_sha256": "77b6138835fadc92b1ed56f12e8c90a3af5e2c9f5bfc4beb80d959d88b4a0cce",
+          "char_span": [
+            0,
+            73
+          ],
+          "text": "**`count_obsolete` on huge tables** — no index on `model_fingerprint` yet"
+        }
+      ]
+    },
+    {
+      "id": "sg-0269",
+      "answer_id": "ans-b-126",
+      "hypothesis": "The instruction is to file issues or update test-plan.md with new phases as needed.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "procedural prose asserts the step, not its execution — the hypothesis states what is directed; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity (an imperative licenses 'the instruction')",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b153",
+          "text_sha256": "c96f833bb6ddd2ed3b03de7e6116885e4fb93aecba8843d5aae4351849d57af3",
+          "char_span": [
+            0,
+            63
+          ],
+          "text": "File issues or update `test-plan.md` with new phases as needed."
+        }
+      ]
+    },
+    {
+      "id": "sg-0270",
+      "answer_id": "ans-b-130",
+      "hypothesis": "The scripts under scripts/ can each be run on their own.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment; the hedge rule — the span's 'can' is kept, not upgraded to necessity",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b498",
+          "text_sha256": "c80e84a9fe7fdd988b29f358377d3264e8cf97d2c0e8c2443792c5b74d1e898f",
+          "char_span": [
+            0,
+            47
+          ],
+          "text": "Scripts in `scripts/` can be run independently:"
+        }
+      ]
+    },
+    {
+      "id": "sg-0271",
+      "answer_id": "ans-b-144",
+      "hypothesis": "The goal is validating that the Graph, Unified Graph and Code Graph pages render correctly.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity ('Goal:' licenses 'the goal')",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b201",
+          "text_sha256": "c30cc8d8aa449b97b6ca343f8523ad98c874cffa0a367136094bd192c4e8b1fd",
+          "char_span": [
+            0,
+            79
+          ],
+          "text": "**Goal:** Validate the Graph, Unified Graph, Code Graph pages render correctly."
+        }
+      ]
+    },
+    {
+      "id": "sg-0272",
+      "answer_id": "ans-b-144",
+      "hypothesis": "The goal is catching design gaps, UX violations, accessibility issues, and responsive or dark-mode problems.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "paraphrase"
+      ],
+      "rationale": "general procedure 3: rewording preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity ('Goal:' licenses 'the goal')",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b394",
+          "text_sha256": "d1335e06ab7b18c7e3371ad15f41f7ce8899c80f4336154b3b7be5a450f68d76",
+          "char_span": [
+            0,
+            100
+          ],
+          "text": "**Goal:** Catch design gaps, UX violations, accessibility issues, and responsive/dark-mode problems."
+        }
+      ]
+    },
+    {
+      "id": "sg-0273",
+      "answer_id": "ans-b-142",
+      "hypothesis": "The checklist lists a Recent Pipeline Executions table showing per-memory status.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "weakening"
+      ],
+      "rationale": "the unchecked checklist item rule: the hypothesis states what the checklist lists; general procedure 3: dropping the badge enumeration preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity (a '- [ ]' licenses 'the checklist')",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b94",
+          "text_sha256": "249e9b84de981c09877a00a87a601042c4a87155ed89fa4160f9c8e38b41b760",
+          "char_span": [
+            0,
+            99
+          ],
+          "text": "[ ] Recent Pipeline Executions table shows per-memory status with embed/extract/vector/graph badges"
+        }
+      ]
+    },
+    {
+      "id": "sg-0274",
+      "answer_id": "ans-b-140",
+      "hypothesis": "The checklist lists showing indexed repos with a status badge.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "weakening"
+      ],
+      "rationale": "the unchecked checklist item rule: the hypothesis states what the checklist lists; general procedure 3: dropping the enumerated statuses preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b66",
+          "text_sha256": "a9056269846ed6390f63a5e8f4a3a43a899717710f110c086a28aa273584abac",
+          "char_span": [
+            0,
+            83
+          ],
+          "text": "[ ] List shows indexed repos with status badge (ready / cloning / indexing / error)"
+        }
+      ]
+    },
+    {
+      "id": "sg-0275",
+      "answer_id": "ans-b-134",
+      "hypothesis": "The command runs docs/e2e/scripts/03_memories_crud.py with a password argument.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "weakening"
+      ],
+      "rationale": "a code block asserts its text, not its behaviour — the hypothesis is about what the cited text says; general procedure 3: dropping the password value preserves entailment",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b169",
+          "text_sha256": "a650fa7a3a53a1cde51a737f1d3528930be9a3ce2caed5b585967a8b83194ab9",
+          "char_span": [
+            0,
+            104
+          ],
+          "text": "**Bash:** `python docs/e2e/scripts/03_memories_crud.py --password \"e2e-admin-pw\"` — full API CRUD matrix"
+        }
+      ]
+    },
+    {
+      "id": "sg-0276",
+      "answer_id": "ans-b-128",
+      "hypothesis": "The checklist has an item about buttons disabling while mutations are in flight.",
+      "verdict": "entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "weakening"
+      ],
+      "rationale": "the unchecked checklist item rule: the hypothesis states what the checklist lists; general procedure 3: dropping '(no double-submits)' preserves entailment; the definite-description rule's licensed side — the bytes display the kind, so the pointer imports no external identity",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-checklist.md",
+          "block_key": "b127",
+          "text_sha256": "395939e3f67107648948362dff1635bb0cfb137102edf97aa81861adbc9e5a9e",
+          "char_span": [
+            0,
+            69
+          ],
+          "text": "[ ] Buttons disable while mutations are in flight (no double-submits)"
+        }
+      ]
+    },
+    {
+      "id": "sg-0277",
+      "answer_id": "ans-b-133",
+      "hypothesis": "The expected response from /api/v1/auth/status is {\"initialized\": true}.",
+      "verdict": "not-entailed",
+      "provenance": "document-span",
+      "slice_tags": [
+        "value-swap"
+      ],
+      "rationale": "the exclusive-slot rule (transferred): the span states the slot's single value and the hypothesis swaps it — the cited bytes say {\"initialized\": false}; general procedure 2",
+      "premise_spans": [
+        {
+          "document_uri": "e2e-test-plan.md",
+          "block_key": "b14",
+          "text_sha256": "b673d286be048f45062ac3e263da9b8624ed8aa7b22b937f406963fe1e76c107",
+          "char_span": [
+            0,
+            74
+          ],
+          "text": "`curl http://localhost:8000/api/v1/auth/status` → `{\"initialized\": false}`"
         }
       ]
     }

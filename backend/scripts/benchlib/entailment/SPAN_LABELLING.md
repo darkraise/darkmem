@@ -151,6 +151,64 @@ a single-valued slot; cite them by their names there.
   single cited span suffices — that is the point of the slice, and it is the
   recall-side hard case for a judge that reads only the first span.
 
+## Round-1 amendments — RATIFIED BY THE OWNER 2026-08-17, rule-then-pairs
+
+Both blind labelling passes surfaced gaps in the rules above. Each was put to the
+owner **as a rule**, ruled, and written here **before** being applied to any pair.
+That ordering is the point: a rule chosen while looking at the pair it settles is
+a fitted rule. Agreement before these landed was A-vs-B **0.9731** (253/260) with
+**0.9500** unanimous, so these govern a contested 20 rather than the corpus.
+
+- **The definite-description rule (RULED: strict).** A definite description in the
+  hypothesis that imports an identity the cited bytes never state is **external
+  antecedent resolution**, and the pair is `not-entailed`. The discriminator is
+  **kind versus identity**: a pointer is licensed when the bytes *display its
+  kind* — a `- [ ]` supports "the checklist", an imperative supports "the
+  procedure directs" — and refused when it imports something checkable the bytes
+  never show: a name ("the bundled topology", "the break-glass purge"), a
+  filename, a date, a section title whose heading is not also cited.
+
+  This is the anaphora rule extended to descriptions, and it settles the largest
+  family in the round: a premise reading "The app is the network edge in this
+  topology" does **not** entail a hypothesis reading "In the bundled topology the
+  app is the network edge", because *which* topology is content the reader cannot
+  see by following the citation. Both blind labellers reached this independently
+  and overturned the author on five pairs; the ruling makes their agreement a
+  rule rather than a coincidence.
+
+  **Direction of the ruling, stated because it is a policy choice and not a
+  deduction:** it withholds rather than over-accepts, which is the conservative
+  side for a groundedness label.
+
+- **The `Expected:` rule (RULED: it is a hedge).** The QA sources are full of
+  `Expected: still authenticated (cookie survives reload)`. That construction is
+  a **hedge**: a hypothesis that keeps the expectation ("the tester is expected to
+  remain authenticated") is `entailed`; one that drops it to a flat assertion
+  ("the tester remains authenticated") is strengthening and `not-entailed`. This
+  is the same shape as the checklist rule one step along — an expectation, like an
+  unchecked box, asserts what *should* hold, never what does.
+
+- **The imperative rule (RULED: `must` is strengthening).** A bare imperative does
+  **not** entail necessity. "Stop the application" supports "the procedure directs
+  stopping it" and does **not** support "the application must be stopped". The
+  procedural-prose rule's two halves pointed opposite ways; this settles them
+  toward the stricter reading. **Note this overturns all three parties** — author,
+  labeller A and labeller B all read `sg-0157` as entailed. Recorded plainly
+  because a rule that contradicts every reader is exactly the kind that must not
+  be quietly applied.
+
+- **The scope-drop rule (RULED: dropping a scope is weakening, so it is
+  `entailed`).** Where a premise states something holds "in this posture" and the
+  hypothesis drops the qualifier, procedure 3 governs as written: less asserted is
+  still entailed.
+
+  **This ruling runs opposite to the conservative direction of the
+  definite-description ruling above, and that tension is recorded rather than
+  smoothed.** It licenses "X holds in posture P" ⊨ "X holds", so a grounded label
+  can be served for a sentence broader than its citation. The owner ruled it; the
+  cost is stated here so a later reader meets it as a decision rather than as an
+  inconsistency they have to reconstruct.
+
 ## The slices
 
 One slice per pair, in `slice_tags` (a list, even when it holds one). The loader

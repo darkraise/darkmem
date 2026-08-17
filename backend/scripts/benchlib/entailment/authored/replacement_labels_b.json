@@ -1,0 +1,106 @@
+{
+ "pass": "B",
+ "n": 17,
+ "labels": [
+  {
+   "id": "sg-0261",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'the classification card' imports a card identity the bytes never show; 'Simple mode' alone is in the bytes and no heading is cited"
+  },
+  {
+   "id": "sg-0263",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "heading cited, so the Phase 2 attribution carries"
+  },
+  {
+   "id": "sg-0277",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule",
+   "note": "initialized false swapped to true; a value swap, not the unruled numeric-bound seam"
+  },
+  {
+   "id": "sg-0265",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "'the goal' is licensed \u2014 the bytes display the Goal: kind; no phase identity is claimed"
+  },
+  {
+   "id": "sg-0268",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "the bytes are a declarative limitation note, restated"
+  },
+  {
+   "id": "sg-0276",
+   "verdict": "entailed",
+   "rule": "checklist rule",
+   "note": "'has an item about' form"
+  },
+  {
+   "id": "sg-0264",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "'require' mirrors the span's own 'need'; not the imperative-rule case, since the necessity is the bytes' own"
+  },
+  {
+   "id": "sg-0275",
+   "verdict": "entailed",
+   "rule": "code-block rule",
+   "note": "close: read as text-level \u2014 the command line visibly invokes that script with --password; no success or outcome is claimed"
+  },
+  {
+   "id": "sg-0262",
+   "verdict": "entailed",
+   "rule": "checklist rule",
+   "note": "heading cited; 'item to verify' form"
+  },
+  {
+   "id": "sg-0267",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "the cited bytes assert it declaratively; labelled from the bytes alone per procedure 2, whatever the rest of the tree says about login limiting"
+  },
+  {
+   "id": "sg-0274",
+   "verdict": "entailed",
+   "rule": "checklist rule",
+   "note": "'lists' form; dropping the badge values is weakening"
+  },
+  {
+   "id": "sg-0271",
+   "verdict": "entailed",
+   "rule": "rewording"
+  },
+  {
+   "id": "sg-0269",
+   "verdict": "entailed",
+   "rule": "procedural-prose rule",
+   "note": "'the instruction is to' renders the imperative without adding necessity"
+  },
+  {
+   "id": "sg-0273",
+   "verdict": "entailed",
+   "rule": "checklist rule",
+   "note": "'lists' form; dropping the badge detail is weakening"
+  },
+  {
+   "id": "sg-0272",
+   "verdict": "entailed",
+   "rule": "rewording"
+  },
+  {
+   "id": "sg-0266",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "close to the bare-plural seam but decidable: the span's own 'Prerequisites:' line states the complete list and the hypothesis omits nothing, so no exhaustivity question opens"
+  },
+  {
+   "id": "sg-0270",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "'can' hedge kept; 'each on their own' restates 'independently'"
+  }
+ ]
+}

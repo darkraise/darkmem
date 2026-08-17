@@ -585,3 +585,45 @@ def test_load_span_manifest_reports_an_absent_manifest_with_its_path():
     with pytest.raises(fg.SpanManifestAbsent) as excinfo:
         fg.load_span_manifest(missing)
     assert excinfo.value.path == missing
+
+
+# ── retired pairs are validated but never scored ──────────────────────────
+
+
+def test_load_span_gold_excludes_retired_pairs_from_scoring(tmp_path):
+    """A retired pair is retired because it is WRONG under the current rules,
+    so scoring one marks the judge against a label the round already disowned.
+    The claim/fact gold states the rule outright ("nothing anywhere scores a
+    retired one"); this loader had no such filter, and the real G-F gold carries
+    17 retirements — they would have been scored as live."""
+    doc = tmp_path / "span_gold.json"
+    live = _valid_pair(id="live-1")
+    dead = _valid_pair(id="dead-1")
+    dead["retired"] = True
+    dead["retired_reason"] = "superseded by a ratified rule"
+    doc.write_text(json.dumps({"pairs": [live, dead]}))
+
+    loaded = fg.load_span_gold(doc)
+    assert [p["id"] for p in loaded["pairs"]] == ["live-1"]
+    # retire-in-place: it is still in the document, just not scorable
+    assert [p["id"] for p in loaded["retired_pairs"]] == ["dead-1"]
+
+
+def test_a_retired_pair_is_still_shape_validated(tmp_path):
+    """Excluding it from scoring must not mean skipping its checks — a retired
+    pair with a broken anchor is still a broken file, and the retirement is the
+    audit trail rather than a quarantine."""
+    doc = tmp_path / "span_gold.json"
+    dead = _valid_pair(id="dead-1", verdict="not-a-verdict")
+    dead["retired"] = True
+    doc.write_text(json.dumps({"pairs": [dead]}))
+    with pytest.raises(ValueError, match="verdict"):
+        fg.load_span_gold(doc)
+
+
+def test_the_real_span_gold_scores_only_its_live_pairs():
+    """Pinned against the shipped gold rather than a fixture: 260 live of 277."""
+    loaded = fg.load_span_gold(fg.SPAN_GOLD_PATH)
+    assert len(loaded["pairs"]) == 260
+    assert len(loaded["retired_pairs"]) == 17
+    assert all(not p.get("retired") for p in loaded["pairs"])
