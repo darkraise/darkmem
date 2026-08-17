@@ -36,6 +36,28 @@ class AnalyticsService:
 
         return await self._reprocess_batch(memories)
 
+    async def reprocess_selected(self, memory_ids: list) -> dict:
+        """Re-extract exactly these memories (T3.28).
+
+        The scoped sibling of `reprocess_all`, sharing its batch so both paths
+        strip-and-rewrite the graph the same way. Archived rows are included on
+        purpose where `reprocess_all` excludes them: this path is driven by a
+        caller naming specific ids, and silently skipping one would report a
+        re-derivation of evidence it did not touch.
+        """
+        if not self.pipeline:
+            return {"error": "Pipeline not available", "processed": 0}
+        if not memory_ids:
+            return {"processed": 0, "errors": 0, "total": 0}
+
+        stmt = (
+            select(Memory)
+            .options(selectinload(Memory.tags))
+            .where(Memory.id.in_(memory_ids))
+        )
+        result = await self.session.execute(stmt)
+        return await self._reprocess_batch(list(result.scalars().all()))
+
     async def _reprocess_batch(self, memories: list[Memory]) -> dict:
         batch_entries = [
             {

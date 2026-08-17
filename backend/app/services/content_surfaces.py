@@ -592,6 +592,14 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     # run at all, and the rows a run files are the capture doors' surface.
     "GET /api/v1/config/auto-research",
     "PUT /api/v1/config/auto-research",
+    # The run listing and re-derivation (T3.28's trigger half). No memory
+    # content crosses either: the listing serves a run's subject, its
+    # journalled counts and how many of its rows are still live, and the
+    # re-derivation serves counts alone. Neither reads a memory's `content`
+    # -- re-extraction hands the rows to the pipeline in-process and returns
+    # a tally, so the content never reaches the response.
+    "GET /api/v1/config/auto-research/runs",
+    "POST /api/v1/config/auto-research/runs/{event_id}/rerun",
     "GET /api/v1/documents",
     "GET /api/v1/documents/{document_id}/summary",
     "GET /api/v1/documents/{document_id}/connections",

@@ -26,10 +26,24 @@ logger = logging.getLogger(__name__)
 
 AUTO_RESEARCH_CONFIG_KEY = "auto_research"
 
+# The reserved source-kind. Every capture the loop files carries it, so
+# `memories.source` alone distinguishes a manufactured origin from an observed
+# one without joining anything.
+#
+# **It lives here rather than in the loop for the same reason the config key
+# does** (T3.28): recognising a researched row is not running the loop, and
+# invariant 15's scan forbids app code importing `app.services.auto_research`.
+# The re-derivation surface has to tell a researched memory from any other one
+# before it touches it, and importing the loop to read a string constant would
+# have bought a second sanctioned crossing for nothing. `auto_research`
+# re-exports it, so the loop's own spelling is unchanged.
+RESEARCH_SOURCE = "research"
+
 __all__ = [
     "AUTO_RESEARCH_CONFIG_KEY",
     "AUTO_RESEARCH_DEFAULTS",
     "MAX_FINDINGS_CEILING",
+    "RESEARCH_SOURCE",
     "ResearchBudget",
     "load_budget",
     "write_auto_research_config",

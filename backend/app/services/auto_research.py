@@ -75,6 +75,7 @@ from app.services.research_config import (  # noqa: F401
     AUTO_RESEARCH_CONFIG_KEY,
     AUTO_RESEARCH_DEFAULTS,
     MAX_FINDINGS_CEILING,
+    RESEARCH_SOURCE,
     ResearchBudget,
     load_budget,
     write_auto_research_config,
@@ -86,12 +87,10 @@ from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
-# The reserved source-kind. Every capture this loop files carries it, so
-# `memories.source` alone distinguishes a manufactured origin from an observed
-# one without joining anything.
-RESEARCH_SOURCE = "research"
-
-AUTO_RESEARCH_CONFIG_KEY = "auto_research"
+# `RESEARCH_SOURCE` and `AUTO_RESEARCH_CONFIG_KEY` are re-exported from
+# `research_config` above, not defined here: recognising a researched row and
+# reading the loop's switch are both things a surface may do without
+# importing the loop (T3.28).
 
 # Mirrors `client_identity._sanitize_origin`'s own bound. Emitting a longer id
 # would hand that function the merge boundary; emitting exactly its bound, over

@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.api.deps import get_analytics_service
 from app.utils.background import spawn
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
@@ -26,6 +27,8 @@ from app.services.config import (
     PURPOSES,
     cfg_to_schema,
 )
+from app.services import research_rerun
+from app.services.analytics import AnalyticsService
 from app.services.research_config import (
     load_budget as load_research_budget,
     write_auto_research_config,
@@ -418,6 +421,123 @@ async def update_auto_research(
         enabled=budget.enabled,
         max_findings_per_run=budget.max_findings_per_run,
         max_content_chars=budget.max_content_chars,
+    )
+
+
+class ResearchRunSummaryResponse(BaseModel):
+    """One filed run. `occurred_at` rides back to the re-run deliberately —
+    `events` is partitioned by month under a composite `(id, created_at)` key,
+    so the caller returning the bound it was given is what prunes the lookup to
+    one partition instead of scanning every month (T2.13's undo discipline)."""
+
+    event_id: int
+    occurred_at: datetime
+    run_id: str | None
+    subject: str
+    project: str
+    filed: int
+    live: int
+
+
+class ResearchRunListResponse(BaseModel):
+    items: list[ResearchRunSummaryResponse]
+    total: int
+
+
+class ResearchRerunRequest(BaseModel):
+    occurred_at: datetime
+
+
+class ResearchRerunResponse(BaseModel):
+    """What the re-derivation touched, including what it could not.
+
+    `filed` versus `reprocessed` is reported rather than reconciled: a run
+    whose memories were deleted re-derives fewer than it filed, and the
+    operator sees that instead of a clean line."""
+
+    event_id: int
+    subject: str
+    project: str
+    filed: int
+    reprocessed: int
+    missing: int
+    #: Of the missing, those still in the capture buffer rather than deleted.
+    pending: int
+    errors: int
+
+
+@router.get("/auto-research/runs", response_model=ResearchRunListResponse)
+async def list_auto_research_runs(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Research runs already filed. Read-only, and available whether or not the
+    loop is armed — what a past run did is history, not a switch."""
+    runs, total = await research_rerun.list_research_runs(
+        session, limit=limit, offset=offset
+    )
+    return ResearchRunListResponse(
+        items=[
+            ResearchRunSummaryResponse(
+                event_id=run.event_id,
+                occurred_at=run.occurred_at,
+                run_id=run.run_id,
+                subject=run.subject,
+                project=run.project,
+                filed=run.filed,
+                live=run.live,
+            )
+            for run in runs
+        ],
+        total=total,
+    )
+
+
+@router.post("/auto-research/runs/{event_id}/rerun", response_model=ResearchRerunResponse)
+async def rerun_auto_research_run(
+    event_id: int,
+    body: ResearchRerunRequest,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+    analytics: AnalyticsService = Depends(get_analytics_service),
+):
+    """Re-derive the run's surviving evidence.
+
+    **This files nothing and gathers nothing**, which is what lets it sit on
+    REST at all: doc 09 §6 keeps `research_run` on MCP because the caller must
+    be the gatherer, and a re-derivation has no gatherer to be. Nothing here
+    reaches `app.services.auto_research`, so invariant 15's scan needs no
+    second exemption and is given none.
+    """
+    try:
+        outcome = await research_rerun.rerun_research_run(
+            session,
+            event_id=event_id,
+            occurred_at=body.occurred_at,
+            reprocess=analytics.reprocess_selected,
+        )
+    except research_rerun.RerunUnavailable as exc:
+        # 503, matching the sibling `POST /analytics/reprocess`. A pipeline-less
+        # boot must not answer 200 with a zero tally, which reads to an
+        # operator as "there was nothing to do".
+        raise HTTPException(status_code=503, detail=str(exc))
+    except research_rerun.RerunRefused as exc:
+        # 409 when the run exists and its evidence is gone — that is a state,
+        # not a missing resource, and a 404 would tell the operator the run
+        # they are looking at does not exist.
+        status = 409 if exc.reason in ("no_evidence", "not_yet_materialised") else 404
+        raise HTTPException(status_code=status, detail=str(exc))
+    return ResearchRerunResponse(
+        event_id=outcome.event_id,
+        subject=outcome.subject,
+        project=outcome.project,
+        filed=outcome.filed,
+        reprocessed=outcome.reprocessed,
+        missing=outcome.missing,
+        pending=outcome.pending,
+        errors=outcome.errors,
     )
 
 

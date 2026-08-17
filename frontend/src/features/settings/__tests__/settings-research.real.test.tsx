@@ -18,9 +18,9 @@ import { ResearchTab } from "../components/research-tab"
  * "disarmed" as a warning would push an operator toward arming a loop they had
  * not decided to arm.
  *
- * The trigger half is deliberately absent and its absence is asserted: a UI
- * button cannot gather evidence, and a button that made the server gather is
- * the shape doc 09 §6 refuses.
+ * The trigger half is a **re-derivation**, and these tests pin the distinction
+ * that shape rests on: re-running must not gather, must not file, and must
+ * refuse a run whose evidence is gone rather than render an empty success.
  */
 
 const DISARMED = {
@@ -37,9 +37,34 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-function mockApi(config: unknown = DISARMED) {
+const RUNS = {
+  items: [
+    {
+      event_id: 7,
+      occurred_at: "2026-08-14T09:00:00Z",
+      run_id: "r-1",
+      subject: "pgvector HNSW",
+      project: "default",
+      filed: 7,
+      live: 7,
+    },
+    {
+      event_id: 4,
+      occurred_at: "2026-08-12T09:00:00Z",
+      run_id: "r-0",
+      subject: "uv vs pip",
+      project: "default",
+      filed: 4,
+      live: 0,
+    },
+  ],
+  total: 2,
+}
+
+function mockApi(config: unknown = DISARMED, runs: unknown = RUNS) {
   vi.mocked(apiFetch).mockImplementation((path: string) => {
     if (path === "/config/auto-research") return Promise.resolve(config)
+    if (path === "/config/auto-research/runs") return Promise.resolve(runs)
     return Promise.reject(new Error(`unexpected apiFetch(${path})`))
   })
 }
@@ -142,13 +167,13 @@ describe("ResearchTab — the budgets", () => {
   })
 })
 
-describe("ResearchTab — the trigger half is absent on purpose", () => {
-  it("offers no run control", async () => {
+describe("ResearchTab — the trigger re-derives, it does not gather", () => {
+  it("offers no control that would make the server gather", async () => {
     mockApi()
     render(<ResearchTab />, { wrapper })
     await waitFor(() => expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0))
 
-    for (const label of [/Run research/i, /Trigger/i, /Gather/i]) {
+    for (const label of [/Run research/i, /Gather/i, /Search the web/i]) {
       expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument()
     }
   })
@@ -158,6 +183,92 @@ describe("ResearchTab — the trigger half is absent on purpose", () => {
     render(<ResearchTab />, { wrapper })
     await waitFor(() =>
       expect(screen.getByText(/evidence an MCP agent gathered/)).toBeInTheDocument(),
+    )
+  })
+
+  it("re-derives a run against the timestamp the listing gave it", async () => {
+    mockApi()
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
+
+    // The composite-key bound rides back verbatim: `events` is partitioned by
+    // month, and a re-run that sent only the id would scan every child.
+    await waitFor(() =>
+      expect(apiFetch).toHaveBeenCalledWith("/config/auto-research/runs/7/rerun", {
+        method: "POST",
+        body: JSON.stringify({ occurred_at: "2026-08-14T09:00:00Z" }),
+      }),
+    )
+  })
+
+  it("refuses a run whose evidence is gone instead of offering an empty re-run", async () => {
+    mockApi()
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("uv vs pip")).toBeInTheDocument())
+
+    const dead = screen.getByRole("button", { name: "Nothing to re-derive" })
+    expect(dead).toBeDisabled()
+  })
+
+  it("reports what it could not reach beside what it did", async () => {
+    mockApi()
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/config/auto-research") return Promise.resolve(DISARMED)
+      if (path === "/config/auto-research/runs") return Promise.resolve(RUNS)
+      if (path === "/config/auto-research/runs/7/rerun") {
+        return Promise.resolve({
+          event_id: 7, subject: "pgvector HNSW", project: "default",
+          filed: 7, reprocessed: 5, missing: 2, pending: 0, errors: 0,
+        })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
+
+    // A run that re-derived fewer rows than it filed must say so: silently
+    // reporting 5 of 5 would describe a corpus that is not there.
+    await waitFor(() =>
+      expect(screen.getByText(/re-derived 5 of 7 filed/)).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/2 no longer exist/)).toBeInTheDocument()
+  })
+
+  it("distinguishes rows still in the capture buffer from rows that are gone", async () => {
+    // "not yet materialised" and "deleted" are different facts, and only the
+    // second is unrecoverable. A run whose captures are queued — or settled
+    // into buffer error awaiting triage — must not be reported as lost.
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/config/auto-research") return Promise.resolve(DISARMED)
+      if (path === "/config/auto-research/runs") return Promise.resolve(RUNS)
+      if (path === "/config/auto-research/runs/7/rerun") {
+        return Promise.resolve({
+          event_id: 7, subject: "pgvector HNSW", project: "default",
+          filed: 7, reprocessed: 4, missing: 3, pending: 2, errors: 0,
+        })
+      }
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() => expect(screen.getByText("pgvector HNSW")).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-derive" }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/1 no longer exist/)).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/2 still in the capture buffer/)).toBeInTheDocument()
+  })
+
+  it("an empty install says so rather than rendering an empty table", async () => {
+    mockApi(DISARMED, { items: [], total: 0 })
+    render(<ResearchTab />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByText(/no research run has been filed/)).toBeInTheDocument(),
     )
   })
 })
