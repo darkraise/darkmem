@@ -97,6 +97,47 @@ was written by hand on the owner's 2026-08-17 ruling and is not in
 at a local Ollama model, not at the `gpt-5.5` identity `fd39e7b2c47fa375` the
 minted record binds to.
 
+## Repair executed, 2026-08-17
+
+Owner-authorised the same day ("drop and recreate now", plus "interim deploy, tag
+later"). What ran, in order:
+
+1. Full `pg_dump` to `/root/darkmem-backups/pre-v1.0-schema-repair-2026-08-17.sql`;
+   the eight `llm_purpose_configs` rows and the `admin_password_hash` row captured
+   separately as column-inserts for restore.
+2. Image built from `master` at `25e4b41c`, tagged `v1.0-rc-schema-repair`,
+   `25e4b41c` and `latest`. **Built with `DARKMEM_PUSH=0` and not pushed** —
+   runbook §7 forbids publishing to any registry.
+3. API stopped, database dropped and recreated, API started on the new image;
+   `entrypoint.sh`'s `alembic upgrade head` laid down the current baseline.
+4. Admin hash and all eight purpose rows restored, `verification` among them at
+   the qualified `gpt-5.5` identity.
+
+Verified after: `/health` returns `{"status":"ok","pipeline":true,...}`; all five
+previously-missing columns present; the exact query that had been failing now
+succeeds; every job loop started, `article_synthesis` included; and
+`promotion_metrics_record.json` **is now in the running image for the first
+time**, so G-C's promoted and born fact statuses reach production readers.
+
+`verification_qualification.entailment.json` is still absent from the image — it
+lives on the unmerged `feat/t2.124-fresh-gold` branch and arrives with that merge
+and the next deploy. Until then production resolves the `verification` purpose
+correctly and still cannot serve a grounded label.
+
+`auto_research` was then written as `{"enabled": true, "max_findings_per_run": 20,
+"max_content_chars": 8000}` and confirmed read back as
+`ResearchBudget(enabled=True, ...)`.
+
+**Arming is not driving, and the G-E plan should not be read as if it were.** The
+loop ships with no `JobRegistry` job on purpose — a cron'd research pass would
+refetch the same sources every tick, which is the manufactured-corroboration
+hazard the origin rule exists to prevent. Its one door is MCP `research_run`, and
+`ResearchGatherer` has no in-tree implementation by design, so **the caller must
+be the gatherer**. Nothing in production will now produce a research origin on its
+own. Growing the G-E corpus is a standing operational commitment — an MCP agent
+with real web access filing real findings, repeatedly, over weeks — not a
+configuration state that has been reached.
+
 ## What should exist and does not
 
 A check that a deployed database's schema matches the baseline the running image
