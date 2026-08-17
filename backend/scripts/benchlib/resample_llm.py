@@ -186,6 +186,19 @@ def main(argv: list[str] | None = None) -> int:
         help="persist the resample block into gold.json (default: measure only)",
     )
     ap.add_argument(
+        "--force", action="store_true",
+        help=(
+            "record over an existing resample block. Lawful for one case only: "
+            "the gold's PAIRS have moved since the prior sitting, so that "
+            "sitting certifies a set that no longer exists. The prior block is "
+            "kept under 'supersedes', never dropped, and the content-hash leg "
+            "of gate_eligibility is what proves the move rather than this flag "
+            "asserting it. Never use it to re-sit the same pairs for a better "
+            "number: one sitting is recorded once per draw, and that is the "
+            "whole point of the guard this opens."
+        ),
+    )
+    ap.add_argument(
         "--from-raw", default=None, metavar="PATH",
         help=(
             "score and record a sitting that ALREADY HAPPENED, from its raw "
@@ -294,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {d}")
 
     if args.write_gold:
-        resample_score.write_resample(gold_path, block)
+        resample_score.write_resample(gold_path, block, force=args.force)
         print(f"\nresample block written to {gold_path}")
     else:
         print("\nmeasure-only: pass --write-gold to record this into gold.json")

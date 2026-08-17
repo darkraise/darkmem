@@ -190,8 +190,18 @@ def test_the_real_gold_is_now_eligible_on_every_condition():
     # The certifying sitting, pinned: a non-Claude labeller, under the bar.
     resample = doc["resample"]
     assert resample["n"] == jq.RESAMPLE_N == 93
-    assert resample["disagreements"] == 0
-    assert "glm-5.2" in resample["performed_by"]
+    # **Exactly, not "within the bar".** The re-sitting after the 2026-08-17
+    # excluded-premise repair passed ON the bar (1 of 1 allowed), not under it,
+    # and a later change that quietly relaxed the file to 2 would otherwise be
+    # invisible. The one disagreement is eg-0423, uncorroborated: no other
+    # sitting has ever drawn that pair, which is the case the <= 1 bar exists
+    # for — as distinct from the case this round refused, where two independent
+    # instruments converged on one pair.
+    assert resample["disagreements"] == 1
+    assert "deepseek-v4-pro" in resample["performed_by"]
+    # The glm-5.2 certification of the pre-repair pair set is kept, not dropped.
+    assert len(resample["supersedes"]) == 1
+    assert "glm-5.2" in resample["supersedes"][0]["performed_by"]
 
 
 def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
@@ -464,9 +474,21 @@ def test_the_real_gold_carries_a_basis_that_re_derives():
     manifest = json.loads(
         (gold_path.parent / "resample_manifest.json").read_text(encoding="utf-8")
     )
+    # **The drawn file's own resample state, not "no resample state".** The
+    # first certification drew against a file that carried none, so stripping
+    # the key reproduced it. A *re*-certification draws against a file still
+    # carrying the sitting it will supersede, so the drawn bytes include that
+    # block — reconstructing without it cannot match, and the mismatch would
+    # read as "the pairs moved" when nothing moved at all.
+    prior = on_disk["resample"].get("supersedes") or []
+    if prior:
+        drawn_state = dict(stripped)
+        drawn_state["resample"] = prior[-1]
+    else:
+        drawn_state = stripped
     reconstructed = hashlib.sha256(
         (
-            json.dumps(stripped, indent=DRAWN_FILE_INDENT, ensure_ascii=False)
+            json.dumps(drawn_state, indent=DRAWN_FILE_INDENT, ensure_ascii=False)
             + "\n"
         ).encode("utf-8")
     ).hexdigest()
