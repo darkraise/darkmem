@@ -1,0 +1,9 @@
+{
+  "id": "eg-0721",
+  "premise": "quota-watcher deployed on cpu",
+  "hypothesis": "quota-watcher runs on cpu",
+  "verdict": "entailed",
+  "slice": "paraphrase",
+  "rationale": "General procedure 3 tolerates rewording (voice/lexical substitution) without strengthening; 'runs on' is a bare-verb paraphrase of 'deployed on' that introduces no sortal noun for either entity, so the bare-sortal clause's partitioning-noun hazard (e.g. calling 'cpu' a 'machine' or 'host') is avoided entirely rather than needing to be earned.",
+  "attestation": "This session I read only: (1) the task prompt itself, and (2) scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md (the labelling rulebook), which was loaded in full via the Read tool. I read no other file, ran no Bash/Grep/Glob commands, and did not list or open any other path under /root/repositories/ or elsewhere. I have no prior knowledge from this session of any other material in this repository relevant to this labelling task."
+}

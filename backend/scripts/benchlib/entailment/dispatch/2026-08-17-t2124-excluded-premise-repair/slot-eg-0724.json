@@ -1,0 +1,11 @@
+{
+ "id": "eg-0724",
+ "slice": "paraphrase",
+ "verdict": "entailed",
+ "premise": "lb-01 deployed on memgraph",
+ "triple_key": "a38cfcac-f10c-5ed3-bb2d-b28b7035b3f8",
+ "rel_type": "DEPLOYED_ON",
+ "subject_name": "lb-01",
+ "object_name": "memgraph",
+ "project": "default"
+}
