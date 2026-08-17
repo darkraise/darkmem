@@ -63,6 +63,7 @@ def _valid_pair(**overrides) -> dict:
         "hypothesis": "some claim",
         "verdict": "entailed",
         "provenance": "hand-authored-fixture-span",
+        "slice_tags": ["verbatim"],
         "premise_spans": [{"fixture_path": "a", "content_hash": "b",
                             "block_id": "c", "char_span": [0, 1]}],
     }
@@ -133,6 +134,11 @@ def _pair(**overrides):
         "id": "p1",
         "verdict": "entailed",
         "provenance": "hand-authored-fixture-span",
+        # Required since 2026-08-17: a pair with no slice_tags used to score
+        # into the aggregate and into no slice, hiding itself from every
+        # per-slice number. Every real fixture pair already carried it; only
+        # this minimal helper did not, which is why the hole survived.
+        "slice_tags": ["verbatim"],
         "premise_spans": [{"fixture_path": "a", "content_hash": "b",
                             "block_id": "c", "char_span": [0, 1]}],
     }
@@ -150,15 +156,67 @@ def test_validate_pair_shape_rejects_unknown_provenance():
         fg.validate_pair_shape(_pair(provenance="vibes"))
 
 
-@pytest.mark.parametrize("provenance", sorted(fg.RESERVED_ZERO_PROVENANCE))
-def test_validate_pair_shape_refuses_reserved_zero_provenance(provenance):
-    with pytest.raises(ValueError, match="reserves at zero"):
-        fg.validate_pair_shape(_pair(provenance=provenance))
+@pytest.mark.parametrize("provenance", ["document-span", "qa-draft"])
+def test_real_provenances_are_accepted_since_the_owner_ruled(provenance):
+    """The owner ruled 2026-08-17: the gold uses real block spans and QA drafts.
+
+    This replaces a test that parametrized over ``RESERVED_ZERO_PROVENANCE`` and
+    asserted each value was refused. Emptying that set to lift the reservation
+    would have left that test generating **zero cases and passing vacuously** —
+    green while asserting nothing, the same shape as a suite that never signs
+    in. So the assertion is inverted rather than deleted: the two values a
+    reservation used to forbid are now positively required to load.
+    """
+    fg.validate_pair_shape(_pair(provenance=provenance))  # must not raise
+
+
+def test_nothing_is_reserved_at_zero_any_more():
+    # A non-empty set here means someone re-reserved a provenance; the ruling
+    # that lifted it is the owner's, so re-reserving is theirs too.
+    assert fg.RESERVED_ZERO_PROVENANCE == frozenset()
 
 
 def test_validate_pair_shape_rejects_empty_premise_spans():
     with pytest.raises(ValueError, match="no premise spans"):
         fg.validate_pair_shape(_pair(premise_spans=[]))
+
+
+# ── slice_tags: the field nothing used to check ───────────────────────────
+
+
+def test_validate_pair_shape_rejects_missing_slice_tags():
+    """The load-bearing one. A pair with no ``slice_tags`` scored into the
+    aggregate and into no slice at all, so it was invisible in every per-slice
+    number while still moving the headline — ledger rule 4's collapse, arriving
+    through a hole rather than a decision."""
+    pair = _pair()
+    del pair["slice_tags"]
+    with pytest.raises(ValueError, match="slice_tags"):
+        fg.validate_pair_shape(pair)
+
+
+@pytest.mark.parametrize("bad", [[], "verbatim", None, {}])
+def test_validate_pair_shape_rejects_non_list_or_empty_slice_tags(bad):
+    # A bare string is the subtle one: `for tag in "verbatim"` iterates
+    # characters, so it would have minted eight single-letter phantom slices.
+    with pytest.raises(ValueError, match="slice_tags"):
+        fg.validate_pair_shape(_pair(slice_tags=bad))
+
+
+@pytest.mark.parametrize("bad", ["", "   ", 7])
+def test_validate_pair_shape_rejects_a_blank_or_non_string_tag(bad):
+    with pytest.raises(ValueError, match="slice tag"):
+        fg.validate_pair_shape(_pair(slice_tags=[bad]))
+
+
+def test_every_scored_pair_lands_in_at_least_one_slice():
+    """The property the validation exists to buy: per-slice counts must account
+    for every scored pair. Asserted over the fixture gold rather than over a
+    hand-made pair, so it also catches a fixture that drifts."""
+    scored = fg.score_span_judgments(PAIRS, perfect_verdicts(PAIRS))
+    per_slice_total = sum(bucket["n"] for bucket in scored.per_slice.values())
+    assert per_slice_total >= scored.n_pairs
+    assert all(pair.get("slice_tags") for pair in PAIRS)
 
 
 def test_validate_pair_shape_accepts_a_well_formed_pair():

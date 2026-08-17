@@ -63,13 +63,24 @@ SPAN_VARIANT = "claim-span"
 # contradiction discrimination over spans, unlike the claim/fact gold.
 SPAN_VERDICTS = frozenset({"entailed", "not-entailed"})
 
-# TH1.01 §5 item 5. document-span/qa-draft are reserved at zero until
-# TH1.02+ / TH1.08 exist; a pair claiming one is a structural violation
-# this loader refuses rather than silently accepting.
+# TH1.01 §5 item 5. `document-span` and `qa-draft` were reserved at zero
+# "until their producer task exists" — TH1.02 (documents/blocks writer) and
+# TH1.08 (grounded Q&A) both shipped in v1.0, and **the owner ruled on
+# 2026-08-17 that the gold uses real block spans and real QA drafts**, so the
+# reservation is lifted rather than merely expired.
+#
+# The reservation was not arbitrary and lifting it is not a relaxation: doc 17
+# §6's recorded stance is that this gold is seeded from real block answers and
+# that *synthetic-only entailment gold is rejected as unrepresentative*. While
+# the producers did not exist, `hand-authored-fixture-span` was the only honest
+# option; now that they do, authoring only fixtures would produce exactly the
+# gold that stance rejects. Nothing here forbids a fixture pair — the
+# distribution is the owner's to compose — but a real span is no longer a
+# structural violation.
 PROVENANCE_VALUES = frozenset(
     {"hand-authored-fixture-span", "document-span", "qa-draft"}
 )
-RESERVED_ZERO_PROVENANCE = frozenset({"document-span", "qa-draft"})
+RESERVED_ZERO_PROVENANCE: frozenset[str] = frozenset()
 
 # The collapsing rule G-D's own scorer uses for the claim/fact gold,
 # imported rather than re-declared: "entailed" is the only grounded verdict.
@@ -175,6 +186,30 @@ def validate_pair_shape(pair: dict) -> None:
         )
     if not pair.get("premise_spans"):
         raise ValueError(f"pair {pair.get('id')!r} carries no premise spans")
+
+    # `slice_tags` was checked nowhere while `score_span_judgments` read it as
+    # `pair.get("slice_tags", [])`. Two silent failures followed from that, and
+    # both are invisible in the report rather than loud: a pair with the field
+    # MISSING scored into the aggregate and into no slice at all, and a typo'd
+    # tag minted a phantom slice of one. Ledger rule 4 is that per-slice numbers
+    # are never collapsed — a gold that quietly drops pairs out of every slice
+    # collapses them by omission, which is the same dishonesty arriving through
+    # a hole instead of a decision. The vocabulary itself stays the gold's to
+    # define (its LABELLING.md), so this checks shape and non-emptiness, not
+    # membership.
+    tags = pair.get("slice_tags")
+    if not isinstance(tags, list) or not tags:
+        raise ValueError(
+            f"pair {pair.get('id')!r} carries slice_tags {tags!r}; it must be a "
+            "non-empty list. A missing or empty value scores into the aggregate "
+            "and into no slice, which hides the pair from every per-slice number"
+        )
+    for tag in tags:
+        if not isinstance(tag, str) or not tag.strip():
+            raise ValueError(
+                f"pair {pair.get('id')!r} carries a non-string or blank slice "
+                f"tag {tag!r}; a blank tag becomes its own phantom slice"
+            )
 
 
 def load_span_gold(path: str | Path = SPAN_GOLD_PATH) -> dict:
