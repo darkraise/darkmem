@@ -112,44 +112,122 @@ def test_round2_assignment_respects_the_cap_over_existing_usage():
 
 
 def test_committed_l2_pairs_sit_on_assigned_slots():
-    """The anti-curation property: every appended l2-fact pair's
-    (slice, premise) is one a seeded assignment handed its author. Skips
-    only remove assigned slots (logged in LABELLING.md); nothing may add a
-    hand-picked premise under the l2 provenance.
+    """The anti-curation property: every live l2-fact pair's (slice, premise)
+    is one a seeded assignment handed its author. Skips only remove assigned
+    slots (logged in LABELLING.md); nothing may add a hand-picked premise
+    under the l2 provenance.
 
-    The union of every round's assignment, not round 2's alone. T2.115
-    appended nine l2 pairs from its own seeded round-3 assignment, and
-    checking them against round 2's slots reported them as curated when they
-    were nothing of the kind — the property is "some seeded assignment handed
-    this out", and each round has its own seed by construction.
+    **Checked per round against that round's own assignment, not against the
+    union of every assignment ever built.** The union form was right while one
+    file accumulated rounds 2 and 3: each round has its own seed, so checking
+    T2.115's nine appended pairs against round 2's slots reported them as
+    curated when they were nothing of the kind. Round 4 replaced the file
+    rather than appending to it, and under a replacement the union inverts —
+    rounds 2 and 3 assigned premises for pairs that no longer exist, so every
+    slot they contribute is a slot a round-4 pair could match without its own
+    assignment ever having handed it out. The archive holds the earlier
+    rounds' pairs and the property is asserted there by its own round's
+    artifacts; here the population is round 4's and so is the assignment.
+
+    Scoped to the **authored** census, because the assignment only ever
+    covered that: the seeded draw ran once, before authoring, and a pair
+    minted afterwards to replace a retired one has no slot in it by
+    construction. Those are checked by the test below instead.
     """
     import json
 
-    from benchlib.entailment_assignment import (
-        ROUND2_MAX_EXISTING_ID, build_round2_assignment,
-    )
+    from benchlib.entailment_assignment import build_round4_assignment
     from benchlib.entailment_gold import GOLD_PATH
 
     gold_doc = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
-    assignment = build_round2_assignment(load_l2_harvest(), gold_doc)
-    # Round 3 from its committed artifact rather than rebuilt: the round
-    # consumed the harvest capacity the builder computes from, so rebuilding
-    # against the post-round file raises (correctly -- there is no capacity for
-    # a fresh round). The artifact is checkable end to end: reproduce the
-    # retirement with `lattice_retirement.draw`, take the post-retirement
-    # sha256 as the seed, rebuild.
-    round3 = json.loads(
-        (GOLD_PATH.parent / "round3_assignment.json").read_text(encoding="utf-8")
+    assigned = Counter(
+        (e["slice"], e["fact"]) for e in build_round4_assignment()
     )
-    assignment += [e for e in round3["slots"] if e["fact"] is not None]
-    assigned = Counter((e["slice"], e["fact"]) for e in assignment)
 
     committed = Counter(
         (p["slice_tags"][0], p["premise"])
         for p in gold_doc["pairs"]
-        if p["id"] > ROUND2_MAX_EXISTING_ID
+        if p["id"] <= _last_authored_id()
         and not p.get("retired")
         and p["provenance"] == "l2-fact"
     )
+    assert committed, "the round's l2 population must not be empty"
     overdrawn = committed - assigned
     assert not overdrawn, f"l2 pairs off the seeded assignment: {overdrawn}"
+
+
+def _last_authored_id() -> str:
+    """The last id the seeded authoring minted, derived from the ratified
+    frame rather than read off the file it bounds.
+
+    Ids are consecutive from the round's first fresh id, and the frame's total
+    is how many the round authored, so the boundary between "assigned" and
+    "minted as a replacement" is a property of two committed artifacts and not
+    of anyone's memory of which commit ended the authoring batch.
+    """
+    import json
+
+    from benchlib import round4_frame
+    from benchlib.entailment_assignment import ROUND4_FIRST_FRESH_ID
+
+    frame = json.loads(round4_frame.FRAME_PATH.read_text(encoding="utf-8"))
+    first = int(ROUND4_FIRST_FRESH_ID.split("-")[1])
+    return f"eg-{first + frame['total'] - 1:04d}"
+
+
+def test_every_pair_past_the_authored_census_answers_a_retirement():
+    """The replacement population, bounded so the exemption above cannot grow.
+
+    Adjudication retires a pair whose recorded label a later rule condemns,
+    and file discipline forbids flipping it in place — the slice contract and
+    the ratified matrix both depend on the cell counts — so the retirement is
+    answered by a freshly minted pair. Those pairs sit past the authored
+    range and their premises are chosen under the rule each minting commit
+    records (a manifest fact funding no other slot of the same verdict, or a
+    hand-authored premise where the slice has no manifest source), never by
+    the seeded assignment, which ran once before authoring and was consumed.
+
+    What keeps that from being an open door: minting a replacement is only
+    lawful as the answer to a retirement, so the two populations are the same
+    size. A curated pair added under no retirement lands here as a count
+    mismatch.
+    """
+    import json
+
+    from benchlib.entailment_gold import GOLD_PATH
+
+    gold_doc = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    last_authored = _last_authored_id()
+    minted = [p for p in gold_doc["pairs"] if p["id"] > last_authored]
+    retired = [p for p in gold_doc["pairs"] if p.get("retired")]
+
+    assert len(minted) == len(retired), (
+        f"{len(minted)} pairs minted past {last_authored} against "
+        f"{len(retired)} retirements — a replacement is lawful only as the "
+        "answer to a retirement, and the counts are what say so"
+    )
+    # A replacement never reaches outside the round's two premise sources.
+    assert {p["provenance"] for p in minted} <= {
+        "l2-fact", "hand-authored-synthetic-fact"
+    }
+
+
+def test_no_live_pair_predates_the_round_4_population():
+    """The checks above are scoped to round 4's ids, so they are exhaustive
+    only while the file holds nothing older. A later round that appends rather
+    than replaces must extend the scoping, not inherit it silently."""
+    import json
+
+    from benchlib.entailment_assignment import ROUND4_FIRST_FRESH_ID
+    from benchlib.entailment_gold import GOLD_PATH
+
+    gold_doc = json.loads(GOLD_PATH.read_text(encoding="utf-8"))
+    older = [
+        p["id"] for p in gold_doc["pairs"]
+        if not p.get("retired") and p["id"] < ROUND4_FIRST_FRESH_ID
+    ]
+    assert not older, (
+        f"live pairs predate {ROUND4_FIRST_FRESH_ID}: {older}. The assignment "
+        "checks above cover round 4's ids only; widen them to the rounds whose "
+        "pairs are now live before this pin is relaxed."
+    )

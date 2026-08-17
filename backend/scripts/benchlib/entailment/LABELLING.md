@@ -998,11 +998,15 @@ the `l2-fact` count moved: 218 of 280 live pairs anchor manifest facts
 (floor 140). Verbatim reasons, slot files and author attestations:
 `dispatch/2026-08-14-t2124/` (04/05).
 
-- **15 value-swap slots on multi-valued relations** (`USES`, `DEPENDS_ON`,
+- **18 value-swap slots on multi-valued relations** (`USES`, `DEPENDS_ON`,
   `CAUSES`, `RELATED_TO`) — the named known-infeasible shape; found
   independently by six blind authors: eg-0444, eg-0457, eg-0461, eg-0462,
-  eg-0491, eg-0494, plus n3's third variant, eg-0518, eg-0526, eg-0533,
-  eg-0537, eg-0542, eg-0579, eg-0583, eg-0588, eg-0645, eg-0646, eg-0647.
+  eg-0491, eg-0494, plus n3's third variant (eg-0502), eg-0518, eg-0526,
+  eg-0533, eg-0537, eg-0542, eg-0579, eg-0583, eg-0588, eg-0645, eg-0646,
+  eg-0647. **This bullet read "15" until 2026-08-17 while listing 18 slots**,
+  so the three sub-counts summed to 18 against a stated total of 21; the
+  total was right and the sub-count was not. Found by step 12, deriving the
+  provenance pin from this log rather than from the gold it describes.
 - **2 direction slots whose shared-premise differentiation note could not be
   met** (the hypothesis is determined by the premise; rewording the reversal
   is barred): eg-0488, eg-0500.

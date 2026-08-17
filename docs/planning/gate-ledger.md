@@ -2300,6 +2300,73 @@ re-ratified. The generator defect is R5's, ratified the same day through
 sitting 1's channel and inert until round 5. Evidence:
 `entailment/dispatch/2026-08-14-t2124-step9/`.
 
+### T2.124 step 12 — certification stamped, composition pins re-derived (2026-08-17)
+
+**The certified sitting.** n = 93, **0 disagreements** against a bar of 1, seed
+`369569686`, labeller **glm-5.2** (non-Claude), 2026-08-17. Recorded
+`--from-raw` off the sitting that was actually read, never by a second run:
+`--write-gold` re-sits the model, and an LLM sitting is not reproducible, so a
+re-run would certify a sitting nobody inspected. **The caveat the pass does not
+retire:** every pair was authored and adjudicated by Claude-family agents, so
+this measures inter-model agreement more than label truth — the runner's own
+docstring says so, and glm-5.2 has now joined the circularity-compromised set
+for T2.125's judge choice.
+
+**Both shas, as D-8 requires.** The stamp moves the file and not the pairs:
+
+| Basis | Value | What it binds |
+|---|---|---|
+| `gold_sha256` (drawn state) | `16072f9688209c89…` | the Layer-3 draw's seed |
+| file sha (certified) | `9587dc0f4b3563b0…` | nothing; it is an artifact of the write |
+| `pairs_sha256` (content) | `01a1bbc5508b8288…` | the certification, per T2.116 |
+
+**A second reason the two file shas differ, found here and recorded rather than
+smoothed.** Round 4's gold was authored at `indent=1`; `resample_score.write_gold`
+emits `indent=2`, so the certification write reformatted every line of a file
+whose bytes a draw seed depends on. Content is provably untouched — `pairs_sha256`
+and every `pair_digests` entry re-derive — and the drawn state reconstructs
+exactly at the drawn indent, which `test_the_real_gold_carries_a_basis_that_re_derives`
+now does, checking the seed as well as the sha. **The writer is still
+formatting-blind**, so the next round's certification will do the same thing to
+whatever indent that round used; closing it means teaching `write_gold` to
+preserve the file's existing serialisation, and that is not a change to make
+inside a certified round.
+
+**Composition pins are now derivations, not transcriptions.** `DOCUMENTED_SLICE_COUNTS`
+and `DOCUMENTED_VERDICT_COUNTS` are read off the ratified `round4_frame.json`;
+`DOCUMENTED_PROVENANCE_COUNTS` is computed as the seeded assignment's slot count
+minus the logged skips (239 − 21 = 218 `l2-fact`, 62 hand-authored, floor 140).
+The old tables were copied from the file they check, so a drift and its pin moved
+together. Two pins that used to name the retired set's debt now assert its
+absence: the byte-level duplicate screen finds **none** where R-B recorded nine,
+and the contradicted census is 80 rows over 80 propositions where it was 80 over 78.
+
+**Three pins were re-derived rather than re-numbered, because the fresh set
+changed what they are about.** Rule B's population now *coincides* with the
+pooled one (LABELLING.md's ratified reading for a gold with no contacted pairs),
+so the proper-subset assertion became a two-branch one. The lattice-retirement
+draw has no eligible pool in the live file — nothing is contacted — so its guards
+run against the archive, with a new test pinning that the live file is the
+reason. The anti-curation check is scoped to the authored census and the 17 live
+replacement pairs are bounded by a separate rule: minting one is lawful only as
+the answer to a retirement, and the counts (19 each) are what say so.
+
+**The sidecar is left unpruned on purpose.** Five of its 14 adjudicated
+components lost a member to the step-10/11 retirements, so `census_independence`
+now collapses 9 and the entailed census reads 110 rows over **101** propositions
+(effective bar 0.901 against 0.90). Pruning the file would delete the step-9
+adjudication record; the test asserts the relation between the record and the
+live set instead of two independent numbers.
+
+**Floor re-asserted, discharging step 4's exemption:** `./scripts/gate.sh` GREEN,
+891 benchlib tests passing, F1 bench at or above every G-B floor
+(entity name+type F1 = 0.912, relation F1 = 0.883, `deepseek-v4-flash`, algo-only).
+
+*Adjacent correction:* LABELLING.md's round-4 skip log said "15 value-swap slots"
+while listing 18, so its three sub-counts summed to 18 against a stated total of
+21. The total was right. Found by deriving the provenance pin from the log rather
+than from the gold it describes — which is the whole point of deriving it.
+
 ---
 
 ## G-E — L3 → F7
