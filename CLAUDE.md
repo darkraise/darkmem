@@ -62,8 +62,15 @@ behavior change, not a cleanup.
   yourself**, and re-seed `admin_password_hash` plus all eight
   `llm_purpose_configs` rows — the `verification` row especially, since
   `llm_seed.py` does not reproduce it at the qualified judge identity.
-  To detect drift: migrate a scratch database from the tree's baseline
-  and diff `information_schema.columns` against the live one.
+  **Since 2026-08-17 a boot check enforces this rather than trusting the
+  policy**: `app/schema_guard.py` runs from `entrypoint.sh` after the
+  migration, stamps a hash of the baseline file into the database it
+  migrated, and **refuses to start** when the two disagree — the revision
+  id cannot detect a regenerated baseline, but its content can. It fails
+  closed with no override flag, and **must be retired at the freeze**,
+  when revisions become additive and alembic's own comparison does the
+  job. Procedure, and the two rows a re-seed does NOT reproduce:
+  `docs/runbook-deployment.md`.
   Analysis: `docs/planning/analyses/2026-08-17-production-schema-drift.md`. Schema changes **serialise through one owner per
   epic**: the baseline is a single shared mutable file, so two lanes
   editing it conflict every time. The freeze is an **event, not a
