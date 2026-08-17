@@ -40,6 +40,73 @@ MINI_VERDICTS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _qualification_records_redirected(tmp_path_factory, monkeypatch):
+    """Point every role's canonical record at a throwaway directory.
+
+    The assertions in this file say "this run minted nothing at the canonical
+    location", and they said it by asking whether the real file exists. That
+    read whatever `app/services/` happened to contain — which was nothing, only
+    because no role had ever qualified. **T2.125 qualified the entailment role
+    on 2026-08-17 and four of those assertions inverted in one commit, none of
+    them about the mint.** They did not catch a regression; they stopped
+    testing the writer.
+
+    Redirecting makes "canonical" mean "the path the writer treats as
+    canonical" rather than "the path this checkout ships", so the refusal legs
+    are about the writer again and stay true whatever the tree holds. Same
+    medicine `conftest`'s `_corroboration_gate_closed_by_default` applies to
+    the G-C record, for the same reason.
+
+    What this deliberately stops covering is the SHIPPED records' own state — a
+    property of the artifacts, not of the writer — asserted directly below.
+    """
+    # Named `services/` on purpose: one leg of the minting lock spells the
+    # canonical location relatively as `parent/../services/<name>` to prove a
+    # dodged path is refused too, and that spelling has to resolve back to the
+    # same file for the leg to mean anything.
+    root = tmp_path_factory.mktemp("qualification") / "services"
+    root.mkdir()
+    for role in vj.QUALIFICATION_RECORD_PATHS:
+        monkeypatch.setitem(
+            vj.QUALIFICATION_RECORD_PATHS,
+            role,
+            root / f"verification_qualification.{role}.json",
+        )
+
+
+def test_the_shipped_qualification_records_are_what_the_ledger_claims():
+    """The artifacts themselves, at their real paths.
+
+    The autouse redirect above hides these from every other test here, so
+    without this one the shipped records would be covered by nothing in this
+    file.
+    """
+    services = pathlib.Path(vj.__file__).parent
+    contradiction = services / "verification_qualification.contradiction.json"
+    entailment = services / "verification_qualification.entailment.json"
+
+    # Contradiction recall has missed an unmoved 0.95 four times across two
+    # vendors. A record here would mean something minted it without a cleared
+    # run.
+    assert not contradiction.exists()
+
+    assert entailment.exists(), "T2.125 minted this; see the ledger's G-D entry"
+    record = json.loads(entailment.read_text(encoding="utf-8"))
+    assert record["role"] == "entailment"
+    assert record["gate_eligible"] is True
+    # The content basis, cross-checked against the live gold: a record whose
+    # pairs have moved since qualifies nothing (T2.116).
+    assert record["gold_pairs_sha256"] == entailment_gold.pairs_content_hash(
+        entailment_gold.load_entailment_gold()["pairs"]
+    )
+    assert set(record["bars_gating_this_role"]) == {
+        "groundedness_gate_precision_bar",
+        "groundedness_gate_recall_bar",
+    }
+
+
+
 def test_miniature_arithmetic_hand_computed():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     assert score.n_pairs == 8

@@ -2415,6 +2415,68 @@ digest pin covers all 415 distinct contents). And "sized so the bars are
 expressible" covers the two recall bars, never the two precision bars, whose
 denominators are judge-dependent.
 
+### G-D on the fresh gold (2026-08-17, T2.125): **the ENTAILMENT role CLEARS; the contradiction role does not. The minted record is inert in production.**
+
+Judge `gpt-5.5` at T2.114's exact invocation (`base_url=https://api.openai.com/v1`,
+`api_kind=openai`, `params={"reasoning_effort": "high"}`, identity
+`fd39e7b2c47fa375`, prompt_sha `f99151e4add69b31`) against T2.124's fresh gold,
+pairs `4748ac84960fed67`, 280 live pairs. Report:
+`docs/eval/2026-08-17-judge-qualification-fd39e7b2.md`.
+
+| Bar | Value | Measured | |
+|---|---|---|---|
+| `groundedness_gate_precision_bar` on `entailed_precision` | 0.95 | **0.9906** | PASS |
+| `groundedness_gate_recall_bar` on `entailed_recall` | 0.90 | **0.9545** | PASS |
+| `contradiction_precision_bar` on `contradiction_precision` | 0.70 | **0.9692** | PASS |
+| `contradiction_recall_bar` on `contradiction_recall` | 0.95 | **0.7875** | **FAIL** |
+
+**Both populations, not one.** Rule B's second population is all 280 live pairs —
+none was contacted before this attempt — so the pooled and Rule-B readings
+coincide and every number above holds on both, as LABELLING.md requires.
+
+**The pass is robust to the independence reading.** Entailed recall 0.9545 is
+105/110 on rows; on the 101 independent propositions the worst case is 96/101 =
+0.9505, still above 0.90. The entailed census carries 9 adjudicated duplicate
+components, disclosed rather than discovered later.
+
+**`contradicted → entailed` is ZERO.** R1 removed the only bar that bounded that
+leak into article coverage, so nothing else bounds it and the done-when requires
+it on the record. The judge never once read a contradicted pair as entailed: its
+80 contradicted rows split 63 correct / 17 to `unsupported`. The misses withhold
+rather than over-accept, which is the conservative direction for a groundedness
+label. 0 invalid responses over 280 pairs.
+
+**Contradiction recall got worse, not better.** 0.7875 here against 0.8875 pooled
+on the retired gold. Four measurements across two vendors now sit at 0.7937 /
+0.8814 / 0.8875 / 0.7875 against a 0.95 bar that has never moved and is not
+moving. Read plainly: the Tier-C scan has no qualified judge and this attempt
+does not change that.
+
+**THE RECORD IS MINTED AND INERT, and that is the finding.**
+`verification_qualification.entailment.json` exists with `gate_eligible: true`.
+But production's `llm_purpose_configs` holds **seven** purposes and
+`verification` is **not** among them — checked read-only on the live database
+2026-08-17. `judge()` resolves that purpose from the database, so with no row it
+cannot dispatch whatever the record says. This is exactly the done-when clause
+about confirming production carries the run's identity *before* minting, and the
+runner cannot do it: the report states in its own words that it reads no
+database. So the check is the task's, it was run after the mint rather than
+before, and it fails. **Nothing serves a grounded label today**, and the reason
+is a missing config row rather than a missing measurement.
+
+Writing that row points a production purpose at a paid vendor with a live
+credential. It is an operator act and is left to the owner rather than taken
+here.
+
+**What this entry does not do.** It does not clear G-D. Whether the gate clears
+on the entailment role alone or needs both is a gate-definition question, and
+taking it here — with the scoreboard showing exactly which half failed — is the
+move doc 17 §6 forbids and the 2026-08-12 ruling names ("re-cutting *to pass*
+unlocks what the failed bar protected"). It is escalated, unruled. The
+2026-08-12 expiry check still rides with it: if the contradiction role is never
+re-attempted within roughly two quarters of that entry, the per-role split reads
+retroactively as burial rather than separation.
+
 ---
 
 ## G-E — L3 → F7
