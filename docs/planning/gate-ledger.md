@@ -2367,6 +2367,54 @@ while listing 18, so its three sub-counts summed to 18 against a stated total of
 21. The total was right. Found by deriving the provenance pin from the log rather
 than from the gold it describes — which is the whole point of deriving it.
 
+### T2.124 step 14 — the retirement clause verified, round closed (2026-08-17)
+
+**Round report:** `docs/planning/2026-08-17-t2124-fresh-gold-round.md` — frame
+shas, skip log, agreement rates, the resample verdict, both classes' independence
+disclosures on both readings, and the residuals the pass does not retire.
+
+**D6 is satisfied by landed machinery, not re-implemented here.** Pair set
+`4975c5cc` is refused for **every** role at three sites, each test-pinned by
+T2.117: the harness before any model call
+(`test_the_runner_refuses_the_retired_pair_set_in_every_mode`), the writer
+(`test_the_writer_refuses_a_retired_pair_set_for_every_role`) and the app-side
+reader (`test_tripwire_the_retired_pair_set_is_refused_for_every_role`, with
+`test_a_record_on_the_retired_pair_set_qualifies_no_role` covering the record).
+Two further tests close the shapes that look like escapes: appending one pair
+moves the set hash while leaving every retired pair contactable
+(`test_appending_one_pair_does_not_un_retire_a_gold`), and the digest basis
+excludes the id, so a retired pair under a new name is still retired
+(`test_a_retired_pair_under_a_new_id_is_still_retired`).
+
+**`retired_pair_digests.json` is unchanged this round** — byte-identical
+(`1069b68e2cbe014f`) to its state before the round's first authoring commit, 415
+digests over `pairs_content_hash` `4975c5cc…`. And the fresh set does not
+reproduce a retired pair: `retired_pair_overlap` over *every* pair in the file,
+live and retired, is the **empty set**.
+
+**The claim the round exists to be able to make, stated plainly:** no judge model
+contacted any pair in this gold at any point in the round. Every label came from
+authoring, blind adjudication or an owner ruling; the only model to see a pair
+against its recorded label was the Layer-3 resample labeller, which is the
+certification instrument and files no qualification attempt.
+`count_gold_touching_attempts` — keyed on `pairs_sha256` since T2.116 — returns
+**0** against `01a1bbc5508b8288…` and **2** against the retired `4975c5cc…`, so
+the counter is answering rather than empty. Checked against the run ledger in the
+main checkout: `benchlib/runs/` is gitignored, so a worktree's copy is local and
+near-empty, and a reader who counts there will wrongly read 0 everywhere.
+
+**What the certification does not establish, carried here because a ledger reader
+may never open the round report.** Authors and both blind labellers are
+Claude-family agents, so this measures inter-model agreement more than label
+truth; genuine independence enters only at the one non-Claude resample. glm-5.2
+has therefore **joined the circularity-compromised set**, and T2.125 needs a
+fourth model — deepseek, gpt-5.5 and glm-5.2 are all now spent against this
+lineage. The near-screen covers the archive's *live* pairs only, so a rewording
+of one of its 15 lattice-retired pairs is unscreened (exact reuse is not: the
+digest pin covers all 415 distinct contents). And "sized so the bars are
+expressible" covers the two recall bars, never the two precision bars, whose
+denominators are judge-dependent.
+
 ---
 
 ## G-E — L3 → F7
