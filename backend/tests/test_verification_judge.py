@@ -1160,20 +1160,35 @@ def test_the_canonical_records_are_absent_on_this_branch(role):
     0.95, recall 0.9545 against 0.90, on both Rule-B populations — so that
     record now exists and is asserted rather than forbidden.
 
-    **The contradiction role stays absent, and that is the load-bearing half.**
-    Its recall measured 0.7875 against an unmoved 0.95, the fourth such miss
-    across two vendors (0.7937 / 0.8814 / 0.8875 / 0.7875). The 2026-08-12
-    ruling holds: the bar does not move, the role stays NOT CLEARED, and the
-    Tier-C scan stays dead. A record appearing here for `contradiction` without
-    a cleared run is the failure this pin exists for.
+    **Every other role stays absent, and that is the load-bearing half.**
+    `contradiction`'s recall measured 0.7875 against an unmoved 0.95, the fourth
+    such miss across two vendors (0.7937 / 0.8814 / 0.8875 / 0.7875). The
+    2026-08-12 ruling holds: the bar does not move, the role stays NOT CLEARED,
+    and the Tier-C scan stays dead. `faithfulness` (TH1.09) has never been
+    measured at all — G-F is open and its claim/span gold does not exist. A
+    record appearing for either without a cleared run is the failure this pin
+    exists for.
+
+    **Absent is the default, and the merge that made this test red is why.**
+    This asserted `contradiction` absent and *every other role present*, which
+    was true while `JUDGE_ROLES` held exactly two. TH1.09 then added
+    `faithfulness` on master, and merging the two composed a false assertion:
+    the pin demanded a record for a role no run has ever measured. Neither side
+    was wrong alone. So the minted set is now named explicitly and everything
+    else must be absent — a role added tomorrow defaults to "no record may
+    exist", which is the direction a zero-pin must fail in.
     """
     import json
 
+    # Roles whose record a cleared gate run has minted. Adding to this set is
+    # the deliberate diff the pin demands; it may only follow a ledger verdict.
+    MINTED = {vj.ENTAILMENT_ROLE}
+
     path = vj.qualification_record_path(role)
-    if role == "contradiction":
+    if role not in MINTED:
         assert not path.exists(), (
-            "a contradiction-role record exists; its bar has never been met, so "
-            "nothing may have minted this"
+            f"a {role!r}-role record exists; no cleared run has minted one, so "
+            "nothing may have written this"
         )
         return
 
