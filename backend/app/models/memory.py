@@ -93,8 +93,16 @@ class MemoryBuffer(Base):
     this tier exists so an accepted capture cannot be lost.
 
     ``id`` is minted by the caller at accept (UUIDv7) rather than defaulted here,
-    because a 202 has to hand back a real handle before the pipeline has run, and
-    that same id becomes the ``memories`` row's id at flush.
+    because a 202 has to hand back a real handle before the pipeline has run.
+
+    **It does not become the ``memories`` row's id** — the two are deliberately
+    distinct (doc 05 §2.2). This id tracks the buffer entry; the pre-minted
+    ``memories`` id rides ``metadata_["memory_id"]`` and is what the ack returns.
+    Read it through ``memory_buffer.buffered_memory_id``, never off ``row.id``.
+    This docstring claimed the opposite until 2026-08-17, contradicting both
+    doc 05 §2.2 and ``enqueue``'s own docstring; a query keyed on ``row.id``
+    silently matches nothing, which is exactly the defect T3.28's review caught
+    on the re-run path.
 
     Caller-supplied fields with no column of their own — ``memory_type``,
     ``tags``, ``importance``, ``expires_at``, ``source_agent``, ``origin_key`` —
