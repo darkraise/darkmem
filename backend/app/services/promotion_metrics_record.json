@@ -1,0 +1,63 @@
+{
+ "gate": "G-C",
+ "gate_eligible": true,
+ "owning_task": "T2.131",
+ "minted_at": "2026-08-16",
+ "minted_by": "gate owner, on the independent Step 5 verdict",
+ "git_sha": "cf20ce75c8427c72010dd289dcc1a3a9ba677835",
+ "corpus": {
+  "name": "promotion",
+  "sha256": "78dbc4c5c8756dcd",
+  "captures": 849
+ },
+ "scored_rule": "95% Clopper-Pearson upper bound on the false-promotion rate, strictly < verification_false_promotion_bar (T2.132, owner ruling 2026-08-15). The point estimate is context, not the rule.",
+ "passes": [
+  {
+   "name": "pass 1 - unsimulated capture clock",
+   "carries_the_target": true,
+   "database": "darkmem_bench_t2131",
+   "live_model_calls": 913,
+   "corroborations_in_window": 509,
+   "later_disputed": 1,
+   "later_human_rejected": 0,
+   "false_promotion_point_estimate": 0.0019646365422396855,
+   "false_promotion_upper_bound_95": 0.009286,
+   "bar": 0.01,
+   "gate_fired_buckets": {"diversity": [363, 363], "none": [146, 147]},
+   "journal_completeness": {"facts": 682, "born_rung_carve_out": 74, "violations": 0},
+   "note": "with the capture-clock simulation off the time_gap gate cannot fire at all, so its bucket is absent rather than small"
+  },
+  {
+   "name": "pass 2 - simulated capture clock",
+   "carries_the_target": false,
+   "database": "darkmem_bench_t2131sim",
+   "live_model_calls": 0,
+   "corroborations_in_window": 528,
+   "later_disputed": 1,
+   "later_human_rejected": 0,
+   "false_promotion_point_estimate": 0.001893939393939394,
+   "false_promotion_upper_bound_95": 0.008953,
+   "bar": 0.01,
+   "gate_fired_buckets": {"diversity": [363, 363], "none": [145, 146], "time_gap": [20, 20]},
+   "journal_completeness": {"facts": 682, "born_rung_carve_out": 74, "violations": 0}
+  }
+ ],
+ "bars_in_force": "every G-C bar at its committed default; the measured databases carry no config row for any bar and no promotion_bar_licences row. Values unchanged in source since 57f07d52 (2026-08-07, before any measurement), audited by git in the independent verdict.",
+ "independent_verdict": {
+  "outcome": "CLEARED",
+  "recorded_by": "a party that neither authored the corpus growth nor ran the evidence passes (plan Step 5)",
+  "reproduction": "darkmem_bench_t2131verify, 0 live calls, byte-identical to the pass 1 artifact on every gate number",
+  "report": "docs/planning/reviews/2026-08-16-t2.131-gc-independent-verdict.md"
+ },
+ "artifacts": [
+  "docs/eval/2026-08-16-gc-evidence-t2.131-pass1-unsimulated.md",
+  "docs/eval/2026-08-16-gc-evidence-t2.131-pass2-simulated.md"
+ ],
+ "what_this_does_not_license": [
+  "any claim about the false-promotion rate in deployment: every capture, origin, repo and the single dispute were authored by the measured party",
+  "the deterministic detector has never fired on an unauthored contradiction, and the human-rejection arm has never met a human",
+  "the diversity gate's premise: 363 of 509 promotions ride kind diversity where the second kind is a six-repo fixture written by the same hand, all inside project default",
+  "the time_gap path at all - it exists only under the harness's simulated capture clock",
+  "the reconciliation instruments as leak-proof: this run showed a claim vanishing with nothing watching (bs-h3) and a noise promotion offsetting an authored miss"
+ ]
+}

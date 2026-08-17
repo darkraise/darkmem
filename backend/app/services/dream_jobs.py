@@ -24,8 +24,15 @@ members whose owning task has since landed:
 | fact lifting | T2.10 | shipped |
 | `contradiction_scan` | T2.11 | shipped |
 | memory dreaming | T2.12 | shipped |
-| `article_synthesis` | T3.02 | placeholder |
+| `article_synthesis` | T3.02 | shipped |
 | `topic_detection` | T2.53 | shipped |
+
+**All six have shipped and the family holds no placeholders**; this row read
+`placeholder` from T2.14 until 2026-08-16, through T3.02's landing and past
+`SHIPPED_DREAM_JOBS` in this same file already listing the key. Do not read
+this table as the authority — `SHIPPED_DREAM_JOBS` is, and
+`test_the_family_holds_no_placeholders_left` is what fails if a future member
+lands inert. The table is kept for the owner column.
 
 Each owning task replaces its job's `runner=` (and, if it needs one, its
 `config_schema=`) with the real implementation; the registration shape,

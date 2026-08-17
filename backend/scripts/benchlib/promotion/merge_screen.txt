@@ -1,0 +1,9 @@
+embedder: qwen3-embedding:0.6b @ http://192.168.0.196:11434
+threshold: 0.85 (Phase 4's find_similar_entity)
+names screened: 189  pairs compared: 17766
+mergeable pairs at or above threshold: 4
+
+0.8994  pdfplumber <-> pypdf
+0.8737  dateparser <-> dateutil
+0.8706  lightgbm <-> xgboost
+0.8618  bcrypt <-> cryptography
