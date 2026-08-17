@@ -28,7 +28,7 @@ its artifact path, and a verdict — not when someone believes the work is done.
 | G-C | L2 → deriver; Phase 2 exit | **CLEARED** (T2.131, on the grown corpus sha `78dbc4c5c8756dcd`, 849 captures: every pre-stated axis clears in both passes — 509 in-window corroborations, Clopper-Pearson 95% upper bound **0.009286** vs the 0.01 bar, all `gate_fired` buckets powered and clearing, 0 journal-completeness violations over 682 facts, every bar at its committed default. Verdicted by an independent party that recomputed every axis and reproduced the run byte-identically at 0 live calls; `promotion_metrics_record.json` minted on that verdict, so promoted and born fact statuses now reach readers. **What the clear does not license is part of the result**: every capture, origin, repo and the single dispute were authored by the measured party, the deterministic detector has never fired on an unauthored contradiction, the human-rejection arm has never met a human, and the `time_gap` path exists only under the harness's simulated clock — see "G-C on the grown corpus". The audit's arms were **re-derived, not merely re-run** (T2.111): the machine arm is judge-free, so the G-C→G-D critical-path edge recorded 2026-08-07 does not hold as written) | 2026-08-16 | T2.131 — this file, "G-C on the grown corpus"; `docs/eval/2026-08-16-gc-evidence-t2.131-pass{1-unsimulated,2-simulated}.md`; `docs/planning/reviews/2026-08-16-t2.131-gc-independent-verdict.md`; `backend/app/services/promotion_metrics_record.json`. Prior: T2.111 — "G-C re-measure"; T2.40 — "G-C verdict" |
 | G-D | L2 → L3 | **CLEARED on the entailment role** (owner ruling 2026-08-17). T2.125 measured both roles on T2.124's fresh gold, pairs `4748ac84960fed67`, 280 live pairs, judge `gpt-5.5` identity `fd39e7b2c47fa375`: entailed precision **0.9906**/0.95, entailed recall **0.9545**/0.90, `contradicted → entailed` **0**, 0 invalid. The **contradiction role FAILS and stays open** — recall **0.7875** vs an unmoved 0.95, the fourth miss across two vendors — and gates only the Tier-C scan, which since T2.109 is not a veto input and so certifies no label G-D guards. No bar moved and the failed role's consumer stays dark. **Independence is dented and disclosed**: the judge had met 114 of the 280 measured pairs in two prior blind sittings on this gold and all three of its known disagreements were retired before the run; the worst-case restoration still clears at recall 105/113 = **0.9292** vs 0.90, so no verdict moves. The 2026-08-12 expiry check is live to **2026-11-12**. Note the record reaches production only with this branch's merge and the next deploy — G-D clearing and a grounded label being served are two events. See "G-D on the fresh gold" and "G-D ruling (2026-08-17)" | 2026-08-17 | T2.125 — this file, "G-D on the fresh gold", "G-D ruling (2026-08-17)", "The repair round"; `docs/eval/2026-08-17-judge-qualification-fd39e7b2.md`; `backend/app/services/verification_qualification.entailment.json`; `docs/planning/reviews/2026-08-17-t2.124-branch-review.md`. Prior: T2.114 — "G-D final attempt"; T2.41 — "G-D verdict", "G-D resolution" |
 | G-E | L3 → F7 | **open** (both bars stated 2026-08-11 by derivation and owner-ratified before any coverage number exists anywhere: runtime threshold **0.95**, corpus share **0.90**. Nothing is measured until T3.24's runner reads production — see "G-E") | — | — |
-| G-F | core → H1 | **open** | — | — |
+| G-F | core → H1 | **open — measured and MISSED** (2026-08-17, TH1.10: entailed precision **0.888** against a 0.95 bar; entailed recall 0.925 against 0.90 passes. Judge `gpt-5.5` at identity `fd39e7b2c47fa375` over 260 live claim/span pairs. The miss is a **false-accept** problem concentrated in `overreach` (0.800) — six strengthened claims read as grounded — while the span-specific failures score perfectly: truncation 30/30, context-dependence 30/30. No bar moved, nothing re-run, no second vendor tried. Three limits ride with it: the gold is agent-authored and agent-labelled, every participant reported CLAUDE.md contamination, and the entailed side was softened by the definite-description ruling — which makes the precision miss more credible, not less. The other three probes are untouched. See "G-F measured") | — | TH1.10 — this file, "G-F measured"; `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`; `backend/scripts/benchlib/entailment/span_gold.json` |
 | G-G | target → H2 | **closed** (entry conditions unmet) | — | — |
 
 ---
@@ -3521,8 +3521,90 @@ owner's to move with a recorded argument, and it may never be moved to make a ru
 |---|---|---|---|---|
 | Retrieval eval stable | — | — | — | — |
 | Promotion metrics stable | — | — | — | — |
-| Faithfulness (span-support coverage) on block-span entailment gold | Defined in TH1.01 **before** build | — | — | — |
+| Faithfulness (span-support coverage) on block-span entailment gold | precision **0.95**, recall **0.90**, set in TH1.01 before the build | precision **0.888**, recall **0.925** | `docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log` | **MISS** (precision) |
 | Maintainer appetite | Explicitly stated | — | — | — |
+
+### G-F measured (2026-08-17, TH1.10): **NOT CLEARED — entailed precision 0.888 against a 0.95 bar**
+
+Judge `gpt-5.5` at the identity T2.125 qualified for the entailment role
+(`base_url=https://api.openai.com/v1`, `api_kind=openai`,
+`params={"reasoning_effort": "high"}`), over all **260 live pairs** of the
+claim/span gold. Run log:
+`docs/eval/2026-08-17-th1.10-faithfulness-gate-run.log`.
+
+| Bar | Value | Measured | |
+|---|---|---|---|
+| `faithfulness_gate_precision_bar` on `entailed_precision` | 0.95 | **0.888** | **FAIL** |
+| `faithfulness_gate_recall_bar` on `entailed_recall` | 0.90 | **0.925** | PASS |
+
+**Twin** (rule 2 — no accuracy figure ships without it): 260 live judge calls, 0
+cached; p50 **3.68 s**, p95 **10.44 s**; 95,739 prompt + 50,184 completion
+tokens.
+
+**The miss is a false-accept problem, and that is the direction that matters.**
+Per-slice, the errors are not spread — they concentrate in three places:
+
+| Slice | Verdicts it holds | Accuracy | What its errors are |
+|---|---|---|---|
+| `overreach` | 30 not-entailed | **0.800** | **false accepts** — 6 strengthened claims read as grounded |
+| `structure-fragment` | 15/15 mixed | **0.800** | mixed |
+| `verbatim` | 25 entailed | **0.800** | false rejects |
+| `multi-span-composition` | 30 entailed | 0.900 | false rejects |
+| `value-swap` | 25 not-entailed | 0.920 | **false accepts** |
+| `paraphrase` | 30 entailed | 0.967 | false rejects |
+| `span-truncation`, `context-dependence`, `unrelated` | not-entailed | **1.000** | — |
+| `weakening` | 20 entailed | **1.000** | — |
+
+**The judge is perfect on the failures a span-anchored citation system uniquely
+invents** — truncation 30/30, context-dependence 30/30 — and fails on ordinary
+**strengthening**: `overreach` at 0.800 means six hypotheses that tightened a
+quantifier, added content or upgraded a hedge were read as entailed by their
+span. A false accept there ships a fluent ungrounded sentence under a grounded
+badge, which is the worst failure in the maintainer's truth-over-everything
+ordering and precisely what the 0.95 precision bar is set high to prevent.
+
+**`verbatim` at 0.800 is the most surprising number in the run** and is recorded
+rather than explained away: five of twenty-five verbatim restatements were read
+as *not* entailed. Those cost recall, not precision, so they did not cause the
+miss — but a judge that rejects a verbatim restatement one time in five is doing
+something other than entailment on those pairs, and a future round should look at
+them before trusting the recall figure's comfortable margin.
+
+**No bar moved and nothing was re-run.** Rule 3: a miss is recorded, not retried
+away. The gold is not re-cut, the bars stay at 0.95/0.90, and no second vendor was
+tried — the entailed-precision bar is the one doc 17 §6 makes truth-critical, and
+buying a pass by shopping for an instrument is the move the whole harness exists
+to refuse.
+
+**Three limits ship with this number, stated beside it rather than beneath it:**
+
+1. **The gold is agent-authored and agent-labelled throughout.** Two blind
+   authoring dispatches, two blind labelling passes, owner-ratified rulebook and
+   frame, owner-ruled escalations — the T2.124 structure — but every author and
+   labeller is Claude-family, so this measures inter-model agreement more than
+   label truth. The claim/fact gold's own round record says the same of itself.
+2. **Every participant reported `CLAUDE.md` auto-injecting** the measured judge
+   scores and bar values into their context, disclosed per artifact as
+   `SPAN_LABELLING.md` requires. It bounds what a clean number here could have
+   meant; it does not bound a miss in the flattering direction.
+3. **The entailed side is easier than the round began with**, and both labellers
+   flagged it independently before the measurement. The strict
+   definite-description ruling says an entailed hypothesis may name nothing its
+   span does not name, and the interesting entailed constructions were exactly
+   the ones that added a name — so ruling the gap necessarily plainened the
+   entailed pairs. Recall (0.925) is therefore measured against a slightly softer
+   entailed census than precision (0.888) is against its negatives. **This makes
+   the miss more credible, not less**: precision failed on the side the ruling did
+   not soften.
+
+**What this does and does not decide.** G-F does not clear, so H1 does not ship
+its grounded label — and it could not have anyway, since the faithfulness role
+holds no qualification record and `faithfulness_gate` withholds without one
+(verified: `judge()` raises, the gate returns `WITHHELD`, never a partial). The
+other three G-F probes — retrieval-eval stability, promotion-metrics stability
+and maintainer appetite — are untouched by this run and remain unmeasured or
+unstated. Under v1.0's rule (owner, 2026-08-15) **a measured miss ships**: G-F now
+carries a verdict where it carried none.
 
 ---
 

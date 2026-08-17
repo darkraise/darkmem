@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -135,6 +136,18 @@ async def _run(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--api-kind", default=None)
+    parser.add_argument(
+        "--judge-params", default=None, metavar="JSON",
+        help=(
+            "the judge purpose's params, as JSON. REQUIRED for any non-DeepSeek "
+            "vendor: DEFAULT_JUDGE's params carry `thinking: {type: disabled}`, "
+            "which is DeepSeek/z.ai's reasoning-disable knob, and OpenAI 400s on "
+            "it as an unknown parameter. --model/--base-url/--api-kind override "
+            "their fields individually and leave params behind, so a vendor swap "
+            "without this flag sends one vendor's quirk to another. Mirrors "
+            "run_judge_qualification.py's flag of the same name."
+        ),
+    )
     args = parser.parse_args(argv)
 
     rows: dict[str, object] = {}
@@ -209,9 +222,10 @@ async def _run(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    judge_params = json.loads(args.judge_params) if args.judge_params else None
     config = fg.judge_purpose_config(
         args.api_key, model=args.model, base_url=args.base_url,
-        api_kind=args.api_kind,
+        api_kind=args.api_kind, params=judge_params,
     )
 
     score, twin, verdicts = await fg.score_via_live_judge(
