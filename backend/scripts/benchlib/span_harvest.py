@@ -34,7 +34,8 @@ Usage::
 
     cd backend && python scripts/benchlib/span_harvest.py \\
         --sources scripts/benchlib/entailment/span_sources \\
-        --out scripts/benchlib/entailment/span_harvest.json
+        --out scripts/benchlib/entailment/span_harvest.json \\
+        --database-url postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_span_harvest
 
 The database it uses is disposable and its identity never reaches the manifest:
 blocks are keyed by their position in the parsed tree, not by the row id a
@@ -51,15 +52,50 @@ import sys
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2]
-if str(BACKEND) not in sys.path:
-    sys.path.insert(0, str(BACKEND))
+SCRIPTS = Path(__file__).resolve().parents[1]
+# Both, in the order run_faithfulness_gate.py uses: BACKEND resolves `app.*` and
+# SCRIPTS resolves `benchlib.*`. Inserting only BACKEND left `from benchlib
+# import db_target` an ImportError that killed the tool outright — and, because
+# the crash happened before the target guard could run, a smoke test of that
+# guard read as "refused" when nothing had been checked at all.
+for _path in (str(BACKEND), str(SCRIPTS)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
+from benchlib import db_target  # noqa: E402
+
 from app.services.block_pipeline import URI_SUFFIX_SOURCE_TYPES, ingest_document  # noqa: E402
 
 HARVEST_PROJECT = "span-gold-harvest"
+
+# **This tool WRITES documents and blocks, so where it points matters.** The
+# first version defaulted to `darkmem_test` — pytest's database, which conftest
+# drops the schema of at session start — while its own sibling
+# `run_faithfulness_gate.py` explicitly refuses that name. A harvest run with no
+# flag would have written rows into a database another process concurrently
+# destroys, producing either a truncated manifest or test failures
+# indistinguishable from a real regression. Found by the Fable dispatch that
+# first used it (2026-08-17).
+DEFAULT_HARVEST_DATABASE_NAME = "darkmem_span_harvest"
+DEFAULT_HARVEST_DATABASE_URL = (
+    "postgresql+asyncpg://darkmem:darkmem@localhost:5433/"
+    + DEFAULT_HARVEST_DATABASE_NAME
+)
+
+
+def assert_harvest_target_allowed(url: str) -> None:
+    """Refuse pytest's databases and the live one.
+
+    The same rule `db_target.assert_destructive_target_allowed` enforces for the
+    bench resets, applied here because this writer is destructive in the way that
+    matters: it files documents and replaces their block trees. Reusing that
+    helper rather than re-deriving the name set keeps one list of forbidden
+    targets.
+    """
+    db_target.assert_destructive_target_allowed(url, actor="span_harvest.py")
 
 # Raw SQL because `blocks` carries no ORM model — `app/repositories/documents.py`
 # is `text()` throughout, and this reads the same way rather than introducing a
@@ -235,10 +271,11 @@ def main() -> int:
     parser.add_argument(
         "--database-url",
         default=os.environ.get(
-            "SPAN_HARVEST_DATABASE_URL",
-            "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test",
+            "SPAN_HARVEST_DATABASE_URL", DEFAULT_HARVEST_DATABASE_URL
         ),
-        help="a DISPOSABLE database; the harvest writes documents and blocks",
+        help="a DISPOSABLE database; the harvest writes documents and blocks. "
+             f"Defaults to {DEFAULT_HARVEST_DATABASE_NAME}; pytest's databases "
+             "and the live one are refused.",
     )
     parser.add_argument(
         "--check",
@@ -259,6 +296,8 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+
+    assert_harvest_target_allowed(args.database_url)
 
     manifest = asyncio.run(harvest(args.sources, args.database_url))
     rendered = serialise(manifest)
