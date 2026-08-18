@@ -1,4 +1,6 @@
 export { DetailLevelToggle } from "./detail-level-toggle"
+export { EmptyState } from "./empty-state"
+export type { EmptyStateKind, EmptyStateProps } from "./empty-state"
 export { ExclusionStrip } from "./exclusion-strip"
 export { HelpTip } from "./help-tip"
 export { IconSegmented } from "./icon-segmented"
@@ -16,4 +18,7 @@ export type {
   VerificationStatus,
 } from "./verification-badge"
 export { WhyRetrievedTrace } from "./why-retrieved-trace"
-export type { TraceChannel, WhyRetrievedTraceProps } from "./why-retrieved-trace"
+export type {
+  TraceChannel,
+  WhyRetrievedTraceProps,
+} from "./why-retrieved-trace"

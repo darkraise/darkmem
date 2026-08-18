@@ -1,15 +1,9 @@
 import { useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  ArrowLeft,
-  FileQuestion,
-  GitBranch,
-  Library,
-  TriangleAlert,
-} from "lucide-react"
+import { ArrowLeft, GitBranch, Library, TriangleAlert } from "lucide-react"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
@@ -107,7 +101,10 @@ function CitationRow({
       )}
       <LayerChip layer={2} />
       {fact && (
-        <VerificationBadge status={fact.verification_status} detail={fact.claim} />
+        <VerificationBadge
+          status={fact.verification_status}
+          detail={fact.claim}
+        />
       )}
       <span className="min-w-52 flex-1 text-sm">“{citation.quote}”</span>
     </div>
@@ -159,7 +156,8 @@ function ArticleDetailPage() {
     return (
       <div>
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
+          scope="page"
           title="Article not found"
           description={
             DEMO
@@ -258,8 +256,8 @@ function ArticleDetailPage() {
 
         {superseded && (
           <p className="text-muted-foreground text-sm">
-            Synthesised content below is retained, not the servable statement
-            of record.
+            Synthesised content below is retained, not the servable statement of
+            record.
           </p>
         )}
         <div className="space-y-5 pt-1">
@@ -337,8 +335,8 @@ function ArticleDetailPage() {
             meta={`stale since ${article.stale.since}`}
           >
             <p className="border-border bg-muted/25 rounded-md border border-dashed p-2.5 text-sm">
-              {article.stale.reason} The stale overlay is surfaced wherever
-              this article is served — it is a label, never a suppression.
+              {article.stale.reason} The stale overlay is surfaced wherever this
+              article is served — it is a label, never a suppression.
             </p>
             {/* The stale label + reason above are the honesty signal and
                 render in every mode; the raw hash comparison is a

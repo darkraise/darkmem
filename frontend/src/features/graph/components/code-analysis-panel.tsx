@@ -10,8 +10,8 @@ import {
 } from "darkraise-ui/components/collapsible"
 import { Stat, StatLabel, StatValue } from "darkraise-ui/components/stat"
 import { Spinner } from "darkraise-ui/components/spinner"
-import { EmptyState } from "darkraise-ui/components/empty-state"
-import { Boxes, ChevronDown, Crosshair } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
+import { Boxes, ChevronDown } from "lucide-react"
 import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
 import { ProcessPanel } from "./process-panel"
 import type { CodeProcess } from "../lib/code-processes"
@@ -58,8 +58,8 @@ interface CodeAnalysisPanelProps {
 function SectionHeader({ label }: { label: string }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <div className="h-1 w-1 rounded-full bg-primary" />
-      <span className="font-mono text-sm font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+      <div className="bg-primary h-1 w-1 rounded-full" />
+      <span className="text-muted-foreground font-mono text-sm font-semibold tracking-[0.2em] uppercase">
         {label}
       </span>
     </div>
@@ -76,14 +76,14 @@ function CollapsibleSection({
   children: React.ReactNode
 }) {
   return (
-    <Collapsible defaultOpen={defaultOpen} className="border-b border-border">
-      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-4 py-3 transition-colors hover:bg-accent">
-        <div className="h-1 w-1 shrink-0 rounded-full bg-primary" />
-        <span className="flex-1 text-left font-mono text-sm font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+    <Collapsible defaultOpen={defaultOpen} className="border-border border-b">
+      <CollapsibleTrigger className="group hover:bg-accent flex w-full cursor-pointer items-center gap-2 px-4 py-3 transition-colors">
+        <div className="bg-primary h-1 w-1 shrink-0 rounded-full" />
+        <span className="text-muted-foreground flex-1 text-left font-mono text-sm font-semibold tracking-[0.2em] uppercase">
           {label}
         </span>
         <ChevronDown
-          className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90"
+          className="text-muted-foreground h-4 w-4 shrink-0 transition-transform group-data-[state=closed]:-rotate-90"
           aria-hidden
         />
       </CollapsibleTrigger>
@@ -112,7 +112,11 @@ const RISK_TEXT_CLASS: Record<RiskLevel, string> = {
   critical: "text-destructive",
 }
 
-function BlastDepthHistogram({ byDepth }: { byDepth: BlastRadiusResult["by_depth"] }) {
+function BlastDepthHistogram({
+  byDepth,
+}: {
+  byDepth: BlastRadiusResult["by_depth"]
+}) {
   const buckets: Array<{ label: string; count: number }> = [
     { label: "d1", count: byDepth["1"]?.length ?? 0 },
     { label: "d2", count: byDepth["2"]?.length ?? 0 },
@@ -122,22 +126,22 @@ function BlastDepthHistogram({ byDepth }: { byDepth: BlastRadiusResult["by_depth
 
   return (
     <div className="space-y-1">
-      <div className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+      <div className="text-muted-foreground font-mono text-sm tracking-[0.2em] uppercase">
         By Depth
       </div>
       <div className="space-y-1">
         {buckets.map((b) => (
           <div key={b.label} className="flex items-center gap-2">
-            <span className="w-7 shrink-0 font-mono text-sm text-destructive/70">
+            <span className="text-destructive/70 w-7 shrink-0 font-mono text-sm">
               {b.label}
             </span>
-            <div className="h-2 flex-1 overflow-hidden rounded-sm bg-muted">
+            <div className="bg-muted h-2 flex-1 overflow-hidden rounded-sm">
               <div
-                className="h-full rounded-sm bg-destructive/70"
+                className="bg-destructive/70 h-full rounded-sm"
                 style={{ width: `${(b.count / max) * 100}%` }}
               />
             </div>
-            <span className="w-8 shrink-0 text-right font-mono text-sm text-foreground tabular-nums">
+            <span className="text-foreground w-8 shrink-0 text-right font-mono text-sm tabular-nums">
               {b.count}
             </span>
           </div>
@@ -178,14 +182,14 @@ export function CodeAnalysisPanel({
     selectedNode.kind !== "module"
 
   return (
-    <div className="code-analysis-panel flex h-full flex-col border-l border-border">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-foreground uppercase">
+    <div className="code-analysis-panel border-border flex h-full flex-col border-l">
+      <div className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
+        <div className="bg-primary h-1.5 w-1.5 rounded-full" />
+        <span className="text-foreground font-mono text-sm font-semibold tracking-[0.2em] uppercase">
           Analysis
         </span>
         {selectedNode && (
-          <span className="ml-auto min-w-0 flex-1 truncate text-right font-mono text-sm text-muted-foreground">
+          <span className="text-muted-foreground ml-auto min-w-0 flex-1 truncate text-right font-mono text-sm">
             {selectedNode.label}
           </span>
         )}
@@ -195,18 +199,26 @@ export function CodeAnalysisPanel({
         {selectedNode ? (
           <>
             {/* Symbol Header */}
-            <div className="border-b border-border p-4">
-              <h3 className="truncate font-mono text-sm font-semibold text-foreground">
+            <div className="border-border border-b p-4">
+              <h3 className="text-foreground truncate font-mono text-sm font-semibold">
                 {selectedNode.label}
               </h3>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {selectedNode.kind && (
-                  <Badge variant="default" size="sm" className="font-mono tracking-wider uppercase">
+                  <Badge
+                    variant="default"
+                    size="sm"
+                    className="font-mono tracking-wider uppercase"
+                  >
                     {selectedNode.kind}
                   </Badge>
                 )}
                 {symbolDetail?.visibility && (
-                  <Badge variant="secondary" size="sm" className="font-mono tracking-wider uppercase">
+                  <Badge
+                    variant="secondary"
+                    size="sm"
+                    className="font-mono tracking-wider uppercase"
+                  >
                     {symbolDetail.visibility}
                   </Badge>
                 )}
@@ -227,10 +239,10 @@ export function CodeAnalysisPanel({
 
               {symbolDetail?.file_path && (
                 <div className="mt-3 flex items-center gap-2">
-                  <span className="shrink-0 font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                  <span className="text-muted-foreground shrink-0 font-mono text-sm tracking-[0.2em] uppercase">
                     Path
                   </span>
-                  <span className="truncate font-mono text-sm text-foreground">
+                  <span className="text-foreground truncate font-mono text-sm">
                     {symbolDetail.file_path}
                     {symbolDetail.line_start > 0 &&
                       `:${symbolDetail.line_start}–${symbolDetail.line_end}`}
@@ -241,9 +253,9 @@ export function CodeAnalysisPanel({
 
             {/* AI Summary */}
             {symbolDetail?.summary && (
-              <div className="border-b border-border p-4">
+              <div className="border-border border-b p-4">
                 <SectionHeader label="AI Summary" />
-                <p className="font-mono text-sm leading-[1.7] text-foreground">
+                <p className="text-foreground font-mono text-sm leading-[1.7]">
                   {symbolDetail.summary}
                 </p>
               </div>
@@ -251,13 +263,13 @@ export function CodeAnalysisPanel({
 
             {/* Blast Radius */}
             {isAnalyzableSymbol && (
-              <div className="border-b border-border p-4">
+              <div className="border-border border-b p-4">
                 <SectionHeader label="Impact Analysis" />
                 <div className="flex gap-2">
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="flex-1 font-mono uppercase tracking-wider"
+                    className="flex-1 font-mono tracking-wider uppercase"
                     onClick={onBlastRadius}
                     disabled={isBlastRadiusLoading}
                   >
@@ -274,7 +286,7 @@ export function CodeAnalysisPanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="font-mono uppercase tracking-wider"
+                      className="font-mono tracking-wider uppercase"
                       onClick={onClearBlastRadius}
                     >
                       Clear
@@ -289,7 +301,7 @@ export function CodeAnalysisPanel({
                         <StatLabel className="font-mono tracking-[0.2em] uppercase">
                           Affected
                         </StatLabel>
-                        <StatValue className="font-mono text-destructive">
+                        <StatValue className="text-destructive font-mono">
                           {blastRadiusData.total}
                         </StatValue>
                       </Stat>
@@ -322,19 +334,19 @@ export function CodeAnalysisPanel({
                               key={i}
                               className="flex items-center gap-2 rounded-sm px-2 py-1 font-mono text-sm"
                             >
-                              <span className="shrink-0 text-destructive/70">
+                              <span className="text-destructive/70 shrink-0">
                                 d{a.distance}
                               </span>
-                              <span className="w-14 shrink-0 truncate text-muted-foreground">
+                              <span className="text-muted-foreground w-14 shrink-0 truncate">
                                 {a.kind}
                               </span>
-                              <span className="truncate text-foreground">
+                              <span className="text-foreground truncate">
                                 {a.name}
                               </span>
                             </div>
                           ))}
                           {blastRadiusData.affected.length > 20 && (
-                            <div className="px-2 py-1 font-mono text-sm text-muted-foreground">
+                            <div className="text-muted-foreground px-2 py-1 font-mono text-sm">
                               +{blastRadiusData.affected.length - 20} more
                             </div>
                           )}
@@ -348,14 +360,14 @@ export function CodeAnalysisPanel({
           </>
         ) : (
           <EmptyState
-            className="border-b border-border"
-            icon={<Crosshair className="h-6 w-6" />}
+            kind="empty"
+            className="border-border border-b"
             title="Select a node for analysis"
           />
         )}
 
         {/* Graph Statistics */}
-        <div className="border-b border-border p-4">
+        <div className="border-border border-b p-4">
           <SectionHeader label="Graph Statistics" />
           <div className="grid grid-cols-2 gap-2">
             <Stat>

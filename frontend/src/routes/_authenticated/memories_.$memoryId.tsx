@@ -1,13 +1,6 @@
 import { useMemo, useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import {
-  ArrowLeft,
-  ArrowRight,
-  Brain,
-  FileQuestion,
-  Link2,
-  Pencil,
-} from "lucide-react"
+import { ArrowLeft, ArrowRight, Brain, Link2, Pencil } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import {
@@ -17,14 +10,17 @@ import {
   CardHeader,
   CardTitle,
 } from "darkraise-ui/components/card"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoMemories } from "@/demo/hooks"
 import { deriveTimeline, distinctProjects } from "@/demo/memories"
 import type { DemoMemory, MemoryTimelineEvent } from "@/features/memories/types"
-import { VerificationBadge, type VerificationStatus } from "@/components/darkmem"
+import {
+  VerificationBadge,
+  type VerificationStatus,
+} from "@/components/darkmem"
 import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
 import { RealMemoryDetailView } from "@/features/memories/components/real-memory-detail-view"
@@ -143,7 +139,10 @@ function MemoryLink({
       params={{ memoryId }}
       className="hover:text-primary flex min-w-0 items-center gap-1.5 text-sm transition-colors"
     >
-      <Link2 aria-hidden className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+      <Link2
+        aria-hidden
+        className="text-muted-foreground h-3.5 w-3.5 shrink-0"
+      />
       <span className="truncate">
         memory {memoryId.slice(0, 8)} — “{excerpt}”
       </span>
@@ -184,8 +183,8 @@ function SupersessionLineage({
       <div className="flex flex-wrap items-center gap-2.5">
         <LifecycleBadge status="deprecated" />
         <span className="text-muted-foreground text-sm italic">
-          superseded_by: null — the successor memory was later removed; this
-          row was demoted, not deleted.
+          superseded_by: null — the successor memory was later removed; this row
+          was demoted, not deleted.
         </span>
       </div>
     )
@@ -240,7 +239,8 @@ function MemoryDetailPage() {
     return (
       <div>
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
+          scope="page"
           title="Memory not found"
           description="This memory does not exist in the demo store — it may have been deleted."
           action={
@@ -289,11 +289,14 @@ function MemoryDetailPage() {
                   </b>
                 </span>
                 <span>
-                  via <b className="text-foreground font-medium">{memory.source}</b>
+                  via{" "}
+                  <b className="text-foreground font-medium">{memory.source}</b>
                 </span>
                 <span>
                   project{" "}
-                  <b className="text-foreground font-medium">{memory.project}</b>
+                  <b className="text-foreground font-medium">
+                    {memory.project}
+                  </b>
                 </span>
                 <span>
                   confidence{" "}
@@ -320,7 +323,10 @@ function MemoryDetailPage() {
                     >
                       {rel.rel_type}
                     </Badge>
-                    <MemoryLink memoryId={rel.memory_id} excerpt={rel.excerpt} />
+                    <MemoryLink
+                      memoryId={rel.memory_id}
+                      excerpt={rel.excerpt}
+                    />
                   </div>
                 ))}
               </div>
@@ -370,9 +376,7 @@ function MemoryDetailPage() {
               </MetaRow>
               <MetaRow label="summary">{memory.summary ?? "—"}</MetaRow>
               <MetaRow label="emotions">
-                {memory.emotions?.length
-                  ? memory.emotions.join(", ")
-                  : "—"}
+                {memory.emotions?.length ? memory.emotions.join(", ") : "—"}
               </MetaRow>
               <MetaRow label="flags">
                 {memory.flags?.length ? (

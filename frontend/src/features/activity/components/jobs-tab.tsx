@@ -1,6 +1,5 @@
 import { useState } from "react"
 import {
-  CircleAlert,
   Lock,
   RefreshCw,
   Settings2,
@@ -19,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { toast } from "darkraise-ui/components/sonner"
@@ -79,7 +78,7 @@ function ReadOnlyField({
     <div className="border-border flex flex-col gap-1.5 border-b border-dashed px-1 py-2.5 last:border-b-0">
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-sm font-semibold">{label}</span>
-        <span className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
           {role}
         </span>
       </div>
@@ -136,7 +135,7 @@ function JobConfigDialog({
               desc="A run still executing past this ceiling is treated as overrun. Also a registration-time constant, not editable via config."
             />
           )}
-          <p className="text-muted-foreground pt-2 font-mono text-[10px] uppercase tracking-wide">
+          <p className="text-muted-foreground pt-2 font-mono text-[10px] tracking-wide uppercase">
             config_schema — job-specific, editable fields
           </p>
           {job.config_schema.length === 0 ? (
@@ -179,16 +178,18 @@ function JobConfigDialog({
                     )}
                   />
                   {field.help && (
-                    <p className="text-muted-foreground text-sm">{field.help}</p>
+                    <p className="text-muted-foreground text-sm">
+                      {field.help}
+                    </p>
                   )}
                   <p className="text-muted-foreground font-mono text-sm">
                     {field.min !== undefined && `min ${field.min}`}
-                    {field.min !== undefined && field.max !== undefined && " · "}
+                    {field.min !== undefined &&
+                      field.max !== undefined &&
+                      " · "}
                     {field.max !== undefined && `max ${field.max}`}
                   </p>
-                  {error && (
-                    <p className="text-destructive text-sm">{error}</p>
-                  )}
+                  {error && <p className="text-destructive text-sm">{error}</p>}
                 </div>
               )
             })
@@ -376,7 +377,7 @@ export function JobsTab() {
       >
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load the job board"
             description="The /jobs request failed — this is an error state, not an empty registry."
           />
@@ -391,10 +392,9 @@ export function JobsTab() {
                 try {
                   result = await trigger(key)
                 } catch (err) {
-                  toast.error(
-                    `Trigger failed for ${key}`,
-                    { description: err instanceof Error ? err.message : undefined },
-                  )
+                  toast.error(`Trigger failed for ${key}`, {
+                    description: err instanceof Error ? err.message : undefined,
+                  })
                   return false
                 }
                 if (result.ok) {

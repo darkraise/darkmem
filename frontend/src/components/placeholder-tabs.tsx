@@ -5,7 +5,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 
 export interface PlaceholderTab {
   value: string
@@ -37,7 +37,7 @@ export function PlaceholderTabs({
       {tabs.map((tab) => (
         <TabsContent key={tab.value} value={tab.value} className="pt-4">
           <EmptyState
-            icon={tab.icon}
+            kind="empty"
             title={tab.title}
             description={tab.description}
             action={tab.action}

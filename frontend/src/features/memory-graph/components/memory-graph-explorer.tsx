@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { Crosshair, ListTree, Orbit, Search, Share2, Waypoints } from "lucide-react"
+import {
+  Crosshair,
+  ListTree,
+  Orbit,
+  Search,
+  Share2,
+  Waypoints,
+} from "lucide-react"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -12,7 +19,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoMemoryGraph } from "@/demo/hooks"
 import {
@@ -87,10 +94,8 @@ export function MemoryGraphExplorer() {
       if (points.length === 0) return []
       const cx = points.reduce((s, p) => s + p.x, 0) / points.length
       const cy = points.reduce((s, p) => s + p.y, 0) / points.length
-      const rx =
-        Math.max(...points.map((p) => Math.abs(p.x - cx)), 34) + 30
-      const ry =
-        Math.max(...points.map((p) => Math.abs(p.y - cy)), 30) + 26
+      const rx = Math.max(...points.map((p) => Math.abs(p.x - cx)), 34) + 30
+      const ry = Math.max(...points.map((p) => Math.abs(p.y - cy)), 30) + 26
       return [{ topic, cx, cy, rx, ry }]
     })
   }, [scoped, positions, layout])
@@ -190,7 +195,7 @@ export function MemoryGraphExplorer() {
           {scoped.entities.length === 0 ? (
             <div className="flex h-full items-center justify-center p-6">
               <EmptyState
-                icon={<Waypoints aria-hidden className="h-6 w-6" />}
+                kind="empty"
                 title="No entity graph yet"
                 description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
               />
@@ -217,7 +222,9 @@ export function MemoryGraphExplorer() {
                     strokeOpacity={dimmed(topic.id) ? 0.15 : 0.55}
                     strokeWidth={1.3}
                     strokeDasharray="4 3"
-                    style={{ transition: "fill-opacity 300ms, stroke-opacity 300ms" }}
+                    style={{
+                      transition: "fill-opacity 300ms, stroke-opacity 300ms",
+                    }}
                   />
                 ))}
                 {scoped.relations.map((rel, i) => {
@@ -309,20 +316,15 @@ export function MemoryGraphExplorer() {
                 })}
               </svg>
               <div className="bg-background/75 text-muted-foreground absolute inset-x-0 bottom-0 flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 text-sm backdrop-blur-sm">
-                {(Object.keys(TYPE_CHART) as MemoryEntityType[]).map(
-                  (type) => (
+                {(Object.keys(TYPE_CHART) as MemoryEntityType[]).map((type) => (
+                  <span key={type} className="inline-flex items-center gap-1.5">
                     <span
-                      key={type}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ background: chartVar(TYPE_CHART[type]) }}
-                      />
-                      {type}
-                    </span>
-                  ),
-                )}
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: chartVar(TYPE_CHART[type]) }}
+                    />
+                    {type}
+                  </span>
+                ))}
                 <span className="inline-flex items-center gap-1.5">
                   <span className="border-muted-foreground/70 w-4 border-t-[1.4px]" />
                   relation, within topic
@@ -352,7 +354,8 @@ export function MemoryGraphExplorer() {
                   {selected.name}
                 </p>
                 <p className="text-muted-foreground text-sm">
-                  type: <span className="font-mono">{selected.entity_type}</span>
+                  type:{" "}
+                  <span className="font-mono">{selected.entity_type}</span>
                   <br />
                   topic:{" "}
                   {scoped.topics.find((t) => t.id === selected.topic)?.label ??
@@ -405,8 +408,8 @@ export function MemoryGraphExplorer() {
             <div className="space-y-2 p-3">
               {scoped.topics.length === 0 ? (
                 <p className="text-muted-foreground text-sm">
-                  No communities detected yet — clustering runs over the
-                  entity graph once one exists.
+                  No communities detected yet — clustering runs over the entity
+                  graph once one exists.
                 </p>
               ) : (
                 scoped.topics.map((topic) => {

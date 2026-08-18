@@ -4,11 +4,8 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   EyeOff,
-  Loader2,
   Pencil,
-  SearchX,
   TrendingUp,
   UserCheck,
   XCircle,
@@ -25,9 +22,14 @@ import {
 } from "darkraise-ui/components/alert-dialog"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import { EmptyState } from "@/components/darkmem"
 import { toast } from "darkraise-ui/components/sonner"
-import { LayerChip, VerificationBadge, useDetailLevel } from "@/components/darkmem"
+import {
+  LayerChip,
+  VerificationBadge,
+  useDetailLevel,
+} from "@/components/darkmem"
 import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
@@ -61,7 +63,8 @@ function PageControls({
   return (
     <div className="flex items-center justify-end gap-2 pt-1">
       <span className="text-muted-foreground font-mono text-sm">
-        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of {total}
+        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of{" "}
+        {total}
       </span>
       <Button
         size="sm"
@@ -91,8 +94,9 @@ function ConsequenceBreakdown({ fact }: { fact: ReviewFactRowData }) {
   return (
     <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 font-mono text-sm">
       <p>
-        retrieval_frequency: component {c.retrieval_frequency.component.toFixed(3)} ·
-        weight {c.retrieval_frequency.weight} · source_memories{" "}
+        retrieval_frequency: component{" "}
+        {c.retrieval_frequency.component.toFixed(3)} · weight{" "}
+        {c.retrieval_frequency.weight} · source_memories{" "}
         {c.retrieval_frequency.source_memories} · peak_access_count{" "}
         {c.retrieval_frequency.peak_access_count} · decayed_access{" "}
         {c.retrieval_frequency.decayed_access.toFixed(3)} · half_life_days{" "}
@@ -119,8 +123,8 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
   if (!payload) {
     return (
       <p className="text-muted-foreground border-border rounded-md border border-dashed p-2 text-sm italic">
-        no contradiction detail recorded for this dispute — absent means no
-        scan produced one here, never that no counterpart exists
+        no contradiction detail recorded for this dispute — absent means no scan
+        produced one here, never that no counterpart exists
       </p>
     )
   }
@@ -128,8 +132,9 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
   return (
     <div className="border-border bg-muted/10 space-y-1 rounded-md border border-dashed p-2 font-mono text-sm">
       <p>
-        outcome {payload.outcome ?? "—"} · origin_count {payload.origin_count ?? "—"} ·
-        required_n {payload.required_n ?? "—"} · gate_fired {payload.gate_fired ?? "—"}
+        outcome {payload.outcome ?? "—"} · origin_count{" "}
+        {payload.origin_count ?? "—"} · required_n {payload.required_n ?? "—"} ·
+        gate_fired {payload.gate_fired ?? "—"}
       </p>
       {payload.source_kinds && payload.source_kinds.length > 0 && (
         <p>source_kinds [{payload.source_kinds.join(", ")}]</p>
@@ -137,7 +142,8 @@ function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
       {c && (
         <p>
           counterpart: {c.counterpart_subject} → {c.counterpart_rel_type} →{" "}
-          {c.counterpart_object} · rule {c.rule} · witness_origin {c.witness_origin}
+          {c.counterpart_object} · rule {c.rule} · witness_origin{" "}
+          {c.witness_origin}
         </p>
       )}
     </div>
@@ -167,13 +173,18 @@ function SuspicionBlock({ fact }: { fact: ReviewFactRowData }) {
       <p className="flex items-center gap-1.5">
         <AlertTriangle aria-hidden className="h-3.5 w-3.5 shrink-0" />
         <span>
-          <b className="text-foreground font-semibold">suspected contradiction</b> · since{" "}
-          {s.suspected_at}
+          <b className="text-foreground font-semibold">
+            suspected contradiction
+          </b>{" "}
+          · since {s.suspected_at}
         </span>
       </p>
       <p>counterpart: {triple ?? "no triple recorded for the counterpart"}</p>
       {s.counterpart_expired_at != null && (
-        <p>counterpart withdrawn {s.counterpart_expired_at} — belief expired, flag stands</p>
+        <p>
+          counterpart withdrawn {s.counterpart_expired_at} — belief expired,
+          flag stands
+        </p>
       )}
     </div>
   )
@@ -208,7 +219,9 @@ function FactRow({
           project: {fact.project}
         </span>
       </div>
-      {fact.subject_name != null && fact.rel_type != null && fact.object_name != null ? (
+      {fact.subject_name != null &&
+      fact.rel_type != null &&
+      fact.object_name != null ? (
         <p className="text-sm">
           <b className="font-semibold">{fact.subject_name}</b>{" "}
           <Badge variant="outline" size="sm" className="rounded-sm font-mono">
@@ -277,7 +290,9 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
           project: {article.project}
         </span>
       </div>
-      <p className="text-sm font-semibold">{article.title ?? article.subject_key}</p>
+      <p className="text-sm font-semibold">
+        {article.title ?? article.subject_key}
+      </p>
       {article.resynthesis_held_at && (
         /* Queued, not withheld. The row says what was measured so a reviewer
            sees the finding rather than only its name — and says plainly that
@@ -287,11 +302,15 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
           re-synthesis attempted and held
           {article.resynthesis_held_coverage !== null &&
             ` at claim-support coverage ${article.resynthesis_held_coverage.toFixed(2)}`}
-          {" — the standing article is still served, labelled stale; its subject's verified facts could not ground a replacement."}
+          {
+            " — the standing article is still served, labelled stale; its subject's verified facts could not ground a replacement."
+          }
         </p>
       )}
       {article.content_preview && (
-        <p className="text-muted-foreground text-sm">{article.content_preview}</p>
+        <p className="text-muted-foreground text-sm">
+          {article.content_preview}
+        </p>
       )}
       <p className="text-muted-foreground font-mono text-sm">
         {article.synthesized_at
@@ -301,7 +320,10 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
       </p>
       <div className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-2">
         <Button size="sm" variant="outline" asChild>
-          <Link to="/knowledge/articles/$articleId" params={{ articleId: article.id }}>
+          <Link
+            to="/knowledge/articles/$articleId"
+            params={{ articleId: article.id }}
+          >
             <Pencil className="mr-1.5 size-3.5" />
             Edit
           </Link>
@@ -317,9 +339,15 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
 export function ReviewQueue({ project }: { project?: string }) {
   const [factsOffset, setFactsOffset] = useState(0)
   const [articlesOffset, setArticlesOffset] = useState(0)
-  const [ratifyTarget, setRatifyTarget] = useState<ReviewFactRowData | null>(null)
-  const [rejectTarget, setRejectTarget] = useState<ReviewFactRowData | null>(null)
-  const [dismissTarget, setDismissTarget] = useState<ReviewFactRowData | null>(null)
+  const [ratifyTarget, setRatifyTarget] = useState<ReviewFactRowData | null>(
+    null,
+  )
+  const [rejectTarget, setRejectTarget] = useState<ReviewFactRowData | null>(
+    null,
+  )
+  const [dismissTarget, setDismissTarget] = useState<ReviewFactRowData | null>(
+    null,
+  )
 
   useEffect(() => {
     setFactsOffset(0)
@@ -328,7 +356,11 @@ export function ReviewQueue({ project }: { project?: string }) {
 
   const counts = useReviewCounts({ project })
   const facts = useReviewFactRows({ project, limit: PAGE, offset: factsOffset })
-  const articles = useReviewArticleRows({ project, limit: PAGE, offset: articlesOffset })
+  const articles = useReviewArticleRows({
+    project,
+    limit: PAGE,
+    offset: articlesOffset,
+  })
 
   const ratifyMutation = useRatifyFact()
   const rejectMutation = useRejectFact()
@@ -363,7 +395,9 @@ export function ReviewQueue({ project }: { project?: string }) {
             }
             toast.error("Ratify failed — state unknown", {
               description: `${
-                error instanceof Error ? error.message : "the request did not complete"
+                error instanceof Error
+                  ? error.message
+                  : "the request did not complete"
               }. Re-check the fact before retrying.`,
             })
           },
@@ -388,7 +422,9 @@ export function ReviewQueue({ project }: { project?: string }) {
             }
             toast.error("Reject failed — state unknown", {
               description: `${
-                error instanceof Error ? error.message : "the request did not complete"
+                error instanceof Error
+                  ? error.message
+                  : "the request did not complete"
               }. Re-check the fact before retrying.`,
             })
           },
@@ -413,7 +449,9 @@ export function ReviewQueue({ project }: { project?: string }) {
           }
           toast.error("Dismiss failed — state unknown", {
             description: `${
-              error instanceof Error ? error.message : "the request did not complete"
+              error instanceof Error
+                ? error.message
+                : "the request did not complete"
             }. Re-check the fact before retrying.`,
           })
         },
@@ -435,8 +473,8 @@ export function ReviewQueue({ project }: { project?: string }) {
       <div className="border-border bg-muted/15 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
         Every row below is{" "}
         <b className="text-foreground font-semibold">served labelled</b> to
-        retrieval right now, exactly as shown — queue position never
-        withholds a fact or article from search results.{" "}
+        retrieval right now, exactly as shown — queue position never withholds a
+        fact or article from search results.{" "}
         <span className="font-mono">{countsLine}</span>
       </div>
 
@@ -447,19 +485,25 @@ export function ReviewQueue({ project }: { project?: string }) {
       >
         {facts.error ? (
           <EmptyState
-            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            kind="filtered"
             title="Could not load the fact queue"
             description="The vault did not answer. This is a failed read, not an empty queue."
           />
         ) : facts.loading && facts.rows.length === 0 ? (
-          <EmptyState
-            icon={<Loader2 aria-hidden className="h-6 w-6 animate-spin" />}
-            title="Loading the review queue"
-            description="Reading open facts."
-          />
+          // A pending read is not an absence — skeleton rows in the shape
+          // of the queue that is coming.
+          <div
+            className="flex flex-col gap-2 py-2"
+            role="status"
+            aria-label="Loading the review queue"
+          >
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-md" />
+            ))}
+          </div>
         ) : facts.total === 0 ? (
           <EmptyState
-            icon={<ClipboardCheck aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="No disputed or under-sourced facts"
             description="The fact half of the review queue is caught up."
           />
@@ -468,13 +512,17 @@ export function ReviewQueue({ project }: { project?: string }) {
           // never rendered as "caught up": the count above still says facts
           // remain, and this line must agree with it (F1, invariant 14).
           <EmptyState
-            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            kind="filtered"
             title="This page emptied out"
             description={`${facts.total} fact${facts.total === 1 ? "" : "s"} still remain${
               facts.total === 1 ? "s" : ""
             } — go back to see them.`}
             action={
-              <Button size="sm" variant="outline" onClick={() => setFactsOffset(0)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setFactsOffset(0)}
+              >
                 Back to the first page
               </Button>
             }
@@ -508,31 +556,41 @@ export function ReviewQueue({ project }: { project?: string }) {
       >
         {articles.error ? (
           <EmptyState
-            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            kind="filtered"
             title="Could not load the article queue"
             description="The vault did not answer. This is a failed read, not an empty queue."
           />
         ) : articles.loading && articles.rows.length === 0 ? (
-          <EmptyState
-            icon={<Loader2 aria-hidden className="h-6 w-6 animate-spin" />}
-            title="Loading the article queue"
-            description="Reading open articles."
-          />
+          // A pending read is not an absence — skeleton rows in the shape
+          // of the queue that is coming.
+          <div
+            className="flex flex-col gap-2 py-2"
+            role="status"
+            aria-label="Loading the article queue"
+          >
+            {Array.from({ length: 4 }, (_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-md" />
+            ))}
+          </div>
         ) : articles.total === 0 ? (
           <EmptyState
-            icon={<ClipboardCheck aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="No ungrounded articles"
             description="The article half of the review queue is caught up. article_synthesis is still a placeholder job, so this arm has no live producer yet."
           />
         ) : articles.rows.length === 0 ? (
           <EmptyState
-            icon={<SearchX aria-hidden className="h-6 w-6" />}
+            kind="filtered"
             title="This page emptied out"
             description={`${articles.total} article${
               articles.total === 1 ? "" : "s"
             } still remain${articles.total === 1 ? "s" : ""} — go back to see them.`}
             action={
-              <Button size="sm" variant="outline" onClick={() => setArticlesOffset(0)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setArticlesOffset(0)}
+              >
                 Back to the first page
               </Button>
             }
@@ -565,9 +623,9 @@ export function ReviewQueue({ project }: { project?: string }) {
             <AlertDialogDescription>
               This records you as a human origin; the fact will render as
               confirmed. A later re-extraction that withdraws every memory
-              source still leaves the human fact_source, so the record
-              survives. This cannot be undone by the machine; only another
-              human action can reverse it.
+              source still leaves the human fact_source, so the record survives.
+              This cannot be undone by the machine; only another human action
+              can reverse it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
@@ -576,7 +634,9 @@ export function ReviewQueue({ project }: { project?: string }) {
           </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => ratifyTarget && runRatify(ratifyTarget)}>
+            <AlertDialogAction
+              onClick={() => ratifyTarget && runRatify(ratifyTarget)}
+            >
               <UserCheck className="mr-1.5 size-3.5" />
               Ratify as confirmed
             </AlertDialogAction>
@@ -594,12 +654,15 @@ export function ReviewQueue({ project }: { project?: string }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Reject this fact?</AlertDialogTitle>
             <AlertDialogDescription className="flex items-start gap-2">
-              <AlertTriangle aria-hidden className="text-warning mt-0.5 h-4 w-4 shrink-0" />
+              <AlertTriangle
+                aria-hidden
+                className="text-warning mt-0.5 h-4 w-4 shrink-0"
+              />
               <span>
                 Withdraws belief in this fact (the same primitive a source
-                withdrawal uses) and journals a human_verdict event. This
-                does not change verification_status or review_state directly
-                — it is a belief-axis action, not a rung change.
+                withdrawal uses) and journals a human_verdict event. This does
+                not change verification_status or review_state directly — it is
+                a belief-axis action, not a rung change.
               </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -609,7 +672,9 @@ export function ReviewQueue({ project }: { project?: string }) {
           </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => rejectTarget && runReject(rejectTarget)}>
+            <AlertDialogAction
+              onClick={() => rejectTarget && runReject(rejectTarget)}
+            >
               <XCircle className="mr-1.5 size-3.5" />
               Reject
             </AlertDialogAction>
@@ -625,22 +690,26 @@ export function ReviewQueue({ project }: { project?: string }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Dismiss this contradiction flag?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Dismiss this contradiction flag?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Says the model scan's finding was wrong — not that the fact is.
-              The fact keeps its rung either way; the flag never moved one.
-              The dismissal is journalled, and that record is what keeps the
-              next recompute from raising the same flag again.
+              The fact keeps its rung either way; the flag never moved one. The
+              dismissal is journalled, and that record is what keeps the next
+              recompute from raising the same flag again.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <p className="text-muted-foreground border-border border-t border-dashed pt-2 font-mono text-sm">
-            POST /api/v1/review-queue/facts/{dismissTarget?.id}/dismiss-suspicion ·
-            authenticated · not a human_verdict — it adjudicates the finding,
-            not the fact
+            POST /api/v1/review-queue/facts/{dismissTarget?.id}
+            /dismiss-suspicion · authenticated · not a human_verdict — it
+            adjudicates the finding, not the fact
           </p>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => dismissTarget && runDismiss(dismissTarget)}>
+            <AlertDialogAction
+              onClick={() => dismissTarget && runDismiss(dismissTarget)}
+            >
               <EyeOff className="mr-1.5 size-3.5" />
               Dismiss suspicion
             </AlertDialogAction>

@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { ArrowRight, Bell, CircleAlert, Inbox } from "lucide-react"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { ArrowRight, Bell } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -56,13 +56,13 @@ export function FeedTab() {
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground max-w-4xl text-sm">
-        The recent slice of the durable <code className="font-mono">events</code>{" "}
-        substrate — captures, pipeline outcomes, verification changes,
-        consolidation, and repo syncs. This list refreshes on a short poll;
-        for the authoritative reconstruction of one object's history or a
-        calendar day, use the timeline or the day drill-down, both reading
-        the same substrate directly, never a client-side count of what this
-        page happened to fetch.
+        The recent slice of the durable{" "}
+        <code className="font-mono">events</code> substrate — captures, pipeline
+        outcomes, verification changes, consolidation, and repo syncs. This list
+        refreshes on a short poll; for the authoritative reconstruction of one
+        object's history or a calendar day, use the timeline or the day
+        drill-down, both reading the same substrate directly, never a
+        client-side count of what this page happened to fetch.
       </p>
       <ModuleSurface
         title="Activity — live feed"
@@ -103,13 +103,13 @@ export function FeedTab() {
         </ToggleGroup>
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load the feed"
             description="The /events request failed — this is an error state, not an empty feed. Retry by reopening Activity."
           />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={<Inbox aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title={
               category === "all"
                 ? "No recent events"

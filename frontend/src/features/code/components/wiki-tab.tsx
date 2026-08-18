@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { Link } from "@tanstack/react-router"
 import {
   ArrowRight,
-  BookOpen,
   ChevronLeft,
   ChevronRight,
   FolderGit2,
@@ -16,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoCodeRepos, useDemoCodeGraph } from "@/demo/hooks"
 import type { DemoWikiSection } from "@/demo/types"
@@ -198,7 +197,8 @@ export function WikiTab({
             </SelectContent>
           </Select>
           <span className="text-muted-foreground font-mono text-sm">
-            branch <b className="text-foreground font-semibold">{repo.branch}</b>
+            branch{" "}
+            <b className="text-foreground font-semibold">{repo.branch}</b>
             {repo.head && (
               <>
                 {" "}
@@ -239,10 +239,7 @@ export function WikiTab({
       {wiki && currentSection ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13rem_minmax(0,1fr)]">
           {/* contents — a spine, so position in the document is legible */}
-          <nav
-            className="top-2 h-fit lg:sticky"
-            aria-label="Wiki contents"
-          >
+          <nav className="top-2 h-fit lg:sticky" aria-label="Wiki contents">
             <p className="text-muted-foreground mb-2 font-mono text-[10px] tracking-[0.18em] uppercase">
               Contents
             </p>
@@ -391,8 +388,8 @@ export function WikiTab({
       ) : (
         <div className="border-border bg-card rounded-lg border">
           <EmptyState
+            kind="empty"
             className="py-10"
-            icon={<BookOpen aria-hidden className="h-6 w-6" />}
             title="No wiki generated yet for this repository"
             description={
               repo.status === "registered" || repo.last_indexed_at === null

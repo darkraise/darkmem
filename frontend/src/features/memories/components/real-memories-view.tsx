@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
-import { Brain, Inbox, Loader2, Plus, Search, SearchX, X } from "lucide-react"
+import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { cn } from "darkraise-ui/lib"
@@ -77,7 +77,9 @@ export function RealMemoriesView() {
     setLimit(PAGE)
   }
 
-  const toRowData = (memory: (typeof rows)[number]["memory"]): MemoryRowData => ({
+  const toRowData = (
+    memory: (typeof rows)[number]["memory"],
+  ): MemoryRowData => ({
     id: memory.id,
     content: memory.content,
     tags: memory.tags,
@@ -169,14 +171,19 @@ export function RealMemoriesView() {
           <ExclusionStrip items={exclusions} />
 
           {isLoading ? (
-            <div className="space-y-2" role="status" aria-label="Loading memories">
+            <div
+              className="space-y-2"
+              role="status"
+              aria-label="Loading memories"
+            >
               <Skeleton className="h-[84px] w-full rounded-md" />
               <Skeleton className="h-[84px] w-full rounded-md" />
               <Skeleton className="h-[84px] w-full rounded-md" />
             </div>
           ) : isError ? (
             <EmptyState
-              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              kind="filtered"
+              scope="page"
               title="Search failed"
               description="Both the semantic and keyword channels failed for this request — an outage, never an empty list masquerading as no-match."
             />
@@ -233,7 +240,8 @@ export function RealMemoriesView() {
             </div>
           ) : searching ? (
             <EmptyState
-              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              kind="filtered"
+              scope="page"
               title="No matches"
               description={`No memories match "${query.trim()}"${
                 project.trim() ? ` in project ${project.trim()}` : ""
@@ -246,7 +254,8 @@ export function RealMemoriesView() {
             />
           ) : project.trim() ? (
             <EmptyState
-              icon={<Inbox aria-hidden className="h-6 w-6" />}
+              kind="empty"
+              scope="page"
               title={`No memories in project ${project.trim()}`}
               description="This project has no memories yet — other projects might."
               action={
@@ -257,7 +266,8 @@ export function RealMemoriesView() {
             />
           ) : (
             <EmptyState
-              icon={<Inbox aria-hidden className="h-6 w-6" />}
+              kind="empty"
+              scope="page"
               title="No memories captured yet"
               description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
               action={

@@ -1,16 +1,14 @@
 import { Link } from "@tanstack/react-router"
 import {
   ArrowRight,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Circle,
-  CircleAlert,
   Clock,
   Link2,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { useState } from "react"
 import { useDetailLevel, VerificationBadge } from "@/components/darkmem"
 import { shiftDay } from "@/demo/activity"
@@ -41,8 +39,7 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
     return (
       <div className="space-y-1">
         <p className="text-sm">
-          Push curbed for{" "}
-          <b className="font-semibold">{inject.tool}</b>
+          Push curbed for <b className="font-semibold">{inject.tool}</b>
           {inject.contextFile ? ` — ${inject.contextFile}` : ""}: the managed
           block is cleared to an empty marker pair. Nothing was pushed.
         </p>
@@ -107,7 +104,7 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
             ).map(([label, ids]) =>
               ids.length === 0 ? null : (
                 <div key={label} className="space-y-0.5">
-                  <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+                  <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
                     {label}
                   </p>
                   <ul className="space-y-0.5">
@@ -213,7 +210,11 @@ export function DayTab({
         </span>
         <SurfaceStateChip
           state={
-            isLoading ? "empty" : events && events.length > 0 ? "populated" : "empty"
+            isLoading
+              ? "empty"
+              : events && events.length > 0
+                ? "populated"
+                : "empty"
           }
         />
         <div className="ml-auto flex items-center gap-1.5">
@@ -237,14 +238,14 @@ export function DayTab({
         <span className="text-muted-foreground flex basis-full items-center gap-1.5 text-sm">
           <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
           <span>
-            <b className="text-foreground font-semibold">Days are UTC</b> —
-            this list is the UTC calendar date, not your local one.
+            <b className="text-foreground font-semibold">Days are UTC</b> — this
+            list is the UTC calendar date, not your local one.
           </span>
         </span>
       </div>
       {isError ? (
         <EmptyState
-          icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+          kind="failed"
           title="Couldn't load this day"
           description="The /events request for this UTC window failed — this is an error state, not an empty day."
         />
@@ -255,8 +256,8 @@ export function DayTab({
           ))}
           {truncated && (
             <p className="text-muted-foreground pt-2.5 text-sm">
-              Showing {events.length} of {total} events for this day — narrow
-              by project to see the rest.
+              Showing {events.length} of {total} events for this day — narrow by
+              project to see the rest.
             </p>
           )}
         </div>
@@ -264,7 +265,7 @@ export function DayTab({
         // Honest empty: names the UTC bucket it checked; a quiet day is an
         // ordinary outcome, not a blank.
         <EmptyState
-          icon={<CalendarDays aria-hidden className="h-6 w-6" />}
+          kind="filtered"
           title="No activity on this day"
           description={`No events rows fall in the UTC bucket for ${day} — nothing was created, verified, injected, or synced in this project on that date. The bucket boundary is the UTC calendar date, so a late-night local capture may land on the neighbouring day here.`}
         />

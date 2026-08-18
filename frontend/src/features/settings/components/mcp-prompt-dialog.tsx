@@ -1,4 +1,3 @@
-import { CircleAlert } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -6,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Badge } from "darkraise-ui/components/badge"
 import { useSystemPrompts } from "@/hooks/api"
@@ -50,7 +49,7 @@ export function McpPromptDialog({
 
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load the prompt"
             description="The /config/system-prompts request failed — this is an error, not an empty prompt."
           />
@@ -66,7 +65,7 @@ export function McpPromptDialog({
           </pre>
         ) : (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="No instructions are injected"
             description="agent_instructions resolves empty, so the server sends no instructions at all and connecting clients are told nothing about darkmem."
           />

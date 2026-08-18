@@ -9,7 +9,7 @@ import {
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { useDetailLevel } from "@/components/darkmem"
 import { PRIOR_DISMISSED_NOTE } from "@/demo/data-exports"
 import {
@@ -48,7 +48,10 @@ function CommunityCard({
   return (
     <div className="border-border space-y-2 rounded-md border p-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <Waypoints aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />
+        <Waypoints
+          aria-hidden
+          className="text-muted-foreground h-4 w-4 shrink-0"
+        />
         <span className="text-sm font-semibold">{topic.label}</span>
         {diff && (
           <Badge variant="outline" size="sm" className="font-mono uppercase">
@@ -62,7 +65,12 @@ function CommunityCard({
       </div>
       <div className="flex flex-wrap gap-1.5">
         {topic.dominantEntities.map((entity) => (
-          <Badge key={entity} variant="secondary" size="sm" className="font-mono">
+          <Badge
+            key={entity}
+            variant="secondary"
+            size="sm"
+            className="font-mono"
+          >
             {entity}
           </Badge>
         ))}
@@ -117,8 +125,13 @@ function PinSuggestionCard({
   return (
     <div className="border-border bg-muted/10 space-y-2 rounded-md border border-dashed p-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        <MapPin aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />
-        <span className="font-mono text-sm font-semibold">{suggestion.subject}</span>
+        <MapPin
+          aria-hidden
+          className="text-muted-foreground h-4 w-4 shrink-0"
+        />
+        <span className="font-mono text-sm font-semibold">
+          {suggestion.subject}
+        </span>
         <Badge
           variant="outline"
           size="sm"
@@ -144,7 +157,10 @@ function PinSuggestionCard({
           {suggestion.memberCount} members
         </span>
         <span className="flex items-center gap-1.5">
-          <BadgeCheck aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+          <BadgeCheck
+            aria-hidden
+            className="text-muted-foreground h-3.5 w-3.5"
+          />
           anchors {suggestion.anchoredFactCount} verified facts
         </span>
       </div>
@@ -156,7 +172,10 @@ function PinSuggestionCard({
       <div className="border-border flex flex-wrap gap-2 border-t border-dashed pt-2">
         {/* Accept pins a subject; it never auto-creates an article. Both
             verbs key on the subject key, never on a community id. */}
-        <Button size="sm" onClick={() => onDecide(suggestion.subjectKey, "accepted")}>
+        <Button
+          size="sm"
+          onClick={() => onDecide(suggestion.subjectKey, "accepted")}
+        >
           <MapPin className="mr-1.5 size-3.5" />
           Accept — pin subject
         </Button>
@@ -210,7 +229,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
           ))
         ) : (
           <EmptyState
-            icon={<Waypoints aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="No topics detected yet"
             description="Community detection clusters memories once enough of them share entities — this project has not accumulated enough yet, or the detection job has not completed its first run. Nothing here means not yet, not broken."
           />
@@ -233,7 +252,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
         ))}
         {suggestions.length === 0 && (
           <EmptyState
-            icon={<MapPin aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="Nothing to pin yet"
             description="A subject is suggested once its community is new or growing and it already anchors verified facts. None qualify in this project right now."
           />

@@ -35,7 +35,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { mermaidForProcess, type GraphLayoutMode } from "@/demo/explore"
 import type { CodeNodeKind } from "@/features/code/types"
@@ -119,7 +119,10 @@ export function RealCodeGraphView({
     setActiveProcess(null)
   }, [repo?.id])
 
-  const filePaths = useMemo(() => (files ?? []).map((f) => f.file_path), [files])
+  const filePaths = useMemo(
+    () => (files ?? []).map((f) => f.file_path),
+    [files],
+  )
 
   const processIds = useMemo(() => {
     const process = graph?.processes.find((p) => p.id === activeProcess)
@@ -146,8 +149,8 @@ export function RealCodeGraphView({
   if (!repo) {
     return (
       <EmptyState
+        kind="empty"
         className="flex-1 py-12"
-        icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
         title="No repositories indexed yet"
         description="Add a repository from Repositories to build a code graph."
         action={
@@ -230,8 +233,8 @@ export function RealCodeGraphView({
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
         <EmptyState
+          kind="empty"
           className="flex-1 py-12"
-          icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
           title="No graph yet"
           description={`${repo.name} has no indexed graph — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}
           action={
@@ -367,7 +370,9 @@ export function RealCodeGraphView({
               visibleIds={null}
               hiddenKinds={hiddenKinds}
               blastIds={
-                blast ? new Set(blast.affected.map((a) => a.key ?? a.name)) : null
+                blast
+                  ? new Set(blast.affected.map((a) => a.key ?? a.name))
+                  : null
               }
               highlightCommunity={activeCommunity}
               processIds={processIds}
@@ -389,8 +394,8 @@ export function RealCodeGraphView({
               ))
             ) : (
               <span className="inline-flex items-center gap-1.5">
-                node kinds coloured by tier — see the Filters tab for the
-                full legend
+                node kinds coloured by tier — see the Filters tab for the full
+                legend
               </span>
             )}
           </div>

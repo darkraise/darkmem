@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { FileText, Sparkles } from "lucide-react"
+import { Sparkles } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 
@@ -59,7 +59,7 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
             </p>
           ) : (documents.data?.items ?? []).length === 0 ? (
             <EmptyState
-              icon={<FileText aria-hidden className="h-6 w-6" />}
+              kind="empty"
               title="No documents filed"
               description="Filing a document parses it into blocks; nothing is lifted or summarised until you ask."
             />
@@ -114,7 +114,11 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
               variant="outline"
               disabled={!question.trim() || qa.isPending}
               onClick={() =>
-                qa.mutate({ question: question.trim(), project, document_id: selected })
+                qa.mutate({
+                  question: question.trim(),
+                  project,
+                  document_id: selected,
+                })
               }
             >
               <Sparkles className="mr-1.5 size-3.5" />

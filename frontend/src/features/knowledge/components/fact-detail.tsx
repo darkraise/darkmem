@@ -1,19 +1,16 @@
 import { Link } from "@tanstack/react-router"
-import {
-  AlertTriangle,
-  ArrowLeft,
-  CircleAlert,
-  FileQuestion,
-  Library,
-  Loader2,
-} from "lucide-react"
+import { ArrowLeft, CircleAlert, Library, Loader2 } from "lucide-react"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Separator } from "darkraise-ui/components/separator"
 import { useSetPageChrome } from "@/components/app-chrome"
-import { LayerChip, useDetailLevel, VerificationBadge } from "@/components/darkmem"
+import {
+  LayerChip,
+  useDetailLevel,
+  VerificationBadge,
+} from "@/components/darkmem"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoFact } from "@/demo/hooks"
 import { distinctOriginCount } from "@/demo/knowledge"
@@ -37,7 +34,11 @@ import { DetailSection } from "./detail-section"
  *  than read off `Route.useParams()`, so it renders (and tests) without a
  *  router context, the same way `ReviewQueue`/`FactRow` do. */
 export function FactDetail({ factId }: { factId: string }) {
-  return DEMO ? <DemoFactDetail factId={factId} /> : <LiveFactDetail factId={factId} />
+  return DEMO ? (
+    <DemoFactDetail factId={factId} />
+  ) : (
+    <LiveFactDetail factId={factId} />
+  )
 }
 
 // ───────────────────────────── demo (unchanged) ─────────────────────────────
@@ -51,7 +52,10 @@ function LadderRow({ event }: { event: DemoLadderEvent }) {
       <div className="min-w-52 flex-1 space-y-1">
         <p className="text-sm">{event.description}</p>
         {event.transition && (
-          <RungTransition from={event.transition.from} to={event.transition.to} />
+          <RungTransition
+            from={event.transition.from}
+            to={event.transition.to}
+          />
         )}
         {event.note && (
           <p className="text-muted-foreground text-sm">{event.note}</p>
@@ -91,7 +95,7 @@ function DemoFactDetail({ factId }: { factId: string }) {
     return (
       <div>
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
           title="Fact not found"
           description="This fact does not exist in the demo store."
           action={
@@ -329,7 +333,10 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
   const advanced = useDetailLevel((s) => s.level) === "advanced"
   const disputed = fact.verification_status === "disputed"
   const flatSources = sourceGroupsToFlatSources(fact.sources)
-  const rowCount = fact.sources.reduce((n, group) => n + group.sources.length, 0)
+  const rowCount = fact.sources.reduce(
+    (n, group) => n + group.sources.length,
+    0,
+  )
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -339,7 +346,10 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
       <div className="space-y-4 pt-2 pb-6">
         <div className="flex flex-wrap items-center gap-2">
           <LayerChip layer={2} />
-          <VerificationBadge status={fact.verification_status} detail={fact.claim} />
+          <VerificationBadge
+            status={fact.verification_status}
+            detail={fact.claim}
+          />
           {fact.under_sourced && <UnderSourcedBadge />}
           {fact.label_suppressed && (
             <SuppressedBadge reason={fact.label_suppressed} />
@@ -356,7 +366,9 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
             className="text-lg"
           />
         )}
-        <p className="max-w-[70ch] text-base leading-relaxed">{fact.fact_text}</p>
+        <p className="max-w-[70ch] text-base leading-relaxed">
+          {fact.fact_text}
+        </p>
         {fact.claim && (
           <p className="text-muted-foreground max-w-[70ch] font-mono text-sm">
             {fact.claim}
@@ -381,7 +393,10 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
 
       <Separator />
 
-      <Accordion type="multiple" defaultValue={[fact.dispute ? "dispute" : "sources"]}>
+      <Accordion
+        type="multiple"
+        defaultValue={[fact.dispute ? "dispute" : "sources"]}
+      >
         {fact.sources.length > 0 && (
           <DetailSection
             value="sources"
@@ -440,7 +455,11 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
           )}
         </DetailSection>
 
-        <DetailSection value="record" title="Record & provenance" meta={fact.project}>
+        <DetailSection
+          value="record"
+          title="Record & provenance"
+          meta={fact.project}
+        >
           <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
             <MetaRow label="fact_id">{fact.id.slice(0, 8)}</MetaRow>
             <MetaRow label="project">{fact.project}</MetaRow>
@@ -460,11 +479,15 @@ function LiveFactDetailBody({ fact }: { fact: LiveFactDetailData }) {
                   </MetaRow>
                 )}
                 {fact.reference_time && (
-                  <MetaRow label="reference_time">{fact.reference_time}</MetaRow>
+                  <MetaRow label="reference_time">
+                    {fact.reference_time}
+                  </MetaRow>
                 )}
                 {fact.learned_in && fact.learned_in.length > 0 && (
                   <MetaRow label="learned_in">
-                    <span className="font-mono">{fact.learned_in.join(", ")}</span>
+                    <span className="font-mono">
+                      {fact.learned_in.join(", ")}
+                    </span>
                   </MetaRow>
                 )}
               </>
@@ -484,12 +507,15 @@ function LiveFactDetail({ factId }: { factId: string }) {
       <LiveFactDetailChrome />
       {state.status === "loading" && (
         <div className="flex justify-center py-16">
-          <Loader2 aria-hidden className="text-muted-foreground h-6 w-6 animate-spin" />
+          <Loader2
+            aria-hidden
+            className="text-muted-foreground h-6 w-6 animate-spin"
+          />
         </div>
       )}
       {state.status === "not_found" && (
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
           title="Fact not found"
           description="No fact exists with this id."
           action={<BackToFacts />}
@@ -497,7 +523,7 @@ function LiveFactDetail({ factId }: { factId: string }) {
       )}
       {state.status === "invalid" && (
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
           title="Not a valid fact id"
           description="This link is malformed — retrying it will not help."
           action={<BackToFacts />}
@@ -505,7 +531,7 @@ function LiveFactDetail({ factId }: { factId: string }) {
       )}
       {state.status === "failed" && (
         <EmptyState
-          icon={<AlertTriangle aria-hidden className="h-6 w-6" />}
+          kind="failed"
           title="Couldn't load this fact"
           description="The read failed — this is a fetch problem, not a missing fact. Try again."
           action={

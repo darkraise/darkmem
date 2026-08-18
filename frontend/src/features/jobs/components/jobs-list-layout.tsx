@@ -1,7 +1,7 @@
 import { useState } from "react"
-import { CalendarClock, CircleAlert, Lock, X, Zap } from "lucide-react"
+import { CalendarClock, Lock, X, Zap } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
@@ -145,7 +145,10 @@ export function ConfigSchemaSection({
   if (job.config_schema.length === 0) {
     return (
       <div className="border-border bg-muted/8 flex flex-col gap-1.5 rounded-md border border-dashed px-3 py-2.5">
-        <SectionHead label="config_schema" role="no fields declared for this job" />
+        <SectionHead
+          label="config_schema"
+          role="no fields declared for this job"
+        />
         <p className="text-muted-foreground text-sm italic">
           {job.key} declares no config_schema — nothing beyond schedule to
           configure.
@@ -193,7 +196,9 @@ export function ConfigSchemaSection({
                   {field.max !== undefined && `max ${field.max}`}
                 </span>
               )}
-              {error && <span className="text-destructive text-sm">{error}</span>}
+              {error && (
+                <span className="text-destructive text-sm">{error}</span>
+              )}
             </div>
           )
         })}
@@ -211,9 +216,7 @@ export function ConfigSchemaSection({
         >
           Save config
         </Button>
-        {saved && (
-          <span className="text-success font-mono text-sm">saved</span>
-        )}
+        {saved && <span className="text-success font-mono text-sm">saved</span>}
       </div>
     </div>
   )
@@ -358,7 +361,9 @@ export function JobsListLayout() {
     // failure and must not be swallowed as busy.
     trigger(key)
       .then((result) => {
-        setBusy(result.ok ? null : { key, lock_held_since: result.lock_held_since })
+        setBusy(
+          result.ok ? null : { key, lock_held_since: result.lock_held_since },
+        )
       })
       .catch((err: unknown) => {
         toast.error(`Trigger failed for ${key}`, {
@@ -371,19 +376,17 @@ export function JobsListLayout() {
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
-          JobRegistry configuration for the registered jobs — cron, the
-          enabled switch, per-job config, and a manual trigger, all in one
-          place.
+          JobRegistry configuration for the registered jobs — cron, the enabled
+          switch, per-job config, and a manual trigger, all in one place.
         </span>
         <HelpTip label="About the Jobs tab">
-          Cron, the enabled switch, and config_schema fields save per job;
-          the floor/ceiling stay read-only registration constants. A manual
-          trigger acquires the same asyncio.Lock the scheduled loop uses, so
-          a save can never race a running tick, and a trigger that lands
-          while the lock is held returns busy (HTTP 409) immediately —
-          discarded, never queued behind the in-flight run. The full run
-          history lives on Activity → Jobs, which shares this same trigger
-          mechanism.
+          Cron, the enabled switch, and config_schema fields save per job; the
+          floor/ceiling stay read-only registration constants. A manual trigger
+          acquires the same asyncio.Lock the scheduled loop uses, so a save can
+          never race a running tick, and a trigger that lands while the lock is
+          held returns busy (HTTP 409) immediately — discarded, never queued
+          behind the in-flight run. The full run history lives on Activity →
+          Jobs, which shares this same trigger mechanism.
         </HelpTip>
       </div>
       <ModuleSurface
@@ -393,7 +396,7 @@ export function JobsListLayout() {
       >
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load the job board"
             description="The /jobs request failed — this is an error state, not an empty registry."
           />

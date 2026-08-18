@@ -1,4 +1,3 @@
-import { CircleAlert, History } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -6,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Badge } from "darkraise-ui/components/badge"
 import { relativeTime } from "@/lib/format"
@@ -39,13 +38,13 @@ export function JobHistoryDialog({
 
         {!journals ? (
           <EmptyState
-            icon={<History aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="This job does not journal its runs"
             description="Only the three cleanup runners write a maintenance_run row. This is an absent history, not an empty one — the job may well have run many times."
           />
         ) : isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load the history"
             description="The /events request failed. This is an error, not an empty history."
           />
@@ -57,7 +56,7 @@ export function JobHistoryDialog({
           </div>
         ) : runs.length === 0 ? (
           <EmptyState
-            icon={<History aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="No runs in the journal window"
             description="This job journals its runs, but none appear in the most recent maintenance_run page — it may not have run yet, or busier jobs may have pushed it out of the window."
           />
@@ -69,7 +68,9 @@ export function JobHistoryDialog({
                   key={run.id}
                   className="border-border flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-sm"
                 >
-                  <Badge variant={run.outcome === "ok" ? "outline" : "destructive"}>
+                  <Badge
+                    variant={run.outcome === "ok" ? "outline" : "destructive"}
+                  >
                     {run.outcome}
                   </Badge>
                   <span className="text-muted-foreground">

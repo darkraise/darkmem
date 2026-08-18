@@ -1,14 +1,10 @@
 import { useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Brain, FileQuestion, Link2, Pencil } from "lucide-react"
+import { Brain, Link2, Pencil } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "darkraise-ui/components/card"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
+import { EmptyState } from "@/components/darkmem"
 import { Separator } from "darkraise-ui/components/separator"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { PageChrome } from "@/components/app-chrome"
@@ -35,7 +31,10 @@ function LineageLink({ id, content }: { id: string; content: string }) {
       params={{ memoryId: id }}
       className="hover:text-primary flex min-w-0 items-center gap-1.5 text-sm transition-colors"
     >
-      <Link2 aria-hidden className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+      <Link2
+        aria-hidden
+        className="text-muted-foreground h-3.5 w-3.5 shrink-0"
+      />
       <span className="truncate">
         memory {id.slice(0, 8)} — “{content.slice(0, 80)}…”
       </span>
@@ -94,11 +93,14 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
             ) : successor.isLoading ? (
               <Skeleton className="h-4 w-48" />
             ) : successor.data ? (
-              <LineageLink id={successor.data.id} content={successor.data.content} />
+              <LineageLink
+                id={successor.data.id}
+                content={successor.data.content}
+              />
             ) : (
               <span className="text-muted-foreground text-sm italic">
-                successor memory {memory.superseded_by.slice(0, 8)} could not
-                be loaded
+                successor memory {memory.superseded_by.slice(0, 8)} could not be
+                loaded
               </span>
             )}
           </div>
@@ -106,14 +108,14 @@ function SupersessionLineage({ memory }: { memory: Memory }) {
           <div className="flex flex-wrap items-center gap-2.5">
             <LifecycleBadge status="deprecated" />
             <span className="text-muted-foreground text-sm italic">
-              superseded_by: null — the successor memory was later removed;
-              this row was demoted, not deleted.
+              superseded_by: null — the successor memory was later removed; this
+              row was demoted, not deleted.
             </span>
           </div>
         ) : (
           <p className="text-muted-foreground text-sm italic">
-            not superseded — this is the current, active version of this
-            memory; superseded_by is null.
+            not superseded — this is the current, active version of this memory;
+            superseded_by is null.
           </p>
         )}
       </div>
@@ -162,7 +164,8 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
       <>
         <PageChrome icon={Brain} title="Memory detail" />
         <EmptyState
-          icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+          kind="missing"
+          scope="page"
           title="Memory not found"
           description="This memory does not exist, or the request failed."
         />

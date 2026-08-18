@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { BookOpen, FolderGit2 } from "lucide-react"
+import { FolderGit2 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import {
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { apiFetch } from "@/lib/api"
 import { useRepos, useReindexRepo } from "@/hooks/api"
 import type { ReindexInput } from "../schemas"
@@ -76,13 +76,15 @@ export function RealWikiView({
   const reindexRepo = useReindexRepo()
 
   if (reposLoading) {
-    return <p className="text-muted-foreground p-3 text-sm">Loading repositories…</p>
+    return (
+      <p className="text-muted-foreground p-3 text-sm">Loading repositories…</p>
+    )
   }
 
   if (!repo) {
     return (
       <EmptyState
-        icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
+        kind="empty"
         title="No repositories indexed yet"
         description="Add a repository to get started."
       />
@@ -120,6 +122,7 @@ export function RealWikiView({
 
       {isError && (
         <EmptyState
+          kind="failed"
           title="Failed to load wiki"
           description="Something went wrong while loading the generated documentation."
           action={<Button onClick={() => refetch()}>Retry</Button>}
@@ -185,7 +188,10 @@ export function RealWikiView({
                             {file.path}
                           </span>
                           {file.language && (
-                            <Badge variant="outline" className="shrink-0 text-sm">
+                            <Badge
+                              variant="outline"
+                              className="shrink-0 text-sm"
+                            >
                               {file.language}
                             </Badge>
                           )}
@@ -229,7 +235,7 @@ export function RealWikiView({
 
       {!isLoading && !isError && !wiki && (
         <EmptyState
-          icon={<BookOpen aria-hidden className="h-6 w-6" />}
+          kind="empty"
           title="No wiki generated yet for this repository"
           description={
             repo.last_indexed_at === null

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { FileText, GitBranch } from "lucide-react"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { GitBranch } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
 import {
   Select,
   SelectContent,
@@ -19,7 +19,10 @@ import { DEMO } from "@/lib/demo-flag"
 import { useDemoArticles } from "@/demo/hooks"
 import { liveArticles, withheldArticles } from "@/demo/knowledge"
 import type { DemoArticle } from "@/demo/types"
-import { useArticles, type ArticleRow as LiveArticle } from "@/hooks/api/use-articles-api"
+import {
+  useArticles,
+  type ArticleRow as LiveArticle,
+} from "@/hooks/api/use-articles-api"
 import { ListSurface } from "./list-surface"
 import { StaleBadge } from "./fact-parts"
 
@@ -209,7 +212,10 @@ export function ArticlesTab() {
     <div className="space-y-4">
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
         <Select value={project} onValueChange={setProject}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Project scope">
+          <SelectTrigger
+            className="w-44 rounded-full"
+            aria-label="Project scope"
+          >
             <SelectValue>project: {projectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -248,10 +254,12 @@ export function ArticlesTab() {
           />
         )}
         {shown.length > 0 ? (
-          shown.map((article) => <ArticleRow key={article.id} article={article} />)
+          shown.map((article) => (
+            <ArticleRow key={article.id} article={article} />
+          ))
         ) : (
           <EmptyState
-            icon={<FileText aria-hidden className="h-6 w-6" />}
+            kind="empty"
             title="No articles yet"
             description={
               DEMO

@@ -6,11 +6,11 @@ import {
   useRef,
   type ReactNode,
 } from "react"
-import { ChevronRight, Diamond } from "lucide-react"
+import { ChevronRight } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import {
@@ -90,7 +90,11 @@ const FileTree = memo(function FileTree({
             return { id: fullPath, name: key }
           }
           branches.push(fullPath)
-          return { id: fullPath, name: key, children: toNodes(children, fullPath) }
+          return {
+            id: fullPath,
+            name: key,
+            children: toNodes(children, fullPath),
+          }
         })
     return { nodes: toNodes(root), leafIds: leaves, branchIds: branches }
   }, [files])
@@ -205,6 +209,7 @@ function SymbolsTab({
   if (!repoId) {
     return (
       <EmptyState
+        kind="filtered"
         className="font-mono"
         title="No repository selected"
         description="Select a repository to browse symbols"
@@ -214,7 +219,7 @@ function SymbolsTab({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-border p-3">
+      <div className="border-border flex shrink-0 flex-col gap-2 border-b p-3">
         <Input
           placeholder="Filter symbols…"
           className="h-8 font-mono text-sm"
@@ -255,17 +260,20 @@ function SymbolsTab({
                         nodeColors[sym.kind] ?? "hsl(var(--muted-foreground))",
                     }}
                   />
-                  <span className="min-w-0 flex-1 truncate font-mono text-sm text-foreground">
+                  <span className="text-foreground min-w-0 flex-1 truncate font-mono text-sm">
                     {sym.name}
                   </span>
-                  <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                  <span className="text-muted-foreground shrink-0 font-mono text-sm">
                     {sym.kind}
                   </span>
                 </div>
-                <div className="mt-1 truncate font-mono text-sm text-muted-foreground">
+                <div className="text-muted-foreground mt-1 truncate font-mono text-sm">
                   {sym.file_path}
                   {sym.line_start > 0 && (
-                    <span> · L{sym.line_start}–{sym.line_end}</span>
+                    <span>
+                      {" "}
+                      · L{sym.line_start}–{sym.line_end}
+                    </span>
                   )}
                 </div>
               </Button>
@@ -275,13 +283,17 @@ function SymbolsTab({
               <Spinner size="sm" label="Loading symbols…" />
             </div>
           ) : (
-            <EmptyState className="font-mono" title="No symbols found" />
+            <EmptyState
+              kind="filtered"
+              className="font-mono"
+              title="No symbols found"
+            />
           )}
         </div>
       </ScrollArea>
 
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-2">
-        <span className="font-mono text-sm text-muted-foreground tabular-nums">
+      <div className="border-border flex shrink-0 items-center justify-between gap-2 border-t px-3 py-2">
+        <span className="text-muted-foreground font-mono text-sm tabular-nums">
           {rangeStart}-{rangeEnd} of {total}
         </span>
         <div className="flex items-center gap-1">
@@ -345,10 +357,10 @@ export function CodeInspectorPanel({
   ]
 
   return (
-    <div className="code-inspector-panel flex h-full flex-col border-r border-border">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-        <span className="font-mono text-sm font-semibold tracking-[0.2em] text-foreground uppercase">
+    <div className="code-inspector-panel border-border flex h-full flex-col border-r">
+      <div className="border-border flex shrink-0 items-center gap-2 border-b px-4 py-2.5">
+        <div className="bg-primary h-1.5 w-1.5 rounded-full" />
+        <span className="text-foreground font-mono text-sm font-semibold tracking-[0.2em] uppercase">
           Code Inspector
         </span>
       </div>
@@ -390,13 +402,13 @@ export function CodeInspectorPanel({
             <div className="p-3">
               {symbolDetail ? (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
-                    <span className="font-mono text-sm text-primary">◈</span>
-                    <span className="flex-1 truncate font-mono text-sm text-foreground">
+                  <div className="border-border bg-card flex items-center gap-2 rounded-md border px-3 py-1.5">
+                    <span className="text-primary font-mono text-sm">◈</span>
+                    <span className="text-foreground flex-1 truncate font-mono text-sm">
                       {symbolDetail.file_path ?? symbolDetail.name}
                     </span>
                     {symbolDetail.line_start > 0 && (
-                      <span className="shrink-0 font-mono text-sm text-muted-foreground">
+                      <span className="text-muted-foreground shrink-0 font-mono text-sm">
                         L{symbolDetail.line_start}–{symbolDetail.line_end}
                       </span>
                     )}
@@ -404,13 +416,13 @@ export function CodeInspectorPanel({
 
                   {symbolDetail.signature && (
                     <Card className="overflow-hidden">
-                      <CardHeader className="border-b border-border px-3 py-1">
-                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                      <CardHeader className="border-border border-b px-3 py-1">
+                        <span className="text-muted-foreground font-mono text-sm tracking-[0.2em] uppercase">
                           Signature
                         </span>
                       </CardHeader>
                       <CardContent className="p-0">
-                        <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+                        <pre className="text-foreground overflow-x-auto px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap">
                           {symbolDetail.signature}
                         </pre>
                       </CardContent>
@@ -419,11 +431,11 @@ export function CodeInspectorPanel({
 
                   {symbolDetail.source_code && (
                     <Card className="overflow-hidden">
-                      <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border px-3 py-1">
-                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                      <CardHeader className="border-border flex-row items-center justify-between space-y-0 border-b px-3 py-1">
+                        <span className="text-muted-foreground font-mono text-sm tracking-[0.2em] uppercase">
                           Source
                         </span>
-                        <span className="font-mono text-sm text-muted-foreground">
+                        <span className="text-muted-foreground font-mono text-sm">
                           {symbolDetail.source_code.split("\n").length} lines
                         </span>
                       </CardHeader>
@@ -432,7 +444,7 @@ export function CodeInspectorPanel({
                             against an auto-height root; the flex column lets
                             max-h clamp the viewport so long sources scroll. */}
                         <ScrollArea className="flex max-h-[65vh] flex-col">
-                          <pre className="overflow-x-auto px-3 py-2 font-mono text-sm leading-[1.6] text-foreground">
+                          <pre className="text-foreground overflow-x-auto px-3 py-2 font-mono text-sm leading-[1.6]">
                             {symbolDetail.source_code}
                           </pre>
                         </ScrollArea>
@@ -442,13 +454,13 @@ export function CodeInspectorPanel({
 
                   {symbolDetail.docstring && (
                     <Card className="overflow-hidden">
-                      <CardHeader className="border-b border-border px-3 py-1">
-                        <span className="font-mono text-sm tracking-[0.2em] text-muted-foreground uppercase">
+                      <CardHeader className="border-border border-b px-3 py-1">
+                        <span className="text-muted-foreground font-mono text-sm tracking-[0.2em] uppercase">
                           Docstring
                         </span>
                       </CardHeader>
                       <CardContent className="p-0">
-                        <p className="px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                        <p className="text-muted-foreground px-3 py-2 font-mono text-sm leading-relaxed whitespace-pre-wrap">
                           {symbolDetail.docstring}
                         </p>
                       </CardContent>
@@ -457,8 +469,8 @@ export function CodeInspectorPanel({
                 </div>
               ) : (
                 <EmptyState
+                  kind="empty"
                   className="font-mono"
-                  icon={<Diamond className="h-6 w-6" />}
                   title="Select a symbol to inspect"
                   description="Click a node in the graph"
                 />
@@ -479,7 +491,11 @@ export function CodeInspectorPanel({
                   onSelect={onFileSelect}
                 />
               ) : (
-                <EmptyState className="font-mono" title="No files loaded" />
+                <EmptyState
+                  kind="empty"
+                  className="font-mono"
+                  title="No files loaded"
+                />
               )}
             </div>
           </ScrollArea>
@@ -496,24 +512,25 @@ export function CodeInspectorPanel({
                     className="group w-full rounded-md px-3 py-2.5 text-left"
                     onClick={() => onSearchResultClick(r)}
                   >
-                    <div className="truncate font-mono text-sm text-foreground">
+                    <div className="text-foreground truncate font-mono text-sm">
                       {r.file_path}
                     </div>
                     {r.symbol_name && (
-                      <div className="mt-0.5 font-mono text-sm text-primary">
+                      <div className="text-primary mt-0.5 font-mono text-sm">
                         {r.symbol_name}
                       </div>
                     )}
-                    <div className="mt-1 line-clamp-2 font-mono text-sm leading-relaxed text-muted-foreground">
+                    <div className="text-muted-foreground mt-1 line-clamp-2 font-mono text-sm leading-relaxed">
                       {r.chunk_content.slice(0, 140)}
                     </div>
-                    <div className="mt-1 font-mono text-sm text-muted-foreground">
+                    <div className="text-muted-foreground mt-1 font-mono text-sm">
                       score {r.score.toFixed(3)}
                     </div>
                   </Button>
                 ))
               ) : (
                 <EmptyState
+                  kind="filtered"
                   className="font-mono"
                   title="No search results"
                   description="Press Enter in the search bar"

@@ -1,5 +1,5 @@
-import { Brain, CircleDashed, TriangleAlert } from "lucide-react"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { CircleDashed, TriangleAlert } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import {
   ExclusionStrip,
@@ -53,7 +53,11 @@ const STATE_STYLE: Record<string, string> = {
  * explanation of one ranking — before the convergence there was nothing to
  * read, and the absence was stated here rather than filled in.
  */
-export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProps) {
+export function ChatContextPanel({
+  rows,
+  facts,
+  envelope,
+}: ChatContextPanelProps) {
   const populated = rows !== null
   const degraded = populated && envelope?.partial === true
   const channels = channelStates(envelope)
@@ -167,7 +171,7 @@ export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProp
 
           {rows.length === 0 && (facts ?? []).length === 0 && (
             <EmptyState
-              icon={<Brain aria-hidden className="h-6 w-6" />}
+              kind="filtered"
               title="No memories retrieved"
               description="Retrieval ran for this turn and matched nothing. This is an empty result, not a failed search."
             />

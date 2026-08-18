@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Bookmark, ChevronRight, Copy } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDetailLevel } from "@/components/darkmem"
 import {
@@ -21,7 +21,7 @@ const KIND_LABEL = "session digest · not verified knowledge"
 
 function KindPill() {
   return (
-    <span className="border-border bg-muted/40 text-muted-foreground rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide whitespace-nowrap">
+    <span className="border-border bg-muted/40 text-muted-foreground rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
       {KIND_LABEL}
     </span>
   )
@@ -77,11 +77,11 @@ function RunCard({
         <span className="text-muted-foreground text-sm">
           {advanced ? (
             <>
-              <code className="font-mono">origin_key: {run.originKey}</code> ·{" "}
+              <code className="font-mono">origin_key: {run.originKey}</code>{" "}
+              ·{" "}
             </>
           ) : null}
-          project{" "}
-          <b className="text-foreground font-semibold">{run.project}</b>
+          project <b className="text-foreground font-semibold">{run.project}</b>
         </span>
       </span>
       <KindPill />
@@ -96,7 +96,7 @@ function DetailList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null
   return (
     <div className="space-y-1.5">
-      <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+      <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
         {title}
       </p>
       <ul className="space-y-1">
@@ -123,13 +123,15 @@ function RunDetail({
 
   if (isLoading) {
     return (
-      <p className="text-muted-foreground text-sm">Loading this run's digest…</p>
+      <p className="text-muted-foreground text-sm">
+        Loading this run's digest…
+      </p>
     )
   }
   if (!digest) {
     return (
       <EmptyState
-        icon={<Bookmark aria-hidden className="h-6 w-6" />}
+        kind="empty"
         title="No checkpoints for this run yet"
         description="Run /darkmem-checkpoint (or let the session-end hook fire) to capture a resumable digest. Once one exists, a fresh session resumes from it with /darkmem-resume instead of reloading the whole context."
       />
@@ -157,7 +159,7 @@ function RunDetail({
         <p className="text-sm leading-relaxed">{digest.summary}</p>
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
           <div className="space-y-1.5">
-            <p className="text-muted-foreground font-mono text-[10px] uppercase tracking-wide">
+            <p className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
               next steps
             </p>
             <ul className="space-y-1">
@@ -178,7 +180,7 @@ function RunDetail({
       </div>
 
       <div>
-        <p className="text-muted-foreground pb-1.5 font-mono text-[10px] uppercase tracking-wide">
+        <p className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
           this run's checkpoint history
         </p>
         {run.history.length === 0 ? (
@@ -219,22 +221,22 @@ function RunDetail({
 
       {advanced ? (
         <div className="space-y-2">
-          <p className="text-muted-foreground pb-0.5 font-mono text-[10px] uppercase tracking-wide">
+          <p className="text-muted-foreground pb-0.5 font-mono text-[10px] tracking-wide uppercase">
             what resume writes into the managed block
           </p>
-          <pre className="border-border bg-muted/40 overflow-x-auto whitespace-pre-wrap rounded-md border p-3.5 font-mono text-sm leading-relaxed">
+          <pre className="border-border bg-muted/40 overflow-x-auto rounded-md border p-3.5 font-mono text-sm leading-relaxed whitespace-pre-wrap">
             {digest.resumeLine}
           </pre>
           <p className="text-muted-foreground text-sm">
-            This is the digest served by the resume path itself, not a
-            rendering of it — the copy button hands you these exact bytes. The
-            writer may read the whole file but only replaces what lies between
-            the two sentinel comments, strip-before-rewrite, so a human's own
-            CLAUDE.md rules above or below survive every refresh and a
-            re-resume never duplicates. The rest of the block is whatever the
-            vault fills under the same token budget at resume time. Every
-            write journals a resumed event, so the history above shows exactly
-            when a fresh session picked the digest up.
+            This is the digest served by the resume path itself, not a rendering
+            of it — the copy button hands you these exact bytes. The writer may
+            read the whole file but only replaces what lies between the two
+            sentinel comments, strip-before-rewrite, so a human's own CLAUDE.md
+            rules above or below survive every refresh and a re-resume never
+            duplicates. The rest of the block is whatever the vault fills under
+            the same token budget at resume time. Every write journals a resumed
+            event, so the history above shows exactly when a fresh session
+            picked the digest up.
           </p>
         </div>
       ) : null}
@@ -268,7 +270,7 @@ export function CheckpointsTab() {
         <p className="text-muted-foreground text-sm">Loading runs…</p>
       ) : runs.length === 0 ? (
         <EmptyState
-          icon={<Bookmark aria-hidden className="h-6 w-6" />}
+          kind="empty"
           title="No runs have checkpointed yet"
           description="A run appears here the moment it saves its first digest — over REST or over MCP. Nothing else creates one, so an empty list means no agent has checkpointed against this instance."
         />

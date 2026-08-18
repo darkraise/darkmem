@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { ArrowLeft, FileQuestion, GitBranch } from "lucide-react"
+import { ArrowLeft, GitBranch } from "lucide-react"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Progress } from "darkraise-ui/components/progress"
 import { Separator } from "darkraise-ui/components/separator"
 import {
@@ -52,7 +52,7 @@ export function segmentProse(
         typeof citation.claim_span[1] === "number" &&
         (citation.claim_span[1] as number) > (citation.claim_span[0] as number),
     )
-    .sort((a, b) => (a.citation.claim_span[0]! - b.citation.claim_span[0]!))
+    .sort((a, b) => a.citation.claim_span[0]! - b.citation.claim_span[0]!)
 
   const segments: Segment[] = []
   let cursor = 0
@@ -61,7 +61,11 @@ export function segmentProse(
     const hi = Math.min(citation.claim_span[1]!, content.length)
     if (lo < cursor || lo >= hi) continue
     if (lo > cursor) {
-      segments.push({ text: content.slice(cursor, lo), citation: null, index: -1 })
+      segments.push({
+        text: content.slice(cursor, lo),
+        citation: null,
+        index: -1,
+      })
     }
     segments.push({ text: content.slice(lo, hi), citation, index })
     cursor = hi
@@ -205,7 +209,10 @@ function Detail({ article }: { article: ArticleDetail }) {
             params={{ articleId: article.superseded_by }}
             className="hover:text-primary flex w-fit items-center gap-1.5 text-sm transition-colors"
           >
-            <GitBranch aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
+            <GitBranch
+              aria-hidden
+              className="text-muted-foreground h-3.5 w-3.5"
+            />
             superseded_by → article {article.superseded_by.slice(0, 8)} — the
             current statement of record for this subject
           </Link>
@@ -251,7 +258,11 @@ function Detail({ article }: { article: ArticleDetail }) {
 
       <Separator />
 
-      <Accordion type="multiple" value={openSections} onValueChange={setOpenSections}>
+      <Accordion
+        type="multiple"
+        value={openSections}
+        onValueChange={setOpenSections}
+      >
         <DetailSection
           value="citations"
           title="Citations"
@@ -260,7 +271,11 @@ function Detail({ article }: { article: ArticleDetail }) {
         >
           <div className="space-y-1.5">
             {article.citations.map((citation, i) => (
-              <CitationRow key={citation.id} citation={citation} ordinal={i + 1} />
+              <CitationRow
+                key={citation.id}
+                citation={citation}
+                ordinal={i + 1}
+              />
             ))}
           </div>
         </DetailSection>
@@ -295,7 +310,9 @@ function Detail({ article }: { article: ArticleDetail }) {
                 (T1.48's distinction, kept). */}
             {level === "advanced" && (
               <>
-                <dt className="text-muted-foreground font-mono">fact_set_hash</dt>
+                <dt className="text-muted-foreground font-mono">
+                  fact_set_hash
+                </dt>
                 <dd className="min-w-0 font-mono break-words">
                   {article.fact_set_hash ?? "—"}
                 </dd>
@@ -322,7 +339,8 @@ export function ArticleDetailLive({ articleId }: { articleId: string }) {
   if (isError || !article) {
     return (
       <EmptyState
-        icon={<FileQuestion aria-hidden className="h-6 w-6" />}
+        kind="missing"
+        scope="page"
         title="Article not found"
         description="No article with this id exists in the vault. A superseded article stays readable through its lineage, so a missing one was never written rather than replaced."
         action={

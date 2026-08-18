@@ -1,15 +1,12 @@
-import {
-  Check,
-  CircleAlert,
-  RefreshCw,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react"
+import { Check, RefreshCw, TriangleAlert, type LucideIcon } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { deriveRunFailedStep, failedStepSeverity } from "@/demo/activity"
-import type { DemoPipelineRun, PipelineTerminal } from "@/features/activity/types"
+import type {
+  DemoPipelineRun,
+  PipelineTerminal,
+} from "@/features/activity/types"
 import { usePipelineRuns } from "../use-pipeline-runs"
 import { ModuleSurface } from "./module-surface"
 import { PipelineStepper } from "./pipeline-stepper"
@@ -18,7 +15,10 @@ const TERMINAL_STYLES: Record<
   PipelineTerminal,
   { icon: LucideIcon; className: string }
 > = {
-  running: { icon: RefreshCw, className: "border-info/50 bg-info/10 text-info" },
+  running: {
+    icon: RefreshCw,
+    className: "border-info/50 bg-info/10 text-info",
+  },
   completed: {
     icon: Check,
     className: "border-success/50 bg-success/10 text-success",
@@ -54,7 +54,9 @@ function PipelineRow({ run }: { run: DemoPipelineRun }) {
   return (
     <div className="border-border flex flex-col gap-2.5 rounded-md border p-3">
       <div className="flex flex-wrap items-baseline gap-2.5">
-        <span className="text-muted-foreground font-mono text-sm">{run.id}</span>
+        <span className="text-muted-foreground font-mono text-sm">
+          {run.id}
+        </span>
         <span className="min-w-0 flex-1 text-sm">{run.content}</span>
         <span className="text-muted-foreground ml-auto font-mono text-sm whitespace-nowrap">
           {run.time_label}
@@ -129,7 +131,7 @@ export function PipelineTab() {
       >
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load recent pipeline runs"
             description="The /analytics/pipeline-logs request failed — this is an error state, not an absence of activity."
           />

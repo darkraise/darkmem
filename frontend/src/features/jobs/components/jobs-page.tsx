@@ -1,6 +1,6 @@
 import { useState } from "react"
-import { CircleAlert, LayoutGrid, List, Timer } from "lucide-react"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { LayoutGrid, List, Timer } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { toast } from "darkraise-ui/components/sonner"
 import { PageChrome } from "@/components/app-chrome"
@@ -28,8 +28,15 @@ export function JobsPage() {
   const [configuring, setConfiguring] = useState<DemoJob | null>(null)
   const [viewingHistory, setViewingHistory] = useState<DemoJob | null>(null)
   const binding = useJobsSettingsBinding()
-  const { jobs, isLoading, isError, trigger, saveCron, saveConfig, setEnabled } =
-    binding
+  const {
+    jobs,
+    isLoading,
+    isError,
+    trigger,
+    saveCron,
+    saveConfig,
+    setEnabled,
+  } = binding
 
   // Same handling the list layout proves: a held lock resolves {ok:false,409}
   // rather than throwing, so it must not be reported as a request failure.
@@ -39,7 +46,8 @@ export function JobsPage() {
         if (result.ok) toast.success(`${job.key} — triggered`)
         else
           toast.warning(`${job.key} — busy`, {
-            description: "A run already holds the lock; the trigger was discarded, not queued.",
+            description:
+              "A run already holds the lock; the trigger was discarded, not queued.",
           })
       })
       .catch((err: unknown) => {
@@ -79,7 +87,7 @@ export function JobsPage() {
 
       {isError ? (
         <EmptyState
-          icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+          kind="failed"
           title="Couldn't load the job board"
           description="The /jobs request failed — this is an error state, not an empty registry."
         />
@@ -91,7 +99,8 @@ export function JobsPage() {
         </div>
       ) : jobs.length === 0 ? (
         <EmptyState
-          icon={<Timer aria-hidden className="h-6 w-6" />}
+          kind="empty"
+          scope="page"
           title="No registered jobs"
           description="The registry returned no jobs. On a healthy install this list is never empty, so treat it as a boot problem rather than a quiet day."
         />

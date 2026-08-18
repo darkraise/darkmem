@@ -30,7 +30,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "darkraise-ui/components/collapsible"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import {
   Select,
   SelectContent,
@@ -40,7 +40,11 @@ import {
 } from "darkraise-ui/components/select"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
-import { LayerChip, useDetailLevel, VerificationBadge } from "@/components/darkmem"
+import {
+  LayerChip,
+  useDetailLevel,
+  VerificationBadge,
+} from "@/components/darkmem"
 import { dreamActionsOfType, eligibleForUndo } from "@/demo/activity"
 import {
   useDemoDreamActions,
@@ -85,7 +89,11 @@ function Transition({ action }: { action: DemoDreamAction }) {
   )
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      {t.from ? <VerificationBadge status={t.from} /> : pill(t.from_plain ?? "")}
+      {t.from ? (
+        <VerificationBadge status={t.from} />
+      ) : (
+        pill(t.from_plain ?? "")
+      )}
       <ArrowRight aria-hidden className="text-muted-foreground h-3 w-3" />
       {t.to ? (
         <VerificationBadge status={t.to} label={t.to_label} />
@@ -294,8 +302,8 @@ function DemoDreamDigest() {
       <p className="text-muted-foreground max-w-4xl text-sm">
         One consolidation cycle's journaled changes, grouped by object and
         action, with per-action and per-batch undo — tractable because
-        consolidation is invalidate-not-delete plus append-only events, so
-        every inverse is a status, pointer, or timestamp restore, never a
+        consolidation is invalidate-not-delete plus append-only events, so every
+        inverse is a status, pointer, or timestamp restore, never a
         resurrection.
       </p>
 
@@ -382,8 +390,8 @@ function DemoDreamDigest() {
         <div className="border-border rounded-md border border-dashed">
           <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2.5 text-sm">
             <Lock aria-hidden className="text-muted-foreground h-4 w-4" />
-            Earlier cycles — {pastActions.length} actions past their undo
-            window (not part of cycle #{cycle.id}'s summary above)
+            Earlier cycles — {pastActions.length} actions past their undo window
+            (not part of cycle #{cycle.id}'s summary above)
             <ChevronDown
               aria-hidden
               className={cn(
@@ -487,7 +495,10 @@ function reportOutcome(scope: string, outcome: UndoOutcome) {
     toast.error(`${scope} — undo refused, nothing happened`, {
       description:
         outcome.reasons
-          .map((r) => `#${r.event_id} ${actionLabel(r.action)}: ${reasonLabel(r.reason)}`)
+          .map(
+            (r) =>
+              `#${r.event_id} ${actionLabel(r.action)}: ${reasonLabel(r.reason)}`,
+          )
           .join("; ") || "the door refused before writing anything",
     })
     return
@@ -684,7 +695,7 @@ export function LiveDreamDigest() {
     // Invariant 14: a failed read is never rendered as an empty cycle list.
     return (
       <EmptyState
-        icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+        kind="failed"
         title="Could not load dream cycles"
         description="The /dream-digest/cycles request failed. This is a failed read, not an empty history — nothing here says whether a cycle ran."
       />
@@ -693,7 +704,7 @@ export function LiveDreamDigest() {
   if (!cyclesLoading && cycles.length === 0) {
     return (
       <EmptyState
-        icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+        kind="failed"
         title="No consolidation cycles yet"
         description="No dreaming pass or curation batch has journalled a cycle in this window."
       />
@@ -702,7 +713,9 @@ export function LiveDreamDigest() {
 
   const activeCycle = cycles.find((c) => c.cycle_id === selectedCycleId)
   const cycleEligible = digest
-    ? digest.objects.flatMap((g) => g.actions).filter((a) => a.undoable && !a.undone)
+    ? digest.objects
+        .flatMap((g) => g.actions)
+        .filter((a) => a.undoable && !a.undone)
     : []
 
   return (
@@ -710,14 +723,20 @@ export function LiveDreamDigest() {
       <p className="text-muted-foreground max-w-4xl text-sm">
         One consolidation cycle's journaled changes, grouped by object — the
         journal's own grouping, in the order the actions actually happened —
-        with per-action and per-object undo. Undo is a compare-and-swap
-        against live state: a request refused with 409 changed nothing, and
-        the digest re-reads from the server after every attempt.
+        with per-action and per-object undo. Undo is a compare-and-swap against
+        live state: a request refused with 409 changed nothing, and the digest
+        re-reads from the server after every attempt.
       </p>
 
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-3">
-        <Select value={selectedCycleId ?? undefined} onValueChange={selectCycle}>
-          <SelectTrigger className="w-auto min-w-52 rounded-full" aria-label="Cycle">
+        <Select
+          value={selectedCycleId ?? undefined}
+          onValueChange={selectCycle}
+        >
+          <SelectTrigger
+            className="w-auto min-w-52 rounded-full"
+            aria-label="Cycle"
+          >
             <SelectValue>
               {activeCycle
                 ? `cycle #${activeCycle.cycle_id} — ${activeCycle.total} actions`
@@ -741,7 +760,7 @@ export function LiveDreamDigest() {
           // conflate loading with empty the same way) outside this fix's
           // scope, so this chip stays local to the dream tab rather than
           // widening the shared type.
-          <span className="border-destructive/50 text-destructive inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide">
+          <span className="border-destructive/50 text-destructive inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
             <CircleAlert aria-hidden className="h-3 w-3" />
             error
           </span>
@@ -771,13 +790,13 @@ export function LiveDreamDigest() {
 
       {digestError ? (
         <EmptyState
-          icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+          kind="failed"
           title="Could not load this cycle"
           description="The cycle read failed — this is a failed read, not an empty cycle."
         />
       ) : digestLoading || !digest ? (
         <EmptyState
-          icon={<CircleAlert aria-hidden className="h-6 w-6 animate-pulse" />}
+          kind="failed"
           title="Loading cycle"
           description="Reading the journal."
         />
@@ -824,7 +843,9 @@ export function LiveDreamDigest() {
                 onUndoAction={async (eventId) =>
                   reportOutcome(`action #${eventId}`, await undoAction(eventId))
                 }
-                onUndoGroup={(g, actions) => setConfirmGroup({ group: g, actions })}
+                onUndoGroup={(g, actions) =>
+                  setConfirmGroup({ group: g, actions })
+                }
               />
             ))}
           </div>
@@ -871,10 +892,10 @@ export function LiveDreamDigest() {
             <AlertDialogDescription>
               Restores the {cycleEligible.length} action
               {cycleEligible.length === 1 ? "" : "s"} in cycle #
-              {activeCycle?.cycle_id} that {cycleEligible.length === 1 ? "is" : "are"}{" "}
-              currently undoable. Actions already undone, or blocked (object
-              changed since, or past the undo window), are left untouched
-              rather than sent and refused.
+              {activeCycle?.cycle_id} that{" "}
+              {cycleEligible.length === 1 ? "is" : "are"} currently undoable.
+              Actions already undone, or blocked (object changed since, or past
+              the undo window), are left untouched rather than sent and refused.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <ActionPreviewList actions={cycleEligible} />

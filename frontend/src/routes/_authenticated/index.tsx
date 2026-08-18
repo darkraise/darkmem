@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  Activity,
   Brain,
   ClipboardCheck,
   FileText,
@@ -10,14 +9,19 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "darkraise-ui/components/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "darkraise-ui/components/card"
 import {
   Stat,
   StatChange,
   StatLabel,
   StatValue,
 } from "darkraise-ui/components/stat"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
 import type { ActivityEvent } from "@/features/dashboard/types"
@@ -119,14 +123,8 @@ function DashboardPage() {
             true total of 0. A delta that measures a different quantity than
             the tile it sits on is the same defect this page just came off. */}
         <StatTile label="Total memories" value={tile(stats.totalMemories)} />
-        <StatTile
-          label="Verified facts"
-          value={tile(stats.verifiedFacts)}
-        />
-        <StatTile
-          label="Live articles"
-          value={tile(stats.liveArticles)}
-        />
+        <StatTile label="Verified facts" value={tile(stats.verifiedFacts)} />
+        <StatTile label="Live articles" value={tile(stats.liveArticles)} />
         <StatTile
           label="Pending review"
           value={tile(stats.pendingReview)}
@@ -159,7 +157,7 @@ function DashboardPage() {
             </div>
           ) : (
             <EmptyState
-              icon={<Activity aria-hidden className="h-6 w-6" />}
+              kind="empty"
               title="No activity yet"
               description="Nothing has been journalled on this instance. Capture a memory or wait for a scheduled job, and it appears here."
             />

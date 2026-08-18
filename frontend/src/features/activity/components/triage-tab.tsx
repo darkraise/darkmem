@@ -1,13 +1,6 @@
-import {
-  CircleAlert,
-  CircleCheck,
-  FileText,
-  FolderGit2,
-  RefreshCw,
-  X,
-} from "lucide-react"
+import { FileText, FolderGit2, RefreshCw, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison, POISON_ATTEMPTS } from "@/demo/activity"
 import type { DemoPipelineFailure } from "@/features/activity/types"
@@ -51,13 +44,13 @@ function FailureRow({
         </span>
       </div>
       <div className="flex items-start gap-2 text-sm">
-        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] uppercase tracking-wide">
+        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] tracking-wide uppercase">
           failed step
         </span>
         <span className="font-mono font-semibold">{failure.failed_step}</span>
       </div>
       <div className="flex items-start gap-2 text-sm">
-        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] uppercase tracking-wide">
+        <span className="text-muted-foreground w-20 shrink-0 pt-0.5 font-mono text-[10px] tracking-wide uppercase">
           reason
         </span>
         {/* The raw error_message, verbatim — never summarised to "failed". */}
@@ -142,7 +135,7 @@ export function TriageTab() {
       >
         {isError ? (
           <EmptyState
-            icon={<CircleAlert aria-hidden className="h-6 w-6" />}
+            kind="failed"
             title="Couldn't load pipeline failures"
             description="The /pipeline-failures request failed — this is an error state, not an empty triage queue."
           />
@@ -150,7 +143,7 @@ export function TriageTab() {
           // Healthy-empty: a queue at zero is a positive state, not an
           // absence to explain away.
           <EmptyState
-            icon={<CircleCheck aria-hidden className="h-6 w-6" />}
+            kind="resolved"
             title="No failures to triage"
             description="Every memory-ingest and code-index run in the last 100 attempts completed without an unresolved pipeline_failures row — nothing is stuck, nothing is waiting on a retry."
           />

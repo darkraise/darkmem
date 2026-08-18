@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { Brain, Inbox, Loader2, Plus, Search, SearchX, X } from "lucide-react"
+import { Brain, Loader2, Plus, Search, X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -264,7 +264,10 @@ function DemoMemoriesPage() {
           aria-label="Search memories"
         />
         <Select value={scope} onValueChange={setScope}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Project scope">
+          <SelectTrigger
+            className="w-44 rounded-full"
+            aria-label="Project scope"
+          >
             <SelectValue>project: {scopeLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -288,7 +291,9 @@ function DemoMemoriesPage() {
             )}
           >
             <SelectValue>
-              {context == null ? "context: not declared" : `context: ${context}`}
+              {context == null
+                ? "context: not declared"
+                : `context: ${context}`}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -363,7 +368,9 @@ function DemoMemoriesPage() {
                       {row ? (
                         <MemoryRow
                           memory={row.memory}
-                          trace={row.trace ? demoTraceToView(row.trace) : undefined}
+                          trace={
+                            row.trace ? demoTraceToView(row.trace) : undefined
+                          }
                           expanded={expandedId === row.memory.id}
                           focused={focusedId === row.memory.id}
                           onToggleTrace={
@@ -382,7 +389,10 @@ function DemoMemoriesPage() {
                           role="status"
                           className="text-muted-foreground flex items-center justify-center gap-2 py-2.5 text-sm"
                         >
-                          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                          <Loader2
+                            aria-hidden
+                            className="h-4 w-4 animate-spin"
+                          />
                           loading more…
                         </div>
                       ) : (
@@ -398,7 +408,7 @@ function DemoMemoriesPage() {
               </div>
             ) : searching ? (
               <EmptyState
-                icon={<SearchX aria-hidden className="h-6 w-6" />}
+                kind="filtered"
                 title="No matches"
                 description={`No memories match "${query.trim()}"${
                   scope === "all" ? "" : ` in project ${scope}`
@@ -418,7 +428,7 @@ function DemoMemoriesPage() {
               />
             ) : memories.length === 0 ? (
               <EmptyState
-                icon={<Inbox aria-hidden className="h-6 w-6" />}
+                kind="empty"
                 title="No memories captured yet"
                 description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
                 action={
@@ -430,7 +440,7 @@ function DemoMemoriesPage() {
               />
             ) : (
               <EmptyState
-                icon={<SearchX aria-hidden className="h-6 w-6" />}
+                kind="filtered"
                 title={`No memories in project ${scope}`}
                 description="This project has no memories yet — other projects do."
                 action={

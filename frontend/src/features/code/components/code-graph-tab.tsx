@@ -44,7 +44,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "darkraise-ui/components/toggle-group"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { useDemoCodeRepos, useDemoCodeGraph } from "@/demo/hooks"
 import {
@@ -254,8 +254,7 @@ export function CodeGraphTab({
       })
   }
 
-  const donePhases =
-    repo.phases?.filter((p) => p.state === "done").length ?? 0
+  const donePhases = repo.phases?.filter((p) => p.state === "done").length ?? 0
   const activePhases =
     repo.phases?.filter((p) => p.state !== "skipped").length ?? 0
   const currentPhase = repo.phases?.find((p) => p.state === "current")
@@ -325,8 +324,8 @@ export function CodeGraphTab({
             The layout switcher, canvas, and analysis panel have nothing to
             render until this run completes — the graph is not empty, it is{" "}
             <b className="text-foreground">not built yet</b>. Community and
-            process detection run after structure and cross-file binding, so
-            the community navigator and Processes panel populate last.
+            process detection run after structure and cross-file binding, so the
+            community navigator and Processes panel populate last.
           </p>
         </div>
       </div>
@@ -374,8 +373,8 @@ export function CodeGraphTab({
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
         <EmptyState
+          kind="empty"
           className="flex-1 py-12"
-          icon={<FolderGit2 aria-hidden className="h-6 w-6" />}
           title="No graph yet"
           description={`${repo.name} is registered but has never been indexed — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}
           action={
@@ -710,9 +709,7 @@ export function CodeGraphTab({
         {/* analysis panel */}
         <div className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col overflow-y-auto border-t md:w-60 md:shrink-0 md:border-t-0 md:border-l">
           <div className="border-border space-y-1.5 border-b p-2.5">
-            <SectionTitle
-              icon={<Crosshair aria-hidden className="h-3 w-3" />}
-            >
+            <SectionTitle icon={<Crosshair aria-hidden className="h-3 w-3" />}>
               Selected symbol
             </SectionTitle>
             {selectedNode ? (
@@ -740,7 +737,8 @@ export function CodeGraphTab({
                 className="border-primary/50 text-primary bg-primary/8 rounded-full"
                 disabled={!selectedId}
                 onClick={() => {
-                  if (selectedId) setBlast(computeBlastRadius(graph, selectedId))
+                  if (selectedId)
+                    setBlast(computeBlastRadius(graph, selectedId))
                 }}
               >
                 Run Blast Radius
@@ -778,10 +776,7 @@ export function CodeGraphTab({
                   affected transitively
                 </p>
                 {blast.depths.map((d) => {
-                  const max = Math.max(
-                    1,
-                    ...blast.depths.map((x) => x.count),
-                  )
+                  const max = Math.max(1, ...blast.depths.map((x) => x.count))
                   return (
                     <div
                       key={d.label}
@@ -794,9 +789,7 @@ export function CodeGraphTab({
                           style={{ width: `${(d.count / max) * 100}%` }}
                         />
                       </span>
-                      <span className="w-4 shrink-0 text-right">
-                        {d.count}
-                      </span>
+                      <span className="w-4 shrink-0 text-right">{d.count}</span>
                     </div>
                   )
                 })}
@@ -909,9 +902,7 @@ export function CodeGraphTab({
       >
         <DialogContent className="max-w-md">
           {(() => {
-            const process = graph.processes.find(
-              (p) => p.id === mermaidProcess,
-            )
+            const process = graph.processes.find((p) => p.id === mermaidProcess)
             if (!process) return null
             const mermaid = mermaidForProcess(process, graph)
             return (

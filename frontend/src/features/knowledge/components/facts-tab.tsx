@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Archive, Loader2, Search, SearchX } from "lucide-react"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { Loader2, Search } from "lucide-react"
+import { Skeleton } from "darkraise-ui/components/skeleton"
+import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -12,17 +13,16 @@ import {
 } from "darkraise-ui/components/select"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
-import { LayerChip, useDetailLevel, VerificationBadge } from "@/components/darkmem"
+import {
+  LayerChip,
+  useDetailLevel,
+  VerificationBadge,
+} from "@/components/darkmem"
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { dayKeyToMs, localDayKey } from "@/lib/format"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { useMainVirtualizer } from "@/lib/use-main-virtualizer"
-import {
-  ALL_PROJECTS,
-  ANY,
-  useFactRows,
-  type FactRowData,
-} from "../use-facts"
+import { ALL_PROJECTS, ANY, useFactRows, type FactRowData } from "../use-facts"
 import { ListSurface } from "./list-surface"
 import {
   AppliesWhenChips,
@@ -80,7 +80,8 @@ export function FactRow({
         {fact.origin_count !== null && (
           <span className="text-muted-foreground ml-auto font-mono text-sm">
             {fact.origin_count} {fact.origin_count === 1 ? "origin" : "origins"}
-            {fact.origin_kinds.length > 0 && ` · ${fact.origin_kinds.join(", ")}`}
+            {fact.origin_kinds.length > 0 &&
+              ` · ${fact.origin_kinds.join(", ")}`}
           </span>
         )}
       </div>
@@ -194,7 +195,14 @@ export function FactsTab() {
     if (!hasMore || fetchingMore || subjectActive) return
     if (lastRenderedIndex < footerIndex) return
     fetchMore()
-  }, [hasMore, fetchingMore, subjectActive, lastRenderedIndex, footerIndex, fetchMore])
+  }, [
+    hasMore,
+    fetchingMore,
+    subjectActive,
+    lastRenderedIndex,
+    footerIndex,
+    fetchMore,
+  ])
 
   useEffect(() => {
     if (!scale) return
@@ -254,7 +262,10 @@ export function FactsTab() {
           aria-label="Filter facts by subject or object"
         />
         <Select value={relation} onValueChange={setRelation}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Relation filter">
+          <SelectTrigger
+            className="w-44 rounded-full"
+            aria-label="Relation filter"
+          >
             <SelectValue>relation: {relation}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -267,7 +278,10 @@ export function FactsTab() {
           </SelectContent>
         </Select>
         <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Status filter">
+          <SelectTrigger
+            className="w-44 rounded-full"
+            aria-label="Status filter"
+          >
             <SelectValue>status: {status}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -280,7 +294,10 @@ export function FactsTab() {
           </SelectContent>
         </Select>
         <Select value={project} onValueChange={setProject}>
-          <SelectTrigger className="w-44 rounded-full" aria-label="Project scope">
+          <SelectTrigger
+            className="w-44 rounded-full"
+            aria-label="Project scope"
+          >
             <SelectValue>project: {projectLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -292,10 +309,7 @@ export function FactsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Select
-          value={sort}
-          onValueChange={(v) => setSort(v as SortKey)}
-        >
+        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
           <SelectTrigger className="w-48 rounded-full" aria-label="Sort order">
             <SelectValue>sort: {SORTS[sort]}</SelectValue>
           </SelectTrigger>
@@ -311,8 +325,8 @@ export function FactsTab() {
             rather than left to look like the vault's full set. */}
         {!optionsComplete && (
           <p className="text-muted-foreground w-full font-mono text-sm">
-            relation and project options are read from the {loaded} facts
-            loaded so far, not from the whole vault
+            relation and project options are read from the {loaded} facts loaded
+            so far, not from the whole vault
           </p>
         )}
       </div>
@@ -381,7 +395,11 @@ export function FactsTab() {
                           {loaded} of {total} loaded
                         </p>
                         {subjectActive && (
-                          <Button variant="outline" size="sm" onClick={fetchMore}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchMore}
+                          >
                             Load more
                           </Button>
                         )}
@@ -398,17 +416,24 @@ export function FactsTab() {
               })}
             </div>
           ) : loading ? (
-            <EmptyState
-              icon={<Loader2 aria-hidden className="h-6 w-6 animate-spin" />}
-              title="Loading facts"
-              description="Reading the vault."
-            />
+            // A pending read is not an absence. Skeleton rows in the shape
+            // of the list that is coming, so the surface never claims the
+            // vault is empty while it is still being read.
+            <div
+              className="flex flex-col gap-2 py-2"
+              role="status"
+              aria-label="Loading facts"
+            >
+              {Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-md" />
+              ))}
+            </div>
           ) : error ? (
             // Invariant 14: a failed read is never rendered as an empty vault.
             // "No facts" and "we could not tell you" are different sentences,
             // and collapsing them is how a broken surface looks healthy.
             <EmptyState
-              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              kind="filtered"
               title="Could not load facts"
               description="The vault did not answer. This is a failed read, not an empty vault — nothing here says how many facts exist."
             />
@@ -417,7 +442,7 @@ export function FactsTab() {
               // Backed by the server's own count behind these predicates, so
               // this one may speak about the scope rather than the page.
               <EmptyState
-                icon={<SearchX aria-hidden className="h-6 w-6" />}
+                kind="filtered"
                 title="No facts match these filters"
                 description="Nothing was hidden — the vault holds no fact matching this relation, status and project. Widen a filter to see the rest."
                 action={
@@ -437,7 +462,7 @@ export function FactsTab() {
               // Cold-start is not a generic empty state: the vault stays empty
               // of corroborated facts until independent origins accumulate.
               <EmptyState
-                icon={<Archive aria-hidden className="h-6 w-6" />}
+                kind="empty"
                 title="No corroborated facts yet"
                 description="no corroborated facts yet; candidates are served labelled in search — corroboration takes several independent origins across memory, code, and human review. Nothing here means not yet, not broken."
               />
@@ -446,7 +471,7 @@ export function FactsTab() {
             // The needle ran over the loaded rows only, so this sentence
             // counts loaded rows and never claims the vault holds no match.
             <EmptyState
-              icon={<SearchX aria-hidden className="h-6 w-6" />}
+              kind="filtered"
               title={`No loaded fact matches “${subject.trim()}”`}
               description={
                 hasMore

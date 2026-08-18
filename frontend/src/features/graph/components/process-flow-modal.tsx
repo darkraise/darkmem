@@ -8,14 +8,11 @@ import {
 } from "darkraise-ui/components/dialog"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
-import { EmptyState } from "darkraise-ui/components/empty-state"
+import { EmptyState } from "@/components/darkmem"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { toast } from "darkraise-ui/components/sonner"
 import { ArrowDown, Copy, Crosshair } from "lucide-react"
-import {
-  processToMermaid,
-  type CodeProcess,
-} from "../lib/code-processes"
+import { processToMermaid, type CodeProcess } from "../lib/code-processes"
 
 interface ProcessFlowModalProps {
   process: CodeProcess | null
@@ -67,6 +64,7 @@ export function ProcessFlowModal({
         <ScrollArea className="min-h-0 flex-1">
           {p.steps.length === 0 ? (
             <EmptyState
+              kind="empty"
               title="No recorded steps"
               description="This process has no recorded steps."
             />
@@ -74,7 +72,7 @@ export function ProcessFlowModal({
             <ol className="space-y-0 px-0.5 py-1">
               {p.steps.map((step, i) => (
                 <li key={`${step.nodeId}:${i}`}>
-                  <div className="flex items-start gap-3 rounded-sm border border-border bg-card px-3 py-2.5">
+                  <div className="border-border bg-card flex items-start gap-3 rounded-sm border px-3 py-2.5">
                     <Badge
                       variant="outline"
                       size="sm"
@@ -94,7 +92,7 @@ export function ProcessFlowModal({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-foreground">
+                        <span className="text-foreground min-w-0 flex-1 truncate font-mono text-sm font-medium">
                           {step.label}
                         </span>
                         <Badge
@@ -106,7 +104,7 @@ export function ProcessFlowModal({
                         </Badge>
                       </span>
                       {step.file && (
-                        <span className="mt-0.5 block truncate font-mono text-sm text-muted-foreground">
+                        <span className="text-muted-foreground mt-0.5 block truncate font-mono text-sm">
                           {step.file}
                         </span>
                       )}
@@ -116,7 +114,7 @@ export function ProcessFlowModal({
                     <div className="flex justify-center py-1">
                       <ArrowDown
                         aria-hidden="true"
-                        className="h-3.5 w-3.5 text-muted-foreground"
+                        className="text-muted-foreground h-3.5 w-3.5"
                       />
                     </div>
                   )}

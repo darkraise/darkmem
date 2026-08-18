@@ -2,8 +2,8 @@ import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
-import { EmptyState } from "darkraise-ui/components/empty-state"
-import { Plus, Trash2, MessageCircle, Search } from "lucide-react"
+import { EmptyState } from "@/components/darkmem"
+import { Plus, Trash2, Search } from "lucide-react"
 import type { ChatConversation } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
 
@@ -37,7 +37,7 @@ export function ChatSidebar({
     : conversations
 
   return (
-    <div className="border-border bg-card flex h-full max-h-56 w-full flex-col overflow-y-auto border-b md:w-72 md:max-h-none md:shrink-0 md:overflow-visible md:border-r md:border-b-0">
+    <div className="border-border bg-card flex h-full max-h-56 w-full flex-col overflow-y-auto border-b md:max-h-none md:w-72 md:shrink-0 md:overflow-visible md:border-r md:border-b-0">
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>
@@ -67,6 +67,7 @@ export function ChatSidebar({
         )}
         {!isLoading && isError && (
           <EmptyState
+            kind="failed"
             title="Failed to load conversations"
             action={
               onRetry && (
@@ -79,7 +80,7 @@ export function ChatSidebar({
         )}
         {!isLoading && !isError && conversations.length === 0 && (
           <EmptyState
-            icon={<MessageCircle className="h-8 w-8" />}
+            kind="empty"
             title="No conversations yet"
             description='Click "New" to start one.'
           />
