@@ -6,9 +6,16 @@ against a schema it did not have.
 
 ## The stack
 
-One image (`darkraise/darkmem-api`) carrying the API and the built SPA, plus
-Postgres. Both use `network_mode: host`, so the app owns `:8000` on the host and
-nothing binds `:80`.
+One image (`darkraise/darkmem`) carrying the API and the built SPA, plus
+Postgres. Both sit on the stack's own bridge network with explicit publishes —
+the app `8000:8000`, Postgres `127.0.0.1:5432:5432` (host loopback only, so
+`pg_dump` and `psql` below work unchanged). Nothing binds `:80`.
+
+Renamed from `darkraise/darkmem-api` and moved off `network_mode: host` on
+2026-08-18. The compose *service* was renamed `darkmem-api -> darkmem` in the
+same change, so the container is now `darkmem-prod-darkmem-1`, and a stack
+still running under the old service name is an orphan: the first cutover needs
+`docker compose down --remove-orphans`.
 
 ```
 ./scripts/build-push.sh <version>      # builds; DARKMEM_PUSH=0 keeps it local
@@ -73,14 +80,14 @@ docker exec darkmem-prod-postgres-1 pg_dump -U darkmem -d darkmem \
   --data-only --table=config --column-inserts | grep admin_password_hash > /tmp/admin.sql
 
 # 3. Stop the API so nothing holds a connection.
-docker compose stop darkmem-api
+docker compose stop darkmem
 
 # 4. Drop and recreate.
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d postgres \
   -c "DROP DATABASE darkmem;" -c "CREATE DATABASE darkmem OWNER darkmem;"
 
 # 5. Start: the entrypoint migrates and stamps the new baseline.
-docker compose up -d darkmem-api
+docker compose up -d darkmem
 
 # 6. Restore the rows step 2 captured.
 docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/admin.sql
@@ -112,15 +119,22 @@ docker exec -i darkmem-prod-postgres-1 psql -U darkmem -d darkmem < /tmp/purpose
 ```bash
 curl -s localhost:8000/health                       # pipeline + pgvector + llm
 curl -s localhost:8000/openapi.json | grep -o '"version":"[0-9.]*"' | head -1
-docker logs darkmem-prod-darkmem-api-1 2>&1 | grep -i 'schema baseline'
+docker logs darkmem-prod-darkmem-1 2>&1 | grep -i 'schema baseline'
 docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -tAc \
   "select key, value->>'last_status', value->>'last_error' from config where key like 'job:%' and value->>'last_status' <> 'ok';"
 ```
 
-**A 200 on `:8000` does not prove the new container answered it.** Under host
-networking a stale dev server on the same port makes the container crash-loop
-while curl cheerfully returns 200 — which is why `release.sh` probes the version
-in `/openapi.json` rather than `/health`. Do the same by hand.
+**A 200 on `:8000` does not prove the new container answered it**, so
+`release.sh` probes the version in `/openapi.json` rather than `/health`. Do the
+same by hand.
+
+The specific trap this warns about changed with the move to bridge networking,
+and in the safer direction. Under host networking a stale dev server holding
+`:8000` let the container crash-loop while curl cheerfully returned 200 from the
+impostor. Under bridge the port is published, so a conflicting listener makes
+`docker compose up` fail outright with an address-in-use error rather than
+starting a container that cannot serve. The version probe still earns its keep —
+it is what catches an *old* container answering, which no port check can.
 
 **The last query is the one that would have caught the 2026-08-17 drift.** A job
 sitting in `error` is invisible everywhere else; check it after every deploy.
