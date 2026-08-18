@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { EmptyState } from "@/components/darkmem"
 import { MessageCircle, Plus, Search } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
@@ -42,14 +43,12 @@ export function DemoThreadList({
         />
       </div>
       {threads.length === 0 ? (
-        <div className="border-border bg-muted/15 m-2.5 space-y-1 rounded-md border border-dashed p-3">
-          <MessageCircle
-            aria-hidden
-            className="text-muted-foreground h-4.5 w-4.5"
-          />
-          <p className="text-sm font-semibold">No conversations yet</p>
-          <p className="text-muted-foreground text-sm">Click "New" to start one.</p>
-        </div>
+        <EmptyState
+          kind="empty"
+          icon={MessageCircle}
+          title="No conversations yet"
+          description="Start one with New, and it appears here."
+        />
       ) : filtered.length === 0 ? (
         <p className="text-muted-foreground p-3 text-sm">
           No conversation title matches "{query}" — nothing was hidden beyond

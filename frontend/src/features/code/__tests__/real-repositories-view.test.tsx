@@ -241,7 +241,7 @@ describe("RealRepositoriesView", () => {
     const user = userEvent.setup()
     render(<RealRepositoriesView />, { wrapper })
 
-    await screen.findByText("No repositories yet.")
+    await screen.findByText("No repositories indexed yet")
     await user.click(screen.getByRole("button", { name: /Add repository/ }))
 
     const dialog = await screen.findByRole("dialog")

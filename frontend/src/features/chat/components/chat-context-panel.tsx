@@ -85,17 +85,12 @@ export function ChatContextPanel({
       </div>
 
       {!populated ? (
-        <div className="border-border bg-muted/12 flex flex-col items-center gap-1.5 rounded-md border border-dashed p-5 text-center">
-          <CircleDashed
-            aria-hidden
-            className="text-muted-foreground h-4.5 w-4.5"
-          />
-          <p className="text-sm font-semibold">No context yet</p>
-          <p className="text-muted-foreground text-sm">
-            Nothing has been asked in this thread — send a message to see the
-            labelled rows it retrieved.
-          </p>
-        </div>
+        <EmptyState
+          kind="empty"
+          icon={CircleDashed}
+          title="No context yet"
+          description="Nothing has been asked in this thread — send a message to see the labelled rows it retrieved."
+        />
       ) : (
         <>
           {degraded && (

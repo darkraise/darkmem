@@ -9,6 +9,7 @@ import {
   Search,
   Share2,
   Workflow,
+  Network,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
@@ -483,9 +484,12 @@ export function RealCodeGraphView({
               Processes
             </SectionTitle>
             {graph.processes.length === 0 && (
-              <p className="text-muted-foreground text-sm">
-                No traced processes for this repo.
-              </p>
+              <EmptyState
+                kind="empty"
+                icon={Workflow}
+                title="No traced processes"
+                description="Processes are traced from call edges during indexing. This repository produced none."
+              />
             )}
             {graph.processes.map((process) => (
               <div
@@ -527,9 +531,12 @@ export function RealCodeGraphView({
               Community navigator
             </SectionTitle>
             {graph.communities.length === 0 && (
-              <p className="text-muted-foreground text-sm">
-                No communities detected for this repo.
-              </p>
+              <EmptyState
+                kind="empty"
+                icon={Network}
+                title="No communities detected"
+                description="Leiden clustering found no group above the size threshold in this repository."
+              />
             )}
             {graph.communities.map((community) => (
               <button

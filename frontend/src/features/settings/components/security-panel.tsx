@@ -1,4 +1,6 @@
+import { ShieldCheck } from "lucide-react"
 import { useState } from "react"
+import { EmptyState } from "@/components/darkmem"
 import {
   Card,
   CardContent,
@@ -81,9 +83,12 @@ export function SecurityPanel() {
           {isLoading ? (
             <div className="bg-muted h-40 animate-pulse rounded" />
           ) : items.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center text-sm">
-              No audit events recorded.
-            </p>
+            <EmptyState
+              kind="empty"
+              icon={ShieldCheck}
+              title="No audit events yet"
+              description="Sign-ins, lockouts and setup steps are journalled here as they happen."
+            />
           ) : (
             <div className="divide-border border-border divide-y rounded-md border">
               {items.map((e) => (

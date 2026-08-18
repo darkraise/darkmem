@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { Clock, FolderGit2, Layers, RefreshCw, X } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
+import { EmptyState } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
 import { TextField, SwitchField } from "darkraise-ui/forms"
 import {
@@ -435,9 +436,12 @@ export function RealRepositoriesView() {
           />
         ))
       ) : (
-        <p className="text-muted-foreground p-3 text-sm">
-          No repositories yet.
-        </p>
+        <EmptyState
+          kind="empty"
+          icon={FolderGit2}
+          title="No repositories indexed yet"
+          description="Add one and darkmem clones it, parses it with tree-sitter, and makes its symbols searchable."
+        />
       )}
 
       <RealReindexDialog

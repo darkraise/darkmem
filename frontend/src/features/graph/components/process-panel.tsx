@@ -1,4 +1,5 @@
 import { Badge } from "darkraise-ui/components/badge"
+import { EmptyState } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
 import { Workflow } from "lucide-react"
 import type { CodeProcess } from "../lib/code-processes"
@@ -16,9 +17,12 @@ export function ProcessPanel({
 }: ProcessPanelProps) {
   if (processes.length === 0) {
     return (
-      <p className="px-1 py-2 font-mono text-sm text-muted-foreground">
-        No execution flows detected
-      </p>
+      <EmptyState
+        kind="empty"
+        icon={Workflow}
+        title="No execution flows"
+        description="Flows are traced from call edges during indexing. This repository produced none."
+      />
     )
   }
 

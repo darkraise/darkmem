@@ -185,9 +185,12 @@ function RunDetail({
           this run's checkpoint history
         </p>
         {run.history.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Nothing journaled for this run yet.
-          </p>
+          <EmptyState
+            kind="empty"
+            icon={Bookmark}
+            title="Nothing journalled for this run"
+            description="Checkpoints appear as the session saves them."
+          />
         ) : (
           <div className="flex flex-col">
             {run.history.map((event) => (

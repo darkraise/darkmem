@@ -1,4 +1,5 @@
 import { useUnifiedGraph } from "@/hooks/api"
+import { EmptyState } from "@/components/darkmem"
 import { useFullBleedContent } from "@/hooks/use-full-bleed-content"
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Button } from "darkraise-ui/components/button"
@@ -165,10 +166,13 @@ export function RealMemoryGraphPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         {isLoading && <GraphSkeleton />}
         {!isLoading && memoryCount === 0 && (
-          <p className="text-muted-foreground p-3">
-            No data yet. Create memories with the pipeline running to populate
-            the graph.
-          </p>
+          <EmptyState
+            kind="empty"
+            icon={Waypoints}
+            scope="page"
+            title="No graph yet"
+            description="The graph is built from entities extracted on ingest. Capture memories with the pipeline running and nodes appear here."
+          />
         )}
 
         {memoryCount > 0 && (

@@ -138,9 +138,11 @@ export function ChatSidebar({
           </div>
         ))}
         {search && filtered.length === 0 && (
-          <p className="text-muted-foreground/50 py-4 text-center text-sm">
-            No matches found
-          </p>
+          <EmptyState
+            kind="filtered"
+            title="No matches"
+            description="No conversation title matches that search."
+          />
         )}
       </div>
     </div>

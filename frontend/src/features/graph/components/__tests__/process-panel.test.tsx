@@ -77,6 +77,6 @@ describe("ProcessPanel", () => {
 
   it("shows the empty state when no processes are detected", () => {
     renderPanel({ processes: [] })
-    expect(screen.getByText("No execution flows detected")).toBeInTheDocument()
+    expect(screen.getByText("No execution flows")).toBeInTheDocument()
   })
 })

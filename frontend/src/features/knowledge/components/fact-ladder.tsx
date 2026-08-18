@@ -1,5 +1,6 @@
+import { ScrollText } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { useDetailLevel } from "@/components/darkmem"
+import { useDetailLevel, EmptyState} from "@/components/darkmem"
 import type { FactLadderEvent } from "@/hooks/api"
 import { RungTransition } from "./fact-parts"
 
@@ -80,9 +81,12 @@ function FactLadderRow({ event }: { event: FactLadderEvent }) {
 export function FactLadderHistory({ events }: { events: FactLadderEvent[] }) {
   if (events.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        No journalled transitions yet for this fact.
-      </p>
+      <EmptyState
+        kind="empty"
+        icon={ScrollText}
+        title="No journalled transitions"
+        description="Every rung this fact climbs is journalled. It has not moved yet."
+      />
     )
   }
   return (
