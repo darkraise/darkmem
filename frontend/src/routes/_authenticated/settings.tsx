@@ -10,6 +10,7 @@ import {
   Flag,
   Plug,
   Search,
+  Bell,
   Settings,
   ShieldCheck,
   Wrench,
@@ -21,6 +22,7 @@ import { SecurityTab } from "@/features/settings/components/security-tab"
 import { MaintenanceTab } from "@/features/settings/components/maintenance-tab"
 import { DistributionTab } from "@/features/settings/components/distribution-tab"
 import { ResearchTab } from "@/features/settings/components/research-tab"
+import { NotificationsTab } from "@/features/settings/components/notifications-tab"
 
 const TAB_VALUES = [
   "flags",
@@ -29,6 +31,7 @@ const TAB_VALUES = [
   "maintenance",
   "integration",
   "research",
+  "notifications",
 ] as const
 export type SettingsTab = (typeof TAB_VALUES)[number]
 
@@ -89,6 +92,10 @@ function SettingsPage() {
               <Plug aria-hidden className="size-[var(--icon-size)]" />
               Integration
             </TabsTrigger>
+            <TabsTrigger className="flex-1 gap-2" value="notifications">
+              <Bell aria-hidden className="size-[var(--icon-size)]" />
+              Notifications
+            </TabsTrigger>
             <TabsTrigger className="flex-1 gap-2" value="research">
               <Search aria-hidden className="size-[var(--icon-size)]" />
               Research
@@ -109,6 +116,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="integration" className="pt-4">
           <DistributionTab />
+        </TabsContent>
+        <TabsContent value="notifications" className="pt-4">
+          <NotificationsTab />
         </TabsContent>
         <TabsContent value="research" className="pt-4">
           <ResearchTab />

@@ -459,6 +459,21 @@ class JobRegistry:
         except Exception:
             logger.error("Job %s: failed to record run", key, exc_info=True)
 
+        if failed:
+            from app.services.notifications import notify_job_failure
+
+            # Outside the recording try/except on purpose: a notifier that
+            # cannot reach Telegram must not look like a failure to record,
+            # and neither may take the scheduling loop down.
+            await notify_job_failure(
+                self._session_factory,
+                job_key=key,
+                error=cfg.last_error,
+                duration_seconds=(
+                    datetime.now(timezone.utc) - started_at
+                ).total_seconds(),
+            )
+
     # ── operations ──────────────────────────────────────────────────
 
     async def update_config(

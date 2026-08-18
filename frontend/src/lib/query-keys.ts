@@ -131,6 +131,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   repoAllowlist: { kind: "global" },
   classificationAreas: { kind: "global" },
   systemPrompts: { kind: "global" },
+  notifications: { kind: "global" },
   auditLog: { kind: "global" },
   conversations: { kind: "global" },
   conversation: { kind: "global" },

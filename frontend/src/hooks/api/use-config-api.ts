@@ -210,3 +210,40 @@ export function useUpdateSystemPrompts() {
     },
   })
 }
+
+
+export interface NotificationSettings {
+  telegram: { enabled: boolean; bot_token: string; chat_id: string }
+  notify_on: { job_failure: boolean }
+}
+
+/** `GET /config/notifications`. The bot token comes back masked as `***`;
+ *  writing that mask back means "leave the stored token alone". */
+export function useNotifications(options?: { enabled?: boolean }) {
+  return useQuery<NotificationSettings>({
+    queryKey: ["notifications"],
+    queryFn: () => apiFetch<NotificationSettings>("/config/notifications"),
+    enabled: options?.enabled ?? true,
+  })
+}
+
+export function useUpdateNotifications() {
+  const qc = useQueryClient()
+  return useMutation<NotificationSettings, Error, Partial<NotificationSettings>>({
+    mutationFn: (patch) =>
+      apiFetch<NotificationSettings>("/config/notifications", {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  })
+}
+
+/** Sends one real message with the stored settings, so a wrong credential is
+ *  found here rather than during the incident it was meant to report. */
+export function useTestNotification() {
+  return useMutation<{ sent: boolean; error: string | null }, Error, void>({
+    mutationFn: () =>
+      apiFetch("/config/notifications/test", { method: "POST" }),
+  })
+}

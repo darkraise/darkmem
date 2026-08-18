@@ -619,6 +619,58 @@ class SystemPromptsUpdate(BaseModel):
     overrides: dict[str, str] = Field(default_factory=dict)
 
 
+class NotificationsUpdate(BaseModel):
+    telegram: dict | None = None
+    notify_on: dict | None = None
+
+
+@router.get("/notifications")
+async def get_notifications(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Current notification settings, with the bot token masked.
+
+    The token never travels back to the client; a client that echoes the mask
+    on save is understood to mean "leave it alone".
+    """
+    from app.services.notifications import get_settings, masked
+
+    return masked(await get_settings(session))
+
+
+@router.put("/notifications")
+async def update_notifications(
+    body: NotificationsUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.services.notifications import masked, save_settings
+
+    saved = await save_settings(session, body.model_dump(exclude_none=True))
+    await session.commit()
+    return masked(saved)
+
+
+@router.post("/notifications/test")
+async def test_notification(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send one message with the stored settings and report what happened.
+
+    A configuration screen that cannot prove the credential works is one that
+    discovers it is wrong during the incident it was meant to report.
+    """
+    from app.services.notifications import get_settings, send_telegram
+
+    settings = await get_settings(session)
+    sent, error = await send_telegram(
+        settings, "darkmem — test notification. If you can read this, alerts work."
+    )
+    return {"sent": sent, "error": error}
+
+
 @router.get("/system-prompts", response_model=SystemPromptsResponse)
 async def get_system_prompts(
     _user=Depends(require_auth),

@@ -121,6 +121,9 @@ EXPECTED_STATUS = {
     # needs to see the state now in force.
     ("PUT", "/api/v1/distribution/policy"): 200,
     ("GET", "/api/v1/graph/unified"): 200,
+    ("GET", "/api/v1/config/notifications"): 200,
+    ("PUT", "/api/v1/config/notifications"): 200,
+    ("POST", "/api/v1/config/notifications/test"): 200,
     ("GET", "/api/v1/jobs"): 200,
     ("GET", "/api/v1/jobs/{key}/runs"): 200,
     ("PUT", "/api/v1/jobs/{key}"): 200,
