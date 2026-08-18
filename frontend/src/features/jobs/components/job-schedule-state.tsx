@@ -22,7 +22,7 @@ export function JobSchedule({ cron }: { cron: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="text-muted-foreground inline-flex min-w-0 items-center gap-1.5 text-sm">
+        <span className="text-muted-foreground inline-flex w-fit min-w-0 items-center gap-1.5 text-sm">
           <Clock aria-hidden className="size-[var(--icon-size-sm)] shrink-0" />
           <span className="truncate">{plain ?? cron}</span>
         </span>
@@ -42,7 +42,7 @@ export function JobSchedule({ cron }: { cron: string }) {
 export function JobLastRun({ job }: { job: DemoJob }) {
   if (job.running) {
     return (
-      <Badge className="gap-1.5">
+      <Badge className="w-fit gap-1.5">
         <CircleDashed aria-hidden className="size-[var(--icon-size-sm)] animate-spin" />
         running
       </Badge>
@@ -52,7 +52,7 @@ export function JobLastRun({ job }: { job: DemoJob }) {
   const when = job.last_run_label
   if (!job.last_status) {
     return (
-      <span className="text-muted-foreground inline-flex items-center gap-1.5 text-sm">
+      <span className="text-muted-foreground inline-flex w-fit items-center gap-1.5 text-sm">
         <CircleDashed aria-hidden className="size-[var(--icon-size-sm)]" />
         never run
       </span>
@@ -63,7 +63,7 @@ export function JobLastRun({ job }: { job: DemoJob }) {
   const Icon = ok ? CircleCheck : CircleAlert
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-sm ${
+      className={`inline-flex w-fit items-center gap-1.5 text-sm ${
         ok ? "text-success" : "text-destructive"
       }`}
     >
