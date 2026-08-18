@@ -125,7 +125,7 @@ Migrations run automatically on API startup (`alembic upgrade head`). Notes:
 
 ### Logs & diagnostics
 
-Logs go to the container stdout (`docker compose logs -f darkmem-api`), formatted
+Logs go to the container stdout (`docker compose logs -f darkmem`), formatted
 with timestamp/level/logger and controlled by `LOG_LEVEL`. Pipeline failures are
 recorded in the database and surfaced under Settings → Pipeline. No secrets are
 logged (token counts and scrubbed git URLs only).

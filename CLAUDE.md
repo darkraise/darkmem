@@ -61,12 +61,41 @@ behavior change, not a cleanup.
   protocol and the object inventory the baseline implements:
   `docs/planning/baseline-schema-inventory.md`.
 - Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
-  .env needed); prod `docker compose up -d` (host networking; requires
-  `DB_PASSWORD` + `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false`
-  for plain-HTTP LAN). Rebuild the image first:
-  `./scripts/build-push.sh` — **one** image now (`darkraise/darkmem-api`),
-  built from the repo-root `Dockerfile`, carrying the API and the built SPA
-  together; the app serves the UI on `:8000` and nothing binds `:80`.
+  .env needed); prod `docker compose up -d` (requires `DB_PASSWORD` +
+  `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false` for plain-HTTP LAN).
+  Rebuild the image first: `./scripts/build-push.sh` — **one** image,
+  `darkraise/darkmem`, built from the repo-root `Dockerfile`, carrying the API
+  and the built SPA together; the app serves the UI on `:8000` and nothing
+  binds `:80`. **Renamed from `darkraise/darkmem-api` on 2026-08-18** (owner
+  ruling) because the `-api` name described half the artifact; the compose
+  service was renamed `darkmem-api → darkmem` in the same change, so a stack
+  brought up from the old file leaves an orphan container and the cutover
+  needs `docker compose down --remove-orphans`. Any `DARKMEM_VERSION` pinned
+  under the old image name no longer resolves.
+- **Prod networking is bridge, not host** — re-decided 2026-08-18 (owner
+  ruling), replacing the host networking both services used since v0.1. Ports
+  are now published explicitly: the app `8000:8000`, Postgres
+  `127.0.0.1:5432:5432` (host loopback only, the same reachability host
+  networking gave it, so host-side `pg_dump`/`psql` are unaffected). Two
+  couplings make this more than a flag. **Postgres must listen beyond
+  loopback** (`listen_addresses=*`, was `127.0.0.1`): the API now connects
+  across the stack network, and the old pin would refuse every application
+  connection while `pg_isready` still reported healthy. And **the login rate
+  limiter's bucket changes for some callers**: `_client_ip` keys on the
+  transport peer (`trust_proxy_headers` off, `--no-proxy-headers` everywhere),
+  and measured on this host, a LAN client's source address survives the DNAT
+  intact while a request to `127.0.0.1` and a request from another Docker
+  network both arrive as the bridge gateway and therefore **share one
+  bucket** — five failed host-local logins lock out host-local logins.
+  Accepted for a single-operator homelab. It is **not** repaired by turning
+  `TRUST_PROXY_HEADERS` on: Docker's NAT sets neither `X-Real-IP` nor
+  `X-Forwarded-For`, so the fallback lands on the same gateway address, and
+  the flag would additionally clamp `cookie_secure` to true (breaking
+  plain-HTTP LAN login) and arm the `/mcp` proxied guard. Reintroducing
+  `network_mode: host` is a silent regression rather than a loud one — it
+  ignores every `ports:` mapping without erroring — so
+  `tests/test_deployment_artifact.py` asserts the bridge network, both
+  publish bindings, and the `listen_addresses` pairing.
 - **Backups (homelab, T1.54): `systemd` timer `darkmem-backup.timer`**, nightly at
   03:30 with `Persistent=true` so a night the host was down is caught up rather
   than skipped. It runs `scripts/backup.sh /root/darkmem-backups`, which dumps

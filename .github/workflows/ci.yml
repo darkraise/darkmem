@@ -75,27 +75,21 @@ jobs:
       - name: Build
         run: npm run build
 
+  # One image, built from the repo root: it carries the API and the built SPA
+  # together. This job used to build two (./backend and ./frontend) and had
+  # been broken since the consolidation -- backend/ has no Dockerfile at all.
   images:
-    name: Build & scan images
+    name: Build & scan image
     runs-on: ubuntu-latest
     needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
-      - name: Build API image
-        run: docker build -t darkmem-api:ci ./backend
-      - name: Build UI image
-        run: docker build -t darkmem-ui:ci ./frontend
-      - name: Scan API image (Trivy)
+      - name: Build image
+        run: docker build -t darkmem:ci .
+      - name: Scan image (Trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: darkmem-api:ci
+          image-ref: darkmem:ci
           severity: HIGH,CRITICAL
           exit-code: "0"   # advisory until the dependency tree is triaged; flip to "1" to enforce
-          ignore-unfixed: true
-      - name: Scan UI image (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: darkmem-ui:ci
-          severity: HIGH,CRITICAL
-          exit-code: "0"
           ignore-unfixed: true

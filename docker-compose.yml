@@ -10,36 +10,52 @@
 name: darkmem-prod
 
 services:
-  # One image, and it is the network edge: it serves the REST API, /mcp, /ws
-  # and the built SPA on :8000. Nothing binds :80 any more. The name is
-  # historical -- it predates the SPA moving in -- and is kept because
-  # renaming would orphan every pinned DARKMEM_VERSION an operator deployed.
-  darkmem-api:
-    image: darkraise/darkmem-api:${DARKMEM_VERSION:-latest}
+  # ONE image, and it is the network edge: it serves the REST API, /mcp, /ws
+  # and the built SPA on :8000. Nothing binds :80. The image is
+  # `darkraise/darkmem` — not `-api` — because it carries the backend and the
+  # frontend together; the Dockerfile's `web` stage builds the SPA and the
+  # runtime stage asserts every asset the index references actually shipped.
+  darkmem:
+    image: darkraise/darkmem:${DARKMEM_VERSION:-latest}
     init: true
-    # Host networking: the API binds directly to the host's :8000 (LAN + UI +
-    # MCP /mcp). No Docker service-name DNS, so DB_HOST below points at
-    # localhost.
+    # Bridge networking (owner decision 2026-08-18, replacing host networking).
+    # The port is published explicitly rather than inherited from the host's
+    # namespace, and Postgres is reachable only over this stack's own network
+    # plus the host loopback mapping below.
     #
-    # The login rate limiter keys on the transport peer (trust_proxy_headers
-    # defaults off, and the entrypoint passes --no-proxy-headers), which is
-    # only the real LAN client BECAUSE of host networking. Moving to bridge
-    # networking changes where the peer address comes from and must be
-    # measured before, not after: with a non-loopback peer in front, uvicorn
-    # stops trusting it, request.client.host becomes the proxy's own address
-    # for every request, and five failures from any client lock out the LAN.
-    network_mode: host
-    # Port mappings are ignored under host networking; kept for bridge reference:
-    # ports:
-    #   - "8000:8000"
+    # WHAT THIS COSTS, and it is a real cost: the login rate limiter keys on
+    # the transport peer (`_client_ip` in api/routes/auth.py — trust_proxy_headers
+    # defaults off, and every launch path passes --no-proxy-headers), so the
+    # bucket is whatever address the container observes. Under bridge that is
+    # NOT uniform. Measured on this host 2026-08-18, reading the address off
+    # uvicorn's own access log:
+    #   - a LAN client (dial the host's LAN address) is DNAT'd by the DOCKER
+    #     chain with no matching MASQUERADE rule, so its source address
+    #     SURVIVES and it keeps its own bucket — observed 192.168.0.250;
+    #   - a request to 127.0.0.1 is NOT DNAT'd (the nat OUTPUT jump excludes
+    #     127.0.0.0/8) and goes through the userland docker-proxy instead, so
+    #     the container sees the bridge gateway — observed 172.21.0.1;
+    #   - a client on another Docker network hits that network's own
+    #     MASQUERADE rule on the way out and lands on the same gateway address
+    #     — also observed 172.21.0.1.
+    # So the two collapsed cases share ONE bucket: five failed host-local
+    # logins lock out every host-local login. That is acceptable for a
+    # single-operator homelab, it does not affect LAN clients, and it is NOT
+    # fixed by setting TRUST_PROXY_HEADERS=true — Docker's NAT sets no
+    # X-Real-IP and no X-Forwarded-For, so `_client_ip` falls through to the
+    # same gateway address, while the flag would additionally clamp
+    # COOKIE_SECURE to true (breaking plain-HTTP LAN login) and arm the /mcp
+    # proxied guard.
+    ports:
+      - "8000:8000"
     environment:
-      # Arms the fail-fast validators (JWT strength, SETUP_SECRET) and the
-      # Secure-cookie default. Keep this 'production'.
+      # Arms the fail-fast validators (JWT strength) and the Secure-cookie
+      # default. Keep this 'production'.
       - ENVIRONMENT=production
-      # Database connection. Under host networking Postgres is on the host's
-      # loopback, so DB_HOST defaults to localhost (override in .env for an
+      # Database connection. Under bridge networking Postgres is reached by its
+      # compose service name on this stack's network (override in .env for an
       # external Postgres). config.py builds DATABASE_URL from these.
-      - DB_HOST=${DB_HOST:-localhost}
+      - DB_HOST=${DB_HOST:-postgres}
       - DB_PORT=${DB_PORT:-5432}
       - DB_USER=${DB_USER:-darkmem}
       - DB_NAME=${DB_NAME:-darkmem}
@@ -49,19 +65,21 @@ services:
       # .env to allow login over plain HTTP on a trusted LAN.
       - COOKIE_SECURE=${COOKIE_SECURE:-true}
       # Which layer decides the login rate limiter's bucket. Off = the
-      # transport peer, which is right when this app is the edge. Set true
-      # only when a trusted proxy really is in front, or every client shares
-      # that proxy's bucket. Passed through so changing posture stays a
-      # config flip rather than an edit to this file.
+      # transport peer. Set true only when a trusted TLS proxy really is in
+      # front — see the note above for why Docker's own NAT does not count.
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      # Hosts allowed to reach /mcp (DNS-rebinding allowlist). Empty = localhost
-      # only; set your LAN host:port (e.g. 192.168.0.195:8000) so agents can
-      # connect, or "*" to disable the host check.
+      # Hosts allowed to reach /mcp (DNS-rebinding allowlist). This is the HTTP
+      # Host header, not the network, so bridge networking does not change it.
+      # Empty = localhost only; set your LAN host:port (e.g. 192.168.0.195:8000)
+      # so agents can connect, or "*" to disable the host check. NOTE this host
+      # is 192.168.0.250; 192.168.0.195 is a different darkmem instance.
       - MCP_ALLOWED_HOSTS=${MCP_ALLOWED_HOSTS:-}
     volumes:
       # Persist cloned repositories across container restarts.
       - repo_data:/app/data/repositories
+    networks:
+      - darkmem
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,20 +100,24 @@ services:
 
   postgres:
     image: pgvector/pgvector:0.8.2-pg17
-    network_mode: host
-    # Host networking puts Postgres on the host's :5432. listen_addresses pins
-    # it to loopback so it is NOT reachable from the LAN.
+    # listen_addresses must be '*' under bridge networking: the API reaches
+    # this container across the stack network, not over loopback, so pinning
+    # to 127.0.0.1 would refuse every application connection. The database is
+    # kept off the LAN by the publish binding below (host loopback only) plus
+    # the fact that the bridge network is not routed from outside this host.
     # max_connections sized for the API pool (30/process) plus headroom.
-    command: ["postgres", "-c", "max_connections=120", "-c", "listen_addresses=127.0.0.1"]
-    # Port mapping is ignored under host networking; kept for bridge reference
-    # (it bound the host's loopback :5433 to the container's :5432):
-    # ports:
-    #   - "127.0.0.1:5433:5432"
+    command: ["postgres", "-c", "max_connections=120", "-c", "listen_addresses=*"]
+    ports:
+      # Host loopback only — same reachability the host-networked stack had on
+      # 127.0.0.1:5432, so host-side psql/pg_dump keep working unchanged.
+      - "127.0.0.1:5432:5432"
     # pgvector index builds and parallel scans use /dev/shm; the 64MB container
     # default can trip "could not resize shared memory segment".
     shm_size: 256mb
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - darkmem
     environment:
       # Kept in sync with the API's DB_* so the credentials always match.
       - POSTGRES_DB=${DB_NAME:-darkmem}
@@ -111,6 +133,10 @@ services:
       resources:
         limits:
           memory: 1g
+
+networks:
+  darkmem:
+    driver: bridge
 
 volumes:
   postgres_data:

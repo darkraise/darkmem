@@ -28,7 +28,7 @@ PROD_COMPOSE = REPO_ROOT / "docker-compose.yml"
 DEV_COMPOSE = REPO_ROOT / "docker-compose.dev.yml"
 DOCKERFILE = REPO_ROOT / "Dockerfile"
 
-APP_SERVICE = "darkmem-api"
+APP_SERVICE = "darkmem"
 
 
 def _unwrapped(path: Path) -> str:
@@ -138,14 +138,43 @@ def test_prod_compose_requires_both_secrets_at_runtime(secret):
 
 
 def test_prod_compose_defines_exactly_the_app_and_postgres():
-    """No darkmem-ui: the app serves the SPA itself and nothing binds :80."""
+    """No second UI service: one image carries the API and the built SPA
+    together -- which is why it is `darkraise/darkmem`, not `-api` -- the app
+    serves the SPA itself, and nothing binds :80."""
     assert set(_compose(PROD_COMPOSE)["services"]) == {APP_SERVICE, "postgres"}
 
 
-def test_prod_app_service_keeps_host_networking_and_its_repo_volume():
+def test_prod_app_service_publishes_its_port_and_keeps_its_repo_volume():
     service = _compose(PROD_COMPOSE)["services"][APP_SERVICE]
-    assert service["network_mode"] == "host"
+    assert "8000:8000" in service["ports"], service["ports"]
     assert any(v.startswith("repo_data:") for v in service["volumes"]), service["volumes"]
+
+
+@pytest.mark.parametrize("service", [APP_SERVICE, "postgres"])
+def test_prod_compose_uses_bridge_networking(service):
+    """Host networking was replaced by an explicit bridge network on
+    2026-08-18. `network_mode: host` ignores every `ports:` mapping silently,
+    so a reintroduction would not fail to start -- it would quietly un-publish
+    the ports below and put Postgres back on the host namespace."""
+    spec = _compose(PROD_COMPOSE)["services"][service]
+    assert "network_mode" not in spec, spec.get("network_mode")
+    assert "darkmem" in spec["networks"], spec.get("networks")
+    assert _compose(PROD_COMPOSE)["networks"]["darkmem"]["driver"] == "bridge"
+
+
+def test_prod_postgres_publishes_on_the_host_loopback_only():
+    """The database must not become LAN-reachable as a side effect of leaving
+    host networking: an unqualified "5432:5432" binds 0.0.0.0."""
+    ports = _compose(PROD_COMPOSE)["services"]["postgres"]["ports"]
+    assert ports == ["127.0.0.1:5432:5432"], ports
+
+
+def test_prod_postgres_listens_beyond_loopback():
+    """The counterpart of the mapping above. Under bridge networking the API
+    connects across the stack network, so the host-networking-era
+    `listen_addresses=127.0.0.1` would refuse every application connection."""
+    command = " ".join(_compose(PROD_COMPOSE)["services"]["postgres"]["command"])
+    assert "listen_addresses=127.0.0.1" not in command, command
 
 
 def test_prod_postgres_keeps_its_shared_memory_sizing():

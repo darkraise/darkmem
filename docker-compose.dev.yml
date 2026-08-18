@@ -1,5 +1,5 @@
 services:
-  darkmem-api:
+  darkmem:
     build:
       context: .
       dockerfile: Dockerfile
@@ -22,7 +22,7 @@ services:
     # layer decides the peer address is how the posture drifts.
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-keep-alive 75 --no-proxy-headers
 
-  # No darkmem-ui service: dev serves the UI from vite on :3636
+  # No separate UI service: dev serves the UI from vite on :3636
   # (cd frontend && npm run dev), which proxies /api, /health and /ws to :8000.
 
   postgres:
