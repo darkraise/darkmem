@@ -1,0 +1,1498 @@
+{
+ "pass": "A",
+ "n": 260,
+ "labels": [
+  {
+   "id": "sg-0001",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "503 behaviour is not in the cited clause; true-of-system trap"
+  },
+  {
+   "id": "sg-0258",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0191",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'the walkthrough directs' read as the licensed metatextual form"
+  },
+  {
+   "id": "sg-0012",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)"
+  },
+  {
+   "id": "sg-0045",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "the obligated agent (Claude Code) is outside the cited imperative"
+  },
+  {
+   "id": "sg-0023",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0062",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0159",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0104",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0154",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0187",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0241",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": ">20 vs >100"
+  },
+  {
+   "id": "sg-0173",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0008",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "in-series/deadlock clause not in cited span"
+  },
+  {
+   "id": "sg-0076",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0115",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the deployment state; item only directs it"
+  },
+  {
+   "id": "sg-0213",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'Examples' upgraded to 'the only true resources'"
+  },
+  {
+   "id": "sg-0229",
+   "verdict": "not-entailed",
+   "rule": "the reversal rule",
+   "note": "singular flipped to plural"
+  },
+  {
+   "id": "sg-0066",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0117",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "what-the-command-does claim beyond its text"
+  },
+  {
+   "id": "sg-0179",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0195",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0129",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0011",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "normal-path sentence not in cited span"
+  },
+  {
+   "id": "sg-0214",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "every-provider-every-purpose not asserted by 'pluggable per-purpose'"
+  },
+  {
+   "id": "sg-0134",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0114",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the bundle fact; item only lists it to verify"
+  },
+  {
+   "id": "sg-0093",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0231",
+   "verdict": "not-entailed",
+   "rule": "the reversal rule",
+   "note": "rightmost flipped to leftmost"
+  },
+  {
+   "id": "sg-0082",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "step name and reason both in span"
+  },
+  {
+   "id": "sg-0151",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0260",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0030",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule",
+   "note": "no-secrets clause outside the cited bytes"
+  },
+  {
+   "id": "sg-0192",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "lists-form matches the bytes"
+  },
+  {
+   "id": "sg-0125",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0101",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0232",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "500 ms vs 200 ms"
+  },
+  {
+   "id": "sg-0078",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "heading cited, warning verbatim"
+  },
+  {
+   "id": "sg-0113",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0142",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "list matches exactly"
+  },
+  {
+   "id": "sg-0254",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0215",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "before-any-other-step ordering is necessity beyond the text"
+  },
+  {
+   "id": "sg-0058",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'first step of an upgrade' rests on uncited heading/position"
+  },
+  {
+   "id": "sg-0032",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'It' resolved to darkmem from outside the span"
+  },
+  {
+   "id": "sg-0186",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0120",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "behaviour claim beyond the command text"
+  },
+  {
+   "id": "sg-0119",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "behaviour claim beyond the command text"
+  },
+  {
+   "id": "sg-0237",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "14 routes vs 12"
+  },
+  {
+   "id": "sg-0086",
+   "verdict": "entailed",
+   "rule": "multi-span composition",
+   "note": "heading supplies 'your proxy must do'; reason in span"
+  },
+  {
+   "id": "sg-0061",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0106",
+   "verdict": "not-entailed",
+   "rule": "the table-row rule",
+   "note": "'required in prod' semantics need the uncited header row"
+  },
+  {
+   "id": "sg-0203",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'not only a rate-limiter setting' inverted to 'the only setting'"
+  },
+  {
+   "id": "sg-0148",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'known deviations' read as deictic; reason verbatim"
+  },
+  {
+   "id": "sg-0170",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule"
+  },
+  {
+   "id": "sg-0047",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'Memories page section' needs the uncited heading"
+  },
+  {
+   "id": "sg-0009",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)"
+  },
+  {
+   "id": "sg-0157",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'must be stopped' read as the imperative's own directive force, not added necessity",
+   "escalate": true
+  },
+  {
+   "id": "sg-0242",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "5 minutes vs 15"
+  },
+  {
+   "id": "sg-0126",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'the break-glass purge' resolves the elided subject externally \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0039",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'REST' qualifier is a deictic label; substance fully in span \u2014 close call either way",
+   "escalate": true
+  },
+  {
+   "id": "sg-0100",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0182",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0149",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0211",
+   "verdict": "not-entailed",
+   "rule": "the hedge rule",
+   "note": "'Expected:' dropped to a flat assertion"
+  },
+  {
+   "id": "sg-0102",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0111",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0074",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0136",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0105",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: 'commands shown include'"
+  },
+  {
+   "id": "sg-0051",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'browser console' and 'full walkthrough' come from uncited context"
+  },
+  {
+   "id": "sg-0255",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0021",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)"
+  },
+  {
+   "id": "sg-0035",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'it' resolved to the journal-rewriting path externally"
+  },
+  {
+   "id": "sg-0089",
+   "verdict": "entailed",
+   "rule": "multi-span composition",
+   "note": "heading supplies stop-and-ask scope"
+  },
+  {
+   "id": "sg-0006",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0248",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "five cards vs six"
+  },
+  {
+   "id": "sg-0080",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual list of the shown npm commands; 'cd frontend' omission read as weakening"
+  },
+  {
+   "id": "sg-0059",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'of the purge procedure' resolves which procedure externally"
+  },
+  {
+   "id": "sg-0123",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0020",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "plaintext-shown-once not in cited span"
+  },
+  {
+   "id": "sg-0069",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0067",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0053",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "password 'short' and the setup form come from uncited context"
+  },
+  {
+   "id": "sg-0177",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited; conventions read off the table"
+  },
+  {
+   "id": "sg-0204",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "present-indicative assertion; the 'must' heading is not cited here"
+  },
+  {
+   "id": "sg-0249",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "e2e-ui vs e2e-manual"
+  },
+  {
+   "id": "sg-0218",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'nothing beyond httpx' exclusivity not in span"
+  },
+  {
+   "id": "sg-0127",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0070",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0135",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "verbatim"
+  },
+  {
+   "id": "sg-0029",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)"
+  },
+  {
+   "id": "sg-0038",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'it' resolved to the cookie clamp externally"
+  },
+  {
+   "id": "sg-0137",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0240",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "0003 vs 0005"
+  },
+  {
+   "id": "sg-0079",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "metatextual: names the command given"
+  },
+  {
+   "id": "sg-0239",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "~60 s vs ~10 s"
+  },
+  {
+   "id": "sg-0004",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0026",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "does-not-fail-the-phase is not asserted"
+  },
+  {
+   "id": "sg-0160",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0234",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "1 MB vs 2 MB"
+  },
+  {
+   "id": "sg-0063",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0031",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'it' resolved to /setup from outside the span"
+  },
+  {
+   "id": "sg-0050",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'DevTools Network tab' comes from uncited context"
+  },
+  {
+   "id": "sg-0155",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'The purge' resolves the elided 'Status:' subject externally \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0130",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0022",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "refused/nonexistent-repo clause not in cited span"
+  },
+  {
+   "id": "sg-0227",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": ".env vs docker-compose.yml"
+  },
+  {
+   "id": "sg-0140",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0041",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "docs/e2e/scripts location supplied from outside the span"
+  },
+  {
+   "id": "sg-0024",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)"
+  },
+  {
+   "id": "sg-0065",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'purpose card' adds a property the bytes do not state \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0003",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "first-caller-claims reading is an inference the cited bytes do not state"
+  },
+  {
+   "id": "sg-0190",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual, comment verbatim; 'purge SQL' read as deictic label \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0034",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'it' resolved to the proxied-/mcp refusal externally"
+  },
+  {
+   "id": "sg-0091",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0144",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0033",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'It' resolved to leftmost X-Forwarded-For externally"
+  },
+  {
+   "id": "sg-0216",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0222",
+   "verdict": "not-entailed",
+   "rule": "the hedge rule",
+   "note": "'suspect first' upgraded to 'always caused'"
+  },
+  {
+   "id": "sg-0171",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0217",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "what-the-endpoint-returns claim beyond the bare route text"
+  },
+  {
+   "id": "sg-0133",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'the plan directs' is the licensed metatextual form"
+  },
+  {
+   "id": "sg-0225",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0084",
+   "verdict": "entailed",
+   "rule": "the hedge rule",
+   "note": "expectation kept"
+  },
+  {
+   "id": "sg-0132",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0161",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'forwards plain HTTP' grounded in the span's plain-HTTP discussion"
+  },
+  {
+   "id": "sg-0073",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0083",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule"
+  },
+  {
+   "id": "sg-0081",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "step name in span; directed tables match"
+  },
+  {
+   "id": "sg-0238",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "~30 seconds vs five minutes"
+  },
+  {
+   "id": "sg-0042",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'known intentional gaps' resolves the elided subject externally"
+  },
+  {
+   "id": "sg-0043",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'This' resolved to a named script externally"
+  },
+  {
+   "id": "sg-0245",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "retry_batch vs reembed_batch"
+  },
+  {
+   "id": "sg-0116",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "success-at-runtime claim beyond the command text"
+  },
+  {
+   "id": "sg-0223",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "exactly-one-category requirement not in span"
+  },
+  {
+   "id": "sg-0044",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "script filename supplied from outside the span"
+  },
+  {
+   "id": "sg-0175",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule"
+  },
+  {
+   "id": "sg-0145",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "verbatim"
+  },
+  {
+   "id": "sg-0174",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0124",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "notes-and-directs form matches the bytes"
+  },
+  {
+   "id": "sg-0199",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "optional upgraded to required"
+  },
+  {
+   "id": "sg-0094",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0189",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0046",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'On the Overview page' needs the uncited heading"
+  },
+  {
+   "id": "sg-0236",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "3636 vs 5173"
+  },
+  {
+   "id": "sg-0055",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "script name supplied from outside the span"
+  },
+  {
+   "id": "sg-0205",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'successful' added to 'run to completion'"
+  },
+  {
+   "id": "sg-0228",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "201 Created vs 200 OK"
+  },
+  {
+   "id": "sg-0057",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'the setup wizard' is an app feature the bytes never name",
+   "escalate": true
+  },
+  {
+   "id": "sg-0122",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "first sentence verbatim"
+  },
+  {
+   "id": "sg-0244",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "until password set vs until first login"
+  },
+  {
+   "id": "sg-0075",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0252",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0056",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'after the embedding model change' and 'the modal' are uncited context"
+  },
+  {
+   "id": "sg-0256",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0085",
+   "verdict": "entailed",
+   "rule": "multi-span composition",
+   "note": "heading supplies 'your proxy must do'"
+  },
+  {
+   "id": "sg-0150",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'the bundled topology' resolves 'this topology' externally \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0224",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the state; item only directs keeping it"
+  },
+  {
+   "id": "sg-0221",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "path-segment casing widened to any character of any URL"
+  },
+  {
+   "id": "sg-0257",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0112",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts behaviour; also adds 'repo' from uncited context"
+  },
+  {
+   "id": "sg-0184",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0131",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'the checklist' read as deictic self-reference; description verbatim"
+  },
+  {
+   "id": "sg-0018",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "GitHub claim is not in the cited sentence"
+  },
+  {
+   "id": "sg-0025",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "FAIL threshold not in cited span"
+  },
+  {
+   "id": "sg-0167",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'are handled by scripts' read as describing the plan's arrangement"
+  },
+  {
+   "id": "sg-0259",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0235",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "three categories vs four"
+  },
+  {
+   "id": "sg-0169",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'login' near-derivable from account-existence wording \u2014 close call"
+  },
+  {
+   "id": "sg-0098",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: commands and comment verbatim"
+  },
+  {
+   "id": "sg-0088",
+   "verdict": "entailed",
+   "rule": "multi-span composition",
+   "note": "heading supplies intentional/not-yet-changed"
+  },
+  {
+   "id": "sg-0040",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "the 2026-06-04 date identifies the audit from outside the span"
+  },
+  {
+   "id": "sg-0202",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "perfect tense asserts execution"
+  },
+  {
+   "id": "sg-0092",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0162",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0207",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0054",
+   "verdict": "entailed",
+   "rule": "the hedge rule",
+   "note": "expectation kept; 'reload' rephrased as refresh"
+  },
+  {
+   "id": "sg-0226",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "120 vs 300"
+  },
+  {
+   "id": "sg-0143",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule"
+  },
+  {
+   "id": "sg-0007",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0230",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": ">=20 vs at least 50"
+  },
+  {
+   "id": "sg-0010",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule",
+   "note": "/reembed is named only past the cited colon"
+  },
+  {
+   "id": "sg-0090",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)",
+   "note": "heading cited; 'among' weakens"
+  },
+  {
+   "id": "sg-0077",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0180",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'survives a deletion' resolves the header's elided event externally \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0128",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "verbatim"
+  },
+  {
+   "id": "sg-0049",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'LLM config page section' needs the uncited heading"
+  },
+  {
+   "id": "sg-0087",
+   "verdict": "entailed",
+   "rule": "multi-span composition",
+   "note": "heading supplies intentional/breaking-to-fix"
+  },
+  {
+   "id": "sg-0172",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "expects-form; 'should be hidden' in bytes"
+  },
+  {
+   "id": "sg-0028",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "resize-back is not in the cited item"
+  },
+  {
+   "id": "sg-0246",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "375x812 vs 414x896"
+  },
+  {
+   "id": "sg-0200",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "imperative asserted as accomplished state"
+  },
+  {
+   "id": "sg-0206",
+   "verdict": "not-entailed",
+   "rule": "score the whole hypothesis (procedure 1)",
+   "note": "deletes-the-embeddings conjunct unsupported"
+  },
+  {
+   "id": "sg-0121",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0103",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited"
+  },
+  {
+   "id": "sg-0005",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0147",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0219",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "perfect tense asserts execution"
+  },
+  {
+   "id": "sg-0139",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'your proxy' appears in the span; requires = the span's directive"
+  },
+  {
+   "id": "sg-0118",
+   "verdict": "not-entailed",
+   "rule": "the code-block rule",
+   "note": "behaviour/success claim; 'leaked fragment' also uncited"
+  },
+  {
+   "id": "sg-0071",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0014",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0036",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'them' resolved to pre-purge dumps/snapshots externally"
+  },
+  {
+   "id": "sg-0194",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0048",
+   "verdict": "not-entailed",
+   "rule": "heading scope does not travel",
+   "note": "'unified graph section' needs the uncited heading"
+  },
+  {
+   "id": "sg-0163",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0146",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0064",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0015",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0152",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0052",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "script name supplied from outside the span"
+  },
+  {
+   "id": "sg-0168",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'supporting' read as a benign role descriptor"
+  },
+  {
+   "id": "sg-0183",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0002",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0220",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the deployment state; item only directs it"
+  },
+  {
+   "id": "sg-0250",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "dev.yml vs override.yml"
+  },
+  {
+   "id": "sg-0188",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: comment text verbatim"
+  },
+  {
+   "id": "sg-0099",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0185",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "dropping the redirect half is weakening"
+  },
+  {
+   "id": "sg-0095",
+   "verdict": "entailed",
+   "rule": "the table-row rule",
+   "note": "header row cited; hypothesis stays within table semantics"
+  },
+  {
+   "id": "sg-0243",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "code chunks vs conversations"
+  },
+  {
+   "id": "sg-0208",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0097",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: SQL text and comment verbatim"
+  },
+  {
+   "id": "sg-0110",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the system does the thing; unchecked item only lists it to verify"
+  },
+  {
+   "id": "sg-0210",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0164",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "subject mildly generalised; deferral and reason in span"
+  },
+  {
+   "id": "sg-0212",
+   "verdict": "not-entailed",
+   "rule": "the hedge rule",
+   "note": "'Expected:' dropped; 'auth script' also uncited"
+  },
+  {
+   "id": "sg-0096",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: comment text verbatim"
+  },
+  {
+   "id": "sg-0141",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule"
+  },
+  {
+   "id": "sg-0166",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0158",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0233",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "2 s target restated as 5 s; read as a swapped target value, not a weakened bound",
+   "escalate": true
+  },
+  {
+   "id": "sg-0153",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0138",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'first' and the reason are both in the bytes"
+  },
+  {
+   "id": "sg-0251",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0181",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'enough' weakens the named count"
+  },
+  {
+   "id": "sg-0196",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "true resources widened to all endpoints"
+  },
+  {
+   "id": "sg-0027",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule",
+   "note": "tandem sentence not cited here"
+  },
+  {
+   "id": "sg-0198",
+   "verdict": "not-entailed",
+   "rule": "score the whole hypothesis (procedure 1)",
+   "note": "only-external-service conjunct unsupported"
+  },
+  {
+   "id": "sg-0013",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0060",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "endpoint and posture context supplied from outside the bare value"
+  },
+  {
+   "id": "sg-0165",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "verbatim subset"
+  },
+  {
+   "id": "sg-0176",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0019",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "403 mcp_not_exposed specifics absent from span"
+  },
+  {
+   "id": "sg-0201",
+   "verdict": "not-entailed",
+   "rule": "the procedural-prose rule",
+   "note": "perfect tense asserts execution"
+  },
+  {
+   "id": "sg-0253",
+   "verdict": "not-entailed",
+   "rule": "use only the cited spans (procedure 2)",
+   "note": "unrelated span"
+  },
+  {
+   "id": "sg-0068",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0017",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule"
+  },
+  {
+   "id": "sg-0107",
+   "verdict": "not-entailed",
+   "rule": "the table-row rule",
+   "note": "which column is which posture needs the uncited header row"
+  },
+  {
+   "id": "sg-0197",
+   "verdict": "not-entailed",
+   "rule": "strengthening breaks entailment (procedure 3)",
+   "note": "'only status codes' exclusivity not in span"
+  },
+  {
+   "id": "sg-0072",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0193",
+   "verdict": "entailed",
+   "rule": "weakening preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0156",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'before a purge' resolves what 'first' is relative to externally \u2014 close call",
+   "escalate": true
+  },
+  {
+   "id": "sg-0016",
+   "verdict": "not-entailed",
+   "rule": "the truncation rule",
+   "note": "clamp/warning clauses are outside the cited clause"
+  },
+  {
+   "id": "sg-0178",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "metatextual: template fields verbatim"
+  },
+  {
+   "id": "sg-0109",
+   "verdict": "not-entailed",
+   "rule": "the table-row rule",
+   "note": "'listed purpose' needs the uncited header row"
+  },
+  {
+   "id": "sg-0247",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "indexing_completed vs indexing_finished"
+  },
+  {
+   "id": "sg-0209",
+   "verdict": "not-entailed",
+   "rule": "the checklist rule",
+   "note": "asserts the behaviour; item only lists it to verify"
+  },
+  {
+   "id": "sg-0037",
+   "verdict": "not-entailed",
+   "rule": "the anaphora rule",
+   "note": "'Both secrets' resolved to the two names externally"
+  },
+  {
+   "id": "sg-0108",
+   "verdict": "not-entailed",
+   "rule": "the table-row rule",
+   "note": "'purpose' column semantics need the uncited header row"
+  }
+ ]
+}

@@ -46,7 +46,32 @@ behavior change, not a cleanup.
   frozen yet.** Until the freeze, a schema change **regenerates that
   file in place** and you drop/recreate the database; it never appends
   a `0002`. `./scripts/gate.sh` asserts exactly one revision and fails
-  loudly otherwise. Schema changes **serialise through one owner per
+  loudly otherwise.
+  **The drop/recreate half is not enforced anywhere, and a deployed
+  database silently drifts because of it** (measured on production
+  2026-08-17). The revision id never moves, so `alembic upgrade head` —
+  which `entrypoint.sh` runs at every container start — finds current ==
+  head on a database already stamped `0001` and does nothing. **Every
+  deploy since a baseline change therefore reports a clean migration
+  while running against a schema it does not have.** Production was
+  missing five columns and `article_synthesis` had been dying on every
+  scheduled run; the failure surfaced only in that job's `config` row,
+  not in any log or health check. The gate asserts the *tree* holds one
+  revision and says nothing about any running database. **After
+  regenerating the baseline, drop and recreate every deployed database
+  yourself**, and re-seed `admin_password_hash` plus all eight
+  `llm_purpose_configs` rows — the `verification` row especially, since
+  `llm_seed.py` does not reproduce it at the qualified judge identity.
+  **Since 2026-08-17 a boot check enforces this rather than trusting the
+  policy**: `app/schema_guard.py` runs from `entrypoint.sh` after the
+  migration, stamps a hash of the baseline file into the database it
+  migrated, and **refuses to start** when the two disagree — the revision
+  id cannot detect a regenerated baseline, but its content can. It fails
+  closed with no override flag, and **must be retired at the freeze**,
+  when revisions become additive and alembic's own comparison does the
+  job. Procedure, and the two rows a re-seed does NOT reproduce:
+  `docs/runbook-deployment.md`.
+  Analysis: `docs/planning/analyses/2026-08-17-production-schema-drift.md`. Schema changes **serialise through one owner per
   epic**: the baseline is a single shared mutable file, so two lanes
   editing it conflict every time. The freeze is an **event, not a
   date** — the first deploy whose data must survive (the homelab
@@ -528,10 +553,23 @@ keyword-only `role`** — `entailment` for the article claim pass, gated on
 gated on the contradiction pair. `JUDGE_ROLES` partitions `BAR_METRICS` and a
 test fails the build if it stops doing so; a record carries the role it was
 minted for, so copying one onto the other's path qualifies nothing, and a
-pre-split bundled record (no role field) qualifies **neither**. Both records
-are absent on this branch for stated reasons — the contradiction role missed
-its bar and stays missed, and the owner refused minting the entailment role
-from T2.114's spent artifact, so it is owed to a fresh gold. Two tripwires are
+pre-split bundled record (no role field) qualifies **neither**. **The entailment
+record is MINTED and on master since 2026-08-17** (corrected the same day — this
+said both records were absent, which stopped being true when T2.124's fresh gold
+and T2.125's run merged). It qualifies judge identity `fd39e7b2c47fa375`
+(`gpt-5.5`) on precision 0.9906/0.95 and recall 0.9545/0.90 with
+`contradicted → entailed` at 0, and **G-D is CLEARED on that role alone** by the
+owner's 2026-08-17 ruling. The **contradiction role is still absent and still
+missed** — recall 0.7875 against an unmoved 0.95, the fourth miss across two
+vendors — so no consumer may ship on its verdicts. Two limits ride with the mint
+and are easy to lose: the judge had already met **114 of the 280** measured pairs
+in two earlier blind sittings on that gold and all three pairs it was known to
+disagree with were retired before the run (worst-case restoration still clears at
+recall 105/113 = 0.9292, so no verdict moves — but "cleared on pairs it had never
+seen" is not a sentence anyone may write); and **a minted record is not a served
+label** — `judge()` resolves the `verification` purpose from the *database*, so
+the row must exist there at the qualified identity, and `llm_seed.py` seeds that
+purpose at a local Ollama model instead. Two tripwires are
 tests rather than prose: relaxing a contradiction-role bar, and any
 qualification contact with pair set `4975c5cc` **for any role** (refused at the
 harness before a model call, at the writer, and at the app-side reader). The
@@ -1092,6 +1130,14 @@ route into a research run: every row it files carries `RESEARCH_SOURCE` and an
 `is_researched_origin` key, and a finding naming either field is a validation
 error rather than a silently dropped key. It refuses while the `auto_research`
 row is not enabled (the default) — building the door is not arming the loop.
+**T3.28 shipped the config and trigger surface, so arming is now a UI act rather
+than a manual database write, and production was armed 2026-08-17** on the
+owner's ruling, to start the G-E corpus clock. **Armed is still not driving**:
+the loop has no `JobRegistry` job on purpose (a cron'd pass would refetch the
+same sources every tick, manufacturing its own corroboration), and
+`ResearchGatherer` has no in-tree implementation, so the caller must be the
+gatherer. Nothing in this tree produces a research origin on its own; an MCP
+agent with real web access has to call `research_run`.
 `tests/test_auto_research.py`'s blanket invariant-15 scan records this as the
 one **sanctioned** crossing through `exempt_node_ids`, scoped to nodes inside
 the tool's own body, so the same import at module level or inside `memory_add`

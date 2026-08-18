@@ -1,0 +1,9 @@
+{
+  "id": "eg-0723",
+  "premise": "fulfillment application uses talon-01",
+  "hypothesis": "A consumer uses talon-01.",
+  "verdict": "entailed",
+  "slice": "weakening",
+  "rationale": "Weakening axis used: existential generalisation over the SUBJECT (not the object, which the excluded prior pair already used). The bare-sortal clause states that 'a relation's own generic semantics count as establishment' and specifically that USES makes its subject a 'consumer' -- so dropping the named subject 'fulfillment application' to the earned bare sortal 'consumer' introduces no unearned content and passes the differentiation test (an entity in USES-subject position cannot fail to be a consumer of what it uses). talon-01 stays named and unchanged, so this pair exercises a different content-drop than the excluded object-side existential generalisation, per general procedure 3's 'dropping content (weakening)' preserving entailment.",
+  "attestation": "I read exactly: (1) this dispatch prompt, and (2) 02-labelling-prefix.md at scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/. I did not list, open, Grep or Glob any other path, and I ran no commands. Note: a CLAUDE.md (both /root/repositories/darkmem/CLAUDE.md as project instructions and /root/repositories/darkmem/.worktrees/t2.124/CLAUDE.md, plus the user's global /root/.claude/CLAUDE.md) was auto-injected into my context by the environment via system-reminder blocks; I did not choose to read these and did not use them as a source for this pair's construction beyond what the task prompt itself required."
+}

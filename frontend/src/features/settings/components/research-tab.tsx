@@ -7,7 +7,12 @@ import { Label } from "darkraise-ui/components/label"
 
 import { HelpTip } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
-import { useAutoResearch, useUpdateAutoResearch } from "@/hooks/api"
+import {
+  useAutoResearch,
+  useRerunResearchRun,
+  useResearchRuns,
+  useUpdateAutoResearch,
+} from "@/hooks/api"
 
 /**
  * The `auto_research` operator surface (T3.28, doc 09 §6).
@@ -21,15 +26,22 @@ import { useAutoResearch, useUpdateAutoResearch } from "@/hooks/api"
  * control rather than a toggle that fires on focus, and the copy says what
  * turning it on means.
  *
- * The trigger half of T3.28 is deliberately absent: a UI button cannot gather
- * evidence, and `research_run` is an MCP tool precisely because the caller
- * must be the gatherer. Adding a server-side gatherer to make a button work
- * is the shape doc 09 §6 refuses, so the shape of a UI trigger is an owner
- * decision this surface does not pre-empt.
+ * **The trigger is a re-derivation, not a re-run of the gathering.** The
+ * owner ruled (2026-08-16) that the surface re-runs the subject of a
+ * previously filed run — the one shape needing no gatherer in the tree.
+ * Building it showed that re-*filing* is either impossible (a deleted
+ * memory's evidence is gone; the journal keeps no finding text) or inert (a
+ * surviving one re-files under its own origin, and corroboration counts
+ * distinct origins). So the button re-derives: the run's surviving memories
+ * go back through the pipeline, and the subject is recomputed under the
+ * current taxonomy and extractor. Nothing is gathered, filed or counted
+ * again, which is also why this may sit on REST at all.
  */
 export function ResearchTab() {
   const config = useAutoResearch()
   const update = useUpdateAutoResearch()
+  const runs = useResearchRuns()
+  const rerun = useRerunResearchRun()
   const [findings, setFindings] = useState("")
   const [chars, setChars] = useState("")
 
@@ -146,6 +158,79 @@ export function ResearchTab() {
             disarmed loop
           </p>
         )}
+
+        <div className="space-y-2 border-t pt-3.5">
+          <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
+            <span>Filed runs</span>
+            <HelpTip label="About re-running">
+              Re-running re-derives, it does not re-gather. The run&apos;s
+              memories go back through the pipeline, so entities, relations and
+              facts are recomputed under the current taxonomy. No evidence is
+              fetched, no row is filed and no origin is created, so
+              corroboration counts are untouched. A run whose memories were
+              deleted cannot be re-derived — the journal records what it filed,
+              never the finding text.
+            </HelpTip>
+          </div>
+
+          {runs.isError && (
+            <p className="text-muted-foreground text-sm">
+              the run list could not be read
+            </p>
+          )}
+          {runs.data && runs.data.items.length === 0 && (
+            <p className="text-muted-foreground text-sm">
+              no research run has been filed on this install
+            </p>
+          )}
+
+          {runs.data?.items.map((run) => (
+            <div
+              key={run.event_id}
+              className="flex flex-wrap items-center justify-between gap-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{run.subject}</span>
+                <span className="text-muted-foreground font-mono text-xs">
+                  {run.project} · {run.live}/{run.filed} live ·{" "}
+                  {new Date(run.occurred_at).toLocaleDateString()}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                // Nothing left to re-derive is a refusal, not a no-op run: the
+                // button says why rather than posting a request the door will
+                // decline.
+                disabled={run.live === 0 || rerun.isPending}
+                onClick={() =>
+                  rerun.mutate({
+                    eventId: run.event_id,
+                    occurredAt: run.occurred_at,
+                  })
+                }
+              >
+                {run.live === 0 ? "Nothing to re-derive" : "Re-derive"}
+              </Button>
+            </div>
+          ))}
+
+          {rerun.isError && (
+            <p className="text-destructive text-sm">
+              not re-derived — {rerun.error.message}
+            </p>
+          )}
+          {rerun.isSuccess && (
+            <p className="text-muted-foreground text-sm">
+              re-derived {rerun.data.reprocessed} of {rerun.data.filed} filed
+              {rerun.data.missing - rerun.data.pending > 0 &&
+                ` · ${rerun.data.missing - rerun.data.pending} no longer exist`}
+              {rerun.data.pending > 0 &&
+                ` · ${rerun.data.pending} still in the capture buffer`}
+              {rerun.data.errors > 0 && ` · ${rerun.data.errors} failed`}
+            </p>
+          )}
+        </div>
       </div>
     </ModuleSurface>
   )

@@ -422,13 +422,28 @@ async def run_qualification(
         # the pairs did not.
         "gold_pairs_sha256": gold_pairs_sha256,
         "gold_touching_attempts": gold_touching_attempts,
-        # What the contradicted census can actually express against its bar.
+        # What each census can actually express against its own bar.
         # Disclosed because the 2026-08-10 attempt was spent against 80 rows
         # over 78 independent propositions and no artifact said so.
-        "census_independence": jq.census_independence(
-            live_pairs, "contradicted",
-            vj.VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"],
-        ),
+        #
+        # **Both classes since T2.124 step 13, and the entailed one is not a
+        # nicety.** The done-when asks for it because the two roles are gated
+        # on different numbers — `contradiction` on contradiction-recall,
+        # `entailment` on the entailed pair — so disclosing only the
+        # contradicted census told the entailment role's reader nothing about
+        # the census their own bar is applied to. A list, not a dict: the
+        # renderer heads each section with its class, and the shape is what
+        # T2.125's runner consumes.
+        "census_independence": [
+            jq.census_independence(
+                live_pairs, "contradicted",
+                vj.VERIFICATION_BAR_DEFAULTS["contradiction_recall_bar"],
+            ),
+            jq.census_independence(
+                live_pairs, "entailed",
+                vj.VERIFICATION_BAR_DEFAULTS["groundedness_gate_recall_bar"],
+            ),
+        ],
         "n_fixtures": len(sanity_pairs),
         "fixture_tokens": fixture_tokens,
         "gold_tokens": gold_tokens,

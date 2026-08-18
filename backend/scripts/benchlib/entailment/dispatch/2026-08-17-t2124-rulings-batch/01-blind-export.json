@@ -1,0 +1,152 @@
+[
+ {
+  "id": "eg-0586",
+  "premise": "media-04 uses files-01",
+  "hypothesis": "files-01 is used by media-04."
+ },
+ {
+  "id": "eg-0638",
+  "premise": "auth-01 deployed on auth-02",
+  "hypothesis": "Auth-02 is deployed on auth-01."
+ },
+ {
+  "id": "eg-0707",
+  "premise": "postfix deployed on mail-01",
+  "hypothesis": "mail-01 is the host that carries the postfix installation."
+ },
+ {
+  "id": "eg-0709",
+  "premise": "directory replica deployed on acs-01",
+  "hypothesis": "At least one component is deployed on acs-01."
+ },
+ {
+  "id": "eg-0493",
+  "premise": "data-06 uses garage",
+  "hypothesis": "Garage is put into service by data-06."
+ },
+ {
+  "id": "eg-0505",
+  "premise": "quire-03 depends on qemu",
+  "hypothesis": "quire-03 depends on QEMU for all of its virtualisation."
+ },
+ {
+  "id": "eg-0442",
+  "premise": "pi-hole deployed on ridge-01",
+  "hypothesis": "Pi-hole blocks roughly a tenth of the outbound DNS queries it sees."
+ },
+ {
+  "id": "eg-0679",
+  "premise": "The perimeter DNS resolver edge-dns-a has been running Unbound 1.20.0 since its rebuild on 11 May 2026, and no later version has been deployed to it.",
+  "hypothesis": "edge-dns-a currently runs Unbound 1.20.0."
+ },
+ {
+  "id": "eg-0711",
+  "premise": "restic uses nas",
+  "hypothesis": "nas is among what restic makes use of."
+ },
+ {
+  "id": "eg-0710",
+  "premise": "team wiki deployed on lab-vm-3",
+  "hypothesis": "The team wiki installation has lab-vm-3 as its host."
+ },
+ {
+  "id": "eg-0509",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "data-06 uses ClickHouse to store its long-term metrics history."
+ },
+ {
+  "id": "eg-0692",
+  "premise": "The iris-mail relay has run Postfix 3.9 with DANE enabled since 8 March 2026.",
+  "hypothesis": "The iris-mail relay has had DANE enabled since January 2026."
+ },
+ {
+  "id": "eg-0712",
+  "premise": "status dashboard uses vite",
+  "hypothesis": "The status dashboard makes use of at least one other component."
+ },
+ {
+  "id": "eg-0433",
+  "premise": "wazuh uses fulfillment fleet",
+  "hypothesis": "The fulfillment fleet is used by Wazuh."
+ },
+ {
+  "id": "eg-0660",
+  "premise": "Since the 2025-05-19 cutover, log shipping out of the Thornwood rack has been handled by Vector; up to that cutover it was handled by Filebeat.",
+  "hypothesis": "Vector was shipping logs out of the Thornwood rack in February 2025."
+ },
+ {
+  "id": "eg-0594",
+  "premise": "airflow uses clickhouse",
+  "hypothesis": "clickhouse is one of the components airflow draws on."
+ },
+ {
+  "id": "eg-0676",
+  "premise": "The wildcard TLS certificate for *.tarnwood.dev was valid from 2025-06-01 to 2025-08-30 and expired on 2025-08-30 without being renewed.",
+  "hypothesis": "The wildcard TLS certificate for *.tarnwood.dev is valid."
+ },
+ {
+  "id": "eg-0485",
+  "premise": "ffmpeg depends on codec pack",
+  "hypothesis": "The codec pack is the only component FFmpeg depends on."
+ },
+ {
+  "id": "eg-0713",
+  "premise": "Nightly backups to the offsite vault were suspended from 2 March 2026 until the vault migration completed.",
+  "hypothesis": "Nightly backups to the offsite vault were running on 20 March 2026."
+ },
+ {
+  "id": "eg-0472",
+  "premise": "powerdns uses fulfillment network",
+  "hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs."
+ },
+ {
+  "id": "eg-0714",
+  "premise": "Access reviews for the finance group were completed during Q2 2026.",
+  "hypothesis": "Access reviews for the finance group were completed in April 2026."
+ },
+ {
+  "id": "eg-0455",
+  "premise": "concourse uses garage",
+  "hypothesis": "garage is used by concourse."
+ },
+ {
+  "id": "eg-0555",
+  "premise": "ffmpeg deployed on media-04",
+  "hypothesis": "media-04 is deployed on top of FFmpeg."
+ },
+ {
+  "id": "eg-0476",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "files-01 is the sole storage backend anvil-render uses."
+ },
+ {
+  "id": "eg-0689",
+  "premise": "The argus alerting stack ran Alertmanager 0.27 from 1 July 2025 to 15 January 2026.",
+  "hypothesis": "The argus alerting stack was running Alertmanager 0.27 in March 2025."
+ },
+ {
+  "id": "eg-0549",
+  "premise": "authelia deployed on auth-02",
+  "hypothesis": "auth-02 is deployed on Authelia."
+ },
+ {
+  "id": "eg-0628",
+  "premise": "graylog deployed on log-02",
+  "hypothesis": "Graylog runs on log-02, where it ingests the syslog stream from every rack switch."
+ },
+ {
+  "id": "eg-0708",
+  "premise": "ocr worker deployed on gpu-01",
+  "hypothesis": "the ocr worker runs on the gpu-01 host."
+ },
+ {
+  "id": "eg-0448",
+  "premise": "wazuh deployed on umbra-04",
+  "hypothesis": "The umbra-04 host is deployed on wazuh."
+ },
+ {
+  "id": "eg-0563",
+  "premise": "osquery causes quota-watcher",
+  "hypothesis": "quota-watcher is brought about by osquery."
+ }
+]

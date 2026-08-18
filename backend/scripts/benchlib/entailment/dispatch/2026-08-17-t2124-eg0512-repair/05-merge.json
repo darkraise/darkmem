@@ -1,0 +1,14 @@
+{
+ "_notes": "Layer 2 merge. Both passes independently flagged \"installation\" (eg-0704) as a placement the rulebook had not made, and pass A asked for it to be ratified. Both had already applied the clause's own test and reached `earned`.",
+ "merged_at": "2026-08-17",
+ "under_adjudication": [
+  "eg-0705"
+ ],
+ "adjudicated": [
+  "eg-0705"
+ ],
+ "escalations": [],
+ "agreement": {
+  "pass_a_vs_pass_b": 1.0
+ }
+}

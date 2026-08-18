@@ -1,0 +1,109 @@
+{
+ "_notes": "Recorded labels, held OUT of the export. eg-0705 replaces eg-0512 under the bare-sortal clause's predicate-nominal reach.",
+ "seed": 170820262,
+ "under_adjudication": [
+  "eg-0705"
+ ],
+ "key": {
+  "eg-0658": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0705": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0667": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0489": {
+   "verdict": "unsupported",
+   "slice": "unrelated"
+  },
+  "eg-0622": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0670": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0599": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0600": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0702": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0704": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0672": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0624": {
+   "verdict": "contradicted",
+   "slice": "value-swap"
+  },
+  "eg-0684": {
+   "verdict": "entailed",
+   "slice": "temporal"
+  },
+  "eg-0435": {
+   "verdict": "unsupported",
+   "slice": "overreach"
+  },
+  "eg-0541": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0582": {
+   "verdict": "entailed",
+   "slice": "paraphrase"
+  },
+  "eg-0674": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0572": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  },
+  "eg-0473": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0580": {
+   "verdict": "entailed",
+   "slice": "verbatim"
+  },
+  "eg-0565": {
+   "verdict": "contradicted",
+   "slice": "direction"
+  },
+  "eg-0657": {
+   "verdict": "contradicted",
+   "slice": "temporal"
+  },
+  "eg-0562": {
+   "verdict": "unsupported",
+   "slice": "direction"
+  },
+  "eg-0691": {
+   "verdict": "unsupported",
+   "slice": "temporal"
+  },
+  "eg-0575": {
+   "verdict": "entailed",
+   "slice": "weakening"
+  }
+ }
+}

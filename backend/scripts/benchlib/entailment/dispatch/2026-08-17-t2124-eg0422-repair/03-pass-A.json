@@ -1,0 +1,102 @@
+{
+ "eg-0620": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: DEPLOYED_ON is exclusive per the reversal-exclusivity table — host and guest cannot swap for the same pair, and the hypothesis puts the premise's host on its guest."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: 'auth-01 is hosted on Authelia' swaps host and guest of the premise's DEPLOYED_ON, which the reversal-exclusivity table classes exclusive — a platform is not deployed on its own workload."
+ },
+ "eg-0529": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host branch, ratified 2026-08-06): the host a single named instance runs on is single-valued, so a differing host (etl-02 for lb-01) with the sentence shape preserved is contradicted, not unsupported."
+ },
+ "eg-0482": {
+  "verdict": "entailed",
+  "rationale": "Possessive-existential clause: DEPLOYED_ON earns 'X has ... deployed on it' (the eg-0424 branch), and here the deployed thing is even the named witness Infisical itself, so the hypothesis is a voice-level restatement of the premise."
+ },
+ "eg-0611": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host branch): the host of the single named instance consul is single-valued, so naming spire-01 in place of core-03 is a differing value for the same slot and contradicts."
+ },
+ "eg-0544": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3: 'for its nightly off-site snapshots' adds a purpose the bare USES premise does not assert — strengthening, and no exclusion is crossed (procedure 4), so unsupported."
+ },
+ "eg-0703": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: passive voice plus the trivial synonym 'employed' for 'uses', same direction and nothing strengthened — rewording preserves entailment."
+ },
+ "eg-0700": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, vacuous branch: 'component' is a noun every entity of the premise's world satisfies, so the existential is ordinary weakening with its witness (auth-01) in the premise."
+ },
+ "eg-0447": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 (the unrelated shape): the premise shares only the entity traefik with the hypothesis and asserts nothing about a dashboard or its network exposure — absence is not exclusion."
+ },
+ "eg-0578": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3: 'since the cluster was commissioned' asserts an inception the windowless premise does not fix — added temporal content is strengthening, and nothing in the premise excludes it (procedure 4)."
+ },
+ "eg-0560": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: pure passive-voice restatement of the same USES assertion in the same direction, nothing added or tightened."
+ },
+ "eg-0549": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: the hypothesis reverses DEPLOYED_ON for the same pair (auth-02 deployed on authelia), and the reversal-exclusivity table classes DEPLOYED_ON exclusive."
+ },
+ "eg-0586": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: passive-voice restatement of the identical USES assertion, same direction, all content preserved."
+ },
+ "eg-0515": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: 'the CPU is deployed on quota-watcher' swaps DEPLOYED_ON's host and guest for the same pair, which the reversal-exclusivity table rules contradicted."
+ },
+ "eg-0450": {
+  "verdict": "unsupported",
+  "rationale": "Bare-sortal clause: 'machine' is a partitioning sortal placed by the 2026-08-17 ruling (a DEPLOYED_ON target can fail it with no further fact false), so 'the data-06 machine' asserts a kind the premise does not establish; by procedure 1 the whole hypothesis fails even though 'runs on' alone would be paraphrase-level."
+ },
+ "eg-0509": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3: 'to store its long-term metrics history' adds a purpose the bare USES premise never asserts — strengthening that crosses no exclusion (procedure 4)."
+ },
+ "eg-0517": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: the hypothesis reverses the premise's DEPLOYED_ON (nimbus-02 deployed on rabbitmq), an exclusive relation per the reversal-exclusivity table."
+ },
+ "eg-0472": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch, plus procedure 3: 'for every zone transfer it performs' carries a lexical universal and a purpose the bare USES premise does not assert — asserted strengthening, no exclusion crossed."
+ },
+ "eg-0691": {
+  "verdict": "contradicted",
+  "rationale": "Window rule, closed-window case: 'for the duration of the 12 to 14 December 2025 storage rebuild' fixes the pause's window as coextensive with an explicitly dated rebuild whose end is named, so a claim of the pause persisting at the end of December falls over a window the fact explicitly closes (the eg-0018 shape, not eg-0020's mere 'during')."
+ },
+ "eg-0612": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (weakening) with the dependency-strength rule's cross-relation test: USES semantically guarantees interaction with the used object — zulip could not use ticket-router while 'interacts with' is false — so the vaguer rendering drops content without strengthening."
+ },
+ "eg-0706": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'is among what anvil-render calls on to do its work' is a non-exhaustive ('among') generic-use rendering of USES, read at the relation's own generic level as the dependency-strength rule prescribes for 'run'/'function' — paraphrase-level, nothing tightened."
+ },
+ "eg-0551": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: passive-voice restatement of the same USES assertion in the same direction, all content preserved."
+ },
+ "eg-0476": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'sole' asserts exhaustivity the bare USES premise neither licenses nor blocks — asserted strengthening, and by procedure 4 no exclusion makes it contradicted."
+ },
+ "eg-0639": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'only' asserts exhaustivity over a bare-relation premise that marks it neither way — strengthening, unsupported rather than contradicted since no exclusion is crossed (procedure 4)."
+ },
+ "eg-0656": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch, plus procedure 3: 'All of Concourse's pipelines execute on build-04' asserts a universal over pipeline execution that the bare DEPLOYED_ON premise does not carry — asserted strengthening, no exclusion crossed."
+ }
+}

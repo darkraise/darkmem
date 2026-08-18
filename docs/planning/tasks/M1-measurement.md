@@ -1387,6 +1387,21 @@ completed census lands and the plan's closing floor step re-asserts the whole fl
 (`./scripts/gate.sh`) for the sequence. The exemption covers exactly that red and nothing
 else — any other failure during the sequence is a finding, not part of the exemption.
 
+**The sanctioned-red list, enumerated (Tier-1 amendment, 2026-08-13, step 4).** Measured
+by running the whole benchlib suite with the archive staged locally: the red is confined
+to `test_entailment_gold.py`, `test_entailment_assignment.py`, `test_lattice_retirement.py`,
+`test_resample_draw.py`, `test_resample_llm.py`, and the canonical-gold-consuming tests of
+`test_judge_qualification.py`; `test_resample_sheet.py` also reads the canonical gold on
+one path and is on the list even though its collection survived the staged archive. Five
+refusal-suite tests that would otherwise stay red **through** the whole-floor close — the
+three the plan's addendum names (A1) plus
+`test_the_writer_refuses_a_retired_pair_set_for_every_role` and
+`test_the_runner_refuses_the_retired_pair_set_in_every_mode`, both found by that same
+measurement to assert that the *canonical* gold is the retired set, which stops being true
+the moment the fresh census lands — were repointed at the archived file before the archive
+commit, so they stay green throughout and keep pinning the stopping rule. Any red outside
+this list during the sequence is a finding.
+
 **Done when:** the sampling frame and the lattice sizing are stated **before** any pair is
 authored, and neither references which slices any judge has missed; the contradicted and
 entailed classes are both sized so their bars are expressible; the census-independence
@@ -1514,6 +1529,7 @@ holding cited.
 
 | Date | Task | Tier | Change | Why |
 |---|---|---|---|---|
+| 2026-08-13 | T2.124 | 1 | **The sanctioned-red list is enumerated in the task text, and A1's repoint extends to two more refusal pins.** `test_the_writer_refuses_a_retired_pair_set_for_every_role` and `test_the_runner_refuses_the_retired_pair_set_in_every_mode` are repointed at the archived file alongside the addendum's three | The addendum named three tests; running the benchlib suite against the staged archive found these two in the same failure class — each asserted the *canonical* gold is the retired pair set, an assertion that fails once the fresh census holds that path, so they would have stayed red through the whole-floor close rather than only mid-sequence |
 | 2026-08-13 | T2.124 | 1 | **The task gains runbook §4's floor exemption in its own text**: the archive move that retires `gold.json` from the canonical path is a sanctioned mid-sequence checkpoint — gold-consuming benchlib tests are expected red between that commit and the pass that completes the sequence, which must re-assert the whole floor for all of it | Runbook §4 requires the exemption be written into the task's text and never claimed at run time; the step-level plan (v1) claimed it at plan level only, which the plan's 2026-08-13 Fable review flagged as a fix for v2 |
 | 2026-08-09 | T2.54, T2.110 | 1 | **Two minors parked from the 2026-08-09 delta review, both on the gold's eligibility lock, neither actioned.** (D-7) `gate_eligibility` validates that the embedded `resample` block *says* n ≥ 93 with ≤ 1 disagreement and carries its citation fields, and nothing binds that certification to the pair content it certified — a post-certification label flip keeps eligibility green on a certification of a different file. T2.110 handled exactly this correctly **by procedure**, stripping the carried-over block for that stated reason, so the protocol already understands what the code does not enforce; the slice-count pin catches appends, not flips. Fix shape when someone takes it: a pairs-only content hash recorded in the block and re-derived at eligibility time. (D-8) The sitting wrote its certification *into* `gold.json`, so the certified sha is not the measured sha — verified annotation-only, and the attempt counter treats the new sha as uncontacted | Parked rather than fixed because both are hardening on a lock whose current answer is correct: the gold *is* eligible, by a resample that did happen, on the file as it stands. Recorded here rather than only in the review report because the next person to touch the lock is the one who needs them, and the report is a dated artefact while this file is the task's own |
 | 2026-08-06 | T2.40, T2.41, T2.54, T3.22, T3.24, TH1.10, TH1.17 | 2 | **Epic created; all seven evidence-and-gold tasks moved here from E2, E3 and EH1, ids unchanged.** Ids keep their original epic prefix deliberately — every gate-ledger row, analysis and commit message in the tree already cites them, and renumbering would break that trail to buy nothing | Controller decision: implementation must not queue behind datasets. One unlabelled gold (T2.54) was holding six E2 tasks and, through the epic entry gates, most of E3 and EH1 — while 89 of 96 E2 tasks had already closed without any gold at all, which is the measurement that the coupling was accidental. Moving them out makes the dependency explicit rather than structural: M1 consumes implementation, never gates it. Safety is preserved by `T2.95`'s serving gate, not by ordering |

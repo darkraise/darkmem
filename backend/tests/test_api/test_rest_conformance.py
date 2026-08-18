@@ -92,6 +92,11 @@ EXPECTED_STATUS = {
     # config row in place, so 200 rather than 201 — nothing is created.
     ("GET", "/api/v1/config/auto-research"): 200,
     ("PUT", "/api/v1/config/auto-research"): 200,
+    ("GET", "/api/v1/config/auto-research/runs"): 200,
+    # Not 201: a re-derivation creates no resource. It recomputes what
+    # existing rows imply, so 200-with-a-report is the honest code, and
+    # it matches the sibling `POST /analytics/reprocess`.
+    ("POST", "/api/v1/config/auto-research/runs/{event_id}/rerun"): 200,
     ("PUT", "/api/v1/config/repo-allowlist"): 200,
     ("GET", "/api/v1/config/repos-path"): 200,
     ("PUT", "/api/v1/config/repos-path"): 200,

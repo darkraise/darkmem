@@ -1,0 +1,1306 @@
+{
+ "_notes": "BLIND labelling sheet. Verdict, slice_tags, rationale, provenance and answer_id are stripped deliberately: the slice implies the verdict for most slices, so showing it would hand the labeller the answer. Order is shuffled on a fixed seed because the frame authors each slice contiguously and a run of 30 would telegraph the construction. Label each id 'entailed' or 'not-entailed' from the premise alone.",
+ "n": 260,
+ "pairs": [
+  {
+   "id": "sg-0001",
+   "premise": "`GET /health` is the liveness/readiness probe (used by the compose healthcheck):",
+   "hypothesis": "GET /health returns 503 when Postgres or pgvector is unreachable."
+  },
+  {
+   "id": "sg-0258",
+   "premise": "Deleting a memory removes the row, its embeddings (FK cascade), its tags and its graph\ncontributions. These survive, by design:",
+   "hypothesis": "The frontend is built with React and TanStack Router."
+  },
+  {
+   "id": "sg-0191",
+   "premise": "Navigate between pages: `/memories`, `/chat`, `/pipeline`, `/llm`, `/settings`",
+   "hypothesis": "The walkthrough directs navigating to /memories and /chat, among other pages."
+  },
+  {
+   "id": "sg-0012",
+   "premise": "**Rotate the secret first.** Everything below is slower than an attacker.",
+   "hypothesis": "If the content is not a credential, the operator skips to step 2."
+  },
+  {
+   "id": "sg-0045",
+   "premise": "Stop and report any FAIL or unexpected state before moving on — do not batch failures silently.",
+   "hypothesis": "Claude Code must stop and report any FAIL before moving on."
+  },
+  {
+   "id": "sg-0023",
+   "premise": "**Execution model:** This plan is a runbook for **Claude Code (me)** to execute via the Playwright MCP tools.",
+   "hypothesis": "Supporting Python scripts handle API-level checks that are awkward through the browser."
+  },
+  {
+   "id": "sg-0062",
+   "premise": "3. Memories page (`/memories`)\n\n[ ] List shows all ingested memories with content preview, tags, source, timestamp",
+   "hypothesis": "The Memories page section lists checking that all ingested memories show with content preview, tags, source and timestamp."
+  },
+  {
+   "id": "sg-0159",
+   "premise": "**What each scope reaches, exactly.** The scope-gated surface is small on\npurpose, and it is the surface the minimal client speaks:",
+   "hypothesis": "The scope-gated surface is kept small on purpose, and it is exactly the surface the minimal client speaks."
+  },
+  {
+   "id": "sg-0104",
+   "premise": "| Route | Purpose |\n|---|---|\n| `/setup` | First-time password setup |",
+   "hypothesis": "The route /setup is listed with the purpose 'First-time password setup'."
+  },
+  {
+   "id": "sg-0154",
+   "premise": "Logs go to the container stdout (`docker compose logs -f darkmem-api`), formatted\nwith timestamp/level/logger and controlled by `LOG_LEVEL`. Pipeline failures are\nrecorded in the database and surfaced under Settings → Pipeline. No secrets are\nlogged (token counts and scrubbed git URLs only).",
+   "hypothesis": "Application logs go to the container stdout and their verbosity is controlled by LOG_LEVEL."
+  },
+  {
+   "id": "sg-0187",
+   "premise": "This runs the full auth matrix: setup (skips if already done), login wrong/correct, /me with/without cookie, refresh, change-password, logout, revocation.",
+   "hypothesis": "The full auth matrix that gets run covers login and logout, among other flows."
+  },
+  {
+   "id": "sg-0241",
+   "premise": "[ ] Pagination or infinite scroll works if there are > 20 memories",
+   "hypothesis": "The checklist checks pagination or infinite scroll once there are more than 100 memories."
+  },
+  {
+   "id": "sg-0173",
+   "premise": "`DATABASE_URL` is derived from `DB_PASSWORD`; set it explicitly only to point at\nan external Postgres. `TRUST_PROXY_HEADERS` defaults to `false` because the app is\nthe edge; set it to `true` only when a trusted proxy really is in front. Runtime\n**LLM configuration is stored in the database** via the setup wizard and the\nSettings → LLM Pipeline UI; there are no `LLM_*` env variables.",
+   "hypothesis": "TRUST_PROXY_HEADERS ships defaulted to false since the app is the edge, and should be turned on only when a genuinely trusted proxy sits in front."
+  },
+  {
+   "id": "sg-0008",
+   "premise": "**Bulk operations via `POST` with a body** — `POST /memories/batch` (bulk\ncreate) and `POST /memories/delete` (bulk delete).",
+   "hypothesis": "The bulk delete is processed server-side in series to avoid a graph-cleanup deadlock."
+  },
+  {
+   "id": "sg-0076",
+   "premise": "Phase 15 — Settings and feature flags\n\n**Goal:** Verify all toggles in the Settings page persist and take effect.",
+   "hypothesis": "Phase 15's goal is verifying that all Settings page toggles persist and take effect."
+  },
+  {
+   "id": "sg-0115",
+   "premise": "[ ] UI reached only through your TLS reverse proxy (HTTPS); do not publish port 8000 publicly. If you add that proxy, also set `TRUST_PROXY_HEADERS=true` so the rate limiter keys on the client rather than the proxy.",
+   "hypothesis": "The UI is reached only through a TLS reverse proxy and port 8000 is not published publicly."
+  },
+  {
+   "id": "sg-0213",
+   "premise": "Examples: `memories`, `repos`, `chat/conversations`, the config singletons.\nCollections are plural nouns; sub-resources nest (`/repos/{id}/tasks`).",
+   "hypothesis": "memories, repos, chat/conversations and the config singletons are the only true resources."
+  },
+  {
+   "id": "sg-0229",
+   "premise": "**Pluralization:** collections are plural (`memories`, `repos`, `tags`,\n`jobs`, `vectors`, `conversations`, `pipeline-failures`); a sub-resource that\nis one-per-parent is singular (`code/graph/{id}`, `code/wiki/{id}`,\n`vectors/projection`, `config/*`).",
+   "hypothesis": "Collections are plural, and a sub-resource that is one-per-parent is plural as well."
+  },
+  {
+   "id": "sg-0066",
+   "premise": "14. Settings page (`/settings`)\n\n[ ] Feature flags card: all toggles reflect current state and persist on change",
+   "hypothesis": "The Settings page section lists checking that the feature flags card's toggles reflect current state and persist on change."
+  },
+  {
+   "id": "sg-0117",
+   "premise": "docker compose down          # or stop the uvicorn process",
+   "hypothesis": "docker compose down stops the darkmem application."
+  },
+  {
+   "id": "sg-0179",
+   "premise": "**Frontend:** React + TanStack Router/Query (built into the API image and\nserved by it)",
+   "hypothesis": "The frontend is built into the API image."
+  },
+  {
+   "id": "sg-0195",
+   "premise": "Expected: all 5 checks PASS (pgvector, llm, pipeline, auth/status, frontend reachable)",
+   "hypothesis": "The expected checks include pgvector."
+  },
+  {
+   "id": "sg-0129",
+   "premise": "The leftmost `X-Forwarded-For` is read in **neither** posture. It is\nclient-supplied, so a limiter keyed on it would let an attacker rotate the\nvalue per guess and never lock out.",
+   "hypothesis": "The leftmost X-Forwarded-For value is read in neither posture, because it is client-supplied."
+  },
+  {
+   "id": "sg-0011",
+   "premise": "Exactly one case: **content that must not exist anywhere** — a pasted credential, a key, a\ntoken, someone else's personal data. Nothing else.",
+   "hypothesis": "Deleting a memory through the API or UI is sufficient for ordinary removal."
+  },
+  {
+   "id": "sg-0214",
+   "premise": "**LLM:** pluggable per-purpose providers (OpenAI-compatible, Ollama, Anthropic,\nGoogle, DeepSeek, z.ai), configured at runtime via the setup wizard",
+   "hypothesis": "Each of the six listed LLM providers can serve every purpose, including embedding."
+  },
+  {
+   "id": "sg-0134",
+   "premise": "`201` on create, `204` on delete, **`202 Accepted`** for async work that is\nqueued but not finished (reindex, reembed, retry), **`409 Conflict`** when a\nrequest can't proceed because the resource is in a conflicting state (e.g. a\nrepo that is already indexing), `404` for missing resources.",
+   "hypothesis": "The conventions use 201 on create, 204 on delete, and 202 Accepted for async work that is queued but not finished."
+  },
+  {
+   "id": "sg-0114",
+   "premise": "[ ] Bundle size (main chunk) < 1 MB gzipped",
+   "hypothesis": "The main bundle chunk is under 1 MB gzipped."
+  },
+  {
+   "id": "sg-0093",
+   "premise": "| Scope | Routes |\n|---|---|\n| `capture` | `POST /memories`, `POST /memories/batch` |\n| `read` | `POST /memories/search/paginated` |",
+   "hypothesis": "The read scope's listed route is POST /memories/search/paginated."
+  },
+  {
+   "id": "sg-0231",
+   "premise": "**Append to `X-Forwarded-For`, never replace it** — the app reads the\nrightmost hop, which must be the one your proxy added.",
+   "hypothesis": "The app reads the leftmost X-Forwarded-For hop, which must be the one the proxy added."
+  },
+  {
+   "id": "sg-0082",
+   "premise": "**Reclaim the pages.** An `UPDATE` leaves the old tuple readable on disk until vacuumed.\n\nVACUUM FULL events;      -- takes an exclusive lock; size it against your downtime\nVACUUM FULL messages;",
+   "hypothesis": "The reclaim step directs VACUUM FULL on events and messages because an UPDATE leaves the old tuple readable on disk until vacuumed."
+  },
+  {
+   "id": "sg-0151",
+   "premise": "Configure LLM providers and assign a model to each **purpose** (embedding,\nextraction, classification, reasoning, summarization, reranker). LLM config\nlives in the database — it is **not** set via environment variables.",
+   "hypothesis": "LLM configuration is stored in the database rather than supplied through environment variables."
+  },
+  {
+   "id": "sg-0260",
+   "premise": "If it has a UI component, add steps to Phase 14 (design sweep) too",
+   "hypothesis": "The supersession window is 90 days."
+  },
+  {
+   "id": "sg-0030",
+   "premise": "Logs go to the container stdout (`docker compose logs -f darkmem-api`), formatted\nwith timestamp/level/logger and controlled by `LOG_LEVEL`.",
+   "hypothesis": "No secrets are logged — only token counts and scrubbed git URLs."
+  },
+  {
+   "id": "sg-0192",
+   "premise": "[ ] UI reached only through your TLS reverse proxy (HTTPS); do not publish port 8000 publicly. If you add that proxy, also set `TRUST_PROXY_HEADERS=true` so the rate limiter keys on the client rather than the proxy.",
+   "hypothesis": "The checklist lists reaching the UI only through a TLS reverse proxy and not publishing port 8000 publicly."
+  },
+  {
+   "id": "sg-0125",
+   "premise": "All backend settings are environment variables (see `.env.example`). The\nproduction-critical ones:",
+   "hypothesis": "Every backend setting is an environment variable, with .env.example as the reference."
+  },
+  {
+   "id": "sg-0101",
+   "premise": "[ ] \"New conversation\" button creates a conversation and opens it",
+   "hypothesis": "That the New conversation button creates a conversation and opens it is listed as a check."
+  },
+  {
+   "id": "sg-0232",
+   "premise": "[ ] Search queries return < 500 ms",
+   "hypothesis": "The checklist requires search queries to return in under 200 ms."
+  },
+  {
+   "id": "sg-0078",
+   "premise": "Backups (do this before going live)\n\n**All state lives in the `postgres_data` Docker volume.** There is no automatic\nbackup — losing the volume loses everything. Use the provided scripts and run\nthem on a schedule (cron):",
+   "hypothesis": "The backups section, marked to do before going live, warns that losing the postgres_data volume loses everything."
+  },
+  {
+   "id": "sg-0113",
+   "premise": "[ ] Long memory content truncates with ellipsis, full text on hover or click",
+   "hypothesis": "Long memory content truncates with an ellipsis and shows the full text on hover or click."
+  },
+  {
+   "id": "sg-0142",
+   "premise": "Categories: `bug`, `design-gap`, `ux`, `performance`, `security`, `accessibility`, `content`.",
+   "hypothesis": "The listed categories are bug, design-gap, ux, performance, security, accessibility and content."
+  },
+  {
+   "id": "sg-0254",
+   "premise": "`mcp_allowed_hosts` listing exactly the hosts you intend",
+   "hypothesis": "Extraction and classification calls forward a content-hash seed so the same input reproduces the same JSON."
+  },
+  {
+   "id": "sg-0215",
+   "premise": "Set the admin password (you authenticate as a single admin).",
+   "hypothesis": "The admin password must be set before any other wizard step can be completed."
+  },
+  {
+   "id": "sg-0058",
+   "premise": "Back up (above).",
+   "hypothesis": "The first step of an upgrade is backing up."
+  },
+  {
+   "id": "sg-0032",
+   "premise": "It has no certificate\nhandling, no ACME client and no HTTP→HTTPS redirect.",
+   "hypothesis": "darkmem has no certificate handling."
+  },
+  {
+   "id": "sg-0186",
+   "premise": "[ ] List shows all ingested memories with content preview, tags, source, timestamp",
+   "hypothesis": "The checklist lists checking that the memory list shows content previews."
+  },
+  {
+   "id": "sg-0120",
+   "premise": "./scripts/backup.sh /path/to/backups        # writes darkmem-YYYYMMDD-HHMMSS.sql.gz\n./scripts/restore.sh /path/to/backups/darkmem-20260607-030000.sql.gz",
+   "hypothesis": "Running backup.sh backs up the darkmem database."
+  },
+  {
+   "id": "sg-0119",
+   "premise": "cd docs/e2e/scripts\nsource env.sh\npython run_all.py --password \"e2e-admin-pw\"",
+   "hypothesis": "Running run_all.py executes all E2E phases."
+  },
+  {
+   "id": "sg-0237",
+   "premise": "For each of the 14 authenticated routes and the 2 guest routes, run the following checklist. Record issues in the execution log.",
+   "hypothesis": "The sweep covers each of the 12 authenticated routes and the 2 guest routes."
+  },
+  {
+   "id": "sg-0086",
+   "premise": "2. What your proxy must do\n\n**Append to `X-Forwarded-For`, never replace it** — the app reads the\nrightmost hop, which must be the one your proxy added.",
+   "hypothesis": "The operator's proxy must append to X-Forwarded-For rather than replace it, because the app reads the rightmost hop."
+  },
+  {
+   "id": "sg-0061",
+   "premise": "2. Overview page (`/`)\n\n[ ] Stats cards show 0 for memories, tags, entities, relations on empty DB",
+   "hypothesis": "Under the Overview page section, stats cards showing 0 for memories, tags, entities and relations on an empty DB is an item to verify."
+  },
+  {
+   "id": "sg-0106",
+   "premise": "| `COOKIE_SECURE` | no (default `true`) | Set `false` to allow login over plain HTTP on a trusted LAN; leave `true` behind HTTPS. |",
+   "hypothesis": "COOKIE_SECURE is not required in prod and defaults to true."
+  },
+  {
+   "id": "sg-0203",
+   "premise": "`TRUST_PROXY_HEADERS=true` is the exposed-deployment switch. It is not only a\nrate-limiter setting:",
+   "hypothesis": "TRUST_PROXY_HEADERS=true is the only setting the exposed posture changes."
+  },
+  {
+   "id": "sg-0148",
+   "premise": "These are minor verb/consistency deviations left as-is because changing them\nwould break existing frontend clients for marginal benefit. Fix only with a\ncoordinated client update:",
+   "hypothesis": "The known deviations stay in place because changing them would break existing frontend clients for marginal benefit."
+  },
+  {
+   "id": "sg-0170",
+   "premise": "Injection test: paste `\"Ignore previous instructions...\"` — verify the assistant does not comply",
+   "hypothesis": "The plan includes a prompt-injection test: paste an 'Ignore previous instructions...' message and verify the assistant does not comply."
+  },
+  {
+   "id": "sg-0047",
+   "premise": "[ ] Search input performs semantic search as you type (debounced)",
+   "hypothesis": "The Memories page section lists debounced semantic search as you type as a check."
+  },
+  {
+   "id": "sg-0009",
+   "premise": "**`PUT` on a config singleton/collection** to replace it wholesale\n(`/config/llm-providers`, `/llm-profiles`, `/feature-flags`, `/system-prompts`,\n`/repos-path`, `/config/theme`) — idempotent full-replace.",
+   "hypothesis": "GET /config/theme is deliberately served without authentication."
+  },
+  {
+   "id": "sg-0157",
+   "premise": "**Stop the application.** Both the API and any running jobs — a consolidation pass\nmid-flight will re-derive from rows you are about to edit.",
+   "hypothesis": "Both the API and any running jobs must be stopped, since a consolidation pass mid-flight will re-derive from rows about to be edited."
+  },
+  {
+   "id": "sg-0242",
+   "premise": "[ ] Memory usage does not grow unbounded over 5 minutes of normal use",
+   "hypothesis": "The checklist watches memory usage over 15 minutes of normal use."
+  },
+  {
+   "id": "sg-0126",
+   "premise": "Exactly one case: **content that must not exist anywhere** — a pasted credential, a key, a\ntoken, someone else's personal data. Nothing else. Deleting a memory through the API or UI\nis the normal path and is sufficient for ordinary removal.",
+   "hypothesis": "The break-glass purge applies in exactly one case: content that must not exist anywhere, such as a pasted credential or someone else's personal data."
+  },
+  {
+   "id": "sg-0039",
+   "premise": "These are minor verb/consistency deviations left as-is because changing them\nwould break existing frontend clients for marginal benefit.",
+   "hypothesis": "The documented REST deviations are left in place because changing them would break existing frontend clients."
+  },
+  {
+   "id": "sg-0100",
+   "premise": "[ ] Activity bar chart renders with hover tooltips",
+   "hypothesis": "The activity bar chart rendering with hover tooltips is an item to verify."
+  },
+  {
+   "id": "sg-0182",
+   "premise": "**Non-CRUD actions as `POST` sub-resources** — verbs in the path are fine for\nactions that are not plain CRUD: `/{id}/merge`, `/{key}/trigger`,\n`/{id}/reindex`, `/{name}/test`, `/{id}/retry`, `/reprocess`, `/reason`,\n`/completions`, and the auth flows (`/login`, `/logout`, `/refresh`).",
+   "hypothesis": "Verbs in the path are acceptable for actions that are not plain CRUD."
+  },
+  {
+   "id": "sg-0149",
+   "premise": "`DELETE /repos/{repo_id}/tasks/{task_id}` cancels a running task; a clearer\nmodel is `POST /repos/{repo_id}/tasks/{task_id}/cancel` (cancel ≠ remove, and\nit isn't idempotent in the DELETE sense).",
+   "hypothesis": "DELETE /repos/{repo_id}/tasks/{task_id} cancels a running task, and cancel is not the same thing as remove."
+  },
+  {
+   "id": "sg-0211",
+   "premise": "Expected: 20 memories ingested, stats confirm, obsolete counts near zero",
+   "hypothesis": "Twenty memories are ingested and the obsolete counts end up near zero."
+  },
+  {
+   "id": "sg-0102",
+   "premise": "[ ] Toasts auto-dismiss after ~4 seconds",
+   "hypothesis": "Toasts auto-dismissing after about 4 seconds is an item to check."
+  },
+  {
+   "id": "sg-0111",
+   "premise": "[ ] Saving with `***` in api_key preserves the existing key",
+   "hypothesis": "Saving with *** in the api_key field preserves the existing key."
+  },
+  {
+   "id": "sg-0074",
+   "premise": "Phase 12 — Performance baseline\n\n**Goal:** Measure latency for critical operations. Not a hard gate — warns on slow ops.",
+   "hypothesis": "Phase 12 measures latency for critical operations and is not a hard gate."
+  },
+  {
+   "id": "sg-0136",
+   "premise": "Both secrets are read at runtime and are baked into no image layer, so rotating\n`JWT_SECRET` or `DB_PASSWORD` is \"edit `.env`, `docker compose up -d`\" — a\ncontainer recreate, never an image rebuild.",
+   "hypothesis": "Rotating JWT_SECRET or DB_PASSWORD is a container recreate, never an image rebuild."
+  },
+  {
+   "id": "sg-0105",
+   "premise": "cd docs/e2e/scripts\npython 00_health_check.py\npython 04_memories_batch_mcp.py --password \"e2e-admin-pw\"\npython 12_perf_baseline.py --password \"e2e-admin-pw\"\npython 13_db_audit.py",
+   "hypothesis": "The commands shown include running 00_health_check.py and 13_db_audit.py."
+  },
+  {
+   "id": "sg-0051",
+   "premise": "[ ] No red errors",
+   "hypothesis": "The browser console having no red errors over a full walkthrough is a listed check."
+  },
+  {
+   "id": "sg-0255",
+   "premise": "**Playwright:** `browser_navigate(\"http://host.docker.internal:3636\")`",
+   "hypothesis": "Corroboration counts distinct origin keys rather than source rows."
+  },
+  {
+   "id": "sg-0021",
+   "premise": "Revoke a key from the same surface.",
+   "hypothesis": "Revocation sets revoked_at and keeps the row rather than deleting it."
+  },
+  {
+   "id": "sg-0035",
+   "premise": "it would put a \"make this never have happened\" primitive one bug or\none compromised session away from the audit substrate",
+   "hypothesis": "An in-app journal-rewriting code path would put a make-this-never-have-happened primitive one bug away from the audit substrate."
+  },
+  {
+   "id": "sg-0089",
+   "premise": "When to stop and ask the user\n\nA supporting script fails with a non-zero exit code",
+   "hypothesis": "A supporting script failing with a non-zero exit code is a condition to stop and ask the user."
+  },
+  {
+   "id": "sg-0006",
+   "premise": "Migrations run inline at startup, so run **one API replica at a time** during an\nupgrade (the bundled topology is single-replica).",
+   "hypothesis": "Downgrades are not a recovery path; a failed migration means restoring from backup."
+  },
+  {
+   "id": "sg-0248",
+   "premise": "[ ] Five purpose cards render (Embedding, Extraction, Reasoning, Summarization, Reranker)",
+   "hypothesis": "The checklist expects six purpose cards to render."
+  },
+  {
+   "id": "sg-0080",
+   "premise": "Frontend:\n\ncd frontend && npm ci && npm run typecheck && npx vitest run && npm run build",
+   "hypothesis": "The frontend commands given are npm ci, npm run typecheck, npx vitest run and npm run build."
+  },
+  {
+   "id": "sg-0059",
+   "premise": "Read all of it before starting. Steps 1 and 6 are the ones people skip.",
+   "hypothesis": "Steps 1 and 6 of the purge procedure are the ones people skip."
+  },
+  {
+   "id": "sg-0123",
+   "premise": "The API boots only after Postgres is healthy, runs database migrations\nautomatically, then serves everything on `:8000` — the REST API, the WebSocket\nstream, the MCP endpoint and the UI itself. There is one container and one port;\nnothing binds `:80` or `:3000`. Postgres stays on loopback.",
+   "hypothesis": "The API boots only after Postgres is healthy and runs database migrations automatically."
+  },
+  {
+   "id": "sg-0020",
+   "premise": "Non-human callers use an API key — `Authorization: Bearer dmk_<key_id>_<secret>`\n— minted from the settings UI, with a closed scope set (`capture`, `read`,\n`admin`).",
+   "hypothesis": "The API key plaintext is shown once at issue."
+  },
+  {
+   "id": "sg-0069",
+   "premise": "Phase 0 — Preflight\n\n**Goal:** Confirm the stack is live and in fresh state before touching anything.",
+   "hypothesis": "Phase 0, Preflight, has the goal of confirming the stack is live and in fresh state before touching anything."
+  },
+  {
+   "id": "sg-0067",
+   "premise": "16. Performance sanity\n\n[ ] No requests to external CDNs (everything self-hosted)",
+   "hypothesis": "The performance sanity section lists verifying that no requests go to external CDNs."
+  },
+  {
+   "id": "sg-0053",
+   "premise": "Expected: inline error about min-length, no redirect",
+   "hypothesis": "Submitting the weak password 'short' on the setup form is expected to show an inline min-length error without redirecting."
+  },
+  {
+   "id": "sg-0177",
+   "premise": "| Action | Verb | Status |\n| --- | --- | --- |\n| Create | `POST /collection` | `201 Created` |\n| Read one | `GET /collection/{id}` | `200` |\n| Read list | `GET /collection` | `200` |\n| Replace / update | `PUT /collection/{id}` (full), `PATCH` (partial) | `200` |\n| Delete | `DELETE /collection/{id}` | `204 No Content` (no body) |",
+   "hypothesis": "Deleting a resource uses DELETE /collection/{id} and returns 204 No Content with no body."
+  },
+  {
+   "id": "sg-0204",
+   "premise": "**Terminate TLS**, and redirect plain HTTP to it.",
+   "hypothesis": "The proxy in front of darkmem terminates TLS and redirects plain HTTP to it."
+  },
+  {
+   "id": "sg-0249",
+   "premise": "Via API: `curl -b \"darkmem_session=<token>\" -X POST http://localhost:8000/api/v1/memories/search -H \"Content-Type: application/json\" -d '{\"tags_any\": [\"e2e\", \"e2e-fixtures\", \"e2e-ui\"]}'`",
+   "hypothesis": "The cleanup search posts tags_any of e2e, e2e-fixtures and e2e-manual."
+  },
+  {
+   "id": "sg-0218",
+   "premise": "Python 3.12+ with `httpx` in PATH for supporting scripts.",
+   "hypothesis": "The supporting scripts need Python 3.12+ and depend on nothing beyond httpx."
+  },
+  {
+   "id": "sg-0127",
+   "premise": "Darkmem's `events` journal is append-only and enforced as such by three trigger kinds (a\nrow-level UPDATE/DELETE guard on the parent, a statement-level TRUNCATE guard, and a\nper-child TRUNCATE guard stamped by `events_ensure_partition`). That is deliberate: the\njournal is the record of what the system did, and a consolidation cycle whose evidence can\nbe edited afterwards describes a history that did not happen.",
+   "hypothesis": "The events journal is append-only, enforced as such by three kinds of triggers."
+  },
+  {
+   "id": "sg-0070",
+   "premise": "Phase 1 — First-time setup flow\n\n**Goal:** Walk through the setup wizard, create the admin password, verify the cookie is set, reach the Overview page.",
+   "hypothesis": "Phase 1 walks through the setup wizard, creates the admin password, verifies the cookie is set, and reaches the Overview page."
+  },
+  {
+   "id": "sg-0135",
+   "premise": "**Bulk operations via `POST` with a body** — `POST /memories/batch` (bulk\ncreate) and `POST /memories/delete` (bulk delete). `DELETE`-with-body is poorly\nsupported by clients/proxies; the bulk-delete reply reports per-id results\n(`{deleted, not_found}`) because a missing id is non-fatal. The bulk delete is\nalso processed server-side **in series** to avoid the graph-cleanup deadlock\nthat concurrent per-row deletes hit.",
+   "hypothesis": "The bulk delete is processed server-side in series to avoid the graph-cleanup deadlock that concurrent per-row deletes hit."
+  },
+  {
+   "id": "sg-0029",
+   "premise": "Giving the application a code path that rewrites the journal would cost more than the\nresidue it removes",
+   "hypothesis": "The operator already owns the database, so the dangerous capability lives with the human rather than in the app."
+  },
+  {
+   "id": "sg-0038",
+   "premise": "Every\nreport of it except the startup log — the posture endpoint, the settings card —\nsits behind the login it just broke",
+   "hypothesis": "Every report of the cookie clamp except the startup log sits behind the login it just broke."
+  },
+  {
+   "id": "sg-0137",
+   "premise": "Migrations run inline at startup, so run **one API replica at a time** during an\nupgrade (the bundled topology is single-replica). Downgrades are not a recovery\npath — restore from backup if a migration fails.",
+   "hypothesis": "Downgrades are not a recovery path; if a migration fails, restore from a backup."
+  },
+  {
+   "id": "sg-0240",
+   "premise": "The first upgrade to 0.2.0 runs migration `0003`, which **rebuilds the derived\ncode graph** (it clears `code_edges`/`code_graph_nodes` and forces a reindex on\nnext sync). Memories and code symbols are untouched; the graph is regenerated.",
+   "hypothesis": "The first upgrade to 0.2.0 runs migration 0005, which rebuilds the derived code graph."
+  },
+  {
+   "id": "sg-0079",
+   "premise": "Backend tests (need a `darkmem_test` database on the dev Postgres):\n\ncd backend && python -m pytest -q",
+   "hypothesis": "The backend test command given, which needs a darkmem_test database on the dev Postgres, is `cd backend && python -m pytest -q`."
+  },
+  {
+   "id": "sg-0239",
+   "premise": "`browser_wait_for(\"MVCC\")` (wait for assistant response with reasonable timeout ~60s)",
+   "hypothesis": "The chat phase waits for the assistant response with a timeout of roughly 10 seconds."
+  },
+  {
+   "id": "sg-0004",
+   "premise": "The API boots only after Postgres is healthy, runs database migrations\nautomatically, then serves everything on `:8000`",
+   "hypothesis": "Nothing binds port 80 or port 3000."
+  },
+  {
+   "id": "sg-0026",
+   "premise": "When the plan uncovers these, mark as `[known]` in the log",
+   "hypothesis": "Uncovering a known intentional gap does not fail the phase."
+  },
+  {
+   "id": "sg-0160",
+   "premise": "Setting `COOKIE_SECURE=false` alongside `TRUST_PROXY_HEADERS=true` is not an\nerror and does not stop the app — the value is clamped to `true`, a warning is\nlogged at startup, and `GET /api/v1/auth/security-posture` reports\n`cookie_secure_clamped: true`. If you genuinely serve plain HTTP, leave\n`TRUST_PROXY_HEADERS` off; the two settings describe the same fact and must\nagree.",
+   "hypothesis": "Setting COOKIE_SECURE=false together with TRUST_PROXY_HEADERS=true does not stop the app: the value is clamped to true and a warning is logged at startup."
+  },
+  {
+   "id": "sg-0234",
+   "premise": "[ ] Bundle size (main chunk) < 1 MB gzipped",
+   "hypothesis": "The checklist caps the gzipped main bundle at 2 MB."
+  },
+  {
+   "id": "sg-0063",
+   "premise": "4. Chat page (`/chat`)\n\n[ ] Assistant response streams in character by character (if streaming is enabled)",
+   "hypothesis": "The Chat page section lists an item that the assistant response streams character by character if streaming is enabled."
+  },
+  {
+   "id": "sg-0031",
+   "premise": "it stays open only until the admin password\nexists",
+   "hypothesis": "The /setup endpoint stays open only until the admin password exists."
+  },
+  {
+   "id": "sg-0050",
+   "premise": "[ ] Initial page load < 2 s",
+   "hypothesis": "In the DevTools Network tab, initial page load under 2 seconds is a listed check."
+  },
+  {
+   "id": "sg-0155",
+   "premise": "**Status:** operator procedure, not an application feature. Written 2026-08-06 as rider R2\nof T2.59's ruling (option D: accept the residue and document it).",
+   "hypothesis": "The purge is an operator procedure rather than an application feature, written on 2026-08-06 as rider R2 of T2.59's ruling."
+  },
+  {
+   "id": "sg-0130",
+   "premise": "Non-human callers use an API key — `Authorization: Bearer dmk_<key_id>_<secret>`\n— minted from the settings UI, with a closed scope set (`capture`, `read`,\n`admin`). The plaintext is shown once at issue. `ratify` is not a scope and\nnever becomes one: confirming a fact stays a human cookie session on the REST\ndoor.",
+   "hypothesis": "Non-human callers use an API key minted from the settings UI, with a closed scope set of capture, read and admin."
+  },
+  {
+   "id": "sg-0022",
+   "premise": "**Detecting a key you did not expect to be in use.** Every keyed delivery\njournals a `repo_webhook_received` event carrying the key id and its label",
+   "hypothesis": "Deliveries refused as conflicts, and deliveries naming a repository that does not exist, are journalled too."
+  },
+  {
+   "id": "sg-0227",
+   "premise": "Pull the new image tag (bump `DARKMEM_VERSION` in `.env`).",
+   "hypothesis": "Upgrading means bumping DARKMEM_VERSION in docker-compose.yml."
+  },
+  {
+   "id": "sg-0140",
+   "premise": "Revoke a key from the same surface. Revocation sets `revoked_at` and keeps the\nrow rather than deleting it, so calls the key already made keep a resolvable\nname instead of pointing at an id nothing explains.",
+   "hypothesis": "Revoking a key sets revoked_at and keeps the row rather than deleting it."
+  },
+  {
+   "id": "sg-0041",
+   "premise": "Scripts print PASS/FAIL lines I can read from the output.",
+   "hypothesis": "The supporting scripts under docs/e2e/scripts print PASS/FAIL lines."
+  },
+  {
+   "id": "sg-0024",
+   "premise": "On a healthy system this returns 0 failures.",
+   "hypothesis": "A pipeline failure can be induced by temporarily breaking the LLM connection."
+  },
+  {
+   "id": "sg-0065",
+   "premise": "13. LLM config page (`/llm`)\n\n[ ] Each card shows provider, model, base URL, dimensions, api_key masked as `***`",
+   "hypothesis": "The LLM config page section lists checking that each purpose card masks api_key as ***."
+  },
+  {
+   "id": "sg-0003",
+   "premise": "`/setup` is **trust-on-first-use**: it stays open only until the admin password\nexists",
+   "hypothesis": "The first caller to finish the setup wizard claims the admin account."
+  },
+  {
+   "id": "sg-0190",
+   "premise": "BEGIN;\nSET LOCAL session_replication_role = 'replica';\n-- Prefer redaction over deletion where the row's existence is itself the record:\nUPDATE events SET payload = jsonb_set(payload, '{content_preview}', '\"[redacted]\"')\n  WHERE id = '<id>' AND created_at = '<created_at>';   -- both, always: composite PK\nDELETE FROM memory_buffer WHERE id = '<id>';\nCOMMIT;",
+   "hypothesis": "The example purge SQL carries a comment preferring redaction over deletion where the row's existence is itself the record."
+  },
+  {
+   "id": "sg-0034",
+   "premise": "**Extending `MCP_ALLOWED_HOSTS` does not lift it.** That is deliberate.",
+   "hypothesis": "Extending MCP_ALLOWED_HOSTS does not lift the 403 refusal of proxied /mcp requests."
+  },
+  {
+   "id": "sg-0091",
+   "premise": "| Variable | Required in prod | Purpose |\n| --- | --- | --- |\n| `ENVIRONMENT` | set in compose (`production`) | Arms fail-fast validators (JWT strength) and the default `Secure` cookie. The compose file hardcodes this; you don't set it in `.env`. |\n| `DB_PASSWORD` | **yes** | Postgres password. The API derives `DATABASE_URL` from it (host/port/db/user are fixed for the bundled stack). |",
+   "hypothesis": "DB_PASSWORD is required in prod, and the API derives DATABASE_URL from it."
+  },
+  {
+   "id": "sg-0144",
+   "premise": "`GET /health` is the liveness/readiness probe (used by the compose healthcheck):\n`503` when Postgres/pgvector is unreachable, `200` (degraded) when only the LLM\nprovider is unreachable. The container is `unhealthy` until the API can serve.",
+   "hypothesis": "GET /health returns 503 when Postgres/pgvector is unreachable and 200 degraded when only the LLM provider is unreachable."
+  },
+  {
+   "id": "sg-0033",
+   "premise": "It is\nclient-supplied, so a limiter keyed on it would let an attacker rotate the\nvalue per guess and never lock out.",
+   "hypothesis": "The leftmost X-Forwarded-For hop is client-supplied."
+  },
+  {
+   "id": "sg-0216",
+   "premise": "[ ] Per-row Retry button spins, then the row either animates out (resolved) or updates (still failing)",
+   "hypothesis": "The per-row Retry button spins, and the row then either animates out or updates."
+  },
+  {
+   "id": "sg-0222",
+   "premise": "**If login loops after you turn the switch on, suspect the clamp first.** Every\nreport of it except the startup log — the posture endpoint, the settings card —\nsits behind the login it just broke, so the boot warning is the one you can\nstill read. Check the container log for `COOKIE_SECURE=false is clamped`.",
+   "hypothesis": "A login loop after turning the switch on is always caused by the cookie clamp."
+  },
+  {
+   "id": "sg-0171",
+   "premise": "**MCP endpoint is unauthenticated** — local-network-only trust model",
+   "hypothesis": "The MCP endpoint carries no authentication and rests on a local-network-only trust model."
+  },
+  {
+   "id": "sg-0217",
+   "premise": "GET /api/v1/auth/security-posture",
+   "hypothesis": "GET /api/v1/auth/security-posture returns the live security posture."
+  },
+  {
+   "id": "sg-0133",
+   "premise": "Stop and report any FAIL or unexpected state before moving on — do not batch failures silently.",
+   "hypothesis": "The plan directs stopping and reporting any FAIL or unexpected state before moving on, never batching failures silently."
+  },
+  {
+   "id": "sg-0225",
+   "premise": "[ ] WebSocket connection established within 500 ms of page load",
+   "hypothesis": "The WebSocket connection is established within 500 ms of page load."
+  },
+  {
+   "id": "sg-0084",
+   "premise": "Expect, in this posture:\n\n`trust_proxy_headers: true`",
+   "hypothesis": "trust_proxy_headers is expected to be true."
+  },
+  {
+   "id": "sg-0132",
+   "premise": "**Execution model:** This plan is a runbook for **Claude Code (me)** to execute via the Playwright MCP tools. Each phase is a user journey with explicit browser steps, expected states, and verification points. Supporting Python scripts in `scripts/` handle API-level checks that are awkward through the browser (bulk ingest, DB audit, performance timing).",
+   "hypothesis": "The plan is a runbook for Claude Code to execute through the Playwright MCP tools."
+  },
+  {
+   "id": "sg-0161",
+   "premise": "**One topology is unsupported, and it is worth saying plainly: a reverse proxy\nthat does not terminate TLS.** Neither setting is right for it. With the switch\non, the clamped Secure cookie is dropped by the browser over plain HTTP and\nlogin silently loops. With it off, every client shares the proxy's single\nlimiter bucket, so one attacker locks out everyone. Put TLS on the proxy, or\nput nothing in front and let the app be the edge.",
+   "hypothesis": "A reverse proxy that forwards plain HTTP without terminating TLS is an unsupported topology, and neither setting is right for it."
+  },
+  {
+   "id": "sg-0073",
+   "premise": "Phase 11 — WebSocket event surface\n\n**Goal:** Capture all WebSocket events that fire during a typical session. Useful for catching schema drift or missing event types.",
+   "hypothesis": "Phase 11's goal is capturing all WebSocket events that fire during a typical session."
+  },
+  {
+   "id": "sg-0083",
+   "premise": "With an authenticated session, read the live posture rather than assuming it:\n\nGET /api/v1/auth/security-posture",
+   "hypothesis": "The runbook directs reading the live posture with an authenticated session via GET /api/v1/auth/security-posture."
+  },
+  {
+   "id": "sg-0081",
+   "premise": "**Find every occurrence.** Do not guess which stores hold it.\n\nSELECT id, created_at FROM events WHERE payload::text ILIKE '%<fragment>%';\nSELECT id FROM knowledge_triples WHERE fact ILIKE '%<fragment>%';\nSELECT id FROM messages WHERE context::text ILIKE '%<fragment>%' OR content ILIKE '%<fragment>%';\nSELECT id FROM memory_buffer WHERE content ILIKE '%<fragment>%';\nSELECT id FROM memories WHERE content ILIKE '%<fragment>%';",
+   "hypothesis": "The find-every-occurrence step directs ILIKE searches over events, knowledge_triples, messages, memory_buffer and memories."
+  },
+  {
+   "id": "sg-0238",
+   "premise": "Verify a pipeline failure appears within ~30 seconds",
+   "hypothesis": "The plan expects a pipeline failure to appear within about five minutes."
+  },
+  {
+   "id": "sg-0042",
+   "premise": "From the three architectural features already shipped:",
+   "hypothesis": "The known intentional gaps in the test plan come from three architectural features already shipped."
+  },
+  {
+   "id": "sg-0043",
+   "premise": "This also verifies the legacy `/reprocess-failed` endpoint is removed (Feature 2)",
+   "hypothesis": "08_analytics_reprocess.py verifies the legacy /reprocess-failed endpoint is removed."
+  },
+  {
+   "id": "sg-0245",
+   "premise": "Verify progress bar appears (via `pipeline.retry_batch.progress` WebSocket events)",
+   "hypothesis": "The progress bar is driven by pipeline.reembed_batch.progress WebSocket events during the retry."
+  },
+  {
+   "id": "sg-0116",
+   "premise": "cd backend && python -m pytest -q",
+   "hypothesis": "Running python -m pytest -q from the backend directory passes the backend test suite."
+  },
+  {
+   "id": "sg-0223",
+   "premise": "Categories: `bug`, `design-gap`, `ux`, `performance`, `security`, `accessibility`, `content`.",
+   "hypothesis": "Every logged issue must carry exactly one of the seven categories."
+  },
+  {
+   "id": "sg-0044",
+   "premise": "Wait for the listener to finish (it exits after `--duration`)",
+   "hypothesis": "The WebSocket listener script 11_websocket_listener.py exits after its --duration elapses."
+  },
+  {
+   "id": "sg-0175",
+   "premise": "After each phase, append an entry to `docs/e2e/runs/YYYY-MM-DD-run.md` (create if missing):",
+   "hypothesis": "The plan directs appending an entry to a dated run log under docs/e2e/runs/ after each phase."
+  },
+  {
+   "id": "sg-0145",
+   "premise": "Write down what happened and when — ideally as a memory in a project you keep for\noperations. A break-glass purge is the one action in this system with no audit trail by\nconstruction, because the audit trail is what it edited.",
+   "hypothesis": "A break-glass purge is the one action in the system with no audit trail by construction, because the audit trail is what it edited."
+  },
+  {
+   "id": "sg-0174",
+   "premise": "A full-surface RESTful audit (all ~70 endpoints) confirmed the posture above and\nlanded three fixes: `GET /code/wiki` made read-only (safe GET); `POST\n/repos/{id}/reindex` now returns `202` (and `409` when already indexing);\n`DELETE /pipeline-failures/{id}` now returns `204`.",
+   "hypothesis": "A full-surface RESTful audit of roughly 70 endpoints landed three fixes, one of which made GET /code/wiki read-only."
+  },
+  {
+   "id": "sg-0124",
+   "premise": "[ ] FastAPI `/docs`, `/redoc`, `/openapi.json` are served unauthenticated — keep them behind the loopback bind / your proxy's auth.",
+   "hypothesis": "The checklist notes that FastAPI's /docs, /redoc and /openapi.json are served unauthenticated, and directs keeping them behind the loopback bind or the proxy's auth."
+  },
+  {
+   "id": "sg-0199",
+   "premise": "Optionally register a repository path to index.",
+   "hypothesis": "Registering a repository path is required to complete the setup wizard."
+  },
+  {
+   "id": "sg-0094",
+   "premise": "| | LAN default (off) | Exposed (on) |\n|---|---|---|\n| Login rate-limit bucket | the transport peer | `X-Real-IP`, else the **rightmost** `X-Forwarded-For` hop |\n| `cookie_secure` | tri-state: unset ⇒ Secure only when `ENVIRONMENT=production` | **enforced** — an explicit `COOKIE_SECURE=false` is overridden |",
+   "hypothesis": "In the LAN default posture, the login rate-limit bucket is the transport peer."
+  },
+  {
+   "id": "sg-0189",
+   "premise": "The MCP Host allowlist (a foreign Host is `421`, fixed by extending the\nallowlist — never by setting `*`), trust-on-first-use setup then `403`,\nsingle-door ratification, and the single-worker invariant. Exposure layers on\ntop of these; it replaces none of them.",
+   "hypothesis": "Exposure does not replace the MCP Host allowlist."
+  },
+  {
+   "id": "sg-0046",
+   "premise": "[ ] Pipeline health indicator shows Active + pgvector + LLM green dots",
+   "hypothesis": "On the Overview page, the pipeline health indicator showing Active plus pgvector plus LLM green dots is a listed check."
+  },
+  {
+   "id": "sg-0236",
+   "premise": "Fresh darkmem deployment: backend on `http://localhost:8000`, frontend on `http://host.docker.internal:3636`, admin password NOT set.",
+   "hypothesis": "The E2E environment serves the frontend on http://host.docker.internal:5173."
+  },
+  {
+   "id": "sg-0055",
+   "premise": "Expected: 20 memories ingested, stats confirm, obsolete counts near zero",
+   "hypothesis": "The MCP batch script 04_memories_batch_mcp.py is expected to ingest 20 memories."
+  },
+  {
+   "id": "sg-0205",
+   "premise": "**No re-embed cancellation** — batches run to completion",
+   "hypothesis": "Re-embed batches always run to successful completion."
+  },
+  {
+   "id": "sg-0228",
+   "premise": "| Action | Verb | Status |\n| --- | --- | --- |\n| Create | `POST /collection` | `201 Created` |\n| Read one | `GET /collection/{id}` | `200` |\n| Read list | `GET /collection` | `200` |\n| Replace / update | `PUT /collection/{id}` (full), `PATCH` (partial) | `200` |\n| Delete | `DELETE /collection/{id}` | `204 No Content` (no body) |",
+   "hypothesis": "Creating a resource with POST /collection returns 200 OK."
+  },
+  {
+   "id": "sg-0057",
+   "premise": "Set the admin password (you authenticate as a single admin).",
+   "hypothesis": "The setup wizard's steps include setting the admin password."
+  },
+  {
+   "id": "sg-0122",
+   "premise": "A `GET` must never change server state. Wiki generation used to run inside\n`GET /code/wiki/{repo_id}`; it is now **read-only** (returns the cached wiki or\n`null`). Generation is an explicit action: `POST /repos/{repo_id}/reindex` with\n`generate_wiki=true`.",
+   "hypothesis": "A GET request must never change server state."
+  },
+  {
+   "id": "sg-0244",
+   "premise": "[ ] `ENVIRONMENT=production` (compose default), strong `JWT_SECRET` (≥32 chars), non-default `DB_PASSWORD`. Run `/setup` promptly — it is open until the admin password is set.",
+   "hypothesis": "The checklist notes /setup stays open until the first login occurs."
+  },
+  {
+   "id": "sg-0075",
+   "premise": "Phase 13 — DB-level audit\n\n**Goal:** Direct SQL assertions that can only be verified at the database level.",
+   "hypothesis": "Phase 13 runs direct SQL assertions that can only be verified at the database level."
+  },
+  {
+   "id": "sg-0252",
+   "premise": "[ ] Pan and zoom controls work",
+   "hypothesis": "The dev-compose Postgres listens on port 5433."
+  },
+  {
+   "id": "sg-0056",
+   "premise": "Obsolete Embeddings card should now be visible with the same counts",
+   "hypothesis": "After the embedding model change, the Obsolete Embeddings card should be visible with the same counts the modal showed."
+  },
+  {
+   "id": "sg-0256",
+   "premise": "**Nouns for resources, verbs only on action sub-resources** (see the action\npattern above).",
+   "hypothesis": "The buffer_flush job drains the capture queue."
+  },
+  {
+   "id": "sg-0085",
+   "premise": "2. What your proxy must do\n\n**Terminate TLS**, and redirect plain HTTP to it.",
+   "hypothesis": "The operator's proxy must terminate TLS and redirect plain HTTP to it."
+  },
+  {
+   "id": "sg-0150",
+   "premise": "The app is the network edge in this topology: it trusts no proxy headers, and the\nlogin rate limiter keys on the transport peer. The session cookie is `Secure`\n(HTTPS-only) by default. To serve over plain HTTP on the LAN, set\n`COOKIE_SECURE=false` — note the cookie then travels in cleartext. Putting a\n**TLS-terminating reverse proxy** (nginx/Caddy/Traefik) in front is a different\nposture, not the default one: that proxy becomes the edge, so set\n`TRUST_PROXY_HEADERS=true` as well, or every client will share the proxy's\nrate-limit bucket.",
+   "hypothesis": "In the bundled topology the app itself is the network edge: it trusts no proxy headers and the login rate limiter keys on the transport peer."
+  },
+  {
+   "id": "sg-0224",
+   "premise": "[ ] Provider API keys and git tokens are stored in the database in plaintext (single-operator model) — keep the `postgres_data` volume and backups access-controlled and encrypted at rest.",
+   "hypothesis": "The postgres_data volume and its backups are access-controlled and encrypted at rest."
+  },
+  {
+   "id": "sg-0221",
+   "premise": "**Casing:** lowercase **kebab-case** for every multi-word path segment\n(`llm-providers`, `feature-flags`, `pipeline-failures`, `system-prompts`,\n`prune-cache`, `retry-all`, `blast-radius`). No snake_case or camelCase appears\nin any path. New segments must follow this.",
+   "hypothesis": "No uppercase character appears anywhere in any darkmem URL."
+  },
+  {
+   "id": "sg-0257",
+   "premise": "Back up (above).",
+   "hypothesis": "Entity names are lowercased on write."
+  },
+  {
+   "id": "sg-0112",
+   "premise": "[ ] WebSocket progress updates the status without a manual refresh",
+   "hypothesis": "WebSocket progress updates the repo status without a manual refresh."
+  },
+  {
+   "id": "sg-0184",
+   "premise": "[ ] Enrichment worker card: enable/disable toggle, batch size input, interval input, \"Run Now\" button",
+   "hypothesis": "The checklist lists an enable/disable toggle on the enrichment worker card."
+  },
+  {
+   "id": "sg-0131",
+   "premise": "Runbook for a human tester to walk through the UI after the scripted E2E suite passes. Use in tandem with `test-plan.md`.",
+   "hypothesis": "The checklist is a runbook for a human tester to walk through the UI after the scripted E2E suite passes."
+  },
+  {
+   "id": "sg-0018",
+   "premise": "**Send the credential as `Authorization: Bearer`.** The webhook authenticates\nthe *caller*, not a signature over the payload",
+   "hypothesis": "GitHub.com's native webhook delivery cannot set an Authorization header and so cannot reach this receiver."
+  },
+  {
+   "id": "sg-0025",
+   "premise": "Review the output — operations under baseline are PASS",
+   "hypothesis": "Operations over three times the baseline are FAIL."
+  },
+  {
+   "id": "sg-0167",
+   "premise": "For operations that are slow/awkward through the UI (bulk ingest, DB queries, performance timing), run the corresponding script via Bash:",
+   "hypothesis": "Operations that are slow or awkward through the browser, such as bulk ingest and DB queries, are handled by scripts run via Bash."
+  },
+  {
+   "id": "sg-0259",
+   "premise": "[ ] Escape closes open dialogs",
+   "hypothesis": "Hybrid search fuses a semantic arm and a keyword arm with reciprocal rank fusion."
+  },
+  {
+   "id": "sg-0235",
+   "premise": "[ ] \"Re-embed all obsolete\" button runs all three categories sequentially under one progress view",
+   "hypothesis": "The checklist expects 'Re-embed all obsolete' to run all four categories sequentially under one progress view."
+  },
+  {
+   "id": "sg-0169",
+   "premise": "Error text does not leak whether the account exists (single-admin, so less relevant but still check for generic wording)",
+   "hypothesis": "The checks include confirming the login error wording stays generic and does not reveal whether the account exists."
+  },
+  {
+   "id": "sg-0098",
+   "premise": "VACUUM FULL events;      -- takes an exclusive lock; size it against your downtime\nVACUUM FULL messages;",
+   "hypothesis": "The snippet shows VACUUM FULL on events and messages, and its comment warns the events one takes an exclusive lock to size against downtime."
+  },
+  {
+   "id": "sg-0088",
+   "premise": "Known deviations (intentional, not yet changed — breaking to fix)\n\n`PUT /repos/{repo_id}` is a partial update; `PATCH` would be more precise and\nwould harmonize with `PATCH /chat/conversations/{id}`.",
+   "hypothesis": "PUT /repos/{repo_id} being a partial update is listed as an intentional, not-yet-changed deviation."
+  },
+  {
+   "id": "sg-0040",
+   "premise": "A full-surface RESTful audit (all ~70 endpoints) confirmed the posture above and\nlanded three fixes",
+   "hypothesis": "The 2026-06-04 audit confirmed the REST posture and landed three fixes."
+  },
+  {
+   "id": "sg-0202",
+   "premise": "**Restart, and verify.** Re-run the step-3 queries and confirm zero rows.",
+   "hypothesis": "The step-3 queries were re-run after the restart and returned zero rows."
+  },
+  {
+   "id": "sg-0092",
+   "premise": "| Scope | Routes |\n|---|---|\n| `capture` | `POST /memories`, `POST /memories/batch` |\n| `read` | `POST /memories/search/paginated` |\n| `admin` | `POST /repos/{id}/webhook` |",
+   "hypothesis": "The capture scope reaches POST /memories and POST /memories/batch."
+  },
+  {
+   "id": "sg-0162",
+   "premise": "**Send the credential as `Authorization: Bearer`.** The webhook authenticates\nthe *caller*, not a signature over the payload — which it never parses, since\nthe pipeline re-derives the true state with its own `git pull` and HEAD\ncompare. The consequence to plan around: **GitHub.com's native webhook\ndelivery cannot set an `Authorization` header**, so it cannot reach this\nreceiver. Self-hosted senders that can — Gitea, a `post-receive` script,\na small relay — can.",
+   "hypothesis": "GitHub.com's native webhook delivery cannot reach this receiver because it cannot set an Authorization header."
+  },
+  {
+   "id": "sg-0207",
+   "premise": "[ ] Activity bar chart renders with hover tooltips",
+   "hypothesis": "The activity bar chart renders with hover tooltips."
+  },
+  {
+   "id": "sg-0054",
+   "premise": "Expected: still authenticated (cookie survives reload)",
+   "hypothesis": "After a browser page refresh, the tester is expected to remain authenticated."
+  },
+  {
+   "id": "sg-0226",
+   "premise": "**Bash (background):** Start `python docs/e2e/scripts/11_websocket_listener.py --password \"e2e-admin-pw\" --duration 120 &`",
+   "hypothesis": "The WebSocket listener is started with --duration 300."
+  },
+  {
+   "id": "sg-0143",
+   "premise": "Cookie attributes from the Network tab: `HttpOnly`, `SameSite=Strict`, `Secure` only in production",
+   "hypothesis": "The plan checks the cookie attributes HttpOnly, SameSite=Strict, and Secure only in production."
+  },
+  {
+   "id": "sg-0007",
+   "premise": "A `GET` must never change server state.",
+   "hypothesis": "Wiki generation used to run inside GET /code/wiki/{repo_id} and is now read-only."
+  },
+  {
+   "id": "sg-0230",
+   "premise": "Verify: list shows ≥20 memories with content, tags, source badges, timestamps",
+   "hypothesis": "The verification is that the list shows at least 50 memories with content, tags, source badges and timestamps."
+  },
+  {
+   "id": "sg-0010",
+   "premise": "Three verb-flavoured names remain (breaking to rename, so left as-is):",
+   "hypothesis": "/reembed is among the verb-flavoured names left as-is."
+  },
+  {
+   "id": "sg-0090",
+   "premise": "Expected events (should see most/all during the session)\n\n`pipeline.completed`, `pipeline.partial`, `pipeline.failed`",
+   "hypothesis": "pipeline.completed, pipeline.partial and pipeline.failed are among the events expected during the session."
+  },
+  {
+   "id": "sg-0077",
+   "premise": "Phase 16 — Cleanup and teardown\n\n**Goal:** Leave the system in a known state after the run.",
+   "hypothesis": "Phase 16's goal is leaving the system in a known state after the run."
+  },
+  {
+   "id": "sg-0180",
+   "premise": "| Store | What survives | Bounded? |\n|---|---|---|\n| `events` payloads | content previews; full refine summaries in `consolidated` / `undone`; contradiction counterpart triples in `verified` | No — append-only |\n| `knowledge_triples.fact` | the lifted sentence | No — a fact outlives any one asserting memory |\n| `messages.context` | citation snippets, and cited fact rows untrimmed | Until the conversation is deleted |\n| `memory_buffer` | raw content on `done` rows | Yes — `buffer_done_retention_hours`, default 24 |",
+   "hypothesis": "Raw content in the memory buffer survives a deletion only for a bounded time."
+  },
+  {
+   "id": "sg-0128",
+   "premise": "Note the scope of that: the webhook is currently the **only** route a key\nreaches, so key activity appears in the events journal and not on a memory's\nown timeline — no keyed call can write a memory today.",
+   "hypothesis": "The webhook is currently the only route an API key reaches, so key activity appears in the events journal and not on a memory's own timeline — no keyed call can write a memory today."
+  },
+  {
+   "id": "sg-0049",
+   "premise": "[ ] Five purpose cards render (Embedding, Extraction, Reasoning, Summarization, Reranker)",
+   "hypothesis": "The LLM config page section lists five purpose cards rendering as a check."
+  },
+  {
+   "id": "sg-0087",
+   "premise": "Known deviations (intentional, not yet changed — breaking to fix)\n\n`POST /config/llm` sets the six-purpose LLM config (idempotent full replace);\nfor symmetry with its `PUT` siblings it should be `PUT /config/llm`.",
+   "hypothesis": "POST /config/llm's asymmetry with its PUT siblings is a known intentional deviation that would be breaking to fix."
+  },
+  {
+   "id": "sg-0172",
+   "premise": "[ ] **Obsolete Embeddings card** — should be hidden when counts are zero",
+   "hypothesis": "The checklist expects the Obsolete Embeddings card to be hidden while its counts are zero."
+  },
+  {
+   "id": "sg-0028",
+   "premise": "[ ] Responsive layout: resize to 768px — mobile layout kicks in",
+   "hypothesis": "Resizing back is listed to verify the desktop layout returns."
+  },
+  {
+   "id": "sg-0246",
+   "premise": "`browser_resize(375, 812)` — mobile width",
+   "hypothesis": "The plan tests mobile width with browser_resize(414, 896)."
+  },
+  {
+   "id": "sg-0200",
+   "premise": "Store backups off-host. Always **back up before an upgrade**.",
+   "hypothesis": "Backups are stored off-host."
+  },
+  {
+   "id": "sg-0206",
+   "premise": "**Prune obsolete cache entries:** `POST /api/v1/reembed/prune-cache`",
+   "hypothesis": "POST /api/v1/reembed/prune-cache prunes obsolete cache entries and also deletes the obsolete embeddings themselves."
+  },
+  {
+   "id": "sg-0121",
+   "premise": "The darkmem HTTP API (`/api/v1/*`) follows REST for true resources and a small,\nconsistent set of pragmatic patterns for everything else. This document is the\ncontract: new endpoints should match it, and the documented deviations should\nnot regress.",
+   "hypothesis": "The darkmem HTTP API follows REST for true resources plus a small, consistent set of pragmatic patterns, and the document is the contract new endpoints should match."
+  },
+  {
+   "id": "sg-0103",
+   "premise": "| Tool | Purpose |\n|---|---|\n| `mcp__playwright__browser_navigate(url)` | Go to a URL |",
+   "hypothesis": "The browser_navigate tool's listed purpose is going to a URL."
+  },
+  {
+   "id": "sg-0005",
+   "premise": "**All state lives in the `postgres_data` Docker volume.**",
+   "hypothesis": "There is no automatic backup."
+  },
+  {
+   "id": "sg-0147",
+   "premise": "Three verb-flavoured names remain (breaking to rename, so left as-is):\n`/reembed` (a verb-named maintenance namespace — a noun model would be\n`/embeddings` with refresh actions), `/code/symbols/lookup` (a name-based query\nbetter expressed as a filter on `/symbols`), and `/system/fs/list` (reads\nimperative; `/fs/entries` would be noun-ish). All are used by the frontend.",
+   "hypothesis": "Three verb-flavoured endpoint names are left as-is because renaming them would be breaking, and all three are used by the frontend."
+  },
+  {
+   "id": "sg-0219",
+   "premise": "If an assertion fails, call `browser_console_messages()` and `browser_network_requests()` to capture context before logging the failure.",
+   "hypothesis": "Every assertion failure during the run was followed by console and network captures."
+  },
+  {
+   "id": "sg-0139",
+   "premise": "**Set `X-Real-IP` to its own view of the peer**, overwriting whatever the\nclient sent. If the client can supply this header through your proxy, the\nlockout is defeated and turning the switch on has made things worse than\nleaving it off.",
+   "hypothesis": "The runbook requires the proxy to set X-Real-IP to its own view of the peer, overwriting whatever the client sent."
+  },
+  {
+   "id": "sg-0118",
+   "premise": "SELECT id, created_at FROM events WHERE payload::text ILIKE '%<fragment>%';\nSELECT id FROM knowledge_triples WHERE fact ILIKE '%<fragment>%';\nSELECT id FROM messages WHERE context::text ILIKE '%<fragment>%' OR content ILIKE '%<fragment>%';\nSELECT id FROM memory_buffer WHERE content ILIKE '%<fragment>%';\nSELECT id FROM memories WHERE content ILIKE '%<fragment>%';",
+   "hypothesis": "The queries find every occurrence of the leaked fragment across the stores that hold it."
+  },
+  {
+   "id": "sg-0071",
+   "premise": "Phase 4 — Memory ingestion (MCP batch + UI CRUD)\n\n**Goal:** Ingest fixture data via MCP, then verify UI CRUD operations on individual memories.",
+   "hypothesis": "Phase 4's goal is to ingest fixture data via MCP and then verify UI CRUD operations on individual memories."
+  },
+  {
+   "id": "sg-0014",
+   "premise": "**Deal with backups.** This is the step that makes the rest meaningful.",
+   "hypothesis": "Any dump or volume snapshot taken before the purge still contains the content."
+  },
+  {
+   "id": "sg-0036",
+   "premise": "Rotate or destroy\nthem per your retention policy, and record that you did.",
+   "hypothesis": "Pre-purge dumps and volume snapshots must be rotated or destroyed per the retention policy."
+  },
+  {
+   "id": "sg-0194",
+   "premise": "**Who this is for.** An operator putting darkmem behind a TLS proxy so it is\nreachable from outside the trusted LAN. Everything here is additive: every LAN\nrule below still holds underneath (doc 18 §9).",
+   "hypothesis": "The LAN rules still hold underneath the exposed posture."
+  },
+  {
+   "id": "sg-0048",
+   "premise": "[ ] Graph renders both memory and code nodes with different visual styles",
+   "hypothesis": "The unified graph section lists rendering memory and code nodes with different visual styles."
+  },
+  {
+   "id": "sg-0163",
+   "premise": "**Concurrent LLM config change during re-embed** has a minor race — UI-level guard only",
+   "hypothesis": "A concurrent LLM config change during a re-embed has a minor race and is guarded only at the UI level."
+  },
+  {
+   "id": "sg-0146",
+   "premise": "**`PUT` on a config singleton/collection** to replace it wholesale\n(`/config/llm-providers`, `/llm-profiles`, `/feature-flags`, `/system-prompts`,\n`/repos-path`, `/config/theme`) — idempotent full-replace. `GET /config/theme`\nis deliberately unauthenticated: the frontend theme loads at boot, before\nlogin, and the payload is pure UI cosmetics.",
+   "hypothesis": "GET /config/theme requires no authentication, because the frontend loads the theme at boot before login and the payload is purely cosmetic."
+  },
+  {
+   "id": "sg-0064",
+   "premise": "12. Pipeline page (`/pipeline`)\n\n[ ] **Unresolved Failures card** — hidden when no failures",
+   "hypothesis": "The Pipeline page section lists the Unresolved Failures card as hidden when there are no failures."
+  },
+  {
+   "id": "sg-0015",
+   "premise": "**darkmem does not terminate TLS and never will.**",
+   "hypothesis": "darkmem has no ACME client and no HTTP to HTTPS redirect."
+  },
+  {
+   "id": "sg-0152",
+   "premise": "See `CLAUDE.md` for the internal architecture/business-logic contract and `docs/`\nfor design specs and audit reports.",
+   "hypothesis": "CLAUDE.md holds the internal architecture and business-logic contract, while design specs and audit reports sit under docs/."
+  },
+  {
+   "id": "sg-0052",
+   "premise": "Expected: all 5 checks PASS (pgvector, llm, pipeline, auth/status, frontend reachable)",
+   "hypothesis": "The health check script 00_health_check.py is expected to pass all five checks."
+  },
+  {
+   "id": "sg-0168",
+   "premise": "Scripts print PASS/FAIL lines I can read from the output. Log their results in the phase's Execution log.",
+   "hypothesis": "The supporting scripts emit PASS/FAIL lines that can be read from their output."
+  },
+  {
+   "id": "sg-0183",
+   "premise": "A centralized memory system for AI agents: stores and retrieves natural-language\n**memories** (semantic + keyword hybrid search over pgvector), builds an\n**entity/relationship knowledge graph** from them, and indexes **code\nrepositories** into a navigable symbol/call graph. It exposes a REST API, a\nWebSocket event stream, and an **MCP** tool endpoint for agents, with a React UI.",
+   "hypothesis": "darkmem stores natural-language memories and exposes an MCP tool endpoint for agents."
+  },
+  {
+   "id": "sg-0002",
+   "premise": "The app is the network edge in this topology: it trusts no proxy headers, and the\nlogin rate limiter keys on the transport peer.",
+   "hypothesis": "The session cookie is Secure, HTTPS-only, by default."
+  },
+  {
+   "id": "sg-0220",
+   "premise": "[ ] `/mcp` is the **unauthenticated** agent tool endpoint — keep it on loopback. Never expose it to untrusted networks.",
+   "hypothesis": "/mcp is kept on loopback and is never exposed to untrusted networks."
+  },
+  {
+   "id": "sg-0250",
+   "premise": "docker compose -f docker-compose.dev.yml up -d   # builds locally, hot-reload, ports on all interfaces",
+   "hypothesis": "The documented dev command is docker compose -f docker-compose.override.yml up -d."
+  },
+  {
+   "id": "sg-0188",
+   "premise": "cp .env.example .env\n# Edit .env and generate the two secrets:\n#   DB_PASSWORD   = openssl rand -base64 24\n#   JWT_SECRET    = openssl rand -hex 32      (must be >= 32 chars)\n# If you reach the UI over plain HTTP on your LAN, also set COOKIE_SECURE=false.\n# Pin the image tag for a real deploy:  DARKMEM_VERSION=0.2.0\n\ndocker compose up -d",
+   "hypothesis": "The quickstart's comments state that JWT_SECRET must be at least 32 characters."
+  },
+  {
+   "id": "sg-0099",
+   "premise": "[ ] Application storage has `darkmem_session` cookie with `HttpOnly` flag",
+   "hypothesis": "Checking that application storage has the darkmem_session cookie with the HttpOnly flag is a listed item to verify."
+  },
+  {
+   "id": "sg-0185",
+   "premise": "[ ] Deleting a conversation removes it and redirects to a different conversation or empty state",
+   "hypothesis": "The checklist lists verifying that deleting a conversation removes it."
+  },
+  {
+   "id": "sg-0095",
+   "premise": "| Store | What survives | Bounded? |\n|---|---|---|\n| `events` payloads | content previews; full refine summaries in `consolidated` / `undone`; contradiction counterpart triples in `verified` | No — append-only |",
+   "hypothesis": "For the events payloads store, what survives includes content previews, and the store is not bounded because it is append-only."
+  },
+  {
+   "id": "sg-0243",
+   "premise": "[ ] Modal shows per-category obsolete counts (memories, entities, code chunks)",
+   "hypothesis": "The checklist expects the modal to show per-category obsolete counts for memories, entities and conversations."
+  },
+  {
+   "id": "sg-0208",
+   "premise": "[ ] Application storage has `darkmem_session` cookie with `HttpOnly` flag",
+   "hypothesis": "The darkmem_session cookie is set with the HttpOnly flag."
+  },
+  {
+   "id": "sg-0097",
+   "premise": "BEGIN;\nSET LOCAL session_replication_role = 'replica';\n-- Prefer redaction over deletion where the row's existence is itself the record:\nUPDATE events SET payload = jsonb_set(payload, '{content_preview}', '\"[redacted]\"')\n  WHERE id = '<id>' AND created_at = '<created_at>';   -- both, always: composite PK\nDELETE FROM memory_buffer WHERE id = '<id>';\nCOMMIT;",
+   "hypothesis": "The SQL snippet opens a transaction, sets LOCAL session_replication_role to 'replica', and its comment prefers redaction over deletion where the row's existence is itself the record."
+  },
+  {
+   "id": "sg-0110",
+   "premise": "[ ] WebSocket connection established within 500 ms of page load",
+   "hypothesis": "The WebSocket connection is established within 500 ms of page load."
+  },
+  {
+   "id": "sg-0210",
+   "premise": "[ ] No requests to external CDNs (everything self-hosted)",
+   "hypothesis": "The frontend makes no requests to external CDNs; everything is self-hosted."
+  },
+  {
+   "id": "sg-0164",
+   "premise": "Everything else stays human-session-only. That is a deliberate boundary rather\nthan an oversight: widening `read` to the fact vault or the code graph decides\nwhat a leaked key can exfiltrate, so it happens when something needs it. Grant\nthe narrowest scope that does the job — a webhook sender needs `admin` and\nnothing else.",
+   "hypothesis": "Widening the read scope is deferred on purpose, because doing so decides what a leaked key can exfiltrate."
+  },
+  {
+   "id": "sg-0212",
+   "premise": "Expected: exits 0 with all green PASS lines",
+   "hypothesis": "The auth script exits 0 with all green PASS lines."
+  },
+  {
+   "id": "sg-0096",
+   "premise": "cp .env.example .env\n# Edit .env and generate the two secrets:\n#   DB_PASSWORD   = openssl rand -base64 24\n#   JWT_SECRET    = openssl rand -hex 32      (must be >= 32 chars)\n# If you reach the UI over plain HTTP on your LAN, also set COOKIE_SECURE=false.\n# Pin the image tag for a real deploy:  DARKMEM_VERSION=0.2.0\n\ndocker compose up -d",
+   "hypothesis": "The snippet's comments show JWT_SECRET generated with openssl rand -hex 32 and note it must be at least 32 chars."
+  },
+  {
+   "id": "sg-0141",
+   "premise": "Run `python scripts/run_all.py --password e2e-admin-pw` — confirm all phases pass.",
+   "hypothesis": "The checklist directs running python scripts/run_all.py with the password e2e-admin-pw and confirming all phases pass."
+  },
+  {
+   "id": "sg-0166",
+   "premise": "[ ] Responsive layout: resize to 768px — mobile layout kicks in; resize back — desktop layout returns",
+   "hypothesis": "The checklist includes verifying that resizing to 768px brings up the mobile layout and resizing back restores the desktop layout."
+  },
+  {
+   "id": "sg-0158",
+   "premise": "**Edit as superuser with the guards disabled for the session.** `session_replication_role`\nsuppresses the append-only triggers for this connection only.\n**`events` is RANGE-partitioned with a composite `PRIMARY KEY (id, created_at)`.** A bare\n`WHERE id = ...` scans every monthly child; always carry the `created_at` bound.",
+   "hypothesis": "session_replication_role suppresses the append-only triggers only for the current connection."
+  },
+  {
+   "id": "sg-0233",
+   "premise": "[ ] Initial page load < 2 s",
+   "hypothesis": "The checklist's initial page load target is under 5 seconds."
+  },
+  {
+   "id": "sg-0153",
+   "premise": "The first upgrade to 0.2.0 runs migration `0003`, which **rebuilds the derived\ncode graph** (it clears `code_edges`/`code_graph_nodes` and forces a reindex on\nnext sync). Memories and code symbols are untouched; the graph is regenerated.",
+   "hypothesis": "The first upgrade to 0.2.0 runs migration 0003, which clears the derived code graph and forces a reindex while leaving memories and code symbols untouched."
+  },
+  {
+   "id": "sg-0138",
+   "premise": "**Rotate the secret first.** Everything below is slower than an attacker. Purging the\ndatabase does not un-leak a credential that was live; rotating does. If the content is\nnot a credential, skip to 2.",
+   "hypothesis": "The procedure's first step is rotating the secret, because purging the database does not un-leak a credential that was live."
+  },
+  {
+   "id": "sg-0251",
+   "premise": "Read all of it before starting. Steps 1 and 6 are the ones people skip.",
+   "hypothesis": "When the reranker is enabled, the top 40 fusion-ranked rows are LLM-scored."
+  },
+  {
+   "id": "sg-0181",
+   "premise": "Then confirm the limiter is really keyed on the proxied address: make\n`rate_limit_max_failures` failed logins from one client, confirm the next\nattempt returns `429`, and confirm a request from a different source address\nstill returns `401`. If the `429` never arrives, your proxy is not setting\n`X-Real-IP` the way §2 requires.",
+   "hypothesis": "The runbook directs confirming that after enough failed logins from one client the next attempt returns 429."
+  },
+  {
+   "id": "sg-0196",
+   "premise": "True resources use standard verbs and status codes:",
+   "hypothesis": "All darkmem endpoints use standard verbs and status codes."
+  },
+  {
+   "id": "sg-0027",
+   "premise": "Runbook for a human tester to walk through the UI after the scripted E2E suite passes.",
+   "hypothesis": "The manual checklist is used in tandem with test-plan.md."
+  },
+  {
+   "id": "sg-0198",
+   "premise": "**Backend:** FastAPI + SQLAlchemy (async) + Postgres/pgvector",
+   "hypothesis": "The backend is FastAPI with async SQLAlchemy, and Postgres is the only external service darkmem depends on."
+  },
+  {
+   "id": "sg-0013",
+   "premise": "**Edit as superuser with the guards disabled for the session.** `session_replication_role`\nsuppresses the append-only triggers for this connection only.",
+   "hypothesis": "A bare WHERE id = ... on events scans every monthly child, so the created_at bound must always be carried."
+  },
+  {
+   "id": "sg-0060",
+   "premise": "`trust_proxy_headers: true`",
+   "hypothesis": "GET /api/v1/auth/security-posture reports trust_proxy_headers: true in the exposed posture."
+  },
+  {
+   "id": "sg-0165",
+   "premise": "**Detecting a key you did not expect to be in use.** Every keyed delivery\njournals a `repo_webhook_received` event carrying the key id and its label —\nincluding deliveries that are refused as conflicts or that name a repository\nthat does not exist, which is what a probing credential mostly produces. The\nsettings card's last-used column is the quick signal; the events journal is the\nrecord. A key whose last-used time moves when you are not deploying is the\nsignal to revoke.",
+   "hypothesis": "Every keyed delivery journals a repo_webhook_received event carrying the key id and its label, including deliveries that are refused as conflicts."
+  },
+  {
+   "id": "sg-0176",
+   "premise": "Migrations run automatically on API startup (`alembic upgrade head`). Notes:",
+   "hypothesis": "Database migrations run automatically when the API starts."
+  },
+  {
+   "id": "sg-0019",
+   "premise": "**Do not route `/mcp` from the public side** — and the app now refuses it\nrather than trusting you not to.",
+   "hypothesis": "With TRUST_PROXY_HEADERS=true, a /mcp request carrying proxy headers is answered 403 mcp_not_exposed."
+  },
+  {
+   "id": "sg-0201",
+   "premise": "**Watch progress:** periodically `browser_snapshot()` every 5–10 seconds until status = \"ready\" or \"error\"",
+   "hypothesis": "Progress was polled with snapshots every 5–10 seconds until the status reached 'ready'."
+  },
+  {
+   "id": "sg-0253",
+   "premise": "Licensed under Apache-2.0 (see `LICENSE`).",
+   "hypothesis": "The events table is range-partitioned by month."
+  },
+  {
+   "id": "sg-0068",
+   "premise": "17. Console and Network errors\n\n[ ] No 401 / 403 / 500 responses in Network tab",
+   "hypothesis": "The console-and-network section lists checking for no 401, 403 or 500 responses in the Network tab."
+  },
+  {
+   "id": "sg-0017",
+   "premise": "**One topology is unsupported, and it is worth saying plainly: a reverse proxy\nthat does not terminate TLS.** Neither setting is right for it.",
+   "hypothesis": "With the switch on behind such a proxy, the browser drops the clamped Secure cookie and login silently loops."
+  },
+  {
+   "id": "sg-0107",
+   "premise": "| Login rate-limit bucket | the transport peer | `X-Real-IP`, else the **rightmost** `X-Forwarded-For` hop |",
+   "hypothesis": "In the LAN default posture the rate-limit bucket is the transport peer, and in the exposed posture it is X-Real-IP, else the rightmost X-Forwarded-For hop."
+  },
+  {
+   "id": "sg-0197",
+   "premise": "`201` on create, `204` on delete, **`202 Accepted`** for async work that is\nqueued but not finished (reindex, reembed, retry), **`409 Conflict`** when a\nrequest can't proceed because the resource is in a conflicting state (e.g. a\nrepo that is already indexing), `404` for missing resources.",
+   "hypothesis": "201, 204, 202, 409 and 404 are the only status codes the API returns."
+  },
+  {
+   "id": "sg-0072",
+   "premise": "Phase 9 — Pipeline failure tracking (Feature 2)\n\n**Goal:** Induce a pipeline failure, verify the Unresolved Failures card appears, test retry/forget actions.",
+   "hypothesis": "Phase 9 covers inducing a pipeline failure, verifying the Unresolved Failures card appears, and testing retry and forget actions."
+  },
+  {
+   "id": "sg-0193",
+   "premise": "**Search / computation with a complex body → `POST .../search`** (and\n`/search/paginated`, `code/search`, `code/blast-radius`). A GET query string\ncan't cleanly or safely carry rich filters or credentials.",
+   "hypothesis": "Complex search bodies are sent with POST."
+  },
+  {
+   "id": "sg-0156",
+   "premise": "Two remedies already exist and should be tried first: **delete the conversation** (cascades\nits snippets and its prose) and **wait out or shorten the buffer retention** (a config row).",
+   "hypothesis": "Two existing remedies should be tried before a purge: deleting the conversation, and waiting out or shortening the buffer retention."
+  },
+  {
+   "id": "sg-0016",
+   "premise": "Setting `COOKIE_SECURE=false` alongside `TRUST_PROXY_HEADERS=true` is not an\nerror and does not stop the app",
+   "hypothesis": "In that combination the cookie value is clamped to true and a warning is logged at startup."
+  },
+  {
+   "id": "sg-0178",
+   "premise": "## Phase N — <name>  [PASS | FAIL | PARTIAL]\n\n**Start:** HH:MM:SS\n**Finish:** HH:MM:SS\n**Observations:**\n- <anything notable>\n\n**Issues found:**\n- [category] <description> — [file/component ref if applicable]",
+   "hypothesis": "The execution-log template includes Start and Finish time fields."
+  },
+  {
+   "id": "sg-0109",
+   "premise": "| `/pipeline` | Pipeline health, failures, re-embed |",
+   "hypothesis": "/pipeline is a route whose listed purpose is pipeline health, failures and re-embed."
+  },
+  {
+   "id": "sg-0247",
+   "premise": "`repo.indexing_started`, `repo.indexing_progress`, `repo.indexing_completed`",
+   "hypothesis": "The expected repo events include repo.indexing_started, repo.indexing_progress and repo.indexing_finished."
+  },
+  {
+   "id": "sg-0209",
+   "premise": "[ ] Toasts auto-dismiss after ~4 seconds",
+   "hypothesis": "Toasts auto-dismiss after roughly four seconds."
+  },
+  {
+   "id": "sg-0037",
+   "premise": "Both secrets are read at runtime and are baked into no image layer",
+   "hypothesis": "JWT_SECRET and DB_PASSWORD are read at runtime and baked into no image layer."
+  },
+  {
+   "id": "sg-0108",
+   "premise": "| `mcp__playwright__browser_close()` | **Always** call when finished — shared instance |",
+   "hypothesis": "The tool table maps browser_close to the purpose of always calling it when finished because the browser instance is shared."
+  }
+ ]
+}

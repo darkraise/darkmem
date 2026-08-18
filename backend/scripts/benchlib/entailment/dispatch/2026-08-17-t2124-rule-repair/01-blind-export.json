@@ -1,0 +1,152 @@
+[
+ {
+  "id": "eg-0435",
+  "premise": "media-04 uses ffmpeg",
+  "hypothesis": "media-04 uses ffmpeg for every transcoding job it runs."
+ },
+ {
+  "id": "eg-0625",
+  "premise": "netdata uses onyx-03",
+  "hypothesis": "Onyx-03 is put to work by netdata as part of its normal operation."
+ },
+ {
+  "id": "eg-0443",
+  "premise": "vane-01 uses samba",
+  "hypothesis": "Samba uses vane-01."
+ },
+ {
+  "id": "eg-0467",
+  "premise": "wisp-01 deployed on port 9500",
+  "hypothesis": "Port 9500 is deployed on wisp-01."
+ },
+ {
+  "id": "eg-0568",
+  "premise": "infisical replaces .env files",
+  "hypothesis": "Infisical replaces HashiCorp Vault."
+ },
+ {
+  "id": "eg-0587",
+  "premise": "clickhouse deployed on data-06",
+  "hypothesis": "data-06 is deployed on clickhouse."
+ },
+ {
+  "id": "eg-0665",
+  "premise": "Ravenna Systems has distributed the sable-agent collector under the Apache-2.0 licence since its first release on 2024-04-16, and the licence has not changed since.",
+  "hypothesis": "As of January 2026, sable-agent was not distributed under the Apache-2.0 licence."
+ },
+ {
+  "id": "eg-0432",
+  "premise": "wisp-01 uses ticket-router",
+  "hypothesis": "ticket-router uses wisp-01."
+ },
+ {
+  "id": "eg-0464",
+  "premise": "authelia depends on kv-01",
+  "hypothesis": "kv-01 relies on authelia in order to operate."
+ },
+ {
+  "id": "eg-0600",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "Anvil-render draws on files-01 as part of its operation."
+ },
+ {
+  "id": "eg-0483",
+  "premise": "consul deployed on core-03",
+  "hypothesis": "Consul's configuration is managed through a Git-backed workflow."
+ },
+ {
+  "id": "eg-0593",
+  "premise": "powerdns deployed on quire-03",
+  "hypothesis": "quire-03 hosts powerdns."
+ },
+ {
+  "id": "eg-0473",
+  "premise": "syncthing uses design archive",
+  "hypothesis": "The design archive is used by syncthing."
+ },
+ {
+  "id": "eg-0701",
+  "premise": "jenkins deployed on ci-01",
+  "hypothesis": "At least one component is deployed on ci-01."
+ },
+ {
+  "id": "eg-0469",
+  "premise": "ansible deployed on infra-02",
+  "hypothesis": "infra-02 hosts the ansible installation."
+ },
+ {
+  "id": "eg-0439",
+  "premise": "opentelemetry deployed on onyx-03",
+  "hypothesis": "onyx-03 is deployed on OpenTelemetry."
+ },
+ {
+  "id": "eg-0623",
+  "premise": "pgadmin deployed on quire-03",
+  "hypothesis": "Pgadmin is deployed on core-03."
+ },
+ {
+  "id": "eg-0697",
+  "premise": "The quarry analytics job was scheduled for retirement on 31 May 2026 as part of the Q2 cleanup.",
+  "hypothesis": "The quarry analytics job stopped running on 31 May 2026."
+ },
+ {
+  "id": "eg-0515",
+  "premise": "quota-watcher deployed on cpu",
+  "hypothesis": "The CPU is deployed on quota-watcher."
+ },
+ {
+  "id": "eg-0686",
+  "premise": "Schema migrations against the billing database were frozen for the duration of the Q1 2026 external audit.",
+  "hypothesis": "Schema migrations against the billing database resumed after the Q1 2026 audit."
+ },
+ {
+  "id": "eg-0534",
+  "premise": "woodpecker ci deployed on tether-02",
+  "hypothesis": "tether-02 is the machine hosting the Woodpecker CI installation."
+ },
+ {
+  "id": "eg-0700",
+  "premise": "auth-01 depends on kv-01",
+  "hypothesis": "At least one component depends on kv-01."
+ },
+ {
+  "id": "eg-0702",
+  "premise": "typesense deployed on search-01",
+  "hypothesis": "search-01 hosts at least one deployed component."
+ },
+ {
+  "id": "eg-0638",
+  "premise": "auth-01 deployed on auth-02",
+  "hypothesis": "Auth-02 is deployed on auth-01."
+ },
+ {
+  "id": "eg-0656",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "All of Concourse's pipelines execute on build-04."
+ },
+ {
+  "id": "eg-0573",
+  "premise": "cockroachdb replaces firebird",
+  "hypothesis": "Firebird's role was taken over by CockroachDB."
+ },
+ {
+  "id": "eg-0703",
+  "premise": "telegraf uses influxdb",
+  "hypothesis": "influxdb is employed by telegraf."
+ },
+ {
+  "id": "eg-0684",
+  "premise": "Throughout the winter maintenance window of 1 December 2025 to 28 February 2026, the mistral-gpu node was reserved exclusively for thermal rework and served no scheduled jobs.",
+  "hypothesis": "The mistral-gpu node served no scheduled jobs in January 2026."
+ },
+ {
+  "id": "eg-0641",
+  "premise": "slurm deployed on yarrow-01",
+  "hypothesis": "Yarrow-01 draws its power from the rack's secondary PDU feed."
+ },
+ {
+  "id": "eg-0605",
+  "premise": "fulfillment application uses talon-01",
+  "hypothesis": "Talon-01 was rebuilt during the last maintenance window."
+ }
+]

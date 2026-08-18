@@ -1,0 +1,101 @@
+{
+ "pass": "A",
+ "n": 17,
+ "labels": [
+  {
+   "id": "sg-0261",
+   "verdict": "not-entailed",
+   "rule": "the definite-description rule",
+   "note": "'the classification card' imports an identity the bytes never show; the [ ] licenses only 'a listed check'"
+  },
+  {
+   "id": "sg-0263",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0277",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule (value swap)",
+   "note": "initialized false vs true"
+  },
+  {
+   "id": "sg-0265",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0268",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0276",
+   "verdict": "entailed",
+   "rule": "the checklist rule"
+  },
+  {
+   "id": "sg-0264",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'need' to 'require' within the span's own assertive prose; not the imperative rule's case"
+  },
+  {
+   "id": "sg-0275",
+   "verdict": "entailed",
+   "rule": "the code-block rule",
+   "note": "stays at text level: which script the shown command invokes and that it carries a password argument"
+  },
+  {
+   "id": "sg-0262",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "heading cited, so 'Under the Design and UX section' is licensed"
+  },
+  {
+   "id": "sg-0267",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "the span asserts the limitation flatly; hypothesis keeps content and reason"
+  },
+  {
+   "id": "sg-0274",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "dropping the badge values is weakening"
+  },
+  {
+   "id": "sg-0271",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0269",
+   "verdict": "entailed",
+   "rule": "the procedural-prose rule",
+   "note": "'the instruction is to ...' is the licensed metatextual form for an imperative"
+  },
+  {
+   "id": "sg-0273",
+   "verdict": "entailed",
+   "rule": "the checklist rule",
+   "note": "dropping the badge list is weakening"
+  },
+  {
+   "id": "sg-0272",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  },
+  {
+   "id": "sg-0266",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)",
+   "note": "'are the prerequisites' mirrors the span's own exhaustive 'Prerequisites:' label with nothing omitted \u2014 not the unruled bare-plural gap"
+  },
+  {
+   "id": "sg-0270",
+   "verdict": "entailed",
+   "rule": "rewording preserves entailment (procedure 3)"
+  }
+ ]
+}

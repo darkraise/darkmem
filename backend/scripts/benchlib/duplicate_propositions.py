@@ -132,3 +132,62 @@ def find_duplicate_propositions(
                         DuplicateFinding(left["id"], right["id"], round(score, 4))
                     )
     return sorted(findings, key=lambda f: f.key())
+
+
+@dataclass(frozen=True)
+class CrossGoldFinding:
+    fresh_id: str
+    archived_id: str
+    premise_similarity: float
+    hypothesis_similarity: float
+
+
+def cross_gold_near_overlap(
+    fresh_pairs, archived_pairs, *, threshold: float = JACCARD_THRESHOLD
+) -> list[CrossGoldFinding]:
+    """Fresh pairs that near-reproduce a live pair of the archived gold.
+
+    ``find_duplicate_propositions`` cannot do this job across the two files
+    and would report nothing if pointed at them: it groups on byte-identical
+    premise + verdict, and a fresh gold whose premises are all excluded from
+    the archived harvest shares no premise bytes with the archive at all —
+    cross-file it is vacuous by construction (T2.124 plan review, verified in
+    code). So the cross-file screen deliberately drops both groupings: a
+    (fresh, archived-live) row pair is flagged when **both** sides clear the
+    module's content-token Jaccard — ``similarity(premise, premise) >=
+    threshold AND similarity(hypothesis, hypothesis) >= threshold`` — with no
+    shared-premise grouping and no verdict grouping. Reversal hard-negatives
+    of genuinely fresh premises score low on the premise side and stay
+    unflagged; a rewording of an archived pair (the ``eg-0367`` shape, one
+    file removed) scores high on both and is reported for re-authoring from
+    a different premise, never for rewording.
+
+    Byte-identical reproduction is the digest refusal's job
+    (``retired_pair_overlap``); this screen exists for what the digest
+    cannot see. Like everything in this module it reads pair text only —
+    no rationale, no slice, no judge output — so nothing it reports can be
+    a function of how any model performed.
+    """
+    archived_live = [
+        pair for pair in archived_pairs
+        if not ("retired" in pair or pair.get("retirement_kind"))
+    ]
+    findings: list[CrossGoldFinding] = []
+    for fresh in fresh_pairs:
+        if "retired" in fresh or fresh.get("retirement_kind"):
+            continue
+        for archived in archived_live:
+            premise_score = similarity(
+                fresh.get("premise", ""), archived.get("premise", "")
+            )
+            if premise_score < threshold:
+                continue
+            hypothesis_score = similarity(
+                fresh.get("hypothesis", ""), archived.get("hypothesis", "")
+            )
+            if hypothesis_score >= threshold:
+                findings.append(CrossGoldFinding(
+                    fresh["id"], archived["id"],
+                    round(premise_score, 4), round(hypothesis_score, 4),
+                ))
+    return sorted(findings, key=lambda f: (f.fresh_id, f.archived_id))

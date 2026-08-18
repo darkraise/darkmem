@@ -1,0 +1,122 @@
+{
+ "eg-0567": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance, ratified 2026-08-06): the premise fixes tether-02 as roster-sync's host, so a differing host (tether-05) is contradicted, not unsupported."
+ },
+ "eg-0610": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 (strengthening breaks entailment): the hypothesis keeps the premise's host but adds 'behind a reverse proxy', which the premise neither asserts nor excludes, so it is unsupported per procedure 4."
+ },
+ "eg-0449": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 (absence is not exclusion): the premise shares only the xenon-snapshots entity and asserts nothing about replication schedules or offsite providers."
+ },
+ "eg-0561": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): 'vane-01 carries the Zulip installation' restates 'zulip deployed on vane-01' with the host/guest roles preserved and nothing added."
+ },
+ "eg-0668": {
+  "verdict": "contradicted",
+  "rationale": "Window rule plus the exclusive-slot rule on a scheduled time: 'throughout 2024' includes June-December 2024, for which the premise fixes 02:00 UTC, so the hypothesis's 04:30 UTC cannot be accepted alongside the premise."
+ },
+ "eg-0623": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance): the premise fixes quire-03 as pgadmin's host, so core-03 is a differing value for a single-valued slot."
+ },
+ "eg-0657": {
+  "verdict": "contradicted",
+  "rationale": "Window rule (closed-window case, eg-0018 analog): the premise explicitly closes the Traefik window with a named successor (Caddy 2.8, terminating ingress since 2025-12-01), so the present-tense Traefik claim is contradicted."
+ },
+ "eg-0493": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): 'Garage is put into service by data-06' renders 'data-06 uses garage' in the passive within use-strength vocabulary; noting the dispatch's Dependency-strength rule is absent from the prefix I was given, I decided this as a rewording, not a strengthening, since 'in service by' asserts use rather than dependency."
+ },
+ "eg-0698": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (weakening preserves entailment) read with the dispatch-named Frame rule, whose text is absent from the prefix I was given: 'the estate' is the universal discourse frame of this corpus world rather than a proper subset, so existentially generalising 'terraform uses minio' to 'at least one component of the estate makes use of MinIO' adds no content."
+ },
+ "eg-0598": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 (absence is not exclusion): the premise shares only the fulfillment-network entity and asserts nothing about monitoring or an on-call rotation."
+ },
+ "eg-0491": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (a port is a single-valued configuration slot): the premise fixes port 3000 for this listener, so 8080 is a differing value and is contradicted despite no surface negation."
+ },
+ "eg-0532": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule (lexical case): 'every' carries exhaustivity as asserted content, strengthening the bare-plural premise, and the strengthening crosses no exclusion, so the verdict is unsupported."
+ },
+ "eg-0624": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance): the premise fixes graph-01 as memgraph's host, so data-06 is a differing value for a single-valued slot."
+ },
+ "eg-0658": {
+  "verdict": "contradicted",
+  "rationale": "Window rule (closed-window case): the premise explicitly closes the operating window with a named end event (shutdown at grant expiry, 2025-07-15), so the present-tense 'operates' claim is contradicted."
+ },
+ "eg-0519": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host of a single named instance): the premise fixes wisp-01 as ticket-router's host, so tether-02 is a differing value for a single-valued slot."
+ },
+ "eg-0428": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (weakening preserves entailment): the hypothesis is the existential generalisation of the premise over the universal category 'component', dropping the specific dependency etcd and adding nothing."
+ },
+ "eg-0578": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 (strengthening breaks entailment): the premise states the deployment with no inception, and 'since the cluster was commissioned' adds temporal content the premise does not establish."
+ },
+ "eg-0586": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): a voice flip of the premise with all content preserved and the use direction unchanged."
+ },
+ "eg-0484": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule (lexical case) plus procedure 3: 'every inbound support request' asserts exhaustive scope and a purpose the bare 'zulip uses ticket-router' does not establish, strengthening without crossing an exclusion."
+ },
+ "eg-0629": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): 'Batch-01 is a dependency of Garage' is the converse-nominal rendering of 'garage depends on batch-01' with the dependency direction preserved."
+ },
+ "eg-0660": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule (predecessor-named case): the premise names the state the cutover displaced (Filebeat handled shipping up to 2025-05-19), so placing Vector's shipping in February 2025, before the inception, is contradicted rather than unsupported."
+ },
+ "eg-0422": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording/weakening preserves entailment): 'calls on to do its work' renders 'uses' in same-strength vocabulary, and 'is among the software' is an existential frame over the universal category that adds nothing."
+ },
+ "eg-0613": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): 'is dependent on' is a near-literal restatement of 'depends on' with the same endpoints and direction."
+ },
+ "eg-0693": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 via the window rules: the rebuild landed at an unfixed point inside the 2-20 March sprint, so the premise neither establishes nor excludes Talos 1.7 running on 5 March - the state's start is indeterminate within the window."
+ },
+ "eg-0602": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 (strengthening breaks entailment): 'as a containerised workload' adds packaging content the premise's bare 'deployed on' neither asserts nor excludes."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case (DEPLOYED_ON is pre-classified exclusive): 'auth-01 is hosted on Authelia' swaps host and guest for the same pair, which one deployment cannot carry both ways."
+ },
+ "eg-0595": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case (DEPLOYED_ON is pre-classified exclusive): 'infra-02 is deployed on ansible' reverses the premise's host/guest roles, which cannot both hold for the same pair."
+ },
+ "eg-0509": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 (strengthening breaks entailment): the hypothesis adds the specific purpose 'to store its long-term metrics history', which the bare 'uses' premise does not establish and does not exclude."
+ },
+ "eg-0474": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording preserves entailment): a voice flip of the premise with all content and the use direction preserved."
+ },
+ "eg-0699": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 (rewording/weakening preserves entailment): 'employs' is same-strength use vocabulary and 'one of the pieces of software' is an existential frame over the universal category, adding nothing to 'grafana uses nginx'."
+ }
+}

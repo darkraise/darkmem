@@ -142,6 +142,20 @@ def score(
     return resample_block, disagreements
 
 
+def _detected_indent(gold_path: Path | str, default: int = 2) -> int:
+    """The file's existing indent width, read off its second line.
+
+    Falls back to `default` for a file that has no indented line to read —
+    a shape no committed gold has, and one where guessing wide is harmless
+    because there is nothing to preserve.
+    """
+    for line in Path(gold_path).read_text(encoding="utf-8").split("\n")[1:]:
+        stripped = line.lstrip(" ")
+        if stripped.startswith('"') and stripped != line:
+            return len(line) - len(stripped)
+    return default
+
+
 def write_resample(
     gold_path: Path | str,
     resample_block: dict,
@@ -174,8 +188,19 @@ def write_resample(
         resample_block = {**resample_block, "supersedes": [*prior_chain, prior_own]}
 
     doc["resample"] = resample_block
+    # **Preserve the file's own indentation.** A hardcoded `indent=2` reformats
+    # every line of a file whose *bytes* a draw seed is derived from, so
+    # stamping a certification silently moved `gold_sha256` for a reason that
+    # is not the certification. It has cost two audit-trail reconstructions:
+    # round 4's gold was authored at indent=1 and reformatted by its first
+    # stamp (2026-08-17), then the excluded-premise repair's re-stamp did it
+    # again the same day. Content was provably intact both times — that is what
+    # `pairs_sha256` is for — but "provable after the fact" is more expensive
+    # than "never moved".
     gold_path.write_text(
-        json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+        json.dumps(doc, indent=_detected_indent(gold_path), ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
     )
     return doc
 

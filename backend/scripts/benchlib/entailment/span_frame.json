@@ -1,0 +1,82 @@
+{
+  "_notes": "The claim/span gold's composition frame, RATIFIED BY THE OWNER 2026-08-17 before any pair was authored. Ratified alongside SPAN_LABELLING.md, which was also written before any pair existed (rule-then-pairs). This file is the authoring contract: an author fills its slots and may not move a count. Every number below is derived in the `derivations` block rather than chosen, on T2.124's precedent that a frame with free parameters lets a score-aware party pick the one that flatters.",
+  "ratified_on": "2026-08-17",
+  "ratified_by": "owner",
+  "rulebook": "SPAN_LABELLING.md",
+  "manifest": "span_harvest.json",
+  "totals": {
+    "pairs": 260,
+    "entailed": 120,
+    "not_entailed": 140
+  },
+  "slices": {
+    "span-truncation": {
+      "n": 30,
+      "verdict": "not-entailed",
+      "span_specific": true
+    },
+    "context-dependence": {
+      "n": 30,
+      "verdict": "not-entailed",
+      "span_specific": true
+    },
+    "multi-span-composition": {
+      "n": 30,
+      "verdict": "entailed",
+      "span_specific": true
+    },
+    "structure-fragment": {
+      "n": 30,
+      "verdict": "mixed",
+      "entailed": 15,
+      "not_entailed": 15,
+      "span_specific": true
+    },
+    "verbatim": {
+      "n": 25,
+      "verdict": "entailed",
+      "span_specific": false
+    },
+    "paraphrase": {
+      "n": 30,
+      "verdict": "entailed",
+      "span_specific": false
+    },
+    "weakening": {
+      "n": 20,
+      "verdict": "entailed",
+      "span_specific": false
+    },
+    "overreach": {
+      "n": 30,
+      "verdict": "not-entailed",
+      "span_specific": false
+    },
+    "value-swap": {
+      "n": 25,
+      "verdict": "not-entailed",
+      "span_specific": false
+    },
+    "unrelated": {
+      "n": 10,
+      "verdict": "not-entailed",
+      "span_specific": false
+    }
+  },
+  "derivations": {
+    "total_260": "200 is doc 17 §6's floor per task variant. 30% headroom above it absorbs retirements without forcing a re-harvest, which is what T2.124's late retire-and-replace round cost when it had none.",
+    "entailed_120": "The recall bar is 0.90 and its lattice is k/gold_entailed, so 0.90 must land exactly or the bar silently becomes stricter than stated — T2.115's whole round was that defect on the claim/fact gold. 0.90 × 120 = 108 exactly, tolerating 12 misses. 100, 110 and 130 are also exact; 120 was taken for headroom over the floor at a pair count the pool supports.",
+    "precision_bar_not_sized": "0.95 on entailed precision CANNOT be sized by a frame: its denominator is tp+fp, which depends on the judge's false accepts. Stated here so nobody later reads the census as guaranteeing both bars are on-lattice.",
+    "near_misses_145": "span-truncation 30 + context-dependence 30 + overreach 30 + value-swap 25 + structure-fragment 30 = 145 of 260 = 56%, satisfying doc 17 §6's 'near-misses the majority'. `unrelated` (10) is the only easy negative and is deliberately the smallest slice: an easy negative measures nothing about the boundary.",
+    "span_specific_120": "The four slices this gold exists for carry 120 of 260 — the largest single group. A claim/span gold whose bulk was transferable slices would measure what the claim/fact gold already measures.",
+    "block_supply": "260 pairs, of which 30 multi-span consume ≥2 blocks → ~290 block-slots. Cap of 2 pairs per block (T2.124's correlated-evidence finding: four pairs of one construction on one premise is 'correlated evidence wearing four rows') → ≥145 distinct blocks needed against 800 harvested.",
+    "prose_supply": "The prose-hungry slices (truncation, context-dependence, paraphrase, weakening, overreach, value-swap) total 165 pairs. Against the 67 paragraphs ≥80 chars alone that is 2.5 per block, ABOVE the cap — so list items ≥40 chars (375) are in the prose pool too, giving 442 blocks and 0.37 pairs per block. Recorded because the paragraph-only reading would have made the frame infeasible and it is not obvious."
+  },
+  "authoring_rules": {
+    "cap_pairs_per_block": 2,
+    "anchors_are_computed": "Every anchor is produced by span_pair_builder.PairBuilder; a hand-typed char_span or text_sha256 is a defect. The builder refuses a quote absent from the named block, a quote occurring more than once, and any anchor that fails to round-trip through the real loader.",
+    "one_slice_per_pair": true,
+    "rationale_cites_a_named_rule": "Free-text rationales are refused at adjudication; cite a rule by its name in SPAN_LABELLING.md.",
+    "cap_pairs_per_block_is_GLOBAL": "The cap is over the whole gold, not per authoring slot, and blind authors CANNOT enforce it: they cannot see each other's blocks by construction. In round 1 both authors held max 2 within their own slot and the combined gold still put 3-4 pairs on 27 blocks, all cross-slot, 32 excess pair-slots. That is a controller error, not an author error. The next round must either partition the block pool up front (disjoint per slot) or reconcile afterwards as this one did, re-authoring the excess onto blocks used by no slot."
+  }
+}

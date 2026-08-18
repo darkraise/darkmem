@@ -1,0 +1,91 @@
+{
+ "_notes": "Blind sheet for the 17 replacement pairs authored after the Round-1 amendments. Verdicts, slices and rationales stripped; order shuffled. Decide each under the AMENDED SPAN_LABELLING.md.",
+ "n": 17,
+ "pairs": [
+  {
+   "id": "sg-0261",
+   "premise": "[ ] Simple mode shows the 7 universal types with descriptions",
+   "hypothesis": "The classification card's Simple mode showing the 7 universal types with descriptions is a listed check."
+  },
+  {
+   "id": "sg-0263",
+   "premise": "Phase 2 — Login, logout, and auth hardening\n\n**Goal:** Validate login/logout flows plus the hardening decisions from the earlier auth audit.",
+   "hypothesis": "Phase 2's goal is validating login and logout flows plus the hardening decisions from the earlier auth audit."
+  },
+  {
+   "id": "sg-0277",
+   "premise": "`curl http://localhost:8000/api/v1/auth/status` → `{\"initialized\": false}`",
+   "hypothesis": "The expected response from /api/v1/auth/status is {\"initialized\": true}."
+  },
+  {
+   "id": "sg-0265",
+   "premise": "**Goal:** Verify the Overview (`/`) page renders correctly on a fresh database and populates when data exists.",
+   "hypothesis": "The goal is to verify that the Overview page renders correctly on a fresh database and populates when data exists."
+  },
+  {
+   "id": "sg-0268",
+   "premise": "**`count_obsolete` on huge tables** — no index on `model_fingerprint` yet",
+   "hypothesis": "count_obsolete on huge tables has no index on model_fingerprint yet."
+  },
+  {
+   "id": "sg-0276",
+   "premise": "[ ] Buttons disable while mutations are in flight (no double-submits)",
+   "hypothesis": "The checklist has an item about buttons disabling while mutations are in flight."
+  },
+  {
+   "id": "sg-0264",
+   "premise": "UI phases still need Playwright or a human walkthrough per `checklist.md` (short runbook).",
+   "hypothesis": "UI phases still require Playwright or a human walkthrough following checklist.md."
+  },
+  {
+   "id": "sg-0275",
+   "premise": "**Bash:** `python docs/e2e/scripts/03_memories_crud.py --password \"e2e-admin-pw\"` — full API CRUD matrix",
+   "hypothesis": "The command runs docs/e2e/scripts/03_memories_crud.py with a password argument."
+  },
+  {
+   "id": "sg-0262",
+   "premise": "15. Design and UX\n\n[ ] Keyboard focus is visible (outline) on all interactive elements",
+   "hypothesis": "Under the Design and UX section, keyboard focus being visible with an outline on all interactive elements is an item to verify."
+  },
+  {
+   "id": "sg-0267",
+   "premise": "**No rate limiting on login** — single-admin tool",
+   "hypothesis": "Login is not rate limited, the tool being single-admin."
+  },
+  {
+   "id": "sg-0274",
+   "premise": "[ ] List shows indexed repos with status badge (ready / cloning / indexing / error)",
+   "hypothesis": "The checklist lists showing indexed repos with a status badge."
+  },
+  {
+   "id": "sg-0271",
+   "premise": "**Goal:** Validate the Graph, Unified Graph, Code Graph pages render correctly.",
+   "hypothesis": "The goal is validating that the Graph, Unified Graph and Code Graph pages render correctly."
+  },
+  {
+   "id": "sg-0269",
+   "premise": "File issues or update `test-plan.md` with new phases as needed.",
+   "hypothesis": "The instruction is to file issues or update test-plan.md with new phases as needed."
+  },
+  {
+   "id": "sg-0273",
+   "premise": "[ ] Recent Pipeline Executions table shows per-memory status with embed/extract/vector/graph badges",
+   "hypothesis": "The checklist lists a Recent Pipeline Executions table showing per-memory status."
+  },
+  {
+   "id": "sg-0272",
+   "premise": "**Goal:** Catch design gaps, UX violations, accessibility issues, and responsive/dark-mode problems.",
+   "hypothesis": "The goal is catching design gaps, UX violations, accessibility issues, and responsive or dark-mode problems."
+  },
+  {
+   "id": "sg-0266",
+   "premise": "Prerequisites: Docker + Docker Compose v2.",
+   "hypothesis": "Docker and Docker Compose v2 are the prerequisites."
+  },
+  {
+   "id": "sg-0270",
+   "premise": "Scripts in `scripts/` can be run independently:",
+   "hypothesis": "The scripts under scripts/ can each be run on their own."
+  }
+ ]
+}

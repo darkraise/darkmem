@@ -1,0 +1,149 @@
+{
+  "verdicts": [
+    {
+      "case": 1,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts only that something (some service) is deployed on spire-01, dropping the subject entirely; B asserts the full fact that syncthing specifically is deployed there, in cleft form. B carries the entity identity that A generalises away, and A's existential is a strictly weaker, non-equivalent claim. What would settle it: whether the gold counts an existential generalisation of a named subject as the same proposition rather than a weaker one — the rulebook's own duplicate test is logical equivalence, which these fail."
+    },
+    {
+      "case": 2,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert exactly that Zulip is deployed on vane-01 — A as a definite predicate nominal ('is the host on which'), B as 'carries the installation'. A's definiteness is presupposed exhaustivity, not asserted content, so neither carries anything the other lacks."
+    },
+    {
+      "case": 3,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts the deployment of Slurm on yarrow-01 plus a high-availability configuration; B asserts something about yarrow-01's power feed from the rack's secondary PDU. They share only the host name and assert unrelated propositions."
+    },
+    {
+      "case": 4,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert the same existential: files-01 has at least one deployed component on it. 'has ... deployed on it' and 'carries at least one deployed component' are word-for-word interchangeable in claim content; neither adds anything."
+    },
+    {
+      "case": 5,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that anvil-render uses ImageMagick — A in active 'calls on to do its work' phrasing with a sortal ('among the software'), B in the passive. The sortal describes ImageMagick rather than adding a separate claim."
+    },
+    {
+      "case": 6,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that ridge-01 uses quire-03; 'is one of the components ridge-01 operates with' and 'is used by ridge-01' are the same relation between the same two entities, with the sortal 'component' carrying no separate claim."
+    },
+    {
+      "case": 7,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that Celery is deployed on media-04, each with a definite predicate nominal ('the machine that carries' / 'the host Celery runs on'). Machine and host are the same slot here; nothing is asserted by one and not the other."
+    },
+    {
+      "case": 8,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts only that alert storms are related to some named component of the estate; B asserts the specific relation between lb-01 and alert storms. B carries the entity lb-01 that A abstracts away, so accepting A does not give you B. What would settle it: whether an existential over the estate counts as the same proposition as the named-entity claim it was weakened from."
+    },
+    {
+      "case": 9,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A adds a purpose to the use — ClickHouse stores data-06's long-term metrics history; B adds exclusivity — ClickHouse is the only datastore data-06 queries. Each strengthens the premise along a different axis and neither claim contains the other."
+    },
+    {
+      "case": 10,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts nightly offsite replication of xenon-snapshots; B asserts its exclusion from the last disaster-recovery drill. Two unrelated propositions that share only the entity name."
+    },
+    {
+      "case": 11,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that something depends on ledger-02 (existential over dependents); B asserts that clickhouse has some dependency (existential over dependencies). They weaken the premise from opposite ends of the relation, and neither entails the other."
+    },
+    {
+      "case": 12,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts the full fact that ImageMagick is deployed on images-02; B asserts only that images-02 hosts some deployed component. B drops the subject, so it is a strictly weaker, non-equivalent claim rather than a rewording. What would settle it: whether the gold's 'pure weakening' clause is meant to collapse an existential generalisation into its specific parent proposition."
+    },
+    {
+      "case": 13,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts a thirty-second polling interval from Uptime Kuma to order-sync; B asserts a nightly volume of several thousand records cleared by order-sync. Different relations, different quantities, no shared claim."
+    },
+    {
+      "case": 14,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts only that some system uses Authelia; B asserts that auth-02 specifically uses it. B carries the named user that A generalises away. What would settle it: the same question as cases 1 and 12 — whether existential weakening counts as one proposition with its specific source."
+    },
+    {
+      "case": 15,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that every request reaching Consul is authenticated through Authelia; B asserts that Authelia enforces two-factor authentication for administrative logins. Different scope, different subject matter — B says nothing about Consul at all."
+    },
+    {
+      "case": 16,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts that at least one component of the nimbus deployment uses nimbus-archive; B asserts that nimbus-02 specifically uses it. B names the user and A only quantifies over a group, so A is weaker and not equivalent. What would settle it: whether the generalisation from nimbus-02 to 'the nimbus deployment' is treated as a separate scope claim."
+    },
+    {
+      "case": 17,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that powerdns uses the fulfillment network for every zone transfer (a universal quantifier over powerdns's transfers); B asserts around-the-clock on-call monitoring of that network. Different relations and different entities doing the acting."
+    },
+    {
+      "case": 18,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that ticket-router is deployed on tether-02 (a different host in the same slot); B asserts that wisp-01 runs as a workload on ticket-router (the deployment relation reversed). One is a value swap, the other a direction reversal — different claims that happen to share a verdict."
+    },
+    {
+      "case": 19,
+      "verdict": "DISTINCT",
+      "confidence": "medium",
+      "reason": "A asserts only that files-01 has some dependent component in the estate; B asserts that airflow specifically depends on files-01. B carries the dependent's identity that A abstracts away. What would settle it: whether the existential weakening is scored as the same proposition as the named-pair fact."
+    },
+    {
+      "case": 20,
+      "verdict": "DUPLICATE",
+      "confidence": "medium",
+      "reason": "Both assert that ledger-02 causes mon-05 — A via a definite predicate nominal ('the effect that ledger-02 produces'), B via 'is brought about by'. Under the rulebook's exhaustivity rule the definite nominal presupposes rather than asserts sole-effect status, so nothing separate is claimed; a reader who took 'the effect' as asserting uniqueness would call them distinct, and that reading is what would settle it."
+    },
+    {
+      "case": 21,
+      "verdict": "DUPLICATE",
+      "confidence": "high",
+      "reason": "Both assert that nimbus-02 uses RabbitMQ; 'is used by' and 'is called on by' are the same relation between the same two entities with no difference in strength or scope."
+    },
+    {
+      "case": 22,
+      "verdict": "DUPLICATE",
+      "confidence": "low",
+      "reason": "Both render the same use relation between osquery and quota-watcher — A as 'osquery's operation involves' it, B as 'a component that osquery relies on'. Borderline because 'relies on' carries a dependence flavour that bare involvement does not; what would settle it is whether this gold treats reliance as strictly stronger than use, in which case B asserts something A does not."
+    },
+    {
+      "case": 23,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that idx-03 hosts some deployed service (dropping Meilisearch); B asserts that Meilisearch is deployed on some host (dropping idx-03). Each weakens away the entity the other keeps, and neither entails the other."
+    },
+    {
+      "case": 24,
+      "verdict": "DISTINCT",
+      "confidence": "high",
+      "reason": "A asserts that ledger-02 sits in the finance team's rack allocation, saying nothing about CockroachDB; B asserts the deployment plus that ledger-02 is provisioned as a dedicated database host. Different added content and different subject matter."
+    }
+  ],
+  "attestation": "I read exactly three files in /tmp/t2124-step9-adj-2: BRIEF.md, RULEBOOK.md, and cases.json. I wrote only verdicts.json and edited no other file. I was given no information about which cases were expected to be duplicates, no expected duplicate count or rate, and no recorded adjudication from any other pass; each case was judged solely on its own premise and two hypotheses."
+}

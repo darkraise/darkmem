@@ -1,0 +1,9 @@
+{
+  "id": "eg-0724",
+  "premise": "lb-01 deployed on memgraph",
+  "hypothesis": "memgraph has lb-01 deployed on it",
+  "verdict": "entailed",
+  "slice": "paraphrase",
+  "rationale": "Uses the possessive-existential construction ('Y has X deployed on it'), structurally distinct from the taken 'X runs on Y' (subject-verb-locative) and 'Y hosts X' (transitive SVO) constructions. The possessive-existential clause names exactly this rendering as earned for DEPLOYED_ON ('DEPLOYED_ON earns \"X has a component deployed on it\", because deployment on X places the subject in X's hosted stack'); here the deployed entity is named directly with no inserted sortal noun at all, so the bare-sortal clause is not even implicated. General procedure 3 (rewording preserves entailment, nothing added or strengthened) is otherwise satisfied: same direction, same two entities, no new content.",
+  "attestation": "Read only: (1) this task prompt, and (2) scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md, per the allowlist. Ran no commands and used no search tools. Note: the environment auto-injected several system-reminder blocks I did not request — the user's global CLAUDE.md (/root/.claude-alt/CLAUDE.md), the user's auto-memory (MEMORY.md), the repo's root CLAUDE.md (/root/repositories/darkmem/CLAUDE.md), and the worktree's CLAUDE.md (/root/repositories/darkmem/.worktrees/t2.124/CLAUDE.md), plus tool/skill listings and MCP server instructions. These appeared in the conversation context and were not deliberately opened by me; they were not used as a source for this label, which is grounded only in the two allowlisted documents."
+}

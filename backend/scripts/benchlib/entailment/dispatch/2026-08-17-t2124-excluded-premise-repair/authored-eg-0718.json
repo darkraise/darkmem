@@ -1,0 +1,9 @@
+{
+  "id": "eg-0718",
+  "premise": "uptime kuma uses notify-relay",
+  "hypothesis": "notify-relay is used.",
+  "verdict": "entailed",
+  "slice": "weakening",
+  "rationale": "General decision procedure 3 lists voice change and dropping content as entailment-preserving weakenings distinct from each other. This pair applies both together: passive voice with the agent phrase omitted entirely, so 'uptime kuma' is dropped rather than generalised into any existential or bare-sortal phrase. No new noun (e.g. 'a resource', 'something', 'a consumer') is introduced on either slot, so the bare-sortal clause and the frame rule are not implicated at all. This is a different axis from the existential-generalisation-over-object construction ('uses a resource') already used elsewhere in the batch: that axis keeps the subject and replaces the object with a bare sortal; this one keeps the object and removes the subject via passive agent-drop, adding no sortal noun anywhere.",
+  "attestation": "I read only: (1) this task prompt, and (2) /root/repositories/darkmem/.worktrees/t2.124/backend/scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md, the labelling rulebook, in full. I read nothing else and ran no tools other than the Write call that produced this file. Note: the environment auto-injected CLAUDE.md contents (user-global and project) and MCP/tool system-reminder text into my context before I took any action; I did not request or choose to read those, and did not use their contents in forming this verdict beyond noting their presence here as instructed."
+}

@@ -605,3 +605,103 @@ def test_the_gate_track_is_qualified_produces():
         if (state.get(task, ("", ""))[1] == "gate") != (qualifier == "produces")
     ]
     assert wrong == [], f"gate-track marking disagrees across the two documents: {wrong}"
+
+
+# ── the ledger's status table must agree with the tree, not with its own prose ──
+#
+# The summary table at the top of `gate-ledger.md` is the first thing a reader
+# consults to answer "which gates carry verdicts?", and it is 450 lines above
+# the sections that decide the answer. On 2026-08-16 G-C was cleared and its
+# record minted; the table went on saying **open** ... "No promotion record
+# minted" for a day, on master and on every branch, while the section below it
+# and `CLAUDE.md` both said CLEARED. Nothing compared them, because every
+# comparison available was prose-to-prose.
+#
+# So the binding here is doc-to-artifact. A gate's evidence record is minted
+# only by a cleared run and never by hand, which makes its presence the one
+# machine-readable fact about a gate's status — and the two gates that have
+# such a record are exactly the two whose status has actually drifted.
+
+GATE_ROW = re.compile(r"^\| (G-[A-G]) \| [^|]* \| (.*?) \|[^|]*\|[^|]*\|\s*$")
+
+
+def _gate_status_cells() -> dict[str, str]:
+    """`{gate: status cell}` from master's gate-ledger summary table."""
+    cells = {}
+    for line in _read_from_master("docs/planning/gate-ledger.md").split("\n"):
+        match = GATE_ROW.match(line)
+        if match:
+            cells[match.group(1)] = match.group(2)
+    return cells
+
+
+def test_the_summary_table_lists_every_gate_exactly_once():
+    """The parse above is load-bearing for the two tests below: a row it fails
+    to match would make them pass by checking nothing."""
+    cells = _gate_status_cells()
+    assert sorted(cells) == ["G-A", "G-B", "G-C", "G-D", "G-E", "G-F", "G-G"]
+
+
+def test_g_c_s_row_agrees_with_its_minted_evidence_record():
+    """`promotion_metrics_record.json` is minted only by a cleared G-C run
+    (T2.95/T2.100) and gates the promoted-fact label at runtime, so it is the
+    tree's own answer to whether G-C cleared. The row must say the same thing.
+
+    **The path is resolved from this file, NOT through `claim_gates`**, and the
+    first version of this test did the latter and passed vacuously against a
+    stale row. `conftest`'s autouse `_corroboration_gate_closed_by_default`
+    repoints `PROMOTION_RECORD_PATH` at a nonexistent path so every door drive
+    asserts the withheld rung — correct for those tests, and fatal here: it made
+    this one read "no record minted" and take the branch that agrees with an
+    `**open**` row. That fixture's own docstring says what it stops covering,
+    "whether the *shipped* record is well-formed ... a property of the artifact,
+    not of the gate"; this is a second such property, and it needs the artifact
+    the same way.
+    """
+    row = _gate_status_cells()["G-C"]
+    record = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "services" / "promotion_metrics_record.json"
+    )
+    eligible = False
+    if record.exists():
+        eligible = json.loads(record.read_text(encoding="utf-8")).get(
+            "gate_eligible"
+        ) is True
+
+    if eligible:
+        assert "**CLEARED**" in row, (
+            f"{record.name} is minted with gate_eligible true, so G-C has "
+            "cleared and promoted statuses are reaching readers — but the "
+            f"ledger's summary row still reads: {row[:120]}"
+        )
+        assert "**open**" not in row
+    else:
+        assert "**CLEARED**" not in row, (
+            "the ledger's summary row says G-C cleared, but no evidence record "
+            f"is minted at {record}. The record is what serves the label; a "
+            "row claiming a clear the tree does not carry is the wrong way round"
+        )
+
+
+def test_g_d_s_row_agrees_with_the_qualification_records():
+    """G-D's evidence is a per-role qualification record (T2.117). Both are
+    absent on this branch for stated reasons, so the row must not read cleared;
+    if one is ever minted, this fails until the row is updated with it."""
+    from app.services import verification_judge as vj
+
+    row = _gate_status_cells()["G-D"]
+    minted = sorted(
+        role for role, path in vj.QUALIFICATION_RECORD_PATHS.items() if path.exists()
+    )
+    if not minted:
+        assert "**CLEARED**" not in row, (
+            "the ledger says G-D cleared while no role carries a qualification "
+            "record; `judge()` refuses unconditionally without one, so nothing "
+            "in the tree backs that claim"
+        )
+    else:
+        assert "**CLEARED**" in row or "open" in row.lower(), (
+            f"qualification records exist for {minted}; G-D's summary row must "
+            f"say what they mean rather than predating them: {row[:120]}"
+        )

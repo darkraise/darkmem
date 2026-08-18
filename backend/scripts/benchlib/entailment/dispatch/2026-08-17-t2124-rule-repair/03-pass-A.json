@@ -1,0 +1,122 @@
+{
+ "eg-0435": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'every transcoding job' carries asserted lexical exhaustivity over a bare USES premise, which strengthens (procedure 3) without crossing any exclusion (procedure 4)."
+ },
+ "eg-0625": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 rewording: 'put to work by netdata as part of its normal operation' renders bare USES at the relation's own generic level (the dependency-strength rule's generic-level reading — 'operate as intended'), fixing no timing or mechanism, so nothing is strengthened."
+ },
+ "eg-0443": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule with the reversal-exclusivity table: USES is non-exclusive (mutual use is coherent), so the reversed claim is unasserted but not excluded."
+ },
+ "eg-0467": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case per the reversal-exclusivity table: DEPLOYED_ON is exclusive — host and guest cannot swap for the same pair."
+ },
+ "eg-0568": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule, ratified REPLACES branch: the object of a named replacement is single-valued, so naming a different replaced object (HashiCorp Vault for .env files) with the sentence shape preserved is contradicted."
+ },
+ "eg-0587": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case per the reversal-exclusivity table: DEPLOYED_ON cannot carry both directions for one pair — a platform is not deployed on its own workload."
+ },
+ "eg-0665": {
+  "verdict": "contradicted",
+  "rationale": "Open-window rule: distribution under Apache-2.0 holds since 2024-04-16 with the premise explicitly stating no change, so the state is entailed at January 2026 and the hypothesis asserts its negation."
+ },
+ "eg-0432": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule with the reversal-exclusivity table: USES is non-exclusive, so the reverse is merely unasserted, not excluded."
+ },
+ "eg-0464": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule with the reversal-exclusivity table: 'relies on ... in order to operate' is the generic DEPENDS_ON rendering (dependency-strength rule), and DEPENDS_ON is non-exclusive — circular dependency is not excluded by meaning — so the reversed claim is unsupported."
+ },
+ "eg-0600": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 rewording: 'draws on files-01 as part of its operation' renders USES at the relation's own generic level (dependency-strength rule's generic reading), asserting no mechanism or timing beyond the premise."
+ },
+ "eg-0483": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4 / unrelated construction: the premise fixes only a deployment host and asserts nothing about Consul's configuration workflow — absence is not exclusion."
+ },
+ "eg-0593": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 rewording plus the bare-sortal clause's relation-semantics branch: 'quire-03 hosts powerdns' is the converse rendering of DEPLOYED_ON, and the host role is earned by the relation itself."
+ },
+ "eg-0473": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3: a pure passive-voice restatement preserving all content — near-literal rewording of the USES premise."
+ },
+ "eg-0701": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, vacuous-noun branch: 'component' is a noun every entity of the premise's world satisfies, so the existential is ordinary weakening with witness jenkins in the premise."
+ },
+ "eg-0469": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 converse rewording with the bare-sortal clause's relation-semantics branch: 'hosts' is earned by DEPLOYED_ON, and 'the ansible installation' names the role the deployment itself creates — a deployed thing cannot fail to be an installation of itself — while the definite is presupposed, not asserted (exhaustivity rule)."
+ },
+ "eg-0439": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case per the reversal-exclusivity table: DEPLOYED_ON host and guest cannot swap roles for the same pair."
+ },
+ "eg-0623": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule, ratified host branch: the host a single named instance runs on is single-valued, so a differing host (core-03 for quire-03) with the sentence shape preserved is contradicted."
+ },
+ "eg-0697": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 3 strengthening: the premise asserts a schedule for retirement, not the event's occurrence, so 'stopped running on 31 May 2026' adds unasserted content; by procedure 4 absence of the event is not exclusion, so not contradicted."
+ },
+ "eg-0515": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case per the reversal-exclusivity table: DEPLOYED_ON is exclusive — the platform cannot be deployed on its own workload."
+ },
+ "eg-0686": {
+  "verdict": "unsupported",
+  "rationale": "Implicature-is-not-contradiction rule's own example shape: 'frozen for the duration of the Q1 audit' implicates but does not assert resumption afterward, so the hypothesis is unasserted content — unsupported, not contradicted."
+ },
+ "eg-0534": {
+  "verdict": "unsupported",
+  "rationale": "Bare-sortal clause, partitioning-noun branch: 'the machine hosting' — the host role is earned by DEPLOYED_ON, but 'machine' is a sortal the target could fail (a deployment target need not be a machine) and the premise does not establish it; the definite's exhaustivity is presupposed and would not block, but the unearned sortal does."
+ },
+ "eg-0700": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, vacuous-noun branch: 'component' restricts nothing, so the existential is ordinary weakening with witness auth-01 in the premise."
+ },
+ "eg-0702": {
+  "verdict": "entailed",
+  "rationale": "Possessive-existential clause, earned-frame case: DEPLOYED_ON places typesense in search-01's hosted stack, earning 'search-01 hosts at least one deployed component', and 'component' is the vacuous head noun of the bare-sortal clause."
+ },
+ "eg-0638": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case per the reversal-exclusivity table: one DEPLOYED_ON pair cannot carry both directions."
+ },
+ "eg-0656": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch, plus procedure 3: 'All of Concourse's pipelines execute on build-04' asserts lexical exhaustivity and adds pipeline-execution content the bare DEPLOYED_ON premise does not carry; nothing in the premise excludes it (procedure 4)."
+ },
+ "eg-0573": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 rewording: 'Firebird's role was taken over by CockroachDB' restates REPLACES with the direction preserved — the replaced and replacing parties are unchanged, nothing strengthened."
+ },
+ "eg-0703": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3: passive voice with the trivial synonym 'employed by' — a near-literal restatement of the USES premise."
+ },
+ "eg-0684": {
+  "verdict": "entailed",
+  "rationale": "Window rule: January 2026 lies inside the explicitly stated 1 December 2025 – 28 February 2026 window during which the premise asserts the node served no scheduled jobs, so the time-scoped claim is entailed."
+ },
+ "eg-0641": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4 / unrelated construction: the premise shares only the entity yarrow-01 and asserts nothing about its power feed — absence is not exclusion."
+ },
+ "eg-0605": {
+  "verdict": "unsupported",
+  "rationale": "Procedure 4 / unrelated construction: the premise fixes only a USES relation and asserts nothing about talon-01 being rebuilt — absence is not exclusion."
+ }
+}

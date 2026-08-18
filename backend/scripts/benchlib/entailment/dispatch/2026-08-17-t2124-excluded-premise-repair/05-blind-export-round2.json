@@ -1,0 +1,187 @@
+{
+ "_notes": "Layer 2 round 2. Round 1 is VOID and kept: its twenty covers were drawn only from `weakening` and `paraphrase`, both entailed-only slices, so every pair in the batch was `entailed` and an all-entailed answer sheet scored 30/30 without reading anything. This batch draws covers across all three verdicts, so a labeller that does not read fails visibly.",
+ "seed": 511098929,
+ "n": 30,
+ "pairs": [
+  {
+   "id": "eg-0726",
+   "premise": "consul uses jobs-05",
+   "hypothesis": "There is a connection between consul and jobs-05.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0537",
+   "premise": "The Redis instance on cache-04 is configured with a 512 MB maxmemory limit.",
+   "hypothesis": "The Redis instance on cache-04 is configured with a 2 GB maxmemory limit.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0718",
+   "premise": "uptime kuma uses notify-relay",
+   "hypothesis": "notify-relay is used.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0559",
+   "premise": "celery deployed on media-04",
+   "hypothesis": "media-04 is the host Celery runs on.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0644",
+   "premise": "haproxy deployed on lb-01",
+   "hypothesis": "Lb-01 is deployed on HAProxy.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0720",
+   "premise": "haproxy deployed on memgraph",
+   "hypothesis": "memgraph hosts haproxy",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0445",
+   "premise": "jump-01 depends on authelia",
+   "hypothesis": "jump-01 is reachable over SSH from the office network.",
+   "slice": "unrelated"
+  },
+  {
+   "id": "eg-0462",
+   "premise": "The ansible controller authenticates to files-01 with a token whose lifetime is 12 hours.",
+   "hypothesis": "The ansible controller authenticates to files-01 with a token whose lifetime is 24 hours.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0724",
+   "premise": "lb-01 deployed on memgraph",
+   "hypothesis": "memgraph has lb-01 deployed on it",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0717",
+   "premise": "wisp-01 uses ticket-router",
+   "hypothesis": "wisp-01 uses a resource.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0649",
+   "premise": "teleport deployed on warden-02",
+   "hypothesis": "Every Teleport component runs on warden-02.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0680",
+   "premise": "The ledger-sync cron job ran every fifteen minutes on batch-01 from 2 January 2025 until it was decommissioned on 19 March 2026 in favour of the event-driven ledger-stream worker.",
+   "hypothesis": "After 19 March 2026 the ledger-sync cron job was no longer running on batch-01.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0472",
+   "premise": "powerdns uses fulfillment network",
+   "hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0721",
+   "premise": "quota-watcher deployed on cpu",
+   "hypothesis": "quota-watcher runs on cpu",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0489",
+   "premise": "notify-relay deployed on neon-04",
+   "hypothesis": "notify-relay delivers its alerts over a webhook transport.",
+   "slice": "unrelated"
+  },
+  {
+   "id": "eg-0495",
+   "premise": "netdata uses onyx-03",
+   "hypothesis": "onyx-03 uses Netdata.",
+   "slice": "direction"
+  },
+  {
+   "id": "eg-0499",
+   "premise": "garage depends on batch-01",
+   "hypothesis": "Garage cannot start until batch-01 is available.",
+   "slice": "overreach"
+  },
+  {
+   "id": "eg-0519",
+   "premise": "ticket-router deployed on wisp-01",
+   "hypothesis": "ticket-router is deployed on tether-02.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0690",
+   "premise": "Vendor security support for firmware branch 2.14, the branch the firewalla-gw appliance runs, ends on 30 September 2026.",
+   "hypothesis": "The firewalla-gw appliance's firmware branch is currently within its vendor security support period.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0581",
+   "premise": "auth-02 depends on auth-01",
+   "hypothesis": "auth-01 was patched during the February maintenance window.",
+   "slice": "unrelated"
+  },
+  {
+   "id": "eg-0624",
+   "premise": "memgraph deployed on graph-01",
+   "hypothesis": "Memgraph is deployed on data-06.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0507",
+   "premise": "parcel-tracker deployed on pallet-02",
+   "hypothesis": "pallet-02 is where parcel-tracker is deployed.",
+   "slice": "verbatim"
+  },
+  {
+   "id": "eg-0669",
+   "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
+   "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0723",
+   "premise": "fulfillment application uses talon-01",
+   "hypothesis": "A consumer uses talon-01.",
+   "slice": "weakening"
+  },
+  {
+   "id": "eg-0722",
+   "premise": "concourse deployed on build-04",
+   "hypothesis": "Concourse is an installation on build-04.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0584",
+   "premise": "airflow depends on files-01",
+   "hypothesis": "files-01 is one of airflow's dependencies.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0672",
+   "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
+   "hypothesis": "hexley-cdn currently caches edge objects for 24 hours.",
+   "slice": "temporal"
+  },
+  {
+   "id": "eg-0579",
+   "premise": "The postgres-01 instance listens on port 5433.",
+   "hypothesis": "The postgres-01 instance listens on port 5432.",
+   "slice": "value-swap"
+  },
+  {
+   "id": "eg-0725",
+   "premise": "opentelemetry deployed on onyx-03",
+   "hypothesis": "Onyx-03 is where OpenTelemetry is deployed.",
+   "slice": "paraphrase"
+  },
+  {
+   "id": "eg-0719",
+   "premise": "meridian depends on core-03",
+   "hypothesis": "meridian needs core-03 to function",
+   "slice": "weakening"
+  }
+ ]
+}

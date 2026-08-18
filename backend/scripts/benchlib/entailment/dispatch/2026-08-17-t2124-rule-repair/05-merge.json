@@ -1,0 +1,37 @@
+{
+ "_notes": "Layer 2 merge. Rule: both blind passes agree with the recorded label -> adjudicated; anything else -> escalation queue, untouched by this merge. The four replacements were under adjudication; the 26 covers were re-labelled as a check on the labellers, and eg-0534 is a cover whose disagreement is therefore a NEW finding about the 2026-08-17 clauses rather than a re-opening of a settled pair.",
+ "merged_at": "2026-08-17",
+ "n_batch": 30,
+ "under_adjudication": [
+  "eg-0700",
+  "eg-0701",
+  "eg-0702",
+  "eg-0703"
+ ],
+ "adjudicated": [
+  "eg-0700",
+  "eg-0701",
+  "eg-0702",
+  "eg-0703"
+ ],
+ "agreement": {
+  "pass_a_vs_pass_b": 0.9666666666666667,
+  "pass_a_vs_recorded": 0.9666666666666667,
+  "pass_b_vs_recorded": 1.0
+ },
+ "escalations": [
+  {
+   "id": "eg-0534",
+   "recorded": "entailed",
+   "pass_a": {
+    "verdict": "unsupported",
+    "rationale": "Bare-sortal clause, partitioning-noun branch: 'the machine hosting' — the host role is earned by DEPLOYED_ON, but 'machine' is a sortal the target could fail (a deployment target need not be a machine) and the premise does not establish it; the definite's exhaustivity is presupposed and would not block, but the unearned sortal does."
+   },
+   "pass_b": {
+    "verdict": "entailed",
+    "rationale": "Exhaustivity rule (definite predicate nominal) with the bare-sortal clause's relation-establishment branch: 'tether-02 is the machine hosting the Woodpecker CI installation' renders DEPLOYED_ON in the converse form the relation earns, and the definite's exhaustivity is presupposed, not asserted."
+   },
+   "question": "Is \"machine\" a vacuous sortal (kin of \"component\"/\"system\") or a partitioning one (kin of \"service\"/\"software\")? The bare-sortal clause names examples on both sides and does not place \"machine\". Owner ruling under rule-then-pairs."
+  }
+ ]
+}

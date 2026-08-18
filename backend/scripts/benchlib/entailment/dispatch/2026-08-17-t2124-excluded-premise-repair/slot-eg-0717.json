@@ -1,0 +1,11 @@
+{
+ "id": "eg-0717",
+ "slice": "weakening",
+ "verdict": "entailed",
+ "premise": "wisp-01 uses ticket-router",
+ "triple_key": "009e95f0-2e4d-5833-9fad-63d6ed5ac6e5",
+ "rel_type": "USES",
+ "subject_name": "wisp-01",
+ "object_name": "ticket-router",
+ "project": "default"
+}

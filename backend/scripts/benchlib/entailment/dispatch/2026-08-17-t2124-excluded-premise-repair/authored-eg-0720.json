@@ -1,0 +1,9 @@
+{
+  "id": "eg-0720",
+  "premise": "haproxy deployed on memgraph",
+  "hypothesis": "memgraph hosts haproxy",
+  "verdict": "entailed",
+  "slice": "paraphrase",
+  "rationale": "Voice/verb rewording of the same DEPLOYED_ON fact, not a reversal: memgraph remains the target/host and haproxy remains the deployed subject, so the relational direction is preserved (reversal-exclusivity table's DEPLOYED_ON entry does not apply). The word 'hosts' is licensed by the bare-sortal clause's earned-vocabulary provision -- 'DEPLOYED_ON makes its target a host' -- rather than by any noun the premise itself supplies, so no unsupported sortal (e.g. 'machine') is introduced; the clause's own worked example notes memgraph is one of the nine DEPLOYED_ON targets that is a host without being a machine, so 'host' is safe where 'machine' would not be.",
+  "attestation": "This session I read only the task prompt itself and the file /root/repositories/darkmem/.worktrees/t2.124/backend/scripts/benchlib/entailment/dispatch/2026-08-17-t2124-excluded-premise-repair/02-labelling-prefix.md (the labelling rulebook). I read nothing else under /root/repositories/ or elsewhere, and ran no exploratory tools (no Grep, Glob, or Bash for browsing) beyond the Write call producing this file."
+}

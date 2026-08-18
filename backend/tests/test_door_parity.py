@@ -90,6 +90,25 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="config.research_runs",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/config/auto-research/runs"),
+            ("POST", f"{V1}/config/auto-research/runs/{{event_id}}/rerun"),
+        ),
+        mcp=(),
+        reason=(
+            "The operator's view of what the loop has already filed, and a "
+            "re-derivation of one run's evidence. Single-door for the sibling "
+            "reason to the config rows above: the MCP caller is the one that "
+            "runs the loop, and handing it the surface that inspects and "
+            "re-derives its own past runs is the review step folded back into "
+            "the reviewed. Re-derivation also files nothing and gathers "
+            "nothing, so doc 09 §6's gatherer argument -- which is what keeps "
+            "`research_run` itself off REST -- does not reach it."
+        ),
+    ),
+    Surface(
         name="documents.reads",
         status=REST_ONLY,
         rest=(

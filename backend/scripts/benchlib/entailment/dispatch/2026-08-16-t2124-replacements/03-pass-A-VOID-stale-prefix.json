@@ -1,0 +1,122 @@
+{
+ "eg-0567": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform clause, ratified 2026-08-06): the host a single named instance runs on is single-valued, and tether-05 differs from the premise's tether-02."
+ },
+ "eg-0610": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 plus the additional-value rule's test: 'behind a reverse proxy' is added content the premise does not assert, and both could hold at once without making the premise false, so it strengthens without crossing an exclusion."
+ },
+ "eg-0449": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4: the premise shares only the xenon-snapshots entity and asserts nothing about replication, and absence is not exclusion."
+ },
+ "eg-0561": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'vane-01 carries the Zulip installation' is a rewording of 'zulip deployed on vane-01' with host and guest roles preserved, nothing strengthened."
+ },
+ "eg-0668": {
+  "verdict": "contradicted",
+  "rationale": "Window rule plus the exclusive-slot rule: the premise fixes the single-valued nightly run time at 02:00 UTC across 2024-06-01 to 2025-12-14, so 'throughout 2024 ... at 04:30' asserts a differing value inside a window the premise explicitly fixes."
+ },
+ "eg-0623": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform clause): core-03 is a differing host for the same named instance the premise puts on quire-03."
+ },
+ "eg-0657": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the present-tense claim runs over a window the premise explicitly closes with a named successor (Caddy replaced Traefik on 2025-12-01), the eg-0018 case."
+ },
+ "eg-0493": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'Garage is put into service by data-06' is a passive rewording of 'data-06 uses garage' with the user/used roles preserved and nothing strengthened."
+ },
+ "eg-0698": {
+  "verdict": "entailed",
+  "rationale": "Weakening under general procedure 3 (existential generalisation from 'terraform uses minio'), with 'component of the estate' read as the universal discourse frame under the Frame rule as named in the dispatch — noting that rule's text is absent from the supplied prefix."
+ },
+ "eg-0598": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4: the premise shares only the fulfillment-network entity and asserts nothing about monitoring or an on-call rotation, and absence is not exclusion (eg-0041 pattern)."
+ },
+ "eg-0491": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule: a port is the rule's own example of a single-valued slot, and 8080 differs from the premise's 3000 for the same listener."
+ },
+ "eg-0532": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case: 'every terminal' asserts exhaustivity the premise's bare plural does not, which strengthens under procedure 3, and using every terminal is compatible with the premise so no exclusion is crossed."
+ },
+ "eg-0624": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform clause): data-06 is a differing host for the same named instance the premise puts on graph-01."
+ },
+ "eg-0658": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the premise explicitly closes the operation window with a named end event (shutdown at the hosting grant's expiry on 2025-07-15), so the present-tense claim is over a closed window."
+ },
+ "eg-0519": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform clause): tether-02 is a differing host for the same named instance the premise puts on wisp-01."
+ },
+ "eg-0428": {
+  "verdict": "entailed",
+  "rationale": "Weakening under general procedure 3: 'there is at least one component that mon-05 uses' is an existential generalisation of 'mon-05 uses etcd', with 'component' read as universal-frame vocabulary under the Frame rule as named in the dispatch — noting that rule's text is absent from the supplied prefix."
+ },
+ "eg-0578": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3: 'since the cluster was commissioned' adds an inception window the windowless premise does not assert, which is strengthening, and nothing in the premise excludes it."
+ },
+ "eg-0586": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: a pure active-to-passive voice change with all content and the relation's direction preserved."
+ },
+ "eg-0484": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical case, plus procedure 3: 'to route every inbound support request' adds a purpose and an asserted 'every' the premise does not carry, and the addition is compatible with the premise so no exclusion is crossed."
+ },
+ "eg-0629": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'Batch-01 is a dependency of Garage' is a nominal rewording of 'garage depends on batch-01' with the dependency's direction preserved and nothing strengthened."
+ },
+ "eg-0660": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, named-predecessor case: the premise states Filebeat handled log shipping up to the 2025-05-19 cutover, so putting Vector in that role in February 2025 asserts the new state before its stated inception against an asserted prior state."
+ },
+ "eg-0422": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'among the software that anvil-render calls on to do its work' rewords 'uses' without strengthening, with the non-exhaustive 'among' and the universal 'software' framing adding no asserted content (Frame rule as named in the dispatch; its text is absent from the supplied prefix)."
+ },
+ "eg-0613": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'is dependent on' is a near-literal restatement of 'depends on' with the same endpoints and direction."
+ },
+ "eg-0693": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 with the evaluation-time rule's principle: the rebuild happened at an unfixed point inside 2-20 March, so the premise neither establishes nor excludes Talos 1.7 running on 5 March."
+ },
+ "eg-0602": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 plus the additional-value rule's test: 'as a containerised workload' is added content the premise does not assert, and both could hold at once, so it strengthens without crossing an exclusion."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: DEPLOYED_ON is classed exclusive in the reversal table (host and guest cannot swap for the same pair), and the hypothesis makes auth-01 the guest hosted on Authelia."
+ },
+ "eg-0595": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case: DEPLOYED_ON is classed exclusive in the reversal table, and the hypothesis reverses the premise's ansible-on-infra-02 into infra-02-on-ansible."
+ },
+ "eg-0509": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 3 (overreach): 'to store its long-term metrics history' adds a specific purpose the premise does not assert, and the addition is compatible with the premise so no exclusion is crossed."
+ },
+ "eg-0474": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: a pure active-to-passive voice change with all content and the relation's direction preserved."
+ },
+ "eg-0699": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: 'employs' rewords 'uses' and the non-exhaustive 'one of the pieces of software' adds no asserted content, with 'software' read as universal-frame vocabulary (Frame rule as named in the dispatch; its text is absent from the supplied prefix)."
+ }
+}

@@ -1,0 +1,102 @@
+{
+ "eg-0658": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the premise explicitly closes the operation window with a named end event (the 2025-07-15 shutdown at grant expiry), so the present-tense claim over that closed window is contradicted."
+ },
+ "eg-0705": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause (predicate-nominal reach): 'something' is a maximally vacuous noun every entity of the premise's world satisfies, so the predicate nominal restricts nothing and the pair is ordinary rewording of 'log-02 uses concourse' under procedure 3."
+ },
+ "eg-0667": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the premise explicitly closes the registration window with a named end event (registrations closed permanently on 2025-04-30), so the present-tense claim is contradicted."
+ },
+ "eg-0489": {
+  "verdict": "unsupported",
+  "rationale": "General procedure 4 (absence is not exclusion): the premise states only a deployment host and asserts nothing about alert delivery or webhook transport, so the hypothesis is neither established nor excluded."
+ },
+ "eg-0622": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, relation-earned branch: USES makes its subject a 'consumer' (the clause's own listed role), so the predicate nominal 'Icinga is a consumer of haproxy' names the role the relation itself creates."
+ },
+ "eg-0670": {
+  "verdict": "contradicted",
+  "rationale": "Inception-window rule, second bullet: the premise names the displaced predecessor state (hand-maintained Ansible up to 2025-03-09), so a claim putting the new Terraform state before the inception (October 2024) is contradicted."
+ },
+ "eg-0599": {
+  "verdict": "entailed",
+  "rationale": "Exhaustivity rule: the cleft 'It is on spire-01 that...' carries exhaustivity by information structure only, which is presupposed and defeasible and does not break entailment of the same DEPLOYED_ON assertion."
+ },
+ "eg-0600": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 rewording plus the dependency-strength rule's cross-relation test: 'draws on ... as part of its operation' stays at USES's own generic level and carries no necessity or mechanism vocabulary, so nothing is strengthened."
+ },
+ "eg-0702": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause vacuous branch plus the possessive-existential clause: 'component' is a vacuous head noun and DEPLOYED_ON itself earns both 'host' for its target and 'X has a component deployed on it', with the premise supplying the witness."
+ },
+ "eg-0704": {
+  "verdict": "entailed",
+  "rationale": "Exhaustivity rule (definite predicate nominal 'the host' is presupposed, not asserted) and the bare-sortal relation-earned branch: DEPLOYED_ON earns 'host' for its target, and 'installation' names the role deployment itself creates for the deployed subject, which cannot fail while the relation holds."
+ },
+ "eg-0672": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the 24-hour TTL window is explicitly closed with a named successor (the 6-hour TTL from 2026-05-09), so the present-tense 'currently caches for 24 hours' is contradicted."
+ },
+ "eg-0624": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule, ratified host clause: the host a single named instance runs on is single-valued, so a differing host (data-06 against the premise's graph-01) for the same named instance is contradicted, not unsupported."
+ },
+ "eg-0684": {
+  "verdict": "entailed",
+  "rationale": "Window rule: January 2026 lies wholly inside the premise's stated window (1 December 2025 to 28 February 2026), and a claim time-scoped inside the window is entailed."
+ },
+ "eg-0435": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'for every transcoding job it runs' asserts exhaustivity lexically ('every') and adds content the bare USES premise does not carry, which is strengthening under procedure 3 and not excluded by the premise."
+ },
+ "eg-0541": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3: passive voice plus the trivial synonym 'employed' for 'uses' is rewording at the relation's own generic level with nothing strengthened."
+ },
+ "eg-0582": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause, relation-earned branch: HAS_PART earns 'part'/'constituent' and synonyms of that role, so 'one of the components that qemu is built from' names the role parthood itself creates, and 'one of the' explicitly marks non-exhaustivity."
+ },
+ "eg-0674": {
+  "verdict": "contradicted",
+  "rationale": "Open-window rule: the arrangement is stated open ('remains in force with no end date set'), which entails the same state at any later reference date, and the hypothesis asserts its cessation by July 2026 — the negation of the entailed state."
+ },
+ "eg-0572": {
+  "verdict": "entailed",
+  "rationale": "Possessive-existential clause: DEPENDS_ON earns 'X has a dependency' for its subject, so the have-construction's implicit frame is established by the relation itself, with authelia as the premise's witness."
+ },
+ "eg-0473": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3: a bare passive-voice restatement of the same USES assertion with all content preserved and nothing strengthened."
+ },
+ "eg-0580": {
+  "verdict": "entailed",
+  "rationale": "Reversal-exclusivity table: RELATED_TO is symmetric, so the reversed rendering asserts the same relation and is entailed."
+ },
+ "eg-0565": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule, exclusive case (reversal-exclusivity table): DEPLOYED_ON is exclusive — host and guest cannot swap for the same pair — and the hypothesis makes authelia the host of auth-01."
+ },
+ "eg-0657": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the Traefik window is explicitly closed with both a named end date (2025-11-30) and a named successor (Caddy 2.8), so the present-tense claim over that closed window is contradicted."
+ },
+ "eg-0562": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule, non-exclusive case (reversal-exclusivity table): USES is non-exclusive because mutual use is coherent, so the reversed claim is unasserted but not excluded."
+ },
+ "eg-0691": {
+  "verdict": "unsupported",
+  "rationale": "Implicature-is-not-contradiction rule: 'paused for the duration of the 12 to 14 December rebuild' asserts the pause throughout that span and only implicates resumption afterwards, so a pause at the end of December is neither established nor excluded — the window rule's contradicted branch needs an asserted end event of the pause itself."
+ },
+ "eg-0575": {
+  "verdict": "entailed",
+  "rationale": "Procedure 3 with the exhaustivity rule's bare-relation note: downgrading 'causes' to 'has a causal role in' is strict weakening — a cause necessarily has a causal role — and weakening preserves entailment."
+ }
+}

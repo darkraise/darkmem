@@ -1,0 +1,11 @@
+{
+ "id": "eg-0720",
+ "slice": "paraphrase",
+ "verdict": "entailed",
+ "premise": "haproxy deployed on memgraph",
+ "triple_key": "807b756f-e1cc-5851-abf9-83b65a0d11c2",
+ "rel_type": "DEPLOYED_ON",
+ "subject_name": "haproxy",
+ "object_name": "memgraph",
+ "project": "default"
+}

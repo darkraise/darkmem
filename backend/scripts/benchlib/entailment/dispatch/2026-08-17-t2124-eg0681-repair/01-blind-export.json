@@ -1,0 +1,127 @@
+[
+ {
+  "id": "eg-0595",
+  "premise": "ansible deployed on infra-02",
+  "hypothesis": "infra-02 is deployed on ansible."
+ },
+ {
+  "id": "eg-0652",
+  "premise": "core-03 has part consul",
+  "hypothesis": "Consul is one of the components that make up core-03."
+ },
+ {
+  "id": "eg-0423",
+  "premise": "ridge-01 uses quire-03",
+  "hypothesis": "quire-03 is one of the components ridge-01 operates with."
+ },
+ {
+  "id": "eg-0635",
+  "premise": "quire-03 depends on qemu",
+  "hypothesis": "Quire-03 has at least one dependency."
+ },
+ {
+  "id": "eg-0496",
+  "premise": "uptime kuma uses order-sync",
+  "hypothesis": "Uptime Kuma polls order-sync every thirty seconds."
+ },
+ {
+  "id": "eg-0547",
+  "premise": "slurm depends on zephyr-03",
+  "hypothesis": "There is a dependency relationship between Slurm and zephyr-03."
+ },
+ {
+  "id": "eg-0515",
+  "premise": "quota-watcher deployed on cpu",
+  "hypothesis": "The CPU is deployed on quota-watcher."
+ },
+ {
+  "id": "eg-0716",
+  "premise": "The staging cluster ran Kubernetes 1.29 from 4 March 2026 until the 12 June 2026 upgrade to 1.31.",
+  "hypothesis": "In April 2026 the staging cluster was running Kubernetes 1.29."
+ },
+ {
+  "id": "eg-0538",
+  "premise": "forge-artifacts deployed on garage",
+  "hypothesis": "forge-artifacts is deployed on garage."
+ },
+ {
+  "id": "eg-0675",
+  "premise": "Since the tenancy split of 2026-04-12 the Hollowmere billing service has stored invoices in its own Postgres schema; before the split it shared the core schema with the account service.",
+  "hypothesis": "The Hollowmere billing service stored invoices in its own Postgres schema in January 2026."
+ },
+ {
+  "id": "eg-0605",
+  "premise": "fulfillment application uses talon-01",
+  "hypothesis": "Talon-01 was rebuilt during the last maintenance window."
+ },
+ {
+  "id": "eg-0633",
+  "premise": "graph-01 deployed on lb-01",
+  "hypothesis": "Graph-01 is deployed on lb-01 and has served traffic there without an unplanned outage since rollout."
+ },
+ {
+  "id": "eg-0544",
+  "premise": "talon-01 uses talon-backups",
+  "hypothesis": "talon-01 uses talon-backups for its nightly off-site snapshots."
+ },
+ {
+  "id": "eg-0449",
+  "premise": "xenon-02 uses xenon-snapshots",
+  "hypothesis": "The xenon-snapshots store is replicated nightly to an offsite provider."
+ },
+ {
+  "id": "eg-0545",
+  "premise": "keys-01 has part infisical",
+  "hypothesis": "Infisical is a component of keys-01 and handles its secret storage."
+ },
+ {
+  "id": "eg-0438",
+  "premise": "celery deployed on jobs-05",
+  "hypothesis": "jobs-05 is deployed on Celery."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0644",
+  "premise": "haproxy deployed on lb-01",
+  "hypothesis": "Lb-01 is deployed on HAProxy."
+ },
+ {
+  "id": "eg-0711",
+  "premise": "restic uses nas",
+  "hypothesis": "nas is among what restic makes use of."
+ },
+ {
+  "id": "eg-0625",
+  "premise": "netdata uses onyx-03",
+  "hypothesis": "Onyx-03 is put to work by netdata as part of its normal operation."
+ },
+ {
+  "id": "eg-0669",
+  "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
+  "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key."
+ },
+ {
+  "id": "eg-0660",
+  "premise": "Since the 2025-05-19 cutover, log shipping out of the Thornwood rack has been handled by Vector; up to that cutover it was handled by Filebeat.",
+  "hypothesis": "Vector was shipping logs out of the Thornwood rack in February 2025."
+ },
+ {
+  "id": "eg-0503",
+  "premise": "graph-01 deployed on lb-01",
+  "hypothesis": "lb-01 is deployed on graph-01."
+ },
+ {
+  "id": "eg-0451",
+  "premise": "rclone uses nimbus-archive",
+  "hypothesis": "rclone is configured with a bandwidth ceiling of 40 MiB/s."
+ },
+ {
+  "id": "eg-0536",
+  "premise": "data-06 deployed on files-01",
+  "hypothesis": "files-01 has data-06 deployed on it."
+ }
+]

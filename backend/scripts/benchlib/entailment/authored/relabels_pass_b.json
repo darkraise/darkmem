@@ -1,0 +1,133 @@
+{
+ "pass": "B",
+ "n": 21,
+ "labels": [
+  {
+   "id": "sg-0039",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'REST' imports a checkable classification the bytes never state; bytes say only 'verb/consistency deviations'"
+  },
+  {
+   "id": "sg-0054",
+   "verdict": "entailed",
+   "rule": "Expected: rule",
+   "note": "the amendment's own worked example; hedge kept, and the reload is in the span's parenthetical"
+  },
+  {
+   "id": "sg-0057",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'the setup wizard' is an identity the bytes never show; the bare imperative displays only procedure-kind"
+  },
+  {
+   "id": "sg-0065",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "close, flipped from my round-1 entailed: heading licenses the section attribution, but 'purpose card' imports checkable content ('each card' in the bytes) the strict ruling withholds on"
+  },
+  {
+   "id": "sg-0080",
+   "verdict": "entailed",
+   "rule": "code-block rule",
+   "escalate": true,
+   "note": "still undecidable: none of the four amendments reaches whether 'the commands given are [list]' reads exhaustively or whether the 'cd frontend' prefix counts among the commands given; best verdict reads the list non-exhaustively with cd as location"
+  },
+  {
+   "id": "sg-0084",
+   "verdict": "entailed",
+   "rule": "scope-drop rule",
+   "note": "'in this posture' dropped; ruled weakening, entailed as written"
+  },
+  {
+   "id": "sg-0126",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'the break-glass purge' is the ruling's own named example of a refused identity import"
+  },
+  {
+   "id": "sg-0131",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "identity assertion 'The checklist IS ...'; no '- [ ]' in the bytes displays the checklist kind, and the identity is the claim itself"
+  },
+  {
+   "id": "sg-0139",
+   "verdict": "not-entailed",
+   "rule": "imperative rule",
+   "note": "'requires' asserts necessity a bare imperative does not carry; 'the proxy' addressee also fails the definite-description rule with no heading cited"
+  },
+  {
+   "id": "sg-0150",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "the ruling's own worked example: 'the bundled topology' resolves 'this topology' externally"
+  },
+  {
+   "id": "sg-0155",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'the purge' names a referent the bytes never identify"
+  },
+  {
+   "id": "sg-0156",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "close: 'before a purge' resolves the span's bare 'first' against an event the bytes never show \u2014 external antecedent resolution even though the description is indefinite"
+  },
+  {
+   "id": "sg-0157",
+   "verdict": "not-entailed",
+   "rule": "imperative rule",
+   "note": "the amendment's own overturning example: 'Stop the application' does not support 'must be stopped'"
+  },
+  {
+   "id": "sg-0168",
+   "verdict": "entailed",
+   "rule": "rewording",
+   "note": "close: 'supporting' is a role adjective, not a name/filename/date/section-title import; the bytes display the kind (scripts printing PASS/FAIL), so the pointer is licensed under the definite-description rule"
+  },
+  {
+   "id": "sg-0169",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "close: 'login' identifies which error from outside the bytes; the strict direction withholds"
+  },
+  {
+   "id": "sg-0180",
+   "verdict": "not-entailed",
+   "rule": "anaphora rule",
+   "note": "the scope-drop rule now licenses dropping 'on done rows', but 'survives a deletion' still resolves the survival event externally \u2014 'What survives' names no event, and the hypothesis fails on that element under whole-hypothesis scoring"
+  },
+  {
+   "id": "sg-0183",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'darkmem' is a name the bytes never state"
+  },
+  {
+   "id": "sg-0188",
+   "verdict": "not-entailed",
+   "rule": "definite-description rule",
+   "note": "'the quickstart' is a section identity whose heading is not cited; contrast the licensed neutral pointer 'the snippet'"
+  },
+  {
+   "id": "sg-0190",
+   "verdict": "entailed",
+   "rule": "code-block rule",
+   "note": "text-level claim about the comment; 'purge SQL' is a kind the bytes themselves display (visible redaction and deletion), so the pointer is licensed under the definite-description rule"
+  },
+  {
+   "id": "sg-0225",
+   "verdict": "not-entailed",
+   "rule": "strengthening",
+   "note": "'typical batch sizes' tightened to 'any batch size'"
+  },
+  {
+   "id": "sg-0233",
+   "verdict": "not-entailed",
+   "rule": "exclusive-slot rule",
+   "note": "close: 'target is under 5 seconds' misstates a single-valued slot whose stated value is 2 s; the weakening reading (2 < 5) would make the checklist's bar something a 4 s load meets, which the bytes exclude"
+  }
+ ]
+}

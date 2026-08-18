@@ -1,0 +1,170 @@
+{
+  "_notes": "Round-4 sampling frame, derived by the committed rule from pre-judge inputs alone (T2.124 D5; ratified at sitting 1, emitted matrix ratified at sitting 2). Regenerate with scripts/benchlib/round4_frame.py --write; a hand edit fails the byte-comparison test.",
+  "adjustment_moves": [
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "direction",
+      "unsupported",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ],
+    [
+      "temporal",
+      "entailed",
+      "contradicted"
+    ]
+  ],
+  "census": {
+    "contradicted": 80,
+    "entailed": 110,
+    "unsupported": 90
+  },
+  "feasibility": {
+    "excluded_keys_path": "entailment/round4_excluded_triple_keys.json",
+    "fact_floor_at_t": 44,
+    "fresh_facts_after_exclusion": 163
+  },
+  "inputs": {
+    "contradicted_target": 80,
+    "entailed_lattice_modulus": 10,
+    "pairs_per_premise_cap": 4,
+    "t2_25_proportions": {
+      "direction": 5,
+      "overreach": 6,
+      "paraphrase": 6,
+      "temporal": 6,
+      "unrelated": 4,
+      "value-swap": 5,
+      "verbatim": 4,
+      "weakening": 5
+    },
+    "t2_25_seed": {
+      "id_range": [
+        "eg-0001",
+        "eg-0041"
+      ],
+      "path": "entailment/retired/gold-4975c5cc.json",
+      "retirement_flags": "ignored (post-judge information)"
+    },
+    "t2_25_splits": {
+      "direction": {
+        "contradicted": 3,
+        "unsupported": 2
+      },
+      "overreach": {
+        "contradicted": 0,
+        "unsupported": 6
+      },
+      "paraphrase": {
+        "entailed": 6
+      },
+      "temporal": {
+        "contradicted": 2,
+        "entailed": 2,
+        "unsupported": 2
+      },
+      "unrelated": {
+        "unsupported": 4
+      },
+      "value-swap": {
+        "contradicted": 5
+      },
+      "verbatim": {
+        "entailed": 4
+      },
+      "weakening": {
+        "entailed": 5
+      }
+    },
+    "t_min": 280
+  },
+  "matrix": {
+    "direction": {
+      "contradicted": 26,
+      "unsupported": 8
+    },
+    "overreach": {
+      "contradicted": 0,
+      "unsupported": 41
+    },
+    "paraphrase": {
+      "entailed": 41
+    },
+    "temporal": {
+      "contradicted": 20,
+      "entailed": 8,
+      "unsupported": 13
+    },
+    "unrelated": {
+      "unsupported": 28
+    },
+    "value-swap": {
+      "contradicted": 34
+    },
+    "verbatim": {
+      "entailed": 27
+    },
+    "weakening": {
+      "entailed": 34
+    }
+  },
+  "slice_targets": {
+    "direction": 34,
+    "overreach": 41,
+    "paraphrase": 41,
+    "temporal": 41,
+    "unrelated": 28,
+    "value-swap": 34,
+    "verbatim": 27,
+    "weakening": 34
+  },
+  "total": 280
+}

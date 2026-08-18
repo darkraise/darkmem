@@ -1,0 +1,102 @@
+{
+ "eg-0690": {
+  "verdict": "unsupported",
+  "rationale": "Evaluation-time rule: 'currently within its support period' depends on an evaluation date the premise does not contain — the premise fixes only the window's end (30 September 2026), not where 'now' falls relative to it."
+ },
+ "eg-0607": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause: 'component' is a vacuous head noun every entity of the premise's world satisfies, 'hosts' is the role DEPLOYED_ON earns for its target, and the witness (imagemagick) is in the premise — ordinary weakening."
+ },
+ "eg-0439": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive — host and guest cannot swap for the same pair — so the reversed claim is contradicted."
+ },
+ "eg-0473": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3: a passive-voice rendering of the same USES assertion with nothing added or strengthened is rewording, which preserves entailment."
+ },
+ "eg-0601": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause: 'component' is vacuous, and the restrictor modifiers 'other' and 'named' are demonstrably satisfied by the premise's witness — forge-artifacts is a named relatum distinct from garage — so the existential is ordinary weakening."
+ },
+ "eg-0640": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 with the Bare-sortal clause's relation-earned branch: 'a resource that nimbus-02 makes use of' restates USES, and 'resource' names the role the relation itself creates for its object (a thing made use of), so nothing is strengthened."
+ },
+ "eg-0658": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the premise explicitly closes the operating window with a named end event (the 2025-07-15 shutdown), so a present-tense claim over that window is contradicted."
+ },
+ "eg-0467": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive, so swapping host and guest roles for the same pair is contradicted."
+ },
+ "eg-0535": {
+  "verdict": "contradicted",
+  "rationale": "Reversal rule with the reversal-exclusivity table: DEPLOYED_ON is exclusive — build-04 deployed on Concourse reverses the premise's host/guest roles for the same pair."
+ },
+ "eg-0625": {
+  "verdict": "entailed",
+  "rationale": "Dependency-strength rule's generic-level reading: 'put to work as part of its normal operation' renders USES at the relation's own generic level ('operate as intended'), fixing no timing, mechanism, or condition, so it is paraphrase rather than strengthening."
+ },
+ "eg-0589": {
+  "verdict": "unsupported",
+  "rationale": "Unsupported by definition and procedure 4: the premise (a dependency on files-01) bears on nothing in a claim about CI linting of playbooks — it shares only an entity, and absence is not exclusion."
+ },
+ "eg-0643": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule, non-exclusive case: USES admits mutual use, so the reversed claim is unasserted and not excluded — unsupported, per the reversal-exclusivity table."
+ },
+ "eg-0469": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause's relation-earned branch: DEPLOYED_ON makes its target a 'host' and its deployed subject an installation on that host, so 'infra-02 hosts the ansible installation' is a role-earned rewording; the definite's uniqueness is presupposed, not asserted (exhaustivity rule)."
+ },
+ "eg-0667": {
+  "verdict": "contradicted",
+  "rationale": "Window rule: the premise explicitly and permanently closes the registration window on 2025-04-30, so the present-tense claim over that window is contradicted."
+ },
+ "eg-0483": {
+  "verdict": "unsupported",
+  "rationale": "Unsupported by definition and procedure 4: a deployment fact about consul asserts nothing about how its configuration is managed — the premise shares only an entity with the hypothesis."
+ },
+ "eg-0435": {
+  "verdict": "unsupported",
+  "rationale": "Exhaustivity rule, lexical branch: 'every transcoding job' carries exhaustivity as asserted content over a bare USES premise, which is strengthening; no exclusion is crossed, so unsupported rather than contradicted."
+ },
+ "eg-0704": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause's relation-earned branch plus the exhaustivity rule: DEPLOYED_ON earns 'host' for tether-02, and the definite predicate nominal 'the host' carries exhaustivity as presupposed, not asserted, so entailment is preserved."
+ },
+ "eg-0627": {
+  "verdict": "unsupported",
+  "rationale": "Unsupported by definition and procedure 4: 'consul uses authelia' establishes nothing about two-factor enforcement for administrative logins — shared entity only, and absence is not exclusion."
+ },
+ "eg-0574": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform of a single named instance, ratified 2026-08-06): the named instance tether-02's deployment-target slot is single-valued, so caddy in place of the premise's traefik is contradicted."
+ },
+ "eg-0443": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule, non-exclusive case: USES admits mutual use per the reversal-exclusivity table, so 'Samba uses vane-01' is unasserted and not excluded — unsupported."
+ },
+ "eg-0432": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule, non-exclusive case: USES is non-exclusive in the reversal-exclusivity table — two components using each other is coherent — so the reversed claim is unsupported."
+ },
+ "eg-0569": {
+  "verdict": "contradicted",
+  "rationale": "Exclusive-slot rule (host/platform of a single named instance): the host slot for icinga, the single named instance the premise places on mon-05, is single-valued, so mon-07 is a differing value for the same slot — contradicted."
+ },
+ "eg-0702": {
+  "verdict": "entailed",
+  "rationale": "Bare-sortal clause: 'component' is the vacuous head noun, 'hosts' is the role DEPLOYED_ON earns for its target, and the witness (typesense) is in the premise — ordinary weakening, entailed."
+ },
+ "eg-0464": {
+  "verdict": "unsupported",
+  "rationale": "Reversal rule, non-exclusive case: DEPENDS_ON does not exclude the reverse (circular dependency is coherent per the reversal-exclusivity table), so kv-01 relying on authelia is unasserted and unsupported."
+ },
+ "eg-0594": {
+  "verdict": "entailed",
+  "rationale": "General procedure 3 with the Bare-sortal clause: 'draws on' renders USES at its own generic level (use, not necessity vocabulary), 'component' is vacuous, and the partitive definite's plurality is presupposed rather than asserted, so the claim only weakens the premise."
+ }
+}

@@ -1,0 +1,39 @@
+{
+  "labels": {
+    "eg-0622": {"verdict": "entailed", "rationale": "Bare-sortal clause: USES earns 'consumer' for its subject, so Icinga (subject of 'icinga uses haproxy') satisfies the sortal by the relation's own generic semantics."},
+    "eg-0726": {"verdict": "entailed", "rationale": "General weakening (procedure 3): a specific relation (USES) entails the weaker generic claim that some connection exists between the endpoints, the same minimal claim the rulebook says RELATED_TO earns."},
+    "eg-0718": {"verdict": "entailed", "rationale": "Weakening: dropping the agent ('uptime kuma') and asserting only the passive existential 'notify-relay is used' preserves entailment per procedure 3."},
+    "eg-0572": {"verdict": "entailed", "rationale": "Possessive-existential clause: 'DEPENDS_ON earns \"X has a dependency\"' is stated verbatim for this exact construction."},
+    "eg-0725": {"verdict": "entailed", "rationale": "Paraphrase: passive-to-cleft voice change over DEPLOYED_ON, no content added."},
+    "eg-0539": {"verdict": "entailed", "rationale": "Paraphrase: 'results from' preserves CAUSES's direction (images-02 is the effect, ImageMagick the cause)."},
+    "eg-0609": {"verdict": "entailed", "rationale": "Bare-sortal clause: 'component' is in the enumerated vacuous-noun list, so the existential is ordinary weakening satisfied by parcel-logs; 'other' is trivially satisfied since parcel-logs ≠ parcel-tracker."},
+    "eg-0705": {"verdict": "entailed", "rationale": "Bare-sortal clause (predicate-nominal shape): 'something' is a vacuous kin noun like 'thing', unlike the retired 'a piece of software' example, so no partitioning sortal is asserted."},
+    "eg-0635": {"verdict": "entailed", "rationale": "Possessive-existential clause: DEPENDS_ON earns 'X has a dependency'."},
+    "eg-0704": {"verdict": "entailed", "rationale": "Bare-sortal clause: DEPLOYED_ON earns 'host' for its target (tether-02) and 'installation' for its subject (Woodpecker CI), both stated explicitly as owner-ratified earned terms."},
+    "eg-0516": {"verdict": "entailed", "rationale": "Possessive-existential clause: DEPENDS_ON earns 'X has a dependency'."},
+    "eg-0601": {"verdict": "entailed", "rationale": "Bare-sortal clause: 'component' is vacuous; 'other' and 'named' restrictor modifiers are satisfied since forge-artifacts is a distinct, harvest-named entity (instance-hood default)."},
+    "eg-0717": {"verdict": "entailed", "rationale": "Bare-sortal clause: USES earns 'resource' for its object, so ticket-router satisfies the sortal by the relation's own semantics."},
+    "eg-0463": {"verdict": "entailed", "rationale": "Exhaustivity rule: the definite predicate nominal 'the effect' is presupposed, not asserted, so it does not break entailment; CAUSES's object cannot fail to be its 'effect', paralleling how DEPENDS_ON's object earns 'dependency'."},
+    "eg-0721": {"verdict": "entailed", "rationale": "Paraphrase: 'runs on' restates DEPLOYED_ON without adding content; the target's identity ('cpu') is preserved verbatim so no sortal (e.g. 'machine') is at issue."},
+    "eg-0723": {"verdict": "entailed", "rationale": "Bare-sortal clause: USES earns 'consumer' for its subject, so generalising 'fulfillment application' to 'a consumer' is ordinary weakening."},
+    "eg-0570": {"verdict": "entailed", "rationale": "Bare-sortal clause: 'system' is in the enumerated vacuous-noun list, so the passive existential is ordinary weakening."},
+    "eg-0558": {"verdict": "entailed", "rationale": "Possessive-existential clause: 'DEPLOYED_ON earns \"X has a component deployed on it\"' is stated verbatim for this construction, and 'component' is independently vacuous."},
+    "eg-0700": {"verdict": "entailed", "rationale": "Bare-sortal clause: 'component' is vacuous, so generalising auth-01 (the subject) to 'at least one component' is ordinary weakening."},
+    "eg-0564": {"verdict": "entailed", "rationale": "Paraphrase: 'must complete its verification before X can be rolled out' restates 'blocked until it finishes its checks' at the same generic necessity level, no strengthening added."},
+    "eg-0722": {"verdict": "entailed", "rationale": "Bare-sortal clause: DEPLOYED_ON earns 'installation' for its subject, owner-ratified 2026-08-17 for this exact rendering."},
+    "eg-0606": {"verdict": "entailed", "rationale": "Bare-sortal clause: HAS_PART earns 'constituent' for the part, and 'one of the constituents' asserts no exhaustivity."},
+    "eg-0720": {"verdict": "entailed", "rationale": "Bare-sortal clause: DEPLOYED_ON earns 'host' for its target, so 'memgraph hosts haproxy' is a direct verb-form paraphrase."},
+    "eg-0430": {"verdict": "entailed", "rationale": "Bare-sortal clause: DEPENDS_ON earns 'prerequisite' for its object, so jobs-05 satisfies the sortal by the relation's own semantics."},
+    "eg-0470": {"verdict": "entailed", "rationale": "Paraphrase: 'is where huginn runs' restates DEPLOYED_ON with no added content."},
+    "eg-0550": {"verdict": "entailed", "rationale": "Bare-sortal clause: 'component' is vacuous, so generalising pallet-02 to 'at least one component' is ordinary weakening."},
+    "eg-0547": {"verdict": "entailed", "rationale": "Paraphrase: 'dependency relationship' directly renders DEPENDS_ON without specifying direction beyond what the premise already fixes, ordinary weakening of specificity."},
+    "eg-0441": {"verdict": "entailed", "rationale": "Paraphrase: 'is where Authelia runs' restates DEPLOYED_ON with no added content."},
+    "eg-0719": {"verdict": "entailed", "rationale": "Dependency-strength rule: 'needs Y to function' is a same-generic-level rendering of DEPENDS_ON ('requires Y to function' is given as the paraphrase-level example)."},
+    "eg-0724": {"verdict": "entailed", "rationale": "Possessive-existential clause: DEPLOYED_ON's target-possession rendering ('X has ... deployed on it') directly restates the premise, naming the exact entity rather than a sortal."}
+  },
+  "flagged": [
+    "eg-0463",
+    "eg-0726"
+  ],
+  "attestation": "Read only: this prompt; 02-labelling-prefix.md (the rulebook); 01-blind-export.json (the 30 pairs). I did not open 00-key.json or any authored-*.json, and did not use Grep/Glob/Bash or any other exploration tool. Two CLAUDE.md files (repo-root business-logic baseline and the .worktrees/t2.124 copy) were auto-injected into context by the environment via system-reminder blocks that I did not request and could not suppress; I did not read them as separate tool calls, and none of their content (which concerns darkmem's own architecture, not entailment labelling rules) was used in reaching any verdict below — all verdicts are argued strictly from the rulebook's stated rules. eg-0463 is flagged because the rulebook's earned-sortal table enumerates DEPLOYED_ON/DEPENDS_ON/HAS_PART/USES/RELATED_TO but not CAUSES, so treating CAUSES's object as earning 'effect' is an extrapolation from the clause's stated general principle rather than a listed instance. eg-0726 is flagged for the same reason: 'connection' is stated as earned specifically by RELATED_TO, and applying it to a USES premise relies on general weakening (specific relation implies the generic fact of relatedness) rather than an explicit rule."
+}

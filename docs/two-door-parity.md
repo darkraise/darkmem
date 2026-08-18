@@ -10,7 +10,7 @@ aspirational. It is exhaustive over the Phase-1 surface — every REST route on
 `app.routes` and every tool in the live FastMCP registry appears in exactly one
 row.
 
-**63 surfaces: 20 two-door, 43 single-door with a stated reason (36 REST-only, 7 MCP-only), 0 divergent.**
+**64 surfaces: 20 two-door, 44 single-door with a stated reason (37 REST-only, 7 MCP-only), 0 divergent.**
 
 ## How to read a row, and what each status costs
 
@@ -48,6 +48,7 @@ the test rather than quietly joining the surface.
 |---|---|---|---|---|
 | `distribution.config` | `GET /api/v1/distribution`<br>`PUT /api/v1/distribution/policy` | — | REST single-door | Configures what agents are *told*, and the curb stops push entirely. Exposing 'stop telling agents things' to an agent inverts the control it exists to give a human, so this is single-door on purpose rather than by omission. |
 | `config.auto_research` | `GET /api/v1/config/auto-research`<br>`PUT /api/v1/config/auto-research` | — | REST single-door | Arming the research loop is an operator act, and the loop's own door is an MCP tool — so an MCP twin here would let the caller that runs the loop also switch it on, which is the control this row exists to keep with the human. Same shape as the distribution config above and for the same reason. |
+| `config.research_runs` | `GET /api/v1/config/auto-research/runs`<br>`POST /api/v1/config/auto-research/runs/{event_id}/rerun` | — | REST single-door | The operator's view of what the loop has already filed, and a re-derivation of one run's evidence. Single-door for the sibling reason to the config rows above: the MCP caller is the one that runs the loop, and handing it the surface that inspects and re-derives its own past runs is the review step folded back into the reviewed. Re-derivation also files nothing and gathers nothing, so doc 09 §6's gatherer argument -- which is what keeps `research_run` itself off REST -- does not reach it. |
 | `documents.reads` | `GET /api/v1/documents`<br>`GET /api/v1/documents/{document_id}/summary`<br>`GET /api/v1/documents/{document_id}/connections` | — | REST single-door | EH1 is a horizon lane behind its own eval gate (doc 16 §1's firewall), and an MCP twin would put an unshipped surface in front of every agent before the gate that governs it has run. Single-door until G-F clears, then re-decided on its merits rather than inherited. |
 | `documents.grounded_qa` | `POST /api/v1/documents/qa` | — | REST single-door | Same firewall as the reads above, plus a sharper reason of its own: the answer is served, labelled or withheld by the faithfulness gate, and an agent twin would be a second consumer of a judge role that has no qualification record yet. Every answer is withheld today; publishing that to agents as a tool would advertise a capability the gate does not license. |
 | `checkpoint.save` | `POST /api/v1/checkpoints` | `checkpoint_save` | two-door | — |

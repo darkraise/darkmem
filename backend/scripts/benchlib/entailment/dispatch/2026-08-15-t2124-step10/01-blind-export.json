@@ -1,0 +1,1402 @@
+[
+ {
+  "id": "eg-0418",
+  "premise": "nimbus-02 uses rabbitmq",
+  "hypothesis": "RabbitMQ is used by nimbus-02."
+ },
+ {
+  "id": "eg-0419",
+  "premise": "uptime kuma uses quota-watcher",
+  "hypothesis": "Uptime Kuma makes use of quota-watcher."
+ },
+ {
+  "id": "eg-0420",
+  "premise": "batch-01 uses ledger-02",
+  "hypothesis": "batch-01 uses at least one other component."
+ },
+ {
+  "id": "eg-0421",
+  "premise": "ffmpeg deployed on media-04",
+  "hypothesis": "FFmpeg has been deployed on media-04."
+ },
+ {
+  "id": "eg-0422",
+  "premise": "anvil-render uses imagemagick",
+  "hypothesis": "ImageMagick is among the software that anvil-render calls on to do its work."
+ },
+ {
+  "id": "eg-0423",
+  "premise": "ridge-01 uses quire-03",
+  "hypothesis": "quire-03 is one of the components ridge-01 operates with."
+ },
+ {
+  "id": "eg-0424",
+  "premise": "codec pack deployed on files-01",
+  "hypothesis": "files-01 has at least one component deployed on it."
+ },
+ {
+  "id": "eg-0425",
+  "premise": "celery deployed on media-04",
+  "hypothesis": "media-04 is the machine that carries the Celery installation."
+ },
+ {
+  "id": "eg-0426",
+  "premise": "auth-02 uses authelia",
+  "hypothesis": "Authelia is used by at least one system."
+ },
+ {
+  "id": "eg-0427",
+  "premise": "zulip deployed on vane-01",
+  "hypothesis": "vane-01 is the host on which Zulip is deployed."
+ },
+ {
+  "id": "eg-0428",
+  "premise": "mon-05 uses etcd",
+  "hypothesis": "There is at least one component that mon-05 uses."
+ },
+ {
+  "id": "eg-0429",
+  "premise": "osquery causes quota-watcher",
+  "hypothesis": "Osquery ships a scheduled query pack for file-integrity monitoring."
+ },
+ {
+  "id": "eg-0430",
+  "premise": "media-04 depends on jobs-05",
+  "hypothesis": "jobs-05 is a prerequisite for media-04."
+ },
+ {
+  "id": "eg-0431",
+  "premise": "garage uses batch-01",
+  "hypothesis": "Garage stores its data on a ZFS pool."
+ },
+ {
+  "id": "eg-0432",
+  "premise": "wisp-01 uses ticket-router",
+  "hypothesis": "ticket-router uses wisp-01."
+ },
+ {
+  "id": "eg-0433",
+  "premise": "wazuh uses fulfillment fleet",
+  "hypothesis": "The fulfillment fleet is used by Wazuh."
+ },
+ {
+  "id": "eg-0434",
+  "premise": "syncthing uses vane-01",
+  "hypothesis": "vane-01 is scheduled for a memory upgrade next quarter."
+ },
+ {
+  "id": "eg-0435",
+  "premise": "media-04 uses ffmpeg",
+  "hypothesis": "media-04 uses ffmpeg for every transcoding job it runs."
+ },
+ {
+  "id": "eg-0436",
+  "premise": "ticket-router depends on zulip",
+  "hypothesis": "Zulip is ticket-router's only dependency."
+ },
+ {
+  "id": "eg-0437",
+  "premise": "consul uses jobs-05",
+  "hypothesis": "Consul uses jobs-05 to schedule its periodic health checks."
+ },
+ {
+  "id": "eg-0438",
+  "premise": "celery deployed on jobs-05",
+  "hypothesis": "jobs-05 is deployed on Celery."
+ },
+ {
+  "id": "eg-0439",
+  "premise": "opentelemetry deployed on onyx-03",
+  "hypothesis": "onyx-03 is deployed on OpenTelemetry."
+ },
+ {
+  "id": "eg-0440",
+  "premise": "nightly report mentions quota-watcher",
+  "hypothesis": "The nightly report sets out quota-watcher's disk-usage thresholds in detail."
+ },
+ {
+  "id": "eg-0441",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is where Authelia runs."
+ },
+ {
+  "id": "eg-0442",
+  "premise": "pi-hole deployed on ridge-01",
+  "hypothesis": "Pi-hole blocks roughly a tenth of the outbound DNS queries it sees."
+ },
+ {
+  "id": "eg-0443",
+  "premise": "vane-01 uses samba",
+  "hypothesis": "Samba uses vane-01."
+ },
+ {
+  "id": "eg-0444",
+  "premise": "The gitea instance on forge-02 serves its web interface on port 3000.",
+  "hypothesis": "The gitea instance on forge-02 serves its web interface on port 8080."
+ },
+ {
+  "id": "eg-0445",
+  "premise": "jump-01 depends on authelia",
+  "hypothesis": "jump-01 is reachable over SSH from the office network."
+ },
+ {
+  "id": "eg-0446",
+  "premise": "cockroachdb replaces firebird",
+  "hypothesis": "Firebird's documentation is kept in a separate wiki."
+ },
+ {
+  "id": "eg-0447",
+  "premise": "tether-02 deployed on traefik",
+  "hypothesis": "Traefik's dashboard is exposed only on the internal network."
+ },
+ {
+  "id": "eg-0448",
+  "premise": "wazuh deployed on umbra-04",
+  "hypothesis": "The umbra-04 host is deployed on wazuh."
+ },
+ {
+  "id": "eg-0449",
+  "premise": "xenon-02 uses xenon-snapshots",
+  "hypothesis": "The xenon-snapshots store is replicated nightly to an offsite provider."
+ },
+ {
+  "id": "eg-0450",
+  "premise": "airflow deployed on data-06",
+  "hypothesis": "airflow runs on the data-06 machine."
+ },
+ {
+  "id": "eg-0451",
+  "premise": "rclone uses nimbus-archive",
+  "hypothesis": "rclone is configured with a bandwidth ceiling of 40 MiB/s."
+ },
+ {
+  "id": "eg-0452",
+  "premise": "alert storms related to lb-01",
+  "hypothesis": "Alert storms are related to at least one named component of the estate."
+ },
+ {
+  "id": "eg-0453",
+  "premise": "auth-02 depends on auth-01",
+  "hypothesis": "auth-01 is a prerequisite for auth-02."
+ },
+ {
+  "id": "eg-0454",
+  "premise": "qemu has part hypervisor",
+  "hypothesis": "The hypervisor has qemu as one of its parts."
+ },
+ {
+  "id": "eg-0455",
+  "premise": "concourse uses garage",
+  "hypothesis": "garage is used by concourse."
+ },
+ {
+  "id": "eg-0456",
+  "premise": "airflow depends on files-01",
+  "hypothesis": "files-01 has at least one dependent component in the estate."
+ },
+ {
+  "id": "eg-0457",
+  "premise": "The graylog deployment on log-02 runs version 5.2.7.",
+  "hypothesis": "The graylog deployment on log-02 runs version 4.3.9."
+ },
+ {
+  "id": "eg-0458",
+  "premise": "media-04 uses files-01",
+  "hypothesis": "media-04 uses files-01 to store its transcoded output."
+ },
+ {
+  "id": "eg-0459",
+  "premise": "infisical uses authelia",
+  "hypothesis": "infisical makes use of at least one other component in the estate."
+ },
+ {
+  "id": "eg-0460",
+  "premise": "clickhouse deployed on data-06",
+  "hypothesis": "data-06 was procured refurbished and carries no vendor support contract."
+ },
+ {
+  "id": "eg-0461",
+  "premise": "The images-02 render queue writes its state file to the bucket anvil-state.",
+  "hypothesis": "The images-02 render queue writes its state file to the bucket anvil-cache."
+ },
+ {
+  "id": "eg-0462",
+  "premise": "The ansible controller authenticates to files-01 with a token whose lifetime is 12 hours.",
+  "hypothesis": "The ansible controller authenticates to files-01 with a token whose lifetime is 24 hours."
+ },
+ {
+  "id": "eg-0463",
+  "premise": "ledger-02 causes mon-05",
+  "hypothesis": "mon-05 is the effect that ledger-02 produces."
+ },
+ {
+  "id": "eg-0464",
+  "premise": "authelia depends on kv-01",
+  "hypothesis": "kv-01 relies on authelia in order to operate."
+ },
+ {
+  "id": "eg-0465",
+  "premise": "meilisearch deployed on idx-03",
+  "hypothesis": "idx-03 hosts at least one deployed service."
+ },
+ {
+  "id": "eg-0466",
+  "premise": "powerdns deployed on quire-03",
+  "hypothesis": "powerdns is deployed on spire-01."
+ },
+ {
+  "id": "eg-0467",
+  "premise": "wisp-01 deployed on port 9500",
+  "hypothesis": "Port 9500 is deployed on wisp-01."
+ },
+ {
+  "id": "eg-0468",
+  "premise": "orbit-01 uses opensearch",
+  "hypothesis": "orbit-01 is a consumer of opensearch."
+ },
+ {
+  "id": "eg-0469",
+  "premise": "ansible deployed on infra-02",
+  "hypothesis": "infra-02 hosts the ansible installation."
+ },
+ {
+  "id": "eg-0470",
+  "premise": "huginn deployed on hooks-03",
+  "hypothesis": "hooks-03 is where huginn runs."
+ },
+ {
+  "id": "eg-0471",
+  "premise": "etcd deployed on core-03",
+  "hypothesis": "etcd is deployed on infra-02."
+ },
+ {
+  "id": "eg-0472",
+  "premise": "powerdns uses fulfillment network",
+  "hypothesis": "powerdns uses the fulfillment network for every zone transfer it performs."
+ },
+ {
+  "id": "eg-0473",
+  "premise": "syncthing uses design archive",
+  "hypothesis": "The design archive is used by syncthing."
+ },
+ {
+  "id": "eg-0474",
+  "premise": "jump-01 uses meridian",
+  "hypothesis": "meridian is used by jump-01."
+ },
+ {
+  "id": "eg-0475",
+  "premise": "syncthing deployed on spire-01",
+  "hypothesis": "At least one service is deployed on spire-01."
+ },
+ {
+  "id": "eg-0476",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "files-01 is the sole storage backend anvil-render uses."
+ },
+ {
+  "id": "eg-0477",
+  "premise": "lb-01 deployed on memgraph",
+  "hypothesis": "memgraph is deployed on lb-01."
+ },
+ {
+  "id": "eg-0478",
+  "premise": "rabbitmq has part order-events",
+  "hypothesis": "RabbitMQ is one of the parts that make up order-events."
+ },
+ {
+  "id": "eg-0479",
+  "premise": "imagemagick deployed on images-02",
+  "hypothesis": "images-02 is the host on which ImageMagick is deployed."
+ },
+ {
+  "id": "eg-0480",
+  "premise": "garage deployed on files-01",
+  "hypothesis": "files-01 hosts the Garage deployment."
+ },
+ {
+  "id": "eg-0481",
+  "premise": "parcel-tracker depends on parcel-logs",
+  "hypothesis": "parcel-logs depends on parcel-tracker."
+ },
+ {
+  "id": "eg-0482",
+  "premise": "infisical deployed on keys-01",
+  "hypothesis": "keys-01 has Infisical deployed on it."
+ },
+ {
+  "id": "eg-0483",
+  "premise": "consul deployed on core-03",
+  "hypothesis": "Consul's configuration is managed through a Git-backed workflow."
+ },
+ {
+  "id": "eg-0484",
+  "premise": "zulip uses ticket-router",
+  "hypothesis": "Zulip uses ticket-router to route every inbound support request."
+ },
+ {
+  "id": "eg-0485",
+  "premise": "ffmpeg depends on codec pack",
+  "hypothesis": "The codec pack is the only component FFmpeg depends on."
+ },
+ {
+  "id": "eg-0486",
+  "premise": "clickhouse depends on ledger-02",
+  "hypothesis": "ledger-02 has at least one component that depends on it."
+ },
+ {
+  "id": "eg-0487",
+  "premise": "luigi uses airflow",
+  "hypothesis": "Airflow is used by Luigi."
+ },
+ {
+  "id": "eg-0488",
+  "premise": "Syncthing is deployed on the studio-05 host.",
+  "hypothesis": "The studio-05 host is deployed on Syncthing."
+ },
+ {
+  "id": "eg-0489",
+  "premise": "notify-relay deployed on neon-04",
+  "hypothesis": "notify-relay delivers its alerts over a webhook transport."
+ },
+ {
+  "id": "eg-0490",
+  "premise": "lb-01 uses haproxy",
+  "hypothesis": "HAProxy uses lb-01."
+ },
+ {
+  "id": "eg-0491",
+  "premise": "The Gitea HTTP listener on forge-01 is bound to port 3000.",
+  "hypothesis": "The Gitea HTTP listener on forge-01 is bound to port 8080."
+ },
+ {
+  "id": "eg-0492",
+  "premise": "osquery deployed on pivot-01",
+  "hypothesis": "osquery runs on pivot-01 as a systemd-managed service that starts at boot."
+ },
+ {
+  "id": "eg-0493",
+  "premise": "data-06 uses garage",
+  "hypothesis": "Garage is put into service by data-06."
+ },
+ {
+  "id": "eg-0494",
+  "premise": "The PostgreSQL instance behind paperless-ngx on archive-02 runs version 16.2.",
+  "hypothesis": "The PostgreSQL instance behind paperless-ngx on archive-02 runs version 13.4."
+ },
+ {
+  "id": "eg-0495",
+  "premise": "netdata uses onyx-03",
+  "hypothesis": "onyx-03 uses Netdata."
+ },
+ {
+  "id": "eg-0496",
+  "premise": "uptime kuma uses order-sync",
+  "hypothesis": "Uptime Kuma polls order-sync every thirty seconds."
+ },
+ {
+  "id": "eg-0497",
+  "premise": "consul uses authelia",
+  "hypothesis": "Every request reaching Consul is authenticated through Authelia."
+ },
+ {
+  "id": "eg-0498",
+  "premise": "graylog deployed on log-02",
+  "hypothesis": "Graylog has been deployed on log-02."
+ },
+ {
+  "id": "eg-0499",
+  "premise": "garage depends on batch-01",
+  "hypothesis": "Garage cannot start until batch-01 is available."
+ },
+ {
+  "id": "eg-0500",
+  "premise": "The wiki-render worker is deployed on the plum-06 host.",
+  "hypothesis": "The plum-06 host is deployed on the wiki-render worker."
+ },
+ {
+  "id": "eg-0501",
+  "premise": "etcd deployed on kv-01",
+  "hypothesis": "etcd is deployed on kv-01 as the leader of a three-node cluster."
+ },
+ {
+  "id": "eg-0502",
+  "premise": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of twelve hours.",
+  "hypothesis": "Sessions issued by the Keycloak realm on sso-01 carry a token lifetime of two hours."
+ },
+ {
+  "id": "eg-0503",
+  "premise": "graph-01 deployed on lb-01",
+  "hypothesis": "lb-01 is deployed on graph-01."
+ },
+ {
+  "id": "eg-0504",
+  "premise": "osquery uses quota-watcher",
+  "hypothesis": "osquery's operation involves quota-watcher."
+ },
+ {
+  "id": "eg-0505",
+  "premise": "quire-03 depends on qemu",
+  "hypothesis": "quire-03 depends on QEMU for all of its virtualisation."
+ },
+ {
+  "id": "eg-0506",
+  "premise": "airflow depends on clickhouse",
+  "hypothesis": "Airflow needs ClickHouse in order to run."
+ },
+ {
+  "id": "eg-0507",
+  "premise": "parcel-tracker deployed on pallet-02",
+  "hypothesis": "pallet-02 is where parcel-tracker is deployed."
+ },
+ {
+  "id": "eg-0508",
+  "premise": "auth-01 deployed on auth-02",
+  "hypothesis": "The auth-01 service is deployed onto a host system."
+ },
+ {
+  "id": "eg-0509",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "data-06 uses ClickHouse to store its long-term metrics history."
+ },
+ {
+  "id": "eg-0510",
+  "premise": "nimbus-02 uses nimbus-archive",
+  "hypothesis": "At least one component of the nimbus deployment makes use of nimbus-archive."
+ },
+ {
+  "id": "eg-0511",
+  "premise": "slurm deployed on yarrow-01",
+  "hypothesis": "Slurm is deployed on yarrow-01 in a high-availability configuration."
+ },
+ {
+  "id": "eg-0512",
+  "premise": "log-02 uses concourse",
+  "hypothesis": "Concourse is a piece of software that log-02 makes use of."
+ },
+ {
+  "id": "eg-0513",
+  "premise": "consul uses memgraph",
+  "hypothesis": "Consul makes use of at least one other system in the stack."
+ },
+ {
+  "id": "eg-0514",
+  "premise": "warden-02 uses warehouse vlan",
+  "hypothesis": "warden-02 is a consumer of the warehouse VLAN."
+ },
+ {
+  "id": "eg-0515",
+  "premise": "quota-watcher deployed on cpu",
+  "hypothesis": "The CPU is deployed on quota-watcher."
+ },
+ {
+  "id": "eg-0516",
+  "premise": "neon-04 depends on nats",
+  "hypothesis": "neon-04 has at least one dependency."
+ },
+ {
+  "id": "eg-0517",
+  "premise": "rabbitmq deployed on nimbus-02",
+  "hypothesis": "nimbus-02 is deployed on RabbitMQ."
+ },
+ {
+  "id": "eg-0518",
+  "premise": "The PostgreSQL instance on ledger-02 runs version 16.3.",
+  "hypothesis": "The PostgreSQL instance on ledger-02 runs version 13.9."
+ },
+ {
+  "id": "eg-0519",
+  "premise": "ticket-router deployed on wisp-01",
+  "hypothesis": "ticket-router is deployed on tether-02."
+ },
+ {
+  "id": "eg-0520",
+  "premise": "quota-watcher uses powerdns",
+  "hypothesis": "PowerDNS is in use somewhere in the environment."
+ },
+ {
+  "id": "eg-0521",
+  "premise": "woodpecker uses quay",
+  "hypothesis": "Woodpecker stands in some operational relationship to Quay."
+ },
+ {
+  "id": "eg-0522",
+  "premise": "haproxy deployed on memgraph",
+  "hypothesis": "Memgraph is deployed on HAProxy."
+ },
+ {
+  "id": "eg-0523",
+  "premise": "haproxy deployed on lb-01",
+  "hypothesis": "HAProxy is deployed on lb-01, where it terminates TLS for inbound traffic."
+ },
+ {
+  "id": "eg-0524",
+  "premise": "design archive related to vane-01",
+  "hypothesis": "There is a connection between the design archive and vane-01."
+ },
+ {
+  "id": "eg-0525",
+  "premise": "anvil-render depends on files-01",
+  "hypothesis": "anvil-render cannot start at all while files-01 is unavailable."
+ },
+ {
+  "id": "eg-0526",
+  "premise": "The nightly backup job for wren-02 writes its archives to the backups-cold bucket.",
+  "hypothesis": "The nightly backup job for wren-02 writes its archives to the backups-warm bucket."
+ },
+ {
+  "id": "eg-0527",
+  "premise": "cockroachdb deployed on ledger-02",
+  "hypothesis": "ledger-02 sits in the finance team's rack allocation."
+ },
+ {
+  "id": "eg-0528",
+  "premise": "teleport deployed on warden-02",
+  "hypothesis": "Teleport is deployed on wisp-01."
+ },
+ {
+  "id": "eg-0529",
+  "premise": "alert storms deployed on lb-01",
+  "hypothesis": "Alert storms are deployed on etl-02."
+ },
+ {
+  "id": "eg-0530",
+  "premise": "airflow deployed on etl-02",
+  "hypothesis": "Airflow is deployed on etl-02 as a containerised workload."
+ },
+ {
+  "id": "eg-0531",
+  "premise": "core-03 has part consul",
+  "hypothesis": "core-03 is a component of Consul."
+ },
+ {
+  "id": "eg-0532",
+  "premise": "vane-01 uses warehouse floor terminals",
+  "hypothesis": "vane-01 uses every terminal on the warehouse floor."
+ },
+ {
+  "id": "eg-0533",
+  "premise": "The deploy pipeline for atlas-api tracks the release-2026.03 branch.",
+  "hypothesis": "The deploy pipeline for atlas-api tracks the release-2026.01 branch."
+ },
+ {
+  "id": "eg-0534",
+  "premise": "woodpecker ci deployed on tether-02",
+  "hypothesis": "tether-02 is the machine hosting the Woodpecker CI installation."
+ },
+ {
+  "id": "eg-0535",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "build-04 is deployed on Concourse."
+ },
+ {
+  "id": "eg-0536",
+  "premise": "data-06 deployed on files-01",
+  "hypothesis": "files-01 has data-06 deployed on it."
+ },
+ {
+  "id": "eg-0537",
+  "premise": "The Redis instance on cache-04 is configured with a 512 MB maxmemory limit.",
+  "hypothesis": "The Redis instance on cache-04 is configured with a 2 GB maxmemory limit."
+ },
+ {
+  "id": "eg-0538",
+  "premise": "forge-artifacts deployed on garage",
+  "hypothesis": "forge-artifacts is deployed on garage."
+ },
+ {
+  "id": "eg-0539",
+  "premise": "imagemagick causes images-02",
+  "hypothesis": "images-02 results from ImageMagick."
+ },
+ {
+  "id": "eg-0540",
+  "premise": "etl-02 deployed on files-01",
+  "hypothesis": "etl-02 processes the nightly billing exports on a four-hour schedule."
+ },
+ {
+  "id": "eg-0541",
+  "premise": "warden-02 uses warden-audit",
+  "hypothesis": "warden-audit is employed by warden-02."
+ },
+ {
+  "id": "eg-0542",
+  "premise": "loki deployed on obs-02",
+  "hypothesis": "Loki is deployed on obs-04."
+ },
+ {
+  "id": "eg-0543",
+  "premise": "concourse depends on garage",
+  "hypothesis": "Concourse has at least one dependency."
+ },
+ {
+  "id": "eg-0544",
+  "premise": "talon-01 uses talon-backups",
+  "hypothesis": "talon-01 uses talon-backups for its nightly off-site snapshots."
+ },
+ {
+  "id": "eg-0545",
+  "premise": "keys-01 has part infisical",
+  "hypothesis": "Infisical is a component of keys-01 and handles its secret storage."
+ },
+ {
+  "id": "eg-0546",
+  "premise": "consul uses etcd",
+  "hypothesis": "Consul uses at least one other component."
+ },
+ {
+  "id": "eg-0547",
+  "premise": "slurm depends on zephyr-03",
+  "hypothesis": "There is a dependency relationship between Slurm and zephyr-03."
+ },
+ {
+  "id": "eg-0548",
+  "premise": "idx-03 replaces idx-01",
+  "hypothesis": "idx-01 was retired in favour of idx-03."
+ },
+ {
+  "id": "eg-0549",
+  "premise": "authelia deployed on auth-02",
+  "hypothesis": "auth-02 is deployed on Authelia."
+ },
+ {
+  "id": "eg-0550",
+  "premise": "pallet-02 uses parcel-logs",
+  "hypothesis": "At least one component uses parcel-logs."
+ },
+ {
+  "id": "eg-0551",
+  "premise": "vane-01 uses design archive",
+  "hypothesis": "The design archive is used by vane-01."
+ },
+ {
+  "id": "eg-0552",
+  "premise": "files-01 deployed on batch-01",
+  "hypothesis": "batch-01 runs as a deployment on files-01."
+ },
+ {
+  "id": "eg-0553",
+  "premise": "files-01 uses garage",
+  "hypothesis": "files-01 draws on Garage."
+ },
+ {
+  "id": "eg-0554",
+  "premise": "nimbus-02 uses rabbitmq",
+  "hypothesis": "RabbitMQ is called on by nimbus-02."
+ },
+ {
+  "id": "eg-0555",
+  "premise": "ffmpeg deployed on media-04",
+  "hypothesis": "media-04 is deployed on top of FFmpeg."
+ },
+ {
+  "id": "eg-0556",
+  "premise": "anvil-render uses imagemagick",
+  "hypothesis": "ImageMagick is used by anvil-render."
+ },
+ {
+  "id": "eg-0557",
+  "premise": "ridge-01 uses quire-03",
+  "hypothesis": "quire-03 is used by ridge-01."
+ },
+ {
+  "id": "eg-0558",
+  "premise": "codec pack deployed on files-01",
+  "hypothesis": "files-01 carries at least one deployed component."
+ },
+ {
+  "id": "eg-0559",
+  "premise": "celery deployed on media-04",
+  "hypothesis": "media-04 is the host Celery runs on."
+ },
+ {
+  "id": "eg-0560",
+  "premise": "auth-02 uses authelia",
+  "hypothesis": "Authelia is used by auth-02."
+ },
+ {
+  "id": "eg-0561",
+  "premise": "zulip deployed on vane-01",
+  "hypothesis": "vane-01 carries the Zulip installation."
+ },
+ {
+  "id": "eg-0562",
+  "premise": "mon-05 uses etcd",
+  "hypothesis": "etcd uses mon-05."
+ },
+ {
+  "id": "eg-0563",
+  "premise": "osquery causes quota-watcher",
+  "hypothesis": "quota-watcher is brought about by osquery."
+ },
+ {
+  "id": "eg-0564",
+  "premise": "The staging deploy of ledger-api is blocked until quota-guard finishes its checks.",
+  "hypothesis": "quota-guard must complete its verification before ledger-api can be rolled out to staging."
+ },
+ {
+  "id": "eg-0565",
+  "premise": "authelia deployed on auth-01",
+  "hypothesis": "auth-01 is hosted on Authelia."
+ },
+ {
+  "id": "eg-0566",
+  "premise": "pi-hole deployed on ridge-01",
+  "hypothesis": "Pi-hole is deployed on ridge-01."
+ },
+ {
+  "id": "eg-0567",
+  "premise": "roster-sync deployed on tether-02",
+  "hypothesis": "roster-sync is deployed on tether-05."
+ },
+ {
+  "id": "eg-0568",
+  "premise": "infisical replaces .env files",
+  "hypothesis": "Infisical replaces HashiCorp Vault."
+ },
+ {
+  "id": "eg-0569",
+  "premise": "icinga deployed on mon-05",
+  "hypothesis": "Icinga is deployed on mon-07."
+ },
+ {
+  "id": "eg-0570",
+  "premise": "vane-01 uses samba",
+  "hypothesis": "Samba is in use by at least one system."
+ },
+ {
+  "id": "eg-0571",
+  "premise": "warden-02 uses tailscale",
+  "hypothesis": "warden-02 was rebuilt during the spring hardware refresh."
+ },
+ {
+  "id": "eg-0572",
+  "premise": "jump-01 depends on authelia",
+  "hypothesis": "jump-01 has at least one dependency."
+ },
+ {
+  "id": "eg-0573",
+  "premise": "cockroachdb replaces firebird",
+  "hypothesis": "Firebird's role was taken over by CockroachDB."
+ },
+ {
+  "id": "eg-0574",
+  "premise": "tether-02 deployed on traefik",
+  "hypothesis": "tether-02 is deployed on caddy."
+ },
+ {
+  "id": "eg-0575",
+  "premise": "files-01 causes images-02",
+  "hypothesis": "files-01 has a causal role in images-02."
+ },
+ {
+  "id": "eg-0576",
+  "premise": "wazuh deployed on umbra-04",
+  "hypothesis": "Wazuh runs on umbra-04 inside a Docker container."
+ },
+ {
+  "id": "eg-0577",
+  "premise": "xenon-02 uses xenon-snapshots",
+  "hypothesis": "xenon-snapshots was excluded from the last disaster-recovery drill."
+ },
+ {
+  "id": "eg-0578",
+  "premise": "airflow deployed on data-06",
+  "hypothesis": "Airflow has been deployed on data-06 since the cluster was commissioned."
+ },
+ {
+  "id": "eg-0579",
+  "premise": "The postgres-01 instance listens on port 5433.",
+  "hypothesis": "The postgres-01 instance listens on port 5432."
+ },
+ {
+  "id": "eg-0580",
+  "premise": "alert storms related to lb-01",
+  "hypothesis": "lb-01 is related to alert storms."
+ },
+ {
+  "id": "eg-0581",
+  "premise": "auth-02 depends on auth-01",
+  "hypothesis": "auth-01 was patched during the February maintenance window."
+ },
+ {
+  "id": "eg-0582",
+  "premise": "qemu has part hypervisor",
+  "hypothesis": "A hypervisor is one of the components that qemu is built from."
+ },
+ {
+  "id": "eg-0583",
+  "premise": "The terraform state file for the platform stack is held in the s3 bucket tf-state-prod.",
+  "hypothesis": "The terraform state file for the platform stack is held in the s3 bucket tf-state-staging."
+ },
+ {
+  "id": "eg-0584",
+  "premise": "airflow depends on files-01",
+  "hypothesis": "files-01 is one of airflow's dependencies."
+ },
+ {
+  "id": "eg-0585",
+  "premise": "log-02 uses graylog",
+  "hypothesis": "log-02 uses graylog to index its system logs, retaining them for 30 days."
+ },
+ {
+  "id": "eg-0586",
+  "premise": "media-04 uses files-01",
+  "hypothesis": "files-01 is used by media-04."
+ },
+ {
+  "id": "eg-0587",
+  "premise": "clickhouse deployed on data-06",
+  "hypothesis": "data-06 is deployed on clickhouse."
+ },
+ {
+  "id": "eg-0588",
+  "premise": "The images-02 worker pool runs anvil-render version 2.4.",
+  "hypothesis": "The images-02 worker pool runs anvil-render version 2.9."
+ },
+ {
+  "id": "eg-0589",
+  "premise": "ansible depends on files-01",
+  "hypothesis": "Ansible playbooks in the estate are linted in CI before merge."
+ },
+ {
+  "id": "eg-0590",
+  "premise": "ledger-02 causes mon-05",
+  "hypothesis": "mon-05 is brought about by ledger-02."
+ },
+ {
+  "id": "eg-0591",
+  "premise": "authelia depends on kv-01",
+  "hypothesis": "Authelia requires kv-01 in order to function."
+ },
+ {
+  "id": "eg-0592",
+  "premise": "meilisearch deployed on idx-03",
+  "hypothesis": "Meilisearch is deployed on at least one host."
+ },
+ {
+  "id": "eg-0593",
+  "premise": "powerdns deployed on quire-03",
+  "hypothesis": "quire-03 hosts powerdns."
+ },
+ {
+  "id": "eg-0594",
+  "premise": "airflow uses clickhouse",
+  "hypothesis": "clickhouse is one of the components airflow draws on."
+ },
+ {
+  "id": "eg-0595",
+  "premise": "ansible deployed on infra-02",
+  "hypothesis": "infra-02 is deployed on ansible."
+ },
+ {
+  "id": "eg-0596",
+  "premise": "huginn deployed on hooks-03",
+  "hypothesis": "hooks-03 sits in the estate's internal firewall zone."
+ },
+ {
+  "id": "eg-0597",
+  "premise": "etcd deployed on core-03",
+  "hypothesis": "etcd is deployed on core-03 as a member of a three-node cluster."
+ },
+ {
+  "id": "eg-0598",
+  "premise": "powerdns uses fulfillment network",
+  "hypothesis": "The fulfillment network is monitored around the clock by an on-call rotation."
+ },
+ {
+  "id": "eg-0599",
+  "premise": "syncthing deployed on spire-01",
+  "hypothesis": "It is on spire-01 that syncthing is deployed."
+ },
+ {
+  "id": "eg-0600",
+  "premise": "anvil-render uses files-01",
+  "hypothesis": "Anvil-render draws on files-01 as part of its operation."
+ },
+ {
+  "id": "eg-0601",
+  "premise": "garage uses forge-artifacts",
+  "hypothesis": "Garage uses at least one other named component."
+ },
+ {
+  "id": "eg-0602",
+  "premise": "lb-01 deployed on memgraph",
+  "hypothesis": "Lb-01 runs on memgraph as a containerised workload."
+ },
+ {
+  "id": "eg-0603",
+  "premise": "teleport uses ssh",
+  "hypothesis": "Teleport retains its session audit records for ninety days."
+ },
+ {
+  "id": "eg-0604",
+  "premise": "rclone uses slate-media",
+  "hypothesis": "Slate-media is the only resource rclone uses."
+ },
+ {
+  "id": "eg-0605",
+  "premise": "fulfillment application uses talon-01",
+  "hypothesis": "Talon-01 was rebuilt during the last maintenance window."
+ },
+ {
+  "id": "eg-0606",
+  "premise": "rabbitmq has part order-events",
+  "hypothesis": "Order-events is one of the constituents that make up rabbitmq."
+ },
+ {
+  "id": "eg-0607",
+  "premise": "imagemagick deployed on images-02",
+  "hypothesis": "Images-02 hosts at least one deployed component."
+ },
+ {
+  "id": "eg-0608",
+  "premise": "garage deployed on files-01",
+  "hypothesis": "Garage is deployed on files-01, where it runs as a systemd-managed service."
+ },
+ {
+  "id": "eg-0609",
+  "premise": "parcel-tracker depends on parcel-logs",
+  "hypothesis": "Parcel-tracker depends on at least one other component."
+ },
+ {
+  "id": "eg-0610",
+  "premise": "infisical deployed on keys-01",
+  "hypothesis": "Infisical is deployed on keys-01 behind a reverse proxy."
+ },
+ {
+  "id": "eg-0611",
+  "premise": "consul deployed on core-03",
+  "hypothesis": "Consul is deployed on spire-01."
+ },
+ {
+  "id": "eg-0612",
+  "premise": "zulip uses ticket-router",
+  "hypothesis": "Zulip interacts with ticket-router."
+ },
+ {
+  "id": "eg-0613",
+  "premise": "ffmpeg depends on codec pack",
+  "hypothesis": "Ffmpeg is dependent on the codec pack."
+ },
+ {
+  "id": "eg-0614",
+  "premise": "clickhouse depends on ledger-02",
+  "hypothesis": "clickhouse has at least one dependency."
+ },
+ {
+  "id": "eg-0615",
+  "premise": "luigi uses airflow",
+  "hypothesis": "Airflow's scheduler was upgraded to a new major version last quarter."
+ },
+ {
+  "id": "eg-0616",
+  "premise": "files-01 uses clickhouse",
+  "hypothesis": "Files-01 uses clickhouse for all of its query workloads."
+ },
+ {
+  "id": "eg-0617",
+  "premise": "rclone deployed on slate-03",
+  "hypothesis": "Rclone is deployed on onyx-03."
+ },
+ {
+  "id": "eg-0618",
+  "premise": "notify-relay deployed on neon-04",
+  "hypothesis": "Notify-relay is deployed on talon-01."
+ },
+ {
+  "id": "eg-0619",
+  "premise": "luigi deployed on batch-01",
+  "hypothesis": "Luigi is deployed on at least one host."
+ },
+ {
+  "id": "eg-0620",
+  "premise": "osquery deployed on pivot-01",
+  "hypothesis": "Pivot-01 is deployed on osquery."
+ },
+ {
+  "id": "eg-0621",
+  "premise": "data-06 uses garage",
+  "hypothesis": "Data-06 uses garage for its nightly backup exports."
+ },
+ {
+  "id": "eg-0622",
+  "premise": "icinga uses haproxy",
+  "hypothesis": "Icinga is a consumer of haproxy."
+ },
+ {
+  "id": "eg-0623",
+  "premise": "pgadmin deployed on quire-03",
+  "hypothesis": "Pgadmin is deployed on core-03."
+ },
+ {
+  "id": "eg-0624",
+  "premise": "memgraph deployed on graph-01",
+  "hypothesis": "Memgraph is deployed on data-06."
+ },
+ {
+  "id": "eg-0625",
+  "premise": "netdata uses onyx-03",
+  "hypothesis": "Onyx-03 is put to work by netdata as part of its normal operation."
+ },
+ {
+  "id": "eg-0626",
+  "premise": "uptime kuma uses order-sync",
+  "hypothesis": "Order-sync clears several thousand records on each nightly run."
+ },
+ {
+  "id": "eg-0627",
+  "premise": "consul uses authelia",
+  "hypothesis": "Authelia enforces two-factor authentication for administrative logins."
+ },
+ {
+  "id": "eg-0628",
+  "premise": "graylog deployed on log-02",
+  "hypothesis": "Graylog runs on log-02, where it ingests the syslog stream from every rack switch."
+ },
+ {
+  "id": "eg-0629",
+  "premise": "garage depends on batch-01",
+  "hypothesis": "Batch-01 is a dependency of Garage."
+ },
+ {
+  "id": "eg-0630",
+  "premise": "order-sync deployed on nimbus-02",
+  "hypothesis": "Order-sync is deployed on ledger-02."
+ },
+ {
+  "id": "eg-0631",
+  "premise": "etcd deployed on kv-01",
+  "hypothesis": "Etcd is deployed on core-03."
+ },
+ {
+  "id": "eg-0632",
+  "premise": "xenon-02 uses zfs",
+  "hypothesis": "Xenon-02 is scheduled for decommissioning at the end of the fiscal quarter."
+ },
+ {
+  "id": "eg-0633",
+  "premise": "graph-01 deployed on lb-01",
+  "hypothesis": "Graph-01 is deployed on lb-01 and has served traffic there without an unplanned outage since rollout."
+ },
+ {
+  "id": "eg-0634",
+  "premise": "osquery uses quota-watcher",
+  "hypothesis": "Quota-watcher is a component that osquery relies on."
+ },
+ {
+  "id": "eg-0635",
+  "premise": "quire-03 depends on qemu",
+  "hypothesis": "Quire-03 has at least one dependency."
+ },
+ {
+  "id": "eg-0636",
+  "premise": "airflow depends on clickhouse",
+  "hypothesis": "Airflow cannot start unless ClickHouse is reachable."
+ },
+ {
+  "id": "eg-0637",
+  "premise": "parcel-tracker deployed on pallet-02",
+  "hypothesis": "Parcel-tracker's HTTP interface is documented by a published OpenAPI schema."
+ },
+ {
+  "id": "eg-0638",
+  "premise": "auth-01 deployed on auth-02",
+  "hypothesis": "Auth-02 is deployed on auth-01."
+ },
+ {
+  "id": "eg-0639",
+  "premise": "data-06 uses clickhouse",
+  "hypothesis": "ClickHouse is the only datastore data-06 queries."
+ },
+ {
+  "id": "eg-0640",
+  "premise": "nimbus-02 uses nimbus-archive",
+  "hypothesis": "Nimbus-archive is a resource that nimbus-02 makes use of."
+ },
+ {
+  "id": "eg-0641",
+  "premise": "slurm deployed on yarrow-01",
+  "hypothesis": "Yarrow-01 draws its power from the rack's secondary PDU feed."
+ },
+ {
+  "id": "eg-0642",
+  "premise": "ticket-router deployed on wisp-01",
+  "hypothesis": "Wisp-01 runs as a workload on ticket-router."
+ },
+ {
+  "id": "eg-0643",
+  "premise": "quota-watcher uses powerdns",
+  "hypothesis": "PowerDNS uses quota-watcher."
+ },
+ {
+  "id": "eg-0644",
+  "premise": "haproxy deployed on lb-01",
+  "hypothesis": "Lb-01 is deployed on HAProxy."
+ },
+ {
+  "id": "eg-0645",
+  "premise": "invoice-render deployed on tabby-03",
+  "hypothesis": "Invoice-render is deployed on tabby-01."
+ },
+ {
+  "id": "eg-0646",
+  "premise": "the nightly index rebuild for search-02 runs at 02:15 UTC",
+  "hypothesis": "The nightly index rebuild for search-02 runs at 03:45 UTC."
+ },
+ {
+  "id": "eg-0647",
+  "premise": "the postgres instance backing the metrics warehouse runs version 15.4",
+  "hypothesis": "The postgres instance backing the metrics warehouse runs version 14.9."
+ },
+ {
+  "id": "eg-0648",
+  "premise": "cockroachdb deployed on ledger-02",
+  "hypothesis": "CockroachDB is deployed on ledger-02, a machine provisioned as a dedicated database host."
+ },
+ {
+  "id": "eg-0649",
+  "premise": "teleport deployed on warden-02",
+  "hypothesis": "Every Teleport component runs on warden-02."
+ },
+ {
+  "id": "eg-0650",
+  "premise": "alert storms deployed on lb-01",
+  "hypothesis": "Alert storms are deployed on at least one host."
+ },
+ {
+  "id": "eg-0651",
+  "premise": "airflow deployed on etl-02",
+  "hypothesis": "The Airflow installation has etl-02 as its host machine."
+ },
+ {
+  "id": "eg-0652",
+  "premise": "core-03 has part consul",
+  "hypothesis": "Consul is one of the components that make up core-03."
+ },
+ {
+  "id": "eg-0653",
+  "premise": "vane-01 uses warehouse floor terminals",
+  "hypothesis": "Warehouse floor terminals are used by vane-01."
+ },
+ {
+  "id": "eg-0654",
+  "premise": "celery depends on core-03",
+  "hypothesis": "Celery depends on core-03 for its task queue backend."
+ },
+ {
+  "id": "eg-0655",
+  "premise": "woodpecker ci deployed on tether-02",
+  "hypothesis": "Tether-02 is deployed on Woodpecker CI."
+ },
+ {
+  "id": "eg-0656",
+  "premise": "concourse deployed on build-04",
+  "hypothesis": "All of Concourse's pipelines execute on build-04."
+ },
+ {
+  "id": "eg-0657",
+  "premise": "From 2024-03-11 until 2025-11-30 the Halberd cluster's ingress was terminated by Traefik v2.10. On 2025-12-01 Traefik was replaced by Caddy 2.8, which has terminated Halberd ingress since.",
+  "hypothesis": "Ingress for the Halberd cluster is terminated by Traefik v2.10."
+ },
+ {
+  "id": "eg-0658",
+  "premise": "Marlowe Labs operated the pkg-mirror-eu Debian package mirror between 2022-09-01 and 2025-07-15, when the mirror was shut down at the expiry of its hosting grant.",
+  "hypothesis": "Marlowe Labs operates the pkg-mirror-eu Debian package mirror."
+ },
+ {
+  "id": "eg-0659",
+  "premise": "Between 2024-01-08 and 2025-10-03 the orchard-api service authenticated clients with HMAC-signed session cookies. The cookie scheme was retired on 2025-10-03 in favour of OAuth 2.1 bearer tokens.",
+  "hypothesis": "orchard-api currently authenticates clients with HMAC-signed session cookies."
+ },
+ {
+  "id": "eg-0660",
+  "premise": "Since the 2025-05-19 cutover, log shipping out of the Thornwood rack has been handled by Vector; up to that cutover it was handled by Filebeat.",
+  "hypothesis": "Vector was shipping logs out of the Thornwood rack in February 2025."
+ },
+ {
+  "id": "eg-0661",
+  "premise": "The atlas-db primary has been running PostgreSQL 16.3 since 2025-08-22, and no upgrade has been scheduled.",
+  "hypothesis": "By March 2026 the atlas-db primary was no longer running PostgreSQL 16.3."
+ },
+ {
+  "id": "eg-0662",
+  "premise": "The Ferndale office VPN used WireGuard from 2023-02-01 through 2026-01-09, when it was replaced by a Tailscale tailnet.",
+  "hypothesis": "In August 2024 the Ferndale office VPN was a Tailscale tailnet."
+ },
+ {
+  "id": "eg-0663",
+  "premise": "Grafana dashboards for the Cobalt homelab were served from dash.cobalt.internal between 2024-10-05 and 2026-03-31. The hostname was retired on 2026-04-01 in favour of grafana.cobalt.internal.",
+  "hypothesis": "The Cobalt homelab's Grafana dashboards are served from dash.cobalt.internal."
+ },
+ {
+  "id": "eg-0664",
+  "premise": "Since the 2026-02-03 storage migration, the media-archive share has been backed by a ZFS mirror; until that migration it sat on a single ext4 disk.",
+  "hypothesis": "In late 2025 the media-archive share was backed by a ZFS mirror."
+ },
+ {
+  "id": "eg-0665",
+  "premise": "Ravenna Systems has distributed the sable-agent collector under the Apache-2.0 licence since its first release on 2024-04-16, and the licence has not changed since.",
+  "hypothesis": "As of January 2026, sable-agent was not distributed under the Apache-2.0 licence."
+ },
+ {
+  "id": "eg-0666",
+  "premise": "The quill-worker fleet ran on Ubuntu 22.04 from 2023-11-20 until the rebuild of 2025-09-12, which moved every node in the fleet to Debian 12.",
+  "hypothesis": "The quill-worker fleet now runs on Ubuntu 22.04."
+ },
+ {
+  "id": "eg-0667",
+  "premise": "The Whitlock community Matrix homeserver accepted new registrations from 2021-07-02 until registrations were closed permanently on 2025-04-30.",
+  "hypothesis": "The Whitlock community Matrix homeserver accepts new registrations."
+ },
+ {
+  "id": "eg-0668",
+  "premise": "Nightly index rebuilds for the Larkspur search cluster ran at 02:00 UTC from 2024-06-01 until 2025-12-14; since 2025-12-15 they have run at 04:30 UTC.",
+  "hypothesis": "Throughout 2024, Larkspur's nightly index rebuilds ran at 04:30 UTC."
+ },
+ {
+  "id": "eg-0669",
+  "premise": "Since 2026-01-26 all outbound mail from the Pelham relay has been signed with the pelham2026 DKIM key, and no key rotation has been carried out since.",
+  "hypothesis": "In May 2026 the Pelham relay stopped signing outbound mail with the pelham2026 DKIM key."
+ },
+ {
+  "id": "eg-0670",
+  "premise": "Since 2025-03-09 the Ridgeline CI runners have been provisioned by Terraform; up to that date they were provisioned by hand-maintained Ansible playbooks.",
+  "hypothesis": "Ridgeline's CI runners were provisioned by Terraform in October 2024."
+ },
+ {
+  "id": "eg-0671",
+  "premise": "Dalia Fenwick chaired the Sparrow Foundation's infrastructure working group from 2024-05-01 until stepping down on 2026-06-30, when Idris Alarcon took the chair.",
+  "hypothesis": "Dalia Fenwick chairs the Sparrow Foundation's infrastructure working group."
+ },
+ {
+  "id": "eg-0672",
+  "premise": "The hexley-cdn edge tier cached objects for 24 hours between 2025-02-11 and 2026-05-08. The 24-hour TTL was replaced by a 6-hour TTL on 2026-05-09.",
+  "hypothesis": "hexley-cdn currently caches edge objects for 24 hours."
+ },
+ {
+  "id": "eg-0673",
+  "premise": "The Ambleside monitoring stack sent alerts through PagerDuty from 2023-09-14 until 2026-02-28, after which alerting was routed to Opsgenie.",
+  "hypothesis": "During 2025 the Ambleside monitoring stack routed alerts to Opsgenie."
+ },
+ {
+  "id": "eg-0674",
+  "premise": "The Corvid pipeline has published an SBOM attestation with every release since the supply-chain review of 2025-10-07, an arrangement that remains in force with no end date set.",
+  "hypothesis": "By July 2026 the Corvid pipeline had stopped publishing SBOM attestations with its releases."
+ },
+ {
+  "id": "eg-0675",
+  "premise": "Since the tenancy split of 2026-04-12 the Hollowmere billing service has stored invoices in its own Postgres schema; before the split it shared the core schema with the account service.",
+  "hypothesis": "The Hollowmere billing service stored invoices in its own Postgres schema in January 2026."
+ },
+ {
+  "id": "eg-0676",
+  "premise": "The wildcard TLS certificate for *.tarnwood.dev was valid from 2025-06-01 to 2025-08-30 and expired on 2025-08-30 without being renewed.",
+  "hypothesis": "The wildcard TLS certificate for *.tarnwood.dev is valid."
+ },
+ {
+  "id": "eg-0677",
+  "premise": "The Grafana instance on host helio-03 ran release 10.4.2 from 14 October 2025 until 6 February 2026, when the upgrade to 11.1.0 landed.",
+  "hypothesis": "In December 2025 the Grafana instance on helio-03 was running release 10.4.2."
+ },
+ {
+  "id": "eg-0678",
+  "premise": "Since 3 April 2026, nightly restic snapshots of the /srv/vault dataset have been written to the Wasabi bucket hl-vault-cold, and no later change of destination has been made.",
+  "hypothesis": "As of August 2026, nightly restic snapshots of /srv/vault were still being written to the hl-vault-cold bucket."
+ },
+ {
+  "id": "eg-0679",
+  "premise": "The perimeter DNS resolver edge-dns-a has been running Unbound 1.20.0 since its rebuild on 11 May 2026, and no later version has been deployed to it.",
+  "hypothesis": "edge-dns-a currently runs Unbound 1.20.0."
+ },
+ {
+  "id": "eg-0680",
+  "premise": "The ledger-sync cron job ran every fifteen minutes on batch-01 from 2 January 2025 until it was decommissioned on 19 March 2026 in favour of the event-driven ledger-stream worker.",
+  "hypothesis": "After 19 March 2026 the ledger-sync cron job was no longer running on batch-01."
+ },
+ {
+  "id": "eg-0681",
+  "premise": "Container images for the atlas-api service were pushed to Docker Hub until the registry move on 22 January 2026; since that date they have been pushed to the self-hosted Harbor registry at reg.hl.internal.",
+  "hypothesis": "In November 2025, atlas-api container images were being pushed to Docker Hub."
+ },
+ {
+  "id": "eg-0682",
+  "premise": "Since the fibre cutover on 7 June 2026, the homelab's uplink has been a 2.5 Gbit/s symmetric link from Norvik Fibre.",
+  "hypothesis": "The homelab's uplink was a 2.5 Gbit/s symmetric Norvik Fibre link in July 2026."
+ },
+ {
+  "id": "eg-0683",
+  "premise": "postgres-primary accepted writes at IP 10.20.4.11 for the whole of its residency in rack B4, which ran from 5 August 2025 to 30 April 2026.",
+  "hypothesis": "postgres-primary was accepting writes at 10.20.4.11 at some point during 2026."
+ },
+ {
+  "id": "eg-0684",
+  "premise": "Throughout the winter maintenance window of 1 December 2025 to 28 February 2026, the mistral-gpu node was reserved exclusively for thermal rework and served no scheduled jobs.",
+  "hypothesis": "The mistral-gpu node served no scheduled jobs in January 2026."
+ },
+ {
+  "id": "eg-0685",
+  "premise": "Since the 14 February 2026 rollout, TLS certificates for *.hl.internal have been issued by the internal step-ca instance.",
+  "hypothesis": "In September 2025, TLS certificates for *.hl.internal were issued by the internal step-ca instance."
+ },
+ {
+  "id": "eg-0686",
+  "premise": "Schema migrations against the billing database were frozen for the duration of the Q1 2026 external audit.",
+  "hypothesis": "Schema migrations against the billing database resumed after the Q1 2026 audit."
+ },
+ {
+  "id": "eg-0687",
+  "premise": "The Grafana Cloud API token used by the metrics-push job was minted on 12 March 2026 with a 90-day lifetime.",
+  "hypothesis": "The metrics-push job's Grafana Cloud API token is currently valid."
+ },
+ {
+  "id": "eg-0688",
+  "premise": "nas-02 served the media library over NFS from 9 September 2024 until its disk array was retired on 28 February 2026.",
+  "hypothesis": "In May 2026 the media library was being served over SMB."
+ },
+ {
+  "id": "eg-0689",
+  "premise": "The argus alerting stack ran Alertmanager 0.27 from 1 July 2025 to 15 January 2026.",
+  "hypothesis": "The argus alerting stack was running Alertmanager 0.27 in March 2025."
+ },
+ {
+  "id": "eg-0690",
+  "premise": "Vendor security support for firmware branch 2.14, the branch the firewalla-gw appliance runs, ends on 30 September 2026.",
+  "hypothesis": "The firewalla-gw appliance's firmware branch is currently within its vendor security support period."
+ },
+ {
+  "id": "eg-0691",
+  "premise": "Ingest into the chronicle search index was paused for the duration of the 12 to 14 December 2025 storage rebuild.",
+  "hypothesis": "Chronicle search-index ingest was still paused at the end of December 2025."
+ },
+ {
+  "id": "eg-0692",
+  "premise": "The iris-mail relay has run Postfix 3.9 with DANE enabled since 8 March 2026.",
+  "hypothesis": "The iris-mail relay has had DANE enabled since January 2026."
+ },
+ {
+  "id": "eg-0693",
+  "premise": "The orchard staging cluster was rebuilt onto Talos 1.7 at some point during the maintenance sprint of 2 to 20 March 2026.",
+  "hypothesis": "The orchard staging cluster was running Talos 1.7 on 5 March 2026."
+ },
+ {
+  "id": "eg-0694",
+  "premise": "Between 1 October 2025 and 31 March 2026, the helix-ci runners were hosted on Hetzner CX42 instances.",
+  "hypothesis": "The helix-ci runners were hosted on Hetzner CX42 instances throughout 2026."
+ },
+ {
+  "id": "eg-0695",
+  "premise": "The DHCP reservation for printer-hall was granted on 18 June 2026 with a 30-day lease and no static binding.",
+  "hypothesis": "printer-hall now holds the same DHCP-assigned address it was granted on 18 June 2026."
+ },
+ {
+  "id": "eg-0696",
+  "premise": "Since 9 January 2026, the sable object store has replicated every bucket to a second region.",
+  "hypothesis": "Before 9 January 2026, the sable object store did not replicate buckets to a second region."
+ },
+ {
+  "id": "eg-0697",
+  "premise": "The quarry analytics job was scheduled for retirement on 31 May 2026 as part of the Q2 cleanup.",
+  "hypothesis": "The quarry analytics job stopped running on 31 May 2026."
+ }
+]

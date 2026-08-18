@@ -1,0 +1,477 @@
+{
+  "model": "glm-5.2",
+  "host": "api.z.ai",
+  "date": "2026-08-17",
+  "params": {
+    "seed": 20260808,
+    "reasoning_effort": "high"
+  },
+  "gold_sha256": "16072f9688209c8907e51129d9ba860977bf2ec3800fff500fe882bc224ed740",
+  "verdicts": {
+    "eg-0579": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0645": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0559": {
+      "verdict": "entailed",
+      "rule": "bare-sortal clause",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"bare-sortal clause\"}"
+    },
+    "eg-0660": {
+      "verdict": "contradicted",
+      "rule": "inception-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"inception-window rule\"}"
+    },
+    "eg-0502": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0506": {
+      "verdict": "entailed",
+      "rule": "dependency-strength rule",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"dependency-strength rule\"}"
+    },
+    "eg-0531": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (HAS_PART is exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (HAS_PART is exclusive)\"}"
+    },
+    "eg-0642": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive case)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive case)\"}"
+    },
+    "eg-0588": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0555": {
+      "verdict": "contradicted",
+      "rule": "reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap)\"}"
+    },
+    "eg-0669": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0661": {
+      "verdict": "contradicted",
+      "rule": "open-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"open-window rule\"}"
+    },
+    "eg-0528": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule (host or platform a single named instance runs on)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule (host or platform a single named instance runs on)\"}"
+    },
+    "eg-0666": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0672": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"Window rule\"}"
+    },
+    "eg-0567": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0517": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive case for DEPLOYED_ON)",
+      "raw": "```json\n{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive case for DEPLOYED_ON)\"}\n```"
+    },
+    "eg-0472": {
+      "verdict": "unsupported",
+      "rule": "strengthening",
+      "raw": "{\"verdict\": \"unsupported\", \"rule\": \"strengthening\"}"
+    },
+    "eg-0518": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0500": {
+      "verdict": "contradicted",
+      "rule": "reversal-exclusivity (DEPLOYED_ON is exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal-exclusivity (DEPLOYED_ON is exclusive)\"}"
+    },
+    "eg-0676": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0535": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0607": {
+      "verdict": "entailed",
+      "rule": "possessive-existential clause + bare-sortal clause: DEPLOYED_ON earns 'X has a component deployed on it', and 'component' is a vacuous sortal that every entity satisfies",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"possessive-existential clause + bare-sortal clause: DEPLOYED_ON earns 'X has a component deployed on it', and 'component' is a vacuous sortal that every entity satisfies\"}"
+    },
+    "eg-0434": {
+      "verdict": "unsupported",
+      "rule": "absence is not exclusion",
+      "raw": "{\"verdict\": \"unsupported\", \"rule\": \"absence is not exclusion\"}"
+    },
+    "eg-0656": {
+      "verdict": "unsupported",
+      "rule": "strengthening",
+      "raw": "{\"verdict\": \"unsupported\", \"rule\": \"strengthening\"}"
+    },
+    "eg-0439": {
+      "verdict": "contradicted",
+      "rule": "reversal-exclusivity (DEPLOYED_ON is exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal-exclusivity (DEPLOYED_ON is exclusive)\"}"
+    },
+    "eg-0655": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive)\"}"
+    },
+    "eg-0478": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (HAS_PART is exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (HAS_PART is exclusive)\"}"
+    },
+    "eg-0635": {
+      "verdict": "entailed",
+      "rule": "Possessive-existential clause",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"Possessive-existential clause\"}"
+    },
+    "eg-0466": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0574": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule (host or platform a single named instance runs on is single-valued; a differing host for the same named instance is contradicted)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule (host or platform a single named instance runs on is single-valued; a differing host for the same named instance is contradicted)\"}"
+    },
+    "eg-0526": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0624": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0707": {
+      "verdict": "entailed",
+      "rule": "bare-sortal clause",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"bare-sortal clause\"}"
+    },
+    "eg-0646": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0587": {
+      "verdict": "contradicted",
+      "rule": "reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap roles)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap roles)\"}"
+    },
+    "eg-0491": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0503": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive case) — DEPLOYED_ON is exclusive; host and guest cannot swap roles for the same pair",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive case) — DEPLOYED_ON is exclusive; host and guest cannot swap roles for the same pair\"}"
+    },
+    "eg-0644": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive-slot, DEPLOYED_ON)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive-slot, DEPLOYED_ON)\"}"
+    },
+    "eg-0671": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0663": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0583": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0611": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0542": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0498": {
+      "verdict": "entailed",
+      "rule": "rewording preserves entailment",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"rewording preserves entailment\"}"
+    },
+    "eg-0647": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0617": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0549": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON is exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON is exclusive)\"}"
+    },
+    "eg-0515": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON exclusive)\"}"
+    },
+    "eg-0467": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap roles)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap roles)\"}"
+    },
+    "eg-0620": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive)\"}"
+    },
+    "eg-0471": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0633": {
+      "verdict": "unsupported",
+      "rule": "partial-credit",
+      "raw": "{\"verdict\": \"unsupported\", \"rule\": \"partial-credit\"}"
+    },
+    "eg-0631": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0522": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive DEPLOYED_ON)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive DEPLOYED_ON)\"}"
+    },
+    "eg-0674": {
+      "verdict": "contradicted",
+      "rule": "Open-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"Open-window rule\"}"
+    },
+    "eg-0488": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive)\"}"
+    },
+    "eg-0444": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0664": {
+      "verdict": "contradicted",
+      "rule": "inception-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"inception-window rule\"}"
+    },
+    "eg-0673": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0595": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive case) — DEPLOYED_ON is classified as exclusive in the reversal-exclusivity table; host and guest cannot swap roles for the same pair",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive case) — DEPLOYED_ON is classified as exclusive in the reversal-exclusivity table; host and guest cannot swap roles for the same pair\"}"
+    },
+    "eg-0667": {
+      "verdict": "contradicted",
+      "rule": "Window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"Window rule\"}"
+    },
+    "eg-0519": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0507": {
+      "verdict": "entailed",
+      "rule": "paraphrase of relation",
+      "raw": "{\"verdict\": \"entailed\", \"rule\": \"paraphrase of relation\"}"
+    },
+    "eg-0454": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (HAS_PART exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (HAS_PART exclusive)\"}"
+    },
+    "eg-0630": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot (host of a single named instance)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot (host of a single named instance)\"}"
+    },
+    "eg-0568": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot (REPLACES)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot (REPLACES)\"}"
+    },
+    "eg-0529": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0643": {
+      "verdict": "unsupported",
+      "rule": "reversal rule (USES is non-exclusive; mutual use is coherent)",
+      "raw": "{\"verdict\": \"unsupported\", \"rule\": \"reversal rule (USES is non-exclusive; mutual use is coherent)\"}"
+    },
+    "eg-0537": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0670": {
+      "verdict": "contradicted",
+      "rule": "inception-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"inception-window rule\"}"
+    },
+    "eg-0668": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0657": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0533": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0552": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive-slot, DEPLOYED_ON)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive-slot, DEPLOYED_ON)\"}"
+    },
+    "eg-0462": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0565": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap)\"}"
+    },
+    "eg-0494": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0665": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0618": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0438": {
+      "verdict": "contradicted",
+      "rule": "reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal-exclusivity (DEPLOYED_ON is exclusive; host and guest cannot swap)\"}"
+    },
+    "eg-0638": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap for the same pair)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (DEPLOYED_ON is exclusive: host and guest cannot swap for the same pair)\"}"
+    },
+    "eg-0659": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0457": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0461": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0623": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot rule\"}"
+    },
+    "eg-0658": {
+      "verdict": "contradicted",
+      "rule": "window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"window rule\"}"
+    },
+    "eg-0448": {
+      "verdict": "contradicted",
+      "rule": "reversal rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule\"}"
+    },
+    "eg-0477": {
+      "verdict": "contradicted",
+      "rule": "reversal rule (exclusive)",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"reversal rule (exclusive)\"}"
+    },
+    "eg-0569": {
+      "verdict": "contradicted",
+      "rule": "exclusive-slot",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"exclusive-slot\"}"
+    },
+    "eg-0662": {
+      "verdict": "contradicted",
+      "rule": "inception-window rule",
+      "raw": "{\"verdict\": \"contradicted\", \"rule\": \"inception-window rule\"}"
+    },
+    "eg-0675": {
+      "verdict": "contradicted",
+      "rule": "inception-window rule",
+      "raw": "```json\n{\"verdict\": \"contradicted\", \"rule\": \"inception-window rule\"}\n```"
+    },
+    "eg-0525": {
+      "verdict": "unsupported",
+      "rule": "dependency-strength rule",
+      "raw": "```json\n{\"verdict\": \"unsupported\", \"rule\": \"dependency-strength rule\"}\n```"
+    }
+  }
+}

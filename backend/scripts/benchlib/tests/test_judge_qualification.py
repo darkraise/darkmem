@@ -40,6 +40,73 @@ MINI_VERDICTS = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _qualification_records_redirected(tmp_path_factory, monkeypatch):
+    """Point every role's canonical record at a throwaway directory.
+
+    The assertions in this file say "this run minted nothing at the canonical
+    location", and they said it by asking whether the real file exists. That
+    read whatever `app/services/` happened to contain — which was nothing, only
+    because no role had ever qualified. **T2.125 qualified the entailment role
+    on 2026-08-17 and four of those assertions inverted in one commit, none of
+    them about the mint.** They did not catch a regression; they stopped
+    testing the writer.
+
+    Redirecting makes "canonical" mean "the path the writer treats as
+    canonical" rather than "the path this checkout ships", so the refusal legs
+    are about the writer again and stay true whatever the tree holds. Same
+    medicine `conftest`'s `_corroboration_gate_closed_by_default` applies to
+    the G-C record, for the same reason.
+
+    What this deliberately stops covering is the SHIPPED records' own state — a
+    property of the artifacts, not of the writer — asserted directly below.
+    """
+    # Named `services/` on purpose: one leg of the minting lock spells the
+    # canonical location relatively as `parent/../services/<name>` to prove a
+    # dodged path is refused too, and that spelling has to resolve back to the
+    # same file for the leg to mean anything.
+    root = tmp_path_factory.mktemp("qualification") / "services"
+    root.mkdir()
+    for role in vj.QUALIFICATION_RECORD_PATHS:
+        monkeypatch.setitem(
+            vj.QUALIFICATION_RECORD_PATHS,
+            role,
+            root / f"verification_qualification.{role}.json",
+        )
+
+
+def test_the_shipped_qualification_records_are_what_the_ledger_claims():
+    """The artifacts themselves, at their real paths.
+
+    The autouse redirect above hides these from every other test here, so
+    without this one the shipped records would be covered by nothing in this
+    file.
+    """
+    services = pathlib.Path(vj.__file__).parent
+    contradiction = services / "verification_qualification.contradiction.json"
+    entailment = services / "verification_qualification.entailment.json"
+
+    # Contradiction recall has missed an unmoved 0.95 four times across two
+    # vendors. A record here would mean something minted it without a cleared
+    # run.
+    assert not contradiction.exists()
+
+    assert entailment.exists(), "T2.125 minted this; see the ledger's G-D entry"
+    record = json.loads(entailment.read_text(encoding="utf-8"))
+    assert record["role"] == "entailment"
+    assert record["gate_eligible"] is True
+    # The content basis, cross-checked against the live gold: a record whose
+    # pairs have moved since qualifies nothing (T2.116).
+    assert record["gold_pairs_sha256"] == entailment_gold.pairs_content_hash(
+        entailment_gold.load_entailment_gold()["pairs"]
+    )
+    assert set(record["bars_gating_this_role"]) == {
+        "groundedness_gate_precision_bar",
+        "groundedness_gate_recall_bar",
+    }
+
+
+
 def test_miniature_arithmetic_hand_computed():
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     assert score.n_pairs == 8
@@ -145,47 +212,63 @@ def _synthetic_gold(n_live, n_l2, n_author, resample=_MISSING):
 
 
 def test_the_real_gold_is_now_eligible_on_every_condition():
-    """The grown gold cleared its last two conditions on 2026-08-08: the owner
-    ruled eg-0308 (rule-then-pairs; the recorded `entailed` stands under the
-    new exhaustivity rule), which emptied the escalation queue, and the fresh
-    n = 93 draw against the ruled file was sat by deepseek-v4-pro at 1
-    disagreement against a bar of 1.
+    """The round-4 gold is eligible on every condition (T2.124, 2026-08-17).
 
     This test has moved with each resolution rather than being deleted, so the
-    honest state stays pinned: it asserted 1 author-labelled pair and an absent
-    resample before, and asserts 0 and a certified block now. **It deliberately
-    asserts the disagreement count exactly**, not merely that the bar holds —
-    the sitting passed *on* the bar, not under it, and a later change that
-    quietly relaxed the file to 2 disagreements would otherwise stay invisible.
+    honest state stays pinned. It has asserted, in turn: 1 author-labelled
+    pair and an absent resample; then the retired set's certified block at 1
+    disagreement of 93; and now the fresh set's, at 0 of 93 under glm-5.2.
+    **It deliberately asserts the disagreement count exactly**, not merely
+    that the bar holds — a later change that quietly relaxed the file to 2
+    disagreements would otherwise stay invisible.
+
+    The composition numbers are derived from the ratified frame rather than
+    transcribed; `test_entailment_gold.py` owns that derivation and this reads
+    it, so a gold matching neither the frame nor this pin fails in both files.
 
     The conditions themselves are still exercised against synthetic golds
     below -- the real gold must not become the only thing this file checks,
     or the lock would be untested the moment it matters.
     """
+    from benchlib.tests.test_entailment_gold import (
+        DOCUMENTED_PROVENANCE_COUNTS, DOCUMENTED_VERDICT_COUNTS,
+    )
+
+    live_target = sum(DOCUMENTED_VERDICT_COUNTS.values())
+    l2_target = DOCUMENTED_PROVENANCE_COUNTS["l2-fact"]
+
     doc = entailment_gold.load_entailment_gold()
     eligibility = jq.gate_eligibility(doc)
     assert eligibility.eligible is True
-    assert eligibility.live_pairs == 402
-    assert eligibility.l2_fact_pairs == 238
+    assert eligibility.live_pairs == live_target
+    assert eligibility.l2_fact_pairs == l2_target
     assert eligibility.author_labelled_pairs == 0
     # Eligible means exactly one reason: the composition line, no blockers.
     assert len(eligibility.reasons) == 1
     joined = eligibility.reasons[0]
-    assert "l2-fact: 238/402" in joined
-    assert "author-labelled: 0/402" in joined
+    assert f"l2-fact: {l2_target}/{live_target}" in joined
+    assert f"author-labelled: 0/{live_target}" in joined
 
-    # The ruling closed the queue: no live pair is author-labelled, and
-    # eg-0308 carries the owner's provenance rather than the author's.
+    # Every escalation is adjudicated: no live pair carries the author's own
+    # label, which is the condition `gate_eligibility` blocks on mechanically.
     live = [p for p in doc["pairs"] if not p.get("retired")]
     assert [p["id"] for p in live if p["label_source"] == "author"] == []
-    eg0308 = next(p for p in live if p["id"] == "eg-0308")
-    assert (eg0308["verdict"], eg0308["label_source"]) == ("entailed", "owner")
 
-    # The certifying sitting, pinned: a non-Claude labeller, on the bar.
+    # The certifying sitting, pinned: a non-Claude labeller, under the bar.
     resample = doc["resample"]
     assert resample["n"] == jq.RESAMPLE_N == 93
+    # **Exactly, not "within the bar".** The re-sitting after the 2026-08-17
+    # excluded-premise repair passed ON the bar (1 of 1 allowed), not under it,
+    # and a later change that quietly relaxed the file to 2 would otherwise be
+    # invisible. The one disagreement is eg-0423, uncorroborated: no other
+    # sitting has ever drawn that pair, which is the case the <= 1 bar exists
+    # for — as distinct from the case this round refused, where two independent
+    # instruments converged on one pair.
     assert resample["disagreements"] == 1
     assert "deepseek-v4-pro" in resample["performed_by"]
+    # The glm-5.2 certification of the pre-repair pair set is kept, not dropped.
+    assert len(resample["supersedes"]) == 1
+    assert "glm-5.2" in resample["supersedes"][0]["performed_by"]
 
 
 def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
@@ -196,6 +279,16 @@ def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
     test: LABELLING.md's History entry is the source of record, and a growth
     round that extends the population without moving the constant would
     otherwise silently shrink the population the gate verdict must hold on.
+
+    **The two populations coincide on a restarted id sequence, and that is a
+    ratified reading rather than a degenerate case** (LABELLING.md, "The Rule
+    B reading for a gold with no contacted pairs"). Round 4 replaced the file
+    with a census no judge has seen, at ids above the boundary, so the pooled
+    and Rule-B populations are the same set until the first attempt spends
+    against this gold. The proper-subset form this test used to assert would
+    now fail on the honest state, so the assertion follows the two cases: a
+    coinciding population must be *stated* as such in the rulebook, and a
+    split one must carry its range there, both ends verbatim.
     """
     labelling = (
         pathlib.Path(entailment_gold.ENTAILMENT_DIR) / "LABELLING.md"
@@ -204,19 +297,25 @@ def test_rule_b_boundary_tracks_labelling_md_and_splits_the_real_gold():
     live = [p for p in doc["pairs"] if not p.get("retired")]
     last_id = max(p["id"] for p in live)
 
-    # The range LABELLING.md states, both ends, verbatim.
-    assert f"{jq.RULE_B_FIRST_ID}..{last_id}" in labelling, (
-        "LABELLING.md's Rule B range no longer matches the constant "
-        f"({jq.RULE_B_FIRST_ID}) and the gold's last id ({last_id})"
-    )
-
     subset = jq.rule_b_population(live)
-    assert 0 < len(subset) < len(live), (
-        "the subset must be a proper non-empty part of the gold: empty means "
-        "Rule B silently stops constraining, and equal means the boundary "
-        "stopped distinguishing contacted pairs at all"
+    assert subset, (
+        "the subset must be non-empty: empty means Rule B silently stops "
+        "constraining"
     )
     assert all(p["id"] >= jq.RULE_B_FIRST_ID for p in subset)
+
+    if len(subset) == len(live):
+        assert "The Rule B reading for a gold with no contacted pairs" in labelling, (
+            "the pooled and Rule B populations coincide, which is lawful only "
+            "on a gold with no contacted pairs — LABELLING.md must say so, "
+            "because nothing in gold.json records it"
+        )
+    else:
+        # The range LABELLING.md states, both ends, verbatim.
+        assert f"{jq.RULE_B_FIRST_ID}..{last_id}" in labelling, (
+            "LABELLING.md's Rule B range no longer matches the constant "
+            f"({jq.RULE_B_FIRST_ID}) and the gold's last id ({last_id})"
+        )
     # Every barred metric must be *computable* on the subset, or the rule's
     # "report on both populations" cannot be satisfied at all.
     verdict_classes = {p["verdict"] for p in subset}
@@ -400,33 +499,70 @@ def test_a_block_whose_map_does_not_derive_its_aggregate_is_refused():
     assert flipped not in reason  # it never gets as far as naming pairs
 
 
+#: How the gold was serialised when the Layer-3 draw was taken over its bytes.
+#:
+#: The draw seed is a sha over the *file*, so reconstructing the drawn state
+#: means re-serialising the way that file was written -- and the round-4 gold
+#: was authored at `indent=1` while `resample_score.write_gold` emits
+#: `indent=2`, so the certification write reformatted every line of a file
+#: whose bytes a seed depends on. Content is unaffected and provably so: the
+#: `pairs_sha256` leg above re-derives, and this leg reproduces
+#: `gold_sha256` and the seed exactly at the drawn indent.
+#:
+#: A constant rather than a search over plausible indents: an audit that tries
+#: formattings until one matches proves only that some formatting matches.
+DRAWN_FILE_INDENT = 1
+
+
 def test_the_real_gold_carries_a_basis_that_re_derives():
     """Done-when 4: the existing certified gold re-certifies with no manual
     strip. The stamp was not taken on trust -- the gold minus its own
     resample block reproduces the sha the draw manifest pinned, which
     proves the pairs have not moved since the sitting and explains D-8
     entirely: the certified sha differs from the file sha because writing
-    the certification into the file is what changed it."""
+    the certification into the file is what changed it.
+
+    Round 4 added a second reason the two shas differ, and it is a formatting
+    one (see `DRAWN_FILE_INDENT`). The content leg is what carries the claim;
+    the byte leg is reconstructed at the drawn indent so the draw stays
+    reproducible from the certified file rather than only from git."""
     doc = entailment_gold.load_entailment_gold()
     block = doc["resample"]
 
     assert block["pairs_sha256"] == entailment_gold.pairs_content_hash(doc["pairs"])
     assert block["pair_digests"] == entailment_gold.pair_digests(doc["pairs"])
-    assert len(block["pair_digests"]) == 402  # live pairs, retired excluded
+    live = [p for p in doc["pairs"] if not p.get("retired")]
+    assert len(block["pair_digests"]) == len(live)  # retired excluded
     assert jq.gate_eligibility(doc).eligible is True
 
     gold_path = pathlib.Path(entailment_gold.__file__).parent / "entailment" / "gold.json"
     on_disk = json.loads(gold_path.read_text(encoding="utf-8"))
     stripped = {k: v for k, v in on_disk.items() if k != "resample"}
-    reconstructed = hashlib.sha256(
-        (json.dumps(stripped, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-    ).hexdigest()
     manifest = json.loads(
         (gold_path.parent / "resample_manifest.json").read_text(encoding="utf-8")
     )
+    # **The drawn file's own resample state, not "no resample state".** The
+    # first certification drew against a file that carried none, so stripping
+    # the key reproduced it. A *re*-certification draws against a file still
+    # carrying the sitting it will supersede, so the drawn bytes include that
+    # block — reconstructing without it cannot match, and the mismatch would
+    # read as "the pairs moved" when nothing moved at all.
+    prior = on_disk["resample"].get("supersedes") or []
+    if prior:
+        drawn_state = dict(stripped)
+        drawn_state["resample"] = prior[-1]
+    else:
+        drawn_state = stripped
+    reconstructed = hashlib.sha256(
+        (
+            json.dumps(drawn_state, indent=DRAWN_FILE_INDENT, ensure_ascii=False)
+            + "\n"
+        ).encode("utf-8")
+    ).hexdigest()
     assert reconstructed == manifest["gold_sha256"]
     # And the manifest's seed derives from that same sha, so the draw, the
-    # certification and the stamped basis all name one file state.
+    # certification and the stamped basis all name one file state -- which is
+    # what makes the sitting reproducible from the certified file alone.
     assert manifest["seed"] == int(manifest["gold_sha256"][:8], 16)
 
 
@@ -806,16 +942,17 @@ def test_the_writer_refuses_a_retired_pair_set_for_every_role(tmp_path):
     """
     score = jq.score_judgments(MINI_PAIRS, MINI_VERDICTS)
     identity = vj.judge_identity(_fake_cfg())
-    retired_doc = entailment_gold.load_entailment_gold()
+    retired_path = _retired_gold_path()
+    retired_doc = json.loads(retired_path.read_text(encoding="utf-8"))
     assert vj.is_retired_pair_set(
         entailment_gold.pairs_content_hash(retired_doc["pairs"])
-    ), "the canonical gold is the retired pair set; this test is about that"
+    ), "the archived gold is the retired pair set; this test is about that"
 
     for role in sorted(vj.JUDGE_ROLES):
         with pytest.raises(ValueError, match="retired"):
             jq.write_qualification_record(
                 tmp_path / f"{role}.json", role=role,
-                gold_path=entailment_gold.GOLD_PATH, identity=identity,
+                gold_path=retired_path, identity=identity,
                 score=score, gold_doc=retired_doc, ledger_run_id="run-1",
                 bars=dict(vj.VERIFICATION_BAR_DEFAULTS), git_sha="deadbeef",
                 timestamp="2026-08-12T00:00:00+00:00",
@@ -835,7 +972,7 @@ def test_the_runner_refuses_the_retired_pair_set_in_every_mode(tmp_path):
         stub_cls, seen = make_stub(cycling_script())
         with pytest.raises(RuntimeError, match="retired from qualification"):
             _run(run_dir, stub_cls, gate=gate,
-                 gold_path=entailment_gold.GOLD_PATH)
+                 gold_path=_retired_gold_path())
         assert not (run_dir / "ledger.jsonl").exists()
         assert {_premise_of(u) for u in seen} <= SANITY_PREMISES
 
@@ -1454,19 +1591,27 @@ def test_a_completed_run_never_writes_into_the_real_verdicts_directory(
 # ── census independence is disclosed, not discovered in review ───────────
 
 
-def test_the_live_gold_discloses_its_two_duplicated_propositions():
+def test_the_live_gold_discloses_its_contradicted_census_independence():
     """The 2026-08-10 attempt was spent against 80 contradicted rows over 78
     independent propositions and no artifact said so; the finding arrived in
-    review, after the attempt was gone. This is that disclosure."""
+    review, after the attempt was gone. This is that disclosure, and on the
+    round-4 gold it discloses a clean census: 80 rows, 80 propositions, no
+    duplicate at the bytes.
+
+    Kept asserting the *disclosure* rather than deleted now the number is
+    clean. A census that silently reacquired a duplicate would otherwise be
+    caught by nothing on this path, and the class this is about — a spent
+    attempt with the finding arriving afterwards — is not one a passing round
+    retires."""
+    from benchlib.tests.test_entailment_gold import DOCUMENTED_VERDICT_COUNTS
+
     doc = entailment_gold.load_entailment_gold()
     live = [p for p in doc["pairs"] if not p.get("retired")]
 
     ci = jq.census_independence(live, "contradicted", 0.95)
-    assert ci["rows"] == 80
-    assert ci["independent_propositions"] == 78
-    assert [sorted(pair) for pair in ci["duplicate_pairs"]] == [
-        ["eg-0093", "eg-0367"], ["eg-0194", "eg-0251"],
-    ]
+    assert ci["rows"] == DOCUMENTED_VERDICT_COUNTS["contradicted"]
+    assert ci["independent_propositions"] == ci["rows"]
+    assert ci["duplicate_pairs"] == []
 
 
 def test_a_three_row_duplicate_component_collapses_two_rows_not_three():
@@ -1495,28 +1640,55 @@ def test_a_three_row_duplicate_component_collapses_two_rows_not_three():
 
 
 def test_the_entailed_census_prints_its_true_proposition_count():
-    """T2.118 measured 173 entailed rows over 167 independent propositions:
-    five duplicate components, one of them three wide, collapsing six rows.
-    The finding-count arithmetic printed 166."""
+    """T2.118 measured the retired set's 173 entailed rows over 167
+    independent propositions: five duplicate components, one of them three
+    wide, collapsing six rows, where the finding-count arithmetic printed 166.
+
+    Round 4's entailed census carries no *byte-level* duplicate at all. It is
+    not duplicate-free: nine components were found by adjudication, which
+    Jaccard cannot see, and they are asserted through the sidecar below. This
+    test is the byte-level reading, and asserting it separately is what keeps
+    the two sources distinguishable — a sidecar that silently emptied would
+    otherwise look like a clean census here."""
+    from benchlib.tests.test_entailment_gold import DOCUMENTED_VERDICT_COUNTS
+
     doc = entailment_gold.load_entailment_gold()
     live = [p for p in doc["pairs"] if not p.get("retired")]
 
     ci = jq.census_independence(live, "entailed", 0.90)
-    assert ci["rows"] == 173
-    assert ci["independent_propositions"] == 167
-    assert len(ci["duplicate_pairs"]) == 7, "seven findings over five components"
+    assert ci["rows"] == DOCUMENTED_VERDICT_COUNTS["entailed"]
+    assert ci["duplicate_pairs"] == [], "no duplicate is visible at the bytes"
 
 
 def test_it_reports_the_effective_bar_on_both_readings():
-    """The gap runs the dangerous way: measured on rows the bar is exactly
-    0.95, and on independent propositions it is 0.9615 — so a census with
-    duplicates is *easier* than the bar it claims to enforce."""
+    """Both readings, reported whether or not they differ.
+
+    On the retired set the gap ran the dangerous way — 0.95 exactly on rows,
+    0.9615 on independent propositions, so a census with duplicates was
+    *easier* than the bar it claimed to enforce. Round 4's contradicted census
+    holds no duplicate, so the two readings coincide at 76/80 and the gap is
+    zero. The report still prints both, and this asserts both: a gold that
+    reacquired a duplicate would move the second number, and a reading that
+    stopped being computed would be the failure this pin exists for.
+
+    76 is derived, not chosen: 0.95 * 80 = 76 exactly, which is why the frame
+    sized the census as a multiple of 20 (T2.110)."""
+    import math
+
+    from benchlib.tests.test_entailment_gold import DOCUMENTED_VERDICT_COUNTS
+
+    census = DOCUMENTED_VERDICT_COUNTS["contradicted"]
+    min_passing = math.ceil(0.95 * census)
+
     doc = entailment_gold.load_entailment_gold()
     live = [p for p in doc["pairs"] if not p.get("retired")]
 
     ci = jq.census_independence(live, "contradicted", 0.95)
-    assert (ci["min_passing_rows"], ci["effective_bar_on_rows"]) == (76, 0.95)
-    assert (ci["min_passing_independent"], ci["effective_bar_on_independent"]) == (75, 0.9615)
+    assert (ci["min_passing_rows"], ci["effective_bar_on_rows"]) == (
+        min_passing, 0.95
+    )
+    assert ci["min_passing_independent"] == ci["min_passing_rows"]
+    assert ci["effective_bar_on_independent"] == ci["effective_bar_on_rows"]
     assert ci["bar_expressible_on_rows"] is True
 
 
@@ -1611,8 +1783,22 @@ def test_a_comfortable_pass_is_not_flagged():
 # ── the stopping rule binds pairs, not only the set they arrived in ──────
 
 
+def _retired_gold_path():
+    """Where the retired pair set lives: the D1 archive once it exists, the
+    canonical path only in pre-archive tree states. Every test about the
+    4975c5cc stopping rule reads through this, so none of them starts
+    asserting facts about whatever fresh gold later holds the canonical
+    path."""
+    path = entailment_gold.RETIRED_GOLD_ARCHIVE_PATH
+    return path if path.exists() else entailment_gold.GOLD_PATH
+
+
 def _retired_gold_pairs():
-    return entailment_gold.load_entailment_gold()["pairs"]
+    """The retired pairs, raw ``json.loads`` and not ``load_entailment_gold``:
+    the archive is an audit copy pinned by content digests, and running the
+    validating loader on it would couple the pin to the *live* harvest
+    manifest, a file the archive predates."""
+    return json.loads(_retired_gold_path().read_text(encoding="utf-8"))["pairs"]
 
 
 def test_appending_one_pair_does_not_un_retire_a_gold():
@@ -1667,10 +1853,287 @@ def test_a_genuinely_fresh_gold_is_not_refused():
 
 def test_the_pinned_digest_file_describes_the_retired_gold():
     """The pin is only as good as its provenance: it must name the pair set it
-    was taken from, and cover every pair in it."""
+    was taken from, and cover every pair in it.
+
+    The last three assertions are the A2 repair (T2.124): before them the
+    embedded ``count`` and ``pairs_content_hash`` were checked nowhere, and
+    the coverage assertion below stopped referencing the retired pairs the
+    moment the archive left the canonical path -- so a truncation of the
+    digest list would have silently disarmed 414 of 415 content refusals.
+    """
     raw = json.loads(entailment_gold.RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
     assert vj.is_retired_pair_set(raw["pairs_content_hash"])
     assert raw["digest_basis"] == list(entailment_gold.RETIRED_DIGEST_FIELDS)
-    assert entailment_gold.retired_pair_overlap(_retired_gold_pairs()) == {
-        pair["id"] for pair in _retired_gold_pairs()
+    pairs = _retired_gold_pairs()
+    assert entailment_gold.retired_pair_overlap(pairs) == {
+        pair["id"] for pair in pairs
     }, "every pair of the retired gold must be recognised as retired"
+
+    assert raw["count"] == len(raw["digests"]) == len(set(raw["digests"]))
+    assert set(raw["digests"]) == {
+        entailment_gold.content_digest(pair) for pair in pairs
+    }, "the digest list must be exactly the archived pairs' content digests"
+    assert entailment_gold.pairs_content_hash(pairs) == raw["pairs_content_hash"], (
+        "the named pair set must be derivable from the archived file's live "
+        "pairs -- the pin's provenance claim, checked rather than asserted"
+    )
+
+
+def test_a_truncated_digest_list_refuses_rather_than_disarming(tmp_path, monkeypatch):
+    """Removing entries from the pinned digest list must raise, never shrink
+    the refusal's reach: 'count' is load-bearing only because this check
+    exists, and this test fails if the check is removed."""
+    raw = json.loads(entailment_gold.RETIRED_DIGESTS_PATH.read_text(encoding="utf-8"))
+    raw["digests"] = raw["digests"][:1]
+    truncated = tmp_path / "retired_pair_digests.json"
+    truncated.write_text(json.dumps(raw), encoding="utf-8")
+    monkeypatch.setattr(entailment_gold, "RETIRED_DIGESTS_PATH", truncated)
+    entailment_gold.retired_pair_digests.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="truncated or padded"):
+            entailment_gold.retired_pair_digests()
+    finally:
+        entailment_gold.retired_pair_digests.cache_clear()
+
+
+# ── the adjudication sidecar (T2.124 step 9) ─────────────────────────────────
+#
+# Content-token Jaccard cannot separate a duplicate proposition from a lawful
+# near-miss: on the round-4 census a recorded duplicate and an owner-ruled
+# lawful pair both score 0.2857. So `census_independence` unions human-tier
+# verdicts, and reports a range where the adjudicators split rather than
+# picking a side.
+
+def test_an_absent_sidecar_is_lawful_and_degrades_to_the_jaccard_reading(tmp_path):
+    """Every tree before step 9 was in this state; it must not raise."""
+    empty = jq.load_adjudicated_duplicates(tmp_path / "nope.json")
+    assert empty == {"confirmed_duplicates": [], "contested": []}
+
+
+def test_a_malformed_sidecar_raises_rather_than_silently_restoring_the_overcount(tmp_path):
+    bad = tmp_path / "adjudicated.json"
+    bad.write_text(json.dumps({"confirmed_duplicates": [{"left": "eg-0001"}]}))
+    with pytest.raises(ValueError, match="needs 'left' and 'right'"):
+        jq.load_adjudicated_duplicates(bad)
+
+    worse = tmp_path / "worse.json"
+    worse.write_text(json.dumps({"contested": "eg-0001,eg-0002"}))
+    with pytest.raises(ValueError, match="must be a list"):
+        jq.load_adjudicated_duplicates(worse)
+
+
+def test_the_committed_sidecar_collapses_the_entailed_census():
+    """The number this function used to report, and the one it reports now.
+
+    The sidecar was written at step 9, against the census as authored: 14
+    components — 8 by unanimous blind adjudication, 6 by the owner's
+    2026-08-14 ruling that the opposite-slot precedent does not reach a
+    one-directional generalisation — collapsing the entailed census from 110
+    rows to 96 propositions.
+
+    Steps 10 and 11 then retired one member of five of those components, and
+    `census_independence` reads the sidecar **against the live set**, so a
+    component with a retired member stops collapsing anything. That is the
+    correct reading and not an erosion of the disclosure: the row it would
+    have collapsed is gone from the census too. The sidecar is left intact as
+    the step-9 adjudication record — pruning it would delete the audit trail
+    of decisions that were made — so the arithmetic below is stated as the
+    relation between the two rather than as two independent numbers.
+    """
+    from benchlib.tests.test_entailment_gold import DOCUMENTED_VERDICT_COUNTS
+
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    live_ids = {p["id"] for p in live}
+    ci = jq.census_independence(live, "entailed", 0.90)
+
+    # Jaccard alone finds nothing here — which is the whole point.
+    assert ci["duplicate_pairs"] == []
+
+    sidecar = jq.load_adjudicated_duplicates()
+    recorded = sidecar["confirmed_duplicates"]
+    assert len(recorded) == 14, "the step-9 record is 14 components, unpruned"
+    still_live = [
+        e for e in recorded
+        if e["left"] in live_ids and e["right"] in live_ids
+    ]
+    assert len(ci["adjudicated_duplicate_pairs"]) == len(still_live)
+    assert ci["contested_pairs"] == []
+
+    rows = DOCUMENTED_VERDICT_COUNTS["entailed"]
+    assert ci["rows"] == rows
+    # Every surviving component is a disjoint pair, so each collapses one row.
+    assert ci["independent_propositions"] == rows - len(still_live)
+    assert ci["independent_propositions_range"] == [
+        ci["independent_propositions"], ci["independent_propositions"]
+    ]
+    assert ci["independence_contested"] is False
+    low, high = ci["effective_bar_on_independent_range"]
+    assert low >= 0.90 and high >= 0.90
+
+
+def test_the_contradicted_census_is_untouched_by_the_sidecar():
+    """The class carrying the harder bar has no adjudicated duplicate at all."""
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    ci = jq.census_independence(live, "contradicted", 0.95)
+    assert ci["rows"] == 80
+    assert ci["independent_propositions"] == 80
+    assert ci["independent_propositions_range"] == [80, 80]
+    assert ci["independence_contested"] is False
+    assert ci["adjudicated_duplicate_pairs"] == []
+
+
+def test_the_renderer_never_prints_a_count_with_an_empty_pair_list():
+    """The regression this wiring could most easily introduce.
+
+    `independent_propositions` now collapses on a source `duplicate_pairs` does
+    not carry, so a note built from that key alone reads "8 duplicated
+    proposition(s): []".
+    """
+    doc = entailment_gold.load_entailment_gold()
+    live = [
+        p for p in doc["pairs"]
+        if not ("retired" in p or p.get("retirement_kind"))
+    ]
+    ci = jq.census_independence(live, "entailed", 0.90)
+    collapsing = ci["duplicate_pairs"] + ci["adjudicated_duplicate_pairs"]
+    assert len(collapsing) == ci["rows"] - ci["independent_propositions"]
+    assert collapsing, "a non-zero collapse must name the pairs that caused it"
+
+
+# ── T2.124 step 13: the disclosure is owed for BOTH gated classes ─────────
+
+
+def _independent_census(verdict, n):
+    """`n` rows of `verdict`, every one a distinct proposition."""
+    return [
+        {"id": f"{verdict[:3]}-{i:04d}", "verdict": verdict,
+         "premise": f"subject{i} relates object{i}",
+         "hypothesis": f"a distinct claim about subject{i} number {i}"}
+        for i in range(n)
+    ]
+
+
+def test_the_runner_discloses_the_census_for_both_gated_classes():
+    """Derived from the runner's own AST, not from a copy of its literal.
+
+    The done-when asks for the disclosure for both classes because the two
+    roles are gated on different numbers: `contradiction` on
+    contradiction-recall, `entailment` on the entailed pair. A runner
+    disclosing only the contradicted census tells the entailment role's
+    reader nothing about the census their bar is applied to — and until
+    T2.124 step 13 that is exactly what it did. Asserted structurally so a
+    future edit that drops one class fails here rather than shipping a
+    half-disclosure that still renders cleanly.
+    """
+    import ast
+
+    tree = ast.parse(
+        pathlib.Path(rjq.__file__).read_text(encoding="utf-8")
+    )
+    disclosed = None
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, ast.Constant) and key.value == "census_independence":
+                disclosed = value
+    assert disclosed is not None, "the runner no longer builds census_independence"
+    assert isinstance(disclosed, ast.List), (
+        "census_independence must be a LIST of per-class disclosures; a bare "
+        "call can only ever carry one class"
+    )
+    classes = {
+        arg.value
+        for call in disclosed.elts
+        if isinstance(call, ast.Call)
+        for arg in call.args
+        if isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+    }
+    assert classes == set(jq.CENSUS_RECALL_ATTRS), (
+        f"the runner discloses {sorted(classes)} but CENSUS_RECALL_ATTRS gates "
+        f"{sorted(jq.CENSUS_RECALL_ATTRS)} -- every class whose recall a bar "
+        f"reads must be disclosed"
+    )
+
+
+def test_both_classes_render_their_own_reading_under_their_own_heading():
+    """Two classes, two sections, each naming the class it describes.
+
+    The hazard the heading closes: one class's measured recall rendered under
+    the other's name reads as a disclosure while being a mis-attribution, and
+    the numbers are close enough that nothing downstream would catch it.
+    """
+    census = [
+        jq.census_independence(_census_with_two_duplicates(), "contradicted", 0.95),
+        jq.census_independence(_independent_census("entailed", 40), "entailed", 0.90),
+    ]
+    score = jq.QualificationScore(
+        n_pairs=402, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=76 / 80, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=census),
+    )
+    assert "Census independence (contradicted)" in text
+    assert "Census independence (entailed)" in text
+    assert "contradicted-recall" in text
+    # The contradicted class carries the duplicates, so only it is flagged.
+    assert "not robust to the independence reading" in text
+    assert text.count("not robust to the independence reading") == 1
+
+
+def test_a_rows_equal_propositions_census_says_so_rather_than_going_silent():
+    """Silence and independence must not render alike.
+
+    A reader meeting no section cannot tell "this census is independent" from
+    "nobody computed the disclosure" — and the second is precisely what the
+    2026-08-10 attempt suffered, discovered only in review after the attempt
+    was spent.
+    """
+    census = [jq.census_independence(_independent_census("entailed", 40), "entailed", 0.90)]
+    score = jq.QualificationScore(
+        n_pairs=40, invalid=0, confusion={}, entailed_precision=1.0,
+        entailed_recall=1.0, contradiction_precision=1.0,
+        contradiction_recall=1.0, per_slice={}, majority_class_floor=0.5,
+    )
+    text = jq.render_report(
+        score, jq.gate_eligibility(_synthetic_gold(200, 100, 0)), _mini_twin(),
+        _mini_meta(census_independence=census),
+    )
+    assert "Census independence (entailed) — rows == propositions" in text
+    assert "no independence reading is owed" in text
+
+
+def test_a_three_wide_component_collapses_two_rows_not_three_findings():
+    """T2.123's arithmetic, pinned on a synthetic census.
+
+    A component of k mutually-duplicate rows yields k(k-1)/2 findings and
+    collapses k-1 rows. The sibling pin reads the live gold and therefore
+    moves whenever the gold's composition does; this one cannot, so the
+    arithmetic stays guarded across a gold swap.
+    """
+    pairs = _independent_census("entailed", 10)
+    for suffix, hypothesis in (
+        ("a", "The widget has tri as a part."),
+        ("b", "tri is a part of the widget."),
+        ("c", "tri is part of the widget."),
+    ):
+        pairs.append({
+            "id": f"tri-{suffix}", "verdict": "entailed",
+            "premise": "tri has part widget", "hypothesis": hypothesis,
+        })
+    ci = jq.census_independence(pairs, "entailed", 0.90)
+    assert ci["rows"] == 13
+    # Three findings over one three-wide component, but only two rows collapse.
+    assert len(ci["duplicate_pairs"]) == 3
+    assert ci["independent_propositions"] == 11

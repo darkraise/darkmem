@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -122,6 +123,11 @@ async def _run(argv: list[str] | None = None) -> int:
     parser.add_argument("--database-url", default=None)
     parser.add_argument("--gold", default=str(fg.SPAN_GOLD_PATH))
     parser.add_argument(
+        "--manifest", default=None,
+        help="the committed span_harvest.json the gold's anchors resolve "
+             "against; defaults to a sibling of --gold",
+    )
+    parser.add_argument(
         "--live", action="store_true",
         help="actually probe the judge against a present gold (spends a "
              "measurement attempt); refused without --api-key",
@@ -130,6 +136,18 @@ async def _run(argv: list[str] | None = None) -> int:
     parser.add_argument("--model", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--api-kind", default=None)
+    parser.add_argument(
+        "--judge-params", default=None, metavar="JSON",
+        help=(
+            "the judge purpose's params, as JSON. REQUIRED for any non-DeepSeek "
+            "vendor: DEFAULT_JUDGE's params carry `thinking: {type: disabled}`, "
+            "which is DeepSeek/z.ai's reasoning-disable knob, and OpenAI 400s on "
+            "it as an unknown parameter. --model/--base-url/--api-kind override "
+            "their fields individually and leave params behind, so a vendor swap "
+            "without this flag sends one vendor's quirk to another. Mirrors "
+            "run_judge_qualification.py's flag of the same name."
+        ),
+    )
     args = parser.parse_args(argv)
 
     rows: dict[str, object] = {}
@@ -187,14 +205,31 @@ async def _run(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    base_dir = Path(args.gold).resolve().parent
+    # Anchors resolve against the committed harvest manifest, not a directory of
+    # documents: a citation's char_span indexes into a block's own text, which is
+    # what the runtime slices. Loaded BEFORE the judge config is built and before
+    # any probe, so a missing or drifted manifest costs nothing — a live pass
+    # whose premises cannot be resolved would spend the attempt to produce
+    # premises no consumer constructs.
+    manifest_path = Path(args.manifest or (Path(args.gold).resolve().parent / "span_harvest.json"))
+    try:
+        manifest = fg.load_span_manifest(manifest_path)
+    except fg.SpanManifestAbsent as exc:
+        print(
+            f"status: FAIL_CLOSED (no harvest manifest at {exc.path}) — the "
+            "gold's anchors name harvested blocks, so without the manifest no "
+            "premise can be resolved. Run scripts/benchlib/span_harvest.py."
+        )
+        return 1
+
+    judge_params = json.loads(args.judge_params) if args.judge_params else None
     config = fg.judge_purpose_config(
         args.api_key, model=args.model, base_url=args.base_url,
-        api_kind=args.api_kind,
+        api_kind=args.api_kind, params=judge_params,
     )
 
     score, twin, verdicts = await fg.score_via_live_judge(
-        pairs, base_dir, config, cache_dir=fg.SPAN_CACHE_DIR,
+        pairs, manifest, config, cache_dir=fg.SPAN_CACHE_DIR,
     )
     bars = fb.resolve_faithfulness_bars(rows)
     coverage = fg.score_answer_coverage(pairs, verdicts, bars)

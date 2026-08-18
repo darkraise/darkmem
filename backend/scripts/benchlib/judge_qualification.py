@@ -140,6 +140,52 @@ def score_judgments(
 # ── census independence, disclosed per run (2026-08-12) ──────────────────
 
 
+#: Human-tier duplicate verdicts over the population Jaccard cannot resolve.
+#: Absent on a tree with no adjudicated round; see `load_adjudicated_duplicates`.
+ADJUDICATED_DUPLICATES_PATH = (
+    entailment_gold.ENTAILMENT_DIR / "adjudicated_duplicates.json"
+)
+
+
+def load_adjudicated_duplicates(path: Path | str | None = None) -> dict:
+    """The adjudication sidecar, or an empty one when the file is absent.
+
+    Absence is lawful and means "no round has adjudicated this gold yet", which
+    is the state every tree was in before T2.124 step 9. It degrades to the
+    pure-Jaccard reading rather than raising — but the *shape* is validated when
+    the file exists, because a sidecar that silently fails to parse would
+    restore exactly the over-count it was written to remove.
+    """
+    target = Path(path) if path is not None else ADJUDICATED_DUPLICATES_PATH
+    if not target.exists():
+        return {"confirmed_duplicates": [], "contested": []}
+    with open(target, encoding="utf-8") as fh:
+        data = json.load(fh)
+    for key in ("confirmed_duplicates", "contested"):
+        rows = data.get(key, [])
+        if not isinstance(rows, list):
+            raise ValueError(f"{target}: {key!r} must be a list, got {type(rows)}")
+        for row in rows:
+            if not isinstance(row, dict) or "left" not in row or "right" not in row:
+                raise ValueError(
+                    f"{target}: every {key!r} row needs 'left' and 'right' pair "
+                    f"ids; got {row!r}"
+                )
+    return data
+
+
+#: Which measured recall the independence reading threatens, per verdict class.
+#: The reading is about a *recall* bar — it says a judge banking correlated hits
+#: gets a wider per-item tolerance than the bar states — so a class is disclosable
+#: here only while its recall is what a bar gates. Adding a class means adding its
+#: recall attribute here and its bar at the call site, never rendering one class's
+#: number under another's name.
+CENSUS_RECALL_ATTRS: dict[str, str] = {
+    "contradicted": "contradiction_recall",
+    "entailed": "entailed_recall",
+}
+
+
 def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
     """What a verdict class's census can actually express against ``bar``.
 
@@ -153,6 +199,23 @@ def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
     **no artifact said so** — the finding arrived afterwards, in review, by
     which point the attempt was gone. `duplicate_propositions` existed and
     was wired into nothing but its own test.
+
+    **The Jaccard findings alone are not the duplicate set, and reporting them
+    as if they were reproduced this function's own defect one level down**
+    (T2.124 step 9, 2026-08-14). Content-token Jaccard sees wording, not
+    entailment: on the round-4 census the three duplicates found by reading
+    scored 0.8333 / 0.3333 / 0.2857, none caught at the committed 0.85, while
+    an owner-ruled *lawful* pair scored 0.2857 — equal to one of them. The
+    populations interleave, so no threshold separates them and this count was
+    reporting a class fully independent while known duplicates sat inside it.
+
+    So the count also unions an **adjudication sidecar**
+    (`entailment/adjudicated_duplicates.json`), the human-tier verdicts over
+    the population Jaccard cannot resolve: every live pair sharing a
+    byte-identical premise and verdict. Confirmed duplicates collapse; pairs
+    the adjudicators split are reported as a **range** rather than silently
+    resolved either way, because a point estimate here would be a verdict this
+    function is not entitled to reach.
 
     Reports rather than judges: no number here changes a score or a verdict.
     """
@@ -179,12 +242,31 @@ def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
             node = parent[node]
         return node
 
-    for finding in dupes:
-        left, right = _find(finding.left), _find(finding.right)
-        if left != right:
-            parent[left] = right
-    collapsed = sum(1 for node in list(parent) if _find(node) != node)
-    independent = len(rows) - collapsed
+    def _collapse(edges: list[tuple[str, str]]) -> int:
+        parent.clear()
+        for left_id, right_id in edges:
+            left, right = _find(left_id), _find(right_id)
+            if left != right:
+                parent[left] = right
+        return sum(1 for node in list(parent) if _find(node) != node)
+
+    lexical = [(f.left, f.right) for f in dupes]
+    adjudicated = load_adjudicated_duplicates()
+    confirmed = [
+        (row["left"], row["right"])
+        for row in adjudicated.get("confirmed_duplicates", [])
+        if row["left"] in row_ids and row["right"] in row_ids
+    ]
+    contested = [
+        (row["left"], row["right"])
+        for row in adjudicated.get("contested", [])
+        if row["left"] in row_ids and row["right"] in row_ids
+    ]
+
+    # Upper bound treats contested pairs as distinct; lower bound treats them as
+    # duplicates. Both are computed, neither is chosen — see the docstring.
+    independent = len(rows) - _collapse(lexical + confirmed)
+    independent_low = len(rows) - _collapse(lexical + confirmed + contested)
 
     def _min_passing(n: int) -> tuple[int, float]:
         if n <= 0:
@@ -194,6 +276,7 @@ def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
 
     need_rows, eff_rows = _min_passing(len(rows))
     need_ind, eff_ind = _min_passing(independent)
+    need_low, eff_low = _min_passing(independent_low)
     return {
         "verdict": verdict,
         "bar": bar,
@@ -205,6 +288,17 @@ def census_independence(pairs: list[dict], verdict: str, bar: float) -> dict:
         "min_passing_independent": need_ind,
         "effective_bar_on_independent": round(eff_ind, 4),
         "bar_expressible_on_rows": abs(eff_rows - bar) < 1e-9,
+        # The adjudicated disclosure. `independent_propositions` above is the
+        # upper bound; these carry the contested tail so a reader cannot mistake
+        # a range for a measurement.
+        "adjudicated_duplicate_pairs": [list(pair) for pair in confirmed],
+        "contested_pairs": [list(pair) for pair in contested],
+        "independent_propositions_range": [independent_low, independent],
+        "min_passing_independent_range": [need_low, need_ind],
+        "effective_bar_on_independent_range": [
+            round(eff_low, 4), round(eff_ind, 4)
+        ],
+        "independence_contested": bool(contested),
     }
 
 
@@ -616,14 +710,34 @@ def render_report(
         "each scored row's twin. Keyed on the gold's PAIRS since 2026-08-12, "
         "so an edit to something no judge was shown cannot reset it."
     )
-    ci = meta.get("census_independence")
-    if ci:
+    # A list since T2.124 step 13: the done-when requires the disclosure for
+    # every class whose recall a bar gates, and a single dict could only ever
+    # carry one of them. A bare dict from an older artifact is read as a
+    # one-element list so a re-render of a recorded run still works.
+    census = meta.get("census_independence") or []
+    if isinstance(census, dict):
+        census = [census]
+    for ci in census:
+        # Both sources of collapse, never `duplicate_pairs` alone: the lexical
+        # findings can be empty while the adjudicated set is not, and a note
+        # reading "8 duplicated proposition(s): []" is worse than no note.
+        collapsing = (
+            ci["duplicate_pairs"] + ci.get("adjudicated_duplicate_pairs", [])
+        )
         note = (
             "rows == propositions"
             if ci["rows"] == ci["independent_propositions"]
             else f"{ci['rows'] - ci['independent_propositions']} duplicated "
-                 f"proposition(s): {ci['duplicate_pairs']}"
+                 f"proposition(s): {collapsing}"
         )
+        if ci.get("contested_pairs"):
+            low, high = ci["independent_propositions_range"]
+            note += (
+                f"; {len(ci['contested_pairs'])} further pair(s) contested "
+                f"between adjudicators, so the independent count is a range "
+                f"[{low}, {high}] and the figure quoted here is its upper "
+                f"bound: {ci['contested_pairs']}"
+            )
         lines.append(
             f"- census independence ({ci['verdict']}): {ci['rows']} rows over "
             f"{ci['independent_propositions']} independent propositions — {note}. "
@@ -717,32 +831,55 @@ def render_report(
         )
         lines.append("")
 
-    ci = meta.get("census_independence")
-    if ci and ci["rows"] != ci["independent_propositions"]:
+    # One section per disclosed class, headed by the class, because two
+    # classes rendered under one "contradiction-recall" heading is the
+    # mis-attribution T2.124 step 13 exists to prevent.
+    for ci in census:
+        if ci["rows"] == ci["independent_propositions"]:
+            # Stated rather than skipped: a reader who sees no section cannot
+            # tell "independent census" from "disclosure not computed", and
+            # the second is what the 2026-08-10 attempt actually suffered.
+            lines.append(
+                f"## Census independence ({ci['verdict']}) — rows == propositions"
+            )
+            lines.append("")
+            lines.append(
+                f"- {ci['rows']} {ci['verdict']} rows over "
+                f"{ci['independent_propositions']} independent propositions: no "
+                f"two rows assert one proposition, so the bar means on "
+                f"propositions exactly what it means on rows and no independence "
+                f"reading is owed."
+            )
+            lines.append("")
+            continue
         # The owner ruled 2026-08-12 that independence is handled by
         # reporting rather than retiring, which puts the whole weight of that
         # ruling here: the bar is applied to rows, and a row-pass that the
         # independent reading would fail must say so rather than read as a
         # clear pass. Computed here rather than in `census_independence`,
         # which takes no judge output by construction.
-        hits = round(score.contradiction_recall * ci["rows"])
+        measured = getattr(score, CENSUS_RECALL_ATTRS[ci["verdict"]])
+        hits = round(measured * ci["rows"])
         collapsed = ci["rows"] - ci["independent_propositions"]
         worst_independent = (hits - collapsed) / ci["independent_propositions"]
-        lines.append("## Census independence — read with the recall verdict")
+        lines.append(
+            f"## Census independence ({ci['verdict']}) — read with the recall "
+            f"verdict"
+        )
         lines.append("")
         lines.append(
-            f"- {ci['rows']} contradicted rows over "
+            f"- {ci['rows']} {ci['verdict']} rows over "
             f"{ci['independent_propositions']} independent propositions "
             f"({collapsed} duplicated: {ci['duplicate_pairs']})."
         )
         lines.append(
-            f"- Measured contradiction-recall {score.contradiction_recall:.4f} "
+            f"- Measured {ci['verdict']}-recall {measured:.4f} "
             f"is {hits}/{ci['rows']} on rows. If the judge caught every "
             f"correlated pair, the independent reading is at worst "
             f"{max(hits - collapsed, 0)}/{ci['independent_propositions']} = "
             f"{max(worst_independent, 0.0):.4f}."
         )
-        if score.contradiction_recall >= ci["bar"] > worst_independent:
+        if measured >= ci["bar"] > worst_independent:
             lines.append(
                 f"- **This pass is not robust to the independence reading.** It "
                 f"clears {ci['bar']} on rows and falls below it on independent "

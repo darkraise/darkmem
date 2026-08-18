@@ -1,0 +1,111 @@
+{
+ "_notes": "Round-1 re-label set: the contested and escalated pairs, plus sg-0225 whose content changed after the first sheet was cut (its round-1 labels are stale and must not be reused). Verdicts, slices and rationales stripped as before. Decide each under the AMENDED SPAN_LABELLING.md, whose 'Round-1 amendments' section is now ratified.",
+ "n": 21,
+ "pairs": [
+  {
+   "id": "sg-0039",
+   "premise": "These are minor verb/consistency deviations left as-is because changing them\nwould break existing frontend clients for marginal benefit.",
+   "hypothesis": "The documented REST deviations are left in place because changing them would break existing frontend clients."
+  },
+  {
+   "id": "sg-0054",
+   "premise": "Expected: still authenticated (cookie survives reload)",
+   "hypothesis": "After a browser page refresh, the tester is expected to remain authenticated."
+  },
+  {
+   "id": "sg-0057",
+   "premise": "Set the admin password (you authenticate as a single admin).",
+   "hypothesis": "The setup wizard's steps include setting the admin password."
+  },
+  {
+   "id": "sg-0065",
+   "premise": "13. LLM config page (`/llm`)\n\n[ ] Each card shows provider, model, base URL, dimensions, api_key masked as `***`",
+   "hypothesis": "The LLM config page section lists checking that each purpose card masks api_key as ***."
+  },
+  {
+   "id": "sg-0080",
+   "premise": "Frontend:\n\ncd frontend && npm ci && npm run typecheck && npx vitest run && npm run build",
+   "hypothesis": "The frontend commands given are npm ci, npm run typecheck, npx vitest run and npm run build."
+  },
+  {
+   "id": "sg-0084",
+   "premise": "Expect, in this posture:\n\n`trust_proxy_headers: true`",
+   "hypothesis": "trust_proxy_headers is expected to be true."
+  },
+  {
+   "id": "sg-0126",
+   "premise": "Exactly one case: **content that must not exist anywhere** — a pasted credential, a key, a\ntoken, someone else's personal data. Nothing else. Deleting a memory through the API or UI\nis the normal path and is sufficient for ordinary removal.",
+   "hypothesis": "The break-glass purge applies in exactly one case: content that must not exist anywhere, such as a pasted credential or someone else's personal data."
+  },
+  {
+   "id": "sg-0131",
+   "premise": "Runbook for a human tester to walk through the UI after the scripted E2E suite passes. Use in tandem with `test-plan.md`.",
+   "hypothesis": "The checklist is a runbook for a human tester to walk through the UI after the scripted E2E suite passes."
+  },
+  {
+   "id": "sg-0139",
+   "premise": "**Set `X-Real-IP` to its own view of the peer**, overwriting whatever the\nclient sent. If the client can supply this header through your proxy, the\nlockout is defeated and turning the switch on has made things worse than\nleaving it off.",
+   "hypothesis": "The runbook requires the proxy to set X-Real-IP to its own view of the peer, overwriting whatever the client sent."
+  },
+  {
+   "id": "sg-0150",
+   "premise": "The app is the network edge in this topology: it trusts no proxy headers, and the\nlogin rate limiter keys on the transport peer. The session cookie is `Secure`\n(HTTPS-only) by default. To serve over plain HTTP on the LAN, set\n`COOKIE_SECURE=false` — note the cookie then travels in cleartext. Putting a\n**TLS-terminating reverse proxy** (nginx/Caddy/Traefik) in front is a different\nposture, not the default one: that proxy becomes the edge, so set\n`TRUST_PROXY_HEADERS=true` as well, or every client will share the proxy's\nrate-limit bucket.",
+   "hypothesis": "In the bundled topology the app itself is the network edge: it trusts no proxy headers and the login rate limiter keys on the transport peer."
+  },
+  {
+   "id": "sg-0155",
+   "premise": "**Status:** operator procedure, not an application feature. Written 2026-08-06 as rider R2\nof T2.59's ruling (option D: accept the residue and document it).",
+   "hypothesis": "The purge is an operator procedure rather than an application feature, written on 2026-08-06 as rider R2 of T2.59's ruling."
+  },
+  {
+   "id": "sg-0156",
+   "premise": "Two remedies already exist and should be tried first: **delete the conversation** (cascades\nits snippets and its prose) and **wait out or shorten the buffer retention** (a config row).",
+   "hypothesis": "Two existing remedies should be tried before a purge: deleting the conversation, and waiting out or shortening the buffer retention."
+  },
+  {
+   "id": "sg-0157",
+   "premise": "**Stop the application.** Both the API and any running jobs — a consolidation pass\nmid-flight will re-derive from rows you are about to edit.",
+   "hypothesis": "Both the API and any running jobs must be stopped, since a consolidation pass mid-flight will re-derive from rows about to be edited."
+  },
+  {
+   "id": "sg-0168",
+   "premise": "Scripts print PASS/FAIL lines I can read from the output. Log their results in the phase's Execution log.",
+   "hypothesis": "The supporting scripts emit PASS/FAIL lines that can be read from their output."
+  },
+  {
+   "id": "sg-0169",
+   "premise": "Error text does not leak whether the account exists (single-admin, so less relevant but still check for generic wording)",
+   "hypothesis": "The checks include confirming the login error wording stays generic and does not reveal whether the account exists."
+  },
+  {
+   "id": "sg-0180",
+   "premise": "| Store | What survives | Bounded? |\n|---|---|---|\n| `events` payloads | content previews; full refine summaries in `consolidated` / `undone`; contradiction counterpart triples in `verified` | No — append-only |\n| `knowledge_triples.fact` | the lifted sentence | No — a fact outlives any one asserting memory |\n| `messages.context` | citation snippets, and cited fact rows untrimmed | Until the conversation is deleted |\n| `memory_buffer` | raw content on `done` rows | Yes — `buffer_done_retention_hours`, default 24 |",
+   "hypothesis": "Raw content in the memory buffer survives a deletion only for a bounded time."
+  },
+  {
+   "id": "sg-0183",
+   "premise": "A centralized memory system for AI agents: stores and retrieves natural-language\n**memories** (semantic + keyword hybrid search over pgvector), builds an\n**entity/relationship knowledge graph** from them, and indexes **code\nrepositories** into a navigable symbol/call graph. It exposes a REST API, a\nWebSocket event stream, and an **MCP** tool endpoint for agents, with a React UI.",
+   "hypothesis": "darkmem stores natural-language memories and exposes an MCP tool endpoint for agents."
+  },
+  {
+   "id": "sg-0188",
+   "premise": "cp .env.example .env\n# Edit .env and generate the two secrets:\n#   DB_PASSWORD   = openssl rand -base64 24\n#   JWT_SECRET    = openssl rand -hex 32      (must be >= 32 chars)\n# If you reach the UI over plain HTTP on your LAN, also set COOKIE_SECURE=false.\n# Pin the image tag for a real deploy:  DARKMEM_VERSION=0.2.0\n\ndocker compose up -d",
+   "hypothesis": "The quickstart's comments state that JWT_SECRET must be at least 32 characters."
+  },
+  {
+   "id": "sg-0190",
+   "premise": "BEGIN;\nSET LOCAL session_replication_role = 'replica';\n-- Prefer redaction over deletion where the row's existence is itself the record:\nUPDATE events SET payload = jsonb_set(payload, '{content_preview}', '\"[redacted]\"')\n  WHERE id = '<id>' AND created_at = '<created_at>';   -- both, always: composite PK\nDELETE FROM memory_buffer WHERE id = '<id>';\nCOMMIT;",
+   "hypothesis": "The example purge SQL carries a comment preferring redaction over deletion where the row's existence is itself the record."
+  },
+  {
+   "id": "sg-0225",
+   "premise": "**Bulk retry runs one INSERT per memory** — acceptable for typical batch sizes",
+   "hypothesis": "Bulk retry runs one INSERT per memory, which is acceptable at any batch size."
+  },
+  {
+   "id": "sg-0233",
+   "premise": "[ ] Initial page load < 2 s",
+   "hypothesis": "The checklist's initial page load target is under 5 seconds."
+  }
+ ]
+}
