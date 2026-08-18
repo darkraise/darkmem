@@ -10,6 +10,7 @@ from .graph import Entity, EntityRelation, KnowledgeTriple
 from .llm_config import LLMPurposeConfigRow
 from .memory import Memory, MemoryBuffer, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
+from .job_run import JobRun
 from .project import Project
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "Embedder",
     "LLMPurposeConfigRow",
     "PipelineFailure",
+    "JobRun",
 ]

@@ -1005,6 +1005,34 @@ def _pass_two() -> None:
         "CREATE INDEX idx_pipeline_failures_pipeline_name ON pipeline_failures (pipeline_name) "
         "WHERE resolved_at IS NULL"
     )
+
+    # ── job_runs ─────────────────────────────────────────────────────────
+    # Job telemetry lives here rather than in `events`. That table is the
+    # audit substrate: append-only by trigger and permanent by ruling, and
+    # doc 17 section 5.1's verification metrics are SQL over it alone. A
+    # five-second job wrote ~17k rows a day into something nothing can delete
+    # from. Here DELETE is ordinary, so `job_run_cleanup` holds the table to
+    # a configured ceiling.
+    op.execute(
+        """
+        CREATE TABLE job_runs (
+            id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            job_key          VARCHAR(128) NOT NULL,
+            outcome          VARCHAR(16) NOT NULL,
+            started_at       TIMESTAMPTZ NOT NULL,
+            duration_seconds DOUBLE PRECISION NOT NULL,
+            trigger          VARCHAR(16) NOT NULL DEFAULT 'schedule',
+            error            TEXT,
+            detail           JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
+    )
+    # The history dialog reads one job newest-first; the cleanup job trims
+    # oldest-first across every job.
+    op.execute(
+        "CREATE INDEX ix_job_runs_key_started ON job_runs (job_key, started_at DESC)"
+    )
+    op.execute("CREATE INDEX ix_job_runs_started ON job_runs (started_at)")
     op.execute(
         "CREATE INDEX idx_pipeline_failures_resolved_at ON pipeline_failures (resolved_at) "
         "WHERE resolved_at IS NOT NULL"
@@ -1368,6 +1396,7 @@ def downgrade() -> None:
 
     for table in (
         # pass two — dropped before the pass-one tables they reference
+        "job_runs",
         "events",
         "llm_purpose_configs",
         "messages",

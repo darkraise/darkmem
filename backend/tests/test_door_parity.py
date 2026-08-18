@@ -555,6 +555,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("PUT", f"{V1}/jobs/{{key}}"),
             ("PUT", f"{V1}/jobs/{{key}}/config"),
             ("POST", f"{V1}/jobs/{{key}}/trigger"),
+            ("GET", f"{V1}/jobs/{{key}}/runs"),
         ),
         reason=(
             "Scheduler control. Triggering or reconfiguring a job is remote "

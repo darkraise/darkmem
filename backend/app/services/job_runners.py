@@ -422,13 +422,13 @@ def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSessi
     no-op that leaves every buffered row pending — deliberately, since claiming
     them would spend attempts on work that cannot succeed.
     """
-    async def run() -> None:
+    async def run() -> dict | None:
         from app.services.buffer_flush import flush_once
 
         pipeline = getattr(app.state, "pipeline", None)
         if pipeline is None:
             logger.info("buffer_flush skipped: no pipeline")
-            return
+            return {}
 
         stats = await flush_once(session_factory, pipeline)
         if any(stats.values()):
@@ -438,6 +438,10 @@ def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSessi
                 stats["claimed"], stats["done"], stats["failed"],
                 stats["rejected"], stats["reclaimed"], stats["swept"],
             )
+            return stats
+        # Empty queue. This runs every five seconds, so saying so is what
+        # keeps an idle instance from writing ~17k rows a day.
+        return {}
     return run
 
 
@@ -447,14 +451,14 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
     job registry owns scheduling. Reads ``batch_size`` from the
     ``code_enrichment`` job config via the registry.
     """
-    async def run() -> None:
+    async def run() -> dict:
         from app.services.enrichment_worker import EnrichmentWorker
         from app.api.websocket import event_manager
 
         llm = getattr(app.state, "llm", None)
         if not llm:
             logger.info("code_enrichment skipped: no LLM orchestrator")
-            return
+            return {}
 
         # app.state.job_registry is wired after this runner is constructed,
         # so read it lazily here, not at construction time.
@@ -465,7 +469,12 @@ def make_code_enrichment_runner(app, session_factory: async_sessionmaker[AsyncSe
             batch_size = int(cfg.config.get("batch_size", 5))
 
         worker = EnrichmentWorker(llm, broadcast=event_manager.broadcast)
-        await worker.process_batch(batch_size=batch_size)
+        processed = await worker.process_batch(batch_size=batch_size)
+        # Every ten seconds against an empty symbol queue on an instance with
+        # no repositories indexed; an unreported no-op here was ~8.6k rows/day.
+        if not processed:
+            return {}
+        return processed if isinstance(processed, dict) else {"enriched": processed}
     return run
 
 
@@ -779,3 +788,51 @@ async def _save_ppr_cursor(
         else:
             row.value = value
         await session.commit()
+
+
+JOB_RUN_CLEANUP_JOB_KEY = "job_run_cleanup"
+JOB_RUN_RETAIN_DEFAULT = 5000
+
+
+def make_job_run_cleanup_runner(app, session_factory: async_sessionmaker[AsyncSession]):
+    """Hold ``job_runs`` to its configured ceiling, newest kept.
+
+    The reason this job exists at all: run telemetry used to go into
+    ``events``, which is append-only by trigger and permanent by ruling, so
+    nothing could ever remove it. ``job_runs`` is an ordinary table precisely
+    so this sweep is possible.
+
+    Trims by row count rather than by age. Age is the wrong knob here — a
+    quiet week and a busy week produce wildly different volumes, and the thing
+    an operator actually wants to bound is how much of the disk this can take.
+    """
+    async def run() -> dict:
+        from sqlalchemy import text as sa_text
+
+        registry = getattr(app.state, "job_registry", None)
+        retain = JOB_RUN_RETAIN_DEFAULT
+        if registry is not None:
+            cfg = await registry.load_config(JOB_RUN_CLEANUP_JOB_KEY)
+            retain = int(cfg.config.get("max_rows", JOB_RUN_RETAIN_DEFAULT))
+
+        async with session_factory() as session:
+            # One statement: keep the newest `retain` by (started_at, id) and
+            # delete the rest. The id tie-break keeps the cut deterministic
+            # when several runs share a timestamp.
+            deleted = (await session.execute(
+                sa_text(
+                    "DELETE FROM job_runs WHERE id IN ("
+                    "  SELECT id FROM job_runs"
+                    "  ORDER BY started_at DESC, id DESC"
+                    "  OFFSET :retain"
+                    ")"
+                ),
+                {"retain": retain},
+            )).rowcount
+            await session.commit()
+
+        if not deleted:
+            return {}
+        logger.info("job_run_cleanup: trimmed %s row(s) to ceiling %s", deleted, retain)
+        return {"deleted": deleted, "retained": retain}
+    return run

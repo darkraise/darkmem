@@ -235,7 +235,7 @@ async def test_running_is_true_while_the_job_lock_is_held():
 
 
 @pytest.mark.asyncio
-async def test_every_run_journals_a_job_run_row(setup_database):
+async def test_every_run_records_a_job_runs_row(setup_database):
     """Only the three cleanup runners called `record_maintenance_run`, so the
     other eighteen jobs ran and finished leaving no trace a reader could find
     — the run history dialog was empty for them by construction, not because
@@ -249,17 +249,16 @@ async def test_every_run_journals_a_job_run_row(setup_database):
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:
             rows = (await session.execute(sa_text(
-                "SELECT payload FROM events WHERE event_type = 'job_run' "
-                "AND payload->>'job' = 'journalled_job'"
+                "SELECT outcome, detail FROM job_runs WHERE job_key = 'journalled_job'"
             ))).all()
         assert len(rows) == 1, "a completed run must leave exactly one row"
-        assert rows[0][0]["outcome"] == "ok"
+        assert rows[0][0] == "ok"
     finally:
         await engine.dispose()
 
 
 @pytest.mark.asyncio
-async def test_a_failing_run_journals_the_error_outcome(setup_database):
+async def test_a_failing_run_records_the_error_outcome(setup_database):
     from sqlalchemy import text as sa_text
     from app.services.job_registry import Job, JobRegistry
 
@@ -277,13 +276,137 @@ async def test_a_failing_run_journals_the_error_outcome(setup_database):
         await reg._run_once("failing_job")
         async with factory() as session:
             rows = (await session.execute(sa_text(
-                "SELECT payload FROM events WHERE event_type = 'job_run' "
-                "AND payload->>'job' = 'failing_job'"
+                "SELECT outcome, error FROM job_runs WHERE job_key = 'failing_job'"
             ))).all()
         assert len(rows) == 1
-        assert rows[0][0]["outcome"] == "error"
+        assert rows[0][0] == "error"
         # The reason has to survive: an outcome with no error is a run that
         # failed for no stated reason.
-        assert "exploded" in rows[0][0]["detail"]["error"]
+        assert "exploded" in rows[0][1]
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_runner_reporting_no_work_records_nothing(setup_database):
+    """The no-op rule. `buffer_flush` polls an empty queue every five seconds
+    and `code_enrichment` every ten; together they were 94% of the rows, all
+    of them saying "ok, nothing to do" into a table nothing could prune."""
+    from sqlalchemy import text as sa_text
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+
+    async def _idle():
+        return 0
+
+    reg.register(Job(key="idle_reporter", display_name="I", description="d",
+                     default_cron="*/5 * * * * *", min_interval_seconds=1,
+                     runner=_idle))
+    try:
+        await reg._run_once("idle_reporter")
+        async with factory() as session:
+            n = (await session.execute(sa_text(
+                "SELECT count(*) FROM job_runs WHERE job_key = 'idle_reporter'"
+            ))).scalar()
+        assert n == 0
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_runner_reporting_work_records_its_summary(setup_database):
+    from sqlalchemy import text as sa_text
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+
+    async def _busy():
+        return {"flushed": 7}
+
+    reg.register(Job(key="busy_reporter", display_name="B", description="d",
+                     default_cron="*/5 * * * * *", min_interval_seconds=1,
+                     runner=_busy))
+    try:
+        await reg._run_once("busy_reporter")
+        async with factory() as session:
+            row = (await session.execute(sa_text(
+                "SELECT detail FROM job_runs WHERE job_key = 'busy_reporter'"
+            ))).first()
+        assert row is not None and row[0] == {"flushed": 7}
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_failing_no_op_is_still_recorded(setup_database):
+    """A run that broke is the one row nobody can afford to have suppressed,
+    whatever it claimed to have done."""
+    from sqlalchemy import text as sa_text
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+
+    async def _broken():
+        raise RuntimeError("nope")
+
+    reg.register(Job(key="broken_reporter", display_name="B", description="d",
+                     default_cron="*/5 * * * * *", min_interval_seconds=1,
+                     runner=_broken))
+    try:
+        await reg._run_once("broken_reporter")
+        async with factory() as session:
+            n = (await session.execute(sa_text(
+                "SELECT count(*) FROM job_runs WHERE job_key = 'broken_reporter'"
+            ))).scalar()
+        assert n == 1
+    finally:
+        await engine.dispose()
+
+
+# ── the paginated history door ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_runs_endpoint_paginates_newest_first(client, auth_headers, session):
+    """`total` is the unpaginated count, so a reader can tell "page 1 of many"
+    from "that is everything" — which the previous client-side filter over a
+    shared journal could not."""
+    from datetime import timedelta
+    from app.models.job_run import JobRun
+
+    base = datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc)
+    for i in range(5):
+        session.add(JobRun(
+            job_key="repo_sync", outcome="ok",
+            started_at=base + timedelta(minutes=i),
+            duration_seconds=0.1 * i, detail={"i": i},
+        ))
+    await session.commit()
+
+    r = await client.get("/api/v1/jobs/repo_sync/runs?limit=2", headers=auth_headers)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 5
+    assert len(body["items"]) == 2
+    # Newest first.
+    assert body["items"][0]["detail"]["i"] == 4
+    assert body["items"][1]["detail"]["i"] == 3
+
+    page2 = (await client.get(
+        "/api/v1/jobs/repo_sync/runs?limit=2&offset=2", headers=auth_headers
+    )).json()
+    assert page2["items"][0]["detail"]["i"] == 2
+    assert page2["total"] == 5
+
+
+@pytest.mark.asyncio
+async def test_runs_endpoint_404s_an_unknown_job(client, auth_headers):
+    r = await client.get("/api/v1/jobs/not_a_job/runs", headers=auth_headers)
+    assert r.status_code == 404

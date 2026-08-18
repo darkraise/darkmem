@@ -1,51 +1,63 @@
+import { useQuery } from "@tanstack/react-query"
+import { apiFetch } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
-import { useEvents } from "@/hooks/api"
 
 export interface JobRun {
   id: string
-  at: string
   outcome: string
+  started_at: string
+  duration_seconds: number
+  trigger: string
+  error: string | null
   detail: Record<string, unknown>
+}
+
+interface JobRunsResponse {
+  items: JobRun[]
+  total: number
+  limit: number
+  offset: number
 }
 
 export interface JobHistoryState {
   runs: JobRun[]
+  /** Unpaginated count, so a reader can tell "page 1 of many" from "that is
+   *  everything" — which the old client-side filter over a shared journal
+   *  could not answer at all. */
+  total: number
   isLoading: boolean
   isError: boolean
 }
 
-const HISTORY_LIMIT = 100
+export const HISTORY_PAGE_SIZE = 10
 
 /**
- * Run history for one job, read from the `job_run` stream that `_run_once`
- * writes for every registered job.
+ * One page of one job's run history, newest first.
  *
- * It used to read `maintenance_run`, which only the three cleanup runners
- * emit — so eighteen jobs ran, finished, and showed an empty history that
- * looked like "never ran" rather than "never recorded".
- *
- * `/events` filters by `event_type` but not by payload, so the job match
- * happens here. The limit bounds the page, so a busy stream can push a quiet
- * job's runs out of the window — a property of reading history off a shared
- * journal rather than a per-job endpoint.
+ * Reads `GET /jobs/{key}/runs`, backed by the `job_runs` table. It used to
+ * read the `events` journal, which meant two problems at once: only three of
+ * the twenty-one jobs wrote there, and the page had to be filtered client
+ * side out of a stream shared with every other event, so a busy stream could
+ * push a quiet job's runs out of the window entirely.
  */
 export function useJobHistory(
   jobKey: string,
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean; page?: number },
 ): JobHistoryState {
-  const query = useEvents(
-    { event_type: "job_run", limit: HISTORY_LIMIT },
-    { enabled: !DEMO && (options?.enabled ?? true) },
-  )
+  const page = options?.page ?? 0
+  const query = useQuery<JobRunsResponse>({
+    queryKey: ["jobRuns", jobKey, page],
+    queryFn: () =>
+      apiFetch<JobRunsResponse>(
+        `/jobs/${jobKey}/runs?limit=${HISTORY_PAGE_SIZE}&offset=${page * HISTORY_PAGE_SIZE}`,
+      ),
+    enabled: !DEMO && (options?.enabled ?? true),
+  })
 
-  const runs = (query.data?.items ?? [])
-    .filter((row) => row.payload?.job === jobKey)
-    .map((row) => ({
-      id: String(row.id),
-      at: row.created_at,
-      outcome: String(row.payload?.outcome ?? "unknown"),
-      detail: (row.payload?.detail as Record<string, unknown>) ?? {},
-    }))
-
-  return { runs, isLoading: query.isLoading, isError: query.isError }
+  return {
+    runs: query.data?.items ?? [],
+    total: query.data?.total ?? 0,
+    isLoading: query.isLoading,
+    isError: query.isError,
+  }
 }

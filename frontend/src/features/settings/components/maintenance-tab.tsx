@@ -4,6 +4,7 @@ import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import { ConfirmGate } from "./confirm-gate"
+import { JobHistoryRetention } from "./job-history-retention"
 import { useMaintenanceTabBinding } from "../use-maintenance-tab-binding"
 
 function OpCard({
@@ -232,6 +233,8 @@ export function MaintenanceTab() {
             </Op>
           )}
         </OpCard>
+
+        <JobHistoryRetention />
 
         <OpCard
           icon={Trash2}

@@ -48,6 +48,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.config import Config
 
+from app.models.job_run import JobRun
+
 logger = logging.getLogger(__name__)
 
 
@@ -376,11 +378,14 @@ class JobRegistry:
                 return
             cfg.last_run_at = datetime.now(timezone.utc)
             started_at = cfg.last_run_at
+            result = None
             try:
                 if job.max_run_seconds is not None:
-                    await asyncio.wait_for(job.runner(), timeout=job.max_run_seconds)
+                    result = await asyncio.wait_for(
+                        job.runner(), timeout=job.max_run_seconds
+                    )
                 else:
-                    await job.runner()
+                    result = await job.runner()
                 cfg.last_status = "ok"
                 cfg.last_error = None
             except asyncio.TimeoutError:
@@ -406,41 +411,53 @@ class JobRegistry:
                 # so the job keeps firing on its next tick; the prior copy of
                 # this write outside the try is what could kill the loop forever.
                 logger.exception("Job %s save_config failed after run", key)
-            await self._journal_run(key, cfg, started_at)
+            await self._record_run(key, cfg, started_at, result)
 
-    async def _journal_run(self, key: str, cfg, started_at) -> None:
-        """One `job_run` row per completed run, for every registered job.
+    async def _record_run(self, key: str, cfg, started_at, result) -> None:
+        """One `job_runs` row per run that had something to say.
 
-        Central rather than per-runner: only the three cleanup runners called
-        `record_maintenance_run`, so the other eighteen finished leaving no
-        trace, and their run history was empty by construction rather than
-        because they had never run.
+        **The no-op rule.** A runner's return value is its work signal:
 
-        Journaling is a side-channel to the run it records, so a failure here
-        must never reach the caller or kill the scheduling loop — the same
-        rule `record_event` states for itself.
+        - a falsy summary (``0``, ``{}``, ``False``) means *explicitly nothing
+          happened* and the run is not recorded;
+        - a truthy summary is recorded, and lands in ``detail``;
+        - ``None`` means the runner has not opted in, and is recorded as
+          before, so adding the signal to a runner is a change to that runner
+          alone and never a silent loss of its history.
+
+        A failure is always recorded whatever it returned — a run that broke
+        is the one row nobody can afford to have suppressed.
+
+        This is why the high-frequency drainers stopped flooding: `buffer_flush`
+        polls an empty queue every five seconds and now says so by returning 0.
+
+        Writes go to `job_runs`, never `events`: that table is append-only by
+        trigger and permanent by ruling, and telemetry that wants pruning has
+        no business in the substrate gate metrics are computed from.
+
+        Recording is a side-channel to the run it describes, so a failure here
+        is logged and swallowed rather than allowed to kill the loop.
         """
-        from app.services.events import record_event
-
+        failed = cfg.last_status == "error"
+        if not failed and result is not None and not result:
+            return
         try:
             duration = (datetime.now(timezone.utc) - started_at).total_seconds()
-            detail: dict = {"duration_seconds": round(duration, 3)}
-            if cfg.last_error:
-                detail["error"] = cfg.last_error
+            detail = result if isinstance(result, dict) else (
+                {"count": result} if isinstance(result, int) else {}
+            )
             async with self._session_factory() as session:
-                await record_event(
-                    session,
-                    event_type="job_run",
-                    object_type="system",
-                    payload={
-                        "job": key,
-                        "outcome": cfg.last_status or "unknown",
-                        "detail": detail,
-                    },
-                )
+                session.add(JobRun(
+                    job_key=key,
+                    outcome=cfg.last_status or "unknown",
+                    started_at=started_at,
+                    duration_seconds=round(duration, 3),
+                    error=cfg.last_error,
+                    detail=detail,
+                ))
                 await session.commit()
         except Exception:
-            logger.error("Job %s: failed to journal job_run", key, exc_info=True)
+            logger.error("Job %s: failed to record run", key, exc_info=True)
 
     # ── operations ──────────────────────────────────────────────────
 

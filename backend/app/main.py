@@ -211,6 +211,8 @@ async def lifespan(app: FastAPI):
     )
     from app.services.job_registry import FieldDescriptor, Job, JobRegistry
     from app.services.job_runners import (
+        JOB_RUN_CLEANUP_JOB_KEY,
+        make_job_run_cleanup_runner,
         make_repo_sync_runner,
         make_buffer_flush_runner,
         make_code_enrichment_runner,
@@ -292,6 +294,27 @@ async def lifespan(app: FastAPI):
         max_run_seconds=BUFFER_FLUSH_MAX_RUN_SECONDS,
         config_schema=BUFFER_FLUSH_CONFIG_SCHEMA,
     ))
+    job_registry.register(Job(
+        key=JOB_RUN_CLEANUP_JOB_KEY,
+        display_name="Job History Cleanup",
+        description=(
+            "Trims job_runs to its configured ceiling, newest kept. Run "
+            "telemetry used to land in the append-only events table where "
+            "nothing could remove it; this is what keeps its replacement "
+            "bounded."
+        ),
+        # Weekly. The ceiling is what bounds the table, so the cadence only
+        # decides how far past it the table may drift between sweeps.
+        default_cron="0 4 * * 0",
+        min_interval_seconds=3600,
+        runner=make_job_run_cleanup_runner(app, async_session_factory),
+        config_schema=[FieldDescriptor(
+            key="max_rows", label="Max rows retained",
+            default=5000, min=100, max=1000000,
+            help="Rows kept after a sweep, newest first.",
+        )],
+    ))
+
     job_registry.register(Job(
         key="code_enrichment",
         display_name="Code Symbol Enrichment",

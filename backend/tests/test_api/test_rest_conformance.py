@@ -122,6 +122,7 @@ EXPECTED_STATUS = {
     ("PUT", "/api/v1/distribution/policy"): 200,
     ("GET", "/api/v1/graph/unified"): 200,
     ("GET", "/api/v1/jobs"): 200,
+    ("GET", "/api/v1/jobs/{key}/runs"): 200,
     ("PUT", "/api/v1/jobs/{key}"): 200,
     ("PUT", "/api/v1/jobs/{key}/config"): 200,
     # Synchronous by design (jobs.py): the manual "Run" awaits the job and

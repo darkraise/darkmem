@@ -11,10 +11,16 @@ All routes require auth.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from sqlalchemy import func, select
+
 from app.api.auth import require_auth
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_session
+from app.models.job_run import JobRun
 from app.services.job_registry import FieldDescriptor, JobBusyError
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
@@ -49,6 +55,23 @@ class JobConfigUpdate(BaseModel):
     config: dict
 
 
+class JobRunItem(BaseModel):
+    id: str
+    outcome: str
+    started_at: str
+    duration_seconds: float
+    trigger: str
+    error: str | None = None
+    detail: dict = {}
+
+
+class JobRunsResponse(BaseModel):
+    items: list[JobRunItem]
+    total: int
+    limit: int
+    offset: int
+
+
 class JobTriggerResponse(BaseModel):
     key: str
     last_status: str | None
@@ -68,6 +91,56 @@ async def list_jobs(request: Request, _user=Depends(require_auth)) -> JobsRespon
     registry = _get_registry(request)
     items = await registry.list_with_config()
     return JobsResponse(jobs=[JobItem(**item) for item in items])
+
+
+@router.get("/{key}/runs", response_model=JobRunsResponse)
+async def list_job_runs(
+    key: str,
+    request: Request,
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+) -> JobRunsResponse:
+    """One job's run history, newest first, server-paginated.
+
+    Reads `job_runs` rather than `events`: run telemetry is prunable
+    operational data, and the audit substrate is neither. `total` is the
+    unpaginated count so a reader can tell "page 1 of many" from "that is
+    everything" — which the previous client-side filter over a shared
+    journal could not.
+    """
+    registry = _get_registry(request)
+    if key not in registry._jobs:
+        raise HTTPException(status_code=404, detail=f"Unknown job {key!r}")
+
+    total = (await session.execute(
+        select(func.count()).select_from(JobRun).where(JobRun.job_key == key)
+    )).scalar_one()
+    rows = (await session.execute(
+        select(JobRun)
+        .where(JobRun.job_key == key)
+        .order_by(JobRun.started_at.desc(), JobRun.id.desc())
+        .limit(limit).offset(offset)
+    )).scalars().all()
+
+    return JobRunsResponse(
+        items=[
+            JobRunItem(
+                id=str(r.id),
+                outcome=r.outcome,
+                started_at=r.started_at.isoformat(),
+                duration_seconds=r.duration_seconds,
+                trigger=r.trigger,
+                error=r.error,
+                detail=r.detail or {},
+            )
+            for r in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.put("/{key}", response_model=JobItem)

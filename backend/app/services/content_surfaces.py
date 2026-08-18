@@ -660,6 +660,7 @@ ROUTES_WITHOUT_MEMORY_CONTENT: frozenset[str] = frozenset({
     "PUT /api/v1/config/theme",
     "GET /api/v1/events/calendar",
     "GET /api/v1/jobs",
+    "GET /api/v1/jobs/{key}/runs",
     "POST /api/v1/jobs/{key}/trigger",
     "PUT /api/v1/jobs/{key}",
     "PUT /api/v1/jobs/{key}/config",
