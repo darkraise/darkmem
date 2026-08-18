@@ -236,16 +236,18 @@ function PurposeCard({
             />
           </Field>
         ) : (
-          <div className="flex items-end gap-2 pb-0.5">
-            <span className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
-              reasoning
-            </span>
-            <Switch
-              checked={draft.reasoning}
-              onCheckedChange={(next) => patch({ reasoning: next })}
-              aria-label={`${purpose.purpose} reasoning`}
-            />
-          </div>
+          <Field label="reasoning">
+            {/* The control is shorter than the inputs beside it, so it centres
+                inside the same row height rather than sitting on the baseline
+                the taller segmented pair used to fill. */}
+            <div className="flex h-9 items-center">
+              <Switch
+                checked={draft.reasoning}
+                onCheckedChange={(next) => patch({ reasoning: next })}
+                aria-label={`${purpose.purpose} reasoning`}
+              />
+            </div>
+          </Field>
         )}
         <Field label="params (jsonb)" span2>
           <Input

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   SegmentGroup,
+  SegmentGroupIndicator,
   SegmentGroupItem,
 } from "darkraise-ui/components/segment-group"
 import {
@@ -54,6 +55,11 @@ export function IconSegmented<T extends string>({
       aria-label={label}
       className={className}
     >
+      {/* The sliding pill IS the selected state. Without it the only mark on
+          the checked segment is a text-colour shift, which on an icon-only
+          control reads as nothing being selected at all. It measures the
+          checked item, so it has to live inside the group. */}
+      <SegmentGroupIndicator />
       {options.map((option) => (
         <Tooltip key={option.value}>
           <TooltipTrigger asChild>

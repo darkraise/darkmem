@@ -5,7 +5,15 @@ import {
   TabsList,
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
-import { Settings } from "lucide-react"
+import {
+  Bot,
+  Flag,
+  Plug,
+  Search,
+  Settings,
+  ShieldCheck,
+  Wrench,
+} from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
@@ -58,15 +66,33 @@ function SettingsPage() {
         {/* Full-width strip with equal-width items: `w-full` on the list and
             `flex-1` on each trigger, so the tabs divide the content area
             evenly instead of hugging their labels. The scroll container stays
-            for narrow viewports, where seven equal columns still overflow. */}
+            for narrow viewports, where six equal columns still overflow. */}
         <div className="overflow-x-auto">
           <TabsList className="w-full">
-            <TabsTrigger className="flex-1" value="flags">Flags</TabsTrigger>
-            <TabsTrigger className="flex-1" value="llm">LLM</TabsTrigger>
-            <TabsTrigger className="flex-1" value="security">Security</TabsTrigger>
-            <TabsTrigger className="flex-1" value="maintenance">Maintenance</TabsTrigger>
-            <TabsTrigger className="flex-1" value="distribution">Distribution</TabsTrigger>
-            <TabsTrigger className="flex-1" value="research">Research</TabsTrigger>
+            <TabsTrigger className="flex-1" value="flags">
+              <Flag aria-hidden className="size-[var(--icon-size)]" />
+              Flags
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="llm">
+              <Bot aria-hidden className="size-[var(--icon-size)]" />
+              LLM
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="security">
+              <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
+              Security
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="maintenance">
+              <Wrench aria-hidden className="size-[var(--icon-size)]" />
+              Maintenance
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="distribution">
+              <Plug aria-hidden className="size-[var(--icon-size)]" />
+              Distribution
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="research">
+              <Search aria-hidden className="size-[var(--icon-size)]" />
+              Research
+            </TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="flags" className="pt-4">
