@@ -1,8 +1,8 @@
-import { Badge } from "darkraise-ui/components/badge"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { Switch } from "darkraise-ui/components/switch"
 import type { DemoJob } from "@/features/activity/types"
 import { JobActions } from "./job-actions"
+import { JobLastRun, JobSchedule } from "./job-schedule-state"
 
 export function JobGridCard({
   job,
@@ -38,22 +38,9 @@ export function JobGridCard({
           {job.description}
         </p>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="font-mono">
-            {job.cron}
-          </Badge>
-          {job.running && <Badge>running</Badge>}
-          {job.last_status && (
-            <Badge
-              variant={job.last_status === "ok" ? "outline" : "destructive"}
-            >
-              {job.last_status}
-            </Badge>
-          )}
-          {/* null means never ran, which the list must not render as "ok". */}
-          <span className="text-muted-foreground text-sm">
-            {job.last_run_label ?? "never run"}
-          </span>
+        <div className="flex flex-col gap-1">
+          <JobSchedule cron={job.cron} />
+          <JobLastRun job={job} />
         </div>
 
         <div className="mt-auto pt-1">

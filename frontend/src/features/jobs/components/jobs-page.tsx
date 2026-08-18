@@ -66,22 +66,26 @@ export function JobsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="text-muted-foreground flex max-w-4xl flex-1 items-center gap-1.5 text-sm">
+        <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
           <span>
             Cron, the enabled switch, per-job config and a manual trigger.
           </span>
-        <HelpTip label="About Jobs">
-          A manual trigger acquires the same asyncio.Lock the scheduled loop
-          uses, so a save can never race a running tick, and a trigger that
-          lands while the lock is held returns busy (HTTP 409) immediately —
-          discarded, never queued behind the in-flight run.
+          <HelpTip label="About Jobs">
+            A manual trigger acquires the same asyncio.Lock the scheduled loop
+            uses, so a save can never race a running tick, and a trigger that
+            lands while the lock is held returns busy (HTTP 409) immediately —
+            discarded, never queued behind the in-flight run.
           </HelpTip>
         </div>
+        {/* `ml-auto` rather than `flex-1` on the text: that block is capped at
+            max-w-4xl, so growing it stops short of the edge on a wide viewport
+            and left the switch stranded mid-row. */}
         <IconSegmented
           value={layout}
           options={LAYOUTS}
           onChange={setLayout}
           label="Jobs layout"
+          className="ml-auto"
         />
       </div>
 

@@ -172,6 +172,13 @@ EVENT_TYPES: list[str] = [
     "buffer_requeued",
     "buffer_discarded",
     "maintenance_run",
+    # One row per JobRegistry run, written centrally by `_run_once` for every
+    # registered job. Distinct from `maintenance_run` on purpose: that type has
+    # one writer shared by the cleanup runners and reembed, each carrying its
+    # own operation-specific `detail`, and only three of the twenty-one jobs
+    # emit it. Reusing it here would double those three and still leave the
+    # other eighteen with no run history at all.
+    "job_run",
     "human_verdict",
     "pin_decision",
     "undone",

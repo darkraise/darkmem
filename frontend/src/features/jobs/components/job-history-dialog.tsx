@@ -23,7 +23,7 @@ export function JobHistoryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { runs, journals, isLoading, isError } = useJobHistory(jobKey, {
+  const { runs, isLoading, isError } = useJobHistory(jobKey, {
     enabled: open,
   })
 
@@ -33,18 +33,11 @@ export function JobHistoryDialog({
         <DialogHeader>
           <DialogTitle>{displayName} — run history</DialogTitle>
           <DialogDescription>
-            Read from the `maintenance_run` journal, newest first.
+            Read from the `job_run` journal, newest first.
           </DialogDescription>
         </DialogHeader>
 
-        {!journals ? (
-          <EmptyState
-            kind="empty"
-          icon={History}
-            title="This job does not journal its runs"
-            description="Only the three cleanup runners write a maintenance_run row. This is an absent history, not an empty one — the job may well have run many times."
-          />
-        ) : isError ? (
+        {isError ? (
           <EmptyState
             kind="failed"
             title="Couldn't load the history"
@@ -60,8 +53,8 @@ export function JobHistoryDialog({
           <EmptyState
             kind="empty"
           icon={History}
-            title="No runs in the journal window"
-            description="This job journals its runs, but none appear in the most recent maintenance_run page — it may not have run yet, or busier jobs may have pushed it out of the window."
+            title="No runs recorded yet"
+            description="Every run is journalled. Either this job has not run since journalling landed, or busier jobs have pushed its rows out of the recent window."
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">

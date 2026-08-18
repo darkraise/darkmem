@@ -1,7 +1,7 @@
-import { Badge } from "darkraise-ui/components/badge"
 import { Switch } from "darkraise-ui/components/switch"
 import type { DemoJob } from "@/features/activity/types"
 import { JobActions } from "./job-actions"
+import { JobLastRun, JobSchedule } from "./job-schedule-state"
 
 /**
  * One job as a row. Same data and same verbs as the card, laid out for
@@ -37,21 +37,12 @@ export function JobListRow({
         </p>
       </div>
 
-      <Badge variant="outline" className="font-mono">
-        {job.cron}
-      </Badge>
+      <div className="min-w-0 basis-56">
+        <JobSchedule cron={job.cron} />
+      </div>
 
-      <div className="flex min-w-0 basis-44 items-center gap-1.5">
-        {job.running && <Badge>running</Badge>}
-        {job.last_status && (
-          <Badge variant={job.last_status === "ok" ? "outline" : "destructive"}>
-            {job.last_status}
-          </Badge>
-        )}
-        {/* null is "never ran", which must not read as a healthy last run. */}
-        <span className="text-muted-foreground truncate text-sm">
-          {job.last_run_label ?? "never run"}
-        </span>
+      <div className="min-w-0 basis-40">
+        <JobLastRun job={job} />
       </div>
 
       <JobActions

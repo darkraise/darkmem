@@ -229,3 +229,61 @@ async def test_running_is_true_while_the_job_lock_is_held():
             assert item["running"] is True
     finally:
         await engine.dispose()
+
+
+# ── every run is journalled, not just the three that journal themselves ──
+
+
+@pytest.mark.asyncio
+async def test_every_run_journals_a_job_run_row(setup_database):
+    """Only the three cleanup runners called `record_maintenance_run`, so the
+    other eighteen jobs ran and finished leaving no trace a reader could find
+    — the run history dialog was empty for them by construction, not because
+    they had never run.
+    """
+    from sqlalchemy import text as sa_text
+
+    reg, engine = _schema_registry("journalled_job")
+    try:
+        await reg._run_once("journalled_job")
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with factory() as session:
+            rows = (await session.execute(sa_text(
+                "SELECT payload FROM events WHERE event_type = 'job_run' "
+                "AND payload->>'job' = 'journalled_job'"
+            ))).all()
+        assert len(rows) == 1, "a completed run must leave exactly one row"
+        assert rows[0][0]["outcome"] == "ok"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_failing_run_journals_the_error_outcome(setup_database):
+    from sqlalchemy import text as sa_text
+    from app.services.job_registry import Job, JobRegistry
+
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    reg = JobRegistry(factory)
+
+    async def _boom():
+        raise RuntimeError("runner exploded")
+
+    reg.register(Job(key="failing_job", display_name="F", description="d",
+                     default_cron="*/5 * * * *", min_interval_seconds=1,
+                     runner=_boom))
+    try:
+        await reg._run_once("failing_job")
+        async with factory() as session:
+            rows = (await session.execute(sa_text(
+                "SELECT payload FROM events WHERE event_type = 'job_run' "
+                "AND payload->>'job' = 'failing_job'"
+            ))).all()
+        assert len(rows) == 1
+        assert rows[0][0]["outcome"] == "error"
+        # The reason has to survive: an outcome with no error is a run that
+        # failed for no stated reason.
+        assert "exploded" in rows[0][0]["detail"]["error"]
+    finally:
+        await engine.dispose()

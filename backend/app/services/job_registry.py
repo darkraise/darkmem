@@ -375,6 +375,7 @@ class JobRegistry:
                 logger.exception("Job %s load_config failed; skipping run", key)
                 return
             cfg.last_run_at = datetime.now(timezone.utc)
+            started_at = cfg.last_run_at
             try:
                 if job.max_run_seconds is not None:
                     await asyncio.wait_for(job.runner(), timeout=job.max_run_seconds)
@@ -405,6 +406,41 @@ class JobRegistry:
                 # so the job keeps firing on its next tick; the prior copy of
                 # this write outside the try is what could kill the loop forever.
                 logger.exception("Job %s save_config failed after run", key)
+            await self._journal_run(key, cfg, started_at)
+
+    async def _journal_run(self, key: str, cfg, started_at) -> None:
+        """One `job_run` row per completed run, for every registered job.
+
+        Central rather than per-runner: only the three cleanup runners called
+        `record_maintenance_run`, so the other eighteen finished leaving no
+        trace, and their run history was empty by construction rather than
+        because they had never run.
+
+        Journaling is a side-channel to the run it records, so a failure here
+        must never reach the caller or kill the scheduling loop — the same
+        rule `record_event` states for itself.
+        """
+        from app.services.events import record_event
+
+        try:
+            duration = (datetime.now(timezone.utc) - started_at).total_seconds()
+            detail: dict = {"duration_seconds": round(duration, 3)}
+            if cfg.last_error:
+                detail["error"] = cfg.last_error
+            async with self._session_factory() as session:
+                await record_event(
+                    session,
+                    event_type="job_run",
+                    object_type="system",
+                    payload={
+                        "job": key,
+                        "outcome": cfg.last_status or "unknown",
+                        "detail": detail,
+                    },
+                )
+                await session.commit()
+        except Exception:
+            logger.error("Job %s: failed to journal job_run", key, exc_info=True)
 
     # ── operations ──────────────────────────────────────────────────
 
