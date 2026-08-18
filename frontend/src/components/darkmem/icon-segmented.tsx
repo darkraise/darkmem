@@ -51,7 +51,11 @@ export function IconSegmented<T extends string>({
         // deselect would arrive as "" and must not reach a typed setter.
         if (next) onChange(next as T)
       }}
-      variant="outline"
+      // Filled: the checked segment takes the primary pill and
+      // `text-primary-foreground`. The outline variant marks it with a hollow
+      // ring and a colour shift only, which is too quiet to carry selection
+      // on a control whose segments are icons.
+      variant="default"
       aria-label={label}
       className={className}
     >
@@ -59,13 +63,32 @@ export function IconSegmented<T extends string>({
           the checked segment is a text-colour shift, which on an icon-only
           control reads as nothing being selected at all. It measures the
           checked item, so it has to live inside the group. */}
-      <SegmentGroupIndicator />
+      <SegmentGroupIndicator className="rounded-md" />
       {options.map((option) => (
         <Tooltip key={option.value}>
+          {/* The trigger wraps the segment rather than becoming it. With
+              `asChild` on the item itself, Tooltip's own `data-state`
+              (open/closed) lands on the element and overwrites the segment's
+              `data-state` (checked/unchecked) — so the library's
+              `[data-state="checked"]` colour rule never matched and the
+              checked icon stayed the same muted grey as the unchecked one.
+              The indicator pill still moved, because it reads context rather
+              than the attribute, which is what made this look like a
+              half-working selection instead of a clobbered attribute. */}
           <TooltipTrigger asChild>
-            <SegmentGroupItem value={option.value} aria-label={option.label}>
-              <option.icon aria-hidden className="size-[var(--icon-size)]" />
-            </SegmentGroupItem>
+            <span className="inline-flex">
+              {/* Square, not the base `px-3 py-1.5` rectangle: these segments
+                  hold one icon and no text, so equal padding is what makes
+                  the pill read as a rounded square rather than a wide slab.
+                  The radius matches the indicator's override above. */}
+              <SegmentGroupItem
+                value={option.value}
+                aria-label={option.label}
+                className="size-8 rounded-md p-0"
+              >
+                <option.icon aria-hidden className="size-[var(--icon-size)]" />
+              </SegmentGroupItem>
+            </span>
           </TooltipTrigger>
           <TooltipContent>{option.label}</TooltipContent>
         </Tooltip>

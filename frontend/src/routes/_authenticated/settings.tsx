@@ -27,7 +27,7 @@ const TAB_VALUES = [
   "llm",
   "security",
   "maintenance",
-  "distribution",
+  "integration",
   "research",
 ] as const
 export type SettingsTab = (typeof TAB_VALUES)[number]
@@ -50,10 +50,10 @@ function SettingsPage() {
       <PageChrome
         icon={Settings}
         title="Settings"
-        description="Configuration: tunables, LLM purposes, security posture, maintenance, and distribution."
+        description="Configuration: tunables, LLM purposes, security posture, maintenance, and integration."
       />
       <Tabs
-        border="default"
+        border="accent"
         value={tab ?? "flags"}
         onValueChange={(value) => {
           if (TAB_VALUES.includes(value as SettingsTab)) {
@@ -69,27 +69,27 @@ function SettingsPage() {
             for narrow viewports, where six equal columns still overflow. */}
         <div className="overflow-x-auto">
           <TabsList className="w-full">
-            <TabsTrigger className="flex-1" value="flags">
+            <TabsTrigger className="flex-1 gap-2" value="flags">
               <Flag aria-hidden className="size-[var(--icon-size)]" />
               Flags
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="llm">
+            <TabsTrigger className="flex-1 gap-2" value="llm">
               <Bot aria-hidden className="size-[var(--icon-size)]" />
               LLM
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="security">
+            <TabsTrigger className="flex-1 gap-2" value="security">
               <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
               Security
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="maintenance">
+            <TabsTrigger className="flex-1 gap-2" value="maintenance">
               <Wrench aria-hidden className="size-[var(--icon-size)]" />
               Maintenance
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="distribution">
+            <TabsTrigger className="flex-1 gap-2" value="integration">
               <Plug aria-hidden className="size-[var(--icon-size)]" />
-              Distribution
+              Integration
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="research">
+            <TabsTrigger className="flex-1 gap-2" value="research">
               <Search aria-hidden className="size-[var(--icon-size)]" />
               Research
             </TabsTrigger>
@@ -107,7 +107,7 @@ function SettingsPage() {
         <TabsContent value="maintenance" className="pt-4">
           <MaintenanceTab />
         </TabsContent>
-        <TabsContent value="distribution" className="pt-4">
+        <TabsContent value="integration" className="pt-4">
           <DistributionTab />
         </TabsContent>
         <TabsContent value="research" className="pt-4">
