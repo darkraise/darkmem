@@ -429,6 +429,7 @@ function DemoMemoriesPage() {
             ) : memories.length === 0 ? (
               <EmptyState
                 kind="empty"
+              icon={Brain}
                 title="No memories captured yet"
                 description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."
                 action={

@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react"
 import type { ReactNode } from "react"
 import {
   Tabs,
@@ -10,7 +11,8 @@ import { EmptyState } from "@/components/darkmem"
 export interface PlaceholderTab {
   value: string
   label: string
-  icon: ReactNode
+  /** The page's own mark, as a component — EmptyState renders it. */
+  icon: LucideIcon
   title: string
   description: ReactNode
   action?: ReactNode
@@ -38,6 +40,7 @@ export function PlaceholderTabs({
         <TabsContent key={tab.value} value={tab.value} className="pt-4">
           <EmptyState
             kind="empty"
+            icon={tab.icon}
             title={tab.title}
             description={tab.description}
             action={tab.action}

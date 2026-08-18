@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { Loader2, Search } from "lucide-react"
+import { Loader2, Search,
+  Archive,
+} from "lucide-react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
 import { Input } from "darkraise-ui/components/input"
@@ -463,6 +465,7 @@ export function FactsTab() {
               // of corroborated facts until independent origins accumulate.
               <EmptyState
                 kind="empty"
+          icon={Archive}
                 title="No corroborated facts yet"
                 description="no corroborated facts yet; candidates are served labelled in search — corroboration takes several independent origins across memory, code, and human review. Nothing here means not yet, not broken."
               />

@@ -6,6 +6,7 @@ import {
   ChevronRight,
   FolderGit2,
   RefreshCw,
+  BookOpen,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import {
@@ -389,6 +390,7 @@ export function WikiTab({
         <div className="border-border bg-card rounded-lg border">
           <EmptyState
             kind="empty"
+          icon={BookOpen}
             className="py-10"
             title="No wiki generated yet for this repository"
             description={

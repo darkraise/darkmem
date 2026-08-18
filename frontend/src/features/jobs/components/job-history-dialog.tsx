@@ -1,3 +1,4 @@
+import { History } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -39,6 +40,7 @@ export function JobHistoryDialog({
         {!journals ? (
           <EmptyState
             kind="empty"
+          icon={History}
             title="This job does not journal its runs"
             description="Only the three cleanup runners write a maintenance_run row. This is an absent history, not an empty one — the job may well have run many times."
           />
@@ -57,6 +59,7 @@ export function JobHistoryDialog({
         ) : runs.length === 0 ? (
           <EmptyState
             kind="empty"
+          icon={History}
             title="No runs in the journal window"
             description="This job journals its runs, but none appear in the most recent maintenance_run page — it may not have run yet, or busier jobs may have pushed it out of the window."
           />

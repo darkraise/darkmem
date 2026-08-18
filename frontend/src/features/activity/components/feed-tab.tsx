@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { ArrowRight, Bell } from "lucide-react"
+import { ArrowRight, Bell,
+  Activity,
+} from "lucide-react"
 import { EmptyState } from "@/components/darkmem"
 import {
   ToggleGroup,
@@ -110,6 +112,7 @@ export function FeedTab() {
         ) : filtered.length === 0 ? (
           <EmptyState
             kind="empty"
+              icon={Activity}
             title={
               category === "all"
                 ? "No recent events"

@@ -1,5 +1,7 @@
 import { useState } from "react"
-import { Sparkles } from "lucide-react"
+import { Sparkles,
+  FileText,
+} from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -60,6 +62,7 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
           ) : (documents.data?.items ?? []).length === 0 ? (
             <EmptyState
               kind="empty"
+          icon={FileText}
               title="No documents filed"
               description="Filing a document parses it into blocks; nothing is lifted or summarised until you ask."
             />

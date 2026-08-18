@@ -11,7 +11,9 @@ import { Badge } from "darkraise-ui/components/badge"
 import { EmptyState } from "@/components/darkmem"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { toast } from "darkraise-ui/components/sonner"
-import { ArrowDown, Copy, Crosshair } from "lucide-react"
+import { ArrowDown, Copy, Crosshair,
+  Workflow,
+} from "lucide-react"
 import { processToMermaid, type CodeProcess } from "../lib/code-processes"
 
 interface ProcessFlowModalProps {
@@ -65,6 +67,7 @@ export function ProcessFlowModal({
           {p.steps.length === 0 ? (
             <EmptyState
               kind="empty"
+          icon={Workflow}
               title="No recorded steps"
               description="This process has no recorded steps."
             />

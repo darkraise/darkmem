@@ -255,6 +255,7 @@ export function RealMemoriesView() {
           ) : project.trim() ? (
             <EmptyState
               kind="empty"
+              icon={Brain}
               scope="page"
               title={`No memories in project ${project.trim()}`}
               description="This project has no memories yet — other projects might."
@@ -267,6 +268,7 @@ export function RealMemoriesView() {
           ) : (
             <EmptyState
               kind="empty"
+              icon={Brain}
               scope="page"
               title="No memories captured yet"
               description="Capture your first one and search starts working immediately — nothing needs to be pre-configured."

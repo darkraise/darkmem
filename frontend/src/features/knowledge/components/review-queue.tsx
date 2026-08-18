@@ -9,6 +9,7 @@ import {
   TrendingUp,
   UserCheck,
   XCircle,
+  ClipboardCheck,
 } from "lucide-react"
 import {
   AlertDialog,
@@ -504,6 +505,7 @@ export function ReviewQueue({ project }: { project?: string }) {
         ) : facts.total === 0 ? (
           <EmptyState
             kind="empty"
+          icon={ClipboardCheck}
             title="No disputed or under-sourced facts"
             description="The fact half of the review queue is caught up."
           />
@@ -575,6 +577,7 @@ export function ReviewQueue({ project }: { project?: string }) {
         ) : articles.total === 0 ? (
           <EmptyState
             kind="empty"
+          icon={ClipboardCheck}
             title="No ungrounded articles"
             description="The article half of the review queue is caught up. article_synthesis is still a placeholder job, so this arm has no live producer yet."
           />

@@ -42,8 +42,7 @@ const MARK: Record<EmptyStateKind, { icon: LucideIcon; tone: string }> = {
   resolved: { icon: CircleCheck, tone: "text-success" },
 }
 
-export interface EmptyStateProps {
-  kind: EmptyStateKind
+interface EmptyStateBase {
   title: string
   description?: ReactNode
   /** The one action that resolves this state — retry, clear the filter, go
@@ -63,15 +62,25 @@ export interface EmptyStateProps {
   className?: string
 }
 
-export function EmptyState({
-  kind,
-  title,
-  description,
-  action,
-  scope = "panel",
-  className,
-}: EmptyStateProps) {
-  const { icon: Icon, tone } = MARK[kind]
+/**
+ * Only `empty` takes an icon, and the union is what enforces that.
+ *
+ * A page's own emblem says *where you are* — a vault with nothing in it yet
+ * is still the Memories page, still the Topics page. That is worth carrying.
+ * The other four say *what happened*, and an event that renders differently
+ * on every screen is the drift this set exists to close: a reader cannot
+ * learn twenty-three marks, but can learn that amber-question means "this id
+ * does not resolve" anywhere it appears. So passing `icon` with
+ * `kind="failed"` is a type error, not a style choice.
+ */
+export type EmptyStateProps =
+  | (EmptyStateBase & { kind: "empty"; icon?: LucideIcon })
+  | (EmptyStateBase & { kind: Exclude<EmptyStateKind, "empty"> })
+
+export function EmptyState(props: EmptyStateProps) {
+  const { kind, title, description, action, scope = "panel", className } = props
+  const { icon: fallback, tone } = MARK[kind]
+  const Icon = (kind === "empty" && props.icon) || fallback
   return (
     <UiEmptyState
       // The chip is 48px with a 24px glyph by default. Both step up here so

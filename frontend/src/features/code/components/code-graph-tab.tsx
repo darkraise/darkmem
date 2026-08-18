@@ -374,6 +374,7 @@ export function CodeGraphTab({
         {toolbar}
         <EmptyState
           kind="empty"
+          icon={FolderGit2}
           className="flex-1 py-12"
           title="No graph yet"
           description={`${repo.name} is registered but has never been indexed — no symbols, no edges, no communities or processes to browse. Index it from Repositories to build the graph.`}

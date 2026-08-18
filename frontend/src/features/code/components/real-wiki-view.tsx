@@ -1,6 +1,8 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { FolderGit2 } from "lucide-react"
+import { FolderGit2,
+  BookOpen,
+} from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Badge } from "darkraise-ui/components/badge"
 import {
@@ -85,6 +87,7 @@ export function RealWikiView({
     return (
       <EmptyState
         kind="empty"
+          icon={FolderGit2}
         title="No repositories indexed yet"
         description="Add a repository to get started."
       />
@@ -236,6 +239,7 @@ export function RealWikiView({
       {!isLoading && !isError && !wiki && (
         <EmptyState
           kind="empty"
+          icon={BookOpen}
           title="No wiki generated yet for this repository"
           description={
             repo.last_indexed_at === null

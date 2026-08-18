@@ -100,6 +100,7 @@ export function JobsPage() {
       ) : jobs.length === 0 ? (
         <EmptyState
           kind="empty"
+          icon={Timer}
           scope="page"
           title="No registered jobs"
           description="The registry returned no jobs. On a healthy install this list is never empty, so treat it as a boot problem rather than a quiet day."

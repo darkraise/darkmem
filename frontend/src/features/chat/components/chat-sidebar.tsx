@@ -3,7 +3,9 @@ import { Button } from "darkraise-ui/components/button"
 import { Input } from "darkraise-ui/components/input"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
-import { Plus, Trash2, Search } from "lucide-react"
+import { Plus, Trash2, Search,
+  MessageCircle,
+} from "lucide-react"
 import type { ChatConversation } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
 
@@ -81,6 +83,7 @@ export function ChatSidebar({
         {!isLoading && !isError && conversations.length === 0 && (
           <EmptyState
             kind="empty"
+          icon={MessageCircle}
             title="No conversations yet"
             description='Click "New" to start one.'
           />

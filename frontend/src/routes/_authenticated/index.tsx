@@ -8,6 +8,7 @@ import {
   Timer,
   Workflow,
   type LucideIcon,
+  Activity,
 } from "lucide-react"
 import {
   Card,
@@ -158,6 +159,7 @@ function DashboardPage() {
           ) : (
             <EmptyState
               kind="empty"
+          icon={Activity}
               title="No activity yet"
               description="Nothing has been journalled on this instance. Capture a memory or wait for a scheduled job, and it appears here."
             />

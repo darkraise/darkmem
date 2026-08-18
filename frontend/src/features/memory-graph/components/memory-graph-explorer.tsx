@@ -196,6 +196,7 @@ export function MemoryGraphExplorer() {
             <div className="flex h-full items-center justify-center p-6">
               <EmptyState
                 kind="empty"
+          icon={Waypoints}
                 title="No entity graph yet"
                 description={`Project ${project} has no memories yet, so nothing has been extracted into entities or relations. The graph populates automatically as memories are captured; topic communities appear after the next clustering pass runs over it.`}
               />

@@ -6,7 +6,10 @@ import {
   useRef,
   type ReactNode,
 } from "react"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight,
+  Diamond,
+  FileCode,
+} from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -470,6 +473,7 @@ export function CodeInspectorPanel({
               ) : (
                 <EmptyState
                   kind="empty"
+          icon={Diamond}
                   className="font-mono"
                   title="Select a symbol to inspect"
                   description="Click a node in the graph"
@@ -493,6 +497,7 @@ export function CodeInspectorPanel({
               ) : (
                 <EmptyState
                   kind="empty"
+          icon={FileCode}
                   className="font-mono"
                   title="No files loaded"
                 />

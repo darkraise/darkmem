@@ -230,6 +230,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
         ) : (
           <EmptyState
             kind="empty"
+          icon={Waypoints}
             title="No topics detected yet"
             description="Community detection clusters memories once enough of them share entities — this project has not accumulated enough yet, or the detection job has not completed its first run. Nothing here means not yet, not broken."
           />
@@ -253,6 +254,7 @@ export function TopicsTab({ project = "default" }: { project?: string }) {
         {suggestions.length === 0 && (
           <EmptyState
             kind="empty"
+          icon={MapPin}
             title="Nothing to pin yet"
             description="A subject is suggested once its community is new or growing and it already anchors verified facts. None qualify in this project right now."
           />

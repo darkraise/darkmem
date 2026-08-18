@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
+import { Waypoints } from "lucide-react"
 import { EmptyState } from "../empty-state"
 
 describe("EmptyState", () => {
@@ -68,5 +69,30 @@ describe("EmptyState", () => {
       <EmptyState kind="failed" title="t" action={<button>Retry</button>} />,
     )
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
+  })
+})
+
+describe("page emblems", () => {
+  // A page's own mark says where you are, and a vault with nothing in it is
+  // still the Memory Graph page. Only `empty` carries one.
+  it("lets an empty state wear the page's own icon", () => {
+    const { container } = render(
+      <EmptyState kind="empty" icon={Waypoints} title="No nodes yet" />,
+    )
+    const withEmblem = container.querySelector(".dr-empty-state-icon svg")?.innerHTML
+
+    const { container: plain } = render(<EmptyState kind="empty" title="t" />)
+    const withDefault = plain.querySelector(".dr-empty-state-icon svg")?.innerHTML
+
+    expect(withEmblem).not.toBe(withDefault)
+  })
+
+  // The four status kinds say what happened, not where you are. An event that
+  // renders differently per screen is the drift this set closes, so the union
+  // makes it a type error rather than a style choice.
+  it("refuses an icon on the status kinds", () => {
+    // @ts-expect-error `icon` is only in the `empty` arm of EmptyStateProps
+    const rejected = <EmptyState kind="failed" icon={Waypoints} title="t" />
+    expect(rejected).toBeTruthy()
   })
 })

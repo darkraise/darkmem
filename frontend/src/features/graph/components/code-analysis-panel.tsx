@@ -11,7 +11,9 @@ import {
 import { Stat, StatLabel, StatValue } from "darkraise-ui/components/stat"
 import { Spinner } from "darkraise-ui/components/spinner"
 import { EmptyState } from "@/components/darkmem"
-import { Boxes, ChevronDown } from "lucide-react"
+import { Boxes, ChevronDown,
+  Crosshair,
+} from "lucide-react"
 import type { CodeSymbolDetail, BlastRadiusResult } from "@/hooks/api"
 import { ProcessPanel } from "./process-panel"
 import type { CodeProcess } from "../lib/code-processes"
@@ -361,6 +363,7 @@ export function CodeAnalysisPanel({
         ) : (
           <EmptyState
             kind="empty"
+          icon={Crosshair}
             className="border-border border-b"
             title="Select a node for analysis"
           />

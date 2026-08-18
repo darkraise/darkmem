@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import { GitBranch } from "lucide-react"
+import { GitBranch,
+  FileText,
+} from "lucide-react"
 import { EmptyState } from "@/components/darkmem"
 import {
   Select,
@@ -260,6 +262,7 @@ export function ArticlesTab() {
         ) : (
           <EmptyState
             kind="empty"
+          icon={FileText}
             title="No articles yet"
             description={
               DEMO

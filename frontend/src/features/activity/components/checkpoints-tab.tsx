@@ -132,6 +132,7 @@ function RunDetail({
     return (
       <EmptyState
         kind="empty"
+          icon={Bookmark}
         title="No checkpoints for this run yet"
         description="Run /darkmem-checkpoint (or let the session-end hook fire) to capture a resumable digest. Once one exists, a fresh session resumes from it with /darkmem-resume instead of reloading the whole context."
       />
@@ -271,6 +272,7 @@ export function CheckpointsTab() {
       ) : runs.length === 0 ? (
         <EmptyState
           kind="empty"
+          icon={Bookmark}
           title="No runs have checkpointed yet"
           description="A run appears here the moment it saves its first digest — over REST or over MCP. Nothing else creates one, so an empty list means no agent has checkpointed against this instance."
         />
