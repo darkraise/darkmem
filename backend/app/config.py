@@ -19,6 +19,11 @@ LLMApiKind = Literal[
                   # compat at /api/paas/v4. Native adapter to be added.
 ]
 
+# The classification purpose's inline classifier selector. Two values only:
+# `resolve_classifier` treats anything that is not "local" as the LLM, so a
+# free-form third value would be silently misread rather than refused.
+ClassifierKind = Literal["llm", "local"]
+
 _config_logger = logging.getLogger(__name__)
 
 

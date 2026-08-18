@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from app.config import LLMApiKind
+from app.config import ClassifierKind, LLMApiKind
 
 
 class LLMPurposeConfigSchema(BaseModel):
@@ -11,12 +11,11 @@ class LLMPurposeConfigSchema(BaseModel):
     reasoning: bool = False
     api_kind: LLMApiKind = "openai"
     params: dict = Field(default_factory=dict)
-    # Inert: the provider/profile indirection is gone (doc 04 §7). Kept on
-    # the wire so the response shape the frontend reads is unchanged by
-    # this task; retiring them is the contract task's call.
-    provider_ref: str | None = None
-    profile_ref: str | None = None
-    ml_profile_ref: str | None = None
+    # Only the classification purpose carries one; null everywhere else.
+    # It was absent here while the column and `resolve_classifier` both
+    # existed, so the settings UI had nothing to render and fell back to
+    # "llm" whatever the database said.
+    classifier_kind: ClassifierKind | None = None
 
 
 class LLMPurposeConfigUpdate(BaseModel):
@@ -27,10 +26,10 @@ class LLMPurposeConfigUpdate(BaseModel):
     reasoning: bool | None = None
     api_kind: LLMApiKind | None = None
     params: dict | None = None
-    # Empty string clears the reference; absent leaves it untouched.
-    provider_ref: str | None = None
-    profile_ref: str | None = None
-    ml_profile_ref: str | None = None
+    # Declared so it can appear in `model_fields_set`. Without it the write
+    # loop's `classifier_kind` entry was unreachable: the field was stripped
+    # before the route saw it, so the POST returned 200 and wrote nothing.
+    classifier_kind: ClassifierKind | None = None
 
 
 class LLMProviderModelsResponse(BaseModel):

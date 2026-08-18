@@ -122,7 +122,14 @@ describe("LLMTab", () => {
   it("carries the classifier_kind toggle on the classification card", () => {
     renderTab()
     expect(screen.getByText("classifier_kind")).toBeInTheDocument()
-    expect(screen.getByText("local")).toBeInTheDocument()
+    // The segments are icon-only now, so their accessible names are the only
+    // handle on them — which is exactly what has to keep working.
+    expect(
+      screen.getByRole("radio", { name: "LLM-backed classifier" }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("radio", { name: "In-process classifier" }),
+    ).toBeInTheDocument()
   })
 
   it("renders the code-summarization buckets as their own cards in demo mode", () => {

@@ -42,6 +42,7 @@ def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeCon
         dimensions=cfg.dimensions, reasoning=cfg.reasoning,
         api_kind=getattr(cfg, "api_kind", "openai"),
         params=cfg.params,
+        classifier_kind=getattr(cfg, "classifier_kind", None),
     )
 
 

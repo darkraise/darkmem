@@ -12,10 +12,11 @@ export interface LlmPurposeConfig {
   reasoning: boolean
   api_kind: string
   params: Record<string, unknown>
-  // Present only on the classification purpose; absent means the LLM-backed
-  // classifier (T1.04). Not yet declared on the backend's
-  // LLMPurposeConfigUpdate wire schema, so a write of this field is a no-op
-  // until that schema catches up (owned outside this surface).
+  // Present only on the classification purpose; null means the LLM-backed
+  // classifier (T1.04). Readable and writable since 2026-08-18 — both wire
+  // schemas declare it now. Before that the response omitted it and the
+  // request schema stripped it, so this control read a value that was never
+  // served and wrote one that was silently dropped.
   classifier_kind?: "llm" | "local" | null
 }
 

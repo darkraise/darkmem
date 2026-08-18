@@ -1,9 +1,12 @@
 import { useState } from "react"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   ArrowDownUp,
   Bot,
   Braces,
   Check,
+  Cloud,
+  Cpu,
   FileText,
   Filter,
   ShieldCheck,
@@ -12,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import { Switch } from "darkraise-ui/components/switch"
 import { Input } from "darkraise-ui/components/input"
 import {
   Select,
@@ -20,12 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "darkraise-ui/components/toggle-group"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip } from "@/components/darkmem"
+import {
+  HelpTip,
+  IconSegmented,
+  type IconSegmentedOption,
+} from "@/components/darkmem"
 import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
 import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
 import type { TierCLLMPurpose } from "../llm-tier-c-purposes"
@@ -94,38 +98,6 @@ function Field({
       </span>
       {children}
     </div>
-  )
-}
-
-/** Two-position segmented toggle (reasoning off/on, classifier llm/local).
- *  Guards the ToggleGroup "" deselect — a segmented pair always has a value. */
-function SegmentedPair({
-  value,
-  options,
-  onChange,
-  label,
-}: {
-  value: string
-  options: [string, string]
-  onChange: (value: string) => void
-  label: string
-}) {
-  return (
-    <ToggleGroup
-      type="single"
-      value={value}
-      onValueChange={(v) => {
-        if (v !== "") onChange(v)
-      }}
-      aria-label={label}
-      className="w-fit"
-    >
-      {options.map((opt) => (
-        <ToggleGroupItem key={opt} value={opt} className="font-mono text-sm">
-          {opt}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
   )
 }
 
@@ -269,11 +241,10 @@ function PurposeCard({
             <span className="text-muted-foreground pb-1.5 font-mono text-[10px] tracking-wide uppercase">
               reasoning
             </span>
-            <SegmentedPair
-              value={draft.reasoning ? "on" : "off"}
-              options={["off", "on"]}
-              onChange={(v) => patch({ reasoning: v === "on" })}
-              label={`${purpose.purpose} reasoning`}
+            <Switch
+              checked={draft.reasoning}
+              onCheckedChange={(next) => patch({ reasoning: next })}
+              aria-label={`${purpose.purpose} reasoning`}
             />
           </div>
         )}
@@ -384,14 +355,19 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
   )
 }
 
+const CLASSIFIER_KIND_OPTIONS: ReadonlyArray<IconSegmentedOption<"llm" | "local">> = [
+  { value: "llm", label: "LLM-backed classifier", icon: Cloud },
+  { value: "local", label: "In-process classifier", icon: Cpu },
+]
+
 function ClassifierKindRow({ binding }: { binding: LLMTabBinding }) {
   return (
     <div className="border-primary/40 bg-primary/5 flex flex-wrap items-center gap-2.5 rounded-md border border-dashed px-2.5 py-2">
       <span className="font-mono text-sm">classifier_kind</span>
-      <SegmentedPair
+      <IconSegmented
         value={binding.classifierKind}
-        options={["llm", "local"]}
-        onChange={(v) => binding.setClassifierKind(v as "llm" | "local")}
+        options={CLASSIFIER_KIND_OPTIONS}
+        onChange={binding.setClassifierKind}
         label="classifier_kind"
       />
       <HelpTip label="About classifier_kind">
@@ -580,14 +556,30 @@ export function LLMTab() {
         </HelpTip>
       </div>
       <SaveConfirmation binding={binding} />
-      <div className="grid gap-3.5 sm:grid-cols-2">
-        {binding.purposes.map((purpose) => (
-          <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
-        ))}
-        {binding.tierCPurposes.map((purpose) => (
-          <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
-        ))}
-      </div>
+      {/* Cards seed an editable draft from their `purpose` prop on mount and
+          own it thereafter, which is right for an editor — a refetch must not
+          overwrite what the reader is typing. The cost is that mounting one
+          before the config arrives freezes the empty placeholder the binding
+          builds from `query.data?.[p]`, which is why the fields used to stay
+          blank until the tab was unmounted and remounted. Waiting for the
+          first load is what makes the seed real; `isLoading` is false on
+          every later refetch, so this does not flash between saves. */}
+      {binding.isLoading ? (
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-64 w-full rounded-md" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-3.5 sm:grid-cols-2">
+          {binding.purposes.map((purpose) => (
+            <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
+          ))}
+          {binding.tierCPurposes.map((purpose) => (
+            <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
+          ))}
+        </div>
+      )}
       <RemovedChrome />
     </div>
   )

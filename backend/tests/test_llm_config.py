@@ -17,7 +17,11 @@ import pytest
 from sqlalchemy import event, select, text
 
 from app.models.llm_config import LLMPurposeConfigRow
-from app.schemas.config import LLMConfigUpdate
+from app.schemas.config import (
+    LLMConfigUpdate,
+    LLMPurposeConfigSchema,
+    LLMPurposeConfigUpdate,
+)
 from app.services.config import PURPOSES, cfg_to_schema, get_llm_config
 from tests.response_coverage import undeclared_keys
 
@@ -295,3 +299,59 @@ async def test_post_config_llm_ignores_verification_write(client, auth_headers, 
         select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "verification")
     )).scalar_one_or_none()
     assert row is None or row.model != "a-different-judge-model"
+
+
+# ───────── classifier_kind reaches the door, not just the column ─────────
+
+
+@pytest.mark.asyncio
+async def test_config_llm_serves_classifier_kind_on_the_classification_purpose(
+    client, auth_headers
+):
+    """The column exists and `resolve_classifier` reads it, but the response
+    schema never declared it, so the settings UI had no value to render and
+    fell back to "llm" forever. `test_classifier_kind.py` missed this by
+    setting the column directly, never through the route."""
+    response = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert response.status_code == 200
+    assert "classifier_kind" in response.json()["classification"]
+
+
+@pytest.mark.asyncio
+async def test_config_llm_persists_a_classifier_kind_write(client, auth_headers):
+    """`config.py`'s write loop already listed the field, but
+    `LLMPurposeConfigUpdate` did not declare it, so it could never appear in
+    `model_fields_set` and that loop entry was dead. The POST returned 200 and
+    wrote nothing."""
+    response = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={"classification": {"classifier_kind": "local"}},
+    )
+    assert response.status_code == 200
+    assert response.json()["classification"]["classifier_kind"] == "local"
+
+    fresh = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert fresh.json()["classification"]["classifier_kind"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_config_llm_rejects_an_unknown_classifier_kind(client, auth_headers):
+    """Two values only. A free-form string would reach `resolve_classifier`,
+    which treats anything that is not "local" as the LLM — a silent misread
+    rather than a refusal."""
+    response = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={"classification": {"classifier_kind": "regex"}},
+    )
+    assert response.status_code == 422
+
+
+def test_llm_purpose_schemas_carry_no_dropped_indirection_fields():
+    """provider_ref / profile_ref / ml_profile_ref were dropped at the
+    baseline (doc 04 section 7) and stayed on the wire as inert nulls. Serving
+    a field no table has invites a client to write it and believe it took."""
+    for schema in (LLMPurposeConfigSchema, LLMPurposeConfigUpdate):
+        declared = set(schema.model_fields)
+        assert not declared & {"provider_ref", "profile_ref", "ml_profile_ref"}

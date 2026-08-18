@@ -152,6 +152,26 @@ endpoints must match: 201 create, 204 delete, 202 async-accepted,
 POST `.../search` for complex queries), `superpowers/specs/` design
 specs, and `e2e/` runbooks.
 
+## UI components come from darkraise-ui first
+
+**Before building any UI, check whether `darkraise-ui` already ships the
+component.** It is a large library — segmented controls (`segment-group`),
+`number-input`, `switch`, `toggle-group`, `empty-state`, `sonner` toasts,
+`dialog`, `card`, `tabs`, `stat`, `timeline`, `tree-view`, `combobox`,
+`multi-select`, `date-picker` and ~70 more live under
+`darkraise-ui/components/*`. Enumerate them with
+`ls frontend/node_modules/darkraise-ui/dist/components/`, and read the `.d.ts`
+beside the one you want — the props carry their own doc comments.
+
+A new local component is a last resort, justified only by the library having no
+equivalent. **Restyling a built-in to fit darkmem's design is encouraged**;
+re-implementing one is not. The cost of ignoring this is not hypothetical: the
+sidebar carried a hand-rolled search palette for months as a workaround for a
+library limitation, and when v6 lifted that limitation the workaround became a
+duplicate search box that also suppressed the built-in's Ctrl+K. **A local
+component written against a library gap must record which gap**, so the next
+upgrade can retire it.
+
 Two distribution clients sit **outside** the box (doc 15 §2) and speak REST
 or MCP into the one instance: `extension/` (the browser capture shell) and
 `sdks/` (the minimal client, three verbs). **`sdks/ts/src/client.ts` and
