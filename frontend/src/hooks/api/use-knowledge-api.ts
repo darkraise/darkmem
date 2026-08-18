@@ -110,6 +110,22 @@ export const FACTS_PAGE_SIZE = 25
  *  Nothing here filters by verification status by default: absent the
  *  parameter, a candidate, a disputed and a corroborated fact are listed
  *  alike and labelled apart (doc 08 §6's never-a-gate rule). */
+/** `GET /knowledge/facts?limit=1`, read for its `total` alone. The dashboard
+ *  needs a count per verification status, and `useFactPages` would page rows
+ *  in only to discard them — a page of one is the cheapest honest count the
+ *  contract offers. */
+export function useFactCount(
+  params: Omit<FactListParams, "limit" | "offset"> = {},
+  options?: { enabled?: boolean },
+) {
+  const query = factsQueryString({ ...params, limit: 1 })
+  return useQuery<FactListResponse>({
+    queryKey: ["knowledge", "facts", "count", query],
+    queryFn: () => apiFetch<FactListResponse>(`/knowledge/facts?${query}`),
+    enabled: options?.enabled ?? true,
+  })
+}
+
 export function useFactPages(
   params: Omit<FactListParams, "limit" | "offset"> = {},
   options?: { enabled?: boolean },

@@ -185,6 +185,9 @@ export default tseslint.config(
             {
               group: ["@/demo/types", "../demo/types", "../../demo/types", "../../../demo/types"],
               importNames: [
+                "DashboardStats",
+                "ActivityEventKind",
+                "ActivityEvent",
                 "ContributionTypeCount",
                 "ContributionDay",
                 "CodeNodeKind",

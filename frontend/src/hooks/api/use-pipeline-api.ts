@@ -52,10 +52,11 @@ export interface PipelineFailureListResponse {
   total: number
 }
 
-export function useStats() {
+export function useStats(options?: { enabled?: boolean }) {
   return useQuery<Stats>({
     queryKey: ["stats"],
     queryFn: () => apiFetch("/analytics/stats"),
+    enabled: options?.enabled ?? true,
   })
 }
 

@@ -18,11 +18,12 @@ import {
 } from "darkraise-ui/components/stat"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
-import { useDemoEvents, useDemoStats } from "@/demo/hooks"
-import type { ActivityEvent } from "@/demo/types"
+import type { ActivityEvent } from "@/features/dashboard/types"
 import { LayerChip, VerificationBadge } from "@/components/darkmem"
 import { CalendarCard } from "@/features/dashboard/calendar-card"
 import { useContributionCalendar } from "@/features/dashboard/use-contribution-calendar"
+import { useDashboardStats } from "@/features/dashboard/use-dashboard-stats"
+import { useDashboardActivity } from "@/features/dashboard/use-dashboard-activity"
 
 export const Route = createFileRoute("/_authenticated/")({
   component: DashboardPage,
@@ -93,10 +94,13 @@ function ActivityFeedItem({ event }: { event: ActivityEvent }) {
 }
 
 function DashboardPage() {
-  const stats = useDemoStats()
-  const events = useDemoEvents()
+  const { stats, isLoading: statsLoading } = useDashboardStats()
+  const { events, isError: activityError } = useDashboardActivity()
   const { days, isLoading, isError } = useContributionCalendar()
-  const todayCount = days[days.length - 1]?.count ?? 0
+  // A tile mid-load shows a dash rather than 0: a real zero and "not known
+  // yet" are different claims, and the bug this page just came off was a
+  // number that looked authoritative and was not.
+  const tile = (n: number) => (statsLoading ? "—" : n.toLocaleString())
 
   return (
     <div className="space-y-4">
@@ -107,30 +111,23 @@ function DashboardPage() {
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile
-          label="Total memories"
-          value={stats.totalMemories.toLocaleString()}
-          change={
-            isLoading
-              ? undefined
-              : todayCount > 0
-                ? { direction: "up", text: `+${todayCount} today` }
-                : { direction: "flat", text: "quiet today" }
-          }
-        />
+        {/* No "+N today" delta: the only per-day series available is
+            /events/calendar, which counts every event type — cron ticks and
+            logins included — so on this vault it read "+20 today" beside a
+            true total of 0. A delta that measures a different quantity than
+            the tile it sits on is the same defect this page just came off. */}
+        <StatTile label="Total memories" value={tile(stats.totalMemories)} />
         <StatTile
           label="Verified facts"
-          value={stats.verifiedFacts.toLocaleString()}
-          change={{ direction: "up", text: "+6 this week" }}
+          value={tile(stats.verifiedFacts)}
         />
         <StatTile
           label="Live articles"
-          value={stats.liveArticles.toLocaleString()}
-          change={{ direction: "flat", text: "no change" }}
+          value={tile(stats.liveArticles)}
         />
         <StatTile
           label="Pending review"
-          value={stats.pendingReview.toLocaleString()}
+          value={tile(stats.pendingReview)}
           caption={
             stats.disputedFacts > 0
               ? `includes ${stats.disputedFacts} disputed`
@@ -148,7 +145,11 @@ function DashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {events.length > 0 ? (
+          {activityError ? (
+            <p className="text-muted-foreground text-sm">
+              Could not load recent activity.
+            </p>
+          ) : events.length > 0 ? (
             <div className="space-y-2">
               {events.map((event) => (
                 <ActivityFeedItem key={event.id} event={event} />

@@ -1,6 +1,6 @@
 import { localDayKey } from "@/lib/format"
 import type { ContributionDay } from "@/features/dashboard/types"
-import type { ActivityEvent, DashboardStats } from "./types"
+import type { ActivityEvent, DashboardStats } from "@/features/dashboard/types"
 
 export function buildDashboardStats(memoryCount: number): DashboardStats {
   return {

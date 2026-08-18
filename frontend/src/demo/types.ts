@@ -1,5 +1,6 @@
 import type { Repo } from "@/hooks/api"
 import type { KnowledgeLayer, VerificationStatus } from "@/components/darkmem"
+import type { ActivityEvent, DashboardStats } from "@/features/dashboard/types"
 import type { ContributionDay } from "@/features/dashboard/types"
 import type { DemoCodeGraph } from "@/features/code/types"
 import type { DemoMemory } from "@/features/memories/types"
@@ -21,32 +22,6 @@ import type {
   LLMPurposeName,
   MaintenanceOpKey,
 } from "@/features/settings/types"
-
-export interface DashboardStats {
-  totalMemories: number
-  verifiedFacts: number
-  liveArticles: number
-  pendingReview: number
-  disputedFacts: number
-}
-
-export type ActivityEventKind =
-  | "memory"
-  | "fact"
-  | "article"
-  | "pipeline"
-  | "job"
-  | "review"
-
-export interface ActivityEvent {
-  id: string
-  kind: ActivityEventKind
-  title: string
-  detail?: string
-  verification?: VerificationStatus
-  layer?: KnowledgeLayer
-  at: string
-}
 
 export interface MemoryTraceChannel {
   name: string
