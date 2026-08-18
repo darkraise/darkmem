@@ -354,11 +354,12 @@ export function CodeInspectorPanel({
       </div>
 
       <Tabs
+        variant="underline"
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as InspectorTab)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsList variant="underline" className="w-full shrink-0 gap-0">
+        <TabsList className="w-full shrink-0 gap-0">
           {tabs.map((tab) => (
             <TabsTrigger
               key={tab.id}

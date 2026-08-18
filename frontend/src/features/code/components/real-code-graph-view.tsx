@@ -311,11 +311,12 @@ export function RealCodeGraphView({
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <Tabs
+          variant="underline"
           value={leftTab}
           onValueChange={setLeftTab}
           className="border-border bg-card flex min-h-0 w-full min-w-0 flex-col border-b md:w-56 md:shrink-0 md:border-r md:border-b-0"
         >
-          <TabsList variant="underline" className="border-border shrink-0 border-b px-1">
+          <TabsList className="border-border shrink-0 border-b px-1">
             <TabsTrigger value="explorer">Explorer</TabsTrigger>
             <TabsTrigger value="filters">Filters</TabsTrigger>
           </TabsList>

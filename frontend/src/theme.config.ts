@@ -13,6 +13,10 @@ export const themeConfig: ThemeConfig = {
     elevation: "medium",
     buttonElevation: "flat",
     radius: "rounded",
+    // Added by darkraise-ui v6; both at the library's own defaults so the
+    // upgrade changes nothing visually.
+    fontSize: "medium",
+    accentVibrancy: "balanced",
   },
   switcher: {
     enabled: true,
@@ -28,6 +32,11 @@ export const themeConfig: ThemeConfig = {
       elevation: false,
       buttonElevation: false,
       radius: false,
+      // Neither axis existed before v6, so neither was ever user-adjustable.
+      // Locking both preserves the switcher surface exactly; flip either to
+      // true (and drop it from LOCKED_AXES) to expose it.
+      fontSize: false,
+      accentVibrancy: false,
       presetAxes: true,
     },
   },
@@ -46,6 +55,8 @@ export const LOCKED_AXES = {
   elevation: "theme-elevation",
   buttonElevation: "theme-button-elevation",
   radius: "theme-radius",
+  fontSize: "theme-font-size",
+  accentVibrancy: "theme-accent-vibrancy",
 } as const
 
 try {
