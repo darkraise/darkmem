@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => {
 })
 
 import { apiFetch, ApiError } from "@/lib/api"
-import { JobsSettingsTab } from "../components/jobs-settings-tab"
+import { JobsListLayout } from "../components/jobs-list-layout"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({
@@ -48,12 +48,12 @@ function mockJobsList() {
   })
 }
 
-describe("JobsSettingsTab (real) — ruling 1: a held lock renders as busy, never queued", () => {
+describe("JobsListLayout (real) — ruling 1: a held lock renders as busy, never queued", () => {
   afterEach(() => vi.clearAllMocks())
 
   it("renders max_run_seconds as skipped, not fabricated (JobItem carries no such field)", async () => {
     mockJobsList()
-    render(<JobsSettingsTab />, { wrapper })
+    render(<JobsListLayout />, { wrapper })
     await waitFor(() =>
       expect(screen.getByText(JOB.key)).toBeInTheDocument(),
     )
@@ -70,7 +70,7 @@ describe("JobsSettingsTab (real) — ruling 1: a held lock renders as busy, neve
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
-    render(<JobsSettingsTab />, { wrapper })
+    render(<JobsListLayout />, { wrapper })
     await waitFor(() => expect(screen.getByText(JOB.key)).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole("button", { name: /Trigger now/ }))
@@ -93,7 +93,7 @@ describe("JobsSettingsTab (real) — ruling 1: a held lock renders as busy, neve
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
-    render(<JobsSettingsTab />, { wrapper })
+    render(<JobsListLayout />, { wrapper })
     await waitFor(() => expect(screen.getByText(JOB.key)).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole("button", { name: /Trigger now/ }))
@@ -118,7 +118,7 @@ describe("JobsSettingsTab (real) — ruling 1: a held lock renders as busy, neve
       }
       return Promise.reject(new Error(`unexpected apiFetch(${path})`))
     })
-    render(<JobsSettingsTab />, { wrapper })
+    render(<JobsListLayout />, { wrapper })
     await waitFor(() => expect(screen.getByText(JOB.key)).toBeInTheDocument())
 
     const cronInput = screen.getByLabelText(`${JOB.key} cron`)

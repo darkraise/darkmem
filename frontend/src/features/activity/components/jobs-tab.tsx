@@ -24,6 +24,7 @@ import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
+import { NumberField } from "@/components/darkmem"
 import { validateJobConfig } from "@/demo/activity"
 import type { DemoJob } from "@/features/activity/types"
 import { useJobBoard } from "../use-job-board"
@@ -97,8 +98,8 @@ function JobConfigDialog({
   onClose: () => void
   saveConfig: (key: string, config: Record<string, number>) => void
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(job.config_schema.map((f) => [f.key, String(f.value)])),
+  const [values, setValues] = useState<Record<string, number>>(() =>
+    Object.fromEntries(job.config_schema.map((f) => [f.key, f.value])),
   )
   const validation = validateJobConfig(job.config_schema, values)
 
@@ -164,15 +165,16 @@ function JobConfigDialog({
                       {field.type}
                     </span>
                   </div>
-                  <Input
-                    id={`job-config-${field.key}`}
-                    type="number"
-                    value={values[field.key] ?? ""}
-                    onChange={(e) =>
-                      setValues((v) => ({ ...v, [field.key]: e.target.value }))
+                  <NumberField
+                    value={values[field.key] ?? field.value}
+                    min={field.min}
+                    max={field.max}
+                    aria-label={field.label}
+                    onValueChange={(next) =>
+                      setValues((v) => ({ ...v, [field.key]: next }))
                     }
                     className={cn(
-                      "w-fit min-w-40 font-mono",
+                      "w-fit min-w-40",
                       error && "border-destructive",
                     )}
                   />

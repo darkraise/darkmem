@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { toast } from "darkraise-ui/components/sonner"
 import { useDemoStore } from "@/demo/store"
 import { LLMTab } from "../components/llm-tab"
 
@@ -12,6 +13,12 @@ import { LLMTab } from "../components/llm-tab"
 // `enabled: false` in demo mode — the query never fires, but `useQuery`
 // still needs a provider in the tree or it throws.
 vi.mock("@/lib/demo-flag", () => ({ DEMO: true }))
+// A save reports through a toast now. No <Toaster /> is mounted here, so the
+// call is the observable, and asserting on it also proves both doors announce
+// through the same helper rather than each rendering its own banner.
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -70,9 +77,10 @@ describe("LLMTab", () => {
     const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
     expect(enabled).toBeDefined()
     fireEvent.click(enabled!)
-    expect(
-      screen.getByText(/Saved — synthesis purpose updated/),
-    ).toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith(
+      "Saved — synthesis purpose updated",
+      expect.objectContaining({ description: expect.stringContaining("model") }),
+    )
   })
 
   it("verification carries no editable inputs and no Save button", () => {
@@ -106,10 +114,14 @@ describe("LLMTab", () => {
     const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
     expect(enabled).toBeDefined()
     fireEvent.click(enabled!)
-    expect(
-      screen.getByText(/Saved — reasoning purpose updated/),
-    ).toBeInTheDocument()
-    expect(screen.getByText(/no redeploy needed/i)).toBeInTheDocument()
+    // The trace moved into the toast's description: the changed field, and
+    // the live-reload fact that is the whole point of not needing a redeploy.
+    expect(toast.success).toHaveBeenCalledWith(
+      "Saved — reasoning purpose updated",
+      expect.objectContaining({
+        description: expect.stringMatching(/base_url.*no redeploy/),
+      }),
+    )
   })
 
   it("rejects malformed params JSON before save", () => {

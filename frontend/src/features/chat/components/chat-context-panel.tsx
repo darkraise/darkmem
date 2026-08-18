@@ -1,4 +1,5 @@
-import { CircleDashed, TriangleAlert } from "lucide-react"
+import { Brain, CircleDashed, TriangleAlert } from "lucide-react"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { cn } from "darkraise-ui/lib"
 import {
   ExclusionStrip,
@@ -165,9 +166,11 @@ export function ChatContextPanel({ rows, facts, envelope }: ChatContextPanelProp
           ))}
 
           {rows.length === 0 && (facts ?? []).length === 0 && (
-            <p className="text-muted-foreground text-sm">
-              No memories were retrieved for this turn.
-            </p>
+            <EmptyState
+              icon={<Brain aria-hidden className="h-6 w-6" />}
+              title="No memories retrieved"
+              description="Retrieval ran for this turn and matched nothing. This is an empty result, not a failed search."
+            />
           )}
 
           {rows.map((row, i) => {

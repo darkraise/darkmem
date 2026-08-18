@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import {
+  Activity,
   Brain,
   ClipboardCheck,
   FileText,
@@ -16,6 +17,7 @@ import {
   StatLabel,
   StatValue,
 } from "darkraise-ui/components/stat"
+import { EmptyState } from "darkraise-ui/components/empty-state"
 import { PageChrome } from "@/components/app-chrome"
 import { relativeTime } from "@/lib/format"
 import type { ActivityEvent } from "@/features/dashboard/types"
@@ -156,7 +158,11 @@ function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">No activity yet.</p>
+            <EmptyState
+              icon={<Activity aria-hidden className="h-6 w-6" />}
+              title="No activity yet"
+              description="Nothing has been journalled on this instance. Capture a memory or wait for a scheduled job, and it appears here."
+            />
           )}
         </CardContent>
       </Card>

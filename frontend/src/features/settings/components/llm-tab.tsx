@@ -4,7 +4,6 @@ import {
   ArrowDownUp,
   Bot,
   Braces,
-  Check,
   Cloud,
   Cpu,
   FileText,
@@ -437,61 +436,6 @@ function CodeBucketsUnavailable() {
   )
 }
 
-function SaveConfirmation({ binding }: { binding: LLMTabBinding }) {
-  const lastSave = binding.lastSave
-  if (!lastSave) return null
-  return (
-    <div className="flex flex-col gap-2.5">
-      <div className="border-success/50 bg-success/8 flex gap-2.5 rounded-md border p-3">
-        <Check aria-hidden className="text-success h-4.5 w-4.5 shrink-0" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <span className="text-sm font-semibold">
-            Saved — {lastSave.purpose} purpose updated
-          </span>
-          <span className="text-muted-foreground text-sm">
-            The orchestrator was rebuilt from all eight resolved purpose rows
-            and the live reference was swapped in-process. This change is
-            already serving requests — no redeploy needed.
-          </span>
-        </div>
-        <Button size="sm" variant="ghost" onClick={binding.dismissSave}>
-          Dismiss
-        </Button>
-      </div>
-      <div className="border-border bg-muted/12 flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm">
-        <div className="flex gap-2.5">
-          <span className="text-muted-foreground w-32 shrink-0">saved</span>
-          <span>
-            purpose = {lastSave.purpose} · fields changed ={" "}
-            {lastSave.fields.join(", ")}
-          </span>
-        </div>
-        <div className="flex gap-2.5">
-          <span className="text-muted-foreground w-32 shrink-0">
-            orchestrator
-          </span>
-          <span>
-            new instance built from all eight resolved purpose rows,
-            reference swapped atomically
-          </span>
-        </div>
-        <div className="flex gap-2.5">
-          <span className="text-muted-foreground w-32 shrink-0">
-            superseded client
-          </span>
-          <span>draining — closes once in-flight calls finish</span>
-        </div>
-        <div className="flex gap-2.5">
-          <span className="text-muted-foreground w-32 shrink-0">
-            redeploy needed
-          </span>
-          <span>no — config lives in DB rows, read at boot and on live reload</span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function RemovedChrome() {
   return (
     <div className="border-border bg-muted/12 flex flex-col gap-2 rounded-lg border border-dashed p-4">
@@ -555,7 +499,6 @@ export function LLMTab() {
           effect without a redeploy.
         </HelpTip>
       </div>
-      <SaveConfirmation binding={binding} />
       {/* Cards seed an editable draft from their `purpose` prop on mount and
           own it thereafter, which is right for an editor — a refetch must not
           overwrite what the reader is typing. The cost is that mounting one

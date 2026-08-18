@@ -184,10 +184,11 @@ export interface SystemPromptsResponse {
   effective: Record<string, string>
 }
 
-export function useSystemPrompts() {
+export function useSystemPrompts(options?: { enabled?: boolean }) {
   return useQuery<SystemPromptsResponse>({
     queryKey: ["systemPrompts"],
     queryFn: () => apiFetch<SystemPromptsResponse>("/config/system-prompts"),
+    enabled: options?.enabled ?? true,
   })
 }
 

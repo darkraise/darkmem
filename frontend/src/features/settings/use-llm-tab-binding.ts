@@ -1,11 +1,10 @@
-import { useState } from "react"
+import { toast } from "darkraise-ui/components/sonner"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoLLM } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type {
   DemoCodeBucket,
   DemoLLMPurpose,
-  DemoLLMSaveTrace,
   LLMPurposeName,
 } from "@/features/settings/types"
 import {
@@ -120,14 +119,12 @@ export interface LLMTabBinding {
   /** null = not live-bound in this mode (real mode has no buckets endpoint
    *  yet — there is no backend table for these, demo or otherwise). */
   buckets: DemoCodeBucket[] | null
-  lastSave: DemoLLMSaveTrace | null
   savePurpose: (
     purpose: LLMPurposeName,
     patch: Partial<Omit<DemoLLMPurpose, "purpose">>,
   ) => void
   setClassifierKind: (kind: "llm" | "local") => void
   saveCodeBucket: ((key: DemoCodeBucket["key"], model: string) => void) | null
-  dismissSave: () => void
   isLoading: boolean
 }
 
@@ -136,16 +133,23 @@ export interface LLMTabBinding {
  * same gate `useContributionCalendar` established for the dashboard
  * calendar. Both query hooks run unconditionally (rules of hooks); only
  * the network request is skipped via `enabled`. */
+/** A save is an event, so it reports as one. The banner this replaces sat in
+ *  the layout until dismissed and pushed the cards down on every save. The
+ *  fields it named are kept — they are the part that says what actually
+ *  changed — while the orchestrator-rebuild prose that filled the rest of it
+ *  is the same sentence on every save and now lives in the tab's help text. */
+function announceSave(purpose: string, fields: string[]) {
+  toast.success(`Saved — ${purpose} purpose updated`, {
+    description: `${fields.join(", ")} · orchestrator rebuilt and swapped in-process, no redeploy`,
+  })
+}
+
 export function useLLMTabBinding(): LLMTabBinding {
   const demo = useDemoLLM()
   const saveDemoPurpose = useDemoStore((s) => s.saveLLMPurpose)
   const setDemoClassifierKind = useDemoStore((s) => s.setClassifierKind)
   const saveDemoBucket = useDemoStore((s) => s.saveCodeBucket)
-  const dismissDemoSave = useDemoStore((s) => s.dismissLLMSave)
 
-  const [realLastSave, setRealLastSave] = useState<DemoLLMSaveTrace | null>(
-    null,
-  )
   const query = useLlmConfig(!DEMO)
   const update = useUpdateLlmConfig()
 
@@ -158,11 +162,15 @@ export function useLLMTabBinding(): LLMTabBinding {
       })),
       classifierKind: demo.classifier_kind,
       buckets: demo.buckets,
-      lastSave: demo.last_save,
-      savePurpose: saveDemoPurpose,
-      setClassifierKind: setDemoClassifierKind,
+      savePurpose: (purpose, patch) => {
+        saveDemoPurpose(purpose, patch)
+        announceSave(purpose, Object.keys(patch))
+      },
+      setClassifierKind: (kind) => {
+        setDemoClassifierKind(kind)
+        announceSave("classification", ["classifier_kind"])
+      },
       saveCodeBucket: saveDemoBucket,
-      dismissSave: dismissDemoSave,
       isLoading: false,
     }
   }
@@ -189,17 +197,15 @@ export function useLLMTabBinding(): LLMTabBinding {
     tierCPurposes,
     classifierKind,
     buckets: null,
-    lastSave: realLastSave,
     savePurpose: (purpose, patch) => {
       update.mutate({ [purpose]: toWirePatch(patch) })
-      setRealLastSave({ purpose, fields: Object.keys(patch) })
+      announceSave(purpose, Object.keys(patch))
     },
     setClassifierKind: (kind) => {
       update.mutate({ classification: { classifier_kind: kind } })
-      setRealLastSave({ purpose: "classification", fields: ["classifier_kind"] })
+      announceSave("classification", ["classifier_kind"])
     },
     saveCodeBucket: null,
-    dismissSave: () => setRealLastSave(null),
     isLoading: query.isLoading,
   }
 }

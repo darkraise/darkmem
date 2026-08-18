@@ -1,11 +1,10 @@
 import { useState } from "react"
 import { Timer } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
-import { Input } from "darkraise-ui/components/input"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip } from "@/components/darkmem"
+import { HelpTip, NumberField } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
 import type { DemoBehavioralFlag, DemoRankArm } from "@/features/settings/types"
@@ -60,22 +59,22 @@ function ArmInput({
   onCommit: (value: number) => void
   className?: string
 }) {
-  const [draft, setDraft] = useState(String(arm.value))
+  const [draft, setDraft] = useState(arm.value)
   const commit = () => {
-    const num = Number(draft)
-    if (Number.isFinite(num) && num !== arm.value) onCommit(num)
-    else setDraft(String(arm.value))
+    // NaN is what the field reports for text it cannot parse, and is the
+    // case a raw number input used to collapse into a committed zero.
+    if (Number.isFinite(draft) && draft !== arm.value) onCommit(draft)
+    else setDraft(arm.value)
   }
   return (
-    <Input
-      type="number"
+    <NumberField
       step={arm.step ?? 1}
       value={draft}
       aria-label={arm.key}
-      onChange={(e) => setDraft(e.target.value)}
+      onValueChange={setDraft}
       onBlur={commit}
       onKeyDown={(e) => e.key === "Enter" && commit()}
-      className={cn("w-24 text-right font-mono", className)}
+      className={cn("w-24", className)}
     />
   )
 }

@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router"
 import {
   Activity,
+  Timer,
   BookOpen,
   Brain,
   ClipboardCheck,
@@ -75,6 +76,7 @@ const nav: NavGroup[] = [
     label: "Operate",
     items: [
       { label: "Chat", href: "/chat", icon: MessageSquare },
+      { label: "Jobs", href: "/jobs", icon: Timer },
       { label: "Activity", href: "/activity", icon: Activity },
       { label: "Settings", href: "/settings", icon: Settings },
     ],

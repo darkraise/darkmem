@@ -6,7 +6,7 @@ import { Input } from "darkraise-ui/components/input"
 import { toast } from "darkraise-ui/components/sonner"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip } from "@/components/darkmem"
+import { HelpTip, NumberField } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { validateJobConfig } from "@/demo/activity"
 import { cronInfo } from "@/demo/settings"
@@ -14,7 +14,7 @@ import type { DemoJob } from "@/features/activity/types"
 import {
   useJobsSettingsBinding,
   type JobsSettingsBinding,
-} from "../use-jobs-tab-binding"
+} from "../use-jobs-binding"
 
 function SectionHead({
   label,
@@ -38,7 +38,7 @@ function SectionHead({
   )
 }
 
-function ScheduleSection({
+export function ScheduleSection({
   job,
   saveCron,
 }: {
@@ -130,15 +130,15 @@ function ConstantsSection({ job }: { job: DemoJob }) {
   )
 }
 
-function ConfigSchemaSection({
+export function ConfigSchemaSection({
   job,
   saveConfig,
 }: {
   job: DemoJob
   saveConfig: (key: string, config: Record<string, number>) => void
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(job.config_schema.map((f) => [f.key, String(f.value)])),
+  const [values, setValues] = useState<Record<string, number>>(() =>
+    Object.fromEntries(job.config_schema.map((f) => [f.key, f.value])),
   )
   const [saved, setSaved] = useState(false)
 
@@ -175,15 +175,16 @@ function ConfigSchemaSection({
                   <HelpTip label={`About ${field.key}`}>{field.help}</HelpTip>
                 )}
               </span>
-              <Input
-                type="number"
-                value={values[field.key] ?? ""}
+              <NumberField
+                value={values[field.key] ?? field.value}
+                min={field.min}
+                max={field.max}
                 aria-label={`${job.key} ${field.key}`}
-                onChange={(e) => {
-                  setValues((v) => ({ ...v, [field.key]: e.target.value }))
+                onValueChange={(next) => {
+                  setValues((v) => ({ ...v, [field.key]: next }))
                   setSaved(false)
                 }}
-                className={cn("w-28 font-mono", error && "border-destructive")}
+                className={cn("w-28", error && "border-destructive")}
               />
               {(field.min !== undefined || field.max !== undefined) && (
                 <span className="text-muted-foreground font-mono text-[10px]">
@@ -343,7 +344,7 @@ function JobConfigCard({
   )
 }
 
-export function JobsSettingsTab() {
+export function JobsListLayout() {
   const binding = useJobsSettingsBinding()
   const { jobs, isLoading, isError, trigger } = binding
   const [busy, setBusy] = useState<BusyOutcome | null>(null)

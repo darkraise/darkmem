@@ -12,9 +12,15 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
+import { McpPromptDialog } from "./mcp-prompt-dialog"
 import { Switch } from "darkraise-ui/components/switch"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip, LayerChip, VerificationBadge } from "@/components/darkmem"
+import {
+  HelpTip,
+  LayerChip,
+  NumberField,
+  VerificationBadge,
+} from "@/components/darkmem"
 import {
   ModuleSurface,
   SurfaceStateChip,
@@ -145,34 +151,35 @@ function TokenBudgetField({
    *  learns its own outcome. */
   onCommit: (next: number) => Promise<unknown>
 }) {
-  const [draft, setDraft] = useState(String(budget))
+  const [draft, setDraft] = useState(budget)
   const [seed, setSeed] = useState(budget)
   if (seed !== budget) {
     // The server's value moved (a write landed, or a refetch): take it.
     setSeed(budget)
-    setDraft(String(budget))
+    setDraft(budget)
   }
 
   return (
-    <input
-      type="number"
+    <NumberField
+      value={draft}
       min={0}
       max={100000}
-      value={draft}
       aria-label="Token budget"
-      className="border-border w-32 rounded-md border px-2 py-1 font-mono text-sm"
-      onChange={(event) => setDraft(event.currentTarget.value)}
+      className="w-32"
+      // `valueAsNumber` is NaN for text the field cannot parse, which is the
+      // distinction a raw number input lost: it reported "" for a typo, and
+      // Number("") is 0 and 0 is finite, so blurring a typo wrote a budget of
+      // zero while the field went on showing the typo.
+      onValueChange={setDraft}
       onBlur={() => {
-        const raw = draft.trim()
-        const next = Number(raw)
-        if (raw === "" || !Number.isFinite(next)) {
-          setDraft(String(budget))
+        if (!Number.isFinite(draft)) {
+          setDraft(budget)
           return
         }
-        if (next !== budget) {
+        if (draft !== budget) {
           // The field must not go on showing a number the server refused,
           // while the banner above says the value in force is shown below.
-          onCommit(next).catch(() => setDraft(String(budget)))
+          onCommit(draft).catch(() => setDraft(budget))
         }
       }}
     />
@@ -471,6 +478,7 @@ function NoLiveDistributionSignal() {
 }
 
 export function DistributionTab() {
+  const [promptOpen, setPromptOpen] = useState(false)
   const d = useDemoDistribution()
   const connected = d.clients.filter((c) => c.status !== "disconnected").length
   const curbed = d.clients.filter((c) => c.status === "curbed").length
@@ -484,12 +492,13 @@ export function DistributionTab() {
 
   return (
     <div className="space-y-4">
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
-          Per-client connect status, the managed block, inject policy, the
-          curb control, and the inject log — push shown staged, not implied
-          shipped.
-        </span>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+          <span>
+            Per-client connect status, the managed block, inject policy, the
+            curb control, and the inject log — push shown staged, not implied
+            shipped.
+          </span>
         <HelpTip label="About the Distribution tab">
           Connect status per client, the per-target managed block written into
           each tool&apos;s native context file, the inject content policy and
@@ -499,7 +508,26 @@ export function DistributionTab() {
           DistributionService, auto-inject, and the managed-block writer are
           target work — shown staged, not implied shipped.
         </HelpTip>
+        </div>
+        {/* The pull door is the one that works today, and its instructions are
+            the only thing darkmem tells a connecting client about itself.
+            They were readable nowhere on this surface. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPromptOpen(true)}
+        >
+          <FileText aria-hidden className="size-[var(--icon-size)]" />
+          View injected MCP prompt
+        </Button>
       </div>
+      {/* Mounted only while open, for the same reason the live panel below is
+          mounted only outside demo: the dialog's query hook runs whenever it
+          is in the tree, and an `enabled: false` query still needs a
+          QueryClient above it. */}
+      {promptOpen && (
+        <McpPromptDialog open onOpenChange={setPromptOpen} />
+      )}
       <ModuleSurface title="Distribution" state="staged" meta={meta}>
         {/* Mounted only outside demo: a conditional *return* would still run
             the query hook, which is what put a QueryClient requirement on the

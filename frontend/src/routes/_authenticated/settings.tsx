@@ -9,7 +9,6 @@ import { Settings } from "lucide-react"
 import { PageChrome } from "@/components/app-chrome"
 import { FlagsTab } from "@/features/settings/components/flags-tab"
 import { LLMTab } from "@/features/settings/components/llm-tab"
-import { JobsSettingsTab } from "@/features/settings/components/jobs-settings-tab"
 import { SecurityTab } from "@/features/settings/components/security-tab"
 import { MaintenanceTab } from "@/features/settings/components/maintenance-tab"
 import { DistributionTab } from "@/features/settings/components/distribution-tab"
@@ -18,7 +17,6 @@ import { ResearchTab } from "@/features/settings/components/research-tab"
 const TAB_VALUES = [
   "flags",
   "llm",
-  "jobs",
   "security",
   "maintenance",
   "distribution",
@@ -44,7 +42,7 @@ function SettingsPage() {
       <PageChrome
         icon={Settings}
         title="Settings"
-        description="Configuration: tunables, LLM purposes, jobs, security posture, maintenance, and distribution."
+        description="Configuration: tunables, LLM purposes, security posture, maintenance, and distribution."
       />
       <Tabs
         border="default"
@@ -65,7 +63,6 @@ function SettingsPage() {
           <TabsList className="w-full">
             <TabsTrigger className="flex-1" value="flags">Flags</TabsTrigger>
             <TabsTrigger className="flex-1" value="llm">LLM</TabsTrigger>
-            <TabsTrigger className="flex-1" value="jobs">Jobs</TabsTrigger>
             <TabsTrigger className="flex-1" value="security">Security</TabsTrigger>
             <TabsTrigger className="flex-1" value="maintenance">Maintenance</TabsTrigger>
             <TabsTrigger className="flex-1" value="distribution">Distribution</TabsTrigger>
@@ -77,9 +74,6 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="llm" className="pt-4">
           <LLMTab />
-        </TabsContent>
-        <TabsContent value="jobs" className="pt-4">
-          <JobsSettingsTab />
         </TabsContent>
         <TabsContent value="security" className="pt-4">
           <SecurityTab />
