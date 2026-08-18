@@ -391,7 +391,6 @@ export function WikiTab({
           <EmptyState
             kind="empty"
           icon={BookOpen}
-            className="py-10"
             title="No wiki generated yet for this repository"
             description={
               repo.status === "registered" || repo.last_indexed_at === null
