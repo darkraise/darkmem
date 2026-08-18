@@ -66,12 +66,43 @@ export function useUpdateJob() {
   })
 }
 
+/**
+ * `POST /jobs/{key}/trigger` **awaits the run** — the route calls
+ * `registry.trigger`, which awaits `_run_once` — so the job is genuinely
+ * running for exactly as long as this request is in flight.
+ *
+ * That is why the running state is marked optimistically rather than waited
+ * for. Invalidating only `onSuccess` refetched *after* the run had finished,
+ * and the list's own 5s poll almost never lands inside a run that takes
+ * ~0.1s, so a job went from idle to done with nothing in between. This is not
+ * a guess about state: the request being open *is* the run being open.
+ * `onSettled` puts the server's own answer back.
+ */
 export function useTriggerJob() {
   const qc = useQueryClient()
   return useMutation<JobTriggerResponse, Error, string>({
     mutationFn: (key) =>
       apiFetch<JobTriggerResponse>(`/jobs/${key}/trigger`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+    onMutate: async (key) => {
+      await qc.cancelQueries({ queryKey: ["jobs"] })
+      const previous = qc.getQueryData<JobsResponse>(["jobs"])
+      qc.setQueryData<JobsResponse>(["jobs"], (current) =>
+        current
+          ? {
+              ...current,
+              jobs: current.jobs.map((job) =>
+                job.key === key ? { ...job, running: true } : job,
+              ),
+            }
+          : current,
+      )
+      return { previous }
+    },
+    onError: (_err, _key, context) => {
+      const previous = (context as { previous?: JobsResponse } | undefined)?.previous
+      if (previous) qc.setQueryData(["jobs"], previous)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   })
 }
 

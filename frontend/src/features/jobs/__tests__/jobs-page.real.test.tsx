@@ -79,7 +79,7 @@ describe("JobsPage — ruling 1: a held lock reports as busy, never as queued", 
 
     await waitFor(() =>
       expect(toast.warning).toHaveBeenCalledWith(
-        `${JOB.key} — busy`,
+        `${JOB.display_name} — busy`,
         expect.objectContaining({
           description: expect.stringContaining("discarded, not queued"),
         }),
@@ -132,17 +132,17 @@ describe("JobsPage — ruling 1: a held lock reports as busy, never as queued", 
 describe("JobsPage layouts", () => {
   afterEach(() => vi.clearAllMocks())
 
-  it("offers both layouts as icon-only segments and starts on list", async () => {
+  it("offers both layouts as icon-only segments and starts on grid", async () => {
     listOnly()
     await renderRows()
-    expect(screen.getByRole("radio", { name: "List layout" })).toBeChecked()
-    expect(screen.getByRole("radio", { name: "Grid layout" })).not.toBeChecked()
+    expect(screen.getByRole("radio", { name: "Grid layout" })).toBeChecked()
+    expect(screen.getByRole("radio", { name: "List layout" })).not.toBeChecked()
   })
 
-  it("keeps the same verbs after switching to grid", async () => {
+  it("keeps the same verbs after switching layout", async () => {
     listOnly()
     await renderRows()
-    fireEvent.click(screen.getByRole("radio", { name: "Grid layout" }))
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
 
     // Same three actions, because both layouts render one JobActions.
     for (const label of ["Trigger now", "Configure", "Run history"]) {
@@ -160,5 +160,37 @@ describe("JobsPage layouts", () => {
     expect(
       screen.getByRole("button", { name: /Running — trigger unavailable/ }),
     ).toBeDisabled()
+  })
+})
+
+
+describe("the running signal", () => {
+  afterEach(() => vi.clearAllMocks())
+
+  // `POST .../trigger` awaits the run, so the job is running for exactly as
+  // long as the request is open. Waiting for the response to refetch showed
+  // the state only after it was over, and the 5s poll misses a ~0.1s run
+  // entirely — the row went idle to done with nothing between.
+  it("marks the job running while the trigger request is in flight", async () => {
+    let release: (v: unknown) => void = () => {}
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/jobs") return Promise.resolve({ jobs: [JOB] })
+      if (path === `/jobs/${JOB.key}/trigger` && init?.method === "POST")
+        return new Promise((resolve) => { release = resolve })
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+    await renderRows()
+
+    fireEvent.click(screen.getByRole("button", { name: "Trigger now" }))
+
+    // Mid-flight: the control states the lock is held rather than inviting a
+    // second press that the backend would refuse with a 409.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Running — trigger unavailable/ }),
+      ).toBeDisabled(),
+    )
+
+    release({ key: JOB.key, last_status: "ok", last_error: null, last_run_at: null })
   })
 })

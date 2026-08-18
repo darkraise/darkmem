@@ -24,7 +24,7 @@ const LAYOUTS: ReadonlyArray<IconSegmentedOption<JobsLayout>> = [
 ]
 
 export function JobsPage() {
-  const [layout, setLayout] = useState<JobsLayout>("list")
+  const [layout, setLayout] = useState<JobsLayout>("grid")
   const [configuring, setConfiguring] = useState<DemoJob | null>(null)
   const [viewingHistory, setViewingHistory] = useState<DemoJob | null>(null)
   const binding = useJobsSettingsBinding()
@@ -43,15 +43,15 @@ export function JobsPage() {
   const handleTrigger = (job: DemoJob) => {
     trigger(job.key)
       .then((result) => {
-        if (result.ok) toast.success(`${job.key} — triggered`)
+        if (result.ok) toast.success(`${job.name} — triggered`)
         else
-          toast.warning(`${job.key} — busy`, {
+          toast.warning(`${job.name} — busy`, {
             description:
               "A run already holds the lock; the trigger was discarded, not queued.",
           })
       })
       .catch((err: unknown) => {
-        toast.error(`Trigger failed for ${job.key}`, {
+        toast.error(`Trigger failed for ${job.name}`, {
           description: err instanceof Error ? err.message : undefined,
         })
       })

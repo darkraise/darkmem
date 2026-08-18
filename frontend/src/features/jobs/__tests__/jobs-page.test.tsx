@@ -39,6 +39,9 @@ describe("JobsPage (demo)", () => {
 
   it("triggering an idle job marks it ok and reports no busy lock", () => {
     render(<JobsPage />, { wrapper })
+    // These two address a job through its row, so they ask for that layout;
+    // grid is the page default.
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
     const job = useDemoStore.getState().jobs.find((j) => !j.running)
     if (!job) throw new Error("expected at least one idle demo job")
 
@@ -62,17 +65,20 @@ describe("JobsPage (demo)", () => {
     ).toBe(!job.enabled)
   })
 
-  it("renders one row per job in list and one card per job in grid", () => {
+  it("renders one card per job in grid and one row per job in list", () => {
     render(<JobsPage />, { wrapper })
     const count = useDemoStore.getState().jobs.length
 
+    // Grid is the default.
+    expect(screen.getByRole("radio", { name: "Grid layout" })).toBeChecked()
     expect(screen.getAllByRole("button", { name: "Configure" })).toHaveLength(count)
-    fireEvent.click(screen.getByRole("radio", { name: "Grid layout" }))
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
     expect(screen.getAllByRole("button", { name: "Configure" })).toHaveLength(count)
   })
 
   it("opens run history for one job from its own row", () => {
     render(<JobsPage />, { wrapper })
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
     const job = useDemoStore.getState().jobs[0]!
     const row = screen.getByText(job.key).closest("div.rounded-md") as HTMLElement
 
