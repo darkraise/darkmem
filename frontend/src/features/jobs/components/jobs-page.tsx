@@ -11,8 +11,8 @@ import {
 } from "@/components/darkmem"
 import type { DemoJob } from "@/features/activity/types"
 import { useJobsSettingsBinding } from "../use-jobs-binding"
-import { JobsListLayout } from "./jobs-list-layout"
 import { JobGridCard } from "./job-grid-card"
+import { JobListRow } from "./job-list-row"
 import { JobConfigDialog } from "./job-config-dialog"
 import { JobHistoryDialog } from "./job-history-dialog"
 
@@ -63,26 +63,26 @@ export function JobsPage() {
         icon={Timer}
         title="Jobs"
         description="The registered JobRegistry jobs — schedule, config, and manual triggers."
-        actions={
-          <IconSegmented
-            value={layout}
-            options={LAYOUTS}
-            onChange={setLayout}
-            label="Jobs layout"
-          />
-        }
       />
 
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
-          Cron, the enabled switch, per-job config and a manual trigger.
-        </span>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="text-muted-foreground flex max-w-4xl flex-1 items-center gap-1.5 text-sm">
+          <span>
+            Cron, the enabled switch, per-job config and a manual trigger.
+          </span>
         <HelpTip label="About Jobs">
           A manual trigger acquires the same asyncio.Lock the scheduled loop
           uses, so a save can never race a running tick, and a trigger that
           lands while the lock is held returns busy (HTTP 409) immediately —
           discarded, never queued behind the in-flight run.
-        </HelpTip>
+          </HelpTip>
+        </div>
+        <IconSegmented
+          value={layout}
+          options={LAYOUTS}
+          onChange={setLayout}
+          label="Jobs layout"
+        />
       </div>
 
       {isError ? (
@@ -106,7 +106,18 @@ export function JobsPage() {
           description="The registry returned no jobs. On a healthy install this list is never empty, so treat it as a boot problem rather than a quiet day."
         />
       ) : layout === "list" ? (
-        <JobsListLayout />
+        <div className="flex flex-col gap-2">
+          {jobs.map((job) => (
+            <JobListRow
+              key={job.key}
+              job={job}
+              onTrigger={() => handleTrigger(job)}
+              onConfigure={() => setConfiguring(job)}
+              onHistory={() => setViewingHistory(job)}
+              onToggleEnabled={(on) => setEnabled(job.key, on)}
+            />
+          ))}
+        </div>
       ) : (
         <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           {jobs.map((job) => (

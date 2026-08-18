@@ -185,3 +185,47 @@ def test_job_register_rejects_invalid_default_cron():
             min_interval_seconds=1,
             runner=_noop,
         ))
+
+
+# ── `running` means a run is in progress, not "the scheduler is alive" ──
+
+
+@pytest.mark.asyncio
+async def test_running_is_false_for_a_scheduled_but_idle_job():
+    """`job.task` holds the *scheduling loop*, which is alive for the whole
+    process once `start()` runs — so deriving `running` from it reported every
+    registered job as running forever. The UI disables Trigger while a job
+    runs, which made all twenty-one controls dead on a completely idle
+    instance. The per-job lock is the authoritative signal, and is already
+    what the trigger route's 409 branch consults.
+    """
+    import asyncio
+
+    reg, engine = _schema_registry("idle_job")
+    try:
+        job = reg._jobs["idle_job"]
+        # Stand in for the scheduling loop without starting the real one.
+        job.task = asyncio.create_task(asyncio.sleep(30))
+        try:
+            items = await reg.list_with_config()
+            item = next(i for i in items if i["key"] == "idle_job")
+            assert item["running"] is False, (
+                "a live scheduling loop is not a run in progress"
+            )
+        finally:
+            job.task.cancel()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_running_is_true_while_the_job_lock_is_held():
+    reg, engine = _schema_registry("busy_job")
+    try:
+        job = reg._jobs["busy_job"]
+        async with job.lock:
+            items = await reg.list_with_config()
+            item = next(i for i in items if i["key"] == "busy_job")
+            assert item["running"] is True
+    finally:
+        await engine.dispose()

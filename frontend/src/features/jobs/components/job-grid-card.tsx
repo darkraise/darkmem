@@ -1,45 +1,8 @@
-import { History, Play, Settings2 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
-import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent } from "darkraise-ui/components/card"
 import { Switch } from "darkraise-ui/components/switch"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "darkraise-ui/components/tooltip"
 import type { DemoJob } from "@/features/activity/types"
-
-/** One outlined, icon-only action. The tooltip label is also the accessible
- *  name — an icon button has no text of its own to carry one. */
-function CardAction({
-  label,
-  icon: Icon,
-  onClick,
-  disabled,
-}: {
-  label: string
-  icon: typeof Play
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="outline"
-          size="icon"
-          aria-label={label}
-          onClick={onClick}
-          disabled={disabled}
-        >
-          <Icon aria-hidden className="size-[var(--icon-size)]" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-}
+import { JobActions } from "./job-actions"
 
 export function JobGridCard({
   job,
@@ -93,10 +56,13 @@ export function JobGridCard({
           </span>
         </div>
 
-        <div className="mt-auto flex items-center gap-1.5 pt-1">
-          <CardAction label="Trigger now" icon={Play} onClick={onTrigger} />
-          <CardAction label="Configure" icon={Settings2} onClick={onConfigure} />
-          <CardAction label="Run history" icon={History} onClick={onHistory} />
+        <div className="mt-auto pt-1">
+          <JobActions
+            job={job}
+            onTrigger={onTrigger}
+            onConfigure={onConfigure}
+            onHistory={onHistory}
+          />
         </div>
       </CardContent>
     </Card>

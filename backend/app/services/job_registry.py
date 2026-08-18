@@ -245,7 +245,11 @@ class JobRegistry:
                     cron=job.default_cron,
                     min_interval_seconds=job.min_interval_seconds,
                 )
-            running = job.task is not None and not job.task.done()
+            # `job.task` is the *scheduling loop*, alive for the whole
+            # process once start() runs, so it reported every registered job
+            # as permanently running. The per-job lock is what a run actually
+            # holds — the same signal the trigger route's 409 branch reads.
+            running = job.lock.locked()
             item = {
                 "key": job.key,
                 "display_name": job.display_name,

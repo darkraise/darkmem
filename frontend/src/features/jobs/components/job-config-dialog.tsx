@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "darkraise-ui/components/dialog"
 import type { DemoJob } from "@/features/activity/types"
-import { ConfigSchemaSection, ScheduleSection } from "./jobs-list-layout"
+import { ConfigSchemaSection, ScheduleSection } from "./job-config-sections"
 
 /**
  * The grid layout's configure CTA. Deliberately renders the *same* schedule
