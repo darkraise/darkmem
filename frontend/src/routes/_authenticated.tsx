@@ -136,6 +136,11 @@ function AuthenticatedLayout() {
   return (
     <Shell
       nav={nav}
+      // Controlled, not `defaultActiveBar`: this app ships no
+      // `showActiveBarToggle`, so nothing can change the indicator and
+      // "pinned" is the honest spelling. Ignored by the two sidebar-less
+      // layouts. Requires darkraise-ui >= 6.2.0.
+      activeBar="both"
       headerSlot={
         <>
           <AppPageHeader />
