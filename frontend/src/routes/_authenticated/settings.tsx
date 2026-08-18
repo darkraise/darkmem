@@ -47,6 +47,7 @@ function SettingsPage() {
         description="Configuration: tunables, LLM purposes, jobs, security posture, maintenance, and distribution."
       />
       <Tabs
+        border="default"
         value={tab ?? "flags"}
         onValueChange={(value) => {
           if (TAB_VALUES.includes(value as SettingsTab)) {
@@ -56,15 +57,19 @@ function SettingsPage() {
           }
         }}
       >
+        {/* Full-width strip with equal-width items: `w-full` on the list and
+            `flex-1` on each trigger, so the tabs divide the content area
+            evenly instead of hugging their labels. The scroll container stays
+            for narrow viewports, where seven equal columns still overflow. */}
         <div className="overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="flags">Flags</TabsTrigger>
-            <TabsTrigger value="llm">LLM</TabsTrigger>
-            <TabsTrigger value="jobs">Jobs</TabsTrigger>
-            <TabsTrigger value="security">Security</TabsTrigger>
-            <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
-            <TabsTrigger value="distribution">Distribution</TabsTrigger>
-            <TabsTrigger value="research">Research</TabsTrigger>
+          <TabsList className="w-full">
+            <TabsTrigger className="flex-1" value="flags">Flags</TabsTrigger>
+            <TabsTrigger className="flex-1" value="llm">LLM</TabsTrigger>
+            <TabsTrigger className="flex-1" value="jobs">Jobs</TabsTrigger>
+            <TabsTrigger className="flex-1" value="security">Security</TabsTrigger>
+            <TabsTrigger className="flex-1" value="maintenance">Maintenance</TabsTrigger>
+            <TabsTrigger className="flex-1" value="distribution">Distribution</TabsTrigger>
+            <TabsTrigger className="flex-1" value="research">Research</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="flags" className="pt-4">
