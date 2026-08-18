@@ -12,4 +12,3 @@ export type {
   PageChromeProps,
   PageChromeState,
 } from "./page-chrome"
-export { SidebarSearch } from "./sidebar-search"

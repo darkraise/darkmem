@@ -37,7 +37,6 @@ import {
   BackToTop,
   ContextChip,
   ProjectSwitcher,
-  SidebarSearch,
 } from "@/components/app-chrome"
 
 const nav: NavGroup[] = [
@@ -149,7 +148,6 @@ function AuthenticatedLayout() {
           <DetailLevelToggle />
         </>
       }
-      sidebarHeader={<SidebarSearch nav={nav} />}
       user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
       onLogout={handleLogout}
     >

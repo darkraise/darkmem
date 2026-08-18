@@ -267,37 +267,6 @@
   display: none;
 }
 
-/* Search moved into the sidebar (SidebarSearch in the sidebarHeader slot).
-   LayoutHeader hardcodes its own SearchCommand when given no children, so
-   hide that trigger in the sidebar layout only — its Ctrl+K binding is
-   pre-empted by SidebarSearch's capture-phase listener. Top-nav/stacked
-   have no sidebar slot and keep the built-in header search. */
-.dr-sidebar-layout .dr-layout-header > .dr-search-command-trigger {
-  display: none;
-}
-
-/* Sidebar search trigger: icon-only when the sidebar is collapsed. The
-   explicit --density-cell box (not just `padding: 0`) is what keeps it the
-   same square as `.dr-sidebar-nav-link[data-collapsed]`; Button's own
-   `h-9` and this trigger's `w-full` would otherwise render it taller and
-   wider than every nav item below it. */
-.dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-label,
-.dr-sidebar-layout-aside[data-collapsed="true"] .dm-sidebar-search-kbd {
-  display: none;
-}
-.dr-sidebar-layout-aside[data-collapsed="true"] .dr-search-command-trigger {
-  /* `display: flex` (not Button's inline-flex) is what lets the auto inline
-     margins centre it in the rail the way the nav items are centred. */
-  display: flex;
-  width: var(--density-cell);
-  min-width: var(--density-cell);
-  height: var(--density-cell);
-  min-height: var(--density-cell);
-  margin-inline: auto;
-  justify-content: center;
-  padding: 0;
-}
-
 /* Tighter content margins: the shell shipped p-6 (24px) and most screens
    stacked their own p-6 on top. Route-level padding was removed; the shell
    padding is reduced here. The full-bleed rule below still wins (higher
