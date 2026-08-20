@@ -35,6 +35,9 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem
       TEST_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test
+      # The harness suite refuses to share a database with the app tests, so it
+      # gets its own (benchlib/bench_db.py).
+      BENCH_DATABASE_URL: postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_bench
     defaults:
       run:
         working-directory: backend
@@ -49,8 +52,10 @@ jobs:
           pip install -r requirements.lock
           pip install --no-deps .
           pip install pytest pytest-asyncio ruff
-      - name: Create test database
-        run: PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test;"
+      - name: Create test databases
+        run: |
+          PGPASSWORD=darkmem psql -h localhost -p 5433 -U darkmem -d darkmem \
+            -c "CREATE DATABASE darkmem_test;" -c "CREATE DATABASE darkmem_bench;"
       - name: Lint (ruff, advisory)
         run: ruff check app/ --select F --output-format=github
         continue-on-error: true
