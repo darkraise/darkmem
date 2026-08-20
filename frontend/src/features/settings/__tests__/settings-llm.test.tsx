@@ -47,7 +47,10 @@ describe("LLMTab", () => {
       expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
     }
     // The removed chrome is shown struck-through, not silently omitted.
-    expect(screen.getByText("llm-providers tab")).toBeInTheDocument()
+    // "llm-providers tab" is no longer in this list: T8 reintroduced a
+    // Providers sub-tab, a different surface over the new shared
+    // `llm_providers` connection row rather than the deleted profile-ref one.
+    expect(screen.getByText("llm-profiles tab")).toBeInTheDocument()
     expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
   })
 

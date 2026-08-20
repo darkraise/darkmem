@@ -23,6 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import { cn } from "darkraise-ui/lib"
 import {
   HelpTip,
@@ -37,6 +43,7 @@ import {
   type LLMTabBinding,
   type TierCPurposeView,
 } from "../use-llm-tab-binding"
+import { ProvidersPanel } from "./providers-panel"
 
 const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   embedding: Braces,
@@ -444,19 +451,22 @@ function RemovedChrome() {
       <div className="text-muted-foreground flex items-center gap-2 font-mono text-[10px] tracking-wide uppercase">
         <Trash2 aria-hidden className="h-3.5 w-3.5" />
         removed with the flattening — not rendered, not disabled, deleted
-        <HelpTip label="Why the provider and profile tabs were removed">
-          darkmem is not an LLM proxy: each purpose is one row the operator
-          edits directly, with the columns provider_ref, profile_ref, and
+        <HelpTip label="Why the profile-ref provider and profile tabs were removed">
+          darkmem is not an LLM proxy: each purpose was one row the operator
+          edited directly, with the columns provider_ref, profile_ref, and
           ml_profile_ref dropped from every purpose row. A profile picker over
-          a schema with no profiles table would be scaffolding rendered as a
-          feature — the honest move is deletion, not a greyed-out control.
-          The dead LLMProvidersPanel / LLMProfilesPanel / MLProfilesPanel
-          components themselves are gone from the source tree, not merely
-          unmounted.
+          a schema with no profiles table would have been scaffolding
+          rendered as a feature — the honest move was deletion, not a
+          greyed-out control. The dead LLMProvidersPanel / LLMProfilesPanel /
+          MLProfilesPanel components themselves are gone from the source
+          tree, not merely unmounted. The Providers sub-tab above this card
+          is not that tab reappearing: it edits a separate `llm_providers`
+          connection row a purpose can point at, not a profile indirection
+          column on the purpose row itself.
         </HelpTip>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
-        {["llm-providers tab", "llm-profiles tab", "ml-profiles tab"].map(
+        {["llm-profiles tab", "ml-profiles tab"].map(
           (label) => (
             <span
               key={label}
@@ -483,49 +493,60 @@ export function LLMTab() {
   const binding = useLLMTabBinding()
 
   return (
-    <div className="space-y-4">
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
-          Seven inline purpose cards — each a self-contained connection
-          binding, including the seeded-inert `synthesis` purpose — plus
-          `verification`, read-only here (T2.106: it judges the
-          verification ladder and its qualification is a gate's evidence).
-          A save live-reloads the orchestrator; no redeploy, no LLM_* env
-          vars.
-        </span>
-        <HelpTip label="About the LLM tab">
-          Each purpose is one row with no provider/profile indirection. Every
-          vendor auth, reasoning-control, and structured-output quirk that
-          api_kind selects is resolved by the backend orchestrator, never
-          re-implemented here. A save rebuilds the orchestrator and takes
-          effect without a redeploy.
-        </HelpTip>
-      </div>
-      {/* Cards seed an editable draft from their `purpose` prop on mount and
-          own it thereafter, which is right for an editor — a refetch must not
-          overwrite what the reader is typing. The cost is that mounting one
-          before the config arrives freezes the empty placeholder the binding
-          builds from `query.data?.[p]`, which is why the fields used to stay
-          blank until the tab was unmounted and remounted. Waiting for the
-          first load is what makes the seed real; `isLoading` is false on
-          every later refetch, so this does not flash between saves. */}
-      {binding.isLoading ? (
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-64 w-full rounded-md" />
-          ))}
+    <Tabs defaultValue="purposes">
+      <TabsList>
+        <TabsTrigger value="providers">Providers</TabsTrigger>
+        <TabsTrigger value="purposes">Purposes</TabsTrigger>
+      </TabsList>
+      <TabsContent value="providers" className="pt-4">
+        <ProvidersPanel />
+      </TabsContent>
+      <TabsContent value="purposes" className="pt-4">
+        <div className="space-y-4">
+          <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+            <span>
+              Seven inline purpose cards — each a self-contained connection
+              binding, including the seeded-inert `synthesis` purpose — plus
+              `verification`, read-only here (T2.106: it judges the
+              verification ladder and its qualification is a gate's evidence).
+              A save live-reloads the orchestrator; no redeploy, no LLM_* env
+              vars.
+            </span>
+            <HelpTip label="About the LLM tab">
+              Each purpose is one row with no provider/profile indirection. Every
+              vendor auth, reasoning-control, and structured-output quirk that
+              api_kind selects is resolved by the backend orchestrator, never
+              re-implemented here. A save rebuilds the orchestrator and takes
+              effect without a redeploy.
+            </HelpTip>
+          </div>
+          {/* Cards seed an editable draft from their `purpose` prop on mount and
+              own it thereafter, which is right for an editor — a refetch must not
+              overwrite what the reader is typing. The cost is that mounting one
+              before the config arrives freezes the empty placeholder the binding
+              builds from `query.data?.[p]`, which is why the fields used to stay
+              blank until the tab was unmounted and remounted. Waiting for the
+              first load is what makes the seed real; `isLoading` is false on
+              every later refetch, so this does not flash between saves. */}
+          {binding.isLoading ? (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-64 w-full rounded-md" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {binding.purposes.map((purpose) => (
+                <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
+              ))}
+              {binding.tierCPurposes.map((purpose) => (
+                <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
+              ))}
+            </div>
+          )}
+          <RemovedChrome />
         </div>
-      ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          {binding.purposes.map((purpose) => (
-            <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
-          ))}
-          {binding.tierCPurposes.map((purpose) => (
-            <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
-          ))}
-        </div>
-      )}
-      <RemovedChrome />
-    </div>
+      </TabsContent>
+    </Tabs>
   )
 }

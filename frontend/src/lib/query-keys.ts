@@ -127,6 +127,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   knowledgeTimeline: { kind: "global" },
   jobs: { kind: "global" },
   llmConfig: { kind: "global" },
+  llmProviders: {
+    kind: "global",
+    reason:
+      "an llm_providers connection row is per-installation, the same as the llm_purpose_configs rows it feeds",
+  },
   featureFlags: { kind: "global" },
   repoAllowlist: { kind: "global" },
   classificationAreas: { kind: "global" },
