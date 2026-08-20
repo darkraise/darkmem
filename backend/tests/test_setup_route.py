@@ -341,6 +341,55 @@ async def test_setup_accepts_a_provider_list(client, session):
 
 
 @pytest.mark.asyncio
+async def test_setup_refuses_a_provider_named_after_a_seeded_one(client, session):
+    """`verification-judge` is seeded by DEFAULT_PROVIDER_ROWS before the
+    user's own providers are written. Without a name guard, a submitted
+    provider sharing that name would resolve through `.get()` to the
+    seeded row and overwrite its base_url/api_kind — the judge's frozen
+    identity fields on the authenticated door — from this unauthenticated
+    one. Reproduces the exposure the finding describes: a re-opened setup
+    replaying a poisoned payload against a database that already carries
+    the seeded row from an earlier run."""
+    first = await client.post(
+        "/api/v1/setup",
+        json={"password": "correct-horse-battery-staple", "llm": {"purposes": {}}},
+    )
+    assert first.status_code == 200
+
+    seeded_before = (await session.execute(
+        select(LLMProviderRow).where(LLMProviderRow.name == "verification-judge")
+    )).scalar_one()
+    api_kind_before, base_url_before = seeded_before.api_kind, seeded_before.base_url
+
+    admin_row = (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one()
+    await session.delete(admin_row)
+    await session.commit()
+
+    resp = await client.post("/api/v1/setup", json={
+        "password": "second-pw-1234567",
+        "llm": {
+            "providers": [
+                {"name": "verification-judge", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-poison"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "verification-judge", "model": "deepseek-v4-flash"},
+            },
+        },
+    })
+    assert resp.status_code == 422
+    assert "verification-judge" in resp.json()["detail"]
+
+    seeded_after = (await session.execute(
+        select(LLMProviderRow).where(LLMProviderRow.name == "verification-judge")
+    )).scalar_one()
+    assert seeded_after.api_kind == api_kind_before
+    assert seeded_after.base_url == base_url_before
+
+
+@pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):
     base = tmp_path / "workspace"
     base.mkdir()

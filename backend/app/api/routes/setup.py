@@ -341,11 +341,17 @@ async def setup_finalize(
         # 2. LLM block — optional. Writes DEFAULT_PURPOSE_CONFIGS as inline
         # `llm_purpose_configs` rows so the user finishes setup with every
         # purpose resolvable, including the two Tier-C purposes (synthesis,
-        # verification) T1.05 seeded inert. The user's own providers are
+        # verification) seeded inert. The user's own providers are
         # written next, and each purpose's provider_name + model then
         # overlay the matching row. DEFAULT_PROFILES stays a pure-Python
         # lookup used only to supply a matching params preset for the
         # user's chosen vendor+model, never written to the database itself.
+        #
+        # A submitted provider name must never collide with a seeded one
+        # (`ollama-local`, `verification-judge`): this door is reachable
+        # unauthenticated, and the seeded judge row's base_url/api_kind are
+        # frozen identity fields on the authenticated door for exactly this
+        # reason — an unauthenticated repoint would defeat that guard.
         #
         # Upsert, not insert: `purpose` is the primary key, and re-running
         # the wizard against an instance whose purpose rows already exist
@@ -361,6 +367,17 @@ async def setup_finalize(
                     DEFAULT_PURPOSE_CONFIGS,
                     default_provider_row_name_for_purpose,
                 )
+
+                reserved_provider_names = {row.name for row in DEFAULT_PROVIDER_ROWS}
+                for sp in body.llm.providers:
+                    if sp.name in reserved_provider_names:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=(
+                                f"provider name {sp.name!r} is reserved for a "
+                                "seeded connection and cannot be defined by the wizard"
+                            ),
+                        )
 
                 existing_providers = {
                     r.name: r
@@ -444,6 +461,8 @@ async def setup_finalize(
                     pcfg.updated_at = datetime.now(timezone.utc)
 
                 await session.commit()
+            except HTTPException:
+                raise
             except Exception:
                 await session.rollback()
                 logger.exception("Setup LLM finalize failed")
