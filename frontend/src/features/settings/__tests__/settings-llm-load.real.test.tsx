@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -62,10 +62,23 @@ describe("LLMTab first paint (DEMO off)", () => {
     )
     render(<LLMTab />, { wrapper })
 
+    // The row shows the served values as text, and the editor seeded from
+    // them carries the same. Both matter: the first is what a reader sees
+    // without clicking, the second is what the original defect broke — a
+    // draft seeded before the query landed and never re-read.
     await waitFor(() =>
-      expect(screen.getByDisplayValue("deepseek-v4-flash")).toBeInTheDocument(),
+      expect(screen.getAllByText("deepseek-v4-flash").length).toBeGreaterThan(0),
     )
-    expect(screen.getByText("deepseek-primary")).toBeInTheDocument()
+    expect(screen.getByText(/deepseek-primary/)).toBeInTheDocument()
+
+    // This fixture populates `classification` only, so that is the row whose
+    // editor should carry the served model.
+    fireEvent.click(screen.getByLabelText("Edit classification"))
+    await waitFor(() =>
+      expect(screen.getByLabelText("classification model")).toHaveValue(
+        "deepseek-v4-flash",
+      ),
+    )
   })
 
   // The control read `query.data?.classification?.classifier_kind`, which the
@@ -78,8 +91,9 @@ describe("LLMTab first paint (DEMO off)", () => {
     render(<LLMTab />, { wrapper })
 
     await waitFor(() =>
-      expect(screen.getByDisplayValue("deepseek-v4-flash")).toBeInTheDocument(),
+      expect(screen.getAllByText("deepseek-v4-flash").length).toBeGreaterThan(0),
     )
+    fireEvent.click(screen.getByLabelText("Edit classification"))
     // Icon-only segments carry no text, so the aria-label the tooltip
     // mirrors is the only name to address them by.
     expect(
@@ -97,6 +111,7 @@ describe("LLMTab first paint (DEMO off)", () => {
         : PURPOSES_FIXTURE,
     )
     render(<LLMTab />, { wrapper })
+    fireEvent.click(await screen.findByLabelText("Edit extraction"))
     const field = await screen.findByLabelText("extraction model")
     await userEvent.clear(field)
     await userEvent.type(field, "c")
@@ -110,6 +125,7 @@ describe("LLMTab first paint (DEMO off)", () => {
         : PURPOSES_FIXTURE,
     )
     render(<LLMTab />, { wrapper })
+    fireEvent.click(await screen.findByLabelText("Edit extraction"))
     expect(await screen.findByText(/HTTP 401/)).toBeInTheDocument()
     expect(screen.getByLabelText("extraction model")).toBeEnabled()
   })

@@ -45,6 +45,15 @@ const PROVIDERS = {
   ],
 }
 
+// Editing now lives behind a dialog, so every field assertion opens it first.
+// The assertions themselves are unchanged: what a frozen provider disables,
+// and the exact body a save puts on the wire, are the same properties as
+// before — only the number of clicks to reach them moved.
+async function openEditor(name: string) {
+  fireEvent.click(await screen.findByLabelText(`Edit ${name}`))
+  return await screen.findByLabelText(`${name} base_url`)
+}
+
 describe("useLlmProviders (DEMO off — real /config/llm-providers)", () => {
   afterEach(() => vi.clearAllMocks())
 
@@ -83,9 +92,8 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   it("freezes base_url and api_kind on the verification provider but not its key", async () => {
     vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
     render(<ProvidersPanel />, { wrapper })
-    await waitFor(() =>
-      expect(screen.getByLabelText("verification-judge base_url")).toBeDisabled(),
-    )
+    await openEditor("verification-judge")
+    expect(screen.getByLabelText("verification-judge base_url")).toBeDisabled()
     expect(screen.getByLabelText("verification-judge api_kind")).toBeDisabled()
     expect(screen.getByLabelText("verification-judge api_key")).toBeEnabled()
   })
@@ -93,9 +101,8 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
   it("does not freeze base_url and api_kind on a non-verification provider", async () => {
     vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
     render(<ProvidersPanel />, { wrapper })
-    await waitFor(() =>
-      expect(screen.getByLabelText("ollama-local base_url")).toBeEnabled(),
-    )
+    await openEditor("ollama-local")
+    expect(screen.getByLabelText("ollama-local base_url")).toBeEnabled()
     expect(screen.getByLabelText("ollama-local api_kind")).toBeEnabled()
     expect(screen.getByLabelText("ollama-local api_key")).toBeEnabled()
   })
@@ -110,9 +117,11 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
         : Promise.resolve(PROVIDERS),
     )
     render(<ProvidersPanel />, { wrapper })
-    const key = await screen.findByLabelText("verification-judge api_key")
-    fireEvent.change(key, { target: { value: "sk-rotated" } })
-    screen.getAllByRole("button", { name: "Save" })[1]!.click()
+    await openEditor("verification-judge")
+    fireEvent.change(screen.getByLabelText("verification-judge api_key"), {
+      target: { value: "sk-rotated" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     await waitFor(() =>
       expect(vi.mocked(apiFetch).mock.calls.some(
@@ -136,9 +145,9 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
         : Promise.resolve(PROVIDERS),
     )
     render(<ProvidersPanel />, { wrapper })
-    const baseUrl = await screen.findByLabelText("ollama-local base_url")
+    const baseUrl = await openEditor("ollama-local")
     fireEvent.change(baseUrl, { target: { value: "http://moved:11434/v1" } })
-    screen.getAllByRole("button", { name: "Save" })[0]!.click()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
     await waitFor(() =>
       expect(vi.mocked(apiFetch).mock.calls.some(
@@ -194,4 +203,78 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
       expect(screen.getByText("connection refused")).toBeInTheDocument(),
     )
   })
+
+  it("switches layout and persists the choice per panel", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    const { unmount } = render(<ProvidersPanel />, { wrapper })
+    await screen.findByLabelText("Edit ollama-local")
+
+    // Icon-only segments have no text, so the tooltip label is the only
+    // handle — which is exactly the part that has to keep working.
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
+    expect(screen.getByRole("radio", { name: "List layout" })).toBeChecked()
+    expect(
+      JSON.parse(localStorage.getItem("darkmem-llm-providers-layout") ?? "{}")
+        .state.layout,
+    ).toBe("list")
+
+    // The purposes panel keeps its own key, so one panel's density is not the
+    // other's.
+    expect(localStorage.getItem("darkmem-llm-purposes-layout")).toBeNull()
+
+    unmount()
+    render(<ProvidersPanel />, { wrapper })
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "List layout" })).toBeChecked(),
+    )
+  })
+
+  it("adds a provider through the dialog rather than an inline card", async () => {
+    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? Promise.resolve({ ...PROVIDERS.providers[0], name: "new-one" })
+        : Promise.resolve(PROVIDERS),
+    )
+    render(<ProvidersPanel />, { wrapper })
+    await screen.findByLabelText("Edit ollama-local")
+
+    // No name field exists until the dialog is opened: the panel itself is
+    // read-only.
+    expect(screen.queryByLabelText("new provider name")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /Add provider/ }))
+    fireEvent.change(await screen.findByLabelText("new provider name"), {
+      target: { value: "new-one" },
+    })
+    fireEvent.change(screen.getByLabelText("new provider base_url"), {
+      target: { value: "http://new/v1" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+
+    await waitFor(() => {
+      const call = vi
+        .mocked(apiFetch)
+        .mock.calls.find(([, init]) => (init as RequestInit)?.method === "POST")
+      expect(call).toBeDefined()
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({
+        name: "new-one",
+        api_kind: "openai",
+        base_url: "http://new/v1",
+        api_key: null,
+      })
+    })
+  })
+
+  it("shows no editable connection field until the editor is opened", async () => {
+    vi.mocked(apiFetch).mockResolvedValue(PROVIDERS)
+    render(<ProvidersPanel />, { wrapper })
+    await screen.findByLabelText("Edit ollama-local")
+    expect(
+      screen.queryByLabelText("ollama-local base_url"),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("ollama-local api_key"),
+    ).not.toBeInTheDocument()
+  })
+
 })

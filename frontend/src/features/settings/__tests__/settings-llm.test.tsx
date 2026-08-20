@@ -30,6 +30,14 @@ afterEach(() => {
   useDemoStore.getState().resetSettings()
 })
 
+// Purpose editing moved behind a dialog. These tests open it and then assert
+// exactly what they asserted before — which field exists, which validation
+// fires, what a save puts on the wire. The properties did not change; the
+// number of clicks to reach them did.
+function openPurposeEditor(purpose: string) {
+  fireEvent.click(screen.getByLabelText(`Edit ${purpose}`))
+}
+
 describe("LLMTab", () => {
   it("renders the seven writable purpose cards and no provider/profile chrome", () => {
     renderTab()
@@ -61,7 +69,9 @@ describe("LLMTab", () => {
     // verification is live and dispatched (T2.26) and stays read-only here
     // by deliberate T2.106 ruling, not a pending write-wire gap.
     expect(screen.getByText("tier c · live")).toBeInTheDocument()
-    expect(screen.getByText(/qualification record is G-D's gate evidence/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/qualification record is a gate's evidence/),
+    ).toBeInTheDocument()
     expect(screen.queryByText("tier c · inert")).not.toBeInTheDocument()
   })
 
@@ -74,13 +84,11 @@ describe("LLMTab", () => {
 
   it("synthesis is a fully editable card that saves through the normal wire", () => {
     renderTab()
+    openPurposeEditor("synthesis")
     const input = screen.getByLabelText("synthesis model")
     expect(input).not.toBeDisabled()
     fireEvent.change(input, { target: { value: "qwen2.5:7b" } })
-    const saves = screen.getAllByRole("button", { name: "Save" })
-    const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
-    expect(enabled).toBeDefined()
-    fireEvent.click(enabled!)
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
     expect(toast.success).toHaveBeenCalledWith(
       "Saved — synthesis purpose updated",
       expect.objectContaining({ description: expect.stringContaining("model") }),
@@ -89,17 +97,17 @@ describe("LLMTab", () => {
 
   it("verification carries no editable inputs and no Save button", () => {
     renderTab()
-    // `verification` has no `${purpose} model`-style aria-label because
-    // TierCPurposeCard never wires one — only the editable PurposeCard does.
+    // The Tier-C purpose has no edit affordance at all, by owner ruling: its
+    // connection is pinned to a measured qualification identity and the
+    // supported way to change the judge is to re-run the harness, not a form.
+    expect(screen.queryByLabelText("Edit verification")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("verification model")).not.toBeInTheDocument()
 
     const card = screen.getByText("verification").closest(".border-dashed")
     expect(card).not.toBeNull()
-    const inputs = within(card as HTMLElement).getAllByRole("textbox")
-    expect(inputs.length).toBeGreaterThan(0)
-    for (const input of inputs) {
-      expect(input).toBeDisabled()
-    }
+    expect(
+      within(card as HTMLElement).queryAllByRole("textbox"),
+    ).toHaveLength(0)
     expect(
       within(card as HTMLElement).queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument()
@@ -107,17 +115,19 @@ describe("LLMTab", () => {
 
   it("carries dimensions only on embedding", () => {
     renderTab()
+    openPurposeEditor("embedding")
     expect(screen.getAllByText("dimensions")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    openPurposeEditor("extraction")
+    expect(screen.queryByText("dimensions")).not.toBeInTheDocument()
   })
 
   it("save shows the live-reload confirmation with the trace", () => {
     renderTab()
+    openPurposeEditor("reasoning")
     const input = screen.getByLabelText("reasoning model")
     fireEvent.change(input, { target: { value: "gpt-5.1" } })
-    const saves = screen.getAllByRole("button", { name: "Save" })
-    const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
-    expect(enabled).toBeDefined()
-    fireEvent.click(enabled!)
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
     // The trace moved into the toast's description: the changed field, and
     // the live-reload fact that is the whole point of not needing a redeploy.
     expect(toast.success).toHaveBeenCalledWith(
@@ -130,6 +140,7 @@ describe("LLMTab", () => {
 
   it("rejects malformed params JSON before save", () => {
     renderTab()
+    openPurposeEditor("extraction")
     const params = screen.getByLabelText("extraction params")
     fireEvent.change(params, { target: { value: "{broken" } })
     expect(screen.getByText("invalid JSON")).toBeInTheDocument()
@@ -137,6 +148,7 @@ describe("LLMTab", () => {
 
   it("carries the classifier_kind toggle on the classification card", () => {
     renderTab()
+    openPurposeEditor("classification")
     expect(screen.getByText("classifier_kind")).toBeInTheDocument()
     // The segments are icon-only now, so their accessible names are the only
     // handle on them — which is exactly what has to keep working.
@@ -150,9 +162,29 @@ describe("LLMTab", () => {
 
   it("renders the code-summarization buckets as their own cards in demo mode", () => {
     renderTab()
+    openPurposeEditor("summarization")
     expect(screen.getByText("code-summarization buckets")).toBeInTheDocument()
     for (const bucket of ["symbol", "module", "overview"]) {
       expect(screen.getByText(bucket)).toBeInTheDocument()
     }
   })
+
+  it("switches the purposes layout and keeps its own preference key", () => {
+    renderTab()
+    fireEvent.click(screen.getByRole("radio", { name: "List layout" }))
+    expect(screen.getByRole("radio", { name: "List layout" })).toBeChecked()
+    expect(
+      JSON.parse(localStorage.getItem("darkmem-llm-purposes-layout") ?? "{}")
+        .state.layout,
+    ).toBe("list")
+  })
+
+  it("shows no editable field on a purpose row until its editor is opened", () => {
+    renderTab()
+    expect(screen.queryByLabelText("extraction model")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("extraction params")).not.toBeInTheDocument()
+    openPurposeEditor("extraction")
+    expect(screen.getByLabelText("extraction model")).toBeInTheDocument()
+  })
+
 })
