@@ -260,24 +260,25 @@ async def test_setup_finalize_password_only(client, session):
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_llm(client, session):
-    """The wizard now seeds the full default provider / profile menu and
-    overlays the user's api_kind row's api_key + per-purpose model
-    selections on top. Asserts cover (a) the six canonical purpose rows
-    land, and (b) the user's model, api_kind, api_key and base_url are
-    overlaid inline on each — there is no provider or profile row to
-    resolve through any more (doc 04 §7)."""
+    """The wizard now seeds the full default provider / profile menu, writes
+    the user's declared providers, and overlays each purpose's chosen
+    provider_name + model on top. Asserts cover (a) the six canonical
+    purpose rows land, and (b) the user's model and provider (api_key, kind,
+    base_url included) are overlaid inline on each — there is no profile row
+    to resolve through any more (doc 04 §7), only the provider indirection
+    (owner ruling 2026-08-20)."""
     payload = {
         "password": "test-pw-12345",
         "llm": {
-            "api_kind": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "sk-test",
-            "supports_embedding": True,
+            "providers": [
+                {"name": "user-openai", "api_kind": "openai",
+                 "base_url": "https://api.openai.com/v1", "api_key": "sk-test"},
+            ],
             "purposes": {
-                "embedding":      {"model": "text-embedding-3-small"},
-                "extraction":     {"model": "gpt-4o-mini"},
-                "classification": {"model": "gpt-4o-mini"},
-                "reasoning":      {"model": "gpt-4o", "reasoning": True},
+                "embedding":      {"provider_name": "user-openai", "model": "text-embedding-3-small"},
+                "extraction":     {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "classification": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "reasoning":      {"provider_name": "user-openai", "model": "gpt-4o", "reasoning": True},
             },
         },
     }
@@ -309,12 +310,35 @@ async def test_setup_finalize_with_llm(client, session):
     ]:
         row = by_purpose[purpose]
         assert row.model == expected_model
+        assert row.provider_name == "user-openai"
         provider = (await session.execute(
             select(LLMProviderRow).where(LLMProviderRow.name == row.provider_name)
         )).scalar_one()
         assert provider.api_kind == "openai"
         assert provider.api_key == "sk-test"
         assert provider.base_url
+
+
+@pytest.mark.asyncio
+async def test_setup_accepts_a_provider_list(client, session):
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [
+                {"name": "my-ds", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-x"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "my-ds", "model": "deepseek-v4-flash"},
+            },
+        },
+    })
+    assert resp.status_code == 200
+    row = (await session.execute(text(
+        "SELECT provider_name FROM llm_purpose_configs WHERE purpose='extraction'"
+    ))).scalar_one()
+    assert row == "my-ds"
+
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):

@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import type { LlmApiKind } from "@/features/setup/api-kinds"
 
 export type Purpose =
   | "embedding"
@@ -30,7 +31,15 @@ export type DetectedRepo = {
   selected: boolean
 }
 
+export type WizardProvider = {
+  name: string
+  api_kind: LlmApiKind
+  base_url: string
+  api_key: string
+}
+
 export type PurposeDraft = {
+  provider_name: string
   model: string
   reasoning: boolean
   dimensions?: number
@@ -41,11 +50,7 @@ type SetupWizardState = {
   password: { value: string; confirm: string }
   llm: {
     skipped: boolean
-    api_kind: string
-    base_url: string
-    api_key: string
-    supports_embedding: boolean
-    models: string[]
+    providers: WizardProvider[]
     perPurpose: Record<Purpose, PurposeDraft>
   }
   repos: {
@@ -55,10 +60,9 @@ type SetupWizardState = {
   }
   setStep: (step: 1 | 2 | 3 | 4) => void
   setPassword: (value: string, confirm: string) => void
-  setLlmField: <K extends keyof SetupWizardState["llm"]>(
-    key: K,
-    value: SetupWizardState["llm"][K],
-  ) => void
+  addLlmProvider: (provider: WizardProvider) => void
+  updateLlmProvider: (name: string, patch: Partial<Omit<WizardProvider, "name">>) => void
+  removeLlmProvider: (name: string) => void
   setLlmPurpose: (purpose: Purpose, draft: Partial<PurposeDraft>) => void
   setLlmSkipped: (skipped: boolean) => void
   setReposBasePath: (path: string) => void
@@ -71,31 +75,27 @@ type SetupWizardState = {
 
 export type LlmDraft = SetupWizardState["llm"]
 
-/** Required purposes (embedding when supported, plus the non-embedding set)
- * that still lack a model, so the wizard can name exactly what's blocking. */
+/** Required purposes still missing a provider or a model, so the wizard can
+ * name exactly what's blocking. Embedding is never in this list: a fresh
+ * install always resolves it against the seeded ollama-local default, so
+ * leaving it unassigned here is a valid choice, not an incomplete one — the
+ * same is true of summarization and reranker. */
 export function missingRequiredModels(llm: LlmDraft): Purpose[] {
   if (llm.skipped) return []
-  const missing: Purpose[] = []
-  if (llm.supports_embedding && !llm.perPurpose.embedding.model.trim())
-    missing.push("embedding")
-  for (const p of REQUIRED_PURPOSES_NON_EMBEDDING) {
-    if (!llm.perPurpose[p].model.trim()) missing.push(p)
-  }
-  return missing
+  return REQUIRED_PURPOSES_NON_EMBEDDING.filter((p) => {
+    const draft = llm.perPurpose[p]
+    return !draft.provider_name.trim() || !draft.model.trim()
+  })
 }
 
-const emptyPurposeDraft: PurposeDraft = { model: "", reasoning: false }
+const emptyPurposeDraft: PurposeDraft = { provider_name: "", model: "", reasoning: false }
 
 const initial = () => ({
   step: 1 as const,
   password: { value: "", confirm: "" },
   llm: {
     skipped: false,
-    api_kind: "openai",
-    base_url: "https://api.openai.com/v1",
-    api_key: "",
-    supports_embedding: true,
-    models: [] as string[],
+    providers: [] as WizardProvider[],
     perPurpose: {
       embedding: { ...emptyPurposeDraft },
       extraction: { ...emptyPurposeDraft },
@@ -114,8 +114,38 @@ export const useSetupWizardStore = create<SetupWizardState>()(
       ...initial(),
       setStep: (step) => set({ step }),
       setPassword: (value, confirm) => set({ password: { value, confirm } }),
-      setLlmField: (key, value) =>
-        set((s) => ({ llm: { ...s.llm, [key]: value } })),
+      addLlmProvider: (provider) =>
+        set((s) => ({
+          llm: { ...s.llm, providers: [...s.llm.providers, provider] },
+        })),
+      updateLlmProvider: (name, patch) =>
+        set((s) => ({
+          llm: {
+            ...s.llm,
+            providers: s.llm.providers.map((p) =>
+              p.name === name ? { ...p, ...patch } : p,
+            ),
+          },
+        })),
+      removeLlmProvider: (name) =>
+        set((s) => ({
+          llm: {
+            ...s.llm,
+            providers: s.llm.providers.filter((p) => p.name !== name),
+            // A purpose pointed at a provider that no longer exists must
+            // not keep carrying its stale name into the finalize payload.
+            perPurpose: Object.fromEntries(
+              (Object.entries(s.llm.perPurpose) as [Purpose, PurposeDraft][]).map(
+                ([purpose, draft]) => [
+                  purpose,
+                  draft.provider_name === name
+                    ? { ...draft, provider_name: "" }
+                    : draft,
+                ],
+              ),
+            ) as Record<Purpose, PurposeDraft>,
+          },
+        })),
       setLlmPurpose: (purpose, draft) =>
         set((s) => ({
           llm: {
@@ -155,7 +185,11 @@ export const useSetupWizardStore = create<SetupWizardState>()(
     }),
     {
       name: "darkmem-setup-wizard",
-      version: 1,
+      // Bumped from 1: the persisted `llm` shape changed incompatibly
+      // (single api_kind/base_url/api_key -> a providers array). With no
+      // `migrate` supplied, zustand discards a stored v1 blob rather than
+      // hydrating it into a shape that no longer matches.
+      version: 2,
       partialize: (s) => ({
         step: s.step,
         password: { value: "", confirm: "" },

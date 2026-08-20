@@ -34,27 +34,32 @@ export function StepFinish() {
           <CardTitle className="text-base">Default LLM provider</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
-          {llm.skipped || !llm.api_kind ? (
+          {llm.skipped || llm.providers.length === 0 ? (
             <span className="text-muted-foreground">
               Skipped — system defaults will be used.
             </span>
           ) : (
             <>
-              <div>
-                <strong className="capitalize">{llm.api_kind}</strong>{" "}
-                <span className="text-muted-foreground">
-                  (default vendor menu seeded; api key applied to this row)
-                </span>
-              </div>
+              <ul className="ml-4 list-disc">
+                {llm.providers.map((p) => (
+                  <li key={p.name}>
+                    <span className="font-mono">{p.name}</span>{" "}
+                    <span className="text-muted-foreground capitalize">
+                      ({p.api_kind})
+                    </span>
+                  </li>
+                ))}
+              </ul>
               <ul className="ml-4 list-disc">
                 {PURPOSES.filter(
-                  (p) =>
-                    (p !== "embedding" || llm.supports_embedding) &&
-                    llm.perPurpose[p].model,
+                  (p) => llm.perPurpose[p].provider_name && llm.perPurpose[p].model,
                 ).map((p) => (
                   <li key={p}>
                     <span className="capitalize">{p}</span>:{" "}
-                    <span className="font-mono">{llm.perPurpose[p].model}</span>
+                    <span className="font-mono">{llm.perPurpose[p].model}</span>{" "}
+                    <span className="text-muted-foreground">
+                      via {llm.perPurpose[p].provider_name}
+                    </span>
                   </li>
                 ))}
               </ul>

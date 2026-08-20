@@ -23,8 +23,10 @@ Why pure Python instead of an Alembic seed:
 Layout:
 
 * ``DEFAULT_PROVIDERS`` — one row per supported vendor, ``api_key=None``.
-  A catalogue keyed by ``api_kind``, read by ``provider_seed_by_kind`` to
-  supply the wizard's base-URL default; it is not written to any table.
+  A catalogue keyed by ``api_kind``; each ``DEFAULT_PROFILES`` entry
+  names one of these rows in its ``provider_name`` field. Not written
+  to any table itself — the frontend owns its own base-URL defaults
+  (``StepLLM.tsx``'s ``BASE_URL_DEFAULTS``) and does not read this list.
 * ``DEFAULT_PROFILES``  — preset bundles of model + params per vendor.
   Naming convention is ``<api_kind>-<tier-?><purpose>`` (e.g.
   ``openai-extraction``, ``deepseek-flash-classification``).
@@ -106,11 +108,10 @@ class ProviderRowSeed:
 
 
 # The rows actually written to `llm_providers`. DEFAULT_PROVIDERS above stays a
-# vendor *catalogue* keyed by api_kind, read by provider_seed_by_kind to supply
-# the wizard's base-URL default — it is not this list, and conflating the two
-# flips the wire protocol: its `ollama` entry is api_kind='ollama' (the native
-# /api path) while every purpose below resolves api_kind='openai' against a
-# /v1-suffixed URL (the compat path).
+# vendor *catalogue* keyed by api_kind — it is not this list, and conflating
+# the two flips the wire protocol: its `ollama` entry is api_kind='ollama'
+# (the native /api path) while every purpose below resolves api_kind='openai'
+# against a /v1-suffixed URL (the compat path).
 #
 # `verification-judge` exists so the verification purpose does not share a
 # provider by default: two of the judge's six identity fields (base_url,
@@ -194,10 +195,6 @@ DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
     PurposeConfigSeed("synthesis",      "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0.3}),
     PurposeConfigSeed("verification",   "ollama", "qwen2.5:3b",           "openai", OLLAMA_BASE_URL, params={"temperature": 0}),
 ]
-
-
-def provider_seed_by_kind(api_kind: str) -> ProviderSeed | None:
-    return next((p for p in DEFAULT_PROVIDERS if p.api_kind == api_kind), None)
 
 
 def default_provider_row_name_for_purpose(purpose: str) -> str:

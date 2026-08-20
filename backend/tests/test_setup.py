@@ -40,15 +40,15 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
     first_payload = {
         "password": "test-pw-12345",
         "llm": {
-            "api_kind": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "sk-first",
-            "supports_embedding": True,
+            "providers": [
+                {"name": "user-openai", "api_kind": "openai",
+                 "base_url": "https://api.openai.com/v1", "api_key": "sk-first"},
+            ],
             "purposes": {
-                "embedding": {"model": "text-embedding-3-small"},
-                "extraction": {"model": "gpt-4o-mini"},
-                "classification": {"model": "gpt-4o-mini"},
-                "reasoning": {"model": "gpt-4o", "reasoning": True},
+                "embedding": {"provider_name": "user-openai", "model": "text-embedding-3-small"},
+                "extraction": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "classification": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "reasoning": {"provider_name": "user-openai", "model": "gpt-4o", "reasoning": True},
             },
         },
     }
@@ -73,14 +73,14 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
     second_payload = {
         "password": "test-pw-67890",
         "llm": {
-            "api_kind": "deepseek",
-            "base_url": "https://api.deepseek.com/v1",
-            "api_key": "sk-second",
-            "supports_embedding": False,
+            "providers": [
+                {"name": "user-deepseek", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-second"},
+            ],
             "purposes": {
-                "extraction": {"model": "deepseek-v4-flash"},
-                "classification": {"model": "deepseek-chat"},
-                "reasoning": {"model": "deepseek-reasoner", "reasoning": True},
+                "extraction": {"provider_name": "user-deepseek", "model": "deepseek-v4-flash"},
+                "classification": {"provider_name": "user-deepseek", "model": "deepseek-chat"},
+                "reasoning": {"provider_name": "user-deepseek", "model": "deepseek-reasoner", "reasoning": True},
             },
         },
     }
