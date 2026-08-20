@@ -4,11 +4,12 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
-## v1.0 — unreleased
+## v1.0.0 — 2026-08-20
 
-**Everything remaining, and the gates carry verdicts.** Two feature blocks that
-had been parked ship here — documents/PKM and the hardening pass — and the four
-open gates each get a measured answer rather than a hope.
+**Everything remaining, and the gates carry verdicts — except two, which do
+not.** Two feature blocks that had been parked ship here — documents/PKM and
+the hardening pass — and two of the four open gates get a measured answer
+rather than a hope.
 
 **The version rule, ruled 2026-08-15: _both_.** Each of G-C, G-D, G-E and G-F
 must carry a verdict, **and** the target is that each clears. Those are different
@@ -25,11 +26,25 @@ does not.**
 | G-E — L3 → F7 | **not yet measured** — production holds no articles to measure | `gate-ledger.md`, "G-E" |
 | G-F — core → H1 | **not yet measured** — the claim/span gold does not exist | `gate-ledger.md`, "G-F" |
 
-**The last two are why this section says `unreleased`.** Both are blocked on
-inputs no amount of coding produces: G-E needs a real corpus accumulating over
-weeks, and G-F needs a gold set only the owner may author (`autonomous-loop.md`
-§7). Cutting the tag before they carry verdicts would break the version's own
-rule on the version that states it.
+**The last two held this section at `unreleased` until 2026-08-20, and the tag
+was cut anyway — by the owner's explicit ruling, overriding the rule above.**
+That is recorded rather than smoothed, because the rule it overrides is stated
+on this very version: G-E and G-F carry **no verdict**, so v1.0.0 ships having
+measured two of its four gates, not four. Nothing about the numbers changed; a
+different call was made about shipping without them.
+
+Both remain blocked on inputs no amount of coding produces: G-E needs a real
+corpus accumulating over weeks, and G-F needs a gold set only the owner may
+author (`autonomous-loop.md` §7). Neither is a task anyone can pick up and
+finish.
+
+**What this costs, stated plainly.** `groundedness_gate` stays closed, so no
+article may be served labelled grounded, and no consumer may ship on the
+contradiction judge's verdicts — the contradiction role missed its bar for the
+fourth time across two vendors. A reader who takes "v1.0.0" to mean "all four
+gates cleared" would be wrong on three counts, which is why this paragraph
+exists. The measured verdicts that *are* in the table above stand exactly as
+they were.
 
 ### Added
 

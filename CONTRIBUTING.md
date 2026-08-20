@@ -186,9 +186,14 @@ Tags publish, branches do not. Pushing a tag matching `v*` runs the full CI
 pipeline and, only if it passes, builds one image and pushes it to both Docker
 Hub (`darkraise/darkmem`) and GHCR (`ghcr.io/darkraise/darkmem`).
 
-Use full semantic versions — `v1.0.0`, not `v1.0` — so the rolling `1.0` and `1`
-tags are generated too. A partial version still publishes under its literal
-name, but nothing else.
+Cut releases with `./scripts/release.sh v1.0.0`. It runs the full gate, syncs
+the version fields, builds, deploys, and writes the tag **last** — so a tag that
+exists is one whose stack came up. It never pushes; `git push origin v1.0.0` is
+the separate, irreversible step that publishes.
+
+Versions are full semver (`vN.N.N`). The script rejects anything else, because
+the rolling `1.0` and `1` tags come from a semver parse and a partial version
+matches none of those patterns.
 
 Publishing needs one repository secret: `DOCKERHUB_TOKEN`, a Docker Hub access
 token with Read & Write. GHCR uses the workflow's own token.

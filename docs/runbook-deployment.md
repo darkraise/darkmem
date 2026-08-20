@@ -23,9 +23,21 @@ DARKMEM_VERSION=<version> docker compose up -d
 ```
 
 `.env` must carry `DB_PASSWORD` and a `JWT_SECRET` of 32+ characters, plus
-`COOKIE_SECURE=false` for a plain-HTTP LAN. **Nothing is ever pushed to a
-registry** — `build-push.sh` honours `DARKMEM_PUSH=0` and the release script
-sets it, because a local tag can be deleted and a pushed image cannot.
+`COOKIE_SECURE=false` for a plain-HTTP LAN.
+
+**Publishing is a tag's consequence, and nothing else's** (changed 2026-08-20;
+this said "nothing is ever pushed to a registry", which stopped being true when
+CI gained a publish job). Nothing local pushes: `build-push.sh` honours
+`DARKMEM_PUSH=0` and `release.sh` sets it, so cutting a release still only
+builds and tags on this machine. What publishes is
+`git push origin <tag>` — that runs `.github/workflows/release.yml`, which
+re-runs the whole CI pipeline and only then pushes the image to Docker Hub
+(`darkraise/darkmem`) and GHCR (`ghcr.io/darkraise/darkmem`).
+
+The reasoning that produced the old rule is unchanged and is why the push is a
+separate step: a local tag can be deleted and a pushed image cannot. A branch
+push publishes nothing. Deploying this host still uses the locally built image
+and never needs the registry.
 
 ## The silent failure this runbook exists for
 

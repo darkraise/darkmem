@@ -3,24 +3,35 @@
 # Cut a release: assert, sync, build, deploy, tag. Five steps that repeat every
 # version, which is why this is a script and not a checklist.
 #
-#   ./scripts/release.sh v0.1
+#   ./scripts/release.sh v1.0.0
+#
+# Versions are full semver (vN.N.N). The older vN.N form is not accepted: the
+# publish workflow derives its rolling `1.0` and `1` tags from a semver parse,
+# and a partial version matches none of those patterns -- it would publish
+# under its literal name alone while the job still went green.
 #
 # The tag is written LAST, after the deployment answers on /health. Spec §9 says
 # a version is cut by demonstration rather than by assertion, so a tag that
 # exists is a tag whose stack came up — a failed deploy leaves nothing to
 # explain away.
 #
-# The image is built but NOT pushed (`DARKMEM_PUSH=0`): spec §10 puts publishing
-# to any registry out of scope until the repo is published. A local tag is
-# deletable; a pushed image is not.
+# This script never pushes: it builds locally (`DARKMEM_PUSH=0`) and writes the
+# tag in your repository. Publishing is the tag's own consequence -- pushing it
+# runs .github/workflows/release.yml, which re-runs CI and only then pushes the
+# image to Docker Hub and GHCR. So the irreversible step is `git push origin
+# <tag>`, deliberately separate from cutting the release.
 set -euo pipefail
 
-VERSION="${1:?usage: release.sh v0.N}"
-NUMERIC="${VERSION#v}.0"
+VERSION="${1:?usage: release.sh vN.N.N}"
+NUMERIC="${VERSION#v}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+$ ]] || { echo "release: expected vN.N, got '$VERSION'"; exit 1; }
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+  echo "release: expected vN.N.N, got '$VERSION'"
+  echo "  full semver only — the publish workflow's rolling tags come from a semver parse"
+  exit 1
+}
 [[ -z "$(git status --porcelain)" ]] || { echo "tree is dirty; commit first"; exit 1; }
 if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
   echo "$VERSION already tagged"; exit 1
@@ -79,10 +90,10 @@ DARKMEM_PUSH=0 ./scripts/build-push.sh "$NUMERIC"
 echo "── deploy ──"
 DARKMEM_VERSION="$NUMERIC" docker compose up -d
 
-# A 200 on :8000 does NOT prove the new container answered it. The production
-# stack uses host networking and `start_dev_server.sh` is uvicorn on the same
-# port, so a dev server already running makes the container fail to bind and
-# crash-loop while curl cheerfully gets 200 from the dev process — and the tag
+# A 200 on :8000 does NOT prove the new container answered it.
+# `start_dev_server.sh` is uvicorn on the same port, so a dev server already
+# holding :8000 makes the container fail to publish its port and never come up,
+# while curl cheerfully gets 200 from the dev process — and the tag
 # would be written on a failed deploy, voiding the one guarantee this ordering
 # buys. So probe the version the API serves in its own OpenAPI document, which
 # is the field the sync above just moved.
@@ -95,7 +106,7 @@ for _ in $(seq 1 30); do
 done
 [ "$served" = "$NUMERIC" ] || {
   echo "no deployment serving $NUMERIC on :8000 (saw: ${served:-nothing}); NOT tagging" >&2
-  echo "if a dev server holds :8000, stop it — the container cannot bind under host networking" >&2
+  echo "if a dev server holds :8000, stop it — the container cannot publish its port" >&2
   exit 1
 }
 

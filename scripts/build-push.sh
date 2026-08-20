@@ -19,10 +19,11 @@ docker build -t "${REGISTRY}/darkmem:${VERSION}" \
              -t "${REGISTRY}/darkmem:latest" \
              "$(dirname "$0")/.."
 
-# Push. Releases build through here with DARKMEM_PUSH=0: doc "release
-# milestones" §10 puts publishing to any registry out of scope until the repo
-# is published, and a push is the one step of a release that cannot be undone
-# by deleting a local tag.
+# Push. Releases build through here with DARKMEM_PUSH=0 and publish from CI
+# instead: pushing a `v*` tag runs .github/workflows/release.yml, which re-runs
+# the pipeline before it pushes anything. Keeping the local default separate
+# matters because a push is the one step of a release that cannot be undone by
+# deleting a local tag.
 if [ "${DARKMEM_PUSH:-1}" = "0" ]; then
   echo "DARKMEM_PUSH=0 — built locally, not pushed."
   echo "  ${REGISTRY}/darkmem:${VERSION} (${GIT_SHA})"
