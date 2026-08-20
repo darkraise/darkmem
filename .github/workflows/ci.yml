@@ -5,10 +5,16 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
+  # Callable so release.yml can gate publishing on this exact pipeline rather
+  # than a copy of it: a tag can never publish an image whose tests did not run.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -50,6 +56,11 @@ jobs:
         continue-on-error: true
       - name: Test
         run: python -m pytest -q
+      # pyproject sets testpaths = ["tests"], so the line above does NOT collect
+      # the harness suite. Run it explicitly or the eval harness can break while
+      # the floor stays green.
+      - name: Harness tests
+        run: python -m pytest -q scripts/benchlib/tests
 
   frontend:
     name: Frontend (tsc + vitest + build)
@@ -78,14 +89,72 @@ jobs:
   # One image, built from the repo root: it carries the API and the built SPA
   # together. This job used to build two (./backend and ./frontend) and had
   # been broken since the consolidation -- backend/ has no Dockerfile at all.
+  #
+  # It builds, boots and scans, but never pushes. Publishing is release.yml's
+  # and happens only on a tag.
   images:
-    name: Build & scan image
+    name: Build, boot & scan image
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_DB: darkmem
+          POSTGRES_USER: darkmem
+          POSTGRES_PASSWORD: darkmem
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U darkmem"
+          --health-interval 5s --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
       - name: Build image
-        run: docker build -t darkmem:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: darkmem:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # An image that builds and cannot boot is the failure a registry push
+      # makes permanent, so prove it boots before a tag is ever allowed to
+      # publish it. This exercises the real entrypoint: alembic upgrade, then
+      # the schema-baseline guard, then uvicorn answering /health.
+      - name: Boot the image and probe /health
+        run: |
+          docker run -d --name darkmem-smoke --network host \
+            -e ENVIRONMENT=production \
+            -e DB_HOST=localhost -e DB_PORT=5433 \
+            -e DB_USER=darkmem -e DB_NAME=darkmem -e DB_PASSWORD=darkmem \
+            -e JWT_SECRET=ci-only-secret-not-used-anywhere-else-0123456789 \
+            -e COOKIE_SECURE=false \
+            darkmem:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "healthy after ${i}s"
+              curl -fsS http://127.0.0.1:8000/health
+              # The SPA ships inside this image; an API-only image is a
+              # half-built artifact that /health alone would not catch.
+              curl -fsS -o /dev/null -w 'index=%{http_code}\n' http://127.0.0.1:8000/
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::image did not answer /health within 60s"
+          docker logs darkmem-smoke
+          exit 1
+      - name: Container logs (always)
+        if: always()
+        run: docker logs darkmem-smoke || true
+      - name: Stop the container
+        if: always()
+        run: docker rm -f darkmem-smoke || true
+
       - name: Scan image (Trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:

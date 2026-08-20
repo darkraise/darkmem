@@ -1,0 +1,115 @@
+name: Release
+
+# Tags only. A push to master publishes nothing, because a local tag can be
+# deleted and a pushed image cannot -- so the registry only ever receives an
+# artifact someone deliberately tagged (docs/runbook-deployment.md).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Never cancel a publish midway: a half-pushed multi-registry release is worse
+# than a slow one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The same pipeline every branch push runs, not a copy of it. A tag whose
+  # tests fail publishes nothing.
+  verify:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  publish:
+    name: Publish image
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write        # GHCR push uses the job's own GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # The account is spelled out rather than kept in a secret: the image name
+      # below already names it, so hiding it in a secret would only add a
+      # second place to get wrong. DOCKERHUB_TOKEN is a Docker Hub access
+      # token (Account Settings -> Personal access tokens) with Read & Write,
+      # never the account password.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: darkraise
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One build, two registries: metadata-action emits the tag list for both,
+      # so the digest published to Docker Hub and to GHCR is the same image
+      # rather than two builds that merely share a version number.
+      #
+      # `type=ref,event=tag` is the safety net, not decoration: this repo has
+      # historically tagged `v0.5` rather than `v0.5.0`, and a partial version
+      # matches no `type=semver` pattern -- without it such a tag would publish
+      # nothing while the job still went green. Prefer full semver (`v1.0.0`)
+      # so the rolling `1.0` and `1` tags exist too.
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            darkraise/darkmem
+            ghcr.io/${{ github.repository_owner }}/darkmem
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=tag
+            type=sha,format=short
+          # latest=auto keeps a prerelease tag (v1.0.0-rc1) from claiming
+          # `latest`, which compose resolves by default.
+          flavor: latest=auto
+          labels: |
+            org.opencontainers.image.title=darkmem
+            org.opencontainers.image.description=Centralized memory system for AI agents
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # amd64 only. Adding linux/arm64 here works, but the web stage builds
+          # the SPA under QEMU and takes roughly an order of magnitude longer;
+          # add it when an arm64 host actually needs it.
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Values reach the shell through env, never through ${{ }} inside `run`:
+      # a tag name is caller-controlled text, and interpolating it into the
+      # script body is the standard workflow-injection hole.
+      - name: Summarise what was published
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            printf '### Published `%s`\n\n' "$RELEASE_TAG"
+            printf 'Digest: `%s`\n\n' "$IMAGE_DIGEST"
+            printf 'Tags:\n\n```\n%s\n```\n' "$IMAGE_TAGS"
+          } >> "$GITHUB_STEP_SUMMARY"
