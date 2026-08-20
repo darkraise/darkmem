@@ -1,12 +1,12 @@
 # Retrieval eval — 2026-08-20
 
-- run id: `489a5adb-f738-4a11-b159-f99ce7737b04` (recorded 2026-08-20T06:25:06.254669+00:00)
-- git sha: `56143aab8e7438460e6d0ef6f880f85753ca3bf5`
+- run id: `039f1bbb-e514-4d7c-a2ff-7f55a7c43687` (recorded 2026-08-20T06:37:47.340613+00:00)
+- git sha: `cda9f84c4df326cb25d729db6804317c586fd0c6`
 - embedder fingerprint: `qwen3-embedding:0.6b|1024`
 - gate configuration: `classification_mode='simple', classifier_kind=None, relation_rescue=True`
 - corpus: 178 memories, gold v4, 118 pairs authored (102 live)
 - protocol: k=10, min_pairs=10, retrieval retrieval_limit=178, full_context retrieval_limit=10
-- live LLM calls this run: ingest=101, retrieval=0, full_context=102 (total=203)
+- live LLM calls this run: ingest=0, retrieval=0, full_context=0 (total=0)
 
 - **multi-hop hit@10 = 0.0000 on the retrieval arm is the DESIGNED state (T0.06a), not a defect.** Every live multi-hop pair is built so its consequence memory ranks worse than k in the hybrid-only baseline -- this is the headroom a future graph-aware arm exists to close, not a bug for this runner to flag.
 - **full context beats retrieval on pooled accuracy this run** (ΔMRR=+0.0685, Δhit@10=+0.1078, full-context minus retrieval) -- the honest measured result of the T0.09 comparator, stated plainly rather than buried or reframed as a cost-only win. See the cost caveats below for why the two arms' token costs are not directly subtractable.
@@ -19,7 +19,7 @@ Includes latency by channel for both arms -- see Reproducibility below for which
 === TWO-ARM COMPARISON (k=10, min_pairs=10, n_pairs=102) ===
 fetch depth: retrieval retrieval_limit=178, full_context retrieval_limit=10
 context: 178/178 corpus entries in prompt, 25539 chars, policy=no-truncation
-CAVEAT [latency-not-like-for-like]: cross-arm latency is not like-for-like: every end_to_end sample in the retrieval arm was cache-served (a disk read) while the full_context arm paid a live model call, so any ratio between the two arms' p50/p95 overstates the retrieval arm's advantage. Compare within a population, never across one.
+CAVEAT [latency-no-live-samples]: no arm measured live latency: every end_to_end sample in both arms was cache-served, so these p50/p95 figures describe a warm replay of a recorded run, not a system anybody runs.
 CAVEAT [cost-kind-asymmetry]: the two arms' token blocks are different KINDS of quantity and must not be subtracted or ratioed: the full_context arm billed exactly one call per scored pair (102), so its token cost recurs in full on every run of the query set, while the retrieval arm's 178 call(s) are not per-pair -- they are one-time indexing work, paid once per corpus and amortised over every future query. The retrieval arm's own per-query cost is 102 query-embedding call(s), which carry no token accounting and appear in no token block here at all.
 
 --- accuracy per slice (retrieval | full-context | delta) ---
@@ -35,25 +35,25 @@ AGGREGATE          102   0.8368  0.9052   0.0685    0.8235  0.9314   0.1078
 
 --- retrieval: latency by channel (seconds, nearest-rank, min_samples=20) ---
 embed_query        live   no samples
-embed_query        cache  n= 102  p50=0.00024  p95=0.00030
+embed_query        cache  n= 102  p50=0.00012  p95=0.00015
 end_to_end         live   no samples
-end_to_end         cache  n= 102  p50=0.00309  p95=0.00364
-keyword_search     live   n= 102  p50=0.00035  p95=0.00041
+end_to_end         cache  n= 102  p50=0.00326  p95=0.00417
+keyword_search     live   n= 102  p50=0.00038  p95=0.00055
 keyword_search     cache  no samples
 reranker           live   no samples
 reranker           cache  no samples
-semantic_search    live   n= 102  p50=0.00192  p95=0.00226
+semantic_search    live   n= 102  p50=0.00212  p95=0.00258
 semantic_search    cache  no samples
 --- retrieval: token cost by purpose ---
-  extraction: {'live_calls': 84, 'live_prompt_tokens': 829030, 'live_completion_tokens': 16052, 'live_cached_prompt_tokens': 739712, 'live_unknown_calls': 0, 'cache_known_calls': 94, 'cache_known_prompt_tokens': 927166, 'cache_known_completion_tokens': 11996, 'cache_known_cached_prompt_tokens': 926080, 'cache_unknown_calls': 0}
+  extraction: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 178, 'cache_known_prompt_tokens': 1756196, 'cache_known_completion_tokens': 28048, 'cache_known_cached_prompt_tokens': 1665792, 'cache_unknown_calls': 0}
 
 --- full_context: latency by channel (seconds, nearest-rank, min_samples=20) ---
-end_to_end         live   n= 102  p50=1.23929  p95=1.77739
-end_to_end         cache  no samples
-full_context_call  live   n= 102  p50=1.23928  p95=1.77738
-full_context_call  cache  no samples
+end_to_end         live   no samples
+end_to_end         cache  n= 102  p50=0.00012  p95=0.00021
+full_context_call  live   no samples
+full_context_call  cache  n= 102  p50=0.00012  p95=0.00021
 --- full_context: token cost by purpose ---
-  reasoning: {'live_calls': 102, 'live_prompt_tokens': 929926, 'live_completion_tokens': 4861, 'live_cached_prompt_tokens': 899200, 'live_unknown_calls': 0, 'cache_known_calls': 0, 'cache_known_prompt_tokens': 0, 'cache_known_completion_tokens': 0, 'cache_known_cached_prompt_tokens': 0, 'cache_unknown_calls': 0}
+  reasoning: {'live_calls': 0, 'live_prompt_tokens': 0, 'live_completion_tokens': 0, 'live_cached_prompt_tokens': 0, 'live_unknown_calls': 0, 'cache_known_calls': 102, 'cache_known_prompt_tokens': 929926, 'cache_known_completion_tokens': 4861, 'cache_known_cached_prompt_tokens': 899200, 'cache_unknown_calls': 0}
 
 --- full-context id audit ---
   duplicate_rate: 0.0
@@ -81,7 +81,7 @@ Two consecutive runs on an unchanged tree, against an unchanged warm LLM cache, 
 {
   "caveat_kinds": [
     "cost-kind-asymmetry",
-    "latency-not-like-for-like"
+    "latency-no-live-samples"
   ],
   "deltas": {
     "aggregate": {
@@ -205,15 +205,15 @@ Two consecutive runs on an unchanged tree, against an unchanged warm LLM cache, 
   },
   "full_context_tokens_by_purpose": {
     "reasoning": {
-      "cache_known_cached_prompt_tokens": 0,
-      "cache_known_calls": 0,
-      "cache_known_completion_tokens": 0,
-      "cache_known_prompt_tokens": 0,
+      "cache_known_cached_prompt_tokens": 899200,
+      "cache_known_calls": 102,
+      "cache_known_completion_tokens": 4861,
+      "cache_known_prompt_tokens": 929926,
       "cache_unknown_calls": 0,
-      "live_cached_prompt_tokens": 899200,
-      "live_calls": 102,
-      "live_completion_tokens": 4861,
-      "live_prompt_tokens": 929926,
+      "live_cached_prompt_tokens": 0,
+      "live_calls": 0,
+      "live_completion_tokens": 0,
+      "live_prompt_tokens": 0,
       "live_unknown_calls": 0
     }
   },
@@ -275,15 +275,15 @@ Two consecutive runs on an unchanged tree, against an unchanged warm LLM cache, 
   },
   "retrieval_tokens_by_purpose": {
     "extraction": {
-      "cache_known_cached_prompt_tokens": 926080,
-      "cache_known_calls": 94,
-      "cache_known_completion_tokens": 11996,
-      "cache_known_prompt_tokens": 927166,
+      "cache_known_cached_prompt_tokens": 1665792,
+      "cache_known_calls": 178,
+      "cache_known_completion_tokens": 28048,
+      "cache_known_prompt_tokens": 1756196,
       "cache_unknown_calls": 0,
-      "live_cached_prompt_tokens": 739712,
-      "live_calls": 84,
-      "live_completion_tokens": 16052,
-      "live_prompt_tokens": 829030,
+      "live_cached_prompt_tokens": 0,
+      "live_calls": 0,
+      "live_completion_tokens": 0,
+      "live_prompt_tokens": 0,
       "live_unknown_calls": 0
     }
   }
