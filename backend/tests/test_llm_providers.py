@@ -99,26 +99,55 @@ async def test_purpose_provider_reference_must_resolve(session):
 
 
 @pytest.mark.asyncio
-async def test_every_seeded_purpose_row_agrees_with_its_provider(session):
-    """Inline connection values and the referenced provider's must agree;
-    dropping the inline columns later is only safe because they do."""
+@pytest.mark.parametrize("column", ["api_kind", "base_url", "api_key"])
+async def test_connection_columns_left_the_purpose_table(session, column):
+    present = (
+        await session.execute(
+            text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_name = 'llm_purpose_configs' AND column_name = :c"
+            ),
+            {"c": column},
+        )
+    ).scalar_one()
+    assert present == 0
+
+
+@pytest.mark.asyncio
+async def test_provider_reference_is_required(session):
     from app.models.llm_config import LLMPurposeConfigRow
-    from app.services.llm_seed import DEFAULT_PROVIDER_ROWS, DEFAULT_PURPOSE_CONFIGS
 
-    for ps in DEFAULT_PROVIDER_ROWS:
-        session.add(LLMProviderRow(name=ps.name, api_kind=ps.api_kind, base_url=ps.base_url))
+    session.add(LLMPurposeConfigRow(purpose="extraction", model="m"))
+    with pytest.raises(Exception):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_a_referenced_provider_cannot_be_deleted(session):
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    session.add(LLMProviderRow(name="held", api_kind="openai", base_url="http://a/v1"))
     await session.flush()
-    for pc in DEFAULT_PURPOSE_CONFIGS:
-        session.add(LLMPurposeConfigRow(
-            purpose=pc.purpose, model=pc.model, api_kind=pc.api_kind,
-            base_url=pc.base_url, params=dict(pc.params),
-            provider_name=("verification-judge" if pc.purpose == "verification" else "ollama-local"),
-        ))
+    session.add(LLMPurposeConfigRow(purpose="extraction", model="m", provider_name="held"))
     await session.flush()
 
-    rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
-    providers = {p.name: p for p in (await session.execute(select(LLMProviderRow))).scalars().all()}
-    for row in rows:
-        provider = providers[row.provider_name]
-        assert row.api_kind == provider.api_kind, row.purpose
-        assert row.base_url == provider.base_url, row.purpose
+    with pytest.raises(Exception):
+        await session.execute(text("DELETE FROM llm_providers WHERE name = 'held'"))
+
+
+@pytest.mark.asyncio
+async def test_renaming_a_provider_carries_to_its_purposes(session):
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    session.add(LLMProviderRow(name="old", api_kind="openai", base_url="http://a/v1"))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(purpose="extraction", model="m", provider_name="old"))
+    await session.flush()
+
+    await session.execute(text("UPDATE llm_providers SET name = 'new' WHERE name = 'old'"))
+    moved = (
+        await session.execute(
+            text("SELECT provider_name FROM llm_purpose_configs WHERE purpose = 'extraction'")
+        )
+    ).scalar_one()
+    assert moved == "new"

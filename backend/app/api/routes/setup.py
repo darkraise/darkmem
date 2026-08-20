@@ -399,9 +399,6 @@ async def setup_finalize(
                     row.model = pc.model
                     row.dimensions = pc.dimensions
                     row.reasoning = pc.reasoning
-                    row.api_kind = pc.api_kind
-                    row.base_url = pc.base_url
-                    row.api_key = None
                     row.provider_name = default_provider_row_name_for_purpose(pc.purpose)
                     row.params = dict(pc.params)
                 await session.flush()
@@ -449,9 +446,6 @@ async def setup_finalize(
                     pcfg.model = spec.model
                     pcfg.dimensions = spec.dimensions if is_embedding else None
                     pcfg.reasoning = False if is_embedding else spec.reasoning
-                    pcfg.api_kind = body.llm.api_kind
-                    pcfg.base_url = user_base_url
-                    pcfg.api_key = body.llm.api_key
                     pcfg.provider_name = user_provider_name
                     pcfg.params = seed_params
                     pcfg.updated_at = datetime.now(timezone.utc)

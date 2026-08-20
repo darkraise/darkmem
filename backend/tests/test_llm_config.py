@@ -93,10 +93,8 @@ async def test_resolution_does_not_scale_with_the_number_of_rows(session):
     for purpose in PURPOSES:
         await session.execute(
             text(
-                "INSERT INTO llm_purpose_configs "
-                "(purpose, model, provider_name, api_kind, base_url) "
-                "VALUES (:p, 'a-model', 'scale', 'openai', "
-                "'http://example.invalid/v1')"
+                "INSERT INTO llm_purpose_configs (purpose, model, provider_name) "
+                "VALUES (:p, 'a-model', 'scale')"
             ),
             {"p": purpose},
         )
@@ -323,7 +321,6 @@ async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
         select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "synthesis")
     )).scalar_one()
     assert row.model == "synthesis-test-model"
-    assert row.base_url == "https://api.example.invalid/v1"
 
 
 @pytest.mark.asyncio

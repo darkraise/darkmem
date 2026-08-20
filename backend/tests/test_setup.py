@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.services.llm_seed import DEFAULT_PURPOSE_CONFIGS
 
 ADMIN_PASSWORD_KEY = "admin_password_hash"
@@ -97,8 +98,13 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
 
     # The second run's overlay landed cleanly, not merged with the first's.
     assert by_purpose["extraction"].model == "deepseek-v4-flash"
-    assert by_purpose["extraction"].api_kind == "deepseek"
-    assert by_purpose["extraction"].api_key == "sk-second"
+    extraction_provider = (await session.execute(
+        select(LLMProviderRow).where(
+            LLMProviderRow.name == by_purpose["extraction"].provider_name
+        )
+    )).scalar_one()
+    assert extraction_provider.api_kind == "deepseek"
+    assert extraction_provider.api_key == "sk-second"
     assert by_purpose["classification"].model == "deepseek-chat"
     assert by_purpose["reasoning"].model == "deepseek-reasoner"
 
@@ -109,7 +115,12 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
         pc for pc in DEFAULT_PURPOSE_CONFIGS if pc.purpose == "embedding"
     )
     assert by_purpose["embedding"].model == embedding_default.model
-    assert by_purpose["embedding"].api_kind == embedding_default.api_kind
+    embedding_provider = (await session.execute(
+        select(LLMProviderRow).where(
+            LLMProviderRow.name == by_purpose["embedding"].provider_name
+        )
+    )).scalar_one()
+    assert embedding_provider.api_kind == embedding_default.api_kind
 
     # The two Tier-C purposes stay inert defaults across both runs; no
     # consumer overlays them, and re-running never turns them into

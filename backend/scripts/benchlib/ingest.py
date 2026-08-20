@@ -119,9 +119,6 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
                 model=defaults.model,
                 dimensions=defaults.dimensions,
                 reasoning=defaults.reasoning,
-                api_kind=defaults.api_kind,
-                base_url=defaults.base_url,
-                api_key=defaults.api_key,
                 params=defaults.params,
                 classifier_kind=gate.classifier_kind,
             ))

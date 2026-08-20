@@ -1135,6 +1135,12 @@ def _pass_two() -> None:
         """
         CREATE TABLE llm_providers (
             name       VARCHAR(64) PRIMARY KEY,
+            -- The sole vendor-quirk home (doc 04 §7, doc 11 §4). The `provider`
+            -- column A.2 showed at HEAD is dropped (F-10, decided by T1.01):
+            -- nothing ever dispatched on it — the wizard wrote it as a verbatim
+            -- copy of api_kind and every read carried it along unused — so a
+            -- second vendor column could only ever drift away from the one that
+            -- decides behaviour.
             api_kind   VARCHAR(32)  NOT NULL DEFAULT 'openai',
             base_url   VARCHAR(512) NOT NULL DEFAULT '',
             api_key    VARCHAR(1024),
@@ -1147,20 +1153,11 @@ def _pass_two() -> None:
         """
         CREATE TABLE llm_purpose_configs (
             purpose         VARCHAR(64) PRIMARY KEY,
-            provider_name   VARCHAR(64)
+            provider_name   VARCHAR(64) NOT NULL
                 REFERENCES llm_providers(name) ON UPDATE CASCADE ON DELETE RESTRICT,
             model           VARCHAR(255) NOT NULL,
             dimensions      INTEGER,
             reasoning       BOOLEAN NOT NULL DEFAULT false,
-            -- The sole vendor-quirk home (doc 04 §7, doc 11 §4). The `provider`
-            -- column A.2 showed at HEAD is dropped (F-10, decided by T1.01):
-            -- nothing ever dispatched on it — the wizard wrote it as a verbatim
-            -- copy of api_kind and every read carried it along unused — so a
-            -- second vendor column could only ever drift away from the one that
-            -- decides behaviour.
-            api_kind        VARCHAR(32) NOT NULL DEFAULT 'openai',
-            base_url        VARCHAR(512) NOT NULL DEFAULT '',
-            api_key         VARCHAR(1024),
             params          JSONB NOT NULL DEFAULT '{}'::jsonb,
             classifier_kind VARCHAR(16),
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),

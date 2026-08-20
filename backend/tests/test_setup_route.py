@@ -10,6 +10,7 @@ from app.api.auth import hash_password
 from app.models.code import Repository
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 
 
 # ── status + require_uninitialized ────────────────────────────────────
@@ -284,9 +285,10 @@ async def test_setup_finalize_with_llm(client, session):
     assert response.status_code == 200, response.text
     assert response.json()["llm"]["ok"] is True
 
-    # The provider/profile indirection is gone (doc 04 §7): finalize writes
-    # the connection details straight onto each purpose row, so the
-    # assertions are about inline fields rather than resolved FKs.
+    # The profile/ml-profile indirection stays gone (doc 04 §7); the
+    # provider indirection is back (owner ruling 2026-08-20), so the
+    # connection details resolve through the referenced llm_providers row
+    # rather than living inline on the purpose row.
 
     # (a) the six canonical purposes each landed a row.
     rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
@@ -297,7 +299,8 @@ async def test_setup_finalize_with_llm(client, session):
     ):
         assert purpose in by_purpose, f"missing purpose row {purpose}"
 
-    # (b) the user's choices are overlaid inline, api_key included.
+    # (b) the user's choices are overlaid, api_key included, on the
+    # provider row each purpose references.
     for purpose, expected_model in [
         ("embedding", "text-embedding-3-small"),
         ("extraction", "gpt-4o-mini"),
@@ -306,9 +309,12 @@ async def test_setup_finalize_with_llm(client, session):
     ]:
         row = by_purpose[purpose]
         assert row.model == expected_model
-        assert row.api_kind == "openai"
-        assert row.api_key == "sk-test"
-        assert row.base_url
+        provider = (await session.execute(
+            select(LLMProviderRow).where(LLMProviderRow.name == row.provider_name)
+        )).scalar_one()
+        assert provider.api_kind == "openai"
+        assert provider.api_key == "sk-test"
+        assert provider.base_url
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):

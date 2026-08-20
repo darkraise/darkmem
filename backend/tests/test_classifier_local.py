@@ -53,7 +53,6 @@ async def _set_classifier_kind(factory, kind: str | None) -> None:
                 await s.flush()
             row = LLMPurposeConfigRow(
                 purpose="classification", model="qwen2.5:3b", provider_name="t",
-                api_kind="openai", base_url="http://x/v1",
             )
             s.add(row)
         row.classifier_kind = kind
