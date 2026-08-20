@@ -1219,28 +1219,30 @@ the REST case alone.
 ## Live model endpoints (dev machine)
 
 Recorded at the owner's explicit instruction, 2026-07-28 (DeepSeek, Ollama) and
-2026-08-10 (OpenAI). **The keys below are real credentials in a private repo;
-they are committed knowingly. **Owner ruling 2026-08-15: they stay in this file
-and stay committed, and nothing is pushed to a remote until the release is
-confirmed good; the owner removes and rotates them at that point.** Until then a
-push is the thing that would make rotation urgent, so do not push. They are to
-be rotated before the repo is ever
-published.** Note that removing one in a later commit does not remove it from
-git history — that needs a history rewrite or a rotated key. Both were also
-pasted into a chat transcript, which is a second copy outside this repo's
-control, so rotation is the only thing that actually retires them.
+2026-08-10 (OpenAI). **The keys are NOT in this file and must never return to
+it.** They live in `.claude/local-credentials.md`, which `.gitignore` covers
+(`.claude/**`) — read that file when a bench, gate or qualification pass needs
+a real key, and export it rather than copying it anywhere tracked.
+
+**Owner ruling 2026-08-20, superseding the 2026-08-15 one**: the keys came out
+of this file and the history was rewritten so no past commit carries them
+either, which is what the earlier ruling deferred until publication. The
+rewrite is not the end of it — **both keys were also pasted into a chat
+transcript**, a copy outside this repo's control, so **rotation is still the
+only thing that actually retires them** and is owed before the repo is
+published. What the rewrite bought is that a push is no longer the event that
+makes rotation urgent.
 
 - **Extraction / classification / reasoning — DeepSeek.**
   `base_url=https://api.deepseek.com/v1`, `api_kind=deepseek`,
-  key `REDACTED-DEEPSEEK-KEY-ROTATE-ME`. Models offered:
+  key in `.claude/local-credentials.md`. Models offered:
   **`deepseek-v4-flash`** and `deepseek-v4-pro`. **The F1 baseline and every
   gate re-measurement use `deepseek-v4-flash`** — the gate ledger fixes the
   model, so a run on `-pro` is not comparable and must not be used for
   parity. Export as `DEEPSEEK_API_KEY` for `run_bench.py` and
   `benchlib/run_smoke.py`.
 - **G-D judge — OpenAI.** `base_url=https://api.openai.com/v1`,
-  `api_kind=openai`, key
-  `REDACTED-OPENAI-KEY-ROTATE-ME`.
+  `api_kind=openai`, key in `.claude/local-credentials.md`.
   Recorded 2026-08-10 for the owner-ruled **`gpt-5.5`** G-D judge attempt
   (T2.114). Export as `OPENAI_API_KEY`; `run_judge_qualification.py` takes the
   key as an argument and the model/base_url/api_kind as overrides, so a judge
