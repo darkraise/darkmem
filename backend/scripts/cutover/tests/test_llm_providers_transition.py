@@ -88,14 +88,35 @@ def _derive_in_subprocess(rows: list[dict], hash_seed: str) -> list:
     return json.loads(result.stdout)
 
 
+# A wider spread than a single pair: under the pre-fix _sort_key, whichever
+# purpose gets the plain generated name splits roughly evenly across seeds,
+# so a fixed two-seed comparison can land in the same class by chance and
+# pass against the bug it exists to catch — 0 and 42 both happened to name
+# "extraction" the plain-name owner under the broken code. Sweeping several
+# seeds makes that coincidence unlikely to survive across the whole set.
+HASH_SEEDS = ("0", "1", "41", "42", "100")
+
+
 def test_provider_naming_is_independent_of_hash_seed():
     """derive(OLD) == derive(OLD) inside one test process shares a single
     PYTHONHASHSEED between both calls and cannot see a seed-dependent set
-    iteration order; running the ambiguous None-vs-"" dump under two
-    different seeds in separate processes can."""
-    first = _derive_in_subprocess(AMBIGUOUS_NULL_VS_EMPTY, "0")
-    second = _derive_in_subprocess(AMBIGUOUS_NULL_VS_EMPTY, "42")
-    assert first == second
+    iteration order; running the ambiguous None-vs-"" dump under several
+    seeds in separate processes can."""
+    results = [_derive_in_subprocess(AMBIGUOUS_NULL_VS_EMPTY, seed) for seed in HASH_SEEDS]
+    assert all(result == results[0] for result in results[1:])
+
+
+def test_provider_naming_pins_the_expected_owner():
+    """Cross-seed equality alone proves stable, not correct: a naming scheme
+    that stably (but wrongly) always gave the plain name to "extraction"
+    would also pass the sweep above. Pin the actual intended assignment —
+    "embedding" (the first row in sorted-triple order once None and ""
+    no longer collide) owns the plain generated name; "extraction" gets the
+    "-2" suffix."""
+    _, purposes = derive(AMBIGUOUS_NULL_VS_EMPTY)
+    by_purpose = {p["purpose"]: p["provider_name"] for p in purposes}
+    assert by_purpose["embedding"] == "openai-shared.example"
+    assert by_purpose["extraction"] == "openai-shared.example-2"
 
 
 def test_empty_string_base_url_falls_back_to_local():
