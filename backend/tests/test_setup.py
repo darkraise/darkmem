@@ -197,3 +197,17 @@ class TestTheSeedsOllamaEndpointIsOverridable:
         assert embedding.model == "qwen3-embedding:0.6b"
         assert embedding.dimensions == 1024
         importlib.reload(llm_seed)
+
+
+def test_the_wizard_cannot_assign_the_tier_c_purposes():
+    """Widening PURPOSE_LITERAL would put the qualified judge's connection on
+    the wizard's overlay path, which the settings write side deliberately
+    refuses."""
+    from typing import get_args
+
+    from app.api.routes.setup import PURPOSE_LITERAL
+
+    assert set(get_args(PURPOSE_LITERAL)) == {
+        "embedding", "extraction", "classification",
+        "reasoning", "summarization", "reranker",
+    }

@@ -33,6 +33,10 @@ from app.services.research_config import (
     write_auto_research_config,
 )
 from app.services.config import get_llm_config as fetch_llm_config
+from app.services.llm_provider_guard import (
+    assert_not_verification_provider,
+    verification_provider,
+)
 from app.services.feature_flags import (
     FEATURE_FLAGS_KEY,
     MEASURABLE_FLAGS,
@@ -214,6 +218,16 @@ async def update_llm_config(
             row = (await session.execute(
                 select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == purpose)
             )).scalar_one_or_none()
+            if "provider_name" in incoming:
+                # Read before the row below is created, so a brand-new purpose
+                # cannot present the provider it is being pointed at as the one
+                # it already used and slip past the refusal.
+                assert_not_verification_provider(
+                    incoming["provider_name"],
+                    await verification_provider(session),
+                    purpose,
+                    row.provider_name if row is not None else None,
+                )
             if row is None:
                 if "provider_name" not in incoming:
                     raise HTTPException(

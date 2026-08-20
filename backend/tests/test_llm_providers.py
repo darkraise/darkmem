@@ -286,3 +286,176 @@ async def test_flipping_to_a_no_embeddings_vendor_names_the_purpose(
     )
     assert resp.status_code == 200
     assert resp.json()["no_embedding_purposes"] == ["embedding"]
+
+
+# ── the judge provider's frozen identity fields ──────────────────────────
+
+
+async def _point_verification_at(session, name: str):
+    from app.models.llm_config import LLMPurposeConfigRow
+    from app.services.config import VERIFICATION_PURPOSE
+
+    session.add(LLMProviderRow(
+        name=name, api_kind="openai", base_url="https://api.openai.com/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose=VERIFICATION_PURPOSE, model="gpt-5.5", provider_name=name,
+    ))
+    await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_identity_fields_are_frozen_on_the_judge_provider(
+    client, auth_headers, session
+):
+    await _point_verification_at(session, "judge")
+    for field, value in (("base_url", "http://elsewhere/v1"), ("api_kind", "deepseek")):
+        payload = {
+            "api_kind": "openai",
+            "base_url": "https://api.openai.com/v1",
+            field: value,
+        }
+        resp = await client.put(
+            "/api/v1/config/llm-providers/judge", json=payload, headers=auth_headers
+        )
+        assert resp.status_code == 409, field
+        assert "verification" in resp.json()["detail"]
+
+    stored = (await session.execute(
+        text("SELECT api_kind, base_url FROM llm_providers WHERE name = 'judge'")
+    )).one()
+    assert stored == ("openai", "https://api.openai.com/v1")
+
+
+@pytest.mark.asyncio
+async def test_the_judge_key_still_rotates(client, auth_headers, session):
+    """api_key is not an identity field — rotating a credential is not a model
+    swap — and the owner ruling of 2026-08-20 requires this key to be
+    rotatable without a direct database write."""
+    await _point_verification_at(session, "judge2")
+    resp = await client.put(
+        "/api/v1/config/llm-providers/judge2",
+        json={
+            "api_kind": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-rotated",
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    stored = (await session.execute(
+        text("SELECT api_key FROM llm_providers WHERE name = 'judge2'")
+    )).scalar_one()
+    assert stored == "sk-rotated"
+
+
+@pytest.mark.asyncio
+async def test_a_provider_serving_no_judge_is_not_frozen(client, auth_headers, session):
+    """The freeze is scoped to the provider the judge purpose points at, not
+    to every provider that happens to look like a judge connection."""
+    await _point_verification_at(session, "judge-real")
+    await client.post(
+        "/api/v1/config/llm-providers",
+        json={"name": "free", "api_kind": "openai", "base_url": "http://x/v1"},
+        headers=auth_headers,
+    )
+    resp = await client.put(
+        "/api/v1/config/llm-providers/free",
+        json={"api_kind": "deepseek", "base_url": "http://moved/v1"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_resending_the_judge_connection_unchanged_is_not_a_change(
+    client, auth_headers, session
+):
+    """The form is a full replace, so an unrelated edit resends both frozen
+    fields; refusing that would make the row uneditable rather than frozen."""
+    await _point_verification_at(session, "judge-noop")
+    resp = await client.put(
+        "/api/v1/config/llm-providers/judge-noop",
+        json={
+            "api_kind": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "***",
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["serves_verification"] is True
+
+
+@pytest.mark.asyncio
+async def test_no_other_purpose_may_join_the_judge_provider(
+    client, auth_headers, session
+):
+    await _point_verification_at(session, "judge3")
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "judge3", "model": "m"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 409
+    assert "judge3" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_a_shared_judge_provider_is_reported_not_deadlocked(
+    client, auth_headers, session
+):
+    """A direct-SQL restore can produce sharing the API would refuse. The
+    remedy must stay reachable: repoint the *other* purpose off it."""
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    await _point_verification_at(session, "shared")
+    session.add(LLMPurposeConfigRow(
+        purpose="extraction", model="m", provider_name="shared",
+    ))
+    await session.commit()
+
+    listed = await client.get("/api/v1/config/llm-providers", headers=auth_headers)
+    row = next(p for p in listed.json()["providers"] if p["name"] == "shared")
+    assert row["serves_verification"] is True
+    assert set(row["used_by"]) == {"verification", "extraction"}
+
+    await session.execute(text(
+        "INSERT INTO llm_providers (name, api_kind, base_url) "
+        "VALUES ('other','openai','http://o/v1')"
+    ))
+    await session.commit()
+    freed = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "other"}},
+        headers=auth_headers,
+    )
+    assert freed.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_a_shared_purpose_may_still_be_edited_in_place(
+    client, auth_headers, session
+):
+    """In the restore-produced shared state the other purpose keeps sharing
+    until someone moves it; a save that leaves the reference alone adds no
+    new sharing and must not be refused."""
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    await _point_verification_at(session, "shared2")
+    session.add(LLMPurposeConfigRow(
+        purpose="extraction", model="m", provider_name="shared2",
+    ))
+    await session.commit()
+
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "shared2", "model": "m2"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    model = (await session.execute(text(
+        "SELECT model FROM llm_purpose_configs WHERE purpose = 'extraction'"
+    ))).scalar_one()
+    assert model == "m2"

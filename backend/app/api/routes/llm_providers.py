@@ -31,6 +31,10 @@ from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import LLMProviderModelsResponse
 from app.services import llm_quirks
 from app.services.config import VERIFICATION_PURPOSE
+from app.services.llm_provider_guard import (
+    assert_identity_fields_unchanged,
+    verification_provider,
+)
 from app.services.model_probe import parse_model_list
 
 from .config import apply_llm_config_change
@@ -192,6 +196,10 @@ async def update_provider(
             raise HTTPException(status_code=404, detail=f"provider {name!r} not found")
 
         update_data = body.model_dump(exclude_unset=True)
+        assert_identity_fields_unchanged(
+            name, row, update_data, await verification_provider(session),
+        )
+
         row.api_kind = body.api_kind
         row.base_url = body.base_url
         if "api_key" in update_data and update_data["api_key"] != MASKED_KEY:
