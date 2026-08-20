@@ -26,7 +26,7 @@
     "@tanstack/react-router": "^1.168.10",
     "@tanstack/react-store": "^0.9.3",
     "@tanstack/react-virtual": "^3.13.23",
-    "darkraise-ui": "^6.2.0",
+    "darkraise-ui": "^6.3.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "graphology-layout-noverlap": "^0.4.2",

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { Accordion } from "darkraise-ui/components/accordion"
 import { HelpTip } from "../help-tip"
@@ -10,7 +11,11 @@ describe("HelpTip", () => {
     expect(
       screen.queryByText("confidence weighting rule"),
     ).not.toBeInTheDocument()
-    fireEvent.focus(screen.getByRole("button", { name: "About w_conf" }))
+    // Real keyboard focus, not a synthetic focus event: since darkraise-ui
+    // v6.3 the trigger opens on focus only while `:focus-visible` matches,
+    // which needs the element to actually hold focus.
+    await userEvent.setup().tab()
+    expect(screen.getByRole("button", { name: "About w_conf" })).toHaveFocus()
     // The tooltip opens after its 150ms hover/focus delay.
     expect(
       await screen.findByText("confidence weighting rule"),

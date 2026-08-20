@@ -24,6 +24,11 @@ const storedSettings: ThemeSettings = {
   elevation: "high",
   buttonElevation: "high",
   radius: "pill",
+  fontSize: "large",
+  surfaceIntensity: "bold",
+  accentIntensity: "intense",
+  outerGlow: "vivid",
+  innerGlow: "subtle",
 }
 
 describe("themePersistence.load", () => {
@@ -37,29 +42,12 @@ describe("themePersistence.load", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/config/theme")
   })
 
-  it("keeps stored values for visible axes", async () => {
+  // Every axis is user-adjustable since the 6.3 upgrade, so a stored value
+  // must survive the load rather than being pinned back to the default.
+  it("keeps stored values for every axis", async () => {
     apiFetchMock.mockResolvedValue({ settings: storedSettings })
     const loaded = await themePersistence.load()
-    expect(loaded).toMatchObject({
-      accentColor: "rose",
-      surfaceColor: "teal",
-      backgroundStyle: "gradient",
-      backgroundIntensity: "vivid",
-      gradientPattern: "aurora",
-      mode: "light",
-    })
-  })
-
-  it("pins locked axes to defaults regardless of stored values", async () => {
-    apiFetchMock.mockResolvedValue({ settings: storedSettings })
-    const loaded = await themePersistence.load()
-    expect(loaded).toMatchObject({
-      preset: themeConfig.defaults.preset,
-      density: themeConfig.defaults.density,
-      elevation: themeConfig.defaults.elevation,
-      buttonElevation: themeConfig.defaults.buttonElevation,
-      radius: themeConfig.defaults.radius,
-    })
+    expect(loaded).toEqual(storedSettings)
   })
 
   it("falls back per-field when a crash-capable value is unknown", async () => {

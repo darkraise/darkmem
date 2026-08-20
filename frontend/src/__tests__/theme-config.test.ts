@@ -1,12 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-
-const HIDDEN_KEYS = [
-  "theme-preset",
-  "theme-density",
-  "theme-elevation",
-  "theme-button-elevation",
-  "theme-radius",
-]
+import { themeConfig as libraryDefaults } from "darkraise-ui/theme"
 
 async function importFresh() {
   vi.resetModules()
@@ -18,35 +11,49 @@ describe("theme.config", () => {
     window.localStorage.clear()
   })
 
-  it("hides the locked axes from the switcher", async () => {
+  it("exposes every axis the library ships", async () => {
     const { themeConfig } = await importFresh()
-    expect(themeConfig.switcher.axes.preset).toBe(false)
-    expect(themeConfig.switcher.axes.density).toBe(false)
-    expect(themeConfig.switcher.axes.elevation).toBe(false)
-    expect(themeConfig.switcher.axes.buttonElevation).toBe(false)
-    expect(themeConfig.switcher.axes.radius).toBe(false)
-  })
-
-  it("pins the locked axes to the agreed defaults", async () => {
-    const { themeConfig } = await importFresh()
-    expect(themeConfig.defaults.preset).toBe("default")
-    expect(themeConfig.defaults.density).toBe("cozy")
-    expect(themeConfig.defaults.elevation).toBe("medium")
-    expect(themeConfig.defaults.buttonElevation).toBe("flat")
-    expect(themeConfig.defaults.radius).toBe("rounded")
-  })
-
-  it("clears persisted values for hidden axes on import", async () => {
-    for (const key of HIDDEN_KEYS) {
-      window.localStorage.setItem(key, "stale")
+    expect(themeConfig.switcher.enabled).toBe(true)
+    for (const [axis, enabled] of Object.entries(themeConfig.switcher.axes)) {
+      expect(enabled, `axis ${axis} is hidden`).toBe(true)
     }
-    window.localStorage.setItem("theme-accent", "rose")
+  })
+
+  // Drift guard: an axis added by a library upgrade would otherwise stay
+  // absent from the switcher with nothing failing.
+  it("covers the library's axis set exactly", async () => {
+    const { themeConfig } = await importFresh()
+    expect(Object.keys(themeConfig.switcher.axes).sort()).toEqual(
+      Object.keys(libraryDefaults.switcher.axes).sort(),
+    )
+    expect(Object.keys(themeConfig.defaults).sort()).toEqual(
+      Object.keys(libraryDefaults.defaults).sort(),
+    )
+  })
+
+  it("keeps darkmem's own default look", async () => {
+    const { themeConfig } = await importFresh()
+    expect(themeConfig.defaults).toMatchObject({
+      accentColor: "indigo",
+      surfaceColor: "slate",
+      preset: "default",
+      mode: "dark",
+      density: "cozy",
+      radius: "rounded",
+    })
+  })
+
+  // Every axis is user-adjustable now, so importing the config must not
+  // wipe persisted choices the way the locked-axis scrub used to.
+  it("leaves persisted axis values alone on import", async () => {
+    window.localStorage.setItem("theme-preset", "glass")
+    window.localStorage.setItem("theme-density", "compact")
+    window.localStorage.setItem("theme-outer-glow", "vivid")
 
     await importFresh()
 
-    for (const key of HIDDEN_KEYS) {
-      expect(window.localStorage.getItem(key)).toBeNull()
-    }
-    expect(window.localStorage.getItem("theme-accent")).toBe("rose")
+    expect(window.localStorage.getItem("theme-preset")).toBe("glass")
+    expect(window.localStorage.getItem("theme-density")).toBe("compact")
+    expect(window.localStorage.getItem("theme-outer-glow")).toBe("vivid")
   })
 })

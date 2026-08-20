@@ -13,56 +13,44 @@ export const themeConfig: ThemeConfig = {
     elevation: "medium",
     buttonElevation: "flat",
     radius: "rounded",
-    // Added by darkraise-ui v6; both at the library's own defaults so the
-    // upgrade changes nothing visually.
     fontSize: "medium",
-    accentVibrancy: "balanced",
+    // v6.3 renamed `accentVibrancy` to `accentIntensity` (same value set) and
+    // added the surface-intensity and glow axes. All three sit at the
+    // library's own defaults, so the upgrade changes nothing visually; the
+    // presets that own a glow raise it themselves via `commonAxisDefaults`.
+    surfaceIntensity: "balanced",
+    accentIntensity: "balanced",
+    outerGlow: "none",
+    innerGlow: "none",
   },
   switcher: {
     enabled: true,
+    // Every axis the library ships is user-adjustable. `theme-config.test.ts`
+    // compares this key set against the library's own default config, so an
+    // axis added by a future upgrade fails the build instead of quietly
+    // never appearing in the switcher.
+    //
+    // Persisting them is a two-sided contract: `ThemeSettingsPayload` in
+    // backend/app/api/routes/config.py forbids unknown keys, so an axis
+    // enabled here must exist there or every DB save 422s.
     axes: {
       mode: true,
       accentColor: true,
       surfaceColor: true,
-      preset: false,
+      preset: true,
       backgroundStyle: true,
       backgroundIntensity: true,
       gradientPattern: true,
-      density: false,
-      elevation: false,
-      buttonElevation: false,
-      radius: false,
-      // Neither axis existed before v6, so neither was ever user-adjustable.
-      // Locking both preserves the switcher surface exactly; flip either to
-      // true (and drop it from LOCKED_AXES) to expose it.
-      fontSize: false,
-      accentVibrancy: false,
+      density: true,
+      elevation: true,
+      buttonElevation: true,
+      radius: true,
+      fontSize: true,
+      surfaceIntensity: true,
+      accentIntensity: true,
+      outerGlow: true,
+      innerGlow: true,
       presetAxes: true,
     },
   },
-}
-
-// Axes hidden from the switcher and pinned to `defaults`, mapped to the
-// ThemeProvider localStorage key each one persists under. The provider
-// initializes from localStorage over `defaults` and re-applies DB-loaded
-// settings over both, so a value persisted before an axis was hidden would
-// stick forever with no UI to change it back — every persistence channel
-// (localStorage below, DB in lib/theme-persistence.ts) must scrub these.
-// Keep in sync with the axes disabled above.
-export const LOCKED_AXES = {
-  preset: "theme-preset",
-  density: "theme-density",
-  elevation: "theme-elevation",
-  buttonElevation: "theme-button-elevation",
-  radius: "theme-radius",
-  fontSize: "theme-font-size",
-  accentVibrancy: "theme-accent-vibrancy",
-} as const
-
-try {
-  for (const key of Object.values(LOCKED_AXES)) {
-    window.localStorage.removeItem(key)
-  }
-} catch {
-  // Storage unavailable (e.g. blocked); the provider falls back to defaults.
 }
