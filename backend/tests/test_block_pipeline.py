@@ -942,8 +942,20 @@ def _opt_out_offenders(paths: list[pathlib.Path], root: pathlib.Path) -> list[st
 
 def _backend_sources() -> list[pathlib.Path]:
     """Every `.py` in the backend tree, tests included, artifacts excluded."""
-    artifacts = {"__pycache__", ".venv", "node_modules"}
-    paths = [path for path in BACKEND.rglob("*.py") if not artifacts & set(path.parts)]
+    # `build` and `dist` are setuptools output: `pip install .` builds in-tree
+    # and leaves `build/lib/app/...`, a verbatim copy of files this scan
+    # already visits at their real paths. Left in, every offender is reported
+    # twice and the exact-list assertions below fail against a checkout that
+    # merely had the package installed -- which is what CONTRIBUTING tells a
+    # contributor to do. Excluding a copy narrows nothing: the original is
+    # still scanned.
+    artifacts = {"__pycache__", ".venv", "node_modules", "build", "dist"}
+    paths = [
+        path
+        for path in BACKEND.rglob("*.py")
+        if not artifacts & set(path.parts)
+        and not any(part.endswith(".egg-info") for part in path.parts)
+    ]
     assert len(paths) > 200, (
         f"only found {len(paths)} files — the scans below would pass "
         "vacuously; check the backend root / the globs"
