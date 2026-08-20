@@ -11,11 +11,10 @@ Provides:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth

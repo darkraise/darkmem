@@ -10,7 +10,6 @@ from app.services import prompt as prompt_constants
 # module keeps the ``ExtractionService`` orchestrator that owns the LLM call.
 from app.services.extraction_clean import *  # noqa: F401,F403
 from app.services.extraction_clean import (
-    EXTRACTION_SCHEMA,
     _MAX_CONTENT_CHARS,
     _build_extraction_schema,
     _content_seed,

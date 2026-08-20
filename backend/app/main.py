@@ -11,9 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
-from starlette.routing import Mount
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
@@ -137,7 +136,7 @@ async def lifespan(app: FastAPI):
         app.state.llm = llm
         app.state.session_factory = async_session_factory
         logger.info("Pipeline initialized: pgvector + LLM connected")
-    except Exception as e:
+    except Exception:
         logger.exception("Pipeline not available (Postgres-only mode)")
         app.state.pipeline = None
         app.state.session_factory = async_session_factory

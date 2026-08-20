@@ -244,7 +244,6 @@ def build_import_map(
     file_paths: list[str],
     file_imports: dict[str, list[str]],
 ) -> dict[str, set[str]]:
-    path_set = set(file_paths)
     path_stems: dict[str, str] = {}
     for fp in file_paths:
         stem = Path(fp).stem

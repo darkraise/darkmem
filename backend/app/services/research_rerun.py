@@ -39,7 +39,6 @@ from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
 from app.models.memory import Memory

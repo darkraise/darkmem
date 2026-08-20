@@ -8,7 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from app.config import FEATURE_FLAGS_DEFAULTS, settings
+from app.config import FEATURE_FLAGS_DEFAULTS
 from app.models.config import Config
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
@@ -1261,7 +1261,7 @@ class ProcessingPipeline:
                     await self._broadcast("memory.deleted", {"memory_id": str(memory_id)})
                 except Exception as broadcast_err:
                     logger.warning(f"WebSocket broadcast failed: {broadcast_err}")
-        except Exception as e:
+        except Exception:
             logger.exception(f"Cleanup failed for {memory_id}")
 
     async def semantic_search(

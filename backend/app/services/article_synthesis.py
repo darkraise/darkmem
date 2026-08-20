@@ -1582,7 +1582,7 @@ async def _mark_held(
     denominator reads this stream — the strict `JournalWriteFailed` contract is
     for rows whose loss silently shrinks a measurement.
     """
-    from app.services.claim_entailment import ClaimVerdict, get_coverage_threshold
+    from app.services.claim_entailment import get_coverage_threshold
 
     stamp = now or datetime.now(timezone.utc)
     await session.execute(

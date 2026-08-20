@@ -42,6 +42,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +52,13 @@ from app.services.extraction_clean import _content_seed
 from app.services.faithfulness_bars import (
     FAITHFULNESS_BAR_DEFAULTS as _FAITHFULNESS_DEFAULTS,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # The runtime import stays inside article_claim_gate() below, keeping this
+    # module's dependency on claim_gates one-directional at import time. The
+    # annotation still has to name something, or it resolves to nothing at all.
+    from app.services.claim_gates import ClaimGate
+
 
 logger = logging.getLogger(__name__)
 

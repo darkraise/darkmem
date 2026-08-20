@@ -63,11 +63,9 @@ from urllib.parse import parse_qsl, urlsplit, unquote
 from uuid import UUID
 
 import idna
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.mcp.client_identity import resolve_origin_key
-from app.models.config import Config
 # Configuration, moved to its own module (T3.28) so a config surface can
 # reach the row without importing this one — invariant 15's scan forbids
 # that reach, and the loop's configuration is not the loop.

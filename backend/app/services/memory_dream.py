@@ -90,7 +90,11 @@ from app.services.dream_journal import (
     HYGIENE_STATE_OPEN,
     NEAR_DUPLICATE_PASS,
     OBJECT_TYPE,
-    REFINE_MARKER_PATH,
+    # Unused here, and deliberately imported anyway: the move of this
+    # vocabulary into dream_journal is a pure re-export, and
+    # test_dream_undo.py asserts the name still resolves off THIS module and
+    # is the same object. Dropping it as "unused" reds that test.
+    REFINE_MARKER_PATH,  # noqa: F401
     content_sha,
     refine_marker_of,
     subsume_tombstone_blocks,

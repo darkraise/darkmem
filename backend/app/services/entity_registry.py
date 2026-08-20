@@ -456,7 +456,7 @@ class EntityRegistry:
             + (", ".join(people_names[:8]) + ("..." if len(people_names) > 8 else "")),
             f"Projects ({len(project_names)}): "
             + (", ".join(project_names) or "(none)"),
-            f"Ambiguous flags: "
+            "Ambiguous flags: "
             + (", ".join(self.ambiguous_flags) or "(none)"),
         ]
         return "\n".join(lines)

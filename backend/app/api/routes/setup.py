@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import os
 import sys
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -28,7 +27,6 @@ from app.api.auth import (
     require_uninitialized,
     set_auth_cookie,
 )
-from app.config import settings
 from app.database import get_session
 from app.models.code import Repository
 from app.models.config import Config

@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import numpy as np
 from sqlalchemy import Text, cast, text

@@ -35,7 +35,6 @@ from enum import Enum
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.config import Config
 from app.services.verification_judge import (
     ENTAILMENT_ROLE,
     JudgeNotQualifiedError,

@@ -866,7 +866,6 @@ class CodePipeline:
         from app.services.suffix_index import SuffixIndex
 
         repo_root = str(self._work_dir)
-        file_set = set(self._all_file_paths)
         suffix_index = SuffixIndex(self._all_file_paths)
 
         refined_imports: dict[str, list[str]] = {}
