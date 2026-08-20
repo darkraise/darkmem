@@ -87,6 +87,15 @@ EXPECTED_STATUS = {
     # idempotent full-replace that should be PUT for symmetry with its
     # siblings, left as POST because fixing it breaks the frontend.
     ("POST", "/api/v1/config/llm"): 200,
+    ("GET", "/api/v1/config/llm-providers"): 200,
+    ("POST", "/api/v1/config/llm-providers"): 201,
+    ("PUT", "/api/v1/config/llm-providers/{name}"): 200,
+    ("DELETE", "/api/v1/config/llm-providers/{name}"): 204,
+    # Both probes report a vendor failure as 200 with `error` set, never a
+    # raise -- a probe failure is information about the vendor, not the
+    # darkmem request, matching the wizard probe's existing contract.
+    ("POST", "/api/v1/config/llm-providers/probe-models"): 200,
+    ("POST", "/api/v1/config/llm-providers/{name}/probe-models"): 200,
     ("GET", "/api/v1/config/repo-allowlist"): 200,
     # T3.28: the auto_research operator surface. A PUT that updates a
     # config row in place, so 200 rather than 201 — nothing is created.

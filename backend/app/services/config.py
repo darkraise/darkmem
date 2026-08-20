@@ -34,6 +34,15 @@ PURPOSES = [
     "summarization", "reranker", "synthesis", "verification",
 ]
 
+# This module owns the purpose vocabulary, so a surface that needs to name
+# one purpose imports it from here rather than re-deriving it. A written-out
+# literal, not an index into PURPOSES: the list's order is not a documented
+# contract, and a ninth purpose appended after this one would silently
+# repoint an index-based constant at the wrong row with no test failing.
+# A provider-management surface asking "does this provider serve the judge?"
+# needs this name, never the judge module itself.
+VERIFICATION_PURPOSE = "verification"
+
 
 def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
     return LLMPurposeConfigSchema(

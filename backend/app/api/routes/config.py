@@ -68,10 +68,10 @@ def _swap_pipeline_llm(pipeline, new_llm) -> None:
     if classification_svc is not None:
         classification_svc.llm = new_llm
     # The pipeline caches its per-batch classifier resolution (LLM vs in-process
-    # ML, keyed on the classification purpose's ml_profile_ref) for a short TTL.
-    # A config save can flip that ref, so drop the cache here — the same place
-    # the LLM references are swapped — to honor the per-batch contract instead of
-    # serving the stale classifier until the TTL lapses.
+    # ML, keyed on the classification purpose's classifier_kind) for a short
+    # TTL. A config save can flip that field, so drop the cache here — the same
+    # place the LLM references are swapped — to honor the per-batch contract
+    # instead of serving the stale classifier until the TTL lapses.
     if hasattr(pipeline, "_classifier_cache"):
         pipeline._classifier_cache = None
 
@@ -111,6 +111,52 @@ def _replace_orchestrator(request: Request, new_llm) -> None:
         spawn(_close_orchestrator_safely(old_llm), name="close-orchestrator")
 
 
+async def apply_llm_config_change(
+    request: Request, session: AsyncSession
+) -> dict[str, int] | None:
+    """Re-resolve config, install a fresh orchestrator, and count re-embed work.
+
+    The caller must already hold ``app.state.llm_config_lock``. Both the
+    purpose route and the provider routes change connection details, so both
+    go through this; two copies would drift and one of them would keep
+    calling the old endpoint until restart.
+    """
+    from app.services.llm import LLMOrchestrator
+
+    updated_config = await fetch_llm_config(session)
+    new_llm = LLMOrchestrator(updated_config)
+    _replace_orchestrator(request, new_llm)
+
+    # Resolve the dimensions of the new embedder before updating the
+    # fingerprint. Prefer the explicit user value; otherwise probe the
+    # model; otherwise leave it unset and let the next embed call populate
+    # the registry on demand.
+    new_embedding_dims: int | None = updated_config["embedding"].dimensions
+    if new_embedding_dims is None:
+        try:
+            probe, _ = await new_llm.embed("dimension probe")
+            new_embedding_dims = len(probe)
+        except Exception as exc:
+            logger.warning("Could not probe new embedder dimensions: %s", exc)
+
+    pipeline = getattr(request.app.state, "pipeline", None)
+
+    obsolete_after_change = None
+    if pipeline is not None and new_embedding_dims:
+        from app.services.reembed import ReembedService
+        reembed_svc = ReembedService(session)
+        # Build the partition fingerprint with the canonical helper so the
+        # ``model|dims`` format can never drift from what the embed methods
+        # emit. ``new_embedding_dims`` is the probed/explicit dimension,
+        # which may differ from the (possibly-unset) configured value.
+        new_fp = LLMOrchestrator._fingerprint(
+            updated_config["embedding"].model, new_embedding_dims
+        )
+        obsolete_after_change = await reembed_svc.count_missing(new_fp)
+
+    return obsolete_after_change
+
+
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config(
     _user=Depends(require_auth),
@@ -121,7 +167,7 @@ async def get_llm_config(
 
 
 # Known REST deviation: this is an idempotent full-replace of the six-purpose
-# LLM config, so for symmetry with its PUT siblings (llm-providers, llm-profiles,
+# LLM config, so for symmetry with its PUT siblings (llm-providers,
 # feature-flags) it should be PUT /config/llm. Left as POST because changing it
 # would break existing frontend clients. See docs/api-rest-conventions.md
 # ("Known deviations").
@@ -132,8 +178,6 @@ async def update_llm_config(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    from app.services.llm import LLMOrchestrator
-
     # Serialise concurrent config swaps so two admins saving at once can't
     # leave ``app.state.llm`` and ``app.state.pipeline`` wired to different
     # orchestrators.
@@ -195,40 +239,21 @@ async def update_llm_config(
 
         await session.flush()
 
-        # Re-read through ``fetch_llm_config`` rather than reusing the posted
-        # patch: a purpose row carries no connection of its own, so the
-        # orchestrator and the response only get a base URL, key and api_kind
-        # by resolving across the provider join.
+        obsolete_after_change = await apply_llm_config_change(request, session)
+
+        # Re-read through ``fetch_llm_config`` for the response payload: a
+        # purpose row carries no connection of its own, so the base URL, key
+        # and api_kind the client sees only come from resolving the provider
+        # join again.
         updated_config = await fetch_llm_config(session)
-        new_llm = LLMOrchestrator(updated_config)
-        _replace_orchestrator(request, new_llm)
 
-        # Resolve the dimensions of the new embedder before updating the
-        # fingerprint. Prefer the explicit user value; otherwise probe the
-        # model; otherwise leave it unset and let the next embed call
-        # populate the registry on demand.
-        new_embedding_dims: int | None = updated_config["embedding"].dimensions
-        if new_embedding_dims is None:
-            try:
-                probe, _ = await new_llm.embed("dimension probe")
-                new_embedding_dims = len(probe)
-            except Exception as exc:
-                logger.warning("Could not probe new embedder dimensions: %s", exc)
-
-        pipeline = getattr(request.app.state, "pipeline", None)
-
-        obsolete_after_change = None
-        if pipeline is not None and new_embedding_dims:
-            from app.services.reembed import ReembedService
-            reembed_svc = ReembedService(session)
-            # Build the partition fingerprint with the canonical helper so the
-            # ``model|dims`` format can never drift from what the embed methods
-            # emit. ``new_embedding_dims`` is the probed/explicit dimension,
-            # which may differ from the (possibly-unset) configured value.
-            new_fp = LLMOrchestrator._fingerprint(
-                updated_config["embedding"].model, new_embedding_dims
-            )
-            obsolete_after_change = await reembed_svc.count_missing(new_fp)
+        # Commit before releasing the lock, not in ``get_session``'s teardown
+        # after this handler returns: a flushed-but-uncommitted write is
+        # invisible to the next lock holder under READ COMMITTED, so
+        # releasing the lock first only narrows the race it exists to close
+        # rather than closing it. The provider routes commit inside their
+        # own lock blocks for the same reason.
+        await session.commit()
 
     purpose_payload = {p: cfg_to_schema(c) for p, c in updated_config.items()}
     return LLMConfigUpdateResponse(

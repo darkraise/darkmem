@@ -33,6 +33,7 @@ from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
 from app.services.llm_quirks import models_probe, quirks_for
+from app.services.model_probe import parse_model_list
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -108,24 +109,13 @@ async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
                 error=f"HTTP {resp.status_code}: {resp.text[:200]}",
             )
         data = resp.json()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
         return ProbeModelsResponse(
             models=[], fetched_via=kind_label, error=f"network error: {exc}",
         )
 
-    models: list[str] = []
-    if isinstance(data, dict):
-        if isinstance(data.get("data"), list):
-            for entry in data["data"]:
-                mid = entry.get("id") if isinstance(entry, dict) else None
-                if isinstance(mid, str):
-                    models.append(mid)
-        elif isinstance(data.get("models"), list):
-            for entry in data["models"]:
-                mid = entry.get("name") if isinstance(entry, dict) else None
-                if isinstance(mid, str):
-                    models.append(mid)
-    return ProbeModelsResponse(models=sorted(set(models)), fetched_via=kind_label)
+    models = parse_model_list(data)
+    return ProbeModelsResponse(models=models, fetched_via=kind_label)
 
 
 # ── Filesystem browse ────────────────────────────────────────────────
