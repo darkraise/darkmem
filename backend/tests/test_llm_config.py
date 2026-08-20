@@ -1,11 +1,12 @@
 """Purpose resolution is ONE query, and `api_kind` is the only vendor field.
 
-Doc 04 §7 and doc 11 §2 flatten the LLM config: each of the six purposes is one
-inline `llm_purpose_configs` row carrying its own connection details, so
-resolution is a single un-joined read. The `llm_providers` / `llm_profiles` /
-`ml_profiles` indirection cost three levels of resolution on every call and
-was gone at the baseline — `llm_providers` itself was reinstated by the
-2026-08-20 owner ruling, though nothing here resolves through it yet.
+Doc 04 §7 and doc 11 §2 flattened the LLM config so that resolution was a
+single un-joined read of `llm_purpose_configs`; the `llm_providers` /
+`llm_profiles` / `ml_profiles` indirection cost three levels of resolution on
+every call and was gone at the baseline. The 2026-08-20 owner ruling reverses
+exactly one level of that: `llm_providers` is back, a purpose row references
+one by name, and connection details resolve across a single inner join.
+`llm_profiles` and `ml_profiles` stay gone, and one join is still one query.
 
 The one-query property is the kind that decays silently — a later change that
 resolves a reference per purpose still returns correct config, just six times
@@ -18,6 +19,7 @@ import pytest
 from sqlalchemy import event, select, text
 
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import (
     LLMConfigUpdate,
     LLMPurposeConfigSchema,
@@ -82,11 +84,19 @@ async def test_resolution_does_not_scale_with_the_number_of_rows(session):
     show up here as six, which is exactly the indirection this replaced."""
     _, empty = await _count_resolution_queries(session)
 
+    await session.execute(
+        text(
+            "INSERT INTO llm_providers (name, api_kind, base_url) "
+            "VALUES ('scale', 'openai', 'http://example.invalid/v1')"
+        )
+    )
     for purpose in PURPOSES:
         await session.execute(
             text(
-                "INSERT INTO llm_purpose_configs (purpose, model, api_kind, base_url) "
-                "VALUES (:p, 'a-model', 'openai', 'http://example.invalid/v1')"
+                "INSERT INTO llm_purpose_configs "
+                "(purpose, model, provider_name, api_kind, base_url) "
+                "VALUES (:p, 'a-model', 'scale', 'openai', "
+                "'http://example.invalid/v1')"
             ),
             {"p": purpose},
         )
@@ -97,11 +107,34 @@ async def test_resolution_does_not_scale_with_the_number_of_rows(session):
 
 
 @pytest.mark.asyncio
-async def test_resolution_joins_nothing(session):
+async def test_resolution_reads_connection_from_the_provider(session):
+    session.add(LLMProviderRow(
+        name="ds", api_kind="deepseek",
+        base_url="https://api.deepseek.com/v1", api_key="sk-x",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="extraction", model="deepseek-v4-flash", provider_name="ds",
+    ))
+    await session.flush()
+
+    cfg = (await get_llm_config(session))["extraction"]
+    assert cfg.model == "deepseek-v4-flash"
+    assert cfg.api_kind == "deepseek"
+    assert cfg.base_url == "https://api.deepseek.com/v1"
+    assert cfg.api_key == "sk-x"
+
+
+@pytest.mark.asyncio
+async def test_resolution_is_one_query_with_one_join(session):
     _, counter = await _count_resolution_queries(session)
     sql = counter.selects[0].upper()
-    assert "JOIN" not in sql
-    assert "LLM_PROVIDERS" not in sql
+    assert sql.count("JOIN") == 1
+    # An outer join contains "JOIN" once too, and would resolve a
+    # provider-less purpose row to empty connection fields instead of letting
+    # it fall back to the Settings default.
+    assert "OUTER" not in sql
+    assert "LLM_PROVIDERS" in sql
     assert "LLM_PROFILES" not in sql
     assert "ML_PROFILES" not in sql
 
@@ -160,7 +193,7 @@ async def test_api_kind_survives_as_the_vendor_field(session):
         await session.execute(
             text(
                 "SELECT count(*) FROM information_schema.columns "
-                "WHERE table_name = 'llm_purpose_configs' AND column_name = 'api_kind'"
+                "WHERE table_name = 'llm_providers' AND column_name = 'api_kind'"
             )
         )
     ).scalar_one()
@@ -168,13 +201,20 @@ async def test_api_kind_survives_as_the_vendor_field(session):
 
 
 @pytest.mark.asyncio
-async def test_resolved_config_carries_the_inline_connection_details(session):
+async def test_resolved_config_carries_the_provider_connection_details(session):
+    await session.execute(
+        text(
+            "INSERT INTO llm_providers (name, api_kind, base_url, api_key) "
+            "VALUES ('vendor', 'deepseek', "
+            "'https://api.example.invalid/v1', 'sk-test')"
+        )
+    )
     await session.execute(
         text(
             "INSERT INTO llm_purpose_configs "
-            "(purpose, model, api_kind, base_url, api_key, params) "
-            "VALUES ('extraction', 'a-model', 'deepseek', "
-            "'https://api.example.invalid/v1', 'sk-test', '{\"temperature\": 0}'::jsonb)"
+            "(purpose, model, provider_name, params) "
+            "VALUES ('extraction', 'a-model', 'vendor', "
+            "'{\"temperature\": 0}'::jsonb)"
         )
     )
     await session.flush()
@@ -252,6 +292,19 @@ async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
     """`synthesis` is now writable end to end: the row is created/updated
     and the change is visible both in the response and in the underlying
     table, exactly like the six always-writable purposes."""
+    # The row has to exist with a provider before the POST: resolution inner
+    # joins `llm_providers`, and a provider-less row resolves to the Settings
+    # default instead of what was just written.
+    session.add(LLMProviderRow(
+        name="synthesis-vendor", api_kind="openai",
+        base_url="https://api.example.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="synthesis", model="", provider_name="synthesis-vendor",
+    ))
+    await session.flush()
+
     resp = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,
@@ -319,11 +372,27 @@ async def test_config_llm_serves_classifier_kind_on_the_classification_purpose(
 
 
 @pytest.mark.asyncio
-async def test_config_llm_persists_a_classifier_kind_write(client, auth_headers):
+async def test_config_llm_persists_a_classifier_kind_write(
+    client, auth_headers, session
+):
     """`config.py`'s write loop already listed the field, but
     `LLMPurposeConfigUpdate` did not declare it, so it could never appear in
     `model_fields_set` and that loop entry was dead. The POST returned 200 and
     wrote nothing."""
+    # The row has to exist with a provider before the POST: resolution inner
+    # joins `llm_providers`, and a provider-less row resolves to the Settings
+    # default instead of what was just written.
+    session.add(LLMProviderRow(
+        name="classification-vendor", api_kind="openai",
+        base_url="https://api.example.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="classification", model="a-model",
+        provider_name="classification-vendor",
+    ))
+    await session.flush()
+
     response = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,

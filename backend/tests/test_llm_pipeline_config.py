@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import pytest
 
+from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.services import prompt as prompt_mod
 
 
@@ -57,7 +59,23 @@ async def test_llm_config_exposes_classification_purpose(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_llm_config_update_roundtrips_classification(client, auth_headers):
+async def test_llm_config_update_roundtrips_classification(
+    client, auth_headers, session
+):
+    # The row has to exist with a provider before the POST: resolution inner
+    # joins `llm_providers`, and a provider-less row resolves to the Settings
+    # default instead of what was just written.
+    session.add(LLMProviderRow(
+        name="roundtrip-vendor", api_kind="openai",
+        base_url="http://localhost:11434/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="classification", model="qwen2.5:3b",
+        provider_name="roundtrip-vendor",
+    ))
+    await session.flush()
+
     payload = {
         "classification": {
             "base_url": "http://localhost:11434/v1",
