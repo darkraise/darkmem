@@ -18,9 +18,15 @@ test("job board shows cron and last run, and a trigger never silently queues", a
   page,
 }) => {
   await page.goto("/activity?tab=jobs")
-  // getByText(/^jobs$/i) is ambiguous: the tab trigger itself is also
-  // named "Jobs" — scope to the panel's own heading, not the tab.
-  const heading = page.getByText(/^jobs$/i).and(page.locator(':not([role="tab"])'))
+  // Three things on this page are named "Jobs": the sidebar nav link, the tab
+  // trigger, and the panel's own heading. Only the last one means the board
+  // rendered, so scope to <main> (which excludes the sidebar) and drop the
+  // tab. Matching on text alone used to resolve to the sidebar link and pass
+  // whether or not the board was there.
+  const heading = page
+    .getByRole("main")
+    .getByText(/^jobs$/i)
+    .and(page.locator(':not([role="tab"])'))
   await expect(heading).toBeVisible()
   await expect(page.getByText(/cron/i).first()).toBeVisible()
 })
