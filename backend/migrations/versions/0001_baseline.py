@@ -1116,13 +1116,33 @@ def _pass_two() -> None:
         """
     )
 
-    # Six inline rows, PK (purpose). darkmem is not an LLM proxy, so the
-    # provider/profile/ml_profile indirection is gone: llm_providers,
-    # llm_profiles and ml_profiles never exist in the baseline, and their three
-    # FK columns go with them (inventory §8, F-08 — none was named *_ref).
-    # classifier_kind replaces the deleted ml_profiles reference.
+    # Six inline rows, PK (purpose). llm_profiles and ml_profiles never exist
+    # in the baseline, and their FK columns go with them (inventory §8, F-08
+    # — none was named *_ref). classifier_kind replaces the deleted
+    # ml_profiles reference. llm_providers is reinstated below by the owner
+    # ruling of 2026-08-20, reversing doc 04 §7's flattening.
     # The six rows themselves are written by the setup wizard's finalize step
     # from app/services/llm_seed.py, never by a migration.
+
+    # ------------------------------------------------------------------
+    # llm_providers — the connection layer under the purposes
+    # ------------------------------------------------------------------
+    # Reinstated by the owner ruling of 2026-08-20, reversing doc 04 §7's
+    # flattening. A purpose references a provider by name; resolution is one
+    # query with one join and still yields a flat LLMPurposeConfig, which is
+    # what keeps the benchlib cache key and the judge identity hash stable.
+    op.execute(
+        """
+        CREATE TABLE llm_providers (
+            name       VARCHAR(64) PRIMARY KEY,
+            api_kind   VARCHAR(32)  NOT NULL DEFAULT 'openai',
+            base_url   VARCHAR(512) NOT NULL DEFAULT '',
+            api_key    VARCHAR(1024),
+            updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+        )
+        """
+    )
+
     op.execute(
         """
         CREATE TABLE llm_purpose_configs (
@@ -1433,6 +1453,7 @@ def downgrade() -> None:
         "memories",
         "embedders",
         "config",
+        "llm_providers",
     ):
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
 

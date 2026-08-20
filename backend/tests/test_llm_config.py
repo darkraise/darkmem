@@ -3,8 +3,9 @@
 Doc 04 §7 and doc 11 §2 flatten the LLM config: each of the six purposes is one
 inline `llm_purpose_configs` row carrying its own connection details, so
 resolution is a single un-joined read. The `llm_providers` / `llm_profiles` /
-`ml_profiles` indirection cost three levels of resolution on every call and is
-gone.
+`ml_profiles` indirection cost three levels of resolution on every call and
+was gone at the baseline — `llm_providers` itself was reinstated by the
+2026-08-20 owner ruling, though nothing here resolves through it yet.
 
 The one-query property is the kind that decays silently — a later change that
 resolves a reference per purpose still returns correct config, just six times
@@ -109,7 +110,7 @@ async def test_resolution_joins_nothing(session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("table", ["llm_providers", "llm_profiles", "ml_profiles"])
+@pytest.mark.parametrize("table", ["llm_profiles", "ml_profiles"])
 async def test_indirection_tables_do_not_exist(session, table):
     exists = (
         await session.execute(
