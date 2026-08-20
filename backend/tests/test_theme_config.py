@@ -16,8 +16,19 @@ VALID_SETTINGS = {
     "elevation": "medium",
     "buttonElevation": "flat",
     "radius": "rounded",
+    "fontSize": "medium",
+    "surfaceIntensity": "balanced",
+    "accentIntensity": "balanced",
+    "outerGlow": "none",
+    "innerGlow": "none",
     "presetAxisValues": {"glass": {"opacity": "medium", "blur": "low"}},
 }
+
+# The theme provider PUTs its whole settings object on every change, so an
+# axis missing from ThemeSettingsPayload 422s every save while localStorage
+# keeps the UI looking correct. Keep this in step with the switcher axes in
+# frontend/src/theme.config.ts.
+PROVIDER_AXES = frozenset(VALID_SETTINGS) - {"presetAxisValues"}
 
 
 @pytest.mark.asyncio
@@ -150,3 +161,16 @@ async def test_put_theme_omits_null_optionals_from_stored_row(
         )
     ).scalar_one()
     assert row.value == minimal
+
+
+@pytest.mark.asyncio
+async def test_put_theme_accepts_every_axis_the_provider_sends(
+    client, auth_headers
+):
+    resp = await client.put(
+        "/api/v1/config/theme",
+        headers=auth_headers,
+        json={"settings": VALID_SETTINGS},
+    )
+    assert resp.status_code == 200, resp.text
+    assert PROVIDER_AXES <= set(resp.json()["settings"])

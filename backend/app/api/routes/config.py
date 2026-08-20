@@ -796,7 +796,15 @@ _AXIS_VALUE = r"^[a-z][a-z0-9-]{0,31}$"
 
 class ThemeSettingsPayload(BaseModel):
     """Mirrors darkraise-ui's ThemeSettings; stored and served verbatim in
-    its camelCase wire form so the frontend round-trips without mapping."""
+    its camelCase wire form so the frontend round-trips without mapping.
+
+    Every axis the theme provider can emit needs a field here: it sends the
+    whole settings object on each change and `extra="forbid"` turns one
+    missing axis into a 422 on every save, which localStorage then masks
+    into a silent loss of cross-browser persistence. That is what the v6
+    upgrade did with `fontSize`; keep this in step with the axis list in
+    frontend/src/theme.config.ts.
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -817,6 +825,21 @@ class ThemeSettingsPayload(BaseModel):
         default=None, alias="buttonElevation", pattern=_AXIS_VALUE
     )
     radius: str | None = Field(default=None, pattern=_AXIS_VALUE)
+    font_size: str | None = Field(
+        default=None, alias="fontSize", pattern=_AXIS_VALUE
+    )
+    surface_intensity: str | None = Field(
+        default=None, alias="surfaceIntensity", pattern=_AXIS_VALUE
+    )
+    accent_intensity: str | None = Field(
+        default=None, alias="accentIntensity", pattern=_AXIS_VALUE
+    )
+    outer_glow: str | None = Field(
+        default=None, alias="outerGlow", pattern=_AXIS_VALUE
+    )
+    inner_glow: str | None = Field(
+        default=None, alias="innerGlow", pattern=_AXIS_VALUE
+    )
     preset_axis_values: dict[str, dict[str, str]] | None = Field(
         default=None, alias="presetAxisValues"
     )
