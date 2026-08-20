@@ -1,5 +1,9 @@
 import { useRef, useCallback, useEffect, useMemo } from "react"
-import ForceGraph3D from "react-force-graph-3d"
+import ForceGraph3D, {
+  type ForceGraphMethods,
+  type LinkObject,
+  type NodeObject,
+} from "react-force-graph-3d"
 import * as THREE from "three"
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js"
 import type { Node3D, GraphData3D } from "@/features/graph/lib/graph-utils"
@@ -15,6 +19,30 @@ import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { computeHullGroups } from "@/features/graph/lib/graph-geometry"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
 import { type GraphThemeTokens } from "@/features/graph/lib/code-graph-theme"
+import type { Link3D } from "@/features/graph/lib/graph-utils"
+
+// The library's own generics, rather than hand-rolled shapes: it augments both
+// nodes and links (simulation coordinates, and endpoints swapped from ids to
+// node objects once the layout runs), and restating that by hand drifts.
+type SimNode = NodeObject<Node3D>
+
+// The one thing the library's types do NOT carry: it mounts the three.js
+// object it drew for a node onto the node itself, and every material tweak
+// below reaches through it.
+type RenderedNode = SimNode & { __threeObj?: THREE.Mesh }
+
+/**
+ * A link endpoint as the force simulation leaves it.
+ *
+ * We build links with string ids (`Link3D`), and that is the right input
+ * contract — but once the layout runs the library replaces each endpoint with
+ * the node object itself. Both spellings reach every accessor below, so the
+ * narrowing lives here rather than being restated at each call site.
+ */
+function endpointId(endpoint: string | NodeObject<Node3D> | undefined): string {
+  if (endpoint && typeof endpoint === "object") return String(endpoint.id)
+  return endpoint ?? ""
+}
 
 interface Graph3DRendererProps {
   graphData: GraphData3D
@@ -43,8 +71,10 @@ export function Graph3DRenderer({
   tokens,
   palette,
 }: Graph3DRendererProps) {
-  const fgRef = useRef<any>(null)
-  const hoveredRef = useRef<any>(null)
+  const fgRef = useRef<
+    ForceGraphMethods<NodeObject<Node3D>, LinkObject<Node3D, Link3D>> | undefined
+  >(undefined)
+  const hoveredRef = useRef<RenderedNode | null>(null)
   const ringRef = useRef<THREE.Mesh | null>(null)
   const hullMeshesRef = useRef<THREE.Mesh[]>([])
 
@@ -77,17 +107,15 @@ export function Graph3DRenderer({
     ids.add(selectedNodeId)
     for (const link of graphData.links) {
       if (link.hidden && !isEntitySelected) continue
-      const src =
-        typeof link.source === "object" ? (link.source as any).id : link.source
-      const tgt =
-        typeof link.target === "object" ? (link.target as any).id : link.target
+      const src = endpointId(link.source)
+      const tgt = endpointId(link.target)
       if (src === selectedNodeId) ids.add(tgt)
       if (tgt === selectedNodeId) ids.add(src)
     }
     return ids
   }, [selectedNodeId, isEntitySelected, graphData.links])
 
-  const handleNodeHover = useCallback((node: any) => {
+  const handleNodeHover = useCallback((node: RenderedNode | null) => {
     if (hoveredRef.current?.__threeObj) {
       const mat = hoveredRef.current.__threeObj
         .material as THREE.MeshPhongMaterial
@@ -217,7 +245,7 @@ export function Graph3DRenderer({
     for (const node of graphData.nodes) {
       const color = colorForNode(node, palette)
       node.color = color
-      const obj = (node as any).__threeObj
+      const obj = (node as RenderedNode).__threeObj
       if (!obj) continue
       const mat = obj.material as THREE.MeshPhongMaterial
       mat.color.set(color)
@@ -245,7 +273,7 @@ export function Graph3DRenderer({
     }
 
     for (const node of graphData.nodes) {
-      const obj = (node as any).__threeObj
+      const obj = (node as RenderedNode).__threeObj
       if (!obj) continue
       const mat = obj.material as THREE.MeshPhongMaterial
       if (!neighborSet) {
@@ -343,32 +371,28 @@ export function Graph3DRenderer({
           ? (node.entityName ?? "")
           : node.content?.slice(0, 100) || ""
       }
-      linkVisibility={(link: any) =>
+      linkVisibility={(link) =>
         !link.hidden && link.linkKind !== "membership"
       }
-      linkWidth={(link: any) => {
+      linkWidth={(link) => {
         if (!neighborSet) {
           if (link.linkKind === "relation") return 1.5
           return 0.8
         }
-        const src =
-          typeof link.source === "object" ? link.source.id : link.source
-        const tgt =
-          typeof link.target === "object" ? link.target.id : link.target
+        const src = endpointId(link.source)
+        const tgt = endpointId(link.target)
         if (neighborSet.has(src) && neighborSet.has(tgt)) return 2
         if (link.linkKind === "relation") return 1.5
         return 0.5
       }}
-      linkColor={(link: any) => {
+      linkColor={(link) => {
         if (!neighborSet) {
           if (link.linkKind === "relation")
             return relationEdgeColor(tokensRef.current)
           return memoryEdgeColor(tokensRef.current.primary, tokensRef.current)
         }
-        const src =
-          typeof link.source === "object" ? link.source.id : link.source
-        const tgt =
-          typeof link.target === "object" ? link.target.id : link.target
+        const src = endpointId(link.source)
+        const tgt = endpointId(link.target)
         if (neighborSet.has(src) && neighborSet.has(tgt)) {
           if (link.linkKind === "relation")
             return relationEdgeColor(tokensRef.current)
@@ -378,7 +402,7 @@ export function Graph3DRenderer({
           return relationEdgeColor(tokensRef.current)
         return memoryEdgeColor(tokensRef.current.primary, tokensRef.current)
       }}
-      linkDirectionalArrowLength={(link: any) =>
+      linkDirectionalArrowLength={(link) =>
         link.linkKind === "relation" ? 4 : 0
       }
       linkDirectionalArrowRelPos={1}
@@ -393,7 +417,7 @@ export function Graph3DRenderer({
             y: node.y! * distRatio + distance * 0.4,
             z: node.z! * distRatio,
           },
-          { x: node.x, y: node.y, z: node.z },
+          { x: node.x!, y: node.y!, z: node.z! },
           1500,
         )
       }}

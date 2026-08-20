@@ -25,6 +25,20 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
+      // The codebase already marks a deliberately-unused binding with a
+      // leading underscore — router mocks taking `(_to, _params)`, geometry
+      // helpers taking `_label`. Without this the convention reads as 14
+      // errors, which trains people to ignore the rule rather than the
+      // binding. Anything NOT underscored still errors.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+        },
+      ],
     },
   },
   prettier,

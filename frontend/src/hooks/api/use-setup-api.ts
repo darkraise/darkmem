@@ -101,7 +101,9 @@ async function rawFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     if ([502, 503, 504].includes(response.status)) {
       response = await doFetch()
     }
-  } catch (err) {
+  } catch {
+    // The retry IS the handling: a transport-level failure on the first
+    // attempt is retried once, exactly as a 502/503/504 is above.
     response = await doFetch()
   }
 

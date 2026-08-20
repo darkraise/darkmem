@@ -98,8 +98,13 @@ export class NodeDiamondProgram extends NodeSquareProgram {
   constructor(...args: ConstructorParameters<typeof NodeSquareProgram>) {
     super(...args)
     // Clear inherited drawSquareNodeHover so sigma falls through to
-    // defaultDrawNodeHover where we route to drawDiamondNodeHover
-    this.drawHover = undefined as any
+    // defaultDrawNodeHover where we route to drawDiamondNodeHover.
+    //
+    // The cast is load-bearing: sigma's base class declares `drawHover` as
+    // `... | undefined`, but NodeSquareProgram narrows it to a required
+    // function, so clearing it is outside the declared type while being
+    // exactly what the renderer supports.
+    this.drawHover = undefined as unknown as typeof this.drawHover
   }
 
   getDefinition() {

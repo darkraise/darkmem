@@ -61,7 +61,8 @@ export function GraphFilterPanel({
   function toggleGroup(group: string) {
     setCollapsedGroups((prev) => {
       const next = new Set(prev)
-      next.has(group) ? next.delete(group) : next.add(group)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
       return next
     })
   }

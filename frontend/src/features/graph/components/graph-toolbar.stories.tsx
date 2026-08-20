@@ -63,52 +63,58 @@ export const TagColor: S = {
   },
 }
 
-export const Interactive: S = {
-  render: () => {
-    const [viewMode, setViewMode] = useState<"2d" | "3d">("2d")
-    const [colorMode, setColorMode] = useState<ColorMode>("type")
-    const [hullMode, setHullMode] = useState<HullMode>("cluster")
-    const [entityLayer, setEntityLayer] = useState(true)
-    const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
-    const [threshold, setThreshold] = useState(0.65)
-    const [minCluster, setMinCluster] = useState(3)
-    const [spacing, setSpacing] = useState(200)
-    const [tightness, setTightness] = useState(120)
+// A real component rather than hooks inside `render`: Storybook calls that
+// function like a component, but it is not one, so the hooks rules cannot see
+// it and neither can React's own dev warnings. Extracting it costs nothing and
+// makes the story obey the same rules the app does.
+function InteractiveToolbar() {
+  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d")
+  const [colorMode, setColorMode] = useState<ColorMode>("type")
+  const [hullMode, setHullMode] = useState<HullMode>("cluster")
+  const [entityLayer, setEntityLayer] = useState(true)
+  const [sizeMode, setSizeMode] = useState<SizeMode>("connections")
+  const [threshold, setThreshold] = useState(0.65)
+  const [minCluster, setMinCluster] = useState(3)
+  const [spacing, setSpacing] = useState(200)
+  const [tightness, setTightness] = useState(120)
 
-    return (
-      <div className="bg-background relative h-[300px]">
-        <GraphToolbar
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          colorMode={colorMode}
-          onColorModeChange={setColorMode}
-          hullMode={hullMode}
-          onHullModeChange={setHullMode}
-          entityLayer={entityLayer}
-          onEntityLayerChange={setEntityLayer}
-          sizeMode={sizeMode}
-          onSizeModeChange={setSizeMode}
-          similarityThreshold={threshold}
-          onSimilarityChange={setThreshold}
-          minClusterSize={minCluster}
-          onMinClusterSizeChange={setMinCluster}
-          spacing={spacing}
-          onSpacingChange={setSpacing}
-          clusterTightness={tightness}
-          onClusterTightnessChange={setTightness}
-          onReset={() => {
-            setViewMode("2d")
-            setColorMode("type")
-            setHullMode("cluster")
-            setEntityLayer(true)
-            setSizeMode("connections")
-            setThreshold(0.65)
-            setMinCluster(3)
-            setSpacing(200)
-            setTightness(120)
-          }}
-        />
-      </div>
-    )
-  },
+  return (
+    <div className="bg-background relative h-[300px]">
+      <GraphToolbar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        colorMode={colorMode}
+        onColorModeChange={setColorMode}
+        hullMode={hullMode}
+        onHullModeChange={setHullMode}
+        entityLayer={entityLayer}
+        onEntityLayerChange={setEntityLayer}
+        sizeMode={sizeMode}
+        onSizeModeChange={setSizeMode}
+        similarityThreshold={threshold}
+        onSimilarityChange={setThreshold}
+        minClusterSize={minCluster}
+        onMinClusterSizeChange={setMinCluster}
+        spacing={spacing}
+        onSpacingChange={setSpacing}
+        clusterTightness={tightness}
+        onClusterTightnessChange={setTightness}
+        onReset={() => {
+          setViewMode("2d")
+          setColorMode("type")
+          setHullMode("cluster")
+          setEntityLayer(true)
+          setSizeMode("connections")
+          setThreshold(0.65)
+          setMinCluster(3)
+          setSpacing(200)
+          setTightness(120)
+        }}
+    />
+  </div>
+  )
+}
+
+export const Interactive: S = {
+  render: () => <InteractiveToolbar />,
 }

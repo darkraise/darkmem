@@ -310,28 +310,32 @@ export function RealMemoryGraphPage() {
                 onTagToggle={(tag) =>
                   filters.setSelectedTags((prev) => {
                     const next = new Set(prev)
-                    next.has(tag) ? next.delete(tag) : next.add(tag)
+                    if (next.has(tag)) next.delete(tag)
+                    else next.add(tag)
                     return next
                   })
                 }
                 onTypeToggle={(type) =>
                   filters.setSelectedTypes((prev) => {
                     const next = new Set(prev)
-                    next.has(type) ? next.delete(type) : next.add(type)
+                    if (next.has(type)) next.delete(type)
+                    else next.add(type)
                     return next
                   })
                 }
                 onSourceToggle={(src) =>
                   filters.setSelectedSources((prev) => {
                     const next = new Set(prev)
-                    next.has(src) ? next.delete(src) : next.add(src)
+                    if (next.has(src)) next.delete(src)
+                    else next.add(src)
                     return next
                   })
                 }
                 onClusterToggle={(cid) =>
                   filters.setSelectedClusters((prev) => {
                     const next = new Set(prev)
-                    next.has(cid) ? next.delete(cid) : next.add(cid)
+                    if (next.has(cid)) next.delete(cid)
+                    else next.add(cid)
                     return next
                   })
                 }
@@ -342,7 +346,8 @@ export function RealMemoryGraphPage() {
                 onEntityTypeToggle={(etype) =>
                   setSelectedEntityTypes((prev) => {
                     const next = new Set(prev)
-                    next.has(etype) ? next.delete(etype) : next.add(etype)
+                    if (next.has(etype)) next.delete(etype)
+                    else next.add(etype)
                     return next
                   })
                 }
