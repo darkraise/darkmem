@@ -278,7 +278,7 @@ DROPPED_TABLES: dict[str, str] = {
     "config": "carry nothing — job state, auth root, secrets and runtime settings",
     "audit_log": "the audit_log -> events transform is declined on three blockers",
     "enrichment_queue": "no target table; zero code references",
-    "llm_providers": "never exists in the baseline; the flattening is greenfield",
+    "llm_providers": "target table shares the name and nothing else; 0 source rows",
     "llm_profiles": "never exists in the baseline",
     "ml_profiles": "re-homed as the inline classifier_kind",
     "knowledge_triples": "name survives, every column and semantic is new",
@@ -289,8 +289,18 @@ DROPPED_TABLES: dict[str, str] = {
 # Target tables with no source row at all, listed so a reviewer's sweep
 # terminates. projects is the one the transform must handle: it is populated by
 # lazy registration on capture, and carried rows never go through capture.
+#
+# llm_providers is the one entry that also appears in DROPPED_TABLES, and it is
+# not a contradiction: the two lists answer different questions. A source table
+# of that name exists at 0006 and holds zero rows, so it is dropped on the
+# source side; the owner ruling of 2026-08-20 reinstated a table of the same
+# name in the baseline with a different key and different columns, so it is new
+# on the target side, and its rows come from the setup wizard's seed. Reading
+# the drop as "no such target table" is what the corrected rationale above
+# guards against.
 TARGET_NEW_TABLES: tuple[str, ...] = (
     "projects",
+    "llm_providers",
     "events",
     "memory_relations",
     "memory_access_stats",

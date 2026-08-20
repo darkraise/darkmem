@@ -1,20 +1,25 @@
 """ORM model for the LLM configuration table.
 
-darkmem is not an LLM proxy. The provider/profile/ml-profile indirection
-of the old schema is gone — ``llm_profiles`` and ``ml_profiles`` are
-dropped and never exist in the baseline (doc 04 §7, doc 19 §3) — but
-``llm_providers`` was reinstated by the owner ruling of 2026-08-20,
-reversing that flattening. A purpose row references its provider by name
-rather than carrying connection details inline; resolution is one query
-with one join.
+``llm_profiles`` and ``ml_profiles`` are dropped and never exist in the
+baseline (doc 04 §7, doc 19 §3), and neither does any ``*_id`` column
+pointing at them. ``llm_providers`` is the one level of that indirection
+the owner reinstated, on 2026-08-20, because a credential rotation has to
+reach every purpose that uses it with no re-apply step: a purpose row
+names its provider rather than carrying the connection inline.
+
+Storage is the only thing that changed. ``get_llm_config`` resolves in one
+query with one join and still returns a flat ``LLMPurposeConfig``, which is
+what keeps the benchlib cache key and the judge identity hash stable —
+"darkmem is not an LLM proxy" still holds at runtime.
 
 The ``classification`` purpose additionally carries ``classifier_kind``
 (``llm`` | ``local``), which re-homes the in-process classifier inline
 rather than referencing the deleted ``ml_profiles``. When the ``[ml]``
 extra is absent, classification falls back to the LLM-backed classifier.
 
-The six rows themselves are written by the setup wizard's finalize step
-from ``app.services.llm_seed``, never by a migration.
+The eight purpose rows and the provider rows they name are written by the
+setup wizard's finalize step from ``app.services.llm_seed``, never by a
+migration.
 """
 from __future__ import annotations
 

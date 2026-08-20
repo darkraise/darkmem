@@ -538,16 +538,19 @@ export function LLMTab() {
         <div className="space-y-4">
           <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
             <span>
-              Seven inline purpose cards — each a self-contained connection
-              binding, including the seeded-inert `synthesis` purpose — plus
+              Seven purpose cards — each picking a provider from the
+              Providers sub-tab plus the model and params that vary per
+              purpose, including the seeded-inert `synthesis` purpose — plus
               `verification`, read-only here (T2.106: it judges the
               verification ladder and its qualification is a gate's evidence).
               A save live-reloads the orchestrator; no redeploy, no LLM_* env
               vars.
             </span>
             <HelpTip label="About the LLM tab">
-              Each purpose is one row with no provider/profile indirection. Every
-              vendor auth, reasoning-control, and structured-output quirk that
+              Each purpose is one row naming a shared provider row, so a
+              credential rotation on the Providers sub-tab reaches every
+              purpose that uses it with nothing to re-apply here. Every vendor
+              auth, reasoning-control, and structured-output quirk that
               api_kind selects is resolved by the backend orchestrator, never
               re-implemented here. A save rebuilds the orchestrator and takes
               effect without a redeploy.

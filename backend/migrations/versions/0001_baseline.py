@@ -1116,12 +1116,13 @@ def _pass_two() -> None:
         """
     )
 
-    # Six inline rows, PK (purpose). llm_profiles and ml_profiles never exist
-    # in the baseline, and their FK columns go with them (inventory §8, F-08
-    # — none was named *_ref). classifier_kind replaces the deleted
-    # ml_profiles reference. llm_providers is reinstated below by the owner
-    # ruling of 2026-08-20, reversing doc 04 §7's flattening.
-    # The six rows themselves are written by the setup wizard's finalize step
+    # Eight rows, PK (purpose), each naming a provider rather than carrying
+    # its connection inline. llm_profiles and ml_profiles never exist in the
+    # baseline, and their FK columns go with them (inventory §8, F-08 — none
+    # was named *_ref). classifier_kind replaces the deleted ml_profiles
+    # reference. llm_providers is reinstated below by the owner ruling of
+    # 2026-08-20, reversing doc 04 §7's flattening.
+    # The rows themselves are written by the setup wizard's finalize step
     # from app/services/llm_seed.py, never by a migration.
 
     # ------------------------------------------------------------------

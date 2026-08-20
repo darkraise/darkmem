@@ -51,7 +51,7 @@ The current route groups, by router prefix, all under `/api/v1` except `/health`
 | Jobs | `/jobs` | `GET ""`, `POST /{key}/trigger`, `PUT /{key}/config` |
 | Pipeline & failures | `/pipeline`, `/pipeline-failures` | failure list, `/{id}/retry`, `/retry-all` |
 | Vectors & reembed | `/vectors`, `/reembed` | projection, reembed batches |
-| Config | `/config` | `PUT /feature-flags`, `POST /config/llm`, `/system-prompts`, `/theme` (GET unauth) |
+| Config | `/config` | `PUT /feature-flags`, `POST /config/llm`, `/system-prompts`, `/theme` (GET unauth); **added 2026-08-20:** the `/config/llm-providers` collection (§ the row below) |
 | Analytics | `/analytics` | `/stats`, `/overview`, `/pipeline-logs`, `/reprocess` |
 | Graph, chat, system | `/graph`, `/chat`, `/system` | graph read, chat conversations, `/system/fs/list` |
 | Checkpoints | `/checkpoints` | `POST ""`, `GET /latest` |
@@ -72,7 +72,7 @@ The target's additions and one subtraction (target-new / target-dropped):
 | **Add** knowledge vault | `POST /knowledge/search`, `GET /knowledge/facts`, `GET /knowledge/facts/{id}`, `GET /knowledge/articles`, `GET /knowledge/articles/{id}`, `GET /knowledge/facts/{id}/dispute`, `GET /knowledge/overview`, `POST /knowledge/context/validate` | the composed four-layer read + fact/article list and read + dispute inspect + project overview + stateless context validation (§3, §4, §5); the two list doors added 2026-08-11, see the amendment below |
 | **Add** review & ratify (authenticated, no MCP twin) | `GET /knowledge/review`, `POST /knowledge/facts/{id}/ratify`, `POST /knowledge/articles/{id}/ratify`, `PATCH /knowledge/facts/{id}/review` | the consequence-ranked review queue and human ratification — the single-door asymmetry (§3, §6); **amended 2026-08-11: the queue and its resolution shipped at `/review-queue/*` instead, see the note below** |
 | **Add** events read | `GET /events`, `GET /events/calendar`, `GET /events/timeline` | the timeline + contribution calendar over the `events` table (§7) |
-| **Drop** LLM indirection | `PUT /config/llm-providers`, `/llm-profiles`, `/ml-profiles` | removed with the flattening to six inline purpose rows (doc 04 §7, doc 11 §2); `POST /config/llm` stays |
+| **Drop** LLM indirection | `PUT /config/llm-providers`, `/llm-profiles`, `/ml-profiles` | removed with the flattening to six inline purpose rows (doc 04 §7, doc 11 §2); `POST /config/llm` stays. **Amended 2026-08-20 (owner ruling, spec `docs/superpowers/specs/2026-08-20-llm-providers-design.md`):** the `/llm-profiles` and `/ml-profiles` drops stand, but a provider surface returns as a REST-single-door collection — `GET`/`POST /config/llm-providers`, `PUT`/`DELETE /config/llm-providers/{name}`, and `POST /config/llm-providers/probe-models` + `/{name}/probe-models`. It manages `llm_providers` connection rows a purpose names by `provider_name`, not the deleted profile indirection. `PUT` returns 409 on a `base_url`/`api_kind` change to the provider serving the `verification` purpose (the judge's identity); its `api_key` still rotates. `DELETE` returns 409 while any purpose still references the row. Operator configuration, so there is no MCP twin — an unauthenticated `/mcp` must not write vendor credentials |
 
 **Amendment, 2026-08-11 (Tier-3, resolved on measurement).** §1 declares this doc fixes *every* REST
 route and MCP tool, and the tables above no longer did. The live surface was derived from the app

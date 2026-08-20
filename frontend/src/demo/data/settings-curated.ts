@@ -137,8 +137,9 @@ export const CURATED_FLAGS: DemoFlagsState = {
 }
 
 // ---------------------------------------------------------------------------
-// S26 — LLM. Seven inline purpose cards (six live plus seeded-inert
-// `synthesis`, writable since T2.106); no provider/profile chrome.
+// S26 — LLM. Seven purpose cards (six live plus seeded-inert `synthesis`,
+// writable since T2.106), each naming a shared provider row; no profile or
+// ml-profile chrome.
 // ---------------------------------------------------------------------------
 
 // Provider names below mirror the shared `llm_providers` connection rows

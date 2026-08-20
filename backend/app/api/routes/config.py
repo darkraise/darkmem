@@ -170,8 +170,8 @@ async def get_llm_config(
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
-# Known REST deviation: this is an idempotent full-replace of the six-purpose
-# LLM config, so for symmetry with its PUT siblings (llm-providers,
+# Known REST deviation: this is an idempotent full-replace of the writable
+# purpose set, so for symmetry with its PUT siblings (llm-providers,
 # feature-flags) it should be PUT /config/llm. Left as POST because changing it
 # would break existing frontend clients. See docs/api-rest-conventions.md
 # ("Known deviations").

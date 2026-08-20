@@ -86,11 +86,12 @@ def require_deepseek_api_key(env: Mapping[str, str] | None = None) -> str:
 
 
 def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
-    """The embedding/extraction/classification/reasoning connection rows this
-    run seeds, inline (no provider_id/profile_id) -- LLMPurposeConfigRow
-    supports a purpose running standalone this way (CLAUDE.md's LLM
-    configuration section), so a bench seed doesn't need the setup wizard's
-    provider/profile bookkeeping to reach a working purpose config.
+    """The embedding/extraction/classification/reasoning rows this run seeds.
+
+    Each names one of BENCH_PROVIDERS by `provider_name`, which carries the
+    connection; seed_llm_providers() must run first, since that column is a
+    NOT NULL foreign key. A bench seed still doesn't need the setup wizard,
+    which would additionally write providers this run has no use for.
 
     ``reasoning`` is what the full-context baseline arm dispatches through
     (``benchlib.full_context``). It gets its own row rather than borrowing
