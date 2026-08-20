@@ -62,8 +62,7 @@ def test_seeded_provider_rows_match_the_purpose_seed_connection():
 
     by_name = {p.name: p for p in llm_seed.DEFAULT_PROVIDER_ROWS}
     for pc in llm_seed.DEFAULT_PURPOSE_CONFIGS:
-        expected = "verification-judge" if pc.purpose == "verification" else "ollama-local"
-        provider = by_name[expected]
+        provider = by_name[llm_seed.default_provider_row_name_for_purpose(pc.purpose)]
         assert provider.api_kind == pc.api_kind, pc.purpose
         assert provider.base_url == pc.base_url, pc.purpose
 

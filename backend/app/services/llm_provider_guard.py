@@ -30,12 +30,17 @@ refuse writes to it.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.llm_config import LLMPurposeConfigRow
 from app.services.config import VERIFICATION_PURPOSE
+
+if TYPE_CHECKING:
+    from app.models.llm_provider import LLMProviderRow
 
 FROZEN_FIELDS = ("base_url", "api_kind")
 
@@ -52,7 +57,7 @@ async def verification_provider(session: AsyncSession) -> str | None:
 
 def assert_identity_fields_unchanged(
     provider_name: str,
-    current,
+    current: LLMProviderRow,
     incoming: dict,
     verification_provider_name: str | None,
 ) -> None:
