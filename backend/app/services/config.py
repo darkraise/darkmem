@@ -52,6 +52,7 @@ def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeCon
         api_kind=getattr(cfg, "api_kind", "openai"),
         params=cfg.params,
         classifier_kind=getattr(cfg, "classifier_kind", None),
+        provider_name=getattr(cfg, "provider_name", None),
     )
 
 
@@ -98,5 +99,6 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
             api_kind=provider.api_kind,
             params=row.params or {},
             classifier_kind=row.classifier_kind,
+            provider_name=provider.name,
         )
     return merged

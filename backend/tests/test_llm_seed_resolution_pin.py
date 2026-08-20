@@ -29,6 +29,7 @@ EXPECTED = {
         "api_kind": pc.api_kind,
         "base_url": pc.base_url,
         "dimensions": pc.dimensions,
+        "reasoning": pc.reasoning,
         "params": dict(pc.params),
     }
     for pc in DEFAULT_PURPOSE_CONFIGS
@@ -47,6 +48,7 @@ async def _seed(session):
             provider_name=default_provider_row_name_for_purpose(pc.purpose),
             model=pc.model,
             dimensions=pc.dimensions,
+            reasoning=pc.reasoning,
             params=dict(pc.params),
         ))
     await session.flush()
@@ -62,6 +64,7 @@ async def test_fresh_install_resolves_to_the_pre_provider_values(session):
         assert cfg.api_kind == expected["api_kind"], purpose
         assert cfg.base_url == expected["base_url"], purpose
         assert cfg.dimensions == expected["dimensions"], purpose
+        assert cfg.reasoning == expected["reasoning"], purpose
         assert cfg.params == expected["params"], purpose
 
 

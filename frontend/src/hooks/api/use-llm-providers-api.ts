@@ -36,12 +36,18 @@ export interface CreateLlmProviderInput {
   api_key?: string | null
 }
 
-// Field-level PUT patch. `api_key` carries all four wire cases: omitted
-// keeps the stored key, "***" round-trips it (also a keep), explicit null
-// clears it, any other string replaces it.
+// What the server sends in place of a stored key, and what a caller sends
+// back to say "leave the key alone".
+export const MASKED_PROVIDER_KEY = "***"
+
+// Full-replace PUT body, not a patch: `api_kind` and `base_url` are required
+// on the wire, and omitting either is a 422 rather than a partial update.
+// `api_key` is the one exception — the server never returns the real secret,
+// so it carries three cases: MASKED_PROVIDER_KEY keeps the stored key,
+// explicit null clears it, any other string replaces it.
 export interface UpdateLlmProviderInput {
-  api_kind?: ApiKind
-  base_url?: string
+  api_kind: ApiKind
+  base_url: string
   api_key?: string | null
 }
 

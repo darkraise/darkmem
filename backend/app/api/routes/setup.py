@@ -32,6 +32,8 @@ from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
+from app.services.config import VERIFICATION_PURPOSE
+from app.services.llm_provider_guard import assert_not_verification_provider
 from app.services.llm_quirks import models_probe, quirks_for
 from app.services.model_probe import parse_model_list
 from app.services.repo_manager import validate_local_path
@@ -298,6 +300,58 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+async def _assert_llm_block_admissible(session: AsyncSession, llm: SetupLLM) -> None:
+    """Refuse an unlawful LLM block before finalize writes anything.
+
+    Both refusals run ahead of the password commit on purpose:
+    ``require_uninitialized`` closes every wizard endpoint the moment that row
+    lands, so a refusal raised after it strands the operator on a
+    half-finalized install with no way to correct the payload.
+
+    A submitted provider name must never collide with a seeded one
+    (``ollama-local``, ``verification-judge``): this door is reachable
+    unauthenticated, and the seeded judge row's base_url/api_kind are frozen
+    identity fields on the authenticated door for exactly that reason — an
+    unauthenticated repoint would defeat that guard.
+
+    The second check is the same exclusivity ``POST /config/llm`` enforces. A
+    payload can name the judge's provider without declaring one, so the name
+    guard above never sees it; without this check the least-authenticated door
+    in the tree is the one place a caller can produce the shared state the
+    authenticated door answers 409 to.
+    """
+    from app.services.llm_seed import (
+        DEFAULT_PROVIDER_ROWS,
+        default_provider_row_name_for_purpose,
+    )
+
+    reserved_provider_names = {row.name for row in DEFAULT_PROVIDER_ROWS}
+    for sp in llm.providers:
+        if sp.name in reserved_provider_names:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"provider name {sp.name!r} is reserved for a "
+                    "seeded connection and cannot be defined by the wizard"
+                ),
+            )
+
+    # Finalize rewrites every seeded purpose row, so the provider serving the
+    # judge after this call is the seed's whatever the table holds now.
+    judge_provider = default_provider_row_name_for_purpose(VERIFICATION_PURPOSE)
+    current_provider_names = {
+        row.purpose: row.provider_name
+        for row in (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
+    }
+    for purpose_key, spec in llm.purposes.items():
+        assert_not_verification_provider(
+            spec.provider_name,
+            judge_provider,
+            purpose_key,
+            current_provider_names.get(purpose_key),
+        )
+
+
 @router.post(
     "",
     response_model=SetupResponse,
@@ -323,6 +377,9 @@ async def setup_finalize(
     llm_status = SetupSectionStatus(ok=True)
     repos_status = SetupSectionStatus(ok=True)
 
+    if body.llm is not None:
+        await _assert_llm_block_admissible(session, body.llm)
+
     async with request.app.state.llm_config_lock:
         # 1. Password block — required. Commit immediately so subsequent
         # rollbacks (for failed LLM / repo blocks) don't undo it.
@@ -347,12 +404,6 @@ async def setup_finalize(
         # lookup used only to supply a matching params preset for the
         # user's chosen vendor+model, never written to the database itself.
         #
-        # A submitted provider name must never collide with a seeded one
-        # (`ollama-local`, `verification-judge`): this door is reachable
-        # unauthenticated, and the seeded judge row's base_url/api_kind are
-        # frozen identity fields on the authenticated door for exactly this
-        # reason — an unauthenticated repoint would defeat that guard.
-        #
         # Upsert, not insert: `purpose` is the primary key, and re-running
         # the wizard against an instance whose purpose rows already exist
         # (T1.01 made the wizard re-run the supported upgrade path, doc 20
@@ -367,17 +418,6 @@ async def setup_finalize(
                     DEFAULT_PURPOSE_CONFIGS,
                     default_provider_row_name_for_purpose,
                 )
-
-                reserved_provider_names = {row.name for row in DEFAULT_PROVIDER_ROWS}
-                for sp in body.llm.providers:
-                    if sp.name in reserved_provider_names:
-                        raise HTTPException(
-                            status_code=422,
-                            detail=(
-                                f"provider name {sp.name!r} is reserved for a "
-                                "seeded connection and cannot be defined by the wizard"
-                            ),
-                        )
 
                 existing_providers = {
                     r.name: r

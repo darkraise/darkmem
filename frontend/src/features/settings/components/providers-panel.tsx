@@ -22,6 +22,7 @@ import { EmptyState, HelpTip } from "@/components/darkmem"
 import { API_KIND_OPTIONS } from "@/features/setup/api-kinds"
 import type { ApiKind } from "@/features/settings/types"
 import {
+  MASKED_PROVIDER_KEY,
   useCreateLlmProvider,
   useDeleteLlmProvider,
   useLlmProviders,
@@ -102,24 +103,29 @@ function ProviderCard({ provider }: { provider: LlmProvider }) {
     draft.keyCleared ||
     draft.api_key !== (provider.api_key ?? "")
 
+  // PUT is a full replace: `api_kind` and `base_url` are required, so a body
+  // omitting an unchanged field is a 422 rather than a partial update. A
+  // frozen provider is no exception — the guard compares incoming values
+  // against stored ones, and resending the two identity fields verbatim is
+  // what makes a key-only rotation possible at all. Those two come from the
+  // server row rather than the draft when frozen, so a draft left stale by a
+  // refetch cannot turn a rotation into a frozen-field 409. The mask sentinel
+  // is how "key untouched" is spelled, since the server never sends the real
+  // secret back for this form to resend.
   const save = () => {
-    const body: {
-      api_kind?: ApiKind
-      base_url?: string
-      api_key?: string | null
-    } = {}
-    if (!frozen && draft.api_kind !== provider.api_kind) {
-      body.api_kind = draft.api_kind
-    }
-    if (!frozen && draft.base_url !== provider.base_url) {
-      body.base_url = draft.base_url
-    }
-    if (draft.keyCleared) {
-      body.api_key = null
-    } else if (draft.api_key !== (provider.api_key ?? "")) {
-      body.api_key = draft.api_key
-    }
-    update.mutate({ name: provider.name, data: body })
+    const keyChanged = draft.api_key !== (provider.api_key ?? "")
+    update.mutate({
+      name: provider.name,
+      data: {
+        api_kind: frozen ? provider.api_kind : draft.api_kind,
+        base_url: frozen ? provider.base_url : draft.base_url,
+        api_key: draft.keyCleared
+          ? null
+          : keyChanged
+            ? draft.api_key
+            : MASKED_PROVIDER_KEY,
+      },
+    })
   }
 
   const canDelete = provider.used_by.length === 0

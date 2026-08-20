@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, renderHook, screen, waitFor } from "@testing-library/react"
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -92,6 +98,61 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     )
     expect(screen.getByLabelText("ollama-local api_kind")).toBeEnabled()
     expect(screen.getByLabelText("ollama-local api_key")).toBeEnabled()
+  })
+
+  // PUT is a full replace, so a body that omits an unchanged connection field
+  // is a 422 and not a partial update. These two pin the body from the panel's
+  // side; the route's own suite pins the contract they have to match.
+  it("sends a full-replace body when rotating a frozen provider's key", async () => {
+    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === "PUT"
+        ? Promise.resolve({ ...PROVIDERS.providers[1], no_embedding_purposes: [] })
+        : Promise.resolve(PROVIDERS),
+    )
+    render(<ProvidersPanel />, { wrapper })
+    const key = await screen.findByLabelText("verification-judge api_key")
+    fireEvent.change(key, { target: { value: "sk-rotated" } })
+    screen.getAllByRole("button", { name: "Save" })[1]!.click()
+
+    await waitFor(() =>
+      expect(vi.mocked(apiFetch).mock.calls.some(
+        ([path]) => path === "/config/llm-providers/verification-judge",
+      )).toBe(true),
+    )
+    const call = vi.mocked(apiFetch).mock.calls.find(
+      ([path]) => path === "/config/llm-providers/verification-judge",
+    )!
+    expect(JSON.parse((call[1] as RequestInit)!.body as string)).toEqual({
+      api_kind: "openai",
+      base_url: "https://api.openai.com/v1",
+      api_key: "sk-rotated",
+    })
+  })
+
+  it("resends the unchanged fields on an ordinary connection edit", async () => {
+    vi.mocked(apiFetch).mockImplementation((_path: string, init?: RequestInit) =>
+      init?.method === "PUT"
+        ? Promise.resolve({ ...PROVIDERS.providers[0], no_embedding_purposes: [] })
+        : Promise.resolve(PROVIDERS),
+    )
+    render(<ProvidersPanel />, { wrapper })
+    const baseUrl = await screen.findByLabelText("ollama-local base_url")
+    fireEvent.change(baseUrl, { target: { value: "http://moved:11434/v1" } })
+    screen.getAllByRole("button", { name: "Save" })[0]!.click()
+
+    await waitFor(() =>
+      expect(vi.mocked(apiFetch).mock.calls.some(
+        ([path]) => path === "/config/llm-providers/ollama-local",
+      )).toBe(true),
+    )
+    const call = vi.mocked(apiFetch).mock.calls.find(
+      ([path]) => path === "/config/llm-providers/ollama-local",
+    )!
+    expect(JSON.parse((call[1] as RequestInit)!.body as string)).toEqual({
+      api_kind: "openai",
+      base_url: "http://moved:11434/v1",
+      api_key: "***",
+    })
   })
 
   it("disables delete while a purpose still references the provider", async () => {

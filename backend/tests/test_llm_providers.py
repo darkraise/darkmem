@@ -388,6 +388,48 @@ async def test_resending_the_judge_connection_unchanged_is_not_a_change(
 
 
 @pytest.mark.asyncio
+async def test_the_settings_panel_body_rotates_a_frozen_key(
+    client, auth_headers, session
+):
+    """Pin the wire contract on the side that defines it.
+
+    The providers panel is the only caller of this route, and its own tests
+    mock the fetch layer, so nothing on that side can prove the body it builds
+    is one this route accepts. A body that omits the two unchanged connection
+    fields is a 422 — which is every realistic edit, including the judge key
+    rotation the freeze exists to keep possible — so the panel must send all
+    three, resending the frozen pair verbatim.
+    """
+    await _point_verification_at(session, "judge-panel")
+
+    patch_shaped = await client.put(
+        "/api/v1/config/llm-providers/judge-panel",
+        json={"api_key": "sk-not-sent-this-way"},
+        headers=auth_headers,
+    )
+    assert patch_shaped.status_code == 422
+    assert {
+        entry["loc"][-1] for entry in patch_shaped.json()["error"]["details"]
+    } == {"api_kind", "base_url"}
+
+    full_replace = await client.put(
+        "/api/v1/config/llm-providers/judge-panel",
+        json={
+            "api_kind": "openai",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "sk-rotated-from-the-panel",
+        },
+        headers=auth_headers,
+    )
+    assert full_replace.status_code == 200, full_replace.text
+    assert full_replace.json()["serves_verification"] is True
+    stored = (await session.execute(
+        text("SELECT api_key FROM llm_providers WHERE name = 'judge-panel'")
+    )).scalar_one()
+    assert stored == "sk-rotated-from-the-panel"
+
+
+@pytest.mark.asyncio
 async def test_no_other_purpose_may_join_the_judge_provider(
     client, auth_headers, session
 ):

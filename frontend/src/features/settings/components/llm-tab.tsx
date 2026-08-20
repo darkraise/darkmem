@@ -363,7 +363,7 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
           <>
             Seeded row, resolvable, and dispatched — this connection judges
             fact verification-ladder promotions today. Read-only by
-            deliberate ruling (T2.106), not an oversight: its qualification
+            deliberate ruling, not an oversight: its qualification
             record is G-D's gate evidence, pinned to this exact model
             identity, and a settings-form repoint is a real capability with
             a real failure mode. The judge already refuses to serve on a
@@ -541,8 +541,8 @@ export function LLMTab() {
               Seven purpose cards — each picking a provider from the
               Providers sub-tab plus the model and params that vary per
               purpose, including the seeded-inert `synthesis` purpose — plus
-              `verification`, read-only here (T2.106: it judges the
-              verification ladder and its qualification is a gate's evidence).
+              `verification`, read-only here (it judges the verification
+              ladder and its qualification is a gate's evidence).
               A save live-reloads the orchestrator; no redeploy, no LLM_* env
               vars.
             </span>

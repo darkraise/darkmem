@@ -85,7 +85,7 @@ def require_deepseek_api_key(env: Mapping[str, str] | None = None) -> str:
     return key
 
 
-def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
+def purpose_config_specs() -> list[dict]:
     """The embedding/extraction/classification/reasoning rows this run seeds.
 
     Each names one of BENCH_PROVIDERS by `provider_name`, which carries the
@@ -179,7 +179,7 @@ async def seed_llm_purpose_configs(session_factory, deepseek_api_key: str) -> No
     """
     await seed_llm_providers(session_factory, deepseek_api_key)
     async with session_factory() as session:
-        for spec in purpose_config_specs(deepseek_api_key):
+        for spec in purpose_config_specs():
             existing = (await session.execute(
                 select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == spec["purpose"])
             )).scalar_one_or_none()

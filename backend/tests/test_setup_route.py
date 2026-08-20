@@ -390,6 +390,72 @@ async def test_setup_refuses_a_provider_named_after_a_seeded_one(client, session
 
 
 @pytest.mark.asyncio
+async def test_a_refused_payload_leaves_setup_reachable(client, session):
+    """The refusal has to land before the password commit.
+
+    ``require_uninitialized`` closes every wizard endpoint the moment
+    ``admin_password_hash`` exists, so a validation error raised after step 1
+    would leave an honest operator who picked a colliding provider name with a
+    half-finalized install, one 422 and a 403 on every retry.
+    """
+    refused = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [
+                {"name": "ollama-local", "api_kind": "openai",
+                 "base_url": "http://localhost:11434/v1"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "ollama-local", "model": "m"},
+            },
+        },
+    })
+    assert refused.status_code == 422
+
+    assert (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one_or_none() is None
+
+    status = await client.get("/api/v1/setup/status")
+    assert status.status_code == 200
+    assert status.json()["initialized"] is False
+
+    retry = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {"purposes": {
+            "extraction": {"provider_name": "ollama-local", "model": "m"},
+        }},
+    })
+    assert retry.status_code == 200, retry.text
+
+
+@pytest.mark.asyncio
+async def test_setup_refuses_pointing_a_purpose_at_the_judge_provider(
+    client, session
+):
+    """The exclusivity ``POST /api/v1/config/llm`` enforces has to hold here too.
+
+    The payload declares no provider by that name, so the reserved-name guard
+    never sees it — yet finalize would happily write the purpose row, creating
+    on the unauthenticated door the shared state the authenticated one answers
+    409 to.
+    """
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {"purposes": {
+            "extraction": {"provider_name": "verification-judge", "model": "m"},
+        }},
+    })
+    assert resp.status_code == 409
+    assert "verification-judge" in resp.json()["detail"]
+
+    assert (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one_or_none() is None
+    assert (await session.execute(select(LLMPurposeConfigRow))).scalars().all() == []
+
+
+@pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):
     base = tmp_path / "workspace"
     base.mkdir()

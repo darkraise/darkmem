@@ -263,6 +263,44 @@ async def test_config_llm_route_serves_every_purpose_it_resolves(
     assert set(PURPOSES) <= set(served)
 
 
+@pytest.mark.asyncio
+async def test_config_llm_serves_the_provider_each_purpose_resolves_through(
+    client, auth_headers, session
+):
+    """The connection fields are joined from a provider row, so the settings
+    surface needs the row's name to render which provider serves a purpose and
+    to keep a saved change visible across the refetch that follows it. Served
+    nowhere else: without this field the picker renders empty and every save
+    reads back as a revert."""
+    session.add(LLMProviderRow(
+        name="reranker-vendor", api_kind="openai",
+        base_url="https://api.example.invalid/v1",
+    ))
+    session.add(LLMProviderRow(
+        name="reranker-successor", api_kind="openai",
+        base_url="https://successor.example.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="reranker", model="a-model", provider_name="reranker-vendor",
+    ))
+    await session.flush()
+
+    served = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert served.json()["reranker"]["provider_name"] == "reranker-vendor"
+
+    written = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={"reranker": {"provider_name": "reranker-successor"}},
+    )
+    assert written.status_code == 200
+    assert written.json()["reranker"]["provider_name"] == "reranker-successor"
+
+    refetched = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert refetched.json()["reranker"]["provider_name"] == "reranker-successor"
+
+
 # ───────── the write-side asymmetry, decided per purpose (T2.106) ─────────
 
 

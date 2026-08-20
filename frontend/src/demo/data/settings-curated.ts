@@ -138,7 +138,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
 
 // ---------------------------------------------------------------------------
 // S26 — LLM. Seven purpose cards (six live plus seeded-inert `synthesis`,
-// writable since T2.106), each naming a shared provider row; no profile or
+// which is writable), each naming a shared provider row; no profile or
 // ml-profile chrome.
 // ---------------------------------------------------------------------------
 

@@ -4,6 +4,12 @@ from app.config import ClassifierKind, LLMApiKind
 
 
 class LLMPurposeConfigSchema(BaseModel):
+    # Which `llm_providers` row served the connection fields below. Read-only
+    # here — a purpose write names a provider through `LLMPurposeConfigUpdate`
+    # — but it has to be served, or the settings surface has no way to render
+    # which provider a purpose resolves through and a saved change appears to
+    # revert on the next refetch. Null only when the purpose has no row.
+    provider_name: str | None = None
     base_url: str
     model: str
     api_key: str | None = None
