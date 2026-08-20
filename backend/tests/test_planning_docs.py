@@ -6,6 +6,7 @@ row in docs/planning/progress.md, and vice versa. This catches:
 - Progress rows for tasks that no longer exist (surviving a deletion or renumbering)
 """
 
+import functools
 import json
 import os
 import re
@@ -46,13 +47,43 @@ def get_task_ids_from_headings() -> set[str]:
 
 
 
-def _read_from_master(path: str) -> str:
-    """`git show master:<path>` as text, raising loudly rather than skipping."""
+# Where master's content is read from. A working clone has the local branch;
+# a CI checkout of a *tag* is a detached HEAD with no local `master` at all,
+# only the remote-tracking ref — and every check below then died on
+# "invalid object name 'master'" rather than on anything about the documents.
+# Both names point at the same content, so resolve rather than assume.
+_MASTER_REF_CANDIDATES = ("master", "origin/master", "refs/remotes/origin/master")
+
+
+@functools.lru_cache(maxsize=1)
+def _master_ref() -> str:
+    """The first candidate git can resolve. Raises loudly if none exist."""
     import subprocess
 
+    for ref in _MASTER_REF_CANDIDATES:
+        probe = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if probe.returncode == 0:
+            return ref
+    raise RuntimeError(
+        "no master ref found — tried "
+        + ", ".join(_MASTER_REF_CANDIDATES)
+        + ". These checks read the canonical planning docs from master; a "
+        "checkout without it cannot answer them. In CI, fetch the branch: "
+        "git fetch --depth=1 origin +refs/heads/master:refs/remotes/origin/master"
+    )
+
+
+def _read_from_master(path: str) -> str:
+    """`git show <master>:<path>` as text, raising loudly rather than skipping."""
+    import subprocess
+
+    ref = _master_ref()
     try:
         result = subprocess.run(
-            ["git", "show", f"master:{path}"],
+            ["git", "show", f"{ref}:{path}"],
             capture_output=True, text=True, check=True, timeout=10,
         )
     except subprocess.CalledProcessError as e:
@@ -117,7 +148,7 @@ def get_task_ids_from_progress() -> set[str]:
 
     try:
         result = subprocess.run(
-            ["git", "show", "master:docs/planning/progress.md"],
+            ["git", "show", f"{_master_ref()}:docs/planning/progress.md"],
             capture_output=True,
             text=True,
             check=True,

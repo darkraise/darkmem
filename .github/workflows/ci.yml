@@ -43,6 +43,14 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      # tests/test_planning_docs.py reads the canonical planning documents from
+      # master. A branch build has that ref; a build of a *tag* is a detached
+      # HEAD that has neither `master` nor `origin/master`, and every one of
+      # those checks then failed on "invalid object name 'master'" rather than
+      # on anything about the documents. Fetch the branch so a tag build asks
+      # the same question a branch build does.
+      - name: Fetch the master ref the planning checks read
+        run: git fetch --no-tags --depth=1 origin +refs/heads/master:refs/remotes/origin/master
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
