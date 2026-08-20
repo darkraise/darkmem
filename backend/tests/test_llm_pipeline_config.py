@@ -64,10 +64,17 @@ async def test_llm_config_update_roundtrips_classification(
 ):
     # The row has to exist with a provider before the POST: resolution inner
     # joins `llm_providers`, and a provider-less row resolves to the Settings
-    # default instead of what was just written.
+    # default instead of what was just written. The two providers carry
+    # DIFFERENT base URLs on purpose: while they matched, a route that wrote
+    # the connection onto the purpose row — where nothing reads it — served the
+    # same bytes as one that repointed the reference, so an inert write passed.
     session.add(LLMProviderRow(
         name="roundtrip-vendor", api_kind="openai",
-        base_url="http://localhost:11434/v1",
+        base_url="http://provider-a.invalid/v1",
+    ))
+    session.add(LLMProviderRow(
+        name="roundtrip-vendor-2", api_kind="openai",
+        base_url="http://provider-b.invalid/v1",
     ))
     await session.flush()
     session.add(LLMPurposeConfigRow(
@@ -78,7 +85,7 @@ async def test_llm_config_update_roundtrips_classification(
 
     payload = {
         "classification": {
-            "base_url": "http://localhost:11434/v1",
+            "provider_name": "roundtrip-vendor-2",
             "model": "qwen2.5:1.5b",
             "params": {"temperature": 0.1},
         }
@@ -87,6 +94,7 @@ async def test_llm_config_update_roundtrips_classification(
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["classification"]["model"] == "qwen2.5:1.5b"
+    assert body["classification"]["base_url"] == "http://provider-b.invalid/v1"
     # Other purposes are preserved.
     assert "extraction" in body and "reasoning" in body
 
@@ -200,7 +208,9 @@ async def test_put_system_prompts_rejects_oversized_prompt(client, auth_headers)
 
 
 @pytest.mark.asyncio
-async def test_provider_save_closes_previous_orchestrator(client, auth_headers, monkeypatch):
+async def test_provider_save_closes_previous_orchestrator(
+    client, auth_headers, monkeypatch, session
+):
     """Each Save replaces ``app.state.llm`` with a freshly built
     orchestrator. Without the close, the previous instance's
     ``httpx.AsyncClient`` leaks its keep-alive connections, which (in
@@ -220,16 +230,20 @@ async def test_provider_save_closes_previous_orchestrator(client, auth_headers, 
             closed.append("ok")
         monkeypatch.setattr(original_llm, "close", fake_close)
 
-    # The provider surface is gone (doc 04 §7); the orchestrator is now
-    # replaced on a purpose-config save, so the leak this guards against
-    # is exercised through that route.
+    # The orchestrator is replaced on a purpose-config save, so the leak this
+    # guards against is exercised through that route.
+    session.add(LLMProviderRow(
+        name="close-vendor", api_kind="openai",
+        base_url="https://api.openai.com/v1",
+    ))
+    await session.flush()
+
     resp = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,
         json={"extraction": {
-                        "base_url": "https://api.openai.com/v1",
+            "provider_name": "close-vendor",
             "model": "gpt-4o-mini",
-            "api_kind": "openai",
         }},
     )
     assert resp.status_code == 200, resp.text

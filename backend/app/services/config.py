@@ -19,12 +19,10 @@ from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import LLMPurposeConfigSchema
 
-# Legacy JSONB keys, kept only because some external scripts may still
-# reference them. Routes no longer write here; the table is the source
+# Legacy JSONB key, kept only because some external scripts may still
+# reference it. Routes no longer write here; the tables are the source
 # of truth.
 LLM_CONFIG_KEY = "llm_config"
-LLM_PROVIDERS_KEY = "llm_providers"
-LLM_PROFILES_KEY = "llm_profiles"
 
 # The six live purposes plus the two Tier-C purposes seeded by T1.05.
 # `verification`'s first writer landed in T2.26: the qualification-gated

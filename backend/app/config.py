@@ -45,13 +45,6 @@ class LLMPurposeConfig(BaseModel):
     # ``ml_profiles`` reference in T0.12c (doc 04 §7); T1.04 owns wiring the
     # dispatch to read it, T1.18 the narrowing path.
     classifier_kind: str | None = None
-    # Inert on the wire, not in the resolution path: the provider/profile
-    # indirection is gone (doc 04 §7), but these three keys still appear in
-    # the config API response the frontend reads. Retiring them from the
-    # contract is T1.42b's.
-    provider_ref: str | None = None
-    profile_ref: str | None = None
-    ml_profile_ref: str | None = None
 
 
 class Settings(BaseSettings):

@@ -16,6 +16,7 @@ from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import (
     LLMConfigResponse,
     LLMConfigUpdate,
@@ -152,20 +153,41 @@ async def update_llm_config(
                 for k, v in update_data[purpose].items()
                 if k in purpose_update.model_fields_set
             }
-            # Sentinel: "***" means "don't rotate the stored API key".
-            if incoming.get("api_key") == "***":
-                incoming.pop("api_key")
+            # The FK would refuse an unknown provider with an IntegrityError,
+            # which reaches the caller as a 500 naming a constraint; a bad name
+            # in a settings form is a client error, so say so.
+            if "provider_name" in incoming:
+                known = (await session.execute(
+                    select(LLMProviderRow.name)
+                    .where(LLMProviderRow.name == incoming["provider_name"])
+                )).scalar_one_or_none()
+                if known is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"unknown provider_name {incoming['provider_name']!r}",
+                    )
 
             row = (await session.execute(
                 select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == purpose)
             )).scalar_one_or_none()
             if row is None:
-                row = LLMPurposeConfigRow(purpose=purpose, model="")
+                if "provider_name" not in incoming:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"purpose {purpose!r} has no row yet; "
+                            "provider_name is required"
+                        ),
+                    )
+                row = LLMPurposeConfigRow(
+                    purpose=purpose, model="",
+                    provider_name=incoming["provider_name"],
+                )
                 session.add(row)
 
             for field in (
-                "model", "dimensions", "reasoning", "api_kind",
-                "base_url", "api_key", "params", "classifier_kind",
+                "model", "provider_name", "dimensions", "reasoning",
+                "params", "classifier_kind",
             ):
                 if field in incoming:
                     setattr(row, field, incoming[field])
@@ -173,10 +195,10 @@ async def update_llm_config(
 
         await session.flush()
 
-        # Re-resolve through ``fetch_llm_config`` so profile-referenced
-        # purposes get their connection fields overlaid before the
-        # orchestrator goes live. ``new_value`` itself stays unresolved on
-        # disk by design — the overlay is applied at read time.
+        # Re-read through ``fetch_llm_config`` rather than reusing the posted
+        # patch: a purpose row carries no connection of its own, so the
+        # orchestrator and the response only get a base URL, key and api_kind
+        # by resolving across the provider join.
         updated_config = await fetch_llm_config(session)
         new_llm = LLMOrchestrator(updated_config)
         _replace_orchestrator(request, new_llm)

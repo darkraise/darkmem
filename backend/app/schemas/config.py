@@ -19,12 +19,14 @@ class LLMPurposeConfigSchema(BaseModel):
 
 
 class LLMPurposeConfigUpdate(BaseModel):
-    base_url: str | None = None
+    # No connection fields: `base_url`, `api_key` and `api_kind` live on the
+    # referenced `llm_providers` row and are edited there, so a purpose write
+    # names a provider instead. Declaring them here would accept a rotation
+    # this route cannot apply and answer 200 to it.
+    provider_name: str | None = None
     model: str | None = None
-    api_key: str | None = None
     dimensions: int | None = None
     reasoning: bool | None = None
-    api_kind: LLMApiKind | None = None
     params: dict | None = None
     # Declared so it can appear in `model_fields_set`. Without it the write
     # loop's `classifier_kind` entry was unreachable: the field was stripped

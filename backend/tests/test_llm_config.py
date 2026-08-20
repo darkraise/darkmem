@@ -295,7 +295,7 @@ async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
     # default instead of what was just written.
     session.add(LLMProviderRow(
         name="synthesis-vendor", api_kind="openai",
-        base_url="https://api.example.invalid/v1",
+        base_url="https://synthesis-vendor.invalid/v1",
     ))
     await session.flush()
     session.add(LLMPurposeConfigRow(
@@ -308,14 +308,15 @@ async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
         headers=auth_headers,
         json={
             "synthesis": {
-                "base_url": "https://api.example.invalid/v1",
+                "provider_name": "synthesis-vendor",
                 "model": "synthesis-test-model",
-                "api_kind": "openai",
             }
         },
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["synthesis"]["model"] == "synthesis-test-model"
+    # Served from the provider, which is the only place the connection lives.
+    assert resp.json()["synthesis"]["base_url"] == "https://synthesis-vendor.invalid/v1"
 
     row = (await session.execute(
         select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "synthesis")
@@ -413,6 +414,103 @@ async def test_config_llm_rejects_an_unknown_classifier_kind(client, auth_header
         json={"classification": {"classifier_kind": "regex"}},
     )
     assert response.status_code == 422
+
+
+# ───────── the write side names a provider, it never carries one ─────────
+
+
+@pytest.mark.asyncio
+async def test_purpose_write_takes_a_provider_name(client, auth_headers, session):
+    """A purpose write points at a provider and the response resolves the
+    connection across the join. The POSTed body carries no base URL at all,
+    so the served one can only have come from the referenced row."""
+    session.add(LLMProviderRow(
+        name="p2", api_kind="openai", base_url="http://b/v1",
+    ))
+    await session.flush()
+
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "p2", "model": "m2"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["extraction"]["base_url"] == "http://b/v1"
+    assert resp.json()["extraction"]["model"] == "m2"
+
+    row = (await session.execute(
+        select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "extraction")
+    )).scalar_one()
+    assert row.provider_name == "p2"
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_is_a_422(client, auth_headers):
+    """The FK would refuse this anyway, but as an IntegrityError the caller
+    sees a 500 naming a constraint. A name that resolves to nothing is a
+    client error and answers as one."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "ghost", "model": "m"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_creating_a_rowless_purpose_requires_a_provider(client, auth_headers):
+    """`provider_name` is NOT NULL, so the route cannot invent a row from a
+    model alone. Refusing here keeps that a 422 rather than the 500 the
+    not-null violation would produce."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"reranker": {"model": "only-a-model"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    assert "provider_name" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_connection_fields_are_not_writable_on_a_purpose(
+    client, auth_headers, session
+):
+    """A POSTed `base_url` / `api_kind` / `api_key` used to be written onto the
+    purpose row, where resolution no longer reads it and where the column no
+    longer exists — so an operator rotating a key got a 200 and no change.
+    They are not declared on the update schema at all now, which makes the
+    write unrepresentable rather than merely ineffective."""
+    assert not set(LLMPurposeConfigUpdate.model_fields) & {
+        "base_url", "api_kind", "api_key",
+    }
+
+    session.add(LLMProviderRow(
+        name="inert-vendor", api_kind="openai",
+        base_url="http://provider-side.invalid/v1", api_key="provider-key",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="reranker", model="a-model", provider_name="inert-vendor",
+    ))
+    await session.flush()
+
+    resp = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={
+            "reranker": {
+                "base_url": "http://posted-side.invalid/v1",
+                "api_kind": "ollama",
+                "api_key": "posted-key",
+                "model": "another-model",
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    served = resp.json()["reranker"]
+    assert served["model"] == "another-model"
+    assert served["base_url"] == "http://provider-side.invalid/v1"
+    assert served["api_kind"] == "openai"
 
 
 def test_llm_purpose_schemas_carry_no_dropped_indirection_fields():
