@@ -70,6 +70,15 @@ dependencies = [
     "markdown-it-py>=3.0.0",
 ]
 
+# Setuptools' flat-layout auto-discovery refuses a directory holding more than
+# one top-level package, and `backend/` holds `app`, `migrations`, `tests` and
+# `scripts`. The Dockerfile never hit it because it copies only `backend/app/`
+# before installing; anything installing from a full checkout -- CI, or a
+# contributor running `pip install -e .` -- did. Naming the package makes both
+# environments resolve identically.
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
