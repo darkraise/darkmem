@@ -66,3 +66,59 @@ def test_seeded_provider_rows_match_the_purpose_seed_connection():
         provider = by_name[expected]
         assert provider.api_kind == pc.api_kind, pc.purpose
         assert provider.base_url == pc.base_url, pc.purpose
+
+
+@pytest.mark.asyncio
+async def test_purpose_row_carries_a_provider_reference(session):
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    session.add(LLMProviderRow(name="p1", api_kind="openai", base_url="http://a/v1"))
+    await session.flush()
+    session.add(
+        LLMPurposeConfigRow(purpose="extraction", model="m", provider_name="p1")
+    )
+    await session.flush()
+
+    row = (
+        await session.execute(
+            select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "extraction")
+        )
+    ).scalar_one()
+    assert row.provider_name == "p1"
+
+
+@pytest.mark.asyncio
+async def test_purpose_provider_reference_must_resolve(session):
+    from app.models.llm_config import LLMPurposeConfigRow
+
+    session.add(
+        LLMPurposeConfigRow(purpose="extraction", model="m", provider_name="ghost")
+    )
+    with pytest.raises(Exception):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_every_seeded_purpose_row_agrees_with_its_provider(session):
+    """Inline connection values and the referenced provider's must agree;
+    dropping the inline columns later is only safe because they do."""
+    from app.models.llm_config import LLMPurposeConfigRow
+    from app.services.llm_seed import DEFAULT_PROVIDER_ROWS, DEFAULT_PURPOSE_CONFIGS
+
+    for ps in DEFAULT_PROVIDER_ROWS:
+        session.add(LLMProviderRow(name=ps.name, api_kind=ps.api_kind, base_url=ps.base_url))
+    await session.flush()
+    for pc in DEFAULT_PURPOSE_CONFIGS:
+        session.add(LLMPurposeConfigRow(
+            purpose=pc.purpose, model=pc.model, api_kind=pc.api_kind,
+            base_url=pc.base_url, params=dict(pc.params),
+            provider_name=("verification-judge" if pc.purpose == "verification" else "ollama-local"),
+        ))
+    await session.flush()
+
+    rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
+    providers = {p.name: p for p in (await session.execute(select(LLMProviderRow))).scalars().all()}
+    for row in rows:
+        provider = providers[row.provider_name]
+        assert row.api_kind == provider.api_kind, row.purpose
+        assert row.base_url == provider.base_url, row.purpose

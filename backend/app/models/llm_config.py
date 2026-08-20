@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -35,6 +35,10 @@ class LLMPurposeConfigRow(Base):
     __tablename__ = "llm_purpose_configs"
 
     purpose: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider_name: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("llm_providers.name", onupdate="CASCADE", ondelete="RESTRICT"),
+        nullable=True,
+    )
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reasoning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

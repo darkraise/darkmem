@@ -110,6 +110,7 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
             "dimensions": OLLAMA_EMBEDDING_DIMENSIONS,
             "api_key": None,
             "params": {},
+            "provider_name": "bench-ollama",
         },
         {
             "purpose": "extraction",
@@ -119,6 +120,7 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
             "dimensions": None,
             "api_key": deepseek_api_key,
             "params": {},
+            "provider_name": "bench-deepseek",
         },
         {
             "purpose": "classification",
@@ -128,6 +130,7 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
             "dimensions": None,
             "api_key": deepseek_api_key,
             "params": {},
+            "provider_name": "bench-deepseek",
         },
         {
             "purpose": "reasoning",
@@ -137,8 +140,44 @@ def purpose_config_specs(deepseek_api_key: str) -> list[dict]:
             "dimensions": None,
             "api_key": deepseek_api_key,
             "params": {"temperature": 0},
+            "provider_name": "bench-deepseek",
         },
     ]
+
+
+BENCH_PROVIDERS = [
+    {
+        "name": "bench-ollama",
+        "api_kind": "ollama",
+        "base_url": OLLAMA_EMBEDDING_BASE_URL,
+        "api_key": None,
+    },
+    {
+        "name": "bench-deepseek",
+        "api_kind": "deepseek",
+        "base_url": DEEPSEEK_BASE_URL,
+        "api_key": None,  # filled per run; never written to disk
+    },
+]
+
+
+async def seed_llm_providers(session_factory, deepseek_api_key: str) -> None:
+    """Write the two bench provider rows. Update-or-insert, like the purpose
+    seeding below: one reset cycle serves two passes."""
+    from app.models.llm_provider import LLMProviderRow
+
+    async with session_factory() as session:
+        for spec in BENCH_PROVIDERS:
+            existing = (await session.execute(
+                select(LLMProviderRow).where(LLMProviderRow.name == spec["name"])
+            )).scalar_one_or_none()
+            row = existing or LLMProviderRow(name=spec["name"])
+            row.api_kind = spec["api_kind"]
+            row.base_url = spec["base_url"]
+            row.api_key = deepseek_api_key if spec["name"] == "bench-deepseek" else None
+            if existing is None:
+                session.add(row)
+        await session.commit()
 
 
 async def seed_llm_purpose_configs(session_factory, deepseek_api_key: str) -> None:
@@ -149,6 +188,7 @@ async def seed_llm_purpose_configs(session_factory, deepseek_api_key: str) -> No
     has to be safe to call against a schema this same run already seeded
     (called once per pass, and the two passes share one reset cycle each).
     """
+    await seed_llm_providers(session_factory, deepseek_api_key)
     async with session_factory() as session:
         for spec in purpose_config_specs(deepseek_api_key):
             existing = (await session.execute(

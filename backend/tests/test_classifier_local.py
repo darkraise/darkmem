@@ -27,6 +27,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.models.memory import Memory
 from app.services.classification_ml import MLClassificationService
 from app.services.extraction import ExtractionService
@@ -45,7 +46,15 @@ async def _set_classifier_kind(factory, kind: str | None) -> None:
             select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "classification")
         )).scalar_one_or_none()
         if row is None:
-            row = LLMPurposeConfigRow(purpose="classification", model="qwen2.5:3b")
+            if (await s.execute(
+                select(LLMProviderRow).where(LLMProviderRow.name == "t")
+            )).scalar_one_or_none() is None:
+                s.add(LLMProviderRow(name="t", api_kind="openai", base_url="http://x/v1"))
+                await s.flush()
+            row = LLMPurposeConfigRow(
+                purpose="classification", model="qwen2.5:3b", provider_name="t",
+                api_kind="openai", base_url="http://x/v1",
+            )
             s.add(row)
         row.classifier_kind = kind
         await s.commit()

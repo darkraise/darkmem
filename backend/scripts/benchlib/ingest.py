@@ -99,9 +99,23 @@ async def pin_gate_config(session_factory, gate: GateConfig) -> dict:
         if purpose_row is not None:
             purpose_row.classifier_kind = gate.classifier_kind
         else:
+            from app.models.llm_provider import LLMProviderRow
+
             defaults = settings.llm_classification
+            if (await session.execute(
+                select(LLMProviderRow).where(LLMProviderRow.name == "bench-settings-default")
+            )).scalar_one_or_none() is None:
+                session.add(LLMProviderRow(
+                    name="bench-settings-default",
+                    api_kind=defaults.api_kind,
+                    base_url=defaults.base_url,
+                    api_key=defaults.api_key,
+                ))
+                await session.flush()
+
             session.add(LLMPurposeConfigRow(
                 purpose="classification",
+                provider_name="bench-settings-default",
                 model=defaults.model,
                 dimensions=defaults.dimensions,
                 reasoning=defaults.reasoning,

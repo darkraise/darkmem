@@ -360,11 +360,29 @@ async def setup_finalize(
         # key. See doc 11 §9.4 / T1.56.
         if body.llm is not None:
             try:
+                from app.models.llm_provider import LLMProviderRow
                 from app.services.llm_seed import (
                     DEFAULT_PROFILES,
+                    DEFAULT_PROVIDER_ROWS,
                     DEFAULT_PURPOSE_CONFIGS,
+                    default_provider_row_name_for_purpose,
                     provider_seed_by_kind,
                 )
+
+                existing_providers = {
+                    r.name: r
+                    for r in (await session.execute(select(LLMProviderRow))).scalars().all()
+                }
+                for ps in DEFAULT_PROVIDER_ROWS:
+                    prow = existing_providers.get(ps.name)
+                    if prow is None:
+                        prow = LLMProviderRow(name=ps.name)
+                        session.add(prow)
+                        existing_providers[ps.name] = prow
+                    prow.api_kind = ps.api_kind
+                    prow.base_url = ps.base_url
+                    prow.api_key = ps.api_key
+                await session.flush()
 
                 existing_rows = (
                     await session.execute(select(LLMPurposeConfigRow))
@@ -384,6 +402,7 @@ async def setup_finalize(
                     row.api_kind = pc.api_kind
                     row.base_url = pc.base_url
                     row.api_key = None
+                    row.provider_name = default_provider_row_name_for_purpose(pc.purpose)
                     row.params = dict(pc.params)
                 await session.flush()
 
@@ -391,6 +410,17 @@ async def setup_finalize(
                 user_base_url = body.llm.base_url or (
                     user_provider_seed.base_url if user_provider_seed else ""
                 )
+
+                user_provider_name = f"user-{body.llm.api_kind}"
+                uprow = existing_providers.get(user_provider_name)
+                if uprow is None:
+                    uprow = LLMProviderRow(name=user_provider_name)
+                    session.add(uprow)
+                    existing_providers[user_provider_name] = uprow
+                uprow.api_kind = body.llm.api_kind
+                uprow.base_url = user_base_url
+                uprow.api_key = body.llm.api_key
+                await session.flush()
 
                 for purpose_key, spec in body.llm.purposes.items():
                     is_embedding = (purpose_key == "embedding")
@@ -422,6 +452,7 @@ async def setup_finalize(
                     pcfg.api_kind = body.llm.api_kind
                     pcfg.base_url = user_base_url
                     pcfg.api_key = body.llm.api_key
+                    pcfg.provider_name = user_provider_name
                     pcfg.params = seed_params
                     pcfg.updated_at = datetime.now(timezone.utc)
 

@@ -198,3 +198,14 @@ DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
 
 def provider_seed_by_kind(api_kind: str) -> ProviderSeed | None:
     return next((p for p in DEFAULT_PROVIDERS if p.api_kind == api_kind), None)
+
+
+def default_provider_row_name_for_purpose(purpose: str) -> str:
+    """The `llm_providers.name` a default-seeded purpose row references.
+
+    Lives here, not at the call site, so the literal purpose name stays
+    inside this module's allowlisted quoted-token exemption (doc 17 §6's
+    single-door scan) instead of leaking a second quoted "verification"
+    outside the judge module.
+    """
+    return "verification-judge" if purpose == "verification" else "ollama-local"

@@ -1147,6 +1147,8 @@ def _pass_two() -> None:
         """
         CREATE TABLE llm_purpose_configs (
             purpose         VARCHAR(64) PRIMARY KEY,
+            provider_name   VARCHAR(64)
+                REFERENCES llm_providers(name) ON UPDATE CASCADE ON DELETE RESTRICT,
             model           VARCHAR(255) NOT NULL,
             dimensions      INTEGER,
             reasoning       BOOLEAN NOT NULL DEFAULT false,
