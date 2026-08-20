@@ -1,10 +1,12 @@
 """Purpose resolution is ONE query, and `api_kind` is the only vendor field.
 
-Doc 04 §7 and doc 11 §2 flatten the LLM config: each of the six purposes is one
-inline `llm_purpose_configs` row carrying its own connection details, so
-resolution is a single un-joined read. The `llm_providers` / `llm_profiles` /
-`ml_profiles` indirection cost three levels of resolution on every call and is
-gone.
+Doc 04 §7 and doc 11 §2 flattened the LLM config so that resolution was a
+single un-joined read of `llm_purpose_configs`; the `llm_providers` /
+`llm_profiles` / `ml_profiles` indirection cost three levels of resolution on
+every call and was gone at the baseline. The 2026-08-20 owner ruling reverses
+exactly one level of that: `llm_providers` is back, a purpose row references
+one by name, and connection details resolve across a single inner join.
+`llm_profiles` and `ml_profiles` stay gone, and one join is still one query.
 
 The one-query property is the kind that decays silently — a later change that
 resolves a reference per purpose still returns correct config, just six times
@@ -17,6 +19,7 @@ import pytest
 from sqlalchemy import event, select, text
 
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import (
     LLMConfigUpdate,
     LLMPurposeConfigSchema,
@@ -81,11 +84,17 @@ async def test_resolution_does_not_scale_with_the_number_of_rows(session):
     show up here as six, which is exactly the indirection this replaced."""
     _, empty = await _count_resolution_queries(session)
 
+    await session.execute(
+        text(
+            "INSERT INTO llm_providers (name, api_kind, base_url) "
+            "VALUES ('scale', 'openai', 'http://example.invalid/v1')"
+        )
+    )
     for purpose in PURPOSES:
         await session.execute(
             text(
-                "INSERT INTO llm_purpose_configs (purpose, model, api_kind, base_url) "
-                "VALUES (:p, 'a-model', 'openai', 'http://example.invalid/v1')"
+                "INSERT INTO llm_purpose_configs (purpose, model, provider_name) "
+                "VALUES (:p, 'a-model', 'scale')"
             ),
             {"p": purpose},
         )
@@ -96,11 +105,34 @@ async def test_resolution_does_not_scale_with_the_number_of_rows(session):
 
 
 @pytest.mark.asyncio
-async def test_resolution_joins_nothing(session):
+async def test_resolution_reads_connection_from_the_provider(session):
+    session.add(LLMProviderRow(
+        name="ds", api_kind="deepseek",
+        base_url="https://api.deepseek.com/v1", api_key="sk-x",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="extraction", model="deepseek-v4-flash", provider_name="ds",
+    ))
+    await session.flush()
+
+    cfg = (await get_llm_config(session))["extraction"]
+    assert cfg.model == "deepseek-v4-flash"
+    assert cfg.api_kind == "deepseek"
+    assert cfg.base_url == "https://api.deepseek.com/v1"
+    assert cfg.api_key == "sk-x"
+
+
+@pytest.mark.asyncio
+async def test_resolution_is_one_query_with_one_join(session):
     _, counter = await _count_resolution_queries(session)
     sql = counter.selects[0].upper()
-    assert "JOIN" not in sql
-    assert "LLM_PROVIDERS" not in sql
+    assert sql.count("JOIN") == 1
+    # An outer join contains "JOIN" once too, and would resolve a
+    # provider-less purpose row to empty connection fields instead of letting
+    # it fall back to the Settings default.
+    assert "OUTER" not in sql
+    assert "LLM_PROVIDERS" in sql
     assert "LLM_PROFILES" not in sql
     assert "ML_PROFILES" not in sql
 
@@ -109,7 +141,7 @@ async def test_resolution_joins_nothing(session):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("table", ["llm_providers", "llm_profiles", "ml_profiles"])
+@pytest.mark.parametrize("table", ["llm_profiles", "ml_profiles"])
 async def test_indirection_tables_do_not_exist(session, table):
     exists = (
         await session.execute(
@@ -159,7 +191,7 @@ async def test_api_kind_survives_as_the_vendor_field(session):
         await session.execute(
             text(
                 "SELECT count(*) FROM information_schema.columns "
-                "WHERE table_name = 'llm_purpose_configs' AND column_name = 'api_kind'"
+                "WHERE table_name = 'llm_providers' AND column_name = 'api_kind'"
             )
         )
     ).scalar_one()
@@ -167,13 +199,20 @@ async def test_api_kind_survives_as_the_vendor_field(session):
 
 
 @pytest.mark.asyncio
-async def test_resolved_config_carries_the_inline_connection_details(session):
+async def test_resolved_config_carries_the_provider_connection_details(session):
+    await session.execute(
+        text(
+            "INSERT INTO llm_providers (name, api_kind, base_url, api_key) "
+            "VALUES ('vendor', 'deepseek', "
+            "'https://api.example.invalid/v1', 'sk-test')"
+        )
+    )
     await session.execute(
         text(
             "INSERT INTO llm_purpose_configs "
-            "(purpose, model, api_kind, base_url, api_key, params) "
-            "VALUES ('extraction', 'a-model', 'deepseek', "
-            "'https://api.example.invalid/v1', 'sk-test', '{\"temperature\": 0}'::jsonb)"
+            "(purpose, model, provider_name, params) "
+            "VALUES ('extraction', 'a-model', 'vendor', "
+            "'{\"temperature\": 0}'::jsonb)"
         )
     )
     await session.flush()
@@ -224,6 +263,44 @@ async def test_config_llm_route_serves_every_purpose_it_resolves(
     assert set(PURPOSES) <= set(served)
 
 
+@pytest.mark.asyncio
+async def test_config_llm_serves_the_provider_each_purpose_resolves_through(
+    client, auth_headers, session
+):
+    """The connection fields are joined from a provider row, so the settings
+    surface needs the row's name to render which provider serves a purpose and
+    to keep a saved change visible across the refetch that follows it. Served
+    nowhere else: without this field the picker renders empty and every save
+    reads back as a revert."""
+    session.add(LLMProviderRow(
+        name="reranker-vendor", api_kind="openai",
+        base_url="https://api.example.invalid/v1",
+    ))
+    session.add(LLMProviderRow(
+        name="reranker-successor", api_kind="openai",
+        base_url="https://successor.example.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="reranker", model="a-model", provider_name="reranker-vendor",
+    ))
+    await session.flush()
+
+    served = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert served.json()["reranker"]["provider_name"] == "reranker-vendor"
+
+    written = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={"reranker": {"provider_name": "reranker-successor"}},
+    )
+    assert written.status_code == 200
+    assert written.json()["reranker"]["provider_name"] == "reranker-successor"
+
+    refetched = await client.get("/api/v1/config/llm", headers=auth_headers)
+    assert refetched.json()["reranker"]["provider_name"] == "reranker-successor"
+
+
 # ───────── the write-side asymmetry, decided per purpose (T2.106) ─────────
 
 
@@ -251,25 +328,38 @@ async def test_post_config_llm_writes_synthesis(client, auth_headers, session):
     """`synthesis` is now writable end to end: the row is created/updated
     and the change is visible both in the response and in the underlying
     table, exactly like the six always-writable purposes."""
+    # The row has to exist with a provider before the POST: resolution inner
+    # joins `llm_providers`, and a provider-less row resolves to the Settings
+    # default instead of what was just written.
+    session.add(LLMProviderRow(
+        name="synthesis-vendor", api_kind="openai",
+        base_url="https://synthesis-vendor.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="synthesis", model="", provider_name="synthesis-vendor",
+    ))
+    await session.flush()
+
     resp = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,
         json={
             "synthesis": {
-                "base_url": "https://api.example.invalid/v1",
+                "provider_name": "synthesis-vendor",
                 "model": "synthesis-test-model",
-                "api_kind": "openai",
             }
         },
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["synthesis"]["model"] == "synthesis-test-model"
+    # Served from the provider, which is the only place the connection lives.
+    assert resp.json()["synthesis"]["base_url"] == "https://synthesis-vendor.invalid/v1"
 
     row = (await session.execute(
         select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "synthesis")
     )).scalar_one()
     assert row.model == "synthesis-test-model"
-    assert row.base_url == "https://api.example.invalid/v1"
 
 
 @pytest.mark.asyncio
@@ -318,11 +408,27 @@ async def test_config_llm_serves_classifier_kind_on_the_classification_purpose(
 
 
 @pytest.mark.asyncio
-async def test_config_llm_persists_a_classifier_kind_write(client, auth_headers):
+async def test_config_llm_persists_a_classifier_kind_write(
+    client, auth_headers, session
+):
     """`config.py`'s write loop already listed the field, but
     `LLMPurposeConfigUpdate` did not declare it, so it could never appear in
     `model_fields_set` and that loop entry was dead. The POST returned 200 and
     wrote nothing."""
+    # The row has to exist with a provider before the POST: resolution inner
+    # joins `llm_providers`, and a provider-less row resolves to the Settings
+    # default instead of what was just written.
+    session.add(LLMProviderRow(
+        name="classification-vendor", api_kind="openai",
+        base_url="https://api.example.invalid/v1",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="classification", model="a-model",
+        provider_name="classification-vendor",
+    ))
+    await session.flush()
+
     response = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,
@@ -346,6 +452,103 @@ async def test_config_llm_rejects_an_unknown_classifier_kind(client, auth_header
         json={"classification": {"classifier_kind": "regex"}},
     )
     assert response.status_code == 422
+
+
+# ───────── the write side names a provider, it never carries one ─────────
+
+
+@pytest.mark.asyncio
+async def test_purpose_write_takes_a_provider_name(client, auth_headers, session):
+    """A purpose write points at a provider and the response resolves the
+    connection across the join. The POSTed body carries no base URL at all,
+    so the served one can only have come from the referenced row."""
+    session.add(LLMProviderRow(
+        name="p2", api_kind="openai", base_url="http://b/v1",
+    ))
+    await session.flush()
+
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "p2", "model": "m2"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["extraction"]["base_url"] == "http://b/v1"
+    assert resp.json()["extraction"]["model"] == "m2"
+
+    row = (await session.execute(
+        select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == "extraction")
+    )).scalar_one()
+    assert row.provider_name == "p2"
+
+
+@pytest.mark.asyncio
+async def test_unknown_provider_is_a_422(client, auth_headers):
+    """The FK would refuse this anyway, but as an IntegrityError the caller
+    sees a 500 naming a constraint. A name that resolves to nothing is a
+    client error and answers as one."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"extraction": {"provider_name": "ghost", "model": "m"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_creating_a_rowless_purpose_requires_a_provider(client, auth_headers):
+    """`provider_name` is NOT NULL, so the route cannot invent a row from a
+    model alone. Refusing here keeps that a 422 rather than the 500 the
+    not-null violation would produce."""
+    resp = await client.post(
+        "/api/v1/config/llm",
+        json={"reranker": {"model": "only-a-model"}},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    assert "provider_name" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_connection_fields_are_not_writable_on_a_purpose(
+    client, auth_headers, session
+):
+    """A POSTed `base_url` / `api_kind` / `api_key` used to be written onto the
+    purpose row, where resolution no longer reads it and where the column no
+    longer exists — so an operator rotating a key got a 200 and no change.
+    They are not declared on the update schema at all now, which makes the
+    write unrepresentable rather than merely ineffective."""
+    assert not set(LLMPurposeConfigUpdate.model_fields) & {
+        "base_url", "api_kind", "api_key",
+    }
+
+    session.add(LLMProviderRow(
+        name="inert-vendor", api_kind="openai",
+        base_url="http://provider-side.invalid/v1", api_key="provider-key",
+    ))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(
+        purpose="reranker", model="a-model", provider_name="inert-vendor",
+    ))
+    await session.flush()
+
+    resp = await client.post(
+        "/api/v1/config/llm",
+        headers=auth_headers,
+        json={
+            "reranker": {
+                "base_url": "http://posted-side.invalid/v1",
+                "api_kind": "ollama",
+                "api_key": "posted-key",
+                "model": "another-model",
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    served = resp.json()["reranker"]
+    assert served["model"] == "another-model"
+    assert served["base_url"] == "http://provider-side.invalid/v1"
+    assert served["api_kind"] == "openai"
 
 
 def test_llm_purpose_schemas_carry_no_dropped_indirection_fields():

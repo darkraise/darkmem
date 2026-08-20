@@ -1,46 +1,62 @@
 import { describe, it, expect } from "vitest"
 
-import { missingRequiredModels, type LlmDraft } from "../setupWizardStore"
+import { missingRequiredModels, type LlmDraft, type WizardProvider } from "../setupWizardStore"
+
+const provider: WizardProvider = {
+  name: "user-openai",
+  api_kind: "openai",
+  base_url: "https://api.openai.com/v1",
+  api_key: "sk-x",
+}
 
 function draft(over: Partial<LlmDraft> = {}): LlmDraft {
   return {
     skipped: false,
-    api_kind: "openai",
-    base_url: "x",
-    api_key: "",
-    supports_embedding: true,
-    models: [],
+    providers: [provider],
     perPurpose: {
-      embedding: { model: "", reasoning: false },
-      extraction: { model: "", reasoning: false },
-      classification: { model: "", reasoning: false },
-      reasoning: { model: "", reasoning: false },
-      summarization: { model: "", reasoning: false },
-      reranker: { model: "", reasoning: false },
+      embedding: { provider_name: "", model: "", reasoning: false },
+      extraction: { provider_name: "", model: "", reasoning: false },
+      classification: { provider_name: "", model: "", reasoning: false },
+      reasoning: { provider_name: "", model: "", reasoning: false },
+      summarization: { provider_name: "", model: "", reasoning: false },
+      reranker: { provider_name: "", model: "", reasoning: false },
     },
     ...over,
   }
 }
 
 describe("missingRequiredModels", () => {
-  it("lists every required purpose when all models are empty", () => {
+  it("lists every required purpose when none has a provider or model", () => {
     expect(missingRequiredModels(draft())).toEqual([
-      "embedding",
       "extraction",
       "classification",
       "reasoning",
     ])
   })
 
-  it("omits embedding when the provider has no embeddings", () => {
-    expect(missingRequiredModels(draft({ supports_embedding: false }))).not.toContain(
-      "embedding",
-    )
+  it("never lists embedding — it always falls back to the seeded default", () => {
+    expect(missingRequiredModels(draft())).not.toContain("embedding")
+    const d = draft()
+    d.perPurpose.embedding.provider_name = "user-openai"
+    expect(missingRequiredModels(d)).not.toContain("embedding")
   })
 
-  it("omits a purpose once its model is filled", () => {
+  it("keeps a purpose missing when a provider is picked but no model is", () => {
     const d = draft()
-    d.perPurpose.extraction.model = "gpt-x"
+    d.perPurpose.extraction.provider_name = "user-openai"
+    expect(missingRequiredModels(d)).toContain("extraction")
+  })
+
+  it("keeps a purpose missing when a model is typed but no provider is picked", () => {
+    const d = draft()
+    d.perPurpose.extraction.model = "gpt-4o-mini"
+    expect(missingRequiredModels(d)).toContain("extraction")
+  })
+
+  it("omits a purpose once both its provider and model are filled", () => {
+    const d = draft()
+    d.perPurpose.extraction.provider_name = "user-openai"
+    d.perPurpose.extraction.model = "gpt-4o-mini"
     expect(missingRequiredModels(d)).not.toContain("extraction")
   })
 

@@ -204,9 +204,9 @@ class ProcessingPipeline:
         self.entity_cache_stats = EntityCacheStats()
         self.last_entity_cache_stats = EntityCacheStats()
         # Short-TTL cache of the per-batch classifier resolution so process_batch
-        # doesn't open a session + run two queries on every batch just to learn
-        # whether the (rarely-set) ml_profile_ref points it at the in-process ML
-        # classifier. None means "use self.classification".
+        # doesn't open a session and re-read the config on every batch just to
+        # learn whether the (rarely-set) classifier_kind points it at the
+        # in-process ML classifier. None means "use self.classification".
         self._classifier_cache: tuple[float, object | None] | None = None
         self._classifier_cache_ttl = 30.0
 
@@ -957,8 +957,9 @@ class ProcessingPipeline:
 
         # Phase 2: Extraction and LLM classification. Classification always runs
         # alongside extraction — the regex classifier it used to A/B against is
-        # gone, so the LLM (or the in-process ML classifier when an ml_profile_ref
-        # is set) is the sole source of the llm_* enrichment columns.
+        # gone, so the LLM (or the in-process ML classifier when the
+        # classification purpose's classifier_kind is 'local') is the sole
+        # source of the enrichment columns.
         ext_prompt = prompt.get("extraction")
         cls_prompt = prompt.get("classification")
         semaphore = asyncio.Semaphore(pipeline_concurrency)
@@ -975,8 +976,8 @@ class ProcessingPipeline:
                     return exc
 
         # Pick the classifier implementation (LLM-backed, or in-process ML when
-        # the classification purpose has an ml_profile_ref). Cached for a short
-        # TTL so it isn't re-resolved with a DB round-trip on every batch.
+        # the classification purpose's classifier_kind is 'local'). Cached for a
+        # short TTL so it isn't re-resolved with a DB round-trip on every batch.
         classifier = await self._resolve_classifier()
 
         async def run_classify(content: str):
@@ -990,8 +991,8 @@ class ProcessingPipeline:
                     return None
 
         # Fold classification into the single extraction call when the classifier
-        # is the LLM-backed one (no ml_profile_ref) AND the type vocabulary is the
-        # fixed simple-7 set. In that regime extraction's ``memory_type`` already
+        # is the LLM-backed one AND the type vocabulary is the fixed simple-7
+        # set. In that regime extraction's ``memory_type`` already
         # covers the classification label, so the standalone classification call
         # only re-predicts the same type plus summary/emotions/flags — fold those
         # onto the extraction response and save a round-trip. The in-process ML

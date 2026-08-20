@@ -8,6 +8,7 @@ from .config import Config
 from .embedding import Embedder
 from .graph import Entity, EntityRelation, KnowledgeTriple
 from .llm_config import LLMPurposeConfigRow
+from .llm_provider import LLMProviderRow
 from .memory import Memory, MemoryBuffer, Tag, memory_tags
 from .pipeline_failure import PipelineFailure
 from .job_run import JobRun
@@ -36,6 +37,7 @@ __all__ = [
     "KnowledgeTriple",
     "Embedder",
     "LLMPurposeConfigRow",
+    "LLMProviderRow",
     "PipelineFailure",
     "JobRun",
 ]

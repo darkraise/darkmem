@@ -644,17 +644,67 @@ unclamped one. **T2.128 closed that on 2026-08-13**: resolution returns a
 and the verdict's numbers cannot be two resolutions, and every run that resolves
 bars prints per bar the committed value, the effective value and which of *no
 config row* / *honoured* / *CLAMPED* happened — a run with no rows saying so in
-words, because "silent" must not render like "clean". Each purpose is
-**one inline `llm_purpose_configs`
-row** carrying its own `{model, base_url, api_key, api_kind, params,
-dimensions?, reasoning?}` — resolution is one row read and no joins. The
-`llm_providers` / `llm_profiles` / `ml_profiles` indirection tables and
-their `*_id` columns were **dropped in the baseline** (doc 04 §7); the
-classification purpose carries an inline `classifier_kind` (`llm` |
-`local`) where it used to reference a profile. The eight rows are written
-by the setup wizard's finalize step from `app/services/llm_seed.py`, never
-by a migration. T1.01 owns asserting the one-query property with a
-query-counting test.
+words, because "silent" must not render like "clean".
+
+Each purpose is **one `llm_purpose_configs` row naming a shared
+`llm_providers` row** through a NOT NULL `provider_name` foreign key. The
+purpose row carries only what varies per purpose — `{model, params,
+dimensions?, reasoning?}`, plus `classifier_kind` on classification — and
+the provider row carries the connection, `{api_kind, base_url, api_key}`.
+Resolution is **one query with one join** and returns the same **flat**
+`LLMPurposeConfig` it always did. That flatness is a correctness
+requirement, not a style preference: `benchlib/caching_llm.py`'s cache key
+and `verification_judge.py`'s identity hash both fold the same six field
+*names* off the resolved object, so a nested provider or a renamed field
+would miss every cache entry on every machine (G-C's clear rests on an
+independent party reproducing a run byte-identically at 0 live calls) and
+would move the qualified judge identity. `tests/test_llm_config.py`
+asserts the one-query-one-join property with a query-counting test.
+
+**The provider layer was reinstated by the owner's ruling of 2026-08-20**
+(`docs/superpowers/specs/2026-08-20-llm-providers-design.md`), reversing
+doc 04 §7 and doc 19 §3 — which are amended, not deleted, because their
+"darkmem is not an LLM proxy" argument is still why the *resolved object*
+stayed flat. The reversal rests on one requirement the flat shape cannot
+meet: a credential rotation or endpoint move must reach every purpose that
+uses it with no re-apply step, and a live reference is the only thing that
+does that. `llm_profiles` and `ml_profiles` stay dropped along with every
+`*_id` column; the classification purpose keeps its inline
+`classifier_kind` (`llm` | `local`) where it used to reference a profile.
+The eight purpose rows **and the two provider rows** are written by the
+setup wizard's finalize step from `app/services/llm_seed.py`, never by a
+migration.
+
+**The provider serving `verification` is the one exception to that
+propagation, and the freeze is field-scoped, not row-scoped.**
+`app/services/llm_provider_guard.py` refuses a `PUT` that changes
+`base_url` or `api_kind` on it: two of the judge's six `IDENTITY_FIELDS`
+moved onto the provider row, and repointing that identity from a settings
+form is exactly the capability T2.106 refused on the purpose door. The
+read side already fails closed, so the damage would not be wrong verdicts
+— it is G-D's clear silently evaporating on an unrelated settings edit,
+and the entailment record minted 2026-08-17 is expensive to re-mint.
+**`api_key` on that provider still rotates, and rotating it is owed.** The
+key is deliberately absent from `IDENTITY_FIELDS` ("rotating a credential
+is not a model swap"), so freezing it would protect nothing while blocking
+the rotation the "Live model endpoints" ruling below says is still the only
+thing that retires the leaked judge key. A reader who takes away only "the
+judge's provider is frozen" will skip a rotation that is both permitted and
+due. Exclusivity is a **default with a remedy**, not an enforced invariant:
+the seed and the wizard give `verification` its own provider
+(`verification-judge`), the purpose write path refuses to point another
+purpose at a provider that serves it, and where a restore has already
+shared one, the escape runs the other way — repoint the *other* purposes
+off it, which stays permitted.
+
+**A deploy across this change cannot use the runbook's plain restore.** An
+old-schema `llm_purpose_configs` dump carries columns the new table does
+not have, and stripping them still violates the NOT NULL FK against a
+recreated database holding zero provider rows.
+`backend/scripts/cutover/llm_providers_transition.py` transforms such a
+dump into provider rows plus purpose rows that reference them, splitting
+`verification` onto its own provider; `docs/runbook-deployment.md` carries
+the procedure.
 
 `api_kind` selects the wire protocol and is the only place vendor
 quirks live: `openai` (compat path), `ollama` (native, exposes
@@ -677,9 +727,14 @@ honours only `reasoning_effort=none`; and `minimal` is no longer in
 OpenAI's effort set, so a config carrying it fails loud instead of 400ing
 at the vendor.
 
-LLM seeds for the eight purposes live in `app/services/llm_seed.py`, not
-in any migration. The setup wizard finalize step writes seed-plus-overlay
-into the `llm_*` config rows.
+LLM seeds for the eight purposes and the two provider rows
+(`DEFAULT_PROVIDER_ROWS`) live in `app/services/llm_seed.py`, not in any
+migration. The setup wizard finalize step writes the provider rows first,
+then seed-plus-overlay into the purpose rows. `DEFAULT_PROVIDERS` beside
+them is a vendor *catalogue* keyed by `api_kind` and is written to no
+table; conflating the two flips a fresh install's wire protocol, because
+its `ollama` entry is `api_kind='ollama'` while every seeded purpose
+resolves `api_kind='openai'` against a `/v1`-suffixed URL.
 
 ## Reproducibility
 

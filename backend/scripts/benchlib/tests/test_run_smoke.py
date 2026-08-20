@@ -57,19 +57,15 @@ def test_require_deepseek_api_key_raises_when_blank():
 
 
 def test_purpose_config_specs_matches_the_pinned_live_stack():
-    specs = {s["purpose"]: s for s in run_smoke.purpose_config_specs("sk-the-key")}
+    specs = {s["purpose"]: s for s in run_smoke.purpose_config_specs()}
 
-    assert specs["embedding"]["api_kind"] == "ollama"
-    assert specs["embedding"]["base_url"] == "http://192.168.0.196:11434"
+    assert specs["embedding"]["provider_name"] == "bench-ollama"
     assert specs["embedding"]["model"] == "qwen3-embedding:0.6b"
     assert specs["embedding"]["dimensions"] == 1024
-    assert specs["embedding"]["api_key"] is None
 
     for purpose in ("extraction", "classification"):
-        assert specs[purpose]["api_kind"] == "deepseek"
-        assert specs[purpose]["base_url"] == "https://api.deepseek.com/v1"
+        assert specs[purpose]["provider_name"] == "bench-deepseek"
         assert specs[purpose]["model"] == "deepseek-v4-flash"
-        assert specs[purpose]["api_key"] == "sk-the-key"
 
 
 def test_purpose_config_specs_seeds_reasoning_as_a_purpose_of_its_own():
@@ -77,12 +73,10 @@ def test_purpose_config_specs_seeds_reasoning_as_a_purpose_of_its_own():
     must not borrow ``extraction``'s row: benchlib.twin attributes token cost
     per purpose, so a shared purpose would file the full-context arm's cost
     under the ingest arm's."""
-    specs = {s["purpose"]: s for s in run_smoke.purpose_config_specs("sk-the-key")}
+    specs = {s["purpose"]: s for s in run_smoke.purpose_config_specs()}
 
-    assert specs["reasoning"]["api_kind"] == "deepseek"
-    assert specs["reasoning"]["base_url"] == "https://api.deepseek.com/v1"
+    assert specs["reasoning"]["provider_name"] == "bench-deepseek"
     assert specs["reasoning"]["model"] == "deepseek-v4-flash"
-    assert specs["reasoning"]["api_key"] == "sk-the-key"
     assert specs["reasoning"]["params"] == {"temperature": 0}
 
     # The no-borrowing rule as code rather than as a tautology: the arm's
@@ -107,10 +101,15 @@ async def test_seed_llm_purpose_configs_writes_a_usable_reasoning_config():
     assert cfg["reasoning"].params == {"temperature": 0}
 
 
-def test_purpose_config_specs_never_puts_the_key_on_the_embedding_purpose():
-    specs = run_smoke.purpose_config_specs("sk-the-key")
-    embedding = next(s for s in specs if s["purpose"] == "embedding")
-    assert "sk-the-key" not in repr(embedding)
+def test_purpose_config_specs_carry_no_connection_fields():
+    """Connections live on the provider rows, so a purpose spec names one and
+    carries none itself. A credential reintroduced here would be written to
+    every purpose that shares the spec shape, including the embedding one that
+    has no business holding the chat vendor's key."""
+    for spec in run_smoke.purpose_config_specs():
+        assert set(spec) == {
+            "purpose", "model", "dimensions", "params", "provider_name",
+        }, spec["purpose"]
 
 
 # ── seed_llm_purpose_configs ──────────────────────────────────────────

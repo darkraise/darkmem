@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 from app.api.mcp.server import mcp as mcp_server, set_pipeline
 from app.api.spa import mount_spa
-from app.api.routes import analytics, api_keys as api_key_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
+from app.api.routes import analytics, api_keys as api_key_routes, articles as articles_routes, auth, buffer as buffer_routes, chat, checkpoints as checkpoint_routes, code, config, distribution as distribution_routes, documents as documents_routes, dream_digest as dream_digest_routes, events as events_routes, facts as facts_routes, graph, hygiene_queue, jobs, knowledge_search as knowledge_search_routes, llm_providers, memories, overview as overview_routes, pipeline as pipeline_routes, pipeline_failures, ratification as ratification_routes, reembed, repos, review_queue, setup, system, tags, topics as topics_routes, vectors
 from app.api.websocket import websocket_endpoint
 from app.config import settings
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
@@ -841,6 +841,7 @@ app.include_router(tags.router)
 app.include_router(graph.router)
 app.include_router(analytics.router)
 app.include_router(config.router)
+app.include_router(llm_providers.router)
 app.include_router(pipeline_routes.router)
 app.include_router(vectors.router)
 app.include_router(chat.router)

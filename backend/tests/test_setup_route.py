@@ -10,6 +10,7 @@ from app.api.auth import hash_password
 from app.models.code import Repository
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 
 
 # ── status + require_uninitialized ────────────────────────────────────
@@ -259,24 +260,25 @@ async def test_setup_finalize_password_only(client, session):
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_llm(client, session):
-    """The wizard now seeds the full default provider / profile menu and
-    overlays the user's api_kind row's api_key + per-purpose model
-    selections on top. Asserts cover (a) the six canonical purpose rows
-    land, and (b) the user's model, api_kind, api_key and base_url are
-    overlaid inline on each — there is no provider or profile row to
-    resolve through any more (doc 04 §7)."""
+    """The wizard now seeds the full default provider / profile menu, writes
+    the user's declared providers, and overlays each purpose's chosen
+    provider_name + model on top. Asserts cover (a) the six canonical
+    purpose rows land, and (b) the user's model and provider (api_key, kind,
+    base_url included) are overlaid inline on each — there is no profile row
+    to resolve through any more (doc 04 §7), only the provider indirection
+    (owner ruling 2026-08-20)."""
     payload = {
         "password": "test-pw-12345",
         "llm": {
-            "api_kind": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "sk-test",
-            "supports_embedding": True,
+            "providers": [
+                {"name": "user-openai", "api_kind": "openai",
+                 "base_url": "https://api.openai.com/v1", "api_key": "sk-test"},
+            ],
             "purposes": {
-                "embedding":      {"model": "text-embedding-3-small"},
-                "extraction":     {"model": "gpt-4o-mini"},
-                "classification": {"model": "gpt-4o-mini"},
-                "reasoning":      {"model": "gpt-4o", "reasoning": True},
+                "embedding":      {"provider_name": "user-openai", "model": "text-embedding-3-small"},
+                "extraction":     {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "classification": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "reasoning":      {"provider_name": "user-openai", "model": "gpt-4o", "reasoning": True},
             },
         },
     }
@@ -284,9 +286,10 @@ async def test_setup_finalize_with_llm(client, session):
     assert response.status_code == 200, response.text
     assert response.json()["llm"]["ok"] is True
 
-    # The provider/profile indirection is gone (doc 04 §7): finalize writes
-    # the connection details straight onto each purpose row, so the
-    # assertions are about inline fields rather than resolved FKs.
+    # The profile/ml-profile indirection stays gone (doc 04 §7); the
+    # provider indirection is back (owner ruling 2026-08-20), so the
+    # connection details resolve through the referenced llm_providers row
+    # rather than living inline on the purpose row.
 
     # (a) the six canonical purposes each landed a row.
     rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
@@ -297,7 +300,8 @@ async def test_setup_finalize_with_llm(client, session):
     ):
         assert purpose in by_purpose, f"missing purpose row {purpose}"
 
-    # (b) the user's choices are overlaid inline, api_key included.
+    # (b) the user's choices are overlaid, api_key included, on the
+    # provider row each purpose references.
     for purpose, expected_model in [
         ("embedding", "text-embedding-3-small"),
         ("extraction", "gpt-4o-mini"),
@@ -306,9 +310,150 @@ async def test_setup_finalize_with_llm(client, session):
     ]:
         row = by_purpose[purpose]
         assert row.model == expected_model
-        assert row.api_kind == "openai"
-        assert row.api_key == "sk-test"
-        assert row.base_url
+        assert row.provider_name == "user-openai"
+        provider = (await session.execute(
+            select(LLMProviderRow).where(LLMProviderRow.name == row.provider_name)
+        )).scalar_one()
+        assert provider.api_kind == "openai"
+        assert provider.api_key == "sk-test"
+        assert provider.base_url
+
+
+@pytest.mark.asyncio
+async def test_setup_accepts_a_provider_list(client, session):
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [
+                {"name": "my-ds", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-x"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "my-ds", "model": "deepseek-v4-flash"},
+            },
+        },
+    })
+    assert resp.status_code == 200
+    row = (await session.execute(text(
+        "SELECT provider_name FROM llm_purpose_configs WHERE purpose='extraction'"
+    ))).scalar_one()
+    assert row == "my-ds"
+
+
+@pytest.mark.asyncio
+async def test_setup_refuses_a_provider_named_after_a_seeded_one(client, session):
+    """`verification-judge` is seeded by DEFAULT_PROVIDER_ROWS before the
+    user's own providers are written. Without a name guard, a submitted
+    provider sharing that name would resolve through `.get()` to the
+    seeded row and overwrite its base_url/api_kind — the judge's frozen
+    identity fields on the authenticated door — from this unauthenticated
+    one. Reproduces the exposure the finding describes: a re-opened setup
+    replaying a poisoned payload against a database that already carries
+    the seeded row from an earlier run."""
+    first = await client.post(
+        "/api/v1/setup",
+        json={"password": "correct-horse-battery-staple", "llm": {"purposes": {}}},
+    )
+    assert first.status_code == 200
+
+    seeded_before = (await session.execute(
+        select(LLMProviderRow).where(LLMProviderRow.name == "verification-judge")
+    )).scalar_one()
+    api_kind_before, base_url_before = seeded_before.api_kind, seeded_before.base_url
+
+    admin_row = (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one()
+    await session.delete(admin_row)
+    await session.commit()
+
+    resp = await client.post("/api/v1/setup", json={
+        "password": "second-pw-1234567",
+        "llm": {
+            "providers": [
+                {"name": "verification-judge", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-poison"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "verification-judge", "model": "deepseek-v4-flash"},
+            },
+        },
+    })
+    assert resp.status_code == 422
+    assert "verification-judge" in resp.json()["detail"]
+
+    seeded_after = (await session.execute(
+        select(LLMProviderRow).where(LLMProviderRow.name == "verification-judge")
+    )).scalar_one()
+    assert seeded_after.api_kind == api_kind_before
+    assert seeded_after.base_url == base_url_before
+
+
+@pytest.mark.asyncio
+async def test_a_refused_payload_leaves_setup_reachable(client, session):
+    """The refusal has to land before the password commit.
+
+    ``require_uninitialized`` closes every wizard endpoint the moment
+    ``admin_password_hash`` exists, so a validation error raised after step 1
+    would leave an honest operator who picked a colliding provider name with a
+    half-finalized install, one 422 and a 403 on every retry.
+    """
+    refused = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {
+            "providers": [
+                {"name": "ollama-local", "api_kind": "openai",
+                 "base_url": "http://localhost:11434/v1"},
+            ],
+            "purposes": {
+                "extraction": {"provider_name": "ollama-local", "model": "m"},
+            },
+        },
+    })
+    assert refused.status_code == 422
+
+    assert (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one_or_none() is None
+
+    status = await client.get("/api/v1/setup/status")
+    assert status.status_code == 200
+    assert status.json()["initialized"] is False
+
+    retry = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {"purposes": {
+            "extraction": {"provider_name": "ollama-local", "model": "m"},
+        }},
+    })
+    assert retry.status_code == 200, retry.text
+
+
+@pytest.mark.asyncio
+async def test_setup_refuses_pointing_a_purpose_at_the_judge_provider(
+    client, session
+):
+    """The exclusivity ``POST /api/v1/config/llm`` enforces has to hold here too.
+
+    The payload declares no provider by that name, so the reserved-name guard
+    never sees it — yet finalize would happily write the purpose row, creating
+    on the unauthenticated door the shared state the authenticated one answers
+    409 to.
+    """
+    resp = await client.post("/api/v1/setup", json={
+        "password": "correct-horse-battery-staple",
+        "llm": {"purposes": {
+            "extraction": {"provider_name": "verification-judge", "model": "m"},
+        }},
+    })
+    assert resp.status_code == 409
+    assert "verification-judge" in resp.json()["detail"]
+
+    assert (await session.execute(
+        select(Config).where(Config.key == "admin_password_hash")
+    )).scalar_one_or_none() is None
+    assert (await session.execute(select(LLMPurposeConfigRow))).scalars().all() == []
+
 
 @pytest.mark.asyncio
 async def test_setup_finalize_with_repos(client, session, tmp_path):

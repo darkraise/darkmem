@@ -15,6 +15,7 @@ from sqlalchemy import select
 
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.services.llm_seed import DEFAULT_PURPOSE_CONFIGS
 
 ADMIN_PASSWORD_KEY = "admin_password_hash"
@@ -39,15 +40,15 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
     first_payload = {
         "password": "test-pw-12345",
         "llm": {
-            "api_kind": "openai",
-            "base_url": "https://api.openai.com/v1",
-            "api_key": "sk-first",
-            "supports_embedding": True,
+            "providers": [
+                {"name": "user-openai", "api_kind": "openai",
+                 "base_url": "https://api.openai.com/v1", "api_key": "sk-first"},
+            ],
             "purposes": {
-                "embedding": {"model": "text-embedding-3-small"},
-                "extraction": {"model": "gpt-4o-mini"},
-                "classification": {"model": "gpt-4o-mini"},
-                "reasoning": {"model": "gpt-4o", "reasoning": True},
+                "embedding": {"provider_name": "user-openai", "model": "text-embedding-3-small"},
+                "extraction": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "classification": {"provider_name": "user-openai", "model": "gpt-4o-mini"},
+                "reasoning": {"provider_name": "user-openai", "model": "gpt-4o", "reasoning": True},
             },
         },
     }
@@ -72,14 +73,14 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
     second_payload = {
         "password": "test-pw-67890",
         "llm": {
-            "api_kind": "deepseek",
-            "base_url": "https://api.deepseek.com/v1",
-            "api_key": "sk-second",
-            "supports_embedding": False,
+            "providers": [
+                {"name": "user-deepseek", "api_kind": "deepseek",
+                 "base_url": "https://api.deepseek.com/v1", "api_key": "sk-second"},
+            ],
             "purposes": {
-                "extraction": {"model": "deepseek-v4-flash"},
-                "classification": {"model": "deepseek-chat"},
-                "reasoning": {"model": "deepseek-reasoner", "reasoning": True},
+                "extraction": {"provider_name": "user-deepseek", "model": "deepseek-v4-flash"},
+                "classification": {"provider_name": "user-deepseek", "model": "deepseek-chat"},
+                "reasoning": {"provider_name": "user-deepseek", "model": "deepseek-reasoner", "reasoning": True},
             },
         },
     }
@@ -97,8 +98,13 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
 
     # The second run's overlay landed cleanly, not merged with the first's.
     assert by_purpose["extraction"].model == "deepseek-v4-flash"
-    assert by_purpose["extraction"].api_kind == "deepseek"
-    assert by_purpose["extraction"].api_key == "sk-second"
+    extraction_provider = (await session.execute(
+        select(LLMProviderRow).where(
+            LLMProviderRow.name == by_purpose["extraction"].provider_name
+        )
+    )).scalar_one()
+    assert extraction_provider.api_kind == "deepseek"
+    assert extraction_provider.api_key == "sk-second"
     assert by_purpose["classification"].model == "deepseek-chat"
     assert by_purpose["reasoning"].model == "deepseek-reasoner"
 
@@ -109,7 +115,12 @@ async def test_setup_finalize_llm_reopen_is_idempotent(client, session):
         pc for pc in DEFAULT_PURPOSE_CONFIGS if pc.purpose == "embedding"
     )
     assert by_purpose["embedding"].model == embedding_default.model
-    assert by_purpose["embedding"].api_kind == embedding_default.api_kind
+    embedding_provider = (await session.execute(
+        select(LLMProviderRow).where(
+            LLMProviderRow.name == by_purpose["embedding"].provider_name
+        )
+    )).scalar_one()
+    assert embedding_provider.api_kind == embedding_default.api_kind
 
     # The two Tier-C purposes stay inert defaults across both runs; no
     # consumer overlays them, and re-running never turns them into
@@ -186,3 +197,17 @@ class TestTheSeedsOllamaEndpointIsOverridable:
         assert embedding.model == "qwen3-embedding:0.6b"
         assert embedding.dimensions == 1024
         importlib.reload(llm_seed)
+
+
+def test_the_wizard_cannot_assign_the_tier_c_purposes():
+    """Widening PURPOSE_LITERAL would put the qualified judge's connection on
+    the wizard's overlay path, which the settings write side deliberately
+    refuses."""
+    from typing import get_args
+
+    from app.api.routes.setup import PURPOSE_LITERAL
+
+    assert set(get_args(PURPOSE_LITERAL)) == {
+        "embedding", "extraction", "classification",
+        "reasoning", "summarization", "reranker",
+    }

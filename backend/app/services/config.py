@@ -1,8 +1,9 @@
 """LLM config service layer.
 
-Reads ONE table: ``llm_purpose_configs``. The provider/profile/ml-profile
-indirection is gone (doc 04 §7), so a purpose resolves from its own row
-with no joins and no overlay.
+Reads ``llm_purpose_configs`` joined to ``llm_providers``: the purpose row
+carries what varies per purpose and the provider row carries the connection,
+so resolution is one query with one join and no overlay. The profile and
+ml-profile levels of the old indirection stay gone (doc 04 §7).
 
 - ``get_llm_config(session)`` returns ``dict[purpose, LLMPurposeConfig]``
 
@@ -15,14 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import LLMPurposeConfig, settings
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import LLMPurposeConfigSchema
 
-# Legacy JSONB keys, kept only because some external scripts may still
-# reference them. Routes no longer write here; the table is the source
+# Legacy JSONB key, kept only because some external scripts may still
+# reference it. Routes no longer write here; the tables are the source
 # of truth.
 LLM_CONFIG_KEY = "llm_config"
-LLM_PROVIDERS_KEY = "llm_providers"
-LLM_PROFILES_KEY = "llm_profiles"
 
 # The six live purposes plus the two Tier-C purposes seeded by T1.05.
 # `verification`'s first writer landed in T2.26: the qualification-gated
@@ -34,6 +34,15 @@ PURPOSES = [
     "summarization", "reranker", "synthesis", "verification",
 ]
 
+# This module owns the purpose vocabulary, so a surface that needs to name
+# one purpose imports it from here rather than re-deriving it. A written-out
+# literal, not an index into PURPOSES: the list's order is not a documented
+# contract, and a ninth purpose appended after this one would silently
+# repoint an index-based constant at the wrong row with no test failing.
+# A provider-management surface asking "does this provider serve the judge?"
+# needs this name, never the judge module itself.
+VERIFICATION_PURPOSE = "verification"
+
 
 def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeConfigSchema:
     return LLMPurposeConfigSchema(
@@ -43,14 +52,17 @@ def cfg_to_schema(cfg: LLMPurposeConfig, mask_key: bool = True) -> LLMPurposeCon
         api_kind=getattr(cfg, "api_kind", "openai"),
         params=cfg.params,
         classifier_kind=getattr(cfg, "classifier_kind", None),
+        provider_name=getattr(cfg, "provider_name", None),
     )
 
 
 async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
-    """Read every purpose config from its own row — one query, no joins.
+    """Read every purpose config in one query with one join.
 
     Falls back to ``Settings.llm_*`` defaults for purposes not in the table,
     so a fresh install or a user who has not customised yet still works.
+    The join is inner, so a purpose row with no provider takes that same
+    fallback rather than resolving against an empty connection.
     """
     defaults = {
         "embedding": settings.llm_embedding,
@@ -63,23 +75,30 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
         "verification": settings.llm_verification,
     }
 
-    rows = (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
-    by_purpose = {row.purpose: row for row in rows}
+    stmt = select(LLMPurposeConfigRow, LLMProviderRow).join(
+        LLMProviderRow, LLMPurposeConfigRow.provider_name == LLMProviderRow.name
+    )
+    by_purpose = {
+        row.purpose: (row, provider)
+        for row, provider in await session.execute(stmt)
+    }
 
     merged: dict[str, LLMPurposeConfig] = {}
     for purpose in PURPOSES:
-        row = by_purpose.get(purpose)
-        if row is None:
+        pair = by_purpose.get(purpose)
+        if pair is None:
             merged[purpose] = defaults[purpose]
             continue
+        row, provider = pair
         merged[purpose] = LLMPurposeConfig(
-            base_url=row.base_url,
+            base_url=provider.base_url,
             model=row.model,
-            api_key=row.api_key,
+            api_key=provider.api_key,
             dimensions=row.dimensions,
             reasoning=row.reasoning,
-            api_kind=row.api_kind,
+            api_kind=provider.api_kind,
             params=row.params or {},
             classifier_kind=row.classifier_kind,
+            provider_name=provider.name,
         )
     return merged

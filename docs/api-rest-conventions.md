@@ -43,8 +43,10 @@ Collections are plural nouns; sub-resources nest (`/repos/{id}/tasks`).
   also processed server-side **in series** to avoid the graph-cleanup deadlock
   that concurrent per-row deletes hit.
 - **`PUT` on a config singleton/collection** to replace it wholesale
-  (`/config/llm-providers`, `/llm-profiles`, `/feature-flags`, `/system-prompts`,
-  `/repos-path`, `/config/theme`) — idempotent full-replace. `GET /config/theme`
+  (`/config/llm-providers/{name}`, `/feature-flags`, `/system-prompts`,
+  `/repos-path`, `/config/theme`) — idempotent full-replace. (`/llm-profiles`
+  was in this list until 2026-08-20 and is gone for good; `/config/llm-providers`
+  is back, on a reinstated `llm_providers` table — doc 04 §7's amendment box.) `GET /config/theme`
   is deliberately unauthenticated: the frontend theme loads at boot, before
   login, and the payload is pure UI cosmetics.
 
@@ -80,7 +82,7 @@ These are minor verb/consistency deviations left as-is because changing them
 would break existing frontend clients for marginal benefit. Fix only with a
 coordinated client update:
 
-- `POST /config/llm` sets the six-purpose LLM config (idempotent full replace);
+- `POST /config/llm` sets the writable purpose set (idempotent full replace);
   for symmetry with its `PUT` siblings it should be `PUT /config/llm`.
 - `DELETE /repos/{repo_id}/tasks/{task_id}` cancels a running task; a clearer
   model is `POST /repos/{repo_id}/tasks/{task_id}/cancel` (cancel ≠ remove, and

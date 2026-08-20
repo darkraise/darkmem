@@ -19,6 +19,7 @@ import httpx
 import pytest
 
 from app.config import LLMPurposeConfig
+from app.models.llm_provider import LLMProviderRow
 from app.services.llm import LLMOrchestrator
 
 
@@ -110,7 +111,9 @@ async def test_pipeline_swap_is_atomic_under_concurrency():
 
 
 @pytest.mark.asyncio
-async def test_route_reload_swaps_state_and_pipeline_together(client, auth_headers, monkeypatch):
+async def test_route_reload_swaps_state_and_pipeline_together(
+    client, auth_headers, monkeypatch, session
+):
     """POST /api/v1/config/llm installs the new orchestrator on
     ``app.state.llm`` and on every pipeline reference in the same request —
     proving the HTTP-triggered reload path (not just the helper in
@@ -128,16 +131,18 @@ async def test_route_reload_swaps_state_and_pipeline_together(client, auth_heade
     fake_pipeline = FakePipeline(old_llm)
     monkeypatch.setattr(app.state, "pipeline", fake_pipeline, raising=False)
 
+    # The connection is the provider's; a purpose write names one rather than
+    # carrying a base URL, and creating the row needs the name to resolve.
+    session.add(LLMProviderRow(
+        name="reload-vendor", api_kind="openai",
+        base_url="https://api.openai.com/v1",
+    ))
+    await session.flush()
+
     resp = await client.post(
         "/api/v1/config/llm",
         headers=auth_headers,
-        json={
-            "reasoning": {
-                "base_url": "https://api.openai.com/v1",
-                "model": "gpt-4o-mini",
-                "api_kind": "openai",
-            }
-        },
+        json={"reasoning": {"provider_name": "reload-vendor", "model": "gpt-4o-mini"}},
     )
     assert resp.status_code == 200, resp.text
 
@@ -164,6 +169,12 @@ async def test_reload_failure_keeps_prior_orchestrator(client, auth_headers, mon
     from app.main import app
     from app.services.config import get_llm_config as fetch_cfg
 
+    session.add(LLMProviderRow(
+        name="reload-failure-vendor", api_kind="openai",
+        base_url="https://api.openai.com/v1",
+    ))
+    await session.flush()
+
     initial_config = await fetch_cfg(session)
     good_llm = LLMOrchestrator(initial_config)
     monkeypatch.setattr(app.state, "llm", good_llm, raising=False)
@@ -179,9 +190,8 @@ async def test_reload_failure_keeps_prior_orchestrator(client, auth_headers, mon
             headers=auth_headers,
             json={
                 "reasoning": {
-                    "base_url": "https://api.openai.com/v1",
+                    "provider_name": "reload-failure-vendor",
                     "model": "gpt-4o-mini",
-                    "api_kind": "openai",
                 }
             },
         )

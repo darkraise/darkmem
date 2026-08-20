@@ -2,9 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
 export interface LlmPurposeConfig {
-  // No `provider`: it duplicated `api_kind` and nothing dispatched on it, so
-  // T1.01 dropped the column and the wire key together (F-10). `api_kind` is
-  // the sole vendor field.
+  // Which `llm_providers` row this purpose resolves through. Served on the
+  // read side and accepted on the write side (`POST /config/llm`); null only
+  // when the purpose has no row and resolution fell back to a built-in
+  // default. base_url/api_kind/api_key below are the resolved, read-only view
+  // joined from that row — they are not declared on the update schema, so
+  // posting them back is silently dropped.
+  provider_name: string | null
   base_url: string
   model: string
   api_key: string | null

@@ -16,6 +16,7 @@ from app.config import FEATURE_FLAGS_DEFAULTS
 from app.database import get_session
 from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
+from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import (
     LLMConfigResponse,
     LLMConfigUpdate,
@@ -32,6 +33,10 @@ from app.services.research_config import (
     write_auto_research_config,
 )
 from app.services.config import get_llm_config as fetch_llm_config
+from app.services.llm_provider_guard import (
+    assert_not_verification_provider,
+    verification_provider,
+)
 from app.services.feature_flags import (
     FEATURE_FLAGS_KEY,
     MEASURABLE_FLAGS,
@@ -67,10 +72,10 @@ def _swap_pipeline_llm(pipeline, new_llm) -> None:
     if classification_svc is not None:
         classification_svc.llm = new_llm
     # The pipeline caches its per-batch classifier resolution (LLM vs in-process
-    # ML, keyed on the classification purpose's ml_profile_ref) for a short TTL.
-    # A config save can flip that ref, so drop the cache here — the same place
-    # the LLM references are swapped — to honor the per-batch contract instead of
-    # serving the stale classifier until the TTL lapses.
+    # ML, keyed on the classification purpose's classifier_kind) for a short
+    # TTL. A config save can flip that field, so drop the cache here — the same
+    # place the LLM references are swapped — to honor the per-batch contract
+    # instead of serving the stale classifier until the TTL lapses.
     if hasattr(pipeline, "_classifier_cache"):
         pipeline._classifier_cache = None
 
@@ -110,6 +115,52 @@ def _replace_orchestrator(request: Request, new_llm) -> None:
         spawn(_close_orchestrator_safely(old_llm), name="close-orchestrator")
 
 
+async def apply_llm_config_change(
+    request: Request, session: AsyncSession
+) -> dict[str, int] | None:
+    """Re-resolve config, install a fresh orchestrator, and count re-embed work.
+
+    The caller must already hold ``app.state.llm_config_lock``. Both the
+    purpose route and the provider routes change connection details, so both
+    go through this; two copies would drift and one of them would keep
+    calling the old endpoint until restart.
+    """
+    from app.services.llm import LLMOrchestrator
+
+    updated_config = await fetch_llm_config(session)
+    new_llm = LLMOrchestrator(updated_config)
+    _replace_orchestrator(request, new_llm)
+
+    # Resolve the dimensions of the new embedder before updating the
+    # fingerprint. Prefer the explicit user value; otherwise probe the
+    # model; otherwise leave it unset and let the next embed call populate
+    # the registry on demand.
+    new_embedding_dims: int | None = updated_config["embedding"].dimensions
+    if new_embedding_dims is None:
+        try:
+            probe, _ = await new_llm.embed("dimension probe")
+            new_embedding_dims = len(probe)
+        except Exception as exc:
+            logger.warning("Could not probe new embedder dimensions: %s", exc)
+
+    pipeline = getattr(request.app.state, "pipeline", None)
+
+    obsolete_after_change = None
+    if pipeline is not None and new_embedding_dims:
+        from app.services.reembed import ReembedService
+        reembed_svc = ReembedService(session)
+        # Build the partition fingerprint with the canonical helper so the
+        # ``model|dims`` format can never drift from what the embed methods
+        # emit. ``new_embedding_dims`` is the probed/explicit dimension,
+        # which may differ from the (possibly-unset) configured value.
+        new_fp = LLMOrchestrator._fingerprint(
+            updated_config["embedding"].model, new_embedding_dims
+        )
+        obsolete_after_change = await reembed_svc.count_missing(new_fp)
+
+    return obsolete_after_change
+
+
 @router.get("/llm", response_model=LLMConfigResponse)
 async def get_llm_config(
     _user=Depends(require_auth),
@@ -119,8 +170,8 @@ async def get_llm_config(
     return LLMConfigResponse(**{p: cfg_to_schema(c) for p, c in config.items()})
 
 
-# Known REST deviation: this is an idempotent full-replace of the six-purpose
-# LLM config, so for symmetry with its PUT siblings (llm-providers, llm-profiles,
+# Known REST deviation: this is an idempotent full-replace of the writable
+# purpose set, so for symmetry with its PUT siblings (llm-providers,
 # feature-flags) it should be PUT /config/llm. Left as POST because changing it
 # would break existing frontend clients. See docs/api-rest-conventions.md
 # ("Known deviations").
@@ -131,8 +182,6 @@ async def update_llm_config(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
-    from app.services.llm import LLMOrchestrator
-
     # Serialise concurrent config swaps so two admins saving at once can't
     # leave ``app.state.llm`` and ``app.state.pipeline`` wired to different
     # orchestrators.
@@ -152,20 +201,51 @@ async def update_llm_config(
                 for k, v in update_data[purpose].items()
                 if k in purpose_update.model_fields_set
             }
-            # Sentinel: "***" means "don't rotate the stored API key".
-            if incoming.get("api_key") == "***":
-                incoming.pop("api_key")
+            # The FK would refuse an unknown provider with an IntegrityError,
+            # which reaches the caller as a 500 naming a constraint; a bad name
+            # in a settings form is a client error, so say so.
+            if "provider_name" in incoming:
+                known = (await session.execute(
+                    select(LLMProviderRow.name)
+                    .where(LLMProviderRow.name == incoming["provider_name"])
+                )).scalar_one_or_none()
+                if known is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"unknown provider_name {incoming['provider_name']!r}",
+                    )
 
             row = (await session.execute(
                 select(LLMPurposeConfigRow).where(LLMPurposeConfigRow.purpose == purpose)
             )).scalar_one_or_none()
+            if "provider_name" in incoming:
+                # Read before the row below is created, so a brand-new purpose
+                # cannot present the provider it is being pointed at as the one
+                # it already used and slip past the refusal.
+                assert_not_verification_provider(
+                    incoming["provider_name"],
+                    await verification_provider(session),
+                    purpose,
+                    row.provider_name if row is not None else None,
+                )
             if row is None:
-                row = LLMPurposeConfigRow(purpose=purpose, model="")
+                if "provider_name" not in incoming:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"purpose {purpose!r} has no row yet; "
+                            "provider_name is required"
+                        ),
+                    )
+                row = LLMPurposeConfigRow(
+                    purpose=purpose, model="",
+                    provider_name=incoming["provider_name"],
+                )
                 session.add(row)
 
             for field in (
-                "model", "dimensions", "reasoning", "api_kind",
-                "base_url", "api_key", "params", "classifier_kind",
+                "model", "provider_name", "dimensions", "reasoning",
+                "params", "classifier_kind",
             ):
                 if field in incoming:
                     setattr(row, field, incoming[field])
@@ -173,40 +253,21 @@ async def update_llm_config(
 
         await session.flush()
 
-        # Re-resolve through ``fetch_llm_config`` so profile-referenced
-        # purposes get their connection fields overlaid before the
-        # orchestrator goes live. ``new_value`` itself stays unresolved on
-        # disk by design — the overlay is applied at read time.
+        obsolete_after_change = await apply_llm_config_change(request, session)
+
+        # Re-read through ``fetch_llm_config`` for the response payload: a
+        # purpose row carries no connection of its own, so the base URL, key
+        # and api_kind the client sees only come from resolving the provider
+        # join again.
         updated_config = await fetch_llm_config(session)
-        new_llm = LLMOrchestrator(updated_config)
-        _replace_orchestrator(request, new_llm)
 
-        # Resolve the dimensions of the new embedder before updating the
-        # fingerprint. Prefer the explicit user value; otherwise probe the
-        # model; otherwise leave it unset and let the next embed call
-        # populate the registry on demand.
-        new_embedding_dims: int | None = updated_config["embedding"].dimensions
-        if new_embedding_dims is None:
-            try:
-                probe, _ = await new_llm.embed("dimension probe")
-                new_embedding_dims = len(probe)
-            except Exception as exc:
-                logger.warning("Could not probe new embedder dimensions: %s", exc)
-
-        pipeline = getattr(request.app.state, "pipeline", None)
-
-        obsolete_after_change = None
-        if pipeline is not None and new_embedding_dims:
-            from app.services.reembed import ReembedService
-            reembed_svc = ReembedService(session)
-            # Build the partition fingerprint with the canonical helper so the
-            # ``model|dims`` format can never drift from what the embed methods
-            # emit. ``new_embedding_dims`` is the probed/explicit dimension,
-            # which may differ from the (possibly-unset) configured value.
-            new_fp = LLMOrchestrator._fingerprint(
-                updated_config["embedding"].model, new_embedding_dims
-            )
-            obsolete_after_change = await reembed_svc.count_missing(new_fp)
+        # Commit before releasing the lock, not in ``get_session``'s teardown
+        # after this handler returns: a flushed-but-uncommitted write is
+        # invisible to the next lock holder under READ COMMITTED, so
+        # releasing the lock first only narrows the race it exists to close
+        # rather than closing it. The provider routes commit inside their
+        # own lock blocks for the same reason.
+        await session.commit()
 
     purpose_payload = {p: cfg_to_schema(c) for p, c in updated_config.items()}
     return LLMConfigUpdateResponse(

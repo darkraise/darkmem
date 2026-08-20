@@ -487,6 +487,26 @@ PARITY_TABLE: tuple[Surface, ...] = (
         ),
     ),
     Surface(
+        name="config.llm_providers",
+        status=REST_ONLY,
+        rest=(
+            ("GET", f"{V1}/config/llm-providers"),
+            ("POST", f"{V1}/config/llm-providers"),
+            ("PUT", f"{V1}/config/llm-providers/{{name}}"),
+            ("DELETE", f"{V1}/config/llm-providers/{{name}}"),
+            ("POST", f"{V1}/config/llm-providers/probe-models"),
+            ("POST", f"{V1}/config/llm-providers/{{name}}/probe-models"),
+        ),
+        reason=(
+            "Provider management is operator configuration, not an agent "
+            "capability -- the same posture as config.runtime, split into its "
+            "own surface because it is a distinct resource. An agent has no "
+            "business rotating the operator's vendor credentials, and /mcp is "
+            "unauthenticated on a local-network trust model, so putting "
+            "credential writes there would be a genuine security regression."
+        ),
+    ),
+    Surface(
         name="analytics.observability",
         status=REST_ONLY,
         rest=(

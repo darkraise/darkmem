@@ -1116,29 +1116,49 @@ def _pass_two() -> None:
         """
     )
 
-    # Six inline rows, PK (purpose). darkmem is not an LLM proxy, so the
-    # provider/profile/ml_profile indirection is gone: llm_providers,
-    # llm_profiles and ml_profiles never exist in the baseline, and their three
-    # FK columns go with them (inventory §8, F-08 — none was named *_ref).
-    # classifier_kind replaces the deleted ml_profiles reference.
-    # The six rows themselves are written by the setup wizard's finalize step
+    # Eight rows, PK (purpose), each naming a provider rather than carrying
+    # its connection inline. llm_profiles and ml_profiles never exist in the
+    # baseline, and their FK columns go with them (inventory §8, F-08 — none
+    # was named *_ref). classifier_kind replaces the deleted ml_profiles
+    # reference. llm_providers is reinstated below by the owner ruling of
+    # 2026-08-20, reversing doc 04 §7's flattening.
+    # The rows themselves are written by the setup wizard's finalize step
     # from app/services/llm_seed.py, never by a migration.
+
+    # ------------------------------------------------------------------
+    # llm_providers — the connection layer under the purposes
+    # ------------------------------------------------------------------
+    # Reinstated by the owner ruling of 2026-08-20, reversing doc 04 §7's
+    # flattening. A purpose references a provider by name; resolution is one
+    # query with one join and still yields a flat LLMPurposeConfig, which is
+    # what keeps the benchlib cache key and the judge identity hash stable.
     op.execute(
         """
-        CREATE TABLE llm_purpose_configs (
-            purpose         VARCHAR(64) PRIMARY KEY,
-            model           VARCHAR(255) NOT NULL,
-            dimensions      INTEGER,
-            reasoning       BOOLEAN NOT NULL DEFAULT false,
+        CREATE TABLE llm_providers (
+            name       VARCHAR(64) PRIMARY KEY,
             -- The sole vendor-quirk home (doc 04 §7, doc 11 §4). The `provider`
             -- column A.2 showed at HEAD is dropped (F-10, decided by T1.01):
             -- nothing ever dispatched on it — the wizard wrote it as a verbatim
             -- copy of api_kind and every read carried it along unused — so a
             -- second vendor column could only ever drift away from the one that
             -- decides behaviour.
-            api_kind        VARCHAR(32) NOT NULL DEFAULT 'openai',
-            base_url        VARCHAR(512) NOT NULL DEFAULT '',
-            api_key         VARCHAR(1024),
+            api_kind   VARCHAR(32)  NOT NULL DEFAULT 'openai',
+            base_url   VARCHAR(512) NOT NULL DEFAULT '',
+            api_key    VARCHAR(1024),
+            updated_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+        )
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE llm_purpose_configs (
+            purpose         VARCHAR(64) PRIMARY KEY,
+            provider_name   VARCHAR(64) NOT NULL
+                REFERENCES llm_providers(name) ON UPDATE CASCADE ON DELETE RESTRICT,
+            model           VARCHAR(255) NOT NULL,
+            dimensions      INTEGER,
+            reasoning       BOOLEAN NOT NULL DEFAULT false,
             params          JSONB NOT NULL DEFAULT '{}'::jsonb,
             classifier_kind VARCHAR(16),
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1433,6 +1453,7 @@ def downgrade() -> None:
         "memories",
         "embedders",
         "config",
+        "llm_providers",
     ):
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
 

@@ -47,7 +47,11 @@ describe("LLMTab", () => {
       expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
     }
     // The removed chrome is shown struck-through, not silently omitted.
-    expect(screen.getByText("llm-providers tab")).toBeInTheDocument()
+    // "llm-providers tab" is no longer in this list: the Providers sub-tab
+    // edits a separate shared `llm_providers` connection row, so this entry
+    // left the removed-chrome list; the profiles and ml-profiles entries
+    // stay, those panels really are gone.
+    expect(screen.getByText("llm-profiles tab")).toBeInTheDocument()
     expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
   })
 
@@ -108,8 +112,8 @@ describe("LLMTab", () => {
 
   it("save shows the live-reload confirmation with the trace", () => {
     renderTab()
-    const input = screen.getByLabelText("reasoning base_url")
-    fireEvent.change(input, { target: { value: "api.openai.com/v2" } })
+    const input = screen.getByLabelText("reasoning model")
+    fireEvent.change(input, { target: { value: "gpt-5.1" } })
     const saves = screen.getAllByRole("button", { name: "Save" })
     const enabled = saves.find((b) => !(b as HTMLButtonElement).disabled)
     expect(enabled).toBeDefined()
@@ -119,7 +123,7 @@ describe("LLMTab", () => {
     expect(toast.success).toHaveBeenCalledWith(
       "Saved — reasoning purpose updated",
       expect.objectContaining({
-        description: expect.stringMatching(/base_url.*no redeploy/),
+        description: expect.stringMatching(/model.*no redeploy/),
       }),
     )
   })

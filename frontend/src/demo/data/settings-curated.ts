@@ -137,15 +137,21 @@ export const CURATED_FLAGS: DemoFlagsState = {
 }
 
 // ---------------------------------------------------------------------------
-// S26 — LLM. Seven inline purpose cards (six live plus seeded-inert
-// `synthesis`, writable since T2.106); no provider/profile chrome.
+// S26 — LLM. Seven purpose cards (six live plus seeded-inert `synthesis`,
+// which is writable), each naming a shared provider row; no profile or
+// ml-profile chrome.
 // ---------------------------------------------------------------------------
 
+// Provider names below mirror the shared `llm_providers` connection rows
+// the Providers sub-tab edits: "ollama-local" serves four purposes (the
+// point of the consolidation — one credential, four routes), "zai-primary"
+// and "openai-primary" each serve one.
 export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
   {
     purpose: "embedding",
     tier: "tier A / B / C",
     role: "every vector: content, entity, code chunk, query",
+    provider_name: "ollama-local",
     model: "qwen3-embedding:0.6b",
     api_kind: "ollama",
     base_url: "localhost:11434",
@@ -157,6 +163,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "extraction",
     tier: "tier B",
     role: "the merged ingest call — entities + relations + classification fields",
+    provider_name: "ollama-local",
     model: "qwen3:4b-instruct",
     api_kind: "ollama",
     base_url: "localhost:11434",
@@ -172,6 +179,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "classification",
     tier: "tier B",
     role: "classification, folded into extraction in simple mode",
+    provider_name: "ollama-local",
     model: "qwen3:4b-instruct",
     api_kind: "ollama",
     base_url: "localhost:11434",
@@ -183,6 +191,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "summarization",
     tier: "tier B / C",
     role: "code enrichment + wiki, fanning out to three code-summarization buckets; Tier-C topic/community reports",
+    provider_name: "ollama-local",
     model: "qwen3:4b-instruct",
     api_kind: "ollama",
     base_url: "localhost:11434",
@@ -194,6 +203,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "reranker",
     tier: "tier A",
     role: "retrieval rerank scoring, top-40 RRF rows, flag-gated",
+    provider_name: "zai-primary",
     model: "glm-4.6-flash",
     api_kind: "zai",
     base_url: "api.z.ai/api/paas/v4",
@@ -209,6 +219,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "reasoning",
     tier: "tier A / C",
     role: "memory_reason, conversational chat, Tier-C dream-refine judgments",
+    provider_name: "openai-primary",
     model: "gpt-5.1-mini",
     api_kind: "openai",
     base_url: "api.openai.com/v1",
@@ -220,6 +231,7 @@ export const CURATED_LLM_PURPOSES: DemoLLMPurpose[] = [
     purpose: "synthesis",
     tier: "tier C",
     role: "Layer-3 article write-ups, auto-research write-ups",
+    provider_name: "ollama-local",
     model: "qwen2.5:3b",
     api_kind: "ollama",
     base_url: "localhost:11434",

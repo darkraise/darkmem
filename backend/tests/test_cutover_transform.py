@@ -150,6 +150,11 @@ CREATE TABLE knowledge_triples (id UUID NOT NULL PRIMARY KEY, subject TEXT);
 CREATE TABLE config (key VARCHAR(255) NOT NULL PRIMARY KEY, value JSONB NOT NULL);
 """
 
+# Empty stand-ins for the source tables the transform never reads, so preflight's
+# source-table assertion is satisfied. llm_providers belongs here on the strength
+# of the 0006 schema alone: the baseline gained a table of that name in the
+# 2026-08-20 provider reinstatement, but with a different key and different
+# columns, and no row crosses between them.
 STUB_TABLES = (
     "audit_log",
     "code_edges",

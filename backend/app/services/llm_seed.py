@@ -23,12 +23,18 @@ Why pure Python instead of an Alembic seed:
 Layout:
 
 * ``DEFAULT_PROVIDERS`` — one row per supported vendor, ``api_key=None``.
+  A catalogue keyed by ``api_kind``; each ``DEFAULT_PROFILES`` entry
+  names one of these rows in its ``provider_name`` field. Not written
+  to any table itself — the frontend owns its own base-URL defaults
+  (``StepLLM.tsx``'s ``BASE_URL_DEFAULTS``) and does not read this list.
 * ``DEFAULT_PROFILES``  — preset bundles of model + params per vendor.
   Naming convention is ``<api_kind>-<tier-?><purpose>`` (e.g.
   ``openai-extraction``, ``deepseek-flash-classification``).
 * ``DEFAULT_PURPOSE_CONFIGS`` — one row per pipeline purpose. The
   defaults all point at the local Ollama install so a no-credentials
   fresh install can still run end-to-end against models on the host.
+* ``DEFAULT_PROVIDER_ROWS`` — the rows actually written to the
+  ``llm_providers`` table, distinct from ``DEFAULT_PROVIDERS`` above.
 """
 from __future__ import annotations
 
@@ -90,6 +96,30 @@ DEFAULT_PROVIDERS: list[ProviderSeed] = [
     ProviderSeed("google",    "google",    "https://generativelanguage.googleapis.com/v1beta/openai", "google",   True),
     ProviderSeed("deepseek",  "deepseek",  "https://api.deepseek.com/v1",                            "deepseek",  False),
     ProviderSeed("zai",       "zai",       "https://api.z.ai/api/paas/v4",                           "zai",       True),
+]
+
+
+@dataclass(frozen=True)
+class ProviderRowSeed:
+    name: str
+    api_kind: str
+    base_url: str
+    api_key: str | None = None
+
+
+# The rows actually written to `llm_providers`. DEFAULT_PROVIDERS above stays a
+# vendor *catalogue* keyed by api_kind — it is not this list, and conflating
+# the two flips the wire protocol: its `ollama` entry is api_kind='ollama'
+# (the native /api path) while every purpose below resolves api_kind='openai'
+# against a /v1-suffixed URL (the compat path).
+#
+# `verification-judge` exists so the verification purpose does not share a
+# provider by default: two of the judge's six identity fields (base_url,
+# api_kind) live on the provider row, so a shared provider would put the
+# qualification identity behind an unrelated edit.
+DEFAULT_PROVIDER_ROWS: list[ProviderRowSeed] = [
+    ProviderRowSeed("ollama-local", "openai", OLLAMA_BASE_URL),
+    ProviderRowSeed("verification-judge", "openai", OLLAMA_BASE_URL),
 ]
 
 
@@ -167,5 +197,12 @@ DEFAULT_PURPOSE_CONFIGS: list[PurposeConfigSeed] = [
 ]
 
 
-def provider_seed_by_kind(api_kind: str) -> ProviderSeed | None:
-    return next((p for p in DEFAULT_PROVIDERS if p.api_kind == api_kind), None)
+def default_provider_row_name_for_purpose(purpose: str) -> str:
+    """The `llm_providers.name` a default-seeded purpose row references.
+
+    Lives here, not at the call site, so the literal purpose name stays
+    inside this module's allowlisted quoted-token exemption (doc 17 §6's
+    single-door scan) instead of leaking a second quoted "verification"
+    outside the judge module.
+    """
+    return "verification-judge" if purpose == "verification" else "ollama-local"

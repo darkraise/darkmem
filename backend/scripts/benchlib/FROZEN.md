@@ -161,17 +161,35 @@ extractor miss it structurally cannot avoid. (Latent today: every
 
 `reset_bench_db()` drops the whole `public` schema, which destroys every
 `llm_*` config row along with everything else. `run_smoke.py` therefore
-seeds four `llm_purpose_configs` rows itself, after every reset and before
-building the orchestrator's config, via
-`run_smoke.seed_llm_purpose_configs()`. These are the actual seeded values
-(GLOBAL.md, verified reachable by the controller on 2026-07-26):
+seeds two `llm_providers` rows and four `llm_purpose_configs` rows itself,
+after every reset and before building the orchestrator's config, via
+`run_smoke.seed_llm_purpose_configs()` — which calls
+`run_smoke.seed_llm_providers()` first, because `provider_name` is a NOT
+NULL foreign key and a purpose insert against an empty provider table
+fails. These are the actual seeded values (GLOBAL.md, verified reachable
+by the controller on 2026-07-26):
 
-| purpose | api_kind | base_url | model | dimensions | api_key | params |
-|---|---|---|---|---|---|---|
-| `embedding` | `ollama` | `http://192.168.0.196:11434` | `qwen3-embedding:0.6b` | 1024 | none — Ollama is unauthenticated on this network | `{}` |
-| `extraction` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{}` |
-| `classification` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{}` |
-| `reasoning` | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-v4-flash` | — | `DEEPSEEK_API_KEY` env var, read at run time | `{"temperature": 0}` |
+| provider (`BENCH_PROVIDERS`) | api_kind | base_url | api_key |
+|---|---|---|---|
+| `bench-ollama` | `ollama` | `http://192.168.0.196:11434` | none — Ollama is unauthenticated on this network |
+| `bench-deepseek` | `deepseek` | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` env var, read at run time |
+
+| purpose | provider_name | model | dimensions | params |
+|---|---|---|---|---|
+| `embedding` | `bench-ollama` | `qwen3-embedding:0.6b` | 1024 | `{}` |
+| `extraction` | `bench-deepseek` | `deepseek-v4-flash` | — | `{}` |
+| `classification` | `bench-deepseek` | `deepseek-v4-flash` | — | `{}` |
+| `reasoning` | `bench-deepseek` | `deepseek-v4-flash` | — | `{"temperature": 0}` |
+
+**Splitting the rows across two tables moved no seeded value.** Every
+`api_kind`, `base_url`, `model`, `dimensions` and `params` above is
+byte-identical to what the single-table seed wrote before the 2026-08-20
+provider layer landed, and resolution still returns the same flat
+`LLMPurposeConfig`. The cache key folds those field names off the resolved
+object, so an unchanged value means an unchanged key: **every existing
+cache entry still hits, and no gate re-measurement is implied by this
+change.** A run that suddenly makes live calls after it is not paying for
+the provider split — find the real cause.
 
 `reasoning` is the full-context baseline arm's purpose
 (`benchlib/full_context.py`). It must stay a purpose of its own and must not
@@ -183,13 +201,15 @@ comparison exists to produce. It is also the only seeded purpose that pins
 `params`, and `params` is inside the cache-key identity, so changing it is a
 deliberate, visible cache invalidation for that purpose alone.
 
-The rows are written inline (`provider_id`/`profile_id` left `NULL`) rather
-than through the setup wizard's provider/profile bookkeeping —
-`LLMPurposeConfigRow` supports a purpose running standalone this way; see
-`app/api/routes/setup.py`'s finalize handler for the full wizard path this
-intentionally does not replicate. `seed_llm_purpose_configs()` is
-update-or-insert per purpose, so it is safe to call again against a schema
-it already seeded.
+The rows are written directly rather than through the setup wizard's
+finalize handler — see `app/api/routes/setup.py` for the full wizard path
+this intentionally does not replicate, including the seeded
+`ollama-local` / `verification-judge` providers, which the bench does not
+want. Both seeders are update-or-insert per row, so they are safe to call
+again against a schema they already seeded (one reset cycle serves two
+passes). The DeepSeek key is set on the provider row at run time and never
+on a purpose row: the purpose table has carried no `api_key` column since
+the provider layer landed.
 
 The DeepSeek API key is never written to this file, to git, to a fixture, or
 to the ledger. `run_smoke.require_deepseek_api_key()` fails with an explicit

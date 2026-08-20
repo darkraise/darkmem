@@ -4,6 +4,12 @@ from app.config import ClassifierKind, LLMApiKind
 
 
 class LLMPurposeConfigSchema(BaseModel):
+    # Which `llm_providers` row served the connection fields below. Read-only
+    # here — a purpose write names a provider through `LLMPurposeConfigUpdate`
+    # — but it has to be served, or the settings surface has no way to render
+    # which provider a purpose resolves through and a saved change appears to
+    # revert on the next refetch. Null only when the purpose has no row.
+    provider_name: str | None = None
     base_url: str
     model: str
     api_key: str | None = None
@@ -19,12 +25,14 @@ class LLMPurposeConfigSchema(BaseModel):
 
 
 class LLMPurposeConfigUpdate(BaseModel):
-    base_url: str | None = None
+    # No connection fields: `base_url`, `api_key` and `api_kind` live on the
+    # referenced `llm_providers` row and are edited there, so a purpose write
+    # names a provider instead. Declaring them here would accept a rotation
+    # this route cannot apply and answer 200 to it.
+    provider_name: str | None = None
     model: str | None = None
-    api_key: str | None = None
     dimensions: int | None = None
     reasoning: bool | None = None
-    api_kind: LLMApiKind | None = None
     params: dict | None = None
     # Declared so it can appear in `model_fields_set`. Without it the write
     # loop's `classifier_kind` entry was unreachable: the field was stripped

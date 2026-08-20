@@ -30,12 +30,12 @@ logger = logging.getLogger(__name__)
 class MLClassificationService:
     """In-process HF classifier dispatch for the classification purpose.
 
-    IMPORTANT: ML inference produces only a memory-type label. Selecting an ML
-    classification profile (``ml_profile_ref`` on the classification purpose)
-    therefore DISABLES summary and emotion/flag enrichment — ``classify`` always
-    returns ``summary=None`` with empty ``emotions``/``flags``, so the ``llm_*``
-    columns those would populate stay null even though classification always
-    runs. Use the LLM-backed ``ClassificationService`` if you need summaries.
+    IMPORTANT: ML inference produces only a memory-type label. Setting
+    ``classifier_kind='local'`` on the classification purpose therefore
+    DISABLES summary and emotion/flag enrichment — ``classify`` always
+    returns ``summary=None`` with empty ``emotions``/``flags``, so the
+    enrichment columns those would populate stay null even though
+    classification always runs. Use the LLM-backed ``ClassificationService`` if you need summaries.
     """
 
     def __init__(self, manager: MLModelManager, model_repo: str, ttl_seconds: int) -> None:

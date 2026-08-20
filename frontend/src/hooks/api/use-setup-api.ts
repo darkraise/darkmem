@@ -36,17 +36,22 @@ export type FsListResponse = {
 
 export type SetupRepoSelection = { name: string; sub_path: string }
 
+export type SetupProvider = {
+  name: string
+  api_kind: "openai" | "anthropic" | "ollama" | "google" | "deepseek" | "zai"
+  base_url: string
+  api_key?: string | null
+}
+
 export type SetupLLMPurpose = {
+  provider_name: string
   model: string
   reasoning: boolean
   dimensions?: number | null
 }
 
 export type SetupLLM = {
-  api_kind: string
-  base_url: string | null
-  api_key: string | null
-  supports_embedding: boolean
+  providers: SetupProvider[]
   purposes: Partial<
     Record<
       | "embedding"

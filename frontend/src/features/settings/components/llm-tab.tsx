@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   ArrowDownUp,
@@ -23,20 +23,43 @@ import {
   SelectTrigger,
   SelectValue,
 } from "darkraise-ui/components/select"
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxControl,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemText,
+  ComboboxList,
+  ComboboxTrigger,
+} from "darkraise-ui/components/combobox"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "darkraise-ui/components/tabs"
 import { cn } from "darkraise-ui/lib"
 import {
   HelpTip,
   IconSegmented,
   type IconSegmentedOption,
 } from "@/components/darkmem"
-import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
-import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
+import { validateParamsJson } from "@/demo/settings"
+import { embeddingKindWarning } from "@/features/setup/api-kinds"
+import {
+  useLlmProviders,
+  useProbeProviderModels,
+} from "@/hooks/api/use-llm-providers-api"
+import type { DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
 import type { TierCLLMPurpose } from "../llm-tier-c-purposes"
 import {
   useLLMTabBinding,
   type LLMTabBinding,
   type TierCPurposeView,
 } from "../use-llm-tab-binding"
+import { ProvidersPanel } from "./providers-panel"
 
 const PURPOSE_ICONS: Record<DemoLLMPurpose["purpose"], LucideIcon> = {
   embedding: Braces,
@@ -53,10 +76,8 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
 }
 
 type Draft = {
+  provider_name: string
   model: string
-  api_kind: ApiKind
-  base_url: string
-  api_key: string
   params: string
   dimensions: string
   reasoning: boolean
@@ -64,10 +85,8 @@ type Draft = {
 
 function toDraft(p: DemoLLMPurpose): Draft {
   return {
+    provider_name: p.provider_name,
     model: p.model,
-    api_kind: p.api_kind,
-    base_url: p.base_url,
-    api_key: p.api_key,
     params: p.params,
     dimensions: p.dimensions !== undefined ? String(p.dimensions) : "",
     reasoning: p.reasoning ?? false,
@@ -111,9 +130,28 @@ function PurposeCard({
   const dirty = dirtyFields(purpose, draft)
   const paramsCheck = validateParamsJson(draft.params)
   const isEmbedding = purpose.purpose === "embedding"
-  const warning = isEmbedding ? embeddingKindWarning(draft.api_kind) : null
   const Icon = PURPOSE_ICONS[purpose.purpose]
   const wide = purpose.purpose === "summarization"
+
+  const { data: providersData } = useLlmProviders()
+  const providers = providersData?.providers ?? []
+  const selectedProvider = providers.find((p) => p.name === draft.provider_name)
+  const warning = isEmbedding ? embeddingKindWarning(selectedProvider?.api_kind) : null
+
+  const probe = useProbeProviderModels()
+  const providerName = draft.provider_name
+  useEffect(() => {
+    if (!providerName) return
+    probe.mutate({ name: providerName })
+    // react-query's `mutate` identity is not guaranteed stable across
+    // renders; depending on it here would re-probe every render instead of
+    // only when the selected provider actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerName])
+  const modelItems = (probe.data?.models ?? []).map((m) => ({
+    value: m,
+    label: m,
+  }))
 
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
 
@@ -124,17 +162,11 @@ function PurposeCard({
     const changed: Partial<Omit<DemoLLMPurpose, "purpose">> = {}
     for (const key of dirty) {
       switch (key) {
+        case "provider_name":
+          changed.provider_name = draft.provider_name
+          break
         case "model":
           changed.model = draft.model
-          break
-        case "api_kind":
-          changed.api_kind = draft.api_kind
-          break
-        case "base_url":
-          changed.base_url = draft.base_url
-          break
-        case "api_key":
-          changed.api_key = draft.api_key
           break
         case "params":
           changed.params = draft.params
@@ -178,52 +210,57 @@ function PurposeCard({
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
-          <Input
-            value={draft.model}
-            aria-label={`${purpose.purpose} model`}
-            onChange={(e) => patch({ model: e.target.value })}
-            className="font-mono"
-          />
+          <Combobox
+            items={modelItems}
+            inputValue={draft.model}
+            onInputValueChange={(d) => patch({ model: d.value })}
+            openOnClick
+            openOnFocus
+          >
+            <ComboboxControl>
+              <ComboboxInput
+                aria-label={`${purpose.purpose} model`}
+                placeholder="model id"
+                className="font-mono"
+              />
+              <ComboboxTrigger />
+            </ComboboxControl>
+            <ComboboxContent>
+              <ComboboxList>
+                {modelItems.map((it) => (
+                  <ComboboxItem key={it.value} item={it}>
+                    <ComboboxItemText>{it.label}</ComboboxItemText>
+                  </ComboboxItem>
+                ))}
+                <ComboboxEmpty>No models</ComboboxEmpty>
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+          {probe.data?.error && (
+            <span className="text-destructive text-sm">
+              {probe.data.error}
+            </span>
+          )}
         </Field>
-        <Field label="api_kind">
+        <Field label="provider_name">
           <Select
-            value={draft.api_kind}
-            onValueChange={(v) => patch({ api_kind: v as ApiKind })}
+            value={draft.provider_name}
+            onValueChange={(v) => patch({ provider_name: v })}
           >
             <SelectTrigger
-              aria-label={`${purpose.purpose} api_kind`}
+              aria-label={`${purpose.purpose} provider_name`}
               className="font-mono"
             >
-              <SelectValue />
+              <SelectValue placeholder="no provider selected" />
             </SelectTrigger>
             <SelectContent>
-              {API_KINDS.map((kind) => (
-                <SelectItem key={kind} value={kind} className="font-mono">
-                  {kind}
+              {providers.map((p) => (
+                <SelectItem key={p.name} value={p.name} className="font-mono">
+                  {p.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </Field>
-        <Field label="base_url" span2>
-          <Input
-            value={draft.base_url}
-            aria-label={`${purpose.purpose} base_url`}
-            onChange={(e) => patch({ base_url: e.target.value })}
-            className="font-mono"
-          />
-        </Field>
-        <Field label="api_key">
-          <Input
-            type="password"
-            value={draft.api_key}
-            placeholder={
-              draft.api_kind === "ollama" ? "not required for ollama" : ""
-            }
-            aria-label={`${purpose.purpose} api_key`}
-            onChange={(e) => patch({ api_key: e.target.value })}
-            className="font-mono"
-          />
         </Field>
         {isEmbedding ? (
           <Field label="dimensions">
@@ -326,7 +363,7 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
           <>
             Seeded row, resolvable, and dispatched — this connection judges
             fact verification-ladder promotions today. Read-only by
-            deliberate ruling (T2.106), not an oversight: its qualification
+            deliberate ruling, not an oversight: its qualification
             record is G-D's gate evidence, pinned to this exact model
             identity, and a settings-form repoint is a real capability with
             a real failure mode. The judge already refuses to serve on a
@@ -347,6 +384,9 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
           <Input value={purpose.model} disabled className="font-mono" />
+        </Field>
+        <Field label="provider_name">
+          <Input value={purpose.provider_name} disabled className="font-mono" />
         </Field>
         <Field label="api_kind">
           <Input value={purpose.api_kind} disabled className="font-mono" />
@@ -444,19 +484,22 @@ function RemovedChrome() {
       <div className="text-muted-foreground flex items-center gap-2 font-mono text-[10px] tracking-wide uppercase">
         <Trash2 aria-hidden className="h-3.5 w-3.5" />
         removed with the flattening — not rendered, not disabled, deleted
-        <HelpTip label="Why the provider and profile tabs were removed">
-          darkmem is not an LLM proxy: each purpose is one row the operator
-          edits directly, with the columns provider_ref, profile_ref, and
+        <HelpTip label="Why the profile-ref provider and profile tabs were removed">
+          darkmem is not an LLM proxy: each purpose was one row the operator
+          edited directly, with the columns provider_ref, profile_ref, and
           ml_profile_ref dropped from every purpose row. A profile picker over
-          a schema with no profiles table would be scaffolding rendered as a
-          feature — the honest move is deletion, not a greyed-out control.
-          The dead LLMProvidersPanel / LLMProfilesPanel / MLProfilesPanel
-          components themselves are gone from the source tree, not merely
-          unmounted.
+          a schema with no profiles table would have been scaffolding
+          rendered as a feature — the honest move was deletion, not a
+          greyed-out control. The dead LLMProvidersPanel / LLMProfilesPanel /
+          MLProfilesPanel components themselves are gone from the source
+          tree, not merely unmounted. The Providers sub-tab above this card
+          is not that tab reappearing: it edits a separate `llm_providers`
+          connection row a purpose can point at, not a profile indirection
+          column on the purpose row itself.
         </HelpTip>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">
-        {["llm-providers tab", "llm-profiles tab", "ml-profiles tab"].map(
+        {["llm-profiles tab", "ml-profiles tab"].map(
           (label) => (
             <span
               key={label}
@@ -483,49 +526,63 @@ export function LLMTab() {
   const binding = useLLMTabBinding()
 
   return (
-    <div className="space-y-4">
-      <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
-        <span>
-          Seven inline purpose cards — each a self-contained connection
-          binding, including the seeded-inert `synthesis` purpose — plus
-          `verification`, read-only here (T2.106: it judges the
-          verification ladder and its qualification is a gate's evidence).
-          A save live-reloads the orchestrator; no redeploy, no LLM_* env
-          vars.
-        </span>
-        <HelpTip label="About the LLM tab">
-          Each purpose is one row with no provider/profile indirection. Every
-          vendor auth, reasoning-control, and structured-output quirk that
-          api_kind selects is resolved by the backend orchestrator, never
-          re-implemented here. A save rebuilds the orchestrator and takes
-          effect without a redeploy.
-        </HelpTip>
-      </div>
-      {/* Cards seed an editable draft from their `purpose` prop on mount and
-          own it thereafter, which is right for an editor — a refetch must not
-          overwrite what the reader is typing. The cost is that mounting one
-          before the config arrives freezes the empty placeholder the binding
-          builds from `query.data?.[p]`, which is why the fields used to stay
-          blank until the tab was unmounted and remounted. Waiting for the
-          first load is what makes the seed real; `isLoading` is false on
-          every later refetch, so this does not flash between saves. */}
-      {binding.isLoading ? (
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          {Array.from({ length: 6 }, (_, i) => (
-            <Skeleton key={i} className="h-64 w-full rounded-md" />
-          ))}
+    <Tabs defaultValue="purposes">
+      <TabsList>
+        <TabsTrigger value="providers">Providers</TabsTrigger>
+        <TabsTrigger value="purposes">Purposes</TabsTrigger>
+      </TabsList>
+      <TabsContent value="providers" className="pt-4">
+        <ProvidersPanel />
+      </TabsContent>
+      <TabsContent value="purposes" className="pt-4">
+        <div className="space-y-4">
+          <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
+            <span>
+              Seven purpose cards — each picking a provider from the
+              Providers sub-tab plus the model and params that vary per
+              purpose, including the seeded-inert `synthesis` purpose — plus
+              `verification`, read-only here (it judges the verification
+              ladder and its qualification is a gate's evidence).
+              A save live-reloads the orchestrator; no redeploy, no LLM_* env
+              vars.
+            </span>
+            <HelpTip label="About the LLM tab">
+              Each purpose is one row naming a shared provider row, so a
+              credential rotation on the Providers sub-tab reaches every
+              purpose that uses it with nothing to re-apply here. Every vendor
+              auth, reasoning-control, and structured-output quirk that
+              api_kind selects is resolved by the backend orchestrator, never
+              re-implemented here. A save rebuilds the orchestrator and takes
+              effect without a redeploy.
+            </HelpTip>
+          </div>
+          {/* Cards seed an editable draft from their `purpose` prop on mount and
+              own it thereafter, which is right for an editor — a refetch must not
+              overwrite what the reader is typing. The cost is that mounting one
+              before the config arrives freezes the empty placeholder the binding
+              builds from `query.data?.[p]`, which is why the fields used to stay
+              blank until the tab was unmounted and remounted. Waiting for the
+              first load is what makes the seed real; `isLoading` is false on
+              every later refetch, so this does not flash between saves. */}
+          {binding.isLoading ? (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-64 w-full rounded-md" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {binding.purposes.map((purpose) => (
+                <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
+              ))}
+              {binding.tierCPurposes.map((purpose) => (
+                <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
+              ))}
+            </div>
+          )}
+          <RemovedChrome />
         </div>
-      ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          {binding.purposes.map((purpose) => (
-            <PurposeCard key={purpose.purpose} purpose={purpose} binding={binding} />
-          ))}
-          {binding.tierCPurposes.map((purpose) => (
-            <TierCPurposeCard key={purpose.purpose} purpose={purpose} />
-          ))}
-        </div>
-      )}
-      <RemovedChrome />
-    </div>
+      </TabsContent>
+    </Tabs>
   )
 }

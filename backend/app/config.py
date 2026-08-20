@@ -45,13 +45,14 @@ class LLMPurposeConfig(BaseModel):
     # ``ml_profiles`` reference in T0.12c (doc 04 §7); T1.04 owns wiring the
     # dispatch to read it, T1.18 the narrowing path.
     classifier_kind: str | None = None
-    # Inert on the wire, not in the resolution path: the provider/profile
-    # indirection is gone (doc 04 §7), but these three keys still appear in
-    # the config API response the frontend reads. Retiring them from the
-    # contract is T1.42b's.
-    provider_ref: str | None = None
-    profile_ref: str | None = None
-    ml_profile_ref: str | None = None
+    # Which ``llm_providers`` row the three connection fields above were
+    # resolved from. A label for the settings surface, never an input to a
+    # call: both hashers over a resolved config fold a fixed list of named
+    # behaviour-shaping fields and this is deliberately not among them, because
+    # renaming a provider must invalidate neither a bench cache nor a judge
+    # qualification. None when the purpose has no row and resolution fell back
+    # to the ``Settings`` default.
+    provider_name: str | None = None
 
 
 class Settings(BaseSettings):

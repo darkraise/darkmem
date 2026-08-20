@@ -32,7 +32,10 @@ from app.models.code import Repository
 from app.models.config import Config
 from app.services.events import record_event
 from app.models.llm_config import LLMPurposeConfigRow
+from app.services.config import VERIFICATION_PURPOSE
+from app.services.llm_provider_guard import assert_not_verification_provider
 from app.services.llm_quirks import models_probe, quirks_for
+from app.services.model_probe import parse_model_list
 from app.services.repo_manager import validate_local_path
 
 router = APIRouter(prefix="/api/v1/setup", tags=["setup"])
@@ -108,24 +111,13 @@ async def probe_models(body: ProbeModelsRequest) -> ProbeModelsResponse:
                 error=f"HTTP {resp.status_code}: {resp.text[:200]}",
             )
         data = resp.json()
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
         return ProbeModelsResponse(
             models=[], fetched_via=kind_label, error=f"network error: {exc}",
         )
 
-    models: list[str] = []
-    if isinstance(data, dict):
-        if isinstance(data.get("data"), list):
-            for entry in data["data"]:
-                mid = entry.get("id") if isinstance(entry, dict) else None
-                if isinstance(mid, str):
-                    models.append(mid)
-        elif isinstance(data.get("models"), list):
-            for entry in data["models"]:
-                mid = entry.get("name") if isinstance(entry, dict) else None
-                if isinstance(mid, str):
-                    models.append(mid)
-    return ProbeModelsResponse(models=sorted(set(models)), fetched_via=kind_label)
+    models = parse_model_list(data)
+    return ProbeModelsResponse(models=models, fetched_via=kind_label)
 
 
 # ── Filesystem browse ────────────────────────────────────────────────
@@ -256,17 +248,22 @@ async def fs_list(path: str, detect_repos: bool = False) -> FsListResponse:
 # ── Finalize ──────────────────────────────────────────────────────────
 
 
+class SetupProvider(BaseModel):
+    name: str
+    api_kind: Literal["openai", "anthropic", "ollama", "google", "deepseek", "zai"]
+    base_url: str
+    api_key: str | None = None
+
+
 class SetupLLMPurpose(BaseModel):
+    provider_name: str
     model: str
     reasoning: bool = False
     dimensions: int | None = None
 
 
 class SetupLLM(BaseModel):
-    api_kind: str
-    base_url: str | None = None
-    api_key: str | None = None
-    supports_embedding: bool = True
+    providers: list[SetupProvider] = []
     purposes: dict[PURPOSE_LITERAL, SetupLLMPurpose]
 
 
@@ -303,6 +300,58 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+async def _assert_llm_block_admissible(session: AsyncSession, llm: SetupLLM) -> None:
+    """Refuse an unlawful LLM block before finalize writes anything.
+
+    Both refusals run ahead of the password commit on purpose:
+    ``require_uninitialized`` closes every wizard endpoint the moment that row
+    lands, so a refusal raised after it strands the operator on a
+    half-finalized install with no way to correct the payload.
+
+    A submitted provider name must never collide with a seeded one
+    (``ollama-local``, ``verification-judge``): this door is reachable
+    unauthenticated, and the seeded judge row's base_url/api_kind are frozen
+    identity fields on the authenticated door for exactly that reason — an
+    unauthenticated repoint would defeat that guard.
+
+    The second check is the same exclusivity ``POST /config/llm`` enforces. A
+    payload can name the judge's provider without declaring one, so the name
+    guard above never sees it; without this check the least-authenticated door
+    in the tree is the one place a caller can produce the shared state the
+    authenticated door answers 409 to.
+    """
+    from app.services.llm_seed import (
+        DEFAULT_PROVIDER_ROWS,
+        default_provider_row_name_for_purpose,
+    )
+
+    reserved_provider_names = {row.name for row in DEFAULT_PROVIDER_ROWS}
+    for sp in llm.providers:
+        if sp.name in reserved_provider_names:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"provider name {sp.name!r} is reserved for a "
+                    "seeded connection and cannot be defined by the wizard"
+                ),
+            )
+
+    # Finalize rewrites every seeded purpose row, so the provider serving the
+    # judge after this call is the seed's whatever the table holds now.
+    judge_provider = default_provider_row_name_for_purpose(VERIFICATION_PURPOSE)
+    current_provider_names = {
+        row.purpose: row.provider_name
+        for row in (await session.execute(select(LLMPurposeConfigRow))).scalars().all()
+    }
+    for purpose_key, spec in llm.purposes.items():
+        assert_not_verification_provider(
+            spec.provider_name,
+            judge_provider,
+            purpose_key,
+            current_provider_names.get(purpose_key),
+        )
+
+
 @router.post(
     "",
     response_model=SetupResponse,
@@ -328,6 +377,9 @@ async def setup_finalize(
     llm_status = SetupSectionStatus(ok=True)
     repos_status = SetupSectionStatus(ok=True)
 
+    if body.llm is not None:
+        await _assert_llm_block_admissible(session, body.llm)
+
     async with request.app.state.llm_config_lock:
         # 1. Password block — required. Commit immediately so subsequent
         # rollbacks (for failed LLM / repo blocks) don't undo it.
@@ -344,14 +396,13 @@ async def setup_finalize(
         await session.commit()
 
         # 2. LLM block — optional. Writes DEFAULT_PURPOSE_CONFIGS as inline
-        # `llm_purpose_configs` rows (there are no provider/profile tables
-        # left to seed — doc 04 §7) so the user finishes setup with every
+        # `llm_purpose_configs` rows so the user finishes setup with every
         # purpose resolvable, including the two Tier-C purposes (synthesis,
-        # verification) T1.05 seeded inert. The user's per-purpose model
-        # selections then overlay the matching rows; DEFAULT_PROVIDERS and
-        # DEFAULT_PROFILES stay pure-Python lookups used only to fill in a
-        # default base_url and a matching params preset for the user's
-        # chosen vendor+model, never written to the database themselves.
+        # verification) seeded inert. The user's own providers are
+        # written next, and each purpose's provider_name + model then
+        # overlay the matching row. DEFAULT_PROFILES stays a pure-Python
+        # lookup used only to supply a matching params preset for the
+        # user's chosen vendor+model, never written to the database itself.
         #
         # Upsert, not insert: `purpose` is the primary key, and re-running
         # the wizard against an instance whose purpose rows already exist
@@ -360,11 +411,28 @@ async def setup_finalize(
         # key. See doc 11 §9.4 / T1.56.
         if body.llm is not None:
             try:
+                from app.models.llm_provider import LLMProviderRow
                 from app.services.llm_seed import (
                     DEFAULT_PROFILES,
+                    DEFAULT_PROVIDER_ROWS,
                     DEFAULT_PURPOSE_CONFIGS,
-                    provider_seed_by_kind,
+                    default_provider_row_name_for_purpose,
                 )
+
+                existing_providers = {
+                    r.name: r
+                    for r in (await session.execute(select(LLMProviderRow))).scalars().all()
+                }
+                for ps in DEFAULT_PROVIDER_ROWS:
+                    prow = existing_providers.get(ps.name)
+                    if prow is None:
+                        prow = LLMProviderRow(name=ps.name)
+                        session.add(prow)
+                        existing_providers[ps.name] = prow
+                    prow.api_kind = ps.api_kind
+                    prow.base_url = ps.base_url
+                    prow.api_key = ps.api_key
+                await session.flush()
 
                 existing_rows = (
                     await session.execute(select(LLMPurposeConfigRow))
@@ -381,19 +449,28 @@ async def setup_finalize(
                     row.model = pc.model
                     row.dimensions = pc.dimensions
                     row.reasoning = pc.reasoning
-                    row.api_kind = pc.api_kind
-                    row.base_url = pc.base_url
-                    row.api_key = None
+                    row.provider_name = default_provider_row_name_for_purpose(pc.purpose)
                     row.params = dict(pc.params)
                 await session.flush()
 
-                user_provider_seed = provider_seed_by_kind(body.llm.api_kind)
-                user_base_url = body.llm.base_url or (
-                    user_provider_seed.base_url if user_provider_seed else ""
-                )
+                # The user's own providers must land — and flush — before the
+                # purpose overlay below: `llm_purpose_configs.provider_name`
+                # is NOT NULL with a foreign key onto this table.
+                for sp in body.llm.providers:
+                    uprow = existing_providers.get(sp.name)
+                    if uprow is None:
+                        uprow = LLMProviderRow(name=sp.name)
+                        session.add(uprow)
+                        existing_providers[sp.name] = uprow
+                    uprow.api_kind = sp.api_kind
+                    uprow.base_url = sp.base_url
+                    uprow.api_key = sp.api_key
+                await session.flush()
 
                 for purpose_key, spec in body.llm.purposes.items():
                     is_embedding = (purpose_key == "embedding")
+                    provider = existing_providers.get(spec.provider_name)
+                    provider_api_kind = provider.api_kind if provider else ""
 
                     # Inherit the vendor's reasoning-control params for this
                     # purpose (reasoning_effort / thinking / max_tokens) from the
@@ -401,7 +478,7 @@ async def setup_finalize(
                     # depends on to disable hidden CoT (e.g. google/gpt-5).
                     seed_candidates = [
                         p for p in DEFAULT_PROFILES
-                        if p.name.startswith(f"{body.llm.api_kind}-")
+                        if p.name.startswith(f"{provider_api_kind}-")
                         and p.name.endswith(purpose_key)
                     ]
                     seed_match = next(
@@ -419,13 +496,13 @@ async def setup_finalize(
                     pcfg.model = spec.model
                     pcfg.dimensions = spec.dimensions if is_embedding else None
                     pcfg.reasoning = False if is_embedding else spec.reasoning
-                    pcfg.api_kind = body.llm.api_kind
-                    pcfg.base_url = user_base_url
-                    pcfg.api_key = body.llm.api_key
+                    pcfg.provider_name = spec.provider_name
                     pcfg.params = seed_params
                     pcfg.updated_at = datetime.now(timezone.utc)
 
                 await session.commit()
+            except HTTPException:
+                raise
             except Exception:
                 await session.rollback()
                 logger.exception("Setup LLM finalize failed")
