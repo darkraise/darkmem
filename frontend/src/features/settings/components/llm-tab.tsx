@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   ArrowDownUp,
@@ -24,6 +24,17 @@ import {
   SelectValue,
 } from "darkraise-ui/components/select"
 import {
+  Combobox,
+  ComboboxContent,
+  ComboboxControl,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxItemText,
+  ComboboxList,
+  ComboboxTrigger,
+} from "darkraise-ui/components/combobox"
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -35,8 +46,13 @@ import {
   IconSegmented,
   type IconSegmentedOption,
 } from "@/components/darkmem"
-import { API_KINDS, embeddingKindWarning, validateParamsJson } from "@/demo/settings"
-import type { ApiKind, DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
+import { validateParamsJson } from "@/demo/settings"
+import { embeddingKindWarning } from "@/features/setup/api-kinds"
+import {
+  useLlmProviders,
+  useProbeProviderModels,
+} from "@/hooks/api/use-llm-providers-api"
+import type { DemoCodeBucket, DemoLLMPurpose } from "@/features/settings/types"
 import type { TierCLLMPurpose } from "../llm-tier-c-purposes"
 import {
   useLLMTabBinding,
@@ -60,10 +76,8 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
 }
 
 type Draft = {
+  provider_name: string
   model: string
-  api_kind: ApiKind
-  base_url: string
-  api_key: string
   params: string
   dimensions: string
   reasoning: boolean
@@ -71,10 +85,8 @@ type Draft = {
 
 function toDraft(p: DemoLLMPurpose): Draft {
   return {
+    provider_name: p.provider_name,
     model: p.model,
-    api_kind: p.api_kind,
-    base_url: p.base_url,
-    api_key: p.api_key,
     params: p.params,
     dimensions: p.dimensions !== undefined ? String(p.dimensions) : "",
     reasoning: p.reasoning ?? false,
@@ -118,9 +130,28 @@ function PurposeCard({
   const dirty = dirtyFields(purpose, draft)
   const paramsCheck = validateParamsJson(draft.params)
   const isEmbedding = purpose.purpose === "embedding"
-  const warning = isEmbedding ? embeddingKindWarning(draft.api_kind) : null
   const Icon = PURPOSE_ICONS[purpose.purpose]
   const wide = purpose.purpose === "summarization"
+
+  const { data: providersData } = useLlmProviders()
+  const providers = providersData?.providers ?? []
+  const selectedProvider = providers.find((p) => p.name === draft.provider_name)
+  const warning = isEmbedding ? embeddingKindWarning(selectedProvider?.api_kind) : null
+
+  const probe = useProbeProviderModels()
+  const providerName = draft.provider_name
+  useEffect(() => {
+    if (!providerName) return
+    probe.mutate({ name: providerName })
+    // react-query's `mutate` identity is not guaranteed stable across
+    // renders; depending on it here would re-probe every render instead of
+    // only when the selected provider actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerName])
+  const modelItems = (probe.data?.models ?? []).map((m) => ({
+    value: m,
+    label: m,
+  }))
 
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
 
@@ -131,17 +162,11 @@ function PurposeCard({
     const changed: Partial<Omit<DemoLLMPurpose, "purpose">> = {}
     for (const key of dirty) {
       switch (key) {
+        case "provider_name":
+          changed.provider_name = draft.provider_name
+          break
         case "model":
           changed.model = draft.model
-          break
-        case "api_kind":
-          changed.api_kind = draft.api_kind
-          break
-        case "base_url":
-          changed.base_url = draft.base_url
-          break
-        case "api_key":
-          changed.api_key = draft.api_key
           break
         case "params":
           changed.params = draft.params
@@ -185,52 +210,57 @@ function PurposeCard({
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
-          <Input
-            value={draft.model}
-            aria-label={`${purpose.purpose} model`}
-            onChange={(e) => patch({ model: e.target.value })}
-            className="font-mono"
-          />
+          <Combobox
+            items={modelItems}
+            inputValue={draft.model}
+            onInputValueChange={(d) => patch({ model: d.value })}
+            openOnClick
+            openOnFocus
+          >
+            <ComboboxControl>
+              <ComboboxInput
+                aria-label={`${purpose.purpose} model`}
+                placeholder="model id"
+                className="font-mono"
+              />
+              <ComboboxTrigger />
+            </ComboboxControl>
+            <ComboboxContent>
+              <ComboboxList>
+                {modelItems.map((it) => (
+                  <ComboboxItem key={it.value} item={it}>
+                    <ComboboxItemText>{it.label}</ComboboxItemText>
+                  </ComboboxItem>
+                ))}
+                <ComboboxEmpty>No models</ComboboxEmpty>
+              </ComboboxList>
+            </ComboboxContent>
+          </Combobox>
+          {probe.data?.error && (
+            <span className="text-destructive text-sm">
+              {probe.data.error}
+            </span>
+          )}
         </Field>
-        <Field label="api_kind">
+        <Field label="provider_name">
           <Select
-            value={draft.api_kind}
-            onValueChange={(v) => patch({ api_kind: v as ApiKind })}
+            value={draft.provider_name}
+            onValueChange={(v) => patch({ provider_name: v })}
           >
             <SelectTrigger
-              aria-label={`${purpose.purpose} api_kind`}
+              aria-label={`${purpose.purpose} provider_name`}
               className="font-mono"
             >
-              <SelectValue />
+              <SelectValue placeholder="no provider selected" />
             </SelectTrigger>
             <SelectContent>
-              {API_KINDS.map((kind) => (
-                <SelectItem key={kind} value={kind} className="font-mono">
-                  {kind}
+              {providers.map((p) => (
+                <SelectItem key={p.name} value={p.name} className="font-mono">
+                  {p.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </Field>
-        <Field label="base_url" span2>
-          <Input
-            value={draft.base_url}
-            aria-label={`${purpose.purpose} base_url`}
-            onChange={(e) => patch({ base_url: e.target.value })}
-            className="font-mono"
-          />
-        </Field>
-        <Field label="api_key">
-          <Input
-            type="password"
-            value={draft.api_key}
-            placeholder={
-              draft.api_kind === "ollama" ? "not required for ollama" : ""
-            }
-            aria-label={`${purpose.purpose} api_key`}
-            onChange={(e) => patch({ api_key: e.target.value })}
-            className="font-mono"
-          />
         </Field>
         {isEmbedding ? (
           <Field label="dimensions">
@@ -354,6 +384,9 @@ function TierCPurposeCard({ purpose }: { purpose: TierCPurposeView }) {
       <div className="grid grid-cols-2 gap-x-3 gap-y-2">
         <Field label="model">
           <Input value={purpose.model} disabled className="font-mono" />
+        </Field>
+        <Field label="provider_name">
+          <Input value={purpose.provider_name} disabled className="font-mono" />
         </Field>
         <Field label="api_kind">
           <Input value={purpose.api_kind} disabled className="font-mono" />

@@ -62,6 +62,7 @@ const LIVE_PURPOSES = Object.keys(LIVE_PURPOSE_META) as Array<
 export interface TierCPurposeView extends TierCLLMPurpose {
   model: string
   api_kind: string
+  provider_name: string
 }
 
 /** Demo mode has no backend row for the one remaining Tier-C purpose (the
@@ -72,9 +73,13 @@ export interface TierCPurposeView extends TierCLLMPurpose {
  *  demo fixture in this tab already is. */
 const DEMO_TIER_C_CONNECTION: Record<
   TierCLLMPurpose["purpose"],
-  { model: string; api_kind: string }
+  { model: string; api_kind: string; provider_name: string }
 > = {
-  verification: { model: "qwen2.5:3b", api_kind: "ollama" },
+  verification: {
+    model: "qwen2.5:3b",
+    api_kind: "ollama",
+    provider_name: "ollama-local",
+  },
 }
 
 function toDemoPurpose(
@@ -86,6 +91,7 @@ function toDemoPurpose(
     purpose,
     tier: meta.tier,
     role: meta.role,
+    provider_name: cfg?.provider_name ?? "",
     model: cfg?.model ?? "",
     api_kind: (cfg?.api_kind as DemoLLMPurpose["api_kind"]) ?? "openai",
     base_url: cfg?.base_url ?? "",
@@ -189,6 +195,7 @@ export function useLLMTabBinding(): LLMTabBinding {
       ...p,
       model: cfg?.model ?? fallback.model,
       api_kind: cfg?.api_kind ?? fallback.api_kind,
+      provider_name: cfg?.provider_name ?? fallback.provider_name,
     }
   })
 

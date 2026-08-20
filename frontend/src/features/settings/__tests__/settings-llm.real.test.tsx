@@ -138,4 +138,47 @@ describe("useLLMTabBinding (DEMO off — real /config/llm)", () => {
     // savePurpose's type signature does not admit "verification" — proven
     // at compile time (LLMPurposeName), not re-proven here at runtime.
   })
+
+  it("carries provider_name through the binding instead of connection fields", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      extraction: {
+        provider_name: "ollama-local",
+        base_url: "http://localhost:11434/v1",
+        model: "qwen2.5:3b",
+        api_key: null,
+        dimensions: null,
+        reasoning: false,
+        api_kind: "openai",
+        params: {},
+      },
+    })
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const extraction = result.current.purposes.find((p) => p.purpose === "extraction")
+    expect(extraction?.provider_name).toBe("ollama-local")
+  })
+
+  it("saves a provider change and never sends a connection field", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({})
+    const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    result.current.savePurpose("extraction", { provider_name: "my-ds", model: "m" })
+
+    // The save's own onSuccess invalidates and refetches this same query, so
+    // the mock's most recent call can be that refetch GET rather than the
+    // save's POST — find the POST explicitly instead of assuming call order.
+    await waitFor(() => {
+      const call = vi
+        .mocked(apiFetch)
+        .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST")
+      expect(call).toBeDefined()
+      const body = JSON.parse((call![1] as RequestInit).body as string)
+      expect(body.extraction).toEqual({ provider_name: "my-ds", model: "m" })
+      expect(body.extraction).not.toHaveProperty("base_url")
+      expect(body.extraction).not.toHaveProperty("api_kind")
+      expect(body.extraction).not.toHaveProperty("api_key")
+    })
+  })
 })

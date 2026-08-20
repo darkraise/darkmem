@@ -90,6 +90,9 @@ export interface DemoLLMPurpose {
   purpose: LLMPurposeName
   tier: string
   role: string
+  /** The `llm_providers` row this purpose resolves through. Editable — the
+   *  connection fields below are the resolved, read-only view. */
+  provider_name: string
   model: string
   api_kind: ApiKind
   base_url: string

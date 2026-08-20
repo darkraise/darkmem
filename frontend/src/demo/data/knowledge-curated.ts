@@ -404,9 +404,9 @@ export const CURATED_FACTS: DemoFact[] = [
     project: "darkmem",
     subject_name: "llm purposes",
     rel_type: "ROUTES_VIA",
-    object_name: "provider or profile reference",
+    object_name: "shared llm_providers connection row",
     fact_text:
-      "six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each resolve independently through a provider_ref or profile_ref, so rotating one credential never touches another purpose's routing.",
+      "six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each carry a provider_name pointing at a shared llm_providers row, so rotating that row's credential reaches every purpose pointed at it in one edit.",
     verification_status: "corroborated",
     claim:
       "asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-10",
@@ -418,7 +418,7 @@ export const CURATED_FACTS: DemoFact[] = [
         origin_key: "repo:darkmem-backend",
         kind: "code",
         ref: "code backend/app/models/llm_config.py@91cd7e3",
-        detail: "basis: LLMPurposeConfig rows with provider_ref / profile_ref columns",
+        detail: "basis: LLMPurposeConfig rows with a provider_name column resolving into llm_providers",
         at: "indexed 2026-07-02",
       },
       {
@@ -1228,7 +1228,7 @@ export const CURATED_ARTICLES: DemoArticle[] = [
     subject_kind: "concept",
     title: "LLM purpose routing across six roles",
     excerpt:
-      "Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each resolve independently through a provider or profile reference, so rotating one credential never touches another purpose's routing…",
+      "Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each carry a provider_name pointing at a shared llm_providers row, so rotating that row's credential reaches every purpose pointed at it…",
     verification_status: "corroborated",
     claim:
       "asserted by 2 distinct origins of kinds [code, memory], no known contradiction, as of 2026-07-10",
@@ -1242,14 +1242,14 @@ export const CURATED_ARTICLES: DemoArticle[] = [
     applies_when_label: "none — project-neutral",
     sections: [
       {
-        label: "Independent resolution",
+        label: "Shared connection",
         sentences: [
           {
-            text: "Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each resolve independently through a provider_ref or profile_ref.",
+            text: "Six LLM purposes — embedding, extraction, classification, reasoning, summarization, reranker — each carry a provider_name pointing at a shared llm_providers row.",
             cite: "F1",
           },
           {
-            text: "Because each purpose resolves on its own reference, rotating one credential never touches another purpose's routing.",
+            text: "Because several purposes can point at the same row, rotating that row's credential now reaches every purpose pointed at it in one edit.",
             cite: "F2",
           },
         ],
@@ -1259,16 +1259,16 @@ export const CURATED_ARTICLES: DemoArticle[] = [
       {
         key: "F1",
         fact_id: FACT_IDS.llmPurposes,
-        claim_span: "[0,158)",
+        claim_span: "[0,161)",
         quote:
-          "six LLM purposes each resolve independently through a provider_ref or profile_ref",
+          "six LLM purposes each carry a provider_name pointing at a shared llm_providers row",
       },
       {
         key: "F2",
         fact_id: FACT_IDS.llmPurposes,
-        claim_span: "[159,272)",
+        claim_span: "[162,287)",
         quote:
-          "rotating one credential never touches another purpose's routing",
+          "rotating that row's credential reaches every purpose pointed at it in one edit",
       },
     ],
     supersedes: null,
@@ -1301,7 +1301,7 @@ export const CURATED_ARTICLES: DemoArticle[] = [
         label: "What survived grounding",
         sentences: [
           {
-            text: "Each of the six LLM purposes resolves independently through a provider_ref or profile_ref, which is where vendor rotation happens.",
+            text: "Each of the six LLM purposes carries a provider_name pointing at a shared llm_providers row, which is where vendor rotation happens.",
             cite: "F1",
           },
           {
@@ -1321,7 +1321,7 @@ export const CURATED_ARTICLES: DemoArticle[] = [
         fact_id: FACT_IDS.llmPurposes,
         claim_span: "[0,131)",
         quote:
-          "six LLM purposes each resolve independently through a provider_ref or profile_ref",
+          "six LLM purposes each carry a provider_name pointing at a shared llm_providers row",
       },
       {
         key: "F2",
