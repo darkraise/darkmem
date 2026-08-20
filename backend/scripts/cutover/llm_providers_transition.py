@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections import Counter
 from urllib.parse import urlparse
 
 CONNECTION_FIELDS = ("api_kind", "base_url", "api_key")
@@ -44,10 +45,13 @@ def _triple(row: dict) -> tuple:
 
 
 def _sort_key(triple: tuple) -> tuple:
-    # api_key and base_url may be None; None sorts against str in no defined
-    # order in Python 3, so blank it out for ordering purposes only — the
-    # triple stored on the provider row keeps the real value.
-    return tuple("" if value is None else value for value in triple)
+    # A field is tagged (0, "") for None and (1, value) for a real string, so
+    # None and "" can never collide onto one sort key. A collision there
+    # would make sorted() fall back to input order, which comes from
+    # iterating a set — hash-seed dependent — so two distinct triples
+    # differing only by None vs "" could name providers differently across
+    # processes on the exact same dump.
+    return tuple((0, "") if value is None else (1, value) for value in triple)
 
 
 def _base_name(api_kind: str, base_url: str | None) -> str:
@@ -73,6 +77,14 @@ def _provider_row(name: str, triple: tuple) -> dict:
 
 
 def derive(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    counts = Counter(row["purpose"] for row in rows)
+    duplicates = sorted(purpose for purpose, count in counts.items() if count > 1)
+    if duplicates:
+        # Two rows for one purpose would otherwise silently emit two INSERTs
+        # that collide on the purpose primary key — fail here, before any
+        # SQL is written, rather than mid-restore.
+        raise ValueError(f"duplicate purpose rows in dump: {', '.join(duplicates)}")
+
     verification_rows = [row for row in rows if row["purpose"] == "verification"]
     other_rows = [row for row in rows if row["purpose"] != "verification"]
 
