@@ -113,8 +113,8 @@ export function CodeBucketsUnavailable() {
         code-summarization buckets
       </span>
       <span>
-        not yet exposed via the API — there is no backend row for these, in
-        either mode.
+        Not yet exposed via the API — no backend row exists for these, in either
+        mode.
       </span>
     </div>
   )

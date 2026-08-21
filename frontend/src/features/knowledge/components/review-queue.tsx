@@ -505,7 +505,7 @@ export function ReviewQueue({ project }: { project?: string }) {
         ) : facts.total === 0 ? (
           <EmptyState
             kind="empty"
-          icon={ClipboardCheck}
+            icon={ClipboardCheck}
             title="No disputed or under-sourced facts"
             description="The fact half of the review queue is caught up."
           />
@@ -554,7 +554,7 @@ export function ReviewQueue({ project }: { project?: string }) {
       <ListSurface
         title="Ungrounded articles"
         populated={articles.total > 0}
-        meta="arrival order — no consequence ranking for articles yet (doc 08 §6)"
+        meta="arrival order — no consequence ranking for articles yet"
       >
         {articles.error ? (
           <EmptyState
@@ -577,7 +577,7 @@ export function ReviewQueue({ project }: { project?: string }) {
         ) : articles.total === 0 ? (
           <EmptyState
             kind="empty"
-          icon={ClipboardCheck}
+            icon={ClipboardCheck}
             title="No ungrounded articles"
             description="The article half of the review queue is caught up. article_synthesis is still a placeholder job, so this arm has no live producer yet."
           />

@@ -122,7 +122,8 @@ function PageControls({
   return (
     <div className="flex items-center justify-end gap-2 pt-1">
       <span className="text-muted-foreground font-mono text-sm">
-        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of {total}
+        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of{" "}
+        {total}
       </span>
       <Button
         size="sm"
@@ -168,11 +169,14 @@ function ActionNotice({
       <div className="flex flex-wrap items-center gap-2">
         <Check aria-hidden className="text-success h-3.5 w-3.5 shrink-0" />
         <span>
-          {applied} applied{refused.length > 0 ? `, ${refused.length} refused` : ""} —
-          cycle <span className="font-mono">{result.cycle_id}</span>
+          {applied} applied
+          {refused.length > 0 ? `, ${refused.length} refused` : ""} — cycle{" "}
+          <span className="font-mono">{result.cycle_id}</span>
         </span>
         {undone ? (
-          <span className="text-muted-foreground ml-auto font-mono">undone</span>
+          <span className="text-muted-foreground ml-auto font-mono">
+            undone
+          </span>
         ) : (
           <Button
             size="sm"
@@ -236,10 +240,16 @@ function CategoryShell({
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border">
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
-        <span className="text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">{icon}</span>
+        <span className="text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">
+          {icon}
+        </span>
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-muted-foreground font-mono text-sm">{meta}</span>
-        {toolbar && <div className="ml-auto flex flex-wrap items-center gap-2">{toolbar}</div>}
+        {toolbar && (
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {toolbar}
+          </div>
+        )}
       </div>
       <div className="flex flex-col gap-2.5 p-4">
         {isError ? (
@@ -249,7 +259,10 @@ function CategoryShell({
           </p>
         ) : isLoading ? (
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Loader2 aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            <Loader2
+              aria-hidden
+              className="h-3.5 w-3.5 shrink-0 animate-spin"
+            />
             loading…
           </p>
         ) : isEmpty ? (
@@ -262,7 +275,8 @@ function CategoryShell({
             <SearchX aria-hidden className="h-3.5 w-3.5 shrink-0" />
             <span>
               This page emptied out — {strandedTotal} row
-              {strandedTotal === 1 ? "" : "s"} still {strandedTotal === 1 ? "remains" : "remain"}.
+              {strandedTotal === 1 ? "" : "s"} still{" "}
+              {strandedTotal === 1 ? "remains" : "remain"}.
             </span>
             <Button size="sm" variant="outline" onClick={onBackToStart}>
               Back to the first page
@@ -300,7 +314,9 @@ function DuplicateRow({
           aria-label={`Select duplicate pair ${row.id}`}
         />
         {level === "advanced" && row.verdict && (
-          <span className="text-muted-foreground font-mono text-sm">{row.verdict}</span>
+          <span className="text-muted-foreground font-mono text-sm">
+            {row.verdict}
+          </span>
         )}
         {level === "advanced" && row.score != null && (
           <Badge variant="outline" size="sm" className="font-mono">
@@ -345,12 +361,19 @@ function DuplicateRow({
   )
 }
 
-function MemoryRowLine({ row }: { row: HygieneMemoryRowData; lead?: ReactNode }) {
+function MemoryRowLine({
+  row,
+}: {
+  row: HygieneMemoryRowData
+  lead?: ReactNode
+}) {
   const level = useDetailLevel((s) => s.level)
   return (
     <span className="min-w-52 flex-1 space-y-0.5">
       <span className="flex flex-wrap items-center gap-1.5">
-        <span className="text-sm">{row.content_preview || "(no content preview)"}</span>
+        <span className="text-sm">
+          {row.content_preview || "(no content preview)"}
+        </span>
         <Badge variant="outline" size="sm" className="font-mono">
           {row.reason}
         </Badge>
@@ -359,7 +382,8 @@ function MemoryRowLine({ row }: { row: HygieneMemoryRowData; lead?: ReactNode })
         <span className="text-muted-foreground block font-mono text-sm">
           project {row.project} · confidence {row.confidence ?? "—"}
           {row.expires_at && ` · expires_at ${row.expires_at}`}
-          {row.superseded_by && ` · superseded_by ${shortId(row.superseded_by)}`}
+          {row.superseded_by &&
+            ` · superseded_by ${shortId(row.superseded_by)}`}
           {" · created_at "}
           {row.created_at}
         </span>
@@ -428,10 +452,26 @@ export function HygieneQueue({ project }: { project?: string }) {
   const expSel = useSelection()
 
   const counts = useHygieneCountsRows({ project })
-  const duplicates = useHygieneDuplicateRows({ project, limit: PAGE, offset: dupOffset })
-  const lowConfidence = useHygieneLowConfidenceRows({ project, limit: PAGE, offset: lowOffset })
-  const expiring = useHygieneExpiringRows({ project, limit: PAGE, offset: expOffset })
-  const superseded = useHygieneSupersededRows({ project, limit: PAGE, offset: supOffset })
+  const duplicates = useHygieneDuplicateRows({
+    project,
+    limit: PAGE,
+    offset: dupOffset,
+  })
+  const lowConfidence = useHygieneLowConfidenceRows({
+    project,
+    limit: PAGE,
+    offset: lowOffset,
+  })
+  const expiring = useHygieneExpiringRows({
+    project,
+    limit: PAGE,
+    offset: expOffset,
+  })
+  const superseded = useHygieneSupersededRows({
+    project,
+    limit: PAGE,
+    offset: supOffset,
+  })
 
   const confirmDedup = useBulkConfirmDedup()
   const bulkSupersede = useBulkSupersede()
@@ -441,11 +481,16 @@ export function HygieneQueue({ project }: { project?: string }) {
 
   const [pending, setPending] = useState<PendingAction>(null)
   const [notices, setNotices] = useState<
-    Partial<Record<"duplicates" | "lowConfidence" | "expiring", HygieneBulkActionResponse>>
+    Partial<
+      Record<
+        "duplicates" | "lowConfidence" | "expiring",
+        HygieneBulkActionResponse
+      >
+    >
   >({})
-  const [undone, setUndone] = useState<Partial<Record<"duplicates" | "lowConfidence" | "expiring", boolean>>>(
-    {},
-  )
+  const [undone, setUndone] = useState<
+    Partial<Record<"duplicates" | "lowConfidence" | "expiring", boolean>>
+  >({})
   const [undoingArm, setUndoingArm] = useState<string | null>(null)
 
   // A confirmed action's own request can still fail — a 500, a dropped
@@ -571,7 +616,9 @@ export function HygieneQueue({ project }: { project?: string }) {
           }
           toast.error("Undo failed — state unknown", {
             description: `${
-              error instanceof Error ? error.message : "the request did not complete"
+              error instanceof Error
+                ? error.message
+                : "the request did not complete"
             }. Re-check the batch before retrying.`,
           })
         },
@@ -590,15 +637,15 @@ export function HygieneQueue({ project }: { project?: string }) {
   return (
     <div className="space-y-3">
       <div className="border-border bg-muted/15 text-muted-foreground rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-        Housekeeping over L0 memories — distinct from the Review queue's
-        truth adjudication over facts and articles.{" "}
+        Housekeeping over L0 memories — distinct from the Review queue's truth
+        adjudication over facts and articles.{" "}
         <span className="font-mono">{countsLine}</span>
       </div>
 
       <CategoryShell
         icon={<Copy aria-hidden />}
         title="Candidate duplicates"
-        meta="newest first — no consequence ranking here yet (doc 08 §6)"
+        meta="newest first — no consequence ranking here yet"
         isEmpty={duplicates.total === 0}
         isError={duplicates.error}
         isLoading={duplicates.loading && duplicates.rows.length === 0}
@@ -624,7 +671,10 @@ export function HygieneQueue({ project }: { project?: string }) {
                   kind: "supersede-dup",
                   items: duplicates.rows
                     .filter((row) => dupSel.selected.has(row.id))
-                    .map((row) => ({ relationId: row.id, ...duplicateDirection(row) })),
+                    .map((row) => ({
+                      relationId: row.id,
+                      ...duplicateDirection(row),
+                    })),
                 })
               }
             >
@@ -634,7 +684,9 @@ export function HygieneQueue({ project }: { project?: string }) {
             <Button
               size="sm"
               disabled={dupSel.selected.size === 0}
-              onClick={() => setPending({ kind: "confirm-dedup", ids: [...dupSel.selected] })}
+              onClick={() =>
+                setPending({ kind: "confirm-dedup", ids: [...dupSel.selected] })
+              }
             >
               <Copy className="mr-1.5 size-3.5" />
               Confirm dedup
@@ -670,7 +722,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Low-confidence memories"
-        meta="lowest confidence first, ties by newest — no consequence ranking here yet (doc 08 §6)"
+        meta="lowest confidence first, ties by newest — no consequence ranking here yet"
         isEmpty={lowConfidence.total === 0}
         isError={lowConfidence.error}
         isLoading={lowConfidence.loading && lowConfidence.rows.length === 0}
@@ -692,7 +744,9 @@ export function HygieneQueue({ project }: { project?: string }) {
               variant="outline"
               className="border-destructive/55 text-destructive"
               disabled={lowSel.selected.size === 0}
-              onClick={() => setPending({ kind: "prune-low", ids: [...lowSel.selected] })}
+              onClick={() =>
+                setPending({ kind: "prune-low", ids: [...lowSel.selected] })
+              }
             >
               <Trash2 className="mr-1.5 size-3.5" />
               Prune
@@ -734,7 +788,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<Clock aria-hidden />}
         title="Expiring soon"
-        meta="soonest expires_at first — no consequence ranking here yet (doc 08 §6)"
+        meta="soonest expires_at first — no consequence ranking here yet"
         isEmpty={expiring.total === 0}
         isError={expiring.error}
         isLoading={expiring.loading && expiring.rows.length === 0}
@@ -756,7 +810,12 @@ export function HygieneQueue({ project }: { project?: string }) {
               variant="outline"
               className="border-destructive/55 text-destructive"
               disabled={expSel.selected.size === 0}
-              onClick={() => setPending({ kind: "prune-expiring", ids: [...expSel.selected] })}
+              onClick={() =>
+                setPending({
+                  kind: "prune-expiring",
+                  ids: [...expSel.selected],
+                })
+              }
             >
               <Trash2 className="mr-1.5 size-3.5" />
               Prune now
@@ -765,9 +824,9 @@ export function HygieneQueue({ project }: { project?: string }) {
         }
       >
         <p className="text-muted-foreground text-sm italic">
-          No backend door extends or clears a TTL yet (`memory_dream`'s
-          `refine` allowlist is `summary`-only) — pruning now is the one real
-          action available here; see the report.
+          No backend door extends or clears a TTL yet (`memory_dream`'s `refine`
+          allowlist is `summary`-only) — pruning now is the one real action
+          available here; see the report.
         </p>
         {notices.expiring && (
           <ActionNotice
@@ -803,7 +862,7 @@ export function HygieneQueue({ project }: { project?: string }) {
       <CategoryShell
         icon={<GitBranch aria-hidden />}
         title="Superseded lineage"
-        meta="newest first, read-only — no consequence ranking here yet (doc 08 §6)"
+        meta="newest first, read-only — no consequence ranking here yet"
         isEmpty={superseded.total === 0}
         isError={superseded.error}
         isLoading={superseded.loading && superseded.rows.length === 0}
@@ -819,8 +878,8 @@ export function HygieneQueue({ project }: { project?: string }) {
         errorLine="Could not load superseded lineage — this is a failed read, not zero chains"
       >
         <p className="text-muted-foreground text-sm italic">
-          No bulk action here: `deprecate()` (the primitive `prune` reuses)
-          only accepts an `active` memory, and every row below is already
+          No bulk action here: `deprecate()` (the primitive `prune` reuses) only
+          accepts an `active` memory, and every row below is already
           `superseded` — every prune attempt would refuse with
           `already_superseded`. Listed for visibility only.
         </p>
@@ -863,7 +922,8 @@ export function HygieneQueue({ project }: { project?: string }) {
             <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
               {pending.items.slice(0, 3).map((item) => (
                 <li key={item.relationId} className="font-mono">
-                  {shortId(item.olderId)} → superseded by → {shortId(item.newerId)}
+                  {shortId(item.olderId)} → superseded by →{" "}
+                  {shortId(item.newerId)}
                 </li>
               ))}
               {pending.items.length > 3 && (
@@ -880,4 +940,3 @@ export function HygieneQueue({ project }: { project?: string }) {
     </div>
   )
 }
-
