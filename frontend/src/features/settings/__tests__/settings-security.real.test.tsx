@@ -319,3 +319,160 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     expect(screen.queryByText(/Password changed/)).not.toBeInTheDocument()
   })
 })
+
+describe("SecurityTab (real) — the three defects found in review", () => {
+  afterEach(() => vi.clearAllMocks())
+
+  const fillPasswords = (current: string, next: string, confirm: string) => {
+    fireEvent.change(screen.getByLabelText("Current password"), {
+      target: { value: current },
+    })
+    fireEvent.change(screen.getByLabelText("New password"), {
+      target: { value: next },
+    })
+    fireEvent.change(screen.getByLabelText("Confirm new password"), {
+      target: { value: confirm },
+    })
+  }
+
+  it("sends change-password with on401 surface, so a wrong current password cannot sign the operator out", async () => {
+    // `apiFetch` treats every 401 as a dead session — it redirects to /login
+    // and discards the server's message. But this endpoint returns 401 for a
+    // wrong CURRENT password, with the session perfectly valid. Measured in a
+    // browser before the fix: a typo bounced the operator to /login and the
+    // real "Current password is incorrect" never reached the screen.
+    mockHappy()
+    render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+
+    fillPasswords("whatever-was-typed", "a-new-password", "a-new-password")
+    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Confirm — change password/ }),
+    )
+
+    await waitFor(() => {
+      const call = vi
+        .mocked(apiFetch)
+        .mock.calls.find(([path]) => path === "/auth/change-password")
+      expect(call).toBeTruthy()
+      expect((call![1] as { on401?: string }).on401).toBe("surface")
+    })
+  })
+
+  // NOTE: this one passes with the fix reverted, and must not be read as
+  // proving it. The suite mocks `apiFetch` wholesale, so the real 401 branch —
+  // the thing that redirects and discards the message — never runs here. It
+  // proves the rendering path: given the error, the card shows it. Its sibling
+  // above is what pins the fix, by asserting the option that reaches the real
+  // `apiFetch`; that one is verified red with `on401` removed.
+  it("shows the server's own reason for a rejected current password", async () => {
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/auth/change-password" && init?.method === "POST") {
+          return Promise.reject(
+            new ApiError("Current password is incorrect", 401),
+          )
+        }
+        if (path === "/setup/status") return Promise.resolve({ initialized: true })
+        if (path === "/auth/me")
+          return Promise.resolve({ authenticated: true, sub: "admin" })
+        if (path === "/auth/security-posture") return Promise.resolve(POSTURE_FIXTURE)
+        if (path === "/api-keys") return Promise.resolve(KEYS_FIXTURE)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
+    render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+
+    fillPasswords("wrong-one", "a-new-password", "a-new-password")
+    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Confirm — change password/ }),
+    )
+
+    expect(
+      await screen.findByText("Current password is incorrect"),
+    ).toBeInTheDocument()
+  })
+
+  it("says why the button will not submit instead of greying out in silence", async () => {
+    mockHappy()
+    render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+
+    fillPasswords("", "short", "mismatch")
+    expect(
+      screen.getByRole("button", { name: /Change password/ }),
+    ).toBeDisabled()
+    expect(screen.getByText(/at least 8 characters/)).toBeInTheDocument()
+    expect(screen.getByText(/confirmation does not match/)).toBeInTheDocument()
+  })
+
+  it("does not scold an untouched form", async () => {
+    mockHappy()
+    render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+    expect(screen.queryByText(/Not ready —/)).not.toBeInTheDocument()
+  })
+
+  it("drops the one-time plaintext when its own key is revoked", async () => {
+    const created = {
+      id: "44444444-4444-4444-4444-444444444444",
+      name: "review-probe",
+      key_id: "zzz999",
+      scopes: ["read"],
+      created_at: "2026-08-21T00:00:00Z",
+      last_used_at: null,
+      expires_at: null,
+      revoked_at: null,
+      token: "dmk_zzz999_plaintext",
+    }
+    let keys = [...KEYS_FIXTURE]
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/api-keys" && init?.method === "POST") {
+          keys = [...keys, created]
+          return Promise.resolve(created)
+        }
+        if (path.startsWith("/api-keys/") && init?.method === "DELETE") {
+          return Promise.resolve(undefined)
+        }
+        if (path === "/api-keys") return Promise.resolve(keys)
+        if (path === "/setup/status") return Promise.resolve({ initialized: true })
+        if (path === "/auth/me")
+          return Promise.resolve({ authenticated: true, sub: "admin" })
+        if (path === "/auth/security-posture") return Promise.resolve(POSTURE_FIXTURE)
+        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+      },
+    )
+    render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+
+    fireEvent.change(screen.getByLabelText("Key label"), {
+      target: { value: "review-probe" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Create key/ }))
+    expect(await screen.findByText("dmk_zzz999_plaintext")).toBeInTheDocument()
+
+    // "Copy this now — it is never shown again" is the wrong thing to keep
+    // saying about a credential that has just been revoked.
+    const revokes = await screen.findAllByRole("button", { name: "Revoke" })
+    fireEvent.click(revokes[revokes.length - 1]!)
+    await waitFor(() =>
+      expect(screen.queryByText("dmk_zzz999_plaintext")).not.toBeInTheDocument(),
+    )
+  })
+
+  it("renders each subject as its own card", async () => {
+    mockHappy()
+    const { container } = render(<SecurityTab />, { wrapper })
+    await screen.findByText(/signed in as admin/)
+    // Auth, Tokens, TOFU, LAN trust, ApiKey — five distinct subjects that
+    // read as one long panel while they were divs inside a single surface.
+    expect(container.querySelectorAll(".dr-card").length).toBe(5)
+    for (const header of container.querySelectorAll(".dr-card-header")) {
+      expect(header.className).toContain("flex-row")
+    }
+  })
+})
