@@ -1051,14 +1051,22 @@ function ClassificationDialog({
         </SegmentGroup>
       </div>
 
+      {/* The area list follows the mode being *drafted*, not the mode that is
+          saved: picking `simple` here is picking a fixed vocabulary, so the
+          controls that shape a per-area one have nothing to say and go away
+          with it. Keeping them visible-but-inert inside an editor was the
+          same mistake the read-only card already stopped making. */}
       <p className="text-muted-foreground text-sm">
         {simple ? (
           <>
-            The areas below are{" "}
-            <b className="text-warning font-semibold">not read</b> in simple
-            mode. They are still editable here, and the values you set take
-            effect the moment the mode is expanded — including in this same
-            save.
+            <span className="font-mono">simple</span> uses a{" "}
+            <b className="text-foreground font-semibold">fixed</b> nine-label
+            vocabulary and{" "}
+            <b className="text-warning font-semibold">does not read</b> the
+            classification areas, so there is nothing to choose here. Pick{" "}
+            <span className="font-mono">expanded</span> to bring them back —
+            whatever was enabled before is preserved and will be saved with the
+            mode.
           </>
         ) : (
           <>
@@ -1068,6 +1076,7 @@ function ClassificationDialog({
         )}
       </p>
 
+      {!simple && (
       <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
         {binding.availableAreas.map((area) => {
           const locked = area.key === "general"
@@ -1095,6 +1104,7 @@ function ClassificationDialog({
           )
         })}
       </div>
+      )}
     </SectionDialog>
   )
 }

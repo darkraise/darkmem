@@ -436,19 +436,45 @@ describe("FlagsTab — classification areas", () => {
   it("keeps general fixed on — the API forces it back server-side", () => {
     renderTab()
     openEditor("classification")
+    switchToExpanded()
     expect(screen.getByLabelText("general")).toBeDisabled()
   })
 
-  it("offers the areas even in simple mode, where the editor says they are not read", () => {
-    // Hidden on the read-only card because they change nothing there, but the
-    // editor is where a mode flip and its areas are chosen together — so it
-    // has to carry both.
+  it("shows and hides the area list as the drafted mode changes", () => {
+    // The list follows the mode being drafted, not the one that is saved:
+    // picking `simple` is picking a fixed vocabulary, so the controls that
+    // shape a per-area one have nothing to say.
     renderTab()
     openEditor("classification")
-    expect(screen.getByLabelText("technical")).toBeInTheDocument()
-    // The card behind it says the same thing, so scope to the dialog.
     const dialog = screen.getByRole("dialog")
-    expect(within(dialog).getByText(/not read/)).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText("technical")).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/does not read/)).toBeInTheDocument()
+
+    switchToExpanded()
+    expect(within(dialog).getByLabelText("technical")).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole("radio", { name: "simple" }))
+    expect(within(dialog).queryByLabelText("technical")).not.toBeInTheDocument()
+  })
+
+  it("keeps the area selection across a mode round-trip", () => {
+    // Hiding the list must not discard what it held — the values are still
+    // drafted, and go out with the save.
+    renderTab()
+    openEditor("classification")
+    switchToExpanded()
+    fireEvent.click(screen.getByLabelText("technical"))
+
+    const dialog = screen.getByRole("dialog")
+    fireEvent.click(within(dialog).getByRole("radio", { name: "simple" }))
+    switchToExpanded()
+
+    expect(screen.getByLabelText("technical")).not.toBeChecked()
+    // The mode is dirty too (demo starts simple), so the footer names both —
+    // what matters is that the area edit survived being hidden.
+    expect(
+      within(dialog).getByText(/one request will write:.*classification_areas/),
+    ).toBeInTheDocument()
   })
 })
 
