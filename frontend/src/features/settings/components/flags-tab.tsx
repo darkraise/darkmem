@@ -1321,7 +1321,7 @@ export function FlagsTab() {
         </span>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <Section
           name="rank_fusion_factor arms"
           help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."

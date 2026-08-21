@@ -3,6 +3,7 @@ import {
   Outlet,
   redirect,
   useRouter,
+  useRouterState,
 } from "@tanstack/react-router"
 import {
   Activity,
@@ -28,6 +29,7 @@ import {
   StackedLayout,
 } from "darkraise-ui/layout"
 import type { NavGroup } from "darkraise-ui/layout"
+import { cn } from "darkraise-ui/lib"
 import { UiLabelsProvider } from "darkraise-ui/labels"
 import { useState } from "react"
 import { ChangePasswordDialog } from "@/features/settings/components/change-password-dialog"
@@ -115,11 +117,25 @@ function LiveUpdates() {
   return null
 }
 
+/** Routes whose content is a canvas rather than a document, and so keeps the
+ *  full width of the viewport. */
+const FULL_BLEED_ROUTES = ["/memory-graph", "/code/graph"] as const
+
 function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)
   const router = useRouter()
   const queryClient = useQueryClient()
   const [changingPassword, setChangingPassword] = useState(false)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+
+  // Content is capped on wide viewports so a dense page does not stretch a
+  // card row to 2000px and leave the eye travelling between a label on the
+  // left and its value on the right. The graph pages opt out: they render a
+  // pan/zoom canvas whose usable area IS the viewport, so a cap there is lost
+  // working space rather than restored legibility.
+  const fullBleed = FULL_BLEED_ROUTES.some((route) =>
+    pathname.startsWith(route),
+  )
 
   const handleLogout = async () => {
     if (!DEMO) {
@@ -169,7 +185,9 @@ function AuthenticatedLayout() {
         onLogout={handleLogout}
       >
         {!DEMO && <LiveUpdates />}
-        <Outlet />
+        <main className={cn("w-full", !fullBleed && "mx-auto max-w-[1400px]")}>
+          <Outlet />
+        </main>
         <BackToTop />
         {!DEMO && (
           <ChangePasswordDialog

@@ -605,7 +605,7 @@ export function SecurityTab() {
         </span>
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <AuthCard binding={binding} />
         <TokensCard binding={binding} />
         <TofuCard binding={binding} />
