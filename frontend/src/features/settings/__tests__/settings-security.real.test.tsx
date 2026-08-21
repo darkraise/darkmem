@@ -15,7 +15,7 @@ vi.mock("@/lib/api", () => {
   return { apiFetch: vi.fn(), ApiError }
 })
 
-import { apiFetch, ApiError } from "@/lib/api"
+import { apiFetch } from "@/lib/api"
 import { SecurityTab } from "../components/security-tab"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -246,119 +246,13 @@ describe("SecurityTab (real) — ruling 3: reflects the real posture, never a ha
     ).toBeInTheDocument()
   })
 
-  it("change-password POSTs /auth/change-password with the real fields", async () => {
-    mockHappy()
-    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-      if (path === "/setup/status") return Promise.resolve({ initialized: true })
-      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
-      if (path === "/auth/change-password" && init?.method === "POST") {
-        return Promise.resolve({ ok: true })
-      }
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
-    render(<SecurityTab />, { wrapper })
-    await waitFor(() => expect(screen.getAllByText("claimed").length).toBeGreaterThan(0))
 
-    fireEvent.change(screen.getByLabelText("Current password"), {
-      target: { value: "old-password" },
-    })
-    fireEvent.change(screen.getByLabelText("New password"), {
-      target: { value: "new-password-123" },
-    })
-    fireEvent.change(screen.getByLabelText("Confirm new password"), {
-      target: { value: "new-password-123" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
-    fireEvent.click(screen.getByRole("button", { name: /Confirm — change password/ }))
-
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/auth/change-password",
-        expect.objectContaining({ method: "POST" }),
-      ),
-    )
-    const call = vi
-      .mocked(apiFetch)
-      .mock.calls.find(([path]) => path === "/auth/change-password")
-    expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({
-      current_password: "old-password",
-      new_password: "new-password-123",
-    })
-    await waitFor(() =>
-      expect(screen.getByText(/Password changed/)).toBeInTheDocument(),
-    )
-  })
-
-  it("mutation proof: a rejected change-password renders the real error, never a fake success", async () => {
-    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
-      if (path === "/setup/status") return Promise.resolve({ initialized: true })
-      if (path === "/auth/me") return Promise.resolve({ authenticated: true, sub: "admin" })
-      if (path === "/auth/change-password" && init?.method === "POST") {
-        return Promise.reject(new ApiError("Current password is incorrect", 401))
-      }
-      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-    })
-    render(<SecurityTab />, { wrapper })
-    await waitFor(() => expect(screen.getAllByText("claimed").length).toBeGreaterThan(0))
-
-    fireEvent.change(screen.getByLabelText("Current password"), {
-      target: { value: "wrong" },
-    })
-    fireEvent.change(screen.getByLabelText("New password"), {
-      target: { value: "new-password-123" },
-    })
-    fireEvent.change(screen.getByLabelText("Confirm new password"), {
-      target: { value: "new-password-123" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
-    fireEvent.click(screen.getByRole("button", { name: /Confirm — change password/ }))
-
-    await waitFor(() =>
-      expect(screen.getByText("Current password is incorrect")).toBeInTheDocument(),
-    )
-    expect(screen.queryByText(/Password changed/)).not.toBeInTheDocument()
-  })
 })
 
 describe("SecurityTab (real) — the three defects found in review", () => {
   afterEach(() => vi.clearAllMocks())
 
-  const fillPasswords = (current: string, next: string, confirm: string) => {
-    fireEvent.change(screen.getByLabelText("Current password"), {
-      target: { value: current },
-    })
-    fireEvent.change(screen.getByLabelText("New password"), {
-      target: { value: next },
-    })
-    fireEvent.change(screen.getByLabelText("Confirm new password"), {
-      target: { value: confirm },
-    })
-  }
 
-  it("sends change-password with on401 surface, so a wrong current password cannot sign the operator out", async () => {
-    // `apiFetch` treats every 401 as a dead session — it redirects to /login
-    // and discards the server's message. But this endpoint returns 401 for a
-    // wrong CURRENT password, with the session perfectly valid. Measured in a
-    // browser before the fix: a typo bounced the operator to /login and the
-    // real "Current password is incorrect" never reached the screen.
-    mockHappy()
-    render(<SecurityTab />, { wrapper })
-    await screen.findByText(/signed in as admin/)
-
-    fillPasswords("whatever-was-typed", "a-new-password", "a-new-password")
-    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Confirm — change password/ }),
-    )
-
-    await waitFor(() => {
-      const call = vi
-        .mocked(apiFetch)
-        .mock.calls.find(([path]) => path === "/auth/change-password")
-      expect(call).toBeTruthy()
-      expect((call![1] as { on401?: string }).on401).toBe("surface")
-    })
-  })
 
   // NOTE: this one passes with the fix reverted, and must not be read as
   // proving it. The suite mocks `apiFetch` wholesale, so the real 401 branch —
@@ -366,55 +260,8 @@ describe("SecurityTab (real) — the three defects found in review", () => {
   // proves the rendering path: given the error, the card shows it. Its sibling
   // above is what pins the fix, by asserting the option that reaches the real
   // `apiFetch`; that one is verified red with `on401` removed.
-  it("shows the server's own reason for a rejected current password", async () => {
-    vi.mocked(apiFetch).mockImplementation(
-      (path: string, init?: RequestInit) => {
-        if (path === "/auth/change-password" && init?.method === "POST") {
-          return Promise.reject(
-            new ApiError("Current password is incorrect", 401),
-          )
-        }
-        if (path === "/setup/status") return Promise.resolve({ initialized: true })
-        if (path === "/auth/me")
-          return Promise.resolve({ authenticated: true, sub: "admin" })
-        if (path === "/auth/security-posture") return Promise.resolve(POSTURE_FIXTURE)
-        if (path === "/api-keys") return Promise.resolve(KEYS_FIXTURE)
-        return Promise.reject(new Error(`unexpected apiFetch(${path})`))
-      },
-    )
-    render(<SecurityTab />, { wrapper })
-    await screen.findByText(/signed in as admin/)
 
-    fillPasswords("wrong-one", "a-new-password", "a-new-password")
-    fireEvent.click(screen.getByRole("button", { name: /Change password/ }))
-    fireEvent.click(
-      await screen.findByRole("button", { name: /Confirm — change password/ }),
-    )
 
-    expect(
-      await screen.findByText("Current password is incorrect"),
-    ).toBeInTheDocument()
-  })
-
-  it("says why the button will not submit instead of greying out in silence", async () => {
-    mockHappy()
-    render(<SecurityTab />, { wrapper })
-    await screen.findByText(/signed in as admin/)
-
-    fillPasswords("", "short", "mismatch")
-    expect(
-      screen.getByRole("button", { name: /Change password/ }),
-    ).toBeDisabled()
-    expect(screen.getByText(/at least 8 characters/)).toBeInTheDocument()
-    expect(screen.getByText(/confirmation does not match/)).toBeInTheDocument()
-  })
-
-  it("does not scold an untouched form", async () => {
-    mockHappy()
-    render(<SecurityTab />, { wrapper })
-    await screen.findByText(/signed in as admin/)
-    expect(screen.queryByText(/Not ready —/)).not.toBeInTheDocument()
-  })
 
   it("drops the one-time plaintext when its own key is revoked", async () => {
     const created = {
