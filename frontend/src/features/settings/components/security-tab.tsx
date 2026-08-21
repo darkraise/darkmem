@@ -91,7 +91,7 @@ function CardShell({
   return (
     <div
       className={cn(
-        "border-border bg-card flex flex-col gap-2.5 rounded-lg border p-3.5",
+        "border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-3.5",
         dormant && "bg-muted/10 border-dashed",
         className,
       )}
@@ -126,7 +126,7 @@ function PillFlow({ steps }: { steps: string[] }) {
         <span key={step} className="flex items-center gap-1.5">
           <span
             className={cn(
-              "border-border bg-muted/40 rounded-full border px-2.5 py-0.5 font-mono text-sm whitespace-nowrap",
+              "border-inset bg-muted/40 rounded-full border px-2.5 py-0.5 font-mono text-sm whitespace-nowrap",
               i === 0 && "border-primary/55 text-primary bg-primary/8",
             )}
           >
@@ -372,7 +372,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
       help="darkmem trusts its LAN, authenticates its human, and attributes — but does not authenticate — its agents. Three postures, one service layer underneath all of them."
       className="sm:col-span-2"
     >
-      <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
+      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/mcp</span>
           <HelpTip label="About the /mcp door">
@@ -389,7 +389,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
               <span
                 key={h.host}
                 className={cn(
-                  "border-border bg-background rounded-full border px-2 py-0.5 font-mono text-sm",
+                  "border-inset bg-background rounded-full border px-2 py-0.5 font-mono text-sm",
                   h.wild && "text-warning border-warning/55 border-dashed",
                 )}
               >
@@ -404,7 +404,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
           </span>
         )}
       </div>
-      <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
+      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/api/v1 + /ws</span>
           <HelpTip label="About the /api/v1 and /ws door">
@@ -434,7 +434,7 @@ function LanTrustCard({ binding }: { binding: SecurityTabBinding }) {
           )}
         </div>
       </div>
-      <div className="border-border bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
+      <div className="border-inset bg-muted/12 flex flex-col gap-1.5 rounded-md border px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">/setup</span>
           <HelpTip label="About the /setup door">
@@ -530,7 +530,7 @@ function ApiKeyCard() {
         </p>
       )}
       {issued && (
-        <div className="border-border bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
+        <div className="border-inset bg-muted/20 flex flex-col gap-1 rounded-md border border-dashed p-2.5">
           <span className="text-sm font-semibold">
             Copy this now — it is never shown again
           </span>

@@ -19,7 +19,7 @@ function OpCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border p-3.5">
+    <div className="border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-3.5">
       <div className="border-border flex items-center gap-2 border-b border-dashed pb-2">
         <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
         <span className="text-sm font-semibold">{title}</span>
@@ -68,7 +68,7 @@ function Op({
 
 function IllustrativeTag({ label }: { label: string }) {
   return (
-    <span className="border-border text-muted-foreground inline-flex items-center rounded-full border border-dashed px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+    <span className="border-inset text-muted-foreground inline-flex items-center rounded-full border border-dashed px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
       {label}
     </span>
   )

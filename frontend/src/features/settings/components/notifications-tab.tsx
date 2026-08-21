@@ -114,7 +114,7 @@ export function NotificationsTab() {
         </HelpTip>
       </div>
 
-      <div className="border-border bg-card flex flex-col gap-3 rounded-lg border p-3.5">
+      <div className="border-inset bg-card flex flex-col gap-3 rounded-lg border p-3.5">
         <div className="flex items-center gap-2">
           <Send aria-hidden className="text-muted-foreground size-[var(--icon-size)]" />
           <span className="font-medium">Telegram</span>
@@ -154,7 +154,7 @@ export function NotificationsTab() {
         </Field>
       </div>
 
-      <div className="border-border bg-card flex items-center gap-2 rounded-lg border p-3.5">
+      <div className="border-inset bg-card flex items-center gap-2 rounded-lg border p-3.5">
         <div className="min-w-0 flex-1">
           <p className="font-medium">Notify on job failure</p>
           <p className="text-muted-foreground text-sm">

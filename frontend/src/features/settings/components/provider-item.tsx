@@ -160,7 +160,7 @@ export function ProviderItem({
 
   if (layout === "list") {
     return (
-      <div className="border-border bg-card flex flex-col gap-2 rounded-lg border px-4 py-3">
+      <div className="border-inset bg-card flex flex-col gap-2 rounded-lg border px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {identity}
           {connection}

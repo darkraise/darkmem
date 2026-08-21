@@ -34,7 +34,7 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
 
 function TierBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
+    <span className="border-inset bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
       {children}
     </span>
   )
@@ -117,7 +117,7 @@ export function PurposeItem({
 
   if (layout === "list") {
     return (
-      <div className="border-border bg-card flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3">
+      <div className="border-inset bg-card flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3">
         {identity}
         {summary}
         <div className="ml-auto">{action}</div>
@@ -126,7 +126,7 @@ export function PurposeItem({
   }
 
   return (
-    <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border p-4">
+    <div className="border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-4">
       {identity}
       {summary}
       <div className="flex items-center pt-1">{action}</div>
@@ -197,7 +197,7 @@ export function TierCPurposeItem({
 
   if (layout === "list") {
     return (
-      <div className="border-border bg-card/60 flex flex-col gap-2 rounded-lg border border-dashed px-4 py-3 opacity-90">
+      <div className="border-inset bg-card/60 flex flex-col gap-2 rounded-lg border border-dashed px-4 py-3 opacity-90">
         <div className="flex flex-wrap items-center justify-between gap-3">
           {identity}
           {summary}
@@ -208,7 +208,7 @@ export function TierCPurposeItem({
   }
 
   return (
-    <div className="border-border bg-card/60 flex flex-col gap-2.5 rounded-lg border border-dashed p-4 opacity-90">
+    <div className="border-inset bg-card/60 flex flex-col gap-2.5 rounded-lg border border-dashed p-4 opacity-90">
       {identity}
       {summary}
       {note}

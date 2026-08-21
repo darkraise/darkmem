@@ -58,7 +58,7 @@ export function SecurityPanel() {
             <CardTitle className="text-lg uppercase tracking-wide">
               Audit log
             </CardTitle>
-            <div className="border-border flex w-fit flex-wrap gap-1 rounded-md border p-0.5">
+            <div className="border-inset flex w-fit flex-wrap gap-1 rounded-md border p-0.5">
               {FILTERS.map((f, i) => (
                 <Button
                   key={f.label}
@@ -90,7 +90,7 @@ export function SecurityPanel() {
               description="Sign-ins, lockouts and setup steps are journalled here as they happen."
             />
           ) : (
-            <div className="divide-border border-border divide-y rounded-md border">
+            <div className="divide-border border-inset divide-y rounded-md border">
               {items.map((e) => (
                 <div
                   key={e.id}

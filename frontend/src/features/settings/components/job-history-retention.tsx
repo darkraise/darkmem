@@ -34,7 +34,7 @@ export function JobHistoryRetention() {
   const dirty = Number.isFinite(draft) && draft !== committed
 
   return (
-    <div className="border-border bg-card flex flex-col gap-2.5 rounded-lg border p-3.5">
+    <div className="border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-3.5">
       <div className="flex items-center gap-2">
         <History aria-hidden className="text-muted-foreground size-[var(--icon-size)]" />
         <span className="font-medium">Job history retention</span>
