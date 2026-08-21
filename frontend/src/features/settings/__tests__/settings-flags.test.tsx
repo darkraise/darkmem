@@ -44,12 +44,12 @@ describe("FlagsTab — invariant 23 honesty (demo mode)", () => {
     expect(screen.getByText(/no paired RRF weight/)).toBeInTheDocument()
   })
 
-  it("summarises all seven job cadences with a pointer to the Jobs tab", () => {
+  // Job schedules are the Jobs page's, and duplicating them here meant this
+  // tab fetched GET /jobs for a read-only summary of someone else's surface.
+  it("summarises no job cadences — they belong to the Jobs page", () => {
     renderTab()
-    expect(screen.getByText("expired_memory_cleanup")).toBeInTheDocument()
-    expect(
-      screen.getByText(/edited in the dedicated Settings → Jobs tab/),
-    ).toBeInTheDocument()
+    expect(screen.queryByText("expired_memory_cleanup")).not.toBeInTheDocument()
+    expect(screen.queryByText("job cadences")).not.toBeInTheDocument()
   })
 })
 
@@ -104,9 +104,9 @@ describe("FlagsTab — behavioral feature flags", () => {
 describe("FlagsTab — ruling 2: repo_allowlist editing surface", () => {
   it("shows the current allowlist patterns", () => {
     renderTab()
-    expect(
-      screen.getByLabelText("repo_allowlist patterns"),
-    ).toHaveValue("github.com/darkraise/*")
+    expect(screen.getByLabelText("repo_allowlist patterns")).toHaveValue(
+      "github.com/darkraise/*",
+    )
   })
 
   it("saving a new pattern writes it to the store", () => {

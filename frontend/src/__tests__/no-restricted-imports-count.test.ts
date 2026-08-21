@@ -58,14 +58,18 @@ describe("no-restricted-imports: src/demo/*", () => {
   const results = runEslintTolerant()
 
   it("the src/demo/data/**-scoped rule is a real error-level gate: zero violations", () => {
-    expect(countByRule(results, "demo-data-import/no-restricted-imports")).toBe(0)
+    expect(countByRule(results, "demo-data-import/no-restricted-imports")).toBe(
+      0,
+    )
   })
 
   it("the real-API-type-scoped rule (Memory/MemoryStatus/Repo/Job) is a real error-level gate: zero violations", () => {
     // T1.67: the dead re-export in src/demo/types.ts is gone, so this is
     // currently unreachable through normal code — see this file's own
     // falsification proof (T1.67's report) for how it was shown to fire.
-    expect(countByRule(results, "demo-realtype-import/no-restricted-imports")).toBe(0)
+    expect(
+      countByRule(results, "demo-realtype-import/no-restricted-imports"),
+    ).toBe(0)
   })
 
   it("the T1.68-relocated-types rule is a real error-level gate: zero violations", () => {
@@ -76,7 +80,9 @@ describe("no-restricted-imports: src/demo/*", () => {
     // them. Falsification proof is in the task's report: a throwaway
     // `DemoMemory` import from `@/demo/types` in src/lib/, watched to fire
     // at error, then reverted.
-    expect(countByRule(results, "demo-relocated-types-import/no-restricted-imports")).toBe(0)
+    expect(
+      countByRule(results, "demo-relocated-types-import/no-restricted-imports"),
+    ).toBe(0)
   })
 
   it("the broader src/demo/* rule's warn-level count matches the measured floor", () => {
@@ -92,7 +98,8 @@ describe("no-restricted-imports: src/demo/*", () => {
     // `belief-window.tsx`'s prop type widened to a structural
     // `BeliefWindowLike` so the live fact detail page could reuse the
     // component without importing `@/demo/types`' `BeliefWindow`, dropping
-    // the count to 115.
-    expect(countByRule(results, "no-restricted-imports")).toBe(115)
+    // the count to 115. Re-measured again when the Flags tab stopped
+    // summarising job cadences and no longer needed `useDemoJobs`: 114.
+    expect(countByRule(results, "no-restricted-imports")).toBe(114)
   })
 })

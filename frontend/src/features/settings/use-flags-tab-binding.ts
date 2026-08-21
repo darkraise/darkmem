@@ -1,6 +1,5 @@
 import { DEMO } from "@/lib/demo-flag"
-import { cronInfo } from "@/demo/settings"
-import { useDemoFlags, useDemoJobs } from "@/demo/hooks"
+import { useDemoFlags } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type {
   DemoBehavioralFlag,
@@ -10,7 +9,6 @@ import type {
 } from "@/features/settings/types"
 import {
   useFeatureFlags,
-  useJobs,
   useRepoAllowlist,
   useUpdateFeatureFlags,
   useUpdateRepoAllowlist,
@@ -33,7 +31,10 @@ const BEHAVIORAL_DEFAULTS: Record<string, boolean> = {
   relation_rescue: true,
 }
 
-const FUSION_ARM_META: Record<string, { alias?: string; desc: string; step: number }> = {
+const FUSION_ARM_META: Record<
+  string,
+  { alias?: string; desc: string; step: number }
+> = {
   confidence_rank_gamma: {
     alias: "w_conf",
     desc: "1 + w·(confidence − 0.75)",
@@ -62,12 +63,6 @@ const BEHAVIORAL_META: Record<string, string> = {
     "pattern-based rescue layer for relations the extractor misses (adjacency, subject-tracking, REPLACES)",
 }
 
-export interface JobCadenceSummary {
-  key: string
-  cron: string
-  cron_label: string
-}
-
 export interface FlagsTabBinding {
   fusionArms: DemoRankArm[]
   contextBoost: DemoRankArm
@@ -81,7 +76,6 @@ export interface FlagsTabBinding {
    *  is E2/T2.03 scope and has no config row yet. */
   corroborationAvailable: boolean
   corroboration: DemoCorroborationGate
-  jobs: JobCadenceSummary[]
   allowlistPatterns: string[]
   overridesWritten: number
   isLoading: boolean
@@ -121,7 +115,6 @@ function armFrom(
  * `enabled`. */
 export function useFlagsTabBinding(): FlagsTabBinding {
   const demoFlags = useDemoFlags()
-  const demoJobs = useDemoJobs()
   const saveDemoArm = useDemoStore((s) => s.saveArm)
   const setDemoGraphFlag = useDemoStore((s) => s.setGraphFlag)
   const saveDemoCorroboration = useDemoStore((s) => s.saveCorroboration)
@@ -130,7 +123,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
 
   const flagsQuery = useFeatureFlags(!DEMO)
   const updateFlags = useUpdateFeatureFlags()
-  const jobsQuery = useJobs(!DEMO)
   const allowlistQuery = useRepoAllowlist(!DEMO)
   const updateAllowlist = useUpdateRepoAllowlist()
 
@@ -143,11 +135,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       graphFlags: demoFlags.graph_flags,
       corroborationAvailable: true,
       corroboration: demoFlags.corroboration,
-      jobs: demoJobs.map((j) => ({
-        key: j.key,
-        cron: j.cron,
-        cron_label: j.cron_label,
-      })),
       allowlistPatterns: demoFlags.repo_allowlist.patterns,
       overridesWritten: demoFlags.overrides_written,
       isLoading: false,
@@ -210,28 +197,23 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     : armFrom("w_context_boost", 0, undefined, [], [])
 
   const behavioralFlags: DemoBehavioralFlag[] = flags
-    ? (["hybrid_search_enabled", "reranker_enabled", "relation_rescue"] as const).map(
-        (key) => ({
-          key,
-          desc: BEHAVIORAL_META[key] ?? key,
-          enabled: flags[key] as boolean,
-          source:
-            (flags[key] as boolean) === BEHAVIORAL_DEFAULTS[key]
-              ? "default"
-              : "override",
-          unmeasured: measurable.includes(key) && !measured.includes(key),
-        }),
-      )
+    ? (
+        [
+          "hybrid_search_enabled",
+          "reranker_enabled",
+          "relation_rescue",
+        ] as const
+      ).map((key) => ({
+        key,
+        desc: BEHAVIORAL_META[key] ?? key,
+        enabled: flags[key] as boolean,
+        source:
+          (flags[key] as boolean) === BEHAVIORAL_DEFAULTS[key]
+            ? "default"
+            : "override",
+        unmeasured: measurable.includes(key) && !measured.includes(key),
+      }))
     : []
-
-  const jobs: JobCadenceSummary[] = (jobsQuery.data?.jobs ?? []).map((j) => {
-    const info = cronInfo(j.cron)
-    return {
-      key: j.key,
-      cron: j.cron,
-      cron_label: info.ok ? info.hint : info.error,
-    }
-  })
 
   const overridesWritten =
     fusionArms.filter((a) => a.source === "override").length +
@@ -245,11 +227,15 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     graphAugmentationAvailable: false,
     graphFlags: [],
     corroborationAvailable: false,
-    corroboration: { n_base: 0, n_diverse: 0, source: "default", gate_note: "" },
-    jobs,
+    corroboration: {
+      n_base: 0,
+      n_diverse: 0,
+      source: "default",
+      gate_note: "",
+    },
     allowlistPatterns: allowlistQuery.data?.patterns ?? [],
     overridesWritten,
-    isLoading: flagsQuery.isLoading || jobsQuery.isLoading,
+    isLoading: flagsQuery.isLoading,
     saveArm: (key, value) => {
       updateFlags.mutate({ [key]: value })
     },

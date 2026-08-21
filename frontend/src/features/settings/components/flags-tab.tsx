@@ -1,5 +1,4 @@
 import { useState } from "react"
-import { Timer } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
@@ -34,7 +33,7 @@ function SourceTag({ source }: { source: DemoRankArm["source"] }) {
  *  (T1.57 ruling 3, doc 17). */
 function UnmeasuredTag() {
   return (
-    <span className="border-warning/50 text-warning rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+    <span className="border-warning/50 text-warning rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
       unmeasured
     </span>
   )
@@ -109,22 +108,11 @@ function ArmRow({
   )
 }
 
-function GroupHead({
-  name,
-  doc,
-  help,
-}: {
-  name: string
-  doc: string
-  help?: string
-}) {
+function GroupHead({ name, help }: { name: string; help?: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
         {name}
-      </span>
-      <span className="text-muted-foreground/80 font-mono text-[10px]">
-        {doc}
       </span>
       {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
     </div>
@@ -160,13 +148,7 @@ function BehavioralFlagRow({
  *  for this yet, in either mode, so the honest move is a staged note rather
  *  than fetching against a guessed contract (the T1.61 buffer-monitor
  *  precedent) or silently omitting the section (invariant 23). */
-function NotYetImplemented({
-  label,
-  note,
-}: {
-  label: string
-  note: string
-}) {
+function NotYetImplemented({ label, note }: { label: string; note: string }) {
   return (
     <div className="border-border text-muted-foreground flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
       <span className="font-mono text-[10px] tracking-wide uppercase">
@@ -185,14 +167,12 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
     .split("\n")
     .map((p) => p.trim())
     .filter(Boolean)
-  const dirty =
-    patterns.join("\n") !== binding.allowlistPatterns.join("\n")
+  const dirty = patterns.join("\n") !== binding.allowlistPatterns.join("\n")
 
   return (
     <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
       <GroupHead
         name="repo auto-provision allowlist"
-        doc="doc 18 §6 · config row repo_allowlist"
         help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
       />
       <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
@@ -243,10 +223,9 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
 export function FlagsTab() {
   const binding = useFlagsTabBinding()
 
-  const activeArms =
-    [...binding.fusionArms, binding.contextBoost].filter(
-      (a) => armStatus(a.value) === "active",
-    ).length
+  const activeArms = [...binding.fusionArms, binding.contextBoost].filter(
+    (a) => armStatus(a.value) === "active",
+  ).length
   const totalArms = binding.fusionArms.length + 1
   const flagsOn = binding.behavioralFlags.filter((f) => f.enabled).length
   const corr = binding.corroboration
@@ -256,18 +235,18 @@ export function FlagsTab() {
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
           Ranking-arm weights, behavioral feature flags, the corroboration
-          promotion gate, the repo auto-provision allowlist, and job
-          cadences — config rows read through merge-over-coded-defaults.
+          promotion gate, and the repo auto-provision allowlist — config rows
+          read through merge-over-coded-defaults.
         </span>
         <HelpTip label="About the Flags tab">
-          The tunables tab: the rank_fusion_factor w_* arms, the plain
-          on/off feature flags, the corroboration promotion gate, the
-          repo_allowlist SSRF gate input, and a job-cadence summary. Every
-          value is a config row read through the merge-over-coded-defaults;
-          nothing here is computed, only read and written. An arm at 0
-          renders as inactive, never omitted, and a flag with no recorded
-          gate-ledger win renders visibly unmeasured — flipping it is
-          possible, but never quietly assumed proven.
+          The tunables tab: the rank_fusion_factor w_* arms, the plain on/off
+          feature flags, the corroboration promotion gate, and the
+          repo_allowlist SSRF gate input. Job schedules are edited on the Jobs
+          page, not here. Every value is a config row read through the
+          merge-over-coded-defaults; nothing here is computed, only read and
+          written. An arm at 0 renders as inactive, never omitted, and a flag
+          with no recorded gate-ledger win renders visibly unmeasured — flipping
+          it is possible, but never quietly assumed proven.
         </HelpTip>
       </div>
       <ModuleSurface
@@ -276,7 +255,7 @@ export function FlagsTab() {
         meta={`${activeArms} of ${totalArms} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
       >
         <div className="flex flex-col gap-2">
-          <GroupHead name="rank_fusion_factor arms" doc="doc 04 §9 · doc 07 §3" />
+          <GroupHead name="rank_fusion_factor arms" />
           {binding.fusionArms.map((arm) => (
             <ArmRow
               key={arm.key}
@@ -287,7 +266,7 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="feature flags" doc="doc 07 §11 · behavioral on/off" />
+          <GroupHead name="feature flags" />
           {binding.behavioralFlags.map((flag) => (
             <BehavioralFlagRow
               key={flag.key}
@@ -300,7 +279,7 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="context match boost" doc="doc 07 §6" />
+          <GroupHead name="context match boost" />
           <ArmRow
             arm={binding.contextBoost}
             onCommit={(v) => binding.saveArm(binding.contextBoost.key, v)}
@@ -308,10 +287,7 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead
-            name="graph augmentation — RRF list weights + *_enabled flags"
-            doc="doc 07 §4 / §11"
-          />
+          <GroupHead name="graph augmentation — RRF list weights + *_enabled flags" />
           {binding.graphAugmentationAvailable ? (
             binding.graphFlags.map((flag) => {
               const paired = flag.paired_arm
@@ -359,7 +335,7 @@ export function FlagsTab() {
           ) : (
             <NotYetImplemented
               label="ppr_enabled · dual_level_enabled · community_injection_enabled"
-              note="not yet exposed via the API — there is no repo_allowlist-style config row for these yet, in either mode (doc 07 §4/§11 is a future epic's scope)."
+              note="Not yet exposed via the API — no config row exists for these yet, in either mode."
             />
           )}
         </div>
@@ -369,8 +345,7 @@ export function FlagsTab() {
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
           <GroupHead
             name="corroboration promotion gate"
-            doc="doc 08 §4.1"
-            help={`Diversity/time gate: ${corr.gate_note || "candidate → corroborated, owned by T2.03 (the verification ladder)."}`}
+            help={`Diversity/time gate: ${corr.gate_note || "candidate → corroborated, on the verification ladder."}`}
           />
           {binding.corroborationAvailable ? (
             <>
@@ -393,9 +368,7 @@ export function FlagsTab() {
                     source: corr.source,
                     step: 1,
                   }}
-                  onCommit={(v) =>
-                    binding.saveCorroboration(v, corr.n_diverse)
-                  }
+                  onCommit={(v) => binding.saveCorroboration(v, corr.n_diverse)}
                   className="w-16"
                 />
               </div>
@@ -404,8 +377,8 @@ export function FlagsTab() {
                   corroboration_n_diverse
                 </span>
                 <HelpTip label="About corroboration_n_diverse">
-                  lowered N when the diversity/time gate is met — see the
-                  group help icon for the full gate rule. {corr.gate_note}
+                  lowered N when the diversity/time gate is met — see the group
+                  help icon for the full gate rule. {corr.gate_note}
                 </HelpTip>
                 <span className="flex-1" />
                 <SourceTag source={corr.source} />
@@ -426,35 +399,9 @@ export function FlagsTab() {
           ) : (
             <NotYetImplemented
               label="corroboration_n_base · corroboration_n_diverse"
-              note="not yet exposed via the API — the verification ladder (candidate → corroborated) is E2/T2.03 scope; no config row exists yet, in either mode."
+              note="Not yet exposed via the API — no config row exists for the verification ladder's promotion gate yet, in either mode."
             />
           )}
-        </div>
-
-        <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="job cadences" doc="doc 02 §5.3 · JobRegistry" />
-          {binding.jobs.map((job) => (
-            <div
-              key={job.key}
-              className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-1.5 text-sm"
-            >
-              <Timer aria-hidden className="text-muted-foreground h-3.5 w-3.5" />
-              <span className="font-mono font-semibold whitespace-nowrap">
-                {job.key}
-              </span>
-              <code className="text-muted-foreground font-mono text-sm">
-                {job.cron}
-              </code>
-              <span className="text-muted-foreground ml-auto text-sm whitespace-nowrap">
-                {job.cron_label}
-              </span>
-            </div>
-          ))}
-          <p className="text-muted-foreground text-sm">
-            Read-only summary — floors, ceilings, enabled switches, and{" "}
-            <code className="font-mono">config_schema</code> fields are edited
-            in the dedicated Settings → Jobs tab, not duplicated here.
-          </p>
         </div>
       </ModuleSurface>
     </div>
