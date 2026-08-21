@@ -29,7 +29,7 @@ function OpCard({
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
-        <Icon aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />
+        <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
         <h3 className="min-w-0 truncate text-sm font-semibold">{title}</h3>
         <span className="flex-1" />
         {count && (
