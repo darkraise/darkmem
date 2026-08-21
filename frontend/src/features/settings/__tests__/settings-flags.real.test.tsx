@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -34,6 +34,11 @@ const FEATURE_FLAGS_FIXTURE = {
   dual_level_enabled: true,
   w_dual: 0.15,
   community_injection_enabled: false,
+  classification_labels: [
+    { name: "fact", description: "neutral factual information" },
+    { name: "decision", description: "explicit choices made" },
+  ],
+  classification_areas_apply: false,
   graph_channels: [
     {
       name: "ppr",
@@ -381,6 +386,88 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
       "technical",
     ])
     expect(result.current.classificationMode).toBe("simple")
+  })
+
+  it("serves the label space the backend resolved, never a client re-derivation", async () => {
+    mockApiFetch()
+    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
+    await waitFor(() =>
+      expect(result.current.classificationLabels.length).toBe(2),
+    )
+    expect(result.current.classificationLabels.map((l) => l.name)).toEqual([
+      "fact",
+      "decision",
+    ])
+    // Simple mode: the merge function returns SIMPLE_TYPES and never reads the
+    // enabled areas, so eleven checkboxes change nothing and the UI has to say
+    // so rather than let the operator discover it.
+    expect(result.current.classificationAreasApply).toBe(false)
+  })
+
+  it("reports a write as in flight only for the key being written", async () => {
+    let release: (v: unknown) => void = () => {}
+    const pending = new Promise((r) => {
+      release = r
+    })
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/config/feature-flags" && init?.method === "PUT") {
+        return pending.then(() => FEATURE_FLAGS_FIXTURE)
+      }
+      if (path === "/config/feature-flags") return Promise.resolve(FEATURE_FLAGS_FIXTURE)
+      if (path === "/config/repo-allowlist") return Promise.resolve({ patterns: [] })
+      if (path === "/config/verification-ladder") return Promise.resolve(LADDER_FIXTURE)
+      if (path === "/config/classification-areas") return Promise.resolve(AREAS_FIXTURE)
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+
+    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isSaving("w_heat")).toBe(false)
+
+    act(() => result.current.saveArm("w_heat", 0.5))
+    await waitFor(() => expect(result.current.isSaving("w_heat")).toBe(true))
+    // One shared mutation object serves every control, so its own isPending
+    // would light up the whole tab. Only the written key may report.
+    expect(result.current.isSaving("w_recency")).toBe(false)
+
+    await act(async () => {
+      release(null)
+      await pending
+    })
+    await waitFor(() => expect(result.current.isSaving("w_heat")).toBe(false))
+  })
+
+  it("stops reporting in flight when the write fails", async () => {
+    let reject: (e: unknown) => void = () => {}
+    const failing = new Promise((_, r) => {
+      reject = r
+    })
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/config/feature-flags" && init?.method === "PUT") return failing
+      if (path === "/config/feature-flags") return Promise.resolve(FEATURE_FLAGS_FIXTURE)
+      if (path === "/config/repo-allowlist") return Promise.resolve({ patterns: [] })
+      if (path === "/config/verification-ladder") return Promise.resolve(LADDER_FIXTURE)
+      if (path === "/config/classification-areas") return Promise.resolve(AREAS_FIXTURE)
+      return Promise.reject(new Error(`unexpected apiFetch(${path})`))
+    })
+
+    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    act(() => result.current.setClassificationMode("expanded"))
+    await waitFor(() =>
+      expect(result.current.isSaving("classification_mode")).toBe(true),
+    )
+
+    // A spinner that never stops is worse than no spinner: it reads as a save
+    // still in progress forever.
+    await act(async () => {
+      reject(new Error("boom"))
+      await failing.catch(() => {})
+    })
+    await waitFor(() =>
+      expect(result.current.isSaving("classification_mode")).toBe(false),
+    )
   })
 
   it("gives w_context_boost a real description, not its own flag name", async () => {

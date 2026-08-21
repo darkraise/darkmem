@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react"
 import { DEMO } from "@/lib/demo-flag"
 import { MEMORY_TYPES } from "@/lib/taxonomy"
 import { useDemoFlags } from "@/demo/hooks"
@@ -19,6 +20,7 @@ import {
   useUpdateVerificationLadder,
   useVerificationLadder,
   type ClassificationAreaInfo,
+  type ClassificationLabel,
 } from "@/hooks/api"
 
 /** Mirrors `FEATURE_FLAGS_DEFAULTS` in `backend/app/config.py` — display-only
@@ -145,6 +147,11 @@ const TUNABLE_META: Record<
   },
 }
 
+/** `isSaving` keys for the writes that are not named after a single flag. */
+export const SAVING_CLASSIFICATION_MODE = "classification_mode"
+export const SAVING_CLASSIFICATION_AREAS = "classification_areas"
+export const SAVING_ALLOWLIST = "repo_allowlist"
+
 export interface FlagsTabBinding {
   fusionArms: DemoRankArm[]
   contextBoost: DemoRankArm
@@ -164,6 +171,16 @@ export interface FlagsTabBinding {
   classificationMode: "simple" | "expanded"
   classificationAreas: string[]
   availableAreas: ClassificationAreaInfo[]
+  /** The label space the classifier actually works in, resolved by the
+   *  backend rather than re-derived here. */
+  classificationLabels: ClassificationLabel[]
+  /** False in simple mode, where the area toggles change nothing. */
+  classificationAreasApply: boolean
+  /** Which writes are in flight, keyed by the thing being written — the
+   *  flag name, the tunable name, the ladder parameter, or one of the
+   *  sentinels below. One shared mutation object serves every control on the
+   *  tab, so its own `isPending` would light up all of them at once. */
+  isSaving: (key: string) => boolean
   allowlistPatterns: string[]
   overridesWritten: number
   isLoading: boolean
@@ -222,6 +239,32 @@ export function useFlagsTabBinding(): FlagsTabBinding {
   )
   const saveDemoAllowlist = useDemoStore((s) => s.saveRepoAllowlist)
 
+  // A list rather than a Set so two writes to the same key overlap correctly:
+  // the second release removes one entry, not the key.
+  const [inFlight, setInFlight] = useState<readonly string[]>([])
+  const isSaving = useCallback(
+    (key: string) => inFlight.includes(key),
+    [inFlight],
+  )
+  const track = useCallback(
+    (key: string, run: () => Promise<unknown>) => {
+      setInFlight((keys) => [...keys, key])
+      // The catch is required, not defensive: `mutateAsync` rejects on a failed
+      // write and an unhandled rejection would take the page down over a
+      // settings save. The error surface is the mutation's own; this only has
+      // to stop the spinner.
+      void run()
+        .catch(() => {})
+        .finally(() =>
+          setInFlight((keys) => {
+            const at = keys.indexOf(key)
+            return at < 0 ? keys : [...keys.slice(0, at), ...keys.slice(at + 1)]
+          }),
+        )
+    },
+    [],
+  )
+
   const flagsQuery = useFeatureFlags(!DEMO)
   const updateFlags = useUpdateFeatureFlags()
   const allowlistQuery = useRepoAllowlist(!DEMO)
@@ -244,6 +287,11 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       classificationMode: demoFlags.classification_mode,
       classificationAreas: demoFlags.classification_areas,
       availableAreas: DEMO_AREAS,
+      classificationLabels: DEMO_LABELS,
+      classificationAreasApply: demoFlags.classification_mode !== "simple",
+      // Demo writes are synchronous store updates; nothing is ever in flight,
+      // and pretending otherwise would show a spinner that never resolves.
+      isSaving: () => false,
       allowlistPatterns: demoFlags.repo_allowlist.patterns,
       overridesWritten: demoFlags.overrides_written,
       isLoading: false,
@@ -399,32 +447,39 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     classificationMode: flags?.classification_mode ?? "simple",
     classificationAreas: flags?.classification_areas ?? [],
     availableAreas: areasQuery.data ?? [],
+    classificationLabels: flags?.classification_labels ?? [],
+    classificationAreasApply: flags?.classification_areas_apply ?? false,
+    isSaving,
     allowlistPatterns: allowlistQuery.data?.patterns ?? [],
     overridesWritten,
     isLoading: flagsQuery.isLoading,
     saveArm: (key, value) => {
-      updateFlags.mutate({ [key]: value })
+      track(key, () => updateFlags.mutateAsync({ [key]: value }))
     },
     setBehavioralFlag: (key, enabled) => {
-      updateFlags.mutate({ [key]: enabled })
+      track(key, () => updateFlags.mutateAsync({ [key]: enabled }))
     },
     setGraphFlag: (key, enabled) => {
-      updateFlags.mutate({ [key]: enabled })
+      track(key, () => updateFlags.mutateAsync({ [key]: enabled }))
     },
     saveCorroboration: (name, committed) => {
-      updateLadder.mutate({ [name]: committed })
+      track(name, () => updateLadder.mutateAsync({ [name]: committed }))
     },
     saveTunable: (key, value) => {
-      updateFlags.mutate({ [key]: value })
+      track(key, () => updateFlags.mutateAsync({ [key]: value }))
     },
     setClassificationMode: (mode) => {
-      updateFlags.mutate({ classification_mode: mode })
+      track(SAVING_CLASSIFICATION_MODE, () =>
+        updateFlags.mutateAsync({ classification_mode: mode }),
+      )
     },
     setClassificationAreas: (areas) => {
-      updateFlags.mutate({ classification_areas: areas })
+      track(SAVING_CLASSIFICATION_AREAS, () =>
+        updateFlags.mutateAsync({ classification_areas: areas }),
+      )
     },
     saveAllowlist: (patterns) => {
-      updateAllowlist.mutate(patterns)
+      track(SAVING_ALLOWLIST, () => updateAllowlist.mutateAsync(patterns))
     },
   }
 }
@@ -436,6 +491,22 @@ export const LADDER_GATE_NOTE =
   "Corroboration counts DISTINCT origin_key over fact_sources, never rows; " +
   "anonymous origins fold into one reserved bucket that counts once and fires " +
   "no gate, and a citation the re-verifier marked stale corroborates nothing."
+
+/** The demo instance's simple-mode label space.
+ *
+ *  Names come from the one shared vocabulary source rather than being spelled
+ *  out here: a per-component copy is exactly what
+ *  `test_no_frontend_component_keeps_its_own_memory_type_list` fails the build
+ *  on, and it goes stale the first time a type is added. Real mode serves each
+ *  description from the backend's own `SIMPLE_TYPES`; demo mode has no backend
+ *  to ask, so it says that rather than inventing prose that would then be a
+ *  second place the descriptions live. */
+const DEMO_LABELS: ClassificationLabel[] = MEMORY_TYPES.map((name) => ({
+  name,
+  description:
+    "A simple-mode label. On a live instance its description is served from " +
+    "the backend's own vocabulary — demo mode has no backend to read it from.",
+}))
 
 /** The demo instance's classification areas. Real mode reads the live set from
  *  `/config/classification-areas`, which is the authority — this fixture only

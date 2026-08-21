@@ -321,6 +321,26 @@ describe("FlagsTab — classification tuning", () => {
   })
 })
 
+describe("FlagsTab — the classification label space", () => {
+  it("renders the labels the classifier may actually emit", () => {
+    renderTab()
+    expect(screen.getByText("label space")).toBeInTheDocument()
+    for (const label of ["fact", "decision", "problem", "procedural"]) {
+      expect(
+        screen.getByLabelText(`About the ${label} label`),
+      ).toBeInTheDocument()
+    }
+  })
+
+  it("says outright that the area toggles are inert in simple mode", () => {
+    // The merge function returns SIMPLE_TYPES and never reads enabled_areas,
+    // so eleven checkboxes sit there changing nothing. An operator's only
+    // other way to learn that is to notice the label space never moves.
+    renderTab()
+    expect(screen.getByText(/Inert in/)).toBeInTheDocument()
+  })
+})
+
 describe("FlagsTab — ruling 2: repo_allowlist editing surface", () => {
   it("shows the current allowlist patterns", () => {
     renderTab()

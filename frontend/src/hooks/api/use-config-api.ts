@@ -103,6 +103,13 @@ export interface GraphChannelInfo {
   activation: string | null
 }
 
+/** One label the classifier may emit under the current mode + areas, resolved
+ *  by the backend's own `get_merged_llm_types`. */
+export interface ClassificationLabel {
+  name: string
+  description: string
+}
+
 export interface FeatureFlags {
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
@@ -133,6 +140,10 @@ export interface FeatureFlags {
   community_injection_enabled: boolean
   rank_arms: RankArmInfo[]
   graph_channels: GraphChannelInfo[]
+  classification_labels: ClassificationLabel[]
+  /** False in simple mode: the merge function returns SIMPLE_TYPES and never
+   *  reads the enabled areas, so the area toggles change nothing. */
+  classification_areas_apply: boolean
   // Which flags are subject to the gate-ledger's "flip on a measured win"
   // rule, and which of those have actually cleared one (T1.57 ruling 3).
   measurable_flags: string[]
