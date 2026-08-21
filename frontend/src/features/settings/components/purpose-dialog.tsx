@@ -28,6 +28,7 @@ import {
   ComboboxTrigger,
 } from "darkraise-ui/components/combobox"
 import { cn } from "darkraise-ui/lib"
+import { NumberField } from "@/components/darkmem"
 import { validateParamsJson } from "@/demo/settings"
 import { embeddingKindWarning } from "@/features/setup/api-kinds"
 import type { DemoLLMPurpose } from "@/features/settings/types"
@@ -47,7 +48,7 @@ type Draft = {
   provider_name: string
   model: string
   params: string
-  dimensions: string
+  dimensions: number
   reasoning: boolean
 }
 
@@ -56,7 +57,7 @@ function toDraft(p: DemoLLMPurpose): Draft {
     provider_name: p.provider_name,
     model: p.model,
     params: p.params,
-    dimensions: p.dimensions !== undefined ? String(p.dimensions) : "",
+    dimensions: p.dimensions ?? 0,
     reasoning: p.reasoning ?? false,
   }
 }
@@ -138,7 +139,7 @@ export function PurposeDialog({
           changed.params = draft.params
           break
         case "dimensions":
-          changed.dimensions = Number(draft.dimensions) || 0
+          changed.dimensions = draft.dimensions
           break
         case "reasoning":
           changed.reasoning = draft.reasoning
@@ -229,12 +230,19 @@ export function PurposeDialog({
             </Field>
             {isEmbedding ? (
               <Field label="dimensions">
-                <Input
-                  type="number"
+                <NumberField
                   value={draft.dimensions}
+                  min={0}
+                  step={1}
                   aria-label="embedding dimensions"
-                  onChange={(e) => patch({ dimensions: e.target.value })}
-                  className="font-mono"
+                  onValueChange={(next) => {
+                    // NaN is what the field reports for text it cannot parse,
+                    // and it is the reason to use this over a raw number
+                    // input: the previous spelling committed `Number(v) || 0`,
+                    // so a typo silently wrote zero dimensions onto the
+                    // purpose row. Refusing it keeps the last good value.
+                    if (Number.isFinite(next)) patch({ dimensions: next })
+                  }}
                 />
               </Field>
             ) : (
