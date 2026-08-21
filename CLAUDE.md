@@ -88,7 +88,10 @@ behavior change, not a cleanup.
 - Stacks: dev `docker compose -f docker-compose.dev.yml up -d` (no
   .env needed); prod `docker compose up -d` (requires `DB_PASSWORD` +
   `JWT_SECRET` ≥ 32 chars in .env, `COOKIE_SECURE=false` for plain-HTTP LAN).
-  Rebuild the image first: `./scripts/build-push.sh` — **one** image,
+  Rebuild the image first: `DARKMEM_PUSH=0 ./scripts/build-push.sh` — the
+  `DARKMEM_PUSH=0` is not optional and this line carried a bare invocation
+  until 2026-08-21, which is the one command the CI-only ruling below forbids:
+  the script's default is `DARKMEM_PUSH=1` and it pushes. **One** image,
   `darkraise/darkmem`, built from the repo-root `Dockerfile`, carrying the API
   and the built SPA together; the app serves the UI on `:8000` and nothing
   binds `:80`. **Renamed from `darkraise/darkmem-api` on 2026-08-18** (owner
@@ -97,6 +100,32 @@ behavior change, not a cleanup.
   brought up from the old file leaves an orphan container and the cutover
   needs `docker compose down --remove-orphans`. Any `DARKMEM_VERSION` pinned
   under the old image name no longer resolves.
+- **Redeploy this machine after every change that lands** (owner ruling
+  2026-08-21). Implementing a feature or fixing a bug is not finished when the
+  gate goes green: this host runs the live instance the owner reviews, so a
+  merged-but-undeployed change leaves them looking at the previous build —
+  reporting bugs that are already fixed, or missing ones that are not. Both
+  happen; the second is worse, because the review reads as a pass.
+  Scoped to changes that alter the running artifact — `backend/`, `frontend/`,
+  the `Dockerfile`, compose, `entrypoint.sh`. A docs, planning or CLAUDE.md
+  change carries nothing the image does, and rebuilding for one only makes the
+  rule read as ceremony.
+  The sequence is `./scripts/gate.sh` → `DARKMEM_PUSH=0 ./scripts/build-push.sh`
+  → `docker compose up -d` → wait for the container to report `healthy`, then
+  **confirm the change is in the running image rather than only in the tree**
+  (`docker exec darkmem-prod-darkmem-1 grep ...` against the built file, or the
+  new field on `/openapi.json`) — compose reuses an image whose tag did not
+  move, so a skipped or failed build redeploys the old bits and still reports
+  `Started`.
+  **This is a deploy, not a release.** No tag is written and nothing reaches a
+  registry; the running image is an untagged local `:latest`. Cutting a version
+  stays `./scripts/release.sh vN.N.N`, which writes its tag last, and pushing
+  that tag is the separate, deliberate act that publishes. Never publish an
+  image from this machine: `.github/workflows/release.yml` is the only path to
+  a registry, and it is the authority here — a tag can be deleted and a pushed
+  image cannot. Prefer the script over a bare `docker build` for one concrete
+  reason: it also tags the image with the short git sha, so `docker inspect`
+  answers *which commit is running* rather than only `:latest`.
 - **Prod networking is bridge, not host** — re-decided 2026-08-18 (owner
   ruling), replacing the host networking both services used since v0.1. Ports
   are now published explicitly: the app `8000:8000`, Postgres
