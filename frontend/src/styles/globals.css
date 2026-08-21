@@ -17,32 +17,32 @@
   --text-4xl: 2.3125rem; /* 36px -> 37px */
 }
 
-.chat-prose {
+.md-prose {
   @apply prose prose-invert max-w-none text-sm;
 }
-.chat-prose pre {
+.md-prose pre {
   @apply border-border rounded-lg border bg-[#0c1018] p-3;
 }
-.chat-prose pre code {
+.md-prose pre code {
   @apply text-foreground bg-transparent p-0;
 }
-.chat-prose code {
+.md-prose code {
   @apply text-primary bg-muted rounded px-1.5 py-0.5 text-sm;
 }
-.chat-prose a {
+.md-prose a {
   @apply text-primary no-underline hover:underline;
 }
-.chat-prose table {
+.md-prose table {
   @apply border-collapse;
 }
-.chat-prose th,
-.chat-prose td {
+.md-prose th,
+.md-prose td {
   @apply border-border border px-3 py-1.5;
 }
-.chat-prose blockquote {
+.md-prose blockquote {
   @apply border-l-primary/50 text-muted-foreground border-l-4;
 }
-.chat-prose hr {
+.md-prose hr {
   @apply border-border;
 }
 

@@ -54,13 +54,12 @@ describe("LLMTab", () => {
     ]) {
       expect(screen.getAllByText(purpose).length).toBeGreaterThan(0)
     }
-    // The removed chrome is shown struck-through, not silently omitted.
-    // "llm-providers tab" is no longer in this list: the Providers sub-tab
-    // edits a separate shared `llm_providers` connection row, so this entry
-    // left the removed-chrome list; the profiles and ml-profiles entries
-    // stay, those panels really are gone.
-    expect(screen.getByText("llm-profiles tab")).toBeInTheDocument()
-    expect(screen.getByText(/removed with the flattening/)).toBeInTheDocument()
+    // The struck-through "removed with the flattening" list is gone: a panel
+    // that was never built in this app does not need a headstone in its UI.
+    expect(screen.queryByText("llm-profiles tab")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/removed with the flattening/),
+    ).not.toBeInTheDocument()
   })
 
   it("renders the one remaining Tier-C purpose, clearly labelled and never omitted", () => {
@@ -79,7 +78,9 @@ describe("LLMTab", () => {
     renderTab()
     // Only one Tier-C card left (verification); synthesis has its own
     // full editable card among the seven live purposes above.
-    expect(screen.queryByText(/no consumer yet — activates with/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/no consumer yet — activates with/),
+    ).not.toBeInTheDocument()
   })
 
   it("synthesis is a fully editable card that saves through the normal wire", () => {
@@ -91,7 +92,9 @@ describe("LLMTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
     expect(toast.success).toHaveBeenCalledWith(
       "Saved — synthesis purpose updated",
-      expect.objectContaining({ description: expect.stringContaining("model") }),
+      expect.objectContaining({
+        description: expect.stringContaining("model"),
+      }),
     )
   })
 
@@ -101,13 +104,15 @@ describe("LLMTab", () => {
     // connection is pinned to a measured qualification identity and the
     // supported way to change the judge is to re-run the harness, not a form.
     expect(screen.queryByLabelText("Edit verification")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("verification model")).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("verification model"),
+    ).not.toBeInTheDocument()
 
     const card = screen.getByText("verification").closest(".border-dashed")
     expect(card).not.toBeNull()
-    expect(
-      within(card as HTMLElement).queryAllByRole("textbox"),
-    ).toHaveLength(0)
+    expect(within(card as HTMLElement).queryAllByRole("textbox")).toHaveLength(
+      0,
+    )
     expect(
       within(card as HTMLElement).queryByRole("button", { name: "Save" }),
     ).not.toBeInTheDocument()
@@ -187,4 +192,51 @@ describe("LLMTab", () => {
     expect(screen.getByLabelText("extraction model")).toBeInTheDocument()
   })
 
+  // Only four of the eight purposes have a system prompt in
+  // `backend/app/services/prompt.py`; the rest would open an empty editor.
+  it("offers a system-prompt CTA on exactly the purposes that have one", () => {
+    renderTab()
+    for (const purpose of [
+      "extraction",
+      "classification",
+      "reasoning",
+      "summarization",
+    ]) {
+      expect(
+        screen.getByLabelText(`System prompt for ${purpose}`),
+      ).toBeInTheDocument()
+    }
+    for (const purpose of ["embedding", "reranker", "synthesis"]) {
+      expect(
+        screen.queryByLabelText(`System prompt for ${purpose}`),
+      ).not.toBeInTheDocument()
+    }
+  })
+
+  it("opens the prompt editor for the purpose whose CTA was pressed", () => {
+    renderTab()
+    fireEvent.click(screen.getByLabelText("System prompt for extraction"))
+    expect(
+      screen.getByRole("dialog", { name: /extraction system prompt/ }),
+    ).toBeInTheDocument()
+  })
+
+  // `Number(v) || 0` on the old raw input committed zero dimensions for text
+  // it could not parse, which is a silently broken embedder rather than a
+  // rejected edit.
+  it("refuses an unparseable dimensions value instead of committing zero", () => {
+    renderTab()
+    openPurposeEditor("embedding")
+    const field = screen.getByLabelText("embedding dimensions")
+
+    // Positive control first, so the negative assertion below cannot pass by
+    // the field simply being inert.
+    fireEvent.change(field, { target: { value: "1536" } })
+    fireEvent.blur(field)
+    expect((field as HTMLInputElement).value).toBe("1536")
+
+    fireEvent.change(field, { target: { value: "not-a-number" } })
+    fireEvent.blur(field)
+    expect((field as HTMLInputElement).value).toBe("1536")
+  })
 })

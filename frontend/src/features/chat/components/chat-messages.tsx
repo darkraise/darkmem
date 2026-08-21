@@ -93,7 +93,9 @@ function MemoryBadge({
   // when there is. The tooltip carries the same words for anyone who
   // can't see color.
   const lifecycleWords = `L0 · memory — status: ${mem.status ?? "active"}`
-  const title = mem.content ? `${mem.content} (${lifecycleWords})` : lifecycleWords
+  const title = mem.content
+    ? `${mem.content} (${lifecycleWords})`
+    : lifecycleWords
   return (
     <Button
       variant="secondary"
@@ -277,7 +279,7 @@ export function ChatMessages({
         <div key={msg.id} className="animate-in fade-in duration-200">
           {msg.role === "user" ? (
             <div className="flex justify-end gap-3">
-              <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
+              <div className="flex max-w-[85%] flex-col items-end gap-1 sm:max-w-[75%]">
                 <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
                   {msg.content}
                 </div>
@@ -296,7 +298,7 @@ export function ChatMessages({
       {isStreaming && pendingUserMessage && (
         <div className="animate-in fade-in duration-200">
           <div className="flex justify-end gap-3">
-            <div className="flex max-w-[85%] sm:max-w-[75%] flex-col items-end gap-1">
+            <div className="flex max-w-[85%] flex-col items-end gap-1 sm:max-w-[75%]">
               <div className="text-foreground border-primary/20 bg-primary/10 rounded-2xl rounded-tr-sm border px-4 py-2.5 text-sm">
                 {pendingUserMessage}
               </div>
@@ -318,7 +320,11 @@ export function ChatMessages({
         <div className="animate-in fade-in flex gap-3 duration-200">
           <AssistantAvatar />
           <div className="flex items-center py-2">
-            <Spinner size="sm" variant="primary" aria-label="Assistant is thinking" />
+            <Spinner
+              size="sm"
+              variant="primary"
+              aria-label="Assistant is thinking"
+            />
           </div>
         </div>
       )}
@@ -364,7 +370,7 @@ function AssistantMessage({
     <div className="flex gap-3">
       <AssistantAvatar />
       <div className="min-w-0 flex-1">
-        <div className="chat-prose">
+        <div className="md-prose">
           <ReactMarkdown components={components}>{processed}</ReactMarkdown>
         </div>
         <div className="mt-1 flex items-center gap-2">
@@ -433,7 +439,7 @@ function StreamingMessage({
     <div className="animate-in fade-in flex gap-3 duration-200">
       <AssistantAvatar />
       <div className="min-w-0 flex-1">
-        <div className="chat-prose">
+        <div className="md-prose">
           <ReactMarkdown components={components}>{processed}</ReactMarkdown>
         </div>
         {sources && (

@@ -7,6 +7,7 @@ import {
   FileText,
   Filter,
   Pencil,
+  ScrollText,
   ShieldCheck,
   Tag,
   type LucideIcon,
@@ -33,7 +34,7 @@ const TIER_C_PURPOSE_ICONS: Record<TierCLLMPurpose["purpose"], LucideIcon> = {
 
 function TierBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+    <span className="border-border bg-muted text-muted-foreground ml-auto rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
       {children}
     </span>
   )
@@ -51,10 +52,14 @@ export function PurposeItem({
   purpose,
   layout,
   onEdit,
+  onShowPrompt,
 }: {
   purpose: DemoLLMPurpose
   layout: LlmLayout
   onEdit: () => void
+  /** Omitted for the purposes that have no system prompt, which is what
+   *  keeps them from showing a button that opens an empty editor. */
+  onShowPrompt?: () => void
 }) {
   const Icon = PURPOSE_ICONS[purpose.purpose]
 
@@ -85,16 +90,29 @@ export function PurposeItem({
   )
 
   const action = (
-    <Button
-      size="sm"
-      variant="outline"
-      className="border-primary/60 text-primary"
-      aria-label={`Edit ${purpose.purpose}`}
-      onClick={onEdit}
-    >
-      <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
-      Edit
-    </Button>
+    <div className="flex flex-wrap items-center gap-2">
+      {onShowPrompt && (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`System prompt for ${purpose.purpose}`}
+          onClick={onShowPrompt}
+        >
+          <ScrollText aria-hidden className="mr-1 h-3.5 w-3.5" />
+          System prompt
+        </Button>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        className="border-primary/60 text-primary"
+        aria-label={`Edit ${purpose.purpose}`}
+        onClick={onEdit}
+      >
+        <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
+        Edit
+      </Button>
+    </div>
   )
 
   if (layout === "list") {
@@ -171,8 +189,7 @@ export function TierCPurposeItem({
         <>
           Seeded row, resolvable, no consumer yet — activates with{" "}
           <span className="font-mono">{purpose.activatesWith}</span>. Rendered
-          rather than omitted: a hidden inert purpose reads as "not
-          configured".
+          rather than omitted: a hidden inert purpose reads as "not configured".
         </>
       )}
     </p>

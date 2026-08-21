@@ -7,58 +7,25 @@ import {
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
 import { cn } from "darkraise-ui/lib"
-import { Trash2 } from "lucide-react"
 import { HelpTip, IconSegmented } from "@/components/darkmem"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import {
   LLM_LAYOUT_OPTIONS,
   usePurposesLayout,
 } from "@/features/settings/use-llm-layout"
+import { promptKeyForPurpose } from "@/features/settings/llm-purpose-prompts"
 import { useLLMTabBinding } from "../use-llm-tab-binding"
 import { ProvidersPanel } from "./providers-panel"
 import { PurposeDialog } from "./purpose-dialog"
 import { PurposeItem, TierCPurposeItem } from "./purpose-item"
-
-/**
- * The panels the flattening removed. `llm-providers` left this list when the
- * Providers sub-tab came back as a different mechanism — a shared connection
- * row rather than the deleted `provider_ref`/`profile_ref` columns. The other
- * two are genuinely gone and are not coming back, so the block still records a
- * real decision.
- */
-function RemovedChrome() {
-  return (
-    <div className="border-border bg-muted/12 flex flex-col gap-2 rounded-lg border border-dashed p-4">
-      <div className="text-muted-foreground flex items-center gap-2 font-mono text-[10px] tracking-wide uppercase">
-        <Trash2 aria-hidden className="h-3.5 w-3.5" />
-        removed with the flattening — not rendered, not disabled, deleted
-        <HelpTip label="Why the profile tabs were removed">
-          darkmem is not an LLM proxy. A profile picker over a schema with no
-          profiles table would be scaffolding rendered as a feature — the
-          honest move is deletion, not a greyed-out control. The Providers
-          sub-tab is a different mechanism: one shared connection row several
-          purposes reference, not the dropped profile indirection.
-        </HelpTip>
-      </div>
-      <div className="flex flex-wrap items-center gap-2.5">
-        {["llm-profiles tab", "ml-profiles tab"].map((label) => (
-          <span
-            key={label}
-            className="text-muted-foreground/70 font-mono text-xs line-through"
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
+import { SystemPromptDialog } from "./system-prompt-dialog"
 
 function PurposesPanel() {
   const binding = useLLMTabBinding()
   const layout = usePurposesLayout((s) => s.layout)
   const setLayout = usePurposesLayout((s) => s.setLayout)
   const [editing, setEditing] = useState<DemoLLMPurpose | null>(null)
+  const [promptFor, setPromptFor] = useState<DemoLLMPurpose | null>(null)
 
   return (
     <div className="space-y-4">
@@ -66,8 +33,8 @@ function PurposesPanel() {
         <span>
           Seven purposes — each picking a provider from the Providers sub-tab
           plus the model and params that vary per purpose, including the
-          seeded-inert `synthesis` purpose — plus `verification`, read-only
-          here (it judges the verification ladder and its qualification is a
+          seeded-inert `synthesis` purpose — plus `verification`, read-only here
+          (it judges the verification ladder and its qualification is a
           gate&apos;s evidence). A save live-reloads the orchestrator; no
           redeploy, no LLM_* env vars.
         </span>
@@ -112,6 +79,11 @@ function PurposesPanel() {
               purpose={purpose}
               layout={layout}
               onEdit={() => setEditing(purpose)}
+              onShowPrompt={
+                promptKeyForPurpose(purpose.purpose)
+                  ? () => setPromptFor(purpose)
+                  : undefined
+              }
             />
           ))}
           {binding.tierCPurposes.map((purpose) => (
@@ -136,7 +108,18 @@ function PurposesPanel() {
         />
       )}
 
-      <RemovedChrome />
+      {promptFor && (
+        <SystemPromptDialog
+          key={promptFor.purpose}
+          open
+          onOpenChange={(next) => {
+            if (!next) setPromptFor(null)
+          }}
+          promptKey={promptKeyForPurpose(promptFor.purpose)!}
+          title={`${promptFor.purpose} system prompt`}
+          description={`Sent as the system message on every ${promptFor.purpose} call. An edit takes effect on the next call — no redeploy.`}
+        />
+      )}
     </div>
   )
 }
