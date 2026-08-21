@@ -493,3 +493,83 @@ async def test_a_flags_write_is_visible_to_an_independent_reader():
             await cleanup.commit()
     finally:
         app.dependency_overrides.clear()
+
+
+# ── the classification label space ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_simple_mode_serves_the_simple_vocabulary(client, auth_headers):
+    from app.services.classification_areas import SIMPLE_TYPES
+
+    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
+    body = resp.json()
+    assert body["classification_mode"] == "simple"
+    served = {label["name"] for label in body["classification_labels"]}
+    assert served == set(SIMPLE_TYPES)
+    for label in body["classification_labels"]:
+        assert label["description"], f"{label['name']} has no description"
+
+
+@pytest.mark.asyncio
+async def test_simple_mode_reports_that_the_area_toggles_do_nothing(
+    client, auth_headers
+):
+    """The honest half of rendering 11 area checkboxes.
+
+    ``get_merged_llm_types`` returns ``SIMPLE_TYPES`` and never reads
+    ``enabled_areas`` in simple mode, which is the default. A surface that
+    offers the toggles without saying so is offering controls with no effect,
+    and the operator's only way to find out is to notice that nothing ever
+    changes.
+    """
+    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
+    assert resp.json()["classification_areas_apply"] is False
+
+
+@pytest.mark.asyncio
+async def test_expanded_mode_serves_the_enabled_areas_union(client, auth_headers):
+    from app.services.classification_areas import AREAS
+
+    resp = await client.put(
+        "/api/v1/config/feature-flags",
+        headers=auth_headers,
+        json={
+            "classification_mode": "expanded",
+            "classification_areas": ["general", "security"],
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["classification_areas_apply"] is True
+
+    served = {label["name"] for label in body["classification_labels"]}
+    expected = {"fact"}
+    expected |= set(AREAS["general"].llm_types)
+    expected |= set(AREAS["security"].llm_types)
+    assert served == expected
+    # An area that is off contributes nothing.
+    assert "user_story" not in served
+
+
+@pytest.mark.asyncio
+async def test_the_label_space_is_the_resolver_s_own_answer(client, auth_headers):
+    """Not a second copy of the merge rule living in the response builder."""
+    from app.services.classification_areas import get_merged_llm_types
+
+    resp = await client.put(
+        "/api/v1/config/feature-flags",
+        headers=auth_headers,
+        json={
+            "classification_mode": "expanded",
+            "classification_areas": ["general", "learning", "product"],
+        },
+    )
+    body = resp.json()
+    served = {
+        label["name"]: label["description"]
+        for label in body["classification_labels"]
+    }
+    assert served == get_merged_llm_types(
+        body["classification_areas"], body["classification_mode"]
+    )

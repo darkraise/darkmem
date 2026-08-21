@@ -6,6 +6,7 @@ import {
   SegmentGroupIndicator,
   SegmentGroupItem,
 } from "darkraise-ui/components/segment-group"
+import { Spinner } from "darkraise-ui/components/spinner"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
 import {
@@ -26,9 +27,30 @@ import type {
 } from "@/features/settings/types"
 import { ArmPill } from "./arm-pill"
 import {
+  SAVING_ALLOWLIST,
+  SAVING_CLASSIFICATION_AREAS,
+  SAVING_CLASSIFICATION_MODE,
   useFlagsTabBinding,
   type FlagsTabBinding,
 } from "../use-flags-tab-binding"
+
+/** In flight against the API.
+ *
+ *  Every write on this tab is a round-trip, and until it lands the control is
+ *  showing a value the server has not confirmed. Silence there is what made
+ *  the classification-mode toggle read as broken: it sat at its old value with
+ *  nothing to say a save was happening. The slot is fixed-width so a row does
+ *  not reflow when the spinner appears and disappears. */
+function SavingMark({ saving }: { saving: boolean }) {
+  return (
+    <span
+      className="inline-flex w-4 shrink-0 items-center justify-center"
+      aria-hidden={!saving}
+    >
+      {saving && <Spinner size="sm" label="Saving" />}
+    </span>
+  )
+}
 
 function SourceTag({ source }: { source: DemoRankArm["source"] }) {
   return (
@@ -167,10 +189,12 @@ function ArmInput({
 function ArmRow({
   arm,
   help,
+  saving = false,
   onCommit,
 }: {
   arm: DemoRankArm
   help?: string
+  saving?: boolean
   onCommit: (value: number) => void
 }) {
   return (
@@ -188,6 +212,7 @@ function ArmRow({
       <ActivationNote taskId={arm.activatesWith} />
       <SourceTag source={arm.source} />
       <ArmInput arm={arm} onCommit={onCommit} />
+      <SavingMark saving={saving} />
       <ArmPill value={arm.value} />
       {arm.unmeasured && <UnmeasuredTag />}
     </div>
@@ -239,9 +264,11 @@ function Section({
 
 function BehavioralFlagRow({
   flag,
+  saving,
   onToggle,
 }: {
   flag: DemoBehavioralFlag
+  saving: boolean
   onToggle: (enabled: boolean) => void
 }) {
   return (
@@ -252,10 +279,15 @@ function BehavioralFlagRow({
       <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
       <span className="flex-1" />
       <SourceTag source={flag.source} />
+      <SavingMark saving={saving} />
       <Switch
         checked={flag.enabled}
         onCheckedChange={onToggle}
         aria-label={flag.key}
+        // A switch acts on a single click, so a second one mid-flight sends a
+        // second write racing the first. A text field is different: taking it
+        // away mid-edit loses what is being typed.
+        disabled={saving}
       />
       {flag.unmeasured && <UnmeasuredTag />}
     </div>
@@ -268,9 +300,11 @@ function BehavioralFlagRow({
  *  signal. */
 function TunableRow({
   tunable,
+  saving,
   onCommit,
 }: {
   tunable: DemoTunable
+  saving: boolean
   onCommit: (value: number) => void
 }) {
   const [draft, setDraft] = useState(tunable.value)
@@ -307,6 +341,7 @@ function TunableRow({
         onKeyDown={(e) => e.key === "Enter" && commit()}
         className="w-24"
       />
+      <SavingMark saving={saving} />
       {tunable.unit && (
         <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
           {tunable.unit}
@@ -379,7 +414,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
             size="sm"
             variant="outline"
             className="border-primary/60 text-primary"
-            disabled={!dirty}
+            disabled={!dirty || binding.isSaving(SAVING_ALLOWLIST)}
             onClick={() => {
               binding.saveAllowlist(patterns)
               setSaved(true)
@@ -387,6 +422,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
           >
             Save allowlist
           </Button>
+          <SavingMark saving={binding.isSaving(SAVING_ALLOWLIST)} />
           {saved && (
             <span className="text-success font-mono text-sm">saved</span>
           )}
@@ -466,12 +502,14 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
                   onCommit={(v) => binding.saveCorroboration(param.name, v)}
                   className="w-16"
                 />
+                <SavingMark saving={binding.isSaving(param.name)} />
                 <LadderStatePill param={param} />
                 {param.committed !== null && (
                   <Button
                     size="sm"
                     variant="ghost"
                     className="text-muted-foreground h-7 font-mono text-[10px]"
+                    disabled={binding.isSaving(param.name)}
                     onClick={() => binding.saveCorroboration(param.name, null)}
                   >
                     reset to floor
@@ -503,8 +541,66 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
 /** The classification tuning that rides the same `feature_flags` row as the
  *  arms without gating a pipeline phase: which label vocabularies the
  *  classifier may draw from, and how large a label space it works in. */
+/** The labels the classifier may actually emit right now.
+ *
+ *  Rendered because the two controls above it describe the label space only
+ *  indirectly — "expanded" and eleven area names do not tell an operator what
+ *  the classifier will put in `classified_type`. The list is the backend's own
+ *  `get_merged_llm_types` answer, so it cannot drift from what the pipeline
+ *  hands the model. */
+function LabelSpace({ binding }: { binding: FlagsTabBinding }) {
+  const labels = binding.classificationLabels
+  return (
+    <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="font-mono text-sm font-semibold whitespace-nowrap">
+          label space
+        </span>
+        <HelpTip label="About the label space">
+          Exactly the values the classifier may write to a memory's
+          `classified_type`, resolved by the backend's own merge function
+          rather than re-derived here. In simple mode this is the fixed
+          nine-value vocabulary; in expanded mode it is `fact` plus the union
+          of every enabled area's types. Anything the model emits outside this
+          set is normalised back into it.
+        </HelpTip>
+        <span className="flex-1" />
+        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+          {labels.length} label{labels.length === 1 ? "" : "s"} ·{" "}
+          {binding.classificationMode}
+        </span>
+      </div>
+      {labels.length === 0 ? (
+        <p className="text-muted-foreground text-sm italic">
+          Not loaded — the label space is served with the feature flags.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {labels.map((label) => (
+            <TooltipProvider key={label.name} delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger
+                  aria-label={`About the ${label.name} label`}
+                  className="border-border bg-muted/40 text-foreground/90 cursor-help rounded-full border px-2 py-0.5 font-mono text-[11px] whitespace-nowrap"
+                >
+                  {label.name}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
+                  {label.description}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
   const selected = new Set(binding.classificationAreas)
+  const savingMode = binding.isSaving(SAVING_CLASSIFICATION_MODE)
+  const savingAreas = binding.isSaving(SAVING_CLASSIFICATION_AREAS)
   const toggle = (key: string, on: boolean) => {
     const next = on
       ? [...binding.classificationAreas, key]
@@ -531,18 +627,22 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           content under a different mode is not bit-identical.
         </HelpTip>
         <span className="flex-1" />
+        <SavingMark saving={savingMode} />
         <SegmentGroup
           value={binding.classificationMode}
           onValueChange={(v: string) =>
             binding.setClassificationMode(v as "simple" | "expanded")
           }
           aria-label="classification_mode"
+          disabled={savingMode}
         >
           <SegmentGroupIndicator />
           <SegmentGroupItem value="simple">simple</SegmentGroupItem>
           <SegmentGroupItem value="expanded">expanded</SegmentGroupItem>
         </SegmentGroup>
       </div>
+
+      <LabelSpace binding={binding} />
       <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="font-mono text-sm font-semibold whitespace-nowrap">
@@ -555,11 +655,25 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
             cleared and then silently return.
           </HelpTip>
           <span className="flex-1" />
+          <SavingMark saving={savingAreas} />
           <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
             {binding.classificationAreas.length} of{" "}
             {binding.availableAreas.length} enabled
           </span>
         </div>
+        {!binding.classificationAreasApply && (
+          // Not a caveat in a tooltip: in simple mode the merge function
+          // returns the fixed vocabulary and never reads these toggles at all,
+          // so eleven checkboxes sit here changing nothing. Saying it once, in
+          // the open, beats an operator discovering it by watching the label
+          // space above refuse to move.
+          <p className="text-warning text-sm">
+            Inert in <span className="font-mono">simple</span> mode — the label
+            space is the fixed nine-value vocabulary and these toggles do not
+            change it. They take effect in{" "}
+            <span className="font-mono">expanded</span> mode.
+          </p>
+        )}
         <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
           {binding.availableAreas.map((area) => {
             const locked = area.key === "general"
@@ -572,7 +686,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
                 <Checkbox
                   id={`area-${area.key}`}
                   checked={selected.has(area.key)}
-                  disabled={locked}
+                  disabled={locked || savingAreas}
                   aria-label={area.key}
                   onCheckedChange={(c) => toggle(area.key, c === true)}
                 />
@@ -645,6 +759,7 @@ export function FlagsTab() {
             <ArmRow
               key={arm.key}
               arm={arm}
+              saving={binding.isSaving(arm.key)}
               onCommit={(v) => binding.saveArm(arm.key, v)}
             />
           ))}
@@ -659,6 +774,7 @@ export function FlagsTab() {
             <BehavioralFlagRow
               key={flag.key}
               flag={flag}
+              saving={binding.isSaving(flag.key)}
               onToggle={(enabled) =>
                 binding.setBehavioralFlag(flag.key, enabled)
               }
@@ -672,6 +788,7 @@ export function FlagsTab() {
         >
           <ArmRow
             arm={binding.contextBoost}
+            saving={binding.isSaving(binding.contextBoost.key)}
             onCommit={(v) => binding.saveArm(binding.contextBoost.key, v)}
           />
         </Section>
@@ -701,12 +818,14 @@ export function FlagsTab() {
                     <span className="flex-1" />
                     <ActivationNote taskId={flag.activatesWith} />
                     <SourceTag source={flag.source} />
+                    <SavingMark saving={binding.isSaving(flag.key)} />
                     <Switch
                       checked={flag.enabled}
                       onCheckedChange={(on) =>
                         binding.setGraphFlag(flag.key, on)
                       }
                       aria-label={flag.key}
+                      disabled={binding.isSaving(flag.key)}
                     />
                     {flag.unmeasured && <UnmeasuredTag />}
                   </div>
@@ -727,6 +846,7 @@ export function FlagsTab() {
                         arm={paired}
                         onCommit={(v) => binding.saveArm(paired.key, v)}
                       />
+                      <SavingMark saving={binding.isSaving(paired.key)} />
                       <ArmPill value={paired.value} />
                     </div>
                   ) : (
@@ -758,6 +878,7 @@ export function FlagsTab() {
             <TunableRow
               key={tunable.key}
               tunable={tunable}
+              saving={binding.isSaving(tunable.key)}
               onCommit={(v) => binding.saveTunable(tunable.key, v)}
             />
           ))}

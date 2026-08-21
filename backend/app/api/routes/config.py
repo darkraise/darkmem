@@ -300,6 +300,13 @@ class RankArmInfo(BaseModel):
     activation: str | None = None
 
 
+class ClassificationLabel(BaseModel):
+    """One label the classifier may emit under the current mode + areas."""
+
+    name: str
+    description: str
+
+
 class GraphChannelInfo(BaseModel):
     """One doc 07 §4 graph channel, read straight from ``GRAPH_CHANNELS``.
 
@@ -346,6 +353,17 @@ class FeatureFlagsResponse(BaseModel):
     community_injection_enabled: bool = False
     rank_arms: list[RankArmInfo] = Field(default_factory=list)
     graph_channels: list[GraphChannelInfo] = Field(default_factory=list)
+    # The label space the classifier actually works in, resolved by
+    # ``get_merged_llm_types`` itself rather than re-derived by the client. The
+    # simple/expanded split and the always-present ``fact`` fallback are that
+    # function's rules, and a UI copy of them would drift the first time either
+    # moved.
+    classification_labels: list[ClassificationLabel] = Field(default_factory=list)
+    # Whether ``classification_areas`` has any effect right now. It does NOT in
+    # simple mode: ``get_merged_llm_types`` returns ``SIMPLE_TYPES`` and never
+    # looks at the enabled areas. A surface that renders 11 area checkboxes
+    # without saying so is offering controls that do nothing.
+    classification_areas_apply: bool = False
     # Which of these are subject to the gate-ledger's "flip only on a
     # measured win" rule, and which of those have actually cleared one.
     measurable_flags: list[str] = Field(default_factory=list)
@@ -407,6 +425,12 @@ def _flags_response(
     the second copy is where a newly added field goes missing on exactly one of
     them — a PUT that answers with a stale shape reads as a failed save.
     """
+    from app.services.classification_areas import AREAS, get_merged_llm_types
+
+    mode = str(flags.get("classification_mode", "simple"))
+    areas = list(flags.get("classification_areas", []) or [])
+    labels = get_merged_llm_types(areas, mode)
+
     rank_arms = [
         RankArmInfo(
             name=arm.name,
@@ -435,6 +459,17 @@ def _flags_response(
         **flags,
         rank_arms=rank_arms,
         graph_channels=graph_channels,
+        classification_labels=[
+            ClassificationLabel(name=name, description=desc)
+            for name, desc in sorted(labels.items())
+        ],
+        # Derived from the one rule that decides it, not restated: ask the
+        # resolver whether the areas changed anything.
+        classification_areas_apply=(
+            get_merged_llm_types([], mode) != get_merged_llm_types(
+                list(AREAS), mode
+            )
+        ),
         measurable_flags=list(MEASURABLE_FLAGS),
         measured_flags=measured,
     )
