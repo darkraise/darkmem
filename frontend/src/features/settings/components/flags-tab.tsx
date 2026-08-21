@@ -1,5 +1,16 @@
 import { useState, type ReactNode } from "react"
-import { Pencil } from "lucide-react"
+import {
+  BadgeCheck,
+  Crosshair,
+  Flag,
+  FolderGit2,
+  Gauge,
+  Network,
+  Pencil,
+  SlidersHorizontal,
+  Tags,
+  type LucideIcon,
+} from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import {
   Dialog,
@@ -8,11 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "darkraise-ui/components/dialog"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "darkraise-ui/components/card"
+import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import {
   SegmentGroup,
@@ -142,7 +149,7 @@ function BoolTag({ on }: { on: boolean }) {
   return (
     <span
       className={cn(
-        "rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap",
+        "rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
         on
           ? "border-primary/55 bg-primary/10 text-primary"
           : "border-border text-muted-foreground bg-muted/40 border-dashed",
@@ -231,7 +238,7 @@ function LadderStatePill({ param }: { param: DemoLadderParam }) {
         <TooltipTrigger
           aria-label={`About the ${param.state} state`}
           className={cn(
-            "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap",
+            "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase",
             clamped
               ? "border-warning/60 bg-warning/10 text-warning"
               : param.state === "honoured"
@@ -353,6 +360,7 @@ function ArmRow({
  *  `meta` is the section's own one-line summary, right-aligned so each card
  *  carries a second anchor for scanning. */
 function Section({
+  icon: Icon,
   name,
   help,
   meta,
@@ -360,6 +368,7 @@ function Section({
   saving,
   children,
 }: {
+  icon: LucideIcon
   name: string
   help?: string
   meta?: ReactNode
@@ -380,6 +389,11 @@ function Section({
           children stacked in a column — a header three lines tall that still
           reported `display: flex` and `flex-wrap: nowrap`. */}
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
+        {/* `text-primary`, not `text-accent`: in this theme `--accent` is the
+            near-white hover surface (210 40% 96%) and `--primary` is the brand
+            colour the library's own comment calls the accent source. An icon
+            on `text-accent` would be all but invisible on the header. */}
+        <Icon aria-hidden className="text-primary h-4 w-4 shrink-0" />
         <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
           {name}
         </h3>
@@ -549,6 +563,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
   return (
     <>
       <Section
+        icon={FolderGit2}
         name="repo auto-provision allowlist"
         help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
         meta={
@@ -603,8 +618,7 @@ function AllowlistDialog({
     .split("\n")
     .map((p) => p.trim())
     .filter(Boolean)
-  const dirty =
-    patterns.join("\n") !== committed.join("\n") ? ["patterns"] : []
+  const dirty = patterns.join("\n") !== committed.join("\n") ? ["patterns"] : []
 
   return (
     <SectionDialog
@@ -654,6 +668,7 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
   return (
     <>
       <Section
+        icon={BadgeCheck}
         name="corroboration promotion gate"
         meta={
           clamped.length > 0
@@ -663,7 +678,9 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
               : "all at shipped floors"
         }
         help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
-        onEdit={binding.corroborationAvailable ? () => setEditing(true) : undefined}
+        onEdit={
+          binding.corroborationAvailable ? () => setEditing(true) : undefined
+        }
         saving={saving}
       >
         {binding.corroborationAvailable ? (
@@ -860,6 +877,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
   return (
     <>
       <Section
+        icon={Tags}
         name="classification"
         help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). What these controls decide is the label space: the exact set of values the classifier may write to a memory's classified_type. Anything the model emits outside that set is normalised back into it."
         meta={`${binding.classificationMode} · ${binding.classificationLabels.length} labels`}
@@ -873,9 +891,9 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           <HelpTip label="About classification_mode">
             `simple` keeps the seven-type vocabulary extraction already emits,
             which lets the pipeline fold classification into the single
-            extraction call instead of a second LLM round-trip. `expanded`
-            opens the per-area label space and forces two concurrent calls. The
-            mode also changes the extraction prompt, so re-extracting the same
+            extraction call instead of a second LLM round-trip. `expanded` opens
+            the per-area label space and forces two concurrent calls. The mode
+            also changes the extraction prompt, so re-extracting the same
             content under a different mode is not bit-identical.
           </HelpTip>
           <span className="flex-1" />
@@ -1077,33 +1095,33 @@ function ClassificationDialog({
       </p>
 
       {!simple && (
-      <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
-        {binding.availableAreas.map((area) => {
-          const locked = area.key === "general"
-          return (
-            <label
-              key={area.key}
-              className="flex items-center gap-2 text-sm"
-              htmlFor={`edit-area-${area.key}`}
-            >
-              <Checkbox
-                id={`edit-area-${area.key}`}
-                checked={selected.has(area.key)}
-                disabled={locked}
-                aria-label={area.key}
-                onCheckedChange={(c) => toggle(area.key, c === true)}
-              />
-              <span className={cn(locked && "text-muted-foreground")}>
-                {area.display_name}
-              </span>
-              <HelpTip label={`About the ${area.display_name} area`}>
-                {locked && "Always on — the base area. "}
-                Adds: {area.types.join(", ")}.
-              </HelpTip>
-            </label>
-          )
-        })}
-      </div>
+        <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+          {binding.availableAreas.map((area) => {
+            const locked = area.key === "general"
+            return (
+              <label
+                key={area.key}
+                className="flex items-center gap-2 text-sm"
+                htmlFor={`edit-area-${area.key}`}
+              >
+                <Checkbox
+                  id={`edit-area-${area.key}`}
+                  checked={selected.has(area.key)}
+                  disabled={locked}
+                  aria-label={area.key}
+                  onCheckedChange={(c) => toggle(area.key, c === true)}
+                />
+                <span className={cn(locked && "text-muted-foreground")}>
+                  {area.display_name}
+                </span>
+                <HelpTip label={`About the ${area.display_name} area`}>
+                  {locked && "Always on — the base area. "}
+                  Adds: {area.types.join(", ")}.
+                </HelpTip>
+              </label>
+            )
+          })}
+        </div>
       )}
     </SectionDialog>
   )
@@ -1138,7 +1156,8 @@ function FlagsSectionDialog({
   for (const flag of flags ?? []) committed[flag.key] = flag.enabled
   for (const tunable of tunables ?? []) committed[tunable.key] = tunable.value
 
-  const [draft, setDraft] = useState<Record<string, number | boolean>>(committed)
+  const [draft, setDraft] =
+    useState<Record<string, number | boolean>>(committed)
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -1202,7 +1221,8 @@ function GraphDialog({
     committed[flag.key] = flag.enabled
     if (flag.paired_arm) committed[flag.paired_arm.key] = flag.paired_arm.value
   }
-  const [draft, setDraft] = useState<Record<string, number | boolean>>(committed)
+  const [draft, setDraft] =
+    useState<Record<string, number | boolean>>(committed)
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
@@ -1323,6 +1343,7 @@ export function FlagsTab() {
 
       <div className="flex flex-col gap-6">
         <Section
+          icon={SlidersHorizontal}
           name="rank_fusion_factor arms"
           help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
           meta={`${activeFusionArms} of ${binding.fusionArms.length} active`}
@@ -1335,6 +1356,7 @@ export function FlagsTab() {
         </Section>
 
         <Section
+          icon={Flag}
           name="feature flags"
           help="Plain on/off switches, distinct from the weighted arms above: each gates a whole code path rather than scaling a score. relation_rescue is the only surviving ingestion-side flag; the other two govern retrieval."
           meta={`${flagsOn} of ${binding.behavioralFlags.length} on`}
@@ -1347,6 +1369,7 @@ export function FlagsTab() {
         </Section>
 
         <Section
+          icon={Crosshair}
           name="context match boost"
           help="The magnitude of the applies_when context boost (doc 07 §6). Its own group because it acts on a match outcome rather than on a stored column: at 0 matching still labels every row and still counts conflicts — only the multiplier goes quiet."
           onEdit={() => setEditing(SECTIONS.contextBoost)}
@@ -1356,6 +1379,7 @@ export function FlagsTab() {
         </Section>
 
         <Section
+          icon={Network}
           name="graph augmentation"
           help="Doc 07 §4. Each *_enabled flag turns on a producer of ranked candidates from the entity graph, and its paired w_* is that list's weight in the fusion — a LIST weight, not a per-row multiplier, so it scales how much the whole list counts rather than boosting individual rows. All three land inert so retrieval is byte-identical to the vector+FTS hybrid until one is measured. A flag on with its weight still at 0 produces candidates that fuse at zero weight, which is why the pairing is shown together."
           meta={
@@ -1419,6 +1443,7 @@ export function FlagsTab() {
         </Section>
 
         <Section
+          icon={Gauge}
           name="pipeline & embedding tunables"
           help="Throughput and cache knobs in the same feature_flags row as the arms. None of them gates a phase or changes what gets stored — they trade provider rate-limit headroom, memory and batch latency against each other. Each accepts a bounded range the API enforces; a value outside it is refused rather than clamped."
           meta={

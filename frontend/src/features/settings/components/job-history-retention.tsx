@@ -42,7 +42,7 @@ export function JobHistoryRetention() {
       <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
         <History
           aria-hidden
-          className="text-muted-foreground h-4 w-4 shrink-0"
+          className="text-primary h-4 w-4 shrink-0"
         />
         <h3 className="min-w-0 truncate text-sm font-semibold">
           Job history retention
