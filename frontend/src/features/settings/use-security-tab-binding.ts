@@ -1,12 +1,7 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoSecurity } from "@/demo/hooks"
-import { apiFetch, ApiError } from "@/lib/api"
-
-export interface ChangePasswordInput {
-  currentPassword: string
-  newPassword: string
-}
+import { apiFetch } from "@/lib/api"
 
 /**
  * `T | null` fields have no real-mode source at all — no endpoint returns
@@ -37,10 +32,6 @@ export interface SecurityTabBinding {
   tofuJournaled: string | null
   trustProxyHeaders: boolean | null
   mcpHosts: { host: string; wild?: boolean }[] | null
-  changePassword: (input: ChangePasswordInput) => void
-  changePasswordPending: boolean
-  changePasswordError: string | null
-  changePasswordSuccess: boolean
 }
 
 interface SetupStatusResponse {
@@ -87,24 +78,6 @@ export function useSecurityTabBinding(): SecurityTabBinding {
     queryFn: () => apiFetch<SecurityPostureResponse>("/auth/security-posture"),
     enabled: !DEMO,
   })
-  const changePasswordMutation = useMutation<
-    { ok: boolean },
-    Error,
-    ChangePasswordInput
-  >({
-    mutationFn: (input) =>
-      apiFetch<{ ok: boolean }>("/auth/change-password", {
-        method: "POST",
-        // A 401 here means the CURRENT password was wrong, not that the
-        // session died. Under the default handling it signed the operator out
-        // over a typo and discarded the server's own message.
-        on401: "surface",
-        body: JSON.stringify({
-          current_password: input.currentPassword,
-          new_password: input.newPassword,
-        }),
-      }),
-  })
 
   if (DEMO) {
     return {
@@ -125,10 +98,6 @@ export function useSecurityTabBinding(): SecurityTabBinding {
       tofuJournaled: demoSec.tofu.journaled,
       trustProxyHeaders: true,
       mcpHosts: demoSec.mcp_hosts,
-      changePassword: () => {},
-      changePasswordPending: false,
-      changePasswordError: null,
-      changePasswordSuccess: false,
     }
   }
 
@@ -174,12 +143,5 @@ export function useSecurityTabBinding(): SecurityTabBinding {
         ? posture.mcp_allowed_hosts.map((host) => ({ host, wild: host === "*" }))
         : [{ host: "localhost only (mcp_allowed_hosts is empty — the default)" }]
       : null,
-    changePassword: (input) => changePasswordMutation.mutate(input),
-    changePasswordPending: changePasswordMutation.isPending,
-    changePasswordError:
-      changePasswordMutation.error instanceof ApiError
-        ? changePasswordMutation.error.message
-        : changePasswordMutation.error?.message ?? null,
-    changePasswordSuccess: changePasswordMutation.isSuccess,
   }
 }

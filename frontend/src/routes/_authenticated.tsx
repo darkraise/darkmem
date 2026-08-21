@@ -28,6 +28,9 @@ import {
   StackedLayout,
 } from "darkraise-ui/layout"
 import type { NavGroup } from "darkraise-ui/layout"
+import { UiLabelsProvider } from "darkraise-ui/labels"
+import { useState } from "react"
+import { ChangePasswordDialog } from "@/features/settings/components/change-password-dialog"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
@@ -116,6 +119,7 @@ function AuthenticatedLayout() {
   const layout = useLayoutStore((s) => s.layout)
   const router = useRouter()
   const queryClient = useQueryClient()
+  const [changingPassword, setChangingPassword] = useState(false)
 
   const handleLogout = async () => {
     if (!DEMO) {
@@ -135,27 +139,45 @@ function AuthenticatedLayout() {
         : SidebarLayout
 
   return (
-    <Shell
-      nav={nav}
-      // Controlled, not `defaultActiveBar`: this app ships no
-      // `showActiveBarToggle`, so nothing can change the indicator and
-      // "pinned" is the honest spelling. Ignored by the two sidebar-less
-      // layouts. Requires darkraise-ui >= 6.2.0.
-      activeBar="both"
-      headerSlot={
-        <>
-          <AppPageHeader />
-          <ProjectSwitcher />
-          <ContextChip />
-          <DetailLevelToggle />
-        </>
-      }
-      user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
-      onLogout={handleLogout}
-    >
-      {!DEMO && <LiveUpdates />}
-      <Outlet />
-      <BackToTop />
-    </Shell>
+    // Renames the UserMenu's profile slot. The library fixes its three item
+    // labels in `useUiLabels`, and `UiLabelsProvider` is the sanctioned way to
+    // override one — cheaper and less brittle than reimplementing the menu to
+    // add a fourth item. This app has no profile, so the slot is free.
+    <UiLabelsProvider value={{ userMenu: { profile: "Change password" } }}>
+      <Shell
+        nav={nav}
+        // Controlled, not `defaultActiveBar`: this app ships no
+        // `showActiveBarToggle`, so nothing can change the indicator and
+        // "pinned" is the honest spelling. Ignored by the two sidebar-less
+        // layouts. Requires darkraise-ui >= 6.2.0.
+        activeBar="both"
+        headerSlot={
+          <>
+            <AppPageHeader />
+            <ProjectSwitcher />
+            <ContextChip />
+            <DetailLevelToggle />
+          </>
+        }
+        user={{ name: DEMO ? "Demo" : "Admin", email: "" }}
+        // The library's UserMenu has three fixed slots — profile, settings,
+        // logout — with no arbitrary-item API, so the account action rides the
+        // profile slot and `UiLabelsProvider` below renames it. Omitted in demo
+        // mode: there is no backend to change a password on, and an item that
+        // cannot work should not be in the menu.
+        onProfile={DEMO ? undefined : () => setChangingPassword(true)}
+        onLogout={handleLogout}
+      >
+        {!DEMO && <LiveUpdates />}
+        <Outlet />
+        <BackToTop />
+        {!DEMO && (
+          <ChangePasswordDialog
+            open={changingPassword}
+            onOpenChange={setChangingPassword}
+          />
+        )}
+      </Shell>
+    </UiLabelsProvider>
   )
 }

@@ -1,6 +1,5 @@
 import { useState } from "react"
 import {
-  Check,
   Flag,
   Globe,
   KeyRound,
@@ -26,7 +25,6 @@ import {
   useRevokeApiKey,
   type ApiKeyCreated,
 } from "@/hooks/api"
-import { ConfirmGate } from "./confirm-gate"
 import {
   useSecurityTabBinding,
   type SecurityTabBinding,
@@ -163,24 +161,6 @@ function PillFlow({ steps }: { steps: string[] }) {
 }
 
 function AuthCard({ binding }: { binding: SecurityTabBinding }) {
-  const [current, setCurrent] = useState("")
-  const [next, setNext] = useState("")
-  const [confirm, setConfirm] = useState("")
-  const filled = current !== "" && next.length >= 8 && next === confirm
-
-  // Why the button will not submit, said out loud. The three rules were
-  // enforced silently: a 5-character password with a mismatched confirmation
-  // greyed the button out and explained nothing, leaving the operator to
-  // guess which of the fields was the problem. Reported only once a field has
-  // been touched, so an untouched form is not scolded.
-  const tooShort = next !== "" && next.length < 8
-  const mismatch = confirm !== "" && next !== confirm
-  const blockers = [
-    tooShort && "the new password must be at least 8 characters",
-    mismatch && "the confirmation does not match",
-    current === "" && next !== "" && "the current password is required",
-  ].filter(Boolean) as string[]
-
   return (
     <CardShell icon={ShieldCheck} title="Auth">
       <Row k="session">
@@ -188,7 +168,7 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
         {binding.sessionIssuedLabel && `, ${binding.sessionIssuedLabel}`}
         {binding.sessionJti && (
           <>
-            {" "}
+            {" · "}
             <code className="font-mono">jti {binding.sessionJti}</code>
           </>
         )}
@@ -199,98 +179,26 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
           only {"{authenticated, sub}"})
         </span>
       )}
-      <div className="flex flex-wrap gap-2.5">
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="sec-pw-current" className="text-sm">
-            Current password
-          </Label>
-          <Input
-            id="sec-pw-current"
-            type="password"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-        </div>
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="sec-pw-new" className="text-sm">
-            New password
-          </Label>
-          <Input
-            id="sec-pw-new"
-            type="password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
-        </div>
-        <div className="flex min-w-40 flex-1 flex-col gap-1">
-          <Label htmlFor="sec-pw-confirm" className="text-sm">
-            Confirm new password
-          </Label>
-          <Input
-            id="sec-pw-confirm"
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </div>
-      </div>
-      {/* The revocation consequence stays visible next to the trigger — a
-          destructive side effect is never demoted to a hover. */}
-      <p className="text-warning text-sm">
-        <b className="font-semibold">
-          Changing your password revokes every token minted before this moment
-        </b>{" "}
-        — the iat check treats them as dead on arrival.
-      </p>
-      <ConfirmGate
-        tone="danger"
-        disabled={!filled || binding.changePasswordPending}
-        trigger={
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-primary/60 text-primary"
-            disabled={!filled || binding.changePasswordPending}
-            tabIndex={-1}
-          >
-            <Check className="mr-1.5 size-3.5" />
-            Change password
-          </Button>
-        }
-        headline="Change the admin password now?"
-        desc="Every token minted before this moment is revoked — the iat check treats them as dead on arrival, so any other signed-in session is signed out immediately. This is the box's only credential."
-        confirmLabel="Confirm — change password"
-        onConfirm={() => {
-          binding.changePassword({ currentPassword: current, newPassword: next })
-          setCurrent("")
-          setNext("")
-          setConfirm("")
-        }}
-      />
-      {blockers.length > 0 && (
-        <p className="text-muted-foreground text-sm">
-          Not ready — {blockers.join("; ")}.
-        </p>
-      )}
-      {binding.changePasswordError && (
-        <p className="text-destructive text-sm">
-          {binding.changePasswordError}
-        </p>
-      )}
-      {binding.changePasswordSuccess && (
-        <p className="text-success text-sm">
-          Password changed — all pre-change tokens are now dead by iat.
-        </p>
-      )}
-      <div className="border-border flex flex-col gap-1.5 border-t border-dashed pt-2">
-        <div className="flex items-center gap-1.5">
-          <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-            login rate limiting — per-ip with lockout
-          </span>
-          <HelpTip label="About login rate limiting">
+      {/* The form moved to the user menu (Change password). A pointer rather
+          than a second copy: two password forms against one credential is two
+          places for the validation and the revocation warning to drift. */}
+      <Row k="password">
+        changed from the{" "}
+        <b className="text-foreground font-semibold">user menu</b> — the avatar
+        at the top right, <b className="text-foreground font-semibold">Change
+        password</b>. It is an account action rather than a posture setting, and
+        it is reachable from every page.
+      </Row>
+
+      <div className="border-inset flex flex-col gap-1.5 border-t border-dashed pt-2">
+        <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
+          login rate limiting — per-IP with lockout
+        </span>
+        <Row k="IP source">
+          <span className="text-muted-foreground">
             {binding.rateLimitIpSource}
-          </HelpTip>
-        </div>
+          </span>
+        </Row>
         {binding.rateLimitAttemptThreshold !== null ? (
           <Row k="attempt threshold">
             {binding.rateLimitAttemptThreshold} failed attempts
@@ -298,20 +206,20 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
         ) : (
           <UnavailableRow
             k="attempt threshold"
-            note="the login rate limiter's max_failures is an in-process constant with no config row or GET surface"
+            note="not exposed via the API"
           />
         )}
         {binding.rateLimitLockoutWindow !== null ? (
           <Row k="lockout window">{binding.rateLimitLockoutWindow}</Row>
         ) : (
-          <UnavailableRow k="lockout window" note="same constant as above" />
+          <UnavailableRow k="lockout window" note="not exposed via the API" />
         )}
         {binding.rateLimitJournaled !== null ? (
           <Row k="journaled">{binding.rateLimitJournaled}</Row>
         ) : (
           <UnavailableRow
             k="journaled"
-            note="no read endpoint aggregates auth_lockout events into a count"
+            note="not exposed via the API — no read endpoint aggregates auth_lockout events into a count"
           />
         )}
       </div>
