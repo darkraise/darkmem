@@ -12,7 +12,7 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { cn } from "darkraise-ui/lib"
 import { Pencil, RotateCcw } from "lucide-react"
-import { EmptyState } from "@/components/darkmem"
+import { EmptyState, IconButton } from "@/components/darkmem"
 import { useSystemPrompts, useUpdateSystemPrompts } from "@/hooks/api"
 import {
   PromptPanes,
@@ -134,10 +134,12 @@ export function SystemPromptDialog({
               </span>
               <span className="flex-1" />
               {!editing && (
-                <Button variant="outline" onClick={startEditing}>
-                  <Pencil aria-hidden className="size-[var(--icon-size)]" />
-                  Edit
-                </Button>
+                <IconButton
+                  icon={Pencil}
+                  label="Edit prompt"
+                  variant="outline"
+                  onClick={startEditing}
+                />
               )}
             </div>
 

@@ -12,7 +12,7 @@ import {
   Tag,
   type LucideIcon,
 } from "lucide-react"
-import { HelpTip } from "@/components/darkmem"
+import { HelpTip, IconButton } from "@/components/darkmem"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import type { LlmLayout } from "@/features/settings/use-llm-layout"
 import type { TierCLLMPurpose } from "../llm-tier-c-purposes"
@@ -101,15 +101,13 @@ export function PurposeItem({
           System prompt
         </Button>
       )}
-      <Button
+      <IconButton
+        icon={Pencil}
+        label={`Edit ${purpose.purpose}`}
         variant="outline"
         className="border-primary/60 text-primary"
-        aria-label={`Edit ${purpose.purpose}`}
         onClick={onEdit}
-      >
-        <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
-        Edit
-      </Button>
+      />
     </div>
   )
 
