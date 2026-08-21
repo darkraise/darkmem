@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { buildAssertedByClaim } from "./badge-grammar"
+import { resolveLadderParam } from "./settings"
 import memoriesData from "./data/memories.json"
 import reposData from "./data/repos.json"
 import jobsData from "./data/jobs.json"
@@ -199,11 +200,15 @@ const countOverrides = (flags: DemoFlagsState): number => {
   const behavioralOverrides = flags.behavioral_flags.filter(
     (f) => f.source === "override",
   ).length
+  const tunableOverrides = flags.tunables.filter(
+    (t) => t.source === "override",
+  ).length
   return (
     armOverrides +
     flagOverrides +
     behavioralOverrides +
-    (flags.corroboration.source === "override" ? 1 : 0)
+    tunableOverrides +
+    flags.corroboration.params.filter((p) => p.committed !== null).length
   )
 }
 
@@ -488,17 +493,23 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
       }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),
-  saveCorroboration: (nBase, nDiverse) =>
+  saveCorroboration: (name, committed) =>
     set((s) => {
-      const flags: DemoFlagsState = {
-        ...s.flags,
-        corroboration: {
-          ...s.flags.corroboration,
-          n_base: nBase,
-          n_diverse: nDiverse,
-          source: "override",
-        },
+      const corroboration = {
+        ...s.flags.corroboration,
+        params: s.flags.corroboration.params.map((p) =>
+          p.name === name
+            ? resolveLadderParam(p, committed, s.flags.corroboration.measured)
+            : p,
+        ),
       }
+      // A row exists the moment any parameter carries a commitment, and stops
+      // existing when the last one is cleared — the same distinction the
+      // backend's `row_present` draws.
+      corroboration.rowPresent = corroboration.params.some(
+        (p) => p.committed !== null,
+      )
+      const flags: DemoFlagsState = { ...s.flags, corroboration }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),
   setBehavioralFlag: (key, enabled) =>
@@ -511,6 +522,36 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
       }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),
+  saveTunable: (key, value) =>
+    set((s) => {
+      const flags: DemoFlagsState = {
+        ...s.flags,
+        tunables: s.flags.tunables.map((t) =>
+          t.key === key
+            ? {
+                ...t,
+                value,
+                source: value === t.coded_default ? "default" : "override",
+              }
+            : t,
+        ),
+      }
+      return { flags: { ...flags, overrides_written: countOverrides(flags) } }
+    }),
+  setClassificationMode: (mode) =>
+    set((s) => ({ flags: { ...s.flags, classification_mode: mode } })),
+  setClassificationAreas: (areas) =>
+    set((s) => ({
+      flags: {
+        ...s.flags,
+        // `general` is the always-on fallback and the API forces it back in
+        // server-side; mirroring that here keeps the checkbox from appearing
+        // to clear and then silently returning on the next read.
+        classification_areas: areas.includes("general")
+          ? areas
+          : ["general", ...areas],
+      },
+    })),
   saveRepoAllowlist: (patterns) =>
     set((s) => ({
       flags: { ...s.flags, repo_allowlist: { patterns } },

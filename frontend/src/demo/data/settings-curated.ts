@@ -103,9 +103,17 @@ export const CURATED_FLAGS: DemoFlagsState = {
     unmeasured: true,
   },
   corroboration: {
-    n_base: 3,
-    n_diverse: 2,
-    source: "default",
+    // The shipped floors, uncommitted — an instance nobody has tuned. Demo
+    // mode renders the same committed/effective split real mode does, so the
+    // clamp is visible here rather than only on a live install.
+    params: [
+      { name: "n_default", committed: null, effective: 3, floor: 3, measured: false, state: "default" },
+      { name: "n_diverse", committed: null, effective: 2, floor: 2, measured: false, state: "default" },
+      { name: "time_gap_days", committed: null, effective: 7, floor: 7, measured: false, state: "default" },
+    ],
+    measured: [],
+    rowPresent: false,
+    measurementTask: "T2.40",
     gate_note:
       "N drops from 3 to 2 when the origins differ in source-kind (e.g. memory + code beats three memories) or are ≥ 7 days apart across distinct sessions. Source-kind diversity outweighs raw count; derived rows (a fact, an article) never count as an origin, and an origin of unknown identity merges to one — the count undercounts, it never manufactures agreement.",
   },
@@ -130,6 +138,50 @@ export const CURATED_FLAGS: DemoFlagsState = {
       source: "default",
     },
   ],
+  // Throughput and cache knobs, all at their coded defaults on this instance.
+  // Bounds mirror `FeatureFlagsUpdate`'s `Field(ge=, le=)` so the field refuses
+  // locally exactly what the API would 422 on.
+  tunables: [
+    {
+      key: "pipeline_concurrency",
+      desc: "how many memories Phase 2 extracts and classifies at once, and how wide Phase 4's dedup probes fan out",
+      value: 5,
+      coded_default: 5,
+      source: "default",
+      min: 1,
+      max: 20,
+    },
+    {
+      key: "embedding_batch_size",
+      desc: "contents per chunk in Phase 1's single embedder call — larger batches cut round-trips, and overrun a model's context window",
+      value: 20,
+      coded_default: 20,
+      source: "default",
+      min: 1,
+      max: 200,
+    },
+    {
+      key: "embedding_concurrency",
+      desc: "how many embed chunks are in flight at once against the embedding provider",
+      value: 1,
+      coded_default: 1,
+      source: "default",
+      min: 1,
+      max: 10,
+    },
+    {
+      key: "entity_cache_ttl_minutes",
+      desc: "how long Phase 3 keeps an entity vector in the in-memory (name_lower, fingerprint) cache before falling back to the DB cache",
+      value: 60,
+      coded_default: 60,
+      source: "default",
+      min: 1,
+      max: 1440,
+      unit: "minutes",
+    },
+  ],
+  classification_mode: "simple",
+  classification_areas: ["general", "technical", "debugging", "infrastructure"],
   repo_allowlist: {
     patterns: ["github.com/darkraise/*"],
   },

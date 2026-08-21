@@ -1,5 +1,9 @@
 import { embeddingKindWarning as sharedEmbeddingKindWarning } from "@/features/setup/api-kinds"
-import type { ApiKind, DemoRankArm } from "@/features/settings/types"
+import type {
+  ApiKind,
+  DemoLadderParam,
+  DemoRankArm,
+} from "@/features/settings/types"
 import type { DemoFlagsState } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -29,6 +33,59 @@ export function activeArmCount(flags: DemoFlagsState): number {
 
 export function sourceLabel(source: "default" | "override"): string {
   return source === "default" ? "coded default" : "override"
+}
+
+// ---------------------------------------------------------------------------
+// The verification ladder's thresholds are FLOORS, not settings (doc 08 §4.1).
+// A config row may tighten one freely; loosening it below its shipped default
+// is honoured only when a recorded measurement names that parameter, and an
+// unbacked loosening is clamped back rather than refused.
+//
+// This mirrors the backend's `ladder_config.resolve_ladder` so demo mode
+// demonstrates the clamp instead of pretending the edit took. Real mode never
+// calls it — there the report comes off the wire, from the one authority that
+// also enforces it. Duplicating the *display* of a rule is not duplicating the
+// rule; nothing here decides whether a fact promotes.
+// ---------------------------------------------------------------------------
+
+export function resolveLadderParam(
+  param: DemoLadderParam,
+  committed: number | null,
+  measured: readonly string[],
+): DemoLadderParam {
+  if (committed === null) {
+    return { ...param, committed: null, effective: param.floor, state: "default", note: undefined }
+  }
+  const licensed = measured.includes(param.name)
+  if (committed < param.floor && !licensed) {
+    return {
+      ...param,
+      committed,
+      effective: param.floor,
+      state: "clamped",
+      note:
+        `${committed} is below the floor of ${param.floor} and no T2.40 ` +
+        `measurement names this parameter, so the ladder is running at ` +
+        `${param.floor}. Loosening a threshold takes a recorded measurement, ` +
+        `not an edit.`,
+    }
+  }
+  // An origin count of zero would make `k >= n` true for a fact with no
+  // sources at all, which no measurement can authorise. `time_gap_days` is a
+  // duration and carries no such hazard.
+  if (committed < 1 && param.name !== "time_gap_days") {
+    return {
+      ...param,
+      committed,
+      effective: 1,
+      state: "clamped",
+      note:
+        `${committed} is below the absolute minimum of 1, which no T2.40 ` +
+        `measurement can authorise — an origin threshold of zero would ` +
+        `promote a fact with no sources at all. Running at 1.`,
+    }
+  }
+  return { ...param, committed, effective: committed, state: "honoured", note: undefined }
 }
 
 // ---------------------------------------------------------------------------

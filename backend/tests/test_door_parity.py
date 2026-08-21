@@ -476,6 +476,8 @@ PARITY_TABLE: tuple[Surface, ...] = (
             ("POST", f"{V1}/config/notifications/test"),
             ("GET", f"{V1}/config/theme"),
             ("PUT", f"{V1}/config/theme"),
+            ("GET", f"{V1}/config/verification-ladder"),
+            ("PUT", f"{V1}/config/verification-ladder"),
         ),
         reason=(
             "Operator configuration -- provider credentials, feature flags, "

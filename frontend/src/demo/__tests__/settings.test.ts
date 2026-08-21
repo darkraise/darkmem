@@ -5,6 +5,7 @@ import {
   armStatus,
   cronInfo,
   embeddingKindWarning,
+  resolveLadderParam,
   maskKey,
   validateParamsJson,
 } from "../settings"
@@ -111,6 +112,94 @@ describe("store — flags", () => {
       .getState()
       .flags.graph_flags.find((f) => f.key === "community_injection_enabled")
     expect(flag).toMatchObject({ enabled: true, source: "override" })
+  })
+})
+
+describe("resolveLadderParam — the floors, mirrored for display", () => {
+  const floor3 = {
+    name: "n_default",
+    committed: null,
+    effective: 3,
+    floor: 3,
+    measured: false,
+    state: "default" as const,
+  }
+
+  it("honours a tightening — more evidence never needs permission", () => {
+    expect(resolveLadderParam(floor3, 5, [])).toMatchObject({
+      committed: 5,
+      effective: 5,
+      state: "honoured",
+    })
+  })
+
+  it("clamps an unbacked loosening back to the floor and says why", () => {
+    const out = resolveLadderParam(floor3, 1, [])
+    expect(out).toMatchObject({ committed: 1, effective: 3, state: "clamped" })
+    // The note must name the gate, so the row says what would license the
+    // value rather than only that it was refused.
+    expect(out.note).toMatch(/T2\.40/)
+  })
+
+  it("honours a loosening a recorded measurement names by name", () => {
+    expect(resolveLadderParam(floor3, 1, ["n_default"])).toMatchObject({
+      effective: 1,
+      state: "honoured",
+    })
+  })
+
+  it("never lets an origin count reach zero, measurement or not", () => {
+    // N = 0 makes `k >= n` true for a fact with no sources at all, which is
+    // not a loosening any measurement can authorise.
+    const out = resolveLadderParam(floor3, 0, ["n_default"])
+    expect(out).toMatchObject({ effective: 1, state: "clamped" })
+  })
+
+  it("clearing a commitment returns the parameter to its floor", () => {
+    const committed = resolveLadderParam(floor3, 9, [])
+    expect(resolveLadderParam(committed, null, [])).toMatchObject({
+      committed: null,
+      effective: 3,
+      state: "default",
+    })
+  })
+})
+
+describe("store — the ladder gate and the tunables", () => {
+  it("saveCorroboration commits one threshold and counts it as an override", () => {
+    const before = useDemoStore.getState().flags.overrides_written
+    useDemoStore.getState().saveCorroboration("n_default", 5)
+    const flags = useDemoStore.getState().flags
+    expect(
+      flags.corroboration.params.find((p) => p.name === "n_default"),
+    ).toMatchObject({ committed: 5, effective: 5, state: "honoured" })
+    expect(flags.corroboration.rowPresent).toBe(true)
+    expect(flags.overrides_written).toBe(before + 1)
+  })
+
+  it("clearing the last commitment drops the row", () => {
+    useDemoStore.getState().saveCorroboration("n_default", 5)
+    useDemoStore.getState().saveCorroboration("n_default", null)
+    expect(useDemoStore.getState().flags.corroboration.rowPresent).toBe(false)
+  })
+
+  it("saveTunable flips source to override, and back on a return to default", () => {
+    useDemoStore.getState().saveTunable("pipeline_concurrency", 8)
+    const find = () =>
+      useDemoStore
+        .getState()
+        .flags.tunables.find((t) => t.key === "pipeline_concurrency")
+    expect(find()).toMatchObject({ value: 8, source: "override" })
+    useDemoStore.getState().saveTunable("pipeline_concurrency", 5)
+    expect(find()).toMatchObject({ value: 5, source: "default" })
+  })
+
+  it("setClassificationAreas keeps general on — the API forces it back anyway", () => {
+    useDemoStore.getState().setClassificationAreas(["technical"])
+    expect(useDemoStore.getState().flags.classification_areas).toEqual([
+      "general",
+      "technical",
+    ])
   })
 })
 

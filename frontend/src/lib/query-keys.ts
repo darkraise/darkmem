@@ -134,6 +134,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   },
   featureFlags: { kind: "global" },
   repoAllowlist: { kind: "global" },
+  verificationLadder: {
+    kind: "global",
+    reason:
+      "the corroboration promotion gate's thresholds are one per-installation config row, the same as the feature flags beside it",
+  },
   classificationAreas: { kind: "global" },
   systemPrompts: { kind: "global" },
   notifications: { kind: "global" },

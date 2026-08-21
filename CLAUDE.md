@@ -1018,7 +1018,25 @@ retained but corroborates nothing (`LIVE_SOURCE_PREDICATE`). The three
 thresholds are **floors** (`verification_ladder` config row): tightening
 is free; loosening below a floor is honoured only for parameters named in
 the `ladder_measurements` config row by a recorded G-C measurement, else
-clamped with a warning. The decision (`verification_ladder.decide`) is a
+clamped with a warning. **That resolution lives in
+`app/services/ladder_config.py`, not in `verification_ladder.py`, and the
+split is load-bearing** (2026-08-21): invariant 15's tree-wide scan matches
+any line naming the ladder module — prose included — so the settings door
+`GET`/`PUT /api/v1/config/verification-ladder` could not have imported the
+thresholds from there without an allowlist entry, and an allowlist entry
+buys a route the whole module. `verification_ladder` re-exports every moved
+name, so existing imports are unaffected, and `ladder_config` is guarded by
+the same scan because it is not on the allowlist either. **Resolution
+returns a `LadderReport` and `get_ladder_config` is derived from it**, the
+`BarReport` discipline T2.128 established for G-C's bars and for the same
+reason: a clamp that speaks only through `logging` renders identically to no
+clamp, so an operator who types 1 into the settings form is shown 1 and
+never learns the ladder is still running at 3. The door answers with the
+committed value, the effective value and which of *default* / *honoured* /
+*clamped* happened, per parameter. A clamped value is still **written** —
+the row is what the operator asked for, so a later `ladder_measurements`
+entry licenses the value they already chose. The decision
+(`verification_ladder.decide`) is a
 pure function; the contradiction veto is absolute — one non-echo
 contradiction beats any count, no config on its path.
 

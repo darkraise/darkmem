@@ -43,7 +43,18 @@ from app.services.feature_flags import (
     get_feature_flags_dict,
     get_measured_flags,
 )
-from app.services.rank_fusion import RANK_ARMS
+from app.services.rank_fusion import GRAPH_CHANNELS, RANK_ARMS
+# The verification ladder's thresholds, imported from the config module
+# rather than from `verification_ladder` itself. Invariant 15's tree-wide scan
+# matches that module's name on any line, and allowlisting a settings route
+# past it would also buy the route the ability to reach the decision; see
+# `ladder_config`'s docstring.
+from app.services.ladder_config import (
+    LADDER_FLOORS,
+    LADDER_CONFIG_KEY,
+    MEASUREMENT_TASK,
+    resolve_ladder,
+)
 from app.services.repo_allowlist import (
     REPO_ALLOWLIST_KEY,
     load_allowlist,
@@ -289,6 +300,24 @@ class RankArmInfo(BaseModel):
     activation: str | None = None
 
 
+class GraphChannelInfo(BaseModel):
+    """One doc 07 §4 graph channel, read straight from ``GRAPH_CHANNELS``.
+
+    Same discipline as ``RankArmInfo``: the "activated by T2.50" label and the
+    enabled/weight pairing come off the backend's own registry, so a settings
+    surface cannot pair a flag with the wrong weight or outlive a renumbered
+    task. ``weight_flag`` is null for a channel that injects context rather
+    than a ranked list — the UI renders the absence, never a zero it invented.
+    """
+
+    name: str
+    flag: str
+    enabled: bool
+    weight_flag: str | None = None
+    weight: float | None = None
+    activation: str | None = None
+
+
 class FeatureFlagsResponse(BaseModel):
     hybrid_search_enabled: bool
     reranker_enabled: bool
@@ -306,7 +335,17 @@ class FeatureFlagsResponse(BaseModel):
     w_heat: float = 0.0
     w_recency: float = 0.0
     w_context_boost: float = 0.0
+    # Doc 07 §4's graph arms, in FEATURE_FLAGS_DEFAULTS since T2.32 but absent
+    # from this response model until the Flags tab wiring — which is why the UI
+    # rendered them as "no config row exists yet". The row existed; the field
+    # did not, and the two are not the same absence.
+    ppr_enabled: bool = False
+    w_ppr: float = 0.0
+    dual_level_enabled: bool = False
+    w_dual: float = 0.0
+    community_injection_enabled: bool = False
     rank_arms: list[RankArmInfo] = Field(default_factory=list)
+    graph_channels: list[GraphChannelInfo] = Field(default_factory=list)
     # Which of these are subject to the gate-ledger's "flip only on a
     # measured win" rule, and which of those have actually cleared one.
     measurable_flags: list[str] = Field(default_factory=list)
@@ -328,15 +367,25 @@ class FeatureFlagsUpdate(BaseModel):
     w_heat: float | None = Field(default=None, ge=0, le=5)
     w_recency: float | None = Field(default=None, ge=0, le=5)
     w_context_boost: float | None = Field(default=None, ge=0, le=5)
+    ppr_enabled: bool | None = None
+    # `w_ppr` / `w_dual` are RRF *list* weights, not per-row multipliers, but
+    # they share the arms' 0..5 range: 0 is the today-equivalent no-op and the
+    # ceiling exists so a typo cannot drown every other list in the fusion.
+    w_ppr: float | None = Field(default=None, ge=0, le=5)
+    dual_level_enabled: bool | None = None
+    w_dual: float | None = Field(default=None, ge=0, le=5)
+    community_injection_enabled: bool | None = None
 
 
-@router.get("/feature-flags", response_model=FeatureFlagsResponse)
-async def get_feature_flags(
-    _user=Depends(require_auth),
-    session: AsyncSession = Depends(get_session),
-):
-    flags = await get_feature_flags_dict(session)
-    measured = await get_measured_flags(session)
+def _flags_response(
+    flags: dict, measured: list[str]
+) -> FeatureFlagsResponse:
+    """Build the wire response from a resolved flags dict.
+
+    One builder for both verbs. GET and PUT used to assemble this twice, and
+    the second copy is where a newly added field goes missing on exactly one of
+    them — a PUT that answers with a stale shape reads as a failed save.
+    """
     rank_arms = [
         RankArmInfo(
             name=arm.name,
@@ -346,12 +395,38 @@ async def get_feature_flags(
         )
         for arm in RANK_ARMS
     ]
+    graph_channels = [
+        GraphChannelInfo(
+            name=channel.name,
+            flag=channel.flag,
+            enabled=bool(flags.get(channel.flag, False)),
+            weight_flag=channel.weight_flag,
+            weight=(
+                None
+                if channel.weight_flag is None
+                else float(flags.get(channel.weight_flag, 0.0) or 0.0)
+            ),
+            activation=channel.activation,
+        )
+        for channel in GRAPH_CHANNELS
+    ]
     return FeatureFlagsResponse(
         **flags,
         rank_arms=rank_arms,
+        graph_channels=graph_channels,
         measurable_flags=list(MEASURABLE_FLAGS),
         measured_flags=measured,
     )
+
+
+@router.get("/feature-flags", response_model=FeatureFlagsResponse)
+async def get_feature_flags(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    flags = await get_feature_flags_dict(session)
+    measured = await get_measured_flags(session)
+    return _flags_response(flags, measured)
 
 
 @router.put("/feature-flags", response_model=FeatureFlagsResponse)
@@ -388,21 +463,133 @@ async def update_feature_flags(
     await session.flush()
 
     measured = await get_measured_flags(session)
-    rank_arms = [
-        RankArmInfo(
-            name=arm.name,
-            flag=arm.flag,
-            value=float(stored.get(arm.flag, 0.0) or 0.0),
-            activation=arm.activation,
-        )
-        for arm in RANK_ARMS
-    ]
-    return FeatureFlagsResponse(
-        **stored,
-        rank_arms=rank_arms,
-        measurable_flags=list(MEASURABLE_FLAGS),
-        measured_flags=measured,
+    return _flags_response(stored, measured)
+
+
+# ── Verification ladder thresholds (doc 08 §4.1, T2.03) ───────────────
+#
+# The promotion gate's three numbers had a `config` row, floors, a clamp and a
+# measurement licence long before they had a door: the only way to tighten one
+# was writing `verification_ladder` directly in Postgres. This is that door.
+#
+# It answers with the *resolved* report, never an echo of the request, for the
+# reason `AutoResearchResponse` below gives and one more specific to this row:
+# a below-floor value is clamped rather than refused, and a clamp that speaks
+# only through `logging` renders exactly like a save that worked. An operator
+# who types 1 and is shown 1 has been told the ladder runs at 1. It does not.
+
+
+class LadderParamResponse(BaseModel):
+    """One threshold, with the distance between what was asked and what runs."""
+
+    name: str
+    # What the config row holds. Null when nothing is committed, and also when
+    # the row holds a value of the wrong type — there is no integer to report.
+    committed: int | None
+    # What the decision actually uses. This is the number that matters.
+    effective: int
+    floor: int
+    # Whether `ladder_measurements` names this parameter, which is the only
+    # thing that lets `effective` sit below `floor`.
+    measured: bool
+    state: Literal["default", "honoured", "clamped"]
+    # Operator-facing reason, present only when the state is "clamped".
+    note: str | None = None
+
+
+class VerificationLadderResponse(BaseModel):
+    params: list[LadderParamResponse]
+    measured: list[str]
+    # Whether a `verification_ladder` config row exists at all. "No row" and
+    # "a row that happens to hold the defaults" are different states, and only
+    # one of them means an operator has been here.
+    row_present: bool
+    # The task id whose recorded measurement is the only thing that may loosen
+    # a floor — served rather than hardcoded in the UI, so a renumbered task
+    # cannot leave the settings form naming a gate that no longer exists.
+    measurement_task: str = MEASUREMENT_TASK
+
+
+class VerificationLadderUpdate(BaseModel):
+    """A partial update. Every field omitted is a field left alone.
+
+    Deliberately *not* bounded with `ge=` at the schema. The floors are not a
+    validation range: a value below one is legal the moment a recorded
+    measurement names that parameter, and refusing it here would put a second,
+    dumber copy of that rule in front of the real one. The resolver clamps and
+    the response reports — one authority, and the operator sees its output.
+    """
+
+    n_default: int | None = None
+    n_diverse: int | None = None
+    time_gap_days: int | None = None
+
+
+def _ladder_response(report) -> VerificationLadderResponse:
+    return VerificationLadderResponse(
+        params=[
+            LadderParamResponse(
+                name=param.name,
+                committed=param.committed,
+                effective=param.effective,
+                floor=param.floor,
+                measured=param.measured,
+                state=param.state,
+                note=param.note,
+            )
+            for param in report.params
+        ],
+        measured=list(report.measured),
+        row_present=report.row_present,
     )
+
+
+@router.get("/verification-ladder", response_model=VerificationLadderResponse)
+async def get_verification_ladder(
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    return _ladder_response(await resolve_ladder(session))
+
+
+@router.put("/verification-ladder", response_model=VerificationLadderResponse)
+async def update_verification_ladder(
+    body: VerificationLadderUpdate,
+    _user=Depends(require_auth),
+    session: AsyncSession = Depends(get_session),
+):
+    """Write the committed thresholds, then answer with what they resolve to.
+
+    An integer is the only shape this door writes, so the resolver's
+    wrong-type branch stays reachable only from a hand-edited row. A value that
+    clamps is still written: the row is what an operator *asked for*, and
+    keeping it means a later `ladder_measurements` entry licenses the value
+    they already chose rather than requiring them to type it again.
+    """
+    result = await session.execute(select(Config).where(Config.key == LADDER_CONFIG_KEY))
+    row = result.scalar_one_or_none()
+    current = dict(row.value) if row and isinstance(row.value, dict) else {}
+
+    updates = body.model_dump(exclude_unset=True)
+    for name, value in updates.items():
+        if value is None:
+            # An explicit null clears the commitment and returns the parameter
+            # to its shipped floor — the only way back out of an override.
+            current.pop(name, None)
+        else:
+            current[name] = value
+
+    # Drop anything that is not a known threshold, so a key the resolver would
+    # only warn about cannot accumulate in the row forever.
+    stored = {k: v for k, v in current.items() if k in LADDER_FLOORS}
+
+    if row:
+        row.value = stored
+    else:
+        session.add(Config(key=LADDER_CONFIG_KEY, value=stored))
+    await session.flush()
+
+    return _ladder_response(await resolve_ladder(session))
 
 
 # ── Repo auto-provision allowlist (doc 18 §6, T1.15) ──────────────────

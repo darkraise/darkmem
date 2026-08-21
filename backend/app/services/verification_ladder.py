@@ -89,9 +89,6 @@ from app.repositories.knowledge_triples import (
 )
 from app.repositories.fact_sources import (
     FactSourceRepository,
-    CORROBORATION_N_DEFAULT,
-    CORROBORATION_N_DIVERSE,
-    CORROBORATION_TIME_GAP_DAYS,
     OriginProfile,
 )
 from app.services.contradiction_veto import (
@@ -103,8 +100,25 @@ from app.services.supersession_hold import adjudicate_supersession_hold
 
 logger = logging.getLogger(__name__)
 
-LADDER_CONFIG_KEY = "verification_ladder"
-LADDER_MEASUREMENTS_KEY = "ladder_measurements"
+# The threshold knobs live in `ladder_config` — resolution, floors, clamps and
+# the report a settings surface renders. They are re-exported here because this
+# module is where every caller has always imported them from, and because the
+# split is about which module a *config door* has to name, not about hiding
+# them from the decision that uses them. See that module's docstring for why a
+# settings route may not simply be allowlisted into this one.
+from app.services.ladder_config import (  # noqa: E402,F401  (re-exports)
+    LADDER_CONFIG_KEY,
+    LADDER_FLOORS,
+    LADDER_MEASUREMENTS_KEY,
+    MEASUREMENT_TASK,
+    LadderConfig,
+    LadderParamReport,
+    LadderReport,
+    get_ladder_config,
+    get_ladder_measurements,
+    resolve_ladder,
+)
+
 
 # Doc 08 §4.3's demotion grace, in *consecutive recompute cycles*. Its own
 # `config` row rather than a fourth key on `verification_ladder`'s, because
@@ -129,168 +143,6 @@ DEMOTE_GRACE_DEFAULT = 1
 # rung must still eventually fall, so the value is clamped rather than
 # trusted.
 DEMOTE_GRACE_MAX = 100
-
-# The tuning task whose measurement is the only thing that may loosen a floor.
-# Named in every clamp warning so the log line says what to do about it.
-MEASUREMENT_TASK = "T2.40"
-
-
-@dataclass(frozen=True)
-class LadderConfig:
-    """The three numbers the threshold rule needs, already validated.
-
-    The defaults are the *same* values ``fact_sources`` computes
-    ``required_origin_count`` from -- imported, never re-typed -- so the
-    ladder's floor and the repository's constant cannot drift apart into two
-    spellings of N.
-    """
-
-    n_default: int = CORROBORATION_N_DEFAULT
-    n_diverse: int = CORROBORATION_N_DIVERSE
-    time_gap_days: int = CORROBORATION_TIME_GAP_DAYS
-
-
-# The two parameters that are counts of origins. A threshold of zero on either
-# makes `k >= n` true for a fact with no sources; `time_gap_days` is a duration
-# and carries no such hazard, so the absolute floor applies only to these.
-_ORIGIN_COUNT_PARAMS = frozenset({"n_default", "n_diverse"})
-
-# Every parameter's floor is its shipped default. Spelled as a mapping rather
-# than read off LadderConfig() so that "what ships" and "what may not be gone
-# below" stay one statement: a future default change moves the floor with it.
-LADDER_FLOORS: dict[str, int] = {
-    "n_default": CORROBORATION_N_DEFAULT,
-    "n_diverse": CORROBORATION_N_DIVERSE,
-    "time_gap_days": CORROBORATION_TIME_GAP_DAYS,
-}
-
-
-async def get_ladder_measurements(session: AsyncSession) -> frozenset[str]:
-    """Which ladder parameters carry a recorded G-C measurement.
-
-    Modelled on ``feature_flags.get_measured_flags``: a ``config`` row that
-    nothing in this codebase writes, whose only intended writer is the
-    gate-clearing process recording a ledger entry. Empty by default.
-
-    Permission is **per parameter**, never blanket. A row that merely exists
-    unlocks nothing; only the parameters it names by name are honoured below
-    their floor. Blanket permission would let one measured parameter carry
-    three loosened ones past the gate.
-    """
-    result = await session.execute(
-        select(Config).where(Config.key == LADDER_MEASUREMENTS_KEY)
-    )
-    row = result.scalar_one_or_none()
-    if not row or not isinstance(row.value, dict):
-        return frozenset()
-    measured = row.value.get("measured", [])
-    if not isinstance(measured, list):
-        return frozenset()
-    return frozenset(name for name in measured if name in LADDER_FLOORS)
-
-
-async def get_ladder_config(session: AsyncSession) -> LadderConfig:
-    """The effective thresholds: merge over defaults, validate, clamp.
-
-    The row is operator-edited with no schema in front of it, so every
-    malformed shape degrades rather than raising: an unknown key is ignored
-    with a warning naming it, a non-integer value falls back to its default,
-    and a value below its floor is clamped unless a measurement names that
-    parameter.
-    """
-    result = await session.execute(select(Config).where(Config.key == LADDER_CONFIG_KEY))
-    row = result.scalar_one_or_none()
-    raw = row.value if row and isinstance(row.value, dict) else {}
-
-    measured = await get_ladder_measurements(session) if raw else frozenset()
-
-    for key in raw:
-        if key not in LADDER_FLOORS:
-            logger.warning(
-                "%s config row carries unknown key %r; ignoring. Known keys: %s",
-                LADDER_CONFIG_KEY,
-                key,
-                sorted(LADDER_FLOORS),
-            )
-
-    values: dict[str, int] = {}
-    for name, floor in LADDER_FLOORS.items():
-        if name not in raw:
-            values[name] = floor
-            continue
-        candidate = raw[name]
-        # bool is an int subclass, and True would silently read as 1 -- a
-        # loosening that looks like a typo but clamps like a decision.
-        if isinstance(candidate, bool) or not isinstance(candidate, int):
-            logger.warning(
-                "%s.%s is %r, not an integer; falling back to the default %d",
-                LADDER_CONFIG_KEY,
-                name,
-                candidate,
-                floor,
-            )
-            values[name] = floor
-            continue
-        # The floor clamp runs FIRST, and the ordering matters. An earlier
-        # revision put the absolute >= 1 bound ahead of this branch and
-        # `continue`d past it, so an unmeasured `n_default: 0` never reached
-        # its floor: it became 1, then the ordering clamp lifted it to 2, and
-        # a two-same-kind-same-day-origin fact promoted where the floor holds
-        # at 3 — an operator typo manufacturing exactly the counterfeit
-        # corroboration D3 exists to prevent. Every floor is >= 1, so clamping
-        # here already satisfies the absolute bound for the unmeasured case.
-        if candidate < floor and name not in measured:
-            logger.warning(
-                "%s.%s=%d is below its floor %d and no %s measurement lists it; "
-                "clamping to %d. Loosening a ladder threshold requires a recorded "
-                "measurement, not an edit.",
-                LADDER_CONFIG_KEY,
-                name,
-                candidate,
-                floor,
-                MEASUREMENT_TASK,
-                floor,
-            )
-            values[name] = floor
-            continue
-        # Only a *measured* value can still be under 1 by this point. The
-        # measurement gate rules how far a threshold may loosen, never whether
-        # it may vanish: N = 0 makes `k >= n` true for a fact with no sources
-        # at all. Origin-count parameters only — `time_gap_days = 0` is
-        # degenerate (the gate always fires) but still lands on `n_diverse`,
-        # so it cannot promote a zero-source fact.
-        if name in _ORIGIN_COUNT_PARAMS and candidate < 1:
-            logger.warning(
-                "%s.%s=%d is below the absolute minimum of 1; raising to 1. "
-                "An origin threshold of zero would promote a fact with no "
-                "sources, which no %s measurement can authorise.",
-                LADDER_CONFIG_KEY,
-                name,
-                candidate,
-                MEASUREMENT_TASK,
-            )
-            values[name] = 1
-            continue
-        values[name] = candidate
-
-    # The ordering invariant is NOT unlockable by measurement. n_default is the
-    # ungated bar and n_diverse the gated one, so n_default < n_diverse inverts
-    # the ladder: firing a gate would *raise* N, and corroborating evidence
-    # would make promotion harder. No measurement can make that coherent, so
-    # unlike the three floors this clamps unconditionally.
-    if values["n_default"] < values["n_diverse"]:
-        logger.warning(
-            "%s has n_default=%d below n_diverse=%d, which inverts the ladder; "
-            "raising n_default to %d. This clamp is not unlockable by measurement.",
-            LADDER_CONFIG_KEY,
-            values["n_default"],
-            values["n_diverse"],
-            values["n_diverse"],
-        )
-        values["n_default"] = values["n_diverse"]
-
-    return LadderConfig(**values)
-
 
 async def get_demote_grace_cycles(session: AsyncSession) -> int:
     """How many consecutive recompute cycles a demotion is held for.

@@ -1,12 +1,29 @@
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
+import { Checkbox } from "darkraise-ui/components/checkbox"
+import {
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import { Switch } from "darkraise-ui/components/switch"
 import { Textarea } from "darkraise-ui/components/textarea"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip, NumberField } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
-import type { DemoBehavioralFlag, DemoRankArm } from "@/features/settings/types"
+import type {
+  DemoBehavioralFlag,
+  DemoLadderParam,
+  DemoRankArm,
+  DemoTunable,
+} from "@/features/settings/types"
 import { ArmPill } from "./arm-pill"
 import {
   useFlagsTabBinding,
@@ -30,12 +47,68 @@ function SourceTag({ source }: { source: DemoRankArm["source"] }) {
 
 /** No entry in the gate-ledger's "Arm activation log" — flipping this arm
  *  is possible, but visibly unmeasured rather than quietly assumed good
- *  (T1.57 ruling 3, doc 17). */
+ *  (T1.57 ruling 3, doc 17).
+ *
+ *  The badge carries its own explanation because the word alone reads as a
+ *  warning about the control rather than about the evidence: nothing here is
+ *  broken or disabled, and the operator is allowed to flip it. */
 function UnmeasuredTag() {
   return (
-    <span className="border-warning/50 text-warning rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase">
-      unmeasured
-    </span>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger
+          aria-label="About the unmeasured badge"
+          className="border-warning/50 text-warning cursor-help rounded-full border border-dashed px-2 py-0.5 font-mono text-[10px] tracking-wide whitespace-nowrap uppercase"
+        >
+          unmeasured
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
+          No entry in the gate ledger's "Arm activation log" — nobody has
+          measured whether turning this on helps retrieval, and at what latency
+          and token cost. It is not broken and not locked: you can flip it. The
+          badge exists so that turning it on is a deliberate experiment rather
+          than something quietly assumed proven. It clears on its own once a
+          measurement lands in the `flag_measurements` config row, which is read
+          from the backend rather than hardcoded here.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+/** What the ladder is actually running at, versus what was asked for. The
+ *  state word is the point: a clamped threshold looks exactly like a saved one
+ *  unless the difference is rendered. */
+function LadderStatePill({ param }: { param: DemoLadderParam }) {
+  const help: Record<DemoLadderParam["state"], string> = {
+    default: `Nothing is committed for this threshold, so the ladder runs at its shipped floor of ${param.floor}.`,
+    honoured: `The committed value of ${param.committed} is what the ladder runs at. Tightening a threshold — asking for more evidence — never needs permission.`,
+    clamped:
+      param.note ??
+      `The committed value is not what the ladder runs at; it is running at ${param.effective}.`,
+  }
+  const clamped = param.state === "clamped"
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger
+          aria-label={`About the ${param.state} state`}
+          className={cn(
+            "inline-flex cursor-help items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap",
+            clamped
+              ? "border-warning/60 bg-warning/10 text-warning"
+              : param.state === "honoured"
+                ? "border-primary/55 bg-primary/10 text-primary"
+                : "border-border text-muted-foreground bg-muted/40 border-dashed",
+          )}
+        >
+          {param.state}
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
+          {help[param.state]}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -144,6 +217,54 @@ function BehavioralFlagRow({
   )
 }
 
+/** A bounded integer knob. Separate from `ArmRow` because it carries no
+ *  active/inactive state — 0 is out of range rather than a no-op, so an
+ *  `ArmPill` here would label a throughput setting as a dormant ranking
+ *  signal. */
+function TunableRow({
+  tunable,
+  onCommit,
+}: {
+  tunable: DemoTunable
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(tunable.value)
+  const commit = () => {
+    const clamped = Math.min(Math.max(draft, tunable.min), tunable.max)
+    if (Number.isFinite(draft) && clamped !== tunable.value) onCommit(clamped)
+    else setDraft(tunable.value)
+  }
+  return (
+    <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+      <span className="font-mono text-sm font-semibold whitespace-nowrap">
+        {tunable.key}
+      </span>
+      <HelpTip label={`About ${tunable.key}`}>
+        {tunable.desc}. Accepted range {tunable.min}–{tunable.max}; the coded
+        default is {tunable.coded_default}.
+      </HelpTip>
+      <span className="flex-1" />
+      <SourceTag source={tunable.source} />
+      <NumberField
+        step={1}
+        min={tunable.min}
+        max={tunable.max}
+        value={draft}
+        aria-label={tunable.key}
+        onValueChange={setDraft}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+        className="w-24"
+      />
+      {tunable.unit && (
+        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+          {tunable.unit}
+        </span>
+      )}
+    </div>
+  )
+}
+
 /** Mirrors `CodeBucketsUnavailable` in llm-tab.tsx: no backend row exists
  *  for this yet, in either mode, so the honest move is a staged note rather
  *  than fetching against a guessed contract (the T1.61 buffer-monitor
@@ -220,42 +341,238 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
   )
 }
 
+const LADDER_PARAM_HELP: Record<string, string> = {
+  n_default:
+    "How many DISTINCT origin_keys a fact needs before it climbs candidate → corroborated in the ordinary case, with no diversity gate fired. Counting is over distinct origins, never over rows: one memory asserting a claim twice is one origin.",
+  n_diverse:
+    "The lowered bar when the diversity gate fires — two attributable origins that differ in source-kind, or that lie at least the time-gap apart. It must never exceed the default bar, or firing a gate would make promotion harder.",
+  time_gap_days:
+    "How far apart two same-kind attributable origins must lie for the diversity gate to fire on time rather than on source-kind. Below this spacing, two origins of one kind stay at the default bar.",
+}
+
+/** Editable, with the distance between asked-for and running rendered on every
+ *  row. The thresholds are floors, so a below-floor value is clamped rather
+ *  than refused — and a form that echoes the typed number back would state,
+ *  falsely, that the ladder promotes at it. */
+function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
+  const corr = binding.corroboration
+  const clamped = corr.params.filter((p) => p.state === "clamped")
+
+  return (
+    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
+      <GroupHead
+        name="corroboration promotion gate"
+        help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
+      />
+      {binding.corroborationAvailable ? (
+        <>
+          {corr.params.map((param) => (
+            <div
+              key={param.name}
+              className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2"
+            >
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="font-mono text-sm font-semibold whitespace-nowrap">
+                  {param.name}
+                </span>
+                <HelpTip label={`About ${param.name}`}>
+                  {LADDER_PARAM_HELP[param.name] ?? param.name}
+                  {" The shipped floor is "}
+                  {param.floor}
+                  {param.measured
+                    ? `, and a recorded ${corr.measurementTask} measurement licenses this parameter below it.`
+                    : `, and no ${corr.measurementTask} measurement licenses going below it.`}
+                </HelpTip>
+                <span className="flex-1" />
+                <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+                  running at{" "}
+                  <b className="text-foreground font-sans text-sm font-semibold">
+                    {param.effective}
+                  </b>
+                </span>
+                <ArmInput
+                  arm={{
+                    key: param.name,
+                    desc: "",
+                    // The box holds what was *asked for*, so an operator can
+                    // see and correct their own edit; the effective value is
+                    // rendered separately rather than overwriting it.
+                    value: param.committed ?? param.floor,
+                    coded_default: param.floor,
+                    source: param.committed === null ? "default" : "override",
+                    step: 1,
+                  }}
+                  onCommit={(v) => binding.saveCorroboration(param.name, v)}
+                  className="w-16"
+                />
+                <LadderStatePill param={param} />
+                {param.committed !== null && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-muted-foreground h-7 font-mono text-[10px]"
+                    onClick={() => binding.saveCorroboration(param.name, null)}
+                  >
+                    reset to floor
+                  </Button>
+                )}
+              </div>
+              {param.state === "clamped" && param.note && (
+                <p className="text-warning pl-0.5 text-sm">{param.note}</p>
+              )}
+            </div>
+          ))}
+          {clamped.length === 0 && !corr.rowPresent && (
+            <p className="text-muted-foreground pl-0.5 text-sm italic">
+              No config row — every threshold is at its shipped floor. Saving
+              any value here creates the row.
+            </p>
+          )}
+        </>
+      ) : binding.corroborationLoading ? null : (
+        <NotYetImplemented
+          label="n_default · n_diverse · time_gap_days"
+          note="Could not read /config/verification-ladder — the thresholds are still enforced at whatever the config row resolves to; only this editor is unavailable."
+        />
+      )}
+    </div>
+  )
+}
+
+/** The classification tuning that rides the same `feature_flags` row as the
+ *  arms without gating a pipeline phase: which label vocabularies the
+ *  classifier may draw from, and how large a label space it works in. */
+function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
+  const selected = new Set(binding.classificationAreas)
+  const toggle = (key: string, on: boolean) => {
+    const next = on
+      ? [...binding.classificationAreas, key]
+      : binding.classificationAreas.filter((a) => a !== key)
+    binding.setClassificationAreas(next)
+  }
+
+  return (
+    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
+      <GroupHead
+        name="classification"
+        help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). These two knobs shape the label space it works in, and both live in the same feature_flags row as the arms above."
+      />
+      <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+        <span className="font-mono text-sm font-semibold whitespace-nowrap">
+          classification_mode
+        </span>
+        <HelpTip label="About classification_mode">
+          `simple` keeps the seven-type vocabulary that extraction already
+          emits, which lets the pipeline fold classification into the single
+          extraction call instead of a second LLM round-trip. `expanded` opens
+          the per-area label space below and forces two concurrent calls. The
+          mode also changes the extraction prompt, so re-extracting the same
+          content under a different mode is not bit-identical.
+        </HelpTip>
+        <span className="flex-1" />
+        <SegmentGroup
+          value={binding.classificationMode}
+          onValueChange={(v: string) =>
+            binding.setClassificationMode(v as "simple" | "expanded")
+          }
+          aria-label="classification_mode"
+        >
+          <SegmentGroupIndicator />
+          <SegmentGroupItem value="simple">simple</SegmentGroupItem>
+          <SegmentGroupItem value="expanded">expanded</SegmentGroupItem>
+        </SegmentGroup>
+      </div>
+      <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="font-mono text-sm font-semibold whitespace-nowrap">
+            classification_areas
+          </span>
+          <HelpTip label="About classification_areas">
+            Which label vocabularies the classifier may draw from. `general` is
+            the always-on fallback and the API adds it back server-side if you
+            clear it, so it is fixed on here rather than allowed to appear
+            cleared and then silently return.
+          </HelpTip>
+          <span className="flex-1" />
+          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+            {binding.classificationAreas.length} of{" "}
+            {binding.availableAreas.length} enabled
+          </span>
+        </div>
+        <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          {binding.availableAreas.map((area) => {
+            const locked = area.key === "general"
+            return (
+              <label
+                key={area.key}
+                className="flex items-center gap-2 text-sm"
+                htmlFor={`area-${area.key}`}
+              >
+                <Checkbox
+                  id={`area-${area.key}`}
+                  checked={selected.has(area.key)}
+                  disabled={locked}
+                  aria-label={area.key}
+                  onCheckedChange={(c) => toggle(area.key, c === true)}
+                />
+                <span className={cn(locked && "text-muted-foreground")}>
+                  {area.display_name}
+                </span>
+                <HelpTip label={`About the ${area.display_name} area`}>
+                  {locked && "Always on — the base area. "}
+                  Types: {area.types.join(", ")}.
+                </HelpTip>
+              </label>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function FlagsTab() {
   const binding = useFlagsTabBinding()
 
-  const activeArms = [...binding.fusionArms, binding.contextBoost].filter(
+  const graphWeights = binding.graphFlags.flatMap((f) =>
+    f.paired_arm ? [f.paired_arm] : [],
+  )
+  const allArms = [...binding.fusionArms, binding.contextBoost, ...graphWeights]
+  const activeArms = allArms.filter(
     (a) => armStatus(a.value) === "active",
   ).length
-  const totalArms = binding.fusionArms.length + 1
   const flagsOn = binding.behavioralFlags.filter((f) => f.enabled).length
-  const corr = binding.corroboration
 
   return (
     <div className="space-y-4">
       <div className="text-muted-foreground flex max-w-4xl items-center gap-1.5 text-sm">
         <span>
-          Ranking-arm weights, behavioral feature flags, the corroboration
+          Ranking-arm weights, behavioral feature flags, graph augmentation, the
+          pipeline and embedding tunables, classification, the corroboration
           promotion gate, and the repo auto-provision allowlist — config rows
           read through merge-over-coded-defaults.
         </span>
         <HelpTip label="About the Flags tab">
-          The tunables tab: the rank_fusion_factor w_* arms, the plain on/off
-          feature flags, the corroboration promotion gate, and the
-          repo_allowlist SSRF gate input. Job schedules are edited on the Jobs
-          page, not here. Every value is a config row read through the
-          merge-over-coded-defaults; nothing here is computed, only read and
-          written. An arm at 0 renders as inactive, never omitted, and a flag
-          with no recorded gate-ledger win renders visibly unmeasured — flipping
-          it is possible, but never quietly assumed proven.
+          The tunables tab. Every value here is a row in the `feature_flags`,
+          `verification_ladder` or `repo_allowlist` config row, read through
+          merge-over-coded-defaults; nothing on this tab is computed, only read
+          and written. Job schedules are edited on the Jobs page, not here, and
+          which model serves each purpose is on the LLM tab. An arm at 0 renders
+          as inactive rather than being omitted, and a flag with no recorded
+          gate-ledger win renders visibly unmeasured — flipping it stays
+          possible, but is never quietly assumed proven.
         </HelpTip>
       </div>
       <ModuleSurface
         title="Flags"
         state="populated"
-        meta={`${activeArms} of ${totalArms} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
+        meta={`${activeArms} of ${allArms.length} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
       >
         <div className="flex flex-col gap-2">
-          <GroupHead name="rank_fusion_factor arms" />
+          <GroupHead
+            name="rank_fusion_factor arms"
+            help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
+          />
           {binding.fusionArms.map((arm) => (
             <ArmRow
               key={arm.key}
@@ -266,7 +583,10 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="feature flags" />
+          <GroupHead
+            name="feature flags"
+            help="Plain on/off switches, distinct from the weighted arms above: each gates a whole code path rather than scaling a score. relation_rescue is the only surviving ingestion-side flag; the other two govern retrieval."
+          />
           {binding.behavioralFlags.map((flag) => (
             <BehavioralFlagRow
               key={flag.key}
@@ -279,7 +599,10 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="context match boost" />
+          <GroupHead
+            name="context match boost"
+            help="The magnitude of the applies_when context boost (doc 07 §6). Its own group because it acts on a match outcome rather than on a stored column: at 0 matching still labels every row and still counts conflicts — only the multiplier goes quiet."
+          />
           <ArmRow
             arm={binding.contextBoost}
             onCommit={(v) => binding.saveArm(binding.contextBoost.key, v)}
@@ -287,7 +610,10 @@ export function FlagsTab() {
         </div>
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead name="graph augmentation — RRF list weights + *_enabled flags" />
+          <GroupHead
+            name="graph augmentation — RRF list weights + *_enabled flags"
+            help="Doc 07 §4. Each *_enabled flag turns on a producer of ranked candidates from the entity graph, and its paired w_* is that list's weight in the fusion — a LIST weight, not a per-row multiplier, so it scales how much the whole list counts rather than boosting individual rows. All three land inert so retrieval is byte-identical to the vector+FTS hybrid until one is measured. A flag on with its weight still at 0 produces candidates that fuse at zero weight, which is why the pairing is shown together."
+          />
           {binding.graphAugmentationAvailable ? (
             binding.graphFlags.map((flag) => {
               const paired = flag.paired_arm
@@ -302,6 +628,7 @@ export function FlagsTab() {
                     </span>
                     <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
                     <span className="flex-1" />
+                    <ActivationNote taskId={flag.activatesWith} />
                     <SourceTag source={flag.source} />
                     <Switch
                       checked={flag.enabled}
@@ -310,6 +637,7 @@ export function FlagsTab() {
                       }
                       aria-label={flag.key}
                     />
+                    {flag.unmeasured && <UnmeasuredTag />}
                   </div>
                   {paired ? (
                     <div className="flex flex-wrap items-center gap-2 pl-0.5">
@@ -322,6 +650,12 @@ export function FlagsTab() {
                       <HelpTip label={`About ${paired.key}`}>
                         {paired.desc}
                       </HelpTip>
+                      <span className="flex-1" />
+                      <SourceTag source={paired.source} />
+                      <ArmInput
+                        arm={paired}
+                        onCommit={(v) => binding.saveArm(paired.key, v)}
+                      />
                       <ArmPill value={paired.value} />
                     </div>
                   ) : (
@@ -332,77 +666,33 @@ export function FlagsTab() {
                 </div>
               )
             })
-          ) : (
+          ) : binding.isLoading ? null : (
             <NotYetImplemented
               label="ppr_enabled · dual_level_enabled · community_injection_enabled"
-              note="Not yet exposed via the API — no config row exists for these yet, in either mode."
+              note="Could not read /config/feature-flags — the flags are still at whatever the config row holds; only this editor is unavailable."
             />
           )}
         </div>
-
-        <RepoAllowlistSection binding={binding} />
 
         <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
           <GroupHead
-            name="corroboration promotion gate"
-            help={`Diversity/time gate: ${corr.gate_note || "candidate → corroborated, on the verification ladder."}`}
+            name="pipeline & embedding tunables"
+            help="Throughput and cache knobs in the same feature_flags row as the arms. None of them gates a phase or changes what gets stored — they trade provider rate-limit headroom, memory and batch latency against each other. Each accepts a bounded range the API enforces; a value outside it is refused rather than clamped."
           />
-          {binding.corroborationAvailable ? (
-            <>
-              <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
-                <span className="font-mono text-sm font-semibold">
-                  corroboration_n_base
-                </span>
-                <HelpTip label="About corroboration_n_base">
-                  distinct origin_keys required to promote candidate →
-                  corroborated, default case
-                </HelpTip>
-                <span className="flex-1" />
-                <SourceTag source={corr.source} />
-                <ArmInput
-                  arm={{
-                    key: "corroboration_n_base",
-                    desc: "",
-                    value: corr.n_base,
-                    coded_default: 3,
-                    source: corr.source,
-                    step: 1,
-                  }}
-                  onCommit={(v) => binding.saveCorroboration(v, corr.n_diverse)}
-                  className="w-16"
-                />
-              </div>
-              <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
-                <span className="font-mono text-sm font-semibold">
-                  corroboration_n_diverse
-                </span>
-                <HelpTip label="About corroboration_n_diverse">
-                  lowered N when the diversity/time gate is met — see the group
-                  help icon for the full gate rule. {corr.gate_note}
-                </HelpTip>
-                <span className="flex-1" />
-                <SourceTag source={corr.source} />
-                <ArmInput
-                  arm={{
-                    key: "corroboration_n_diverse",
-                    desc: "",
-                    value: corr.n_diverse,
-                    coded_default: 2,
-                    source: corr.source,
-                    step: 1,
-                  }}
-                  onCommit={(v) => binding.saveCorroboration(corr.n_base, v)}
-                  className="w-16"
-                />
-              </div>
-            </>
-          ) : (
-            <NotYetImplemented
-              label="corroboration_n_base · corroboration_n_diverse"
-              note="Not yet exposed via the API — no config row exists for the verification ladder's promotion gate yet, in either mode."
+          {binding.tunables.map((tunable) => (
+            <TunableRow
+              key={tunable.key}
+              tunable={tunable}
+              onCommit={(v) => binding.saveTunable(tunable.key, v)}
             />
-          )}
+          ))}
         </div>
+
+        <ClassificationSection binding={binding} />
+
+        <RepoAllowlistSection binding={binding} />
+
+        <CorroborationSection binding={binding} />
       </ModuleSurface>
     </div>
   )
