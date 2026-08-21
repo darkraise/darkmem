@@ -213,6 +213,40 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
     expect(screen.getAllByText("clamped").length).toBeGreaterThan(0)
   })
 
+  // Found in a browser, not by a test: the input's draft was
+  // initial-value-only, so after a reset the next blur committed the stale
+  // number back and silently undid it — a 200 on the way out and no error
+  // anywhere. Every assertion below fails against that version.
+  it("reset to floor does not come back on the next blur", () => {
+    renderTab()
+    const input = screen.getByLabelText("n_diverse")
+    fireEvent.change(input, { target: { value: "4" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    fireEvent.click(screen.getAllByRole("button", { name: "reset to floor" })[0]!)
+
+    // The blur that follows any click elsewhere on the page.
+    fireEvent.blur(input)
+
+    const param = useDemoStore
+      .getState()
+      .flags.corroboration.params.find((p) => p.name === "n_diverse")
+    expect(param?.committed).toBeNull()
+    expect(param?.effective).toBe(2)
+  })
+
+  it("shows the floor in the box once a commitment is cleared", () => {
+    renderTab()
+    const input = screen.getByLabelText("n_diverse")
+    fireEvent.change(input, { target: { value: "4" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(input).toHaveValue("4")
+
+    fireEvent.click(screen.getAllByRole("button", { name: "reset to floor" })[0]!)
+    // A box still reading 4 next to "running at 2" is the state that produced
+    // the phantom re-commit.
+    expect(input).toHaveValue("2")
+  })
+
   it("reset to floor clears a commitment", () => {
     renderTab()
     const input = screen.getByLabelText("n_default")

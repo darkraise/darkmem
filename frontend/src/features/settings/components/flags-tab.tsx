@@ -132,6 +132,19 @@ function ArmInput({
   className?: string
 }) {
   const [draft, setDraft] = useState(arm.value)
+  // The draft must follow the committed value when that value changes from
+  // OUTSIDE this field — a reset button, a refetch, another control's
+  // response. Without this the draft is initial-value-only, and the next blur
+  // commits the stale number back: measured in a browser, "reset to floor"
+  // cleared the threshold and the blur that followed re-sent the old value,
+  // silently undoing the reset with a 200 and no error anywhere. React's
+  // documented adjust-state-during-render pattern, not an effect — an effect
+  // would paint the stale draft for a frame first.
+  const [lastCommitted, setLastCommitted] = useState(arm.value)
+  if (arm.value !== lastCommitted) {
+    setLastCommitted(arm.value)
+    setDraft(arm.value)
+  }
   const commit = () => {
     // NaN is what the field reports for text it cannot parse, and is the
     // case a raw number input used to collapse into a committed zero.
@@ -229,6 +242,12 @@ function TunableRow({
   onCommit: (value: number) => void
 }) {
   const [draft, setDraft] = useState(tunable.value)
+  // Same external-change sync as ArmInput — see the comment there.
+  const [lastCommitted, setLastCommitted] = useState(tunable.value)
+  if (tunable.value !== lastCommitted) {
+    setLastCommitted(tunable.value)
+    setDraft(tunable.value)
+  }
   const commit = () => {
     const clamped = Math.min(Math.max(draft, tunable.min), tunable.max)
     if (Number.isFinite(draft) && clamped !== tunable.value) onCommit(clamped)

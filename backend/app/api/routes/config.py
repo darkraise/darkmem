@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -377,6 +377,27 @@ class FeatureFlagsUpdate(BaseModel):
     community_injection_enabled: bool | None = None
 
 
+async def _lock_config_row(session: AsyncSession, key: str) -> None:
+    """Serialise the read-modify-write on one ``config`` row.
+
+    Both PUTs below read a JSON blob, patch it in Python and write the whole
+    blob back. Two concurrent requests each read before the other commits, so
+    the second write drops the first's change entirely -- measured on the Flags
+    tab, where saving two controls inside one round-trip left one of them
+    silently un-saved and the row holding only the other. The operator sees a
+    control they set sitting at its old value with no error anywhere.
+
+    A transaction-scoped advisory lock is enough and is the cheapest thing that
+    is actually correct: it serialises writers on this key, needs no schema
+    change, and releases on commit or rollback. ``SELECT ... FOR UPDATE`` would
+    not do -- it locks no row when the row does not exist yet, which is exactly
+    the first-save case both of these doors have.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key}
+    )
+
+
 def _flags_response(
     flags: dict, measured: list[str]
 ) -> FeatureFlagsResponse:
@@ -435,6 +456,7 @@ async def update_feature_flags(
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
+    await _lock_config_row(session, FEATURE_FLAGS_KEY)
     current = await get_feature_flags_dict(session)
     updates = body.model_dump(exclude_unset=True)
 
@@ -566,6 +588,7 @@ async def update_verification_ladder(
     keeping it means a later `ladder_measurements` entry licenses the value
     they already chose rather than requiring them to type it again.
     """
+    await _lock_config_row(session, LADDER_CONFIG_KEY)
     result = await session.execute(select(Config).where(Config.key == LADDER_CONFIG_KEY))
     row = result.scalar_one_or_none()
     current = dict(row.value) if row and isinstance(row.value, dict) else {}
