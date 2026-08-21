@@ -19,6 +19,7 @@ import type {
   DemoLLMPurpose,
   DemoLLMSaveTrace,
   DemoRankArm,
+  DemoTunable,
   LLMPurposeName,
   MaintenanceOpKey,
 } from "@/features/settings/types"
@@ -688,6 +689,13 @@ export interface DemoFlagsState {
   corroboration: DemoCorroborationGate
   /** hybrid_search_enabled, reranker_enabled, relation_rescue. */
   behavioral_flags: DemoBehavioralFlag[]
+  /** pipeline_concurrency, embedding_batch_size, embedding_concurrency,
+   *  entity_cache_ttl_minutes — throughput and cache knobs in the same
+   *  `feature_flags` row, which the API has always served and no surface
+   *  rendered until 2026-08-21. */
+  tunables: DemoTunable[]
+  classification_mode: "simple" | "expanded"
+  classification_areas: string[]
   repo_allowlist: DemoAllowlistState
   overrides_written: number
 }
@@ -853,7 +861,12 @@ export interface DemoStoreState {
   /** Writes a w_* arm value; the first write flips its source to override. */
   saveArm: (key: string, value: number) => void
   setGraphFlag: (key: string, enabled: boolean) => void
-  saveCorroboration: (nBase: number, nDiverse: number) => void
+  /** Commit one ladder threshold. `null` clears the commitment and returns
+   *  the parameter to its floor — the only way back out of an override. */
+  saveCorroboration: (name: string, committed: number | null) => void
+  saveTunable: (key: string, value: number) => void
+  setClassificationMode: (mode: "simple" | "expanded") => void
+  setClassificationAreas: (areas: string[]) => void
   setBehavioralFlag: (key: string, enabled: boolean) => void
   /** Replaces the whole pattern list; validated client-side with the same
    *  host[/path-prefix] shape T1.15's validator accepts. */

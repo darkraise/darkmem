@@ -43,13 +43,65 @@ export interface DemoGraphFlag {
   /** The paired RRF list weight; null = context augmentation, no weight. */
   paired_arm: DemoRankArm | null
   no_weight_note?: string
+  /** Task id whose measurement may turn this channel on, read off the
+   *  backend's `GRAPH_CHANNELS` registry rather than guessed here. */
+  activatesWith?: string
+  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
+  unmeasured?: boolean
 }
 
+/** What happened to one verification-ladder threshold between the config row
+ *  and the decision. `default` = nothing committed; `honoured` = the committed
+ *  value survived; `clamped` = it did not, and `note` says why. */
+export type LadderParamState = "default" | "honoured" | "clamped"
+
+export interface DemoLadderParam {
+  name: string
+  /** What the config row holds; null when nothing is committed. */
+  committed: number | null
+  /** What the ladder actually runs at — the number that matters. */
+  effective: number
+  floor: number
+  /** Whether a recorded measurement licenses this parameter below its floor. */
+  measured: boolean
+  state: LadderParamState
+  note?: string
+}
+
+/** The corroboration promotion gate as the *reader* resolves it, never an echo
+ *  of what was typed. The thresholds are floors: a below-floor value is
+ *  clamped rather than refused, so committed and effective must both be
+ *  carried — showing only the committed number tells an operator the ladder is
+ *  running at a value it is not. */
 export interface DemoCorroborationGate {
-  n_base: number
-  n_diverse: number
-  source: FlagSource
+  params: DemoLadderParam[]
+  /** Which parameters a recorded measurement licenses below their floor. */
+  measured: string[]
+  /** Whether a config row exists at all — distinct from a row holding the
+   *  defaults, and only one of the two means an operator has been here. */
+  rowPresent: boolean
+  /** The task id whose measurement is the only thing that may loosen a floor,
+   *  served by the backend so a renumbered task cannot leave this form naming
+   *  a gate that no longer exists. */
+  measurementTask: string
   gate_note: string
+}
+
+/** A pipeline/embedding tunable: a plain bounded number in the same
+ *  `feature_flags` row as the arms, governing throughput or cache lifetime
+ *  rather than gating a phase. Bounds mirror `FeatureFlagsUpdate`'s
+ *  `Field(ge=, le=)` so the field refuses locally what the API would 422 on. */
+export interface DemoTunable {
+  key: string
+  desc: string
+  value: number
+  coded_default: number
+  source: FlagSource
+  min: number
+  max: number
+  step?: number
+  /** Rendered after the input, e.g. "minutes" — never part of the value. */
+  unit?: string
 }
 
 /** hybrid_search_enabled / reranker_enabled / relation_rescue — plain

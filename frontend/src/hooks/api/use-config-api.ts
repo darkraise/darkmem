@@ -88,6 +88,21 @@ export interface RankArmInfo {
   activation: string | null
 }
 
+/** One doc 07 §4 graph channel, read straight off the backend's
+ *  `GRAPH_CHANNELS` — the flag/weight pairing and the activation task id both
+ *  come from there rather than being re-typed here, for the reason
+ *  `RankArmInfo` does. `weight_flag` is null for a channel that injects
+ *  context instead of a ranked list: there is no weight, and rendering a zero
+ *  would invent a knob the fusion never reads. */
+export interface GraphChannelInfo {
+  name: string
+  flag: string
+  enabled: boolean
+  weight_flag: string | null
+  weight: number | null
+  activation: string | null
+}
+
 export interface FeatureFlags {
   hybrid_search_enabled: boolean
   reranker_enabled: boolean
@@ -108,7 +123,16 @@ export interface FeatureFlags {
   w_heat: number
   w_recency: number
   w_context_boost: number
+  // Doc 07 §4's graph arms. In FEATURE_FLAGS_DEFAULTS since T2.32; absent from
+  // the response model until 2026-08-21, which is why the Flags tab reported
+  // "no config row exists for these yet" — it was reading a missing field.
+  ppr_enabled: boolean
+  w_ppr: number
+  dual_level_enabled: boolean
+  w_dual: number
+  community_injection_enabled: boolean
   rank_arms: RankArmInfo[]
+  graph_channels: GraphChannelInfo[]
   // Which flags are subject to the gate-ledger's "flip on a measured win"
   // rule, and which of those have actually cleared one (T1.57 ruling 3).
   measurable_flags: string[]
@@ -161,6 +185,55 @@ export function useUpdateRepoAllowlist() {
         body: JSON.stringify({ patterns }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["repoAllowlist"] }),
+  })
+}
+
+export interface LadderParam {
+  name: string
+  /** What the config row holds; null when nothing is committed. */
+  committed: number | null
+  /** What the ladder actually runs at. The number that matters. */
+  effective: number
+  floor: number
+  /** Whether `ladder_measurements` names this parameter — the only thing that
+   *  lets `effective` sit below `floor`. */
+  measured: boolean
+  state: "default" | "honoured" | "clamped"
+  /** Present only when clamped: the operator-facing reason. */
+  note: string | null
+}
+
+export interface VerificationLadder {
+  params: LadderParam[]
+  measured: string[]
+  row_present: boolean
+  measurement_task: string
+}
+
+export function useVerificationLadder(enabled: boolean = true) {
+  return useQuery<VerificationLadder>({
+    queryKey: ["verificationLadder"],
+    queryFn: () => apiFetch<VerificationLadder>("/config/verification-ladder"),
+    staleTime: 30_000,
+    enabled,
+  })
+}
+
+/** A partial write. An explicit `null` clears a commitment and returns that
+ *  parameter to its floor; an omitted key is left alone. The response is the
+ *  *resolved* report, so a clamped save reports the clamp rather than echoing
+ *  the number back. */
+export function useUpdateVerificationLadder() {
+  const qc = useQueryClient()
+  return useMutation<VerificationLadder, Error, Record<string, number | null>>({
+    mutationFn: (patch) =>
+      apiFetch<VerificationLadder>("/config/verification-ladder", {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(["verificationLadder"], data)
+    },
   })
 }
 
