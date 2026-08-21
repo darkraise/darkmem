@@ -452,7 +452,6 @@ function ApiKeyCard() {
         </div>
       </div>
       <Button
-        size="sm"
         variant="outline"
         className="w-fit"
         disabled={!label.trim() || parsedScopes.length === 0 || createKey.isPending}

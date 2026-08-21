@@ -270,7 +270,6 @@ export function CodeAnalysisPanel({
                 <div className="flex gap-2">
                   <Button
                     variant="destructive"
-                    size="sm"
                     className="flex-1 font-mono tracking-wider uppercase"
                     onClick={onBlastRadius}
                     disabled={isBlastRadiusLoading}
@@ -287,7 +286,6 @@ export function CodeAnalysisPanel({
                   {blastRadiusIds && (
                     <Button
                       variant="outline"
-                      size="sm"
                       className="font-mono tracking-wider uppercase"
                       onClick={onClearBlastRadius}
                     >

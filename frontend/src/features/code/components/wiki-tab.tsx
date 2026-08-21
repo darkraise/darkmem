@@ -354,7 +354,6 @@ export function WikiTab({
               {index > 0 && (
                 <Button
                   variant="ghost"
-                  size="sm"
                   className="text-muted-foreground hover:text-foreground -ml-2"
                   onClick={() =>
                     setActiveSection({
@@ -370,7 +369,6 @@ export function WikiTab({
               {index < sections.length - 1 && (
                 <Button
                   variant="ghost"
-                  size="sm"
                   className="text-muted-foreground hover:text-foreground ml-auto"
                   onClick={() =>
                     setActiveSection({

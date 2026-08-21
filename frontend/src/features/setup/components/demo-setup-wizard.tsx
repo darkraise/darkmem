@@ -258,7 +258,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <Button size="sm" variant="outline" onClick={fetchModels}>
+              <Button variant="outline" onClick={fetchModels}>
                 <RefreshCw className="mr-1.5 size-3.5" />
                 Fetch available models
               </Button>
@@ -474,7 +474,6 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
 
       <div className="border-border flex items-center justify-between gap-2 border-t border-dashed pt-3">
         <Button
-          size="sm"
           variant="ghost"
           disabled={step === 0 || finalizing}
           onClick={back}
@@ -484,7 +483,6 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
         <div className="flex items-center gap-2">
           {(step === 1 || step === 2) && (
             <Button
-              size="sm"
               variant="outline"
               disabled={finalizing}
               onClick={() => {
@@ -498,7 +496,6 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
           )}
           {step < 3 ? (
             <Button
-              size="sm"
               disabled={step === 0 && !passwordOk}
               onClick={() => {
                 if (step === 1) setLLM((d) => ({ ...d, skipped: false }))
@@ -509,7 +506,7 @@ export function DemoSetupWizard({ onFinish }: { onFinish: () => void }) {
               Next
             </Button>
           ) : (
-            <Button size="sm" disabled={finalizing} onClick={finish}>
+            <Button disabled={finalizing} onClick={finish}>
               {finalizing && (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               )}

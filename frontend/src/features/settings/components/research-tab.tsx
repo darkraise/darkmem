@@ -96,7 +96,6 @@ export function ResearchTab() {
                   : "disarmed"}
           </Badge>
           <Button
-            size="sm"
             variant="outline"
             disabled={!known || update.isPending}
             onClick={() => update.mutate({ enabled: !enabled })}
@@ -133,7 +132,6 @@ export function ResearchTab() {
         </div>
 
         <Button
-          size="sm"
           variant="outline"
           className="w-fit"
           disabled={update.isPending}
@@ -197,7 +195,6 @@ export function ResearchTab() {
                 </span>
               </div>
               <Button
-                size="sm"
                 variant="outline"
                 // Nothing left to re-derive is a refusal, not a no-op run: the
                 // button says why rather than posting a request the door will

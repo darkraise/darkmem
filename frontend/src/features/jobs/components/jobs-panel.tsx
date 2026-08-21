@@ -110,8 +110,7 @@ function CronCell({ job }: { job: Job }) {
       />
       <Button
         variant="ghost"
-        size="sm"
-        className="h-9 px-2"
+       
         onClick={handleSave}
         disabled={!dirty || updateJob.isPending}
       >
@@ -166,8 +165,7 @@ function TriggerCell({ job }: { job: Job }) {
   return (
     <Button
       variant="outline"
-      size="sm"
-      className="h-9 px-2"
+     
       onClick={handleTrigger}
       disabled={triggerJob.isPending}
     >

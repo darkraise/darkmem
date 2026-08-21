@@ -299,7 +299,6 @@ export function PurposeDialog({
             </span>
           )}
           <Button
-            size="sm"
             variant="ghost"
             className="ml-auto"
             onClick={() => onOpenChange(false)}
@@ -307,7 +306,6 @@ export function PurposeDialog({
             Cancel
           </Button>
           <Button
-            size="sm"
             variant="outline"
             className="border-primary/60 text-primary"
             disabled={dirty.length === 0 || !paramsCheck.ok}

@@ -228,7 +228,7 @@ function MemoryDetailPage() {
     description: "One memory, its enrichment, and its lineage.",
     parent: { label: "Memories", href: "/memories" },
     actions: memory ? (
-      <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+      <Button variant="outline" onClick={() => setEditOpen(true)}>
         <Pencil className="mr-2 size-4" />
         Edit
       </Button>

@@ -68,7 +68,6 @@ function PageControls({
         {total}
       </span>
       <Button
-        size="sm"
         variant="outline"
         disabled={offset === 0}
         onClick={onPrev}
@@ -77,7 +76,6 @@ function PageControls({
         <ChevronLeft className="size-3.5" />
       </Button>
       <Button
-        size="sm"
         variant="outline"
         disabled={offset + limit >= total}
         onClick={onNext}
@@ -243,17 +241,16 @@ function FactRow({
       {level === "advanced" && <ConsequenceBreakdown fact={fact} />}
       {level === "advanced" && <EvidenceBlock fact={fact} />}
       <div className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-2">
-        <Button size="sm" onClick={() => onRatify(fact)}>
+        <Button onClick={() => onRatify(fact)}>
           <UserCheck className="mr-1.5 size-3.5" />
           Ratify → confirmed
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onReject(fact)}>
+        <Button variant="outline" onClick={() => onReject(fact)}>
           <XCircle className="mr-1.5 size-3.5" />
           Reject
         </Button>
         {fact.suspected_contradiction != null && (
           <Button
-            size="sm"
             variant="outline"
             onClick={() => onDismissSuspicion(fact)}
           >
@@ -261,7 +258,7 @@ function FactRow({
             Dismiss suspicion
           </Button>
         )}
-        <Button size="sm" variant="outline" asChild>
+        <Button variant="outline" asChild>
           <Link to="/knowledge/facts/$factId" params={{ factId: fact.id }}>
             <Pencil className="mr-1.5 size-3.5" />
             Edit
@@ -320,7 +317,7 @@ function ArticleRow({ article }: { article: ReviewArticleRowData }) {
         {" · "}created {article.created_at}
       </p>
       <div className="border-border flex flex-wrap items-center gap-2 border-t border-dashed pt-2">
-        <Button size="sm" variant="outline" asChild>
+        <Button variant="outline" asChild>
           <Link
             to="/knowledge/articles/$articleId"
             params={{ articleId: article.id }}
@@ -521,7 +518,6 @@ export function ReviewQueue({ project }: { project?: string }) {
             } — go back to see them.`}
             action={
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setFactsOffset(0)}
               >
@@ -590,7 +586,6 @@ export function ReviewQueue({ project }: { project?: string }) {
             } still remain${articles.total === 1 ? "s" : ""} — go back to see them.`}
             action={
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setArticlesOffset(0)}
               >

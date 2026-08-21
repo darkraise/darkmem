@@ -72,7 +72,7 @@ export function ProjectSwitcher() {
             onChange={(e) => setDraft(e.target.value)}
             groupClassName="flex-1"
           />
-          <Button type="submit" size="sm" disabled={!draft.trim()}>
+          <Button type="submit" disabled={!draft.trim()}>
             Switch
           </Button>
         </form>
@@ -82,7 +82,6 @@ export function ProjectSwitcher() {
               <Button
                 key={project}
                 type="button"
-                size="sm"
                 variant={project === activeProject ? "secondary" : "ghost"}
                 onClick={() => switchTo(project)}
               >

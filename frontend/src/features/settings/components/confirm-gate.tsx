@@ -57,11 +57,10 @@ export function ConfirmGate({
             <span className="text-sm font-semibold">{headline}</span>
             <span className="text-muted-foreground text-sm">{desc}</span>
             <div className="mt-0.5 flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setArmed(false)}>
+              <Button variant="ghost" onClick={() => setArmed(false)}>
                 Cancel
               </Button>
               <Button
-                size="sm"
                 variant="outline"
                 className={cn(
                   danger

@@ -428,7 +428,6 @@ export function RealCodeGraphView({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                size="sm"
                 className="border-primary/50 text-primary bg-primary/8 rounded-full"
                 disabled={!selectedId || blastRadius.isPending}
                 onClick={runBlastRadius}
@@ -589,7 +588,6 @@ export function RealCodeGraphView({
                 </pre>
                 <Button
                   variant="outline"
-                  size="sm"
                   className="self-end"
                   onClick={() => copyMermaid(mermaid)}
                 >

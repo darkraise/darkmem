@@ -351,9 +351,8 @@ function RepoRow({
         </span>
         <div className="flex shrink-0 gap-1">
           <Button
-            size="sm"
             variant="ghost"
-            className="h-7 px-2"
+           
             disabled={repo.status === "cloning" || repo.status === "indexing"}
             onClick={() => onReindex(repo)}
           >
@@ -361,17 +360,15 @@ function RepoRow({
             Reindex
           </Button>
           <Button
-            size="sm"
             variant="ghost"
-            className="h-7 px-2"
+           
             onClick={() => onEdit(repo)}
           >
             Edit
           </Button>
           <Button
-            size="sm"
             variant="ghost"
-            className="text-destructive hover:text-destructive h-7 px-2"
+            className="text-destructive hover:text-destructive"
             onClick={() => onDelete(repo)}
           >
             Delete

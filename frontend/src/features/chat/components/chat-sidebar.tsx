@@ -43,7 +43,7 @@ export function ChatSidebar({
       <div className="border-border space-y-2 border-b p-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Conversations</span>
-          <Button size="sm" className="gap-1" onClick={onCreate}>
+          <Button className="gap-1" onClick={onCreate}>
             <Plus className="h-3.5 w-3.5" /> New
           </Button>
         </div>
@@ -73,7 +73,7 @@ export function ChatSidebar({
             title="Failed to load conversations"
             action={
               onRetry && (
-                <Button variant="outline" size="sm" onClick={onRetry}>
+                <Button variant="outline" onClick={onRetry}>
                   Retry
                 </Button>
               )

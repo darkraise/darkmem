@@ -103,7 +103,6 @@ export function CodeFilters({
         </span>
         <Button
           variant="ghost"
-          size="sm"
           className="ml-auto"
           disabled={hidden.size === 0}
           onClick={onReset}

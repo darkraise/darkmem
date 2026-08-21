@@ -302,7 +302,6 @@ function SymbolsTab({
         <div className="flex items-center gap-1">
           <Button
             variant="outline"
-            size="sm"
             className="font-mono"
             disabled={!hasPrev}
             onClick={() => setOffset((o) => Math.max(0, o - SYMBOLS_PAGE_SIZE))}
@@ -311,7 +310,6 @@ function SymbolsTab({
           </Button>
           <Button
             variant="outline"
-            size="sm"
             className="font-mono"
             disabled={!hasNext}
             onClick={() => setOffset((o) => o + SYMBOLS_PAGE_SIZE)}

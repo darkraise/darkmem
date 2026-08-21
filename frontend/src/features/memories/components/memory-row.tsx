@@ -95,7 +95,6 @@ export function MemoryRow({
         {trace && onToggleTrace && (
           <Button
             variant="ghost"
-            size="sm"
             aria-expanded={expanded}
             aria-label={expanded ? "Hide why retrieved" : "Show why retrieved"}
             className="text-muted-foreground shrink-0"

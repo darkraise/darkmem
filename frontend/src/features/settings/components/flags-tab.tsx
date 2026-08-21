@@ -121,7 +121,6 @@ function SectionDialog({
           <span className="flex-1" />
           <SavingMark saving={saving} />
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -129,7 +128,6 @@ function SectionDialog({
             Cancel
           </Button>
           <Button
-            size="sm"
             className="border-primary/60"
             variant="outline"
             disabled={dirty.length === 0 || !canSave || saving}
@@ -412,9 +410,8 @@ function Section({
           <>
             <SavingMark saving={saving ?? false} />
             <Button
-              size="sm"
               variant="outline"
-              className="h-7 shrink-0 px-2.5 text-xs"
+              className="shrink-0"
               disabled={saving}
               onClick={onEdit}
             >
@@ -811,9 +808,8 @@ function LadderDialog({
             className="w-20"
           />
           <Button
-            size="sm"
             variant="ghost"
-            className="text-muted-foreground h-7 font-mono text-[10px]"
+            className="text-muted-foreground font-mono text-[10px]"
             disabled={draft[param.name] === null}
             onClick={() => setDraft((d) => ({ ...d, [param.name]: null }))}
           >

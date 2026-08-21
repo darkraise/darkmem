@@ -332,8 +332,7 @@ export function CodeInspector({
         </span>
         <Button
           variant="ghost"
-          size="sm"
-          className="text-muted-foreground h-6 shrink-0 px-1.5 text-[10px]"
+          className="text-muted-foreground shrink-0 text-[10px]"
           onClick={onCloseAll}
         >
           close all

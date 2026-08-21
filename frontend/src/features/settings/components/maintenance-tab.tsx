@@ -188,7 +188,6 @@ export function MaintenanceTab() {
               disabled={m.reembed.memories === 0}
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-primary/60 text-primary"
                   disabled={m.reembed.memories === 0}
@@ -217,7 +216,6 @@ export function MaintenanceTab() {
               disabled={m.reembed.entities === 0}
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   disabled={m.reembed.entities === 0}
                   tabIndex={-1}
@@ -247,7 +245,6 @@ export function MaintenanceTab() {
                 disabled={m.reembed.codeChunks === 0}
                 trigger={
                   <Button
-                    size="sm"
                     variant="outline"
                     disabled={m.reembed.codeChunks === 0}
                     tabIndex={-1}
@@ -277,7 +274,7 @@ export function MaintenanceTab() {
                   cross-fingerprint code-chunk backfill is not implemented
                   server-side — use
                 </span>
-                <Button size="sm" variant="outline" asChild>
+                <Button variant="outline" asChild>
                   <Link to="/code/repositories">
                     <ExternalLink className="mr-1.5 size-3.5" />
                     Repositories → Reindex
@@ -305,7 +302,6 @@ export function MaintenanceTab() {
               disabled={m.cleanup.expired === 0}
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-destructive/60 text-destructive"
                   disabled={m.cleanup.expired === 0}
@@ -330,7 +326,6 @@ export function MaintenanceTab() {
               tone="danger"
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-warning/60 text-warning"
                   tabIndex={-1}
@@ -353,7 +348,6 @@ export function MaintenanceTab() {
               tone="danger"
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-warning/60 text-warning"
                   tabIndex={-1}
@@ -374,7 +368,7 @@ export function MaintenanceTab() {
             last
           >
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" asChild>
+              <Button variant="outline" asChild>
                 <Link to="/activity" search={{ tab: "triage", day: undefined }}>
                   <ExternalLink className="mr-1.5 size-3.5" />
                   View in Activity
@@ -407,7 +401,6 @@ export function MaintenanceTab() {
               disabled={m.dbops.retiredFingerprints?.length === 0}
               trigger={
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-destructive/60 text-destructive"
                   disabled={m.dbops.retiredFingerprints?.length === 0}

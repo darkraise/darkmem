@@ -76,7 +76,6 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
         </p>
       )}
       <Button
-        size="sm"
         variant="ghost"
         className="h-auto px-0 text-sm"
         aria-expanded={open}
@@ -199,7 +198,7 @@ export function DayTab({
         renders.
       </p>
       <div className="border-border flex flex-wrap items-center gap-2.5 border-b border-dashed pb-2.5">
-        <Button size="sm" variant="ghost" asChild>
+        <Button variant="ghost" asChild>
           <Link to="/">
             <ChevronLeft className="mr-1 size-3.5" />
             Activity calendar
@@ -219,7 +218,6 @@ export function DayTab({
         />
         <div className="ml-auto flex items-center gap-1.5">
           <Button
-            size="sm"
             variant="outline"
             onClick={() => onDayChange(shiftDay(day, -1))}
           >
@@ -227,7 +225,6 @@ export function DayTab({
             {shiftDay(day, -1)}
           </Button>
           <Button
-            size="sm"
             variant="outline"
             onClick={() => onDayChange(shiftDay(day, 1))}
           >

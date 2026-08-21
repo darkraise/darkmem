@@ -127,7 +127,6 @@ function ProviderRow({ provider }: { provider: WizardProvider }) {
       </div>
       <div className="flex items-center gap-2">
         <Button
-          size="sm"
           variant="outline"
           disabled={probe.isPending}
           onClick={handleTest}
@@ -252,7 +251,7 @@ function NewProviderRow() {
           />
         </div>
       </div>
-      <Button size="sm" disabled={!canCreate} onClick={submit} className="self-end">
+      <Button disabled={!canCreate} onClick={submit} className="self-end">
         Create
       </Button>
     </div>
