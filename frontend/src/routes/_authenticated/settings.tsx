@@ -66,41 +66,59 @@ function SettingsPage() {
           }
         }}
       >
-        {/* Full-width strip with equal-width items: `w-full` on the list and
-            `flex-1` on each trigger, so the tabs divide the content area
-            evenly instead of hugging their labels. The scroll container stays
-            for narrow viewports, where six equal columns still overflow. */}
-        <div className="overflow-x-auto">
-          <TabsList className="w-full">
-            <TabsTrigger className="flex-1 gap-2" value="flags">
-              <Flag aria-hidden className="size-[var(--icon-size)]" />
-              Flags
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="llm">
-              <Bot aria-hidden className="size-[var(--icon-size)]" />
-              LLM
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="security">
-              <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
-              Security
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="maintenance">
-              <Wrench aria-hidden className="size-[var(--icon-size)]" />
-              Maintenance
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="integration">
-              <Plug aria-hidden className="size-[var(--icon-size)]" />
-              Integration
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="notifications">
-              <Bell aria-hidden className="size-[var(--icon-size)]" />
-              Notifications
-            </TabsTrigger>
-            <TabsTrigger className="flex-1 gap-2" value="research">
-              <Search aria-hidden className="size-[var(--icon-size)]" />
-              Research
-            </TabsTrigger>
-          </TabsList>
+        {/* The strip stays put while the tab body scrolls.
+
+            `sticky` is on this wrapper and `overflow-x-auto` on the one
+            inside, because they cannot be the same element: a scroll
+            container clips its own overflow, which would cut off the
+            background extension below, and a sticky element *inside* a scroll
+            container pins to that container rather than to the page.
+
+            The extension exists because sticky pins the strip to the
+            scrollport's content edge, leaving the shell's top padding as a
+            band that scrolling rows still show through. `bottom-full` paints
+            the same background upward across it; the height only has to
+            exceed that padding, since `main`'s own overflow clips whatever
+            reaches past it — which is what keeps this off the shell's
+            density-dependent padding value.
+
+            No horizontal bleed is needed for the same clipping reason in
+            reverse: content sits inside `main`'s content box and cannot paint
+            into the side gutters, so a strip spanning the content width
+            already covers everything that passes under it. */}
+        <div className="bg-background before:bg-background sticky top-0 z-20 pb-2 before:absolute before:inset-x-0 before:bottom-full before:h-8 before:content-['']">
+          <div className="overflow-x-auto">
+            <TabsList className="w-full">
+              <TabsTrigger className="flex-1 gap-2" value="flags">
+                <Flag aria-hidden className="size-[var(--icon-size)]" />
+                Flags
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="llm">
+                <Bot aria-hidden className="size-[var(--icon-size)]" />
+                LLM
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="security">
+                <ShieldCheck aria-hidden className="size-[var(--icon-size)]" />
+                Security
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="maintenance">
+                <Wrench aria-hidden className="size-[var(--icon-size)]" />
+                Maintenance
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="integration">
+                <Plug aria-hidden className="size-[var(--icon-size)]" />
+                Integration
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="notifications">
+                <Bell aria-hidden className="size-[var(--icon-size)]" />
+                Notifications
+              </TabsTrigger>
+              <TabsTrigger className="flex-1 gap-2" value="research">
+                <Search aria-hidden className="size-[var(--icon-size)]" />
+                Research
+              </TabsTrigger>
+            </TabsList>
+          </div>
         </div>
         <TabsContent value="flags" className="pt-4">
           <FlagsTab />
