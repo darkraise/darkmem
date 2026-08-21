@@ -59,7 +59,7 @@ function ClientRow({ client }: { client: DemoDistClient }) {
   return (
     <div
       className={cn(
-        "border-border bg-card flex flex-col gap-2 rounded-md border px-3.5 py-3",
+        "border-inset bg-card flex flex-col gap-2 rounded-md border px-3.5 py-3",
         curbed && "border-warning/50 bg-warning/5",
         !connected && "border-dashed",
       )}
@@ -248,7 +248,7 @@ function RecentInjects() {
           return (
             <div
               key={row.id}
-              className="border-border flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
+              className="border-inset flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
             >
               <b className="font-semibold">{tool}</b>
               <span className="text-muted-foreground">
@@ -312,7 +312,7 @@ function LiveDistribution() {
           accepted, shown below
         </p>
       )}
-      <div className="border-border flex flex-wrap items-center gap-3 rounded-md border p-3">
+      <div className="border-inset flex flex-wrap items-center gap-3 rounded-md border p-3">
         <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
         <div className="flex-1">
           <p className="text-sm font-semibold">
@@ -340,7 +340,7 @@ function LiveDistribution() {
         />
       </div>
 
-      <div className="border-border flex flex-wrap items-center gap-3 rounded-md border p-3">
+      <div className="border-inset flex flex-wrap items-center gap-3 rounded-md border p-3">
         <Eye aria-hidden className="text-muted-foreground h-4 w-4" />
         <div className="flex-1">
           <p className="text-sm font-semibold">
@@ -376,7 +376,7 @@ function LiveDistribution() {
           targets.map((target) => (
             <div
               key={target.tool}
-              className="border-border flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
+              className="border-inset flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
             >
               <b className="font-semibold">{target.tool}</b>
               <code className="text-muted-foreground font-mono">
@@ -551,7 +551,7 @@ export function DistributionTab() {
           >
             Per-target managed-block configuration — CLAUDE.md example
           </SectionHead>
-          <pre className="border-border bg-muted/15 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm leading-relaxed">
+          <pre className="border-inset bg-muted/15 overflow-x-auto rounded-md border px-3 py-2.5 font-mono text-sm leading-relaxed">
             {d.block_preview}
           </pre>
         </div>
@@ -560,7 +560,7 @@ export function DistributionTab() {
           <SectionHead icon={Gauge}>
             Inject content policy &amp; token budget
           </SectionHead>
-          <div className="border-border flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm">
+          <div className="border-inset flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm">
             <LayerChip layer={2} />
             <span className="text-muted-foreground">→</span>
             <LayerChip layer={3} />
@@ -576,7 +576,7 @@ export function DistributionTab() {
             {d.policy.map((row) => (
               <div
                 key={row.key}
-                className="border-border bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5"
+                className="border-inset bg-card flex flex-col gap-1 rounded-md border px-3 py-2.5"
               >
                 <span className="flex items-center gap-1.5 font-mono text-sm font-semibold">
                   {row.key}
@@ -601,7 +601,7 @@ export function DistributionTab() {
             <div
               key={row.id}
               className={cn(
-                "border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2 text-sm",
+                "border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2 text-sm",
                 row.event_type === "inject_curbed" &&
                   "border-warning/50 bg-warning/5",
               )}
@@ -637,11 +637,11 @@ export function DistributionTab() {
             Labels survive injection — expanding the 14:12 UTC claude-code
             delivery
           </SectionHead>
-          <div className="border-border bg-muted/10 flex flex-col gap-2 rounded-md border p-3">
+          <div className="border-inset bg-muted/10 flex flex-col gap-2 rounded-md border p-3">
             {d.inject_items.map((item) => (
               <div
                 key={item.text}
-                className="border-border bg-card flex flex-col gap-1.5 rounded-md border px-3 py-2"
+                className="border-inset bg-card flex flex-col gap-1.5 rounded-md border px-3 py-2"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <LayerChip layer={item.layer} />
@@ -664,7 +664,7 @@ export function DistributionTab() {
           >
             Render watermark — a config row, not a table
           </SectionHead>
-          <dl className="border-border grid grid-cols-1 gap-x-3.5 gap-y-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm sm:grid-cols-[auto_1fr]">
+          <dl className="border-inset grid grid-cols-1 gap-x-3.5 gap-y-1 rounded-md border border-dashed px-3 py-2.5 font-mono text-sm sm:grid-cols-[auto_1fr]">
             {d.watermarks.map((w) => (
               <div key={w.key} className="contents">
                 <dt className="text-muted-foreground">{w.key}</dt>

@@ -318,7 +318,7 @@ function ArmRow({
   const editing = draft !== undefined && onChange !== undefined
   const shown = editing ? draft : arm.value
   return (
-    <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+    <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
         {arm.key}
       </span>
@@ -426,7 +426,7 @@ function BehavioralFlagRow({
 }) {
   const editing = draft !== undefined && onChange !== undefined
   return (
-    <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+    <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
         {flag.key}
       </span>
@@ -462,7 +462,7 @@ function TunableRow({
 }) {
   const editing = draft !== undefined && onChange !== undefined
   return (
-    <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+    <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
         {tunable.key}
       </span>
@@ -532,7 +532,7 @@ function TunableInput({
  *  precedent) or silently omitting the section (invariant 23). */
 function NotYetImplemented({ label, note }: { label: string; note: string }) {
   return (
-    <div className="border-border text-muted-foreground flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
+    <div className="border-inset text-muted-foreground flex flex-col gap-1 rounded-md border border-dashed px-3 py-2.5 text-sm">
       <span className="font-mono text-[10px] tracking-wide uppercase">
         {label}
       </span>
@@ -569,7 +569,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
             {patterns.map((pattern) => (
               <code
                 key={pattern}
-                className="border-border bg-muted/40 rounded-md border px-2 py-0.5 font-mono text-[11px]"
+                className="border-inset bg-muted/40 rounded-md border px-2 py-0.5 font-mono text-[11px]"
               >
                 {pattern}
               </code>
@@ -671,7 +671,7 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
             {corr.params.map((param) => (
               <div
                 key={param.name}
-                className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2"
+                className="border-inset bg-card flex flex-col gap-2 rounded-md border px-3 py-2"
               >
                 <div className="flex flex-wrap items-center gap-2.5">
                   <span className="font-mono text-sm font-semibold whitespace-nowrap">
@@ -766,7 +766,7 @@ function LadderDialog({
       {corr.params.map((param) => (
         <div
           key={param.name}
-          className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2"
+          className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2"
         >
           <span className="font-mono text-sm font-semibold whitespace-nowrap">
             {param.name}
@@ -866,7 +866,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
         onEdit={() => setEditing(true)}
         saving={saving}
       >
-        <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+        <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
           <span className="font-mono text-sm font-semibold whitespace-nowrap">
             classification_mode
           </span>
@@ -905,7 +905,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           )}
         </p>
 
-        <div className="border-border bg-card flex flex-col gap-2.5 rounded-md border px-3 py-2.5">
+        <div className="border-inset bg-card flex flex-col gap-2.5 rounded-md border px-3 py-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="font-mono text-sm font-semibold whitespace-nowrap">
               label space
@@ -1035,7 +1035,7 @@ function ClassificationDialog({
         onOpenChange(false)
       }}
     >
-      <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+      <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
         <span className="font-mono text-sm font-semibold whitespace-nowrap">
           classification_mode
         </span>
@@ -1225,7 +1225,7 @@ function GraphDialog({
       {binding.graphFlags.map((flag) => (
         <div
           key={flag.key}
-          className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
+          className="border-inset bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
         >
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="font-mono text-sm font-semibold">{flag.key}</span>
@@ -1311,7 +1311,7 @@ export function FlagsTab() {
           flipping it stays possible, but is never quietly assumed proven.
         </HelpTip>
       </div>
-      <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
+      <div className="border-inset bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
         <span className="text-sm font-semibold">Flags</span>
         <span className="text-muted-foreground font-mono text-sm">
           {`${activeArms} of ${allArms.length} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
@@ -1374,7 +1374,7 @@ export function FlagsTab() {
             binding.graphFlags.map((flag) => (
               <div
                 key={flag.key}
-                className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
+                className="border-inset bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
               >
                 <div className="flex flex-wrap items-center gap-2.5">
                   <span className="font-mono text-sm font-semibold">

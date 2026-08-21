@@ -42,7 +42,7 @@ export function PromptViewToggle({
 
 function PlainPane({ value }: { value: string }) {
   return (
-    <pre className="border-border bg-muted/12 min-h-0 flex-1 overflow-auto rounded-md border p-3 font-mono text-sm whitespace-pre-wrap">
+    <pre className="border-inset bg-muted/12 min-h-0 flex-1 overflow-auto rounded-md border p-3 font-mono text-sm whitespace-pre-wrap">
       {value}
     </pre>
   )
@@ -50,7 +50,7 @@ function PlainPane({ value }: { value: string }) {
 
 function MarkdownPane({ value }: { value: string }) {
   return (
-    <div className="border-border bg-muted/12 min-h-0 flex-1 overflow-auto rounded-md border p-3">
+    <div className="border-inset bg-muted/12 min-h-0 flex-1 overflow-auto rounded-md border p-3">
       <div className="md-prose">
         <ReactMarkdown>{value}</ReactMarkdown>
       </div>

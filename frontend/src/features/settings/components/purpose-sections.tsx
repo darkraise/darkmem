@@ -83,7 +83,7 @@ export function CodeBuckets({
         {buckets.map((bucket) => (
           <div
             key={bucket.key}
-            className="border-border bg-background flex flex-col gap-1.5 rounded-md border px-2.5 py-2"
+            className="border-inset bg-background flex flex-col gap-1.5 rounded-md border px-2.5 py-2"
           >
             <div className="flex items-center gap-1.5">
               <span className="font-mono text-sm font-semibold">

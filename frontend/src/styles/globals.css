@@ -6,6 +6,22 @@
    Tailwind defaults (sizes only — spacing untouched). The default
    --text-*--line-height tokens are unitless ratios, so leading scales
    with the new sizes automatically. */
+/* Settings surface hierarchy (owner review 2026-08-21).
+
+   A card's own edge is `border-border`; the blocks nested inside it sit one
+   step back, so the eye reads the card as the container and the rows as its
+   contents. Every inner block under `features/settings` carried the parent's
+   own border token, which put the two at identical strength — a card of eight
+   rows read as nine competing boxes rather than one box with eight rows.
+
+   One token rather than an opacity spelled out at 36 call sites, so the step
+   is tunable in a single place. Card *dividers* (a header's `border-b`, a
+   dashed rule between rows) keep the full-strength token: they are the outer
+   card's own structure, not a nested surface. */
+@utility border-inset {
+  border-color: hsl(var(--border) / 0.45);
+}
+
 @theme {
   --text-xs: 0.8125rem; /* 12px -> 13px */
   --text-sm: 0.9375rem; /* 14px -> 15px */
