@@ -57,14 +57,23 @@ describe("MaintenanceTab (real)", () => {
     expect(screen.getByText("3 missing")).toBeInTheDocument()
   })
 
-  it("code_chunks re-embed stays disabled in real mode — ReembedService.reembed_code_chunks is a stub that never embeds anything", async () => {
+  it("offers no code_chunks re-embed trigger — ReembedService.reembed_code_chunks is a stub that never embeds anything", async () => {
+    // Was a disabled button. There is no version of that button that works —
+    // the endpoint answers 202 and embeds nothing — so the row states the
+    // absence and points at the route that does the job, rather than greying
+    // out a control and leaving "why is this off?" to the tag beside it.
     mockHappy()
     render(<MaintenanceTab />, { wrapper })
     await waitFor(() => expect(screen.getByText("40 missing")).toBeInTheDocument())
     expect(
-      screen.getByRole("button", { name: "Re-embed code chunks" }),
-    ).toBeDisabled()
-    expect(screen.getByText("use Repositories → Reindex")).toBeInTheDocument()
+      screen.queryByRole("button", { name: "Re-embed code chunks" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/not implemented\s+server-side/),
+    ).toBeInTheDocument()
+    // By text: the suite's router mock renders a bare <a> with no href, so
+    // there is no `link` role to match on.
+    expect(screen.getByText(/Repositories → Reindex/)).toBeInTheDocument()
   })
 
   it("triggering re-embed memories POSTs /reembed/memories after confirm", async () => {

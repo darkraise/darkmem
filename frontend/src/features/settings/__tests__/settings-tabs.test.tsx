@@ -73,10 +73,19 @@ describe("MaintenanceTab — confirmation gates", () => {
     expect(useDemoStore.getState().maintenance.cleanup.expired).toBe(0)
   })
 
-  it("marks endpoint-less DB ops as illustrative, not shipped", () => {
+  it("marks endpoint-less ops as untriggerable, and offers no control for them", () => {
     render(<MaintenanceTab />, { wrapper })
-    expect(screen.getAllByText("no dedicated endpoint yet")).toHaveLength(2)
-    expect(screen.getByText(/use Repositories → Reindex/)).toBeInTheDocument()
+    // VACUUM ANALYZE, REINDEX, and the code-chunk backfill: three operations
+    // the tab can describe and cannot run. None of them renders a button —
+    // a greyed control still reads as a control.
+    expect(screen.getAllByText("no trigger")).toHaveLength(3)
+    expect(
+      screen.getAllByText(/no endpoint serves this yet/),
+    ).toHaveLength(2)
+    // The ops that CAN run still have theirs.
+    expect(
+      screen.getAllByRole("button", { name: "Run now" }).length,
+    ).toBeGreaterThan(0)
   })
 })
 
