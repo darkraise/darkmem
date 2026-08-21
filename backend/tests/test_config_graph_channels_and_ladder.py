@@ -14,7 +14,11 @@ running at that number, which is precisely what a clamp means it is not doing.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import FEATURE_FLAGS_DEFAULTS
 from app.repositories.fact_sources import (
@@ -23,6 +27,7 @@ from app.repositories.fact_sources import (
     CORROBORATION_TIME_GAP_DAYS,
 )
 from app.services.feature_flags import MEASURABLE_FLAGS
+from app.services.feature_flags import FEATURE_FLAGS_KEY
 from app.services.ladder_config import LADDER_CONFIG_KEY, LADDER_MEASUREMENTS_KEY
 from app.services.rank_fusion import GRAPH_CHANNELS, LIST_WEIGHT_KEYS
 
@@ -297,3 +302,112 @@ async def test_the_door_writes_only_known_thresholds(client, auth_headers, sessi
 @pytest.mark.asyncio
 async def test_the_ladder_door_requires_auth(client):
     assert (await client.get("/api/v1/config/verification-ladder")).status_code == 401
+
+
+# ── concurrent writes to one config row ───────────────────────────────
+#
+# The `client` fixture binds ONE connection for the whole request, so two
+# requests through it cannot race -- they deadlock on the shared asyncpg
+# connection instead, proving nothing. These tests open independent sessions
+# against the real engine, which is the only level at which this race exists.
+
+
+@pytest.mark.asyncio
+async def test_the_config_lock_excludes_a_second_writer_on_the_same_key():
+    """Deterministic proof of the mutual exclusion, not a timing hope.
+
+    Both config PUTs read a JSON blob, patch it in Python and write the whole
+    blob back. Measured in a browser before this lock: resetting two ladder
+    thresholds inside one round-trip sent both patches, each read the row
+    before the other committed, and the row ended up holding only one of them.
+    Both requests answered 200 and nothing anywhere reported a problem -- the
+    operator just sees the control they reset sitting at its old value.
+    """
+    from tests.conftest import test_engine
+    from app.api.routes.config import _lock_config_row
+
+    async with AsyncSession(test_engine) as holder:
+        await _lock_config_row(holder, LADDER_CONFIG_KEY)
+        async with AsyncSession(test_engine) as contender:
+            taken = (
+                await contender.execute(
+                    text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"),
+                    {"k": LADDER_CONFIG_KEY},
+                )
+            ).scalar_one()
+            assert taken is False, (
+                "a second writer took the same key's lock while the first held "
+                "it -- the read-modify-write is not serialised"
+            )
+
+            # Per key, not global: a lock that also blocked unrelated config
+            # writes would serialise the whole settings surface behind one
+            # slow save.
+            other = (
+                await contender.execute(
+                    text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"),
+                    {"k": FEATURE_FLAGS_KEY},
+                )
+            ).scalar_one()
+            assert other is True
+        await holder.rollback()
+
+
+@pytest.mark.asyncio
+async def test_two_concurrent_ladder_clears_both_survive():
+    """The composed read-modify-write, run concurrently for real.
+
+    **This one cannot prove the fix and must not be read as doing so**: with
+    the lock removed it still passes, because two coroutines that each open a
+    connection do not reliably interleave between their read and their write.
+    A barrier would make it deterministic and would then deadlock against the
+    very lock it is meant to exercise. Its sibling above is the teeth --
+    verified red with the lock neutered. This one is a smoke check that the
+    locked path composes and commits at all.
+    """
+    from tests.conftest import test_engine
+    from app.api.routes.config import _lock_config_row
+    from app.models.config import Config
+
+    async with AsyncSession(test_engine) as setup:
+        await setup.execute(
+            text(
+                "INSERT INTO config (key, value) VALUES (:k, :v) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value"
+            ),
+            {"k": LADDER_CONFIG_KEY, "v": '{"n_default": 9, "n_diverse": 4}'},
+        )
+        await setup.commit()
+
+    async def clear(name: str) -> None:
+        """One request's worth of read-modify-write, lock included."""
+        async with AsyncSession(test_engine) as s:
+            await _lock_config_row(s, LADDER_CONFIG_KEY)
+            row = (
+                await s.execute(
+                    select(Config).where(Config.key == LADDER_CONFIG_KEY)
+                )
+            ).scalar_one()
+            current = dict(row.value)
+            current.pop(name, None)
+            row.value = current
+            await s.commit()
+
+    await asyncio.gather(clear("n_default"), clear("n_diverse"))
+
+    async with AsyncSession(test_engine) as check:
+        value = (
+            await check.execute(
+                text("SELECT value FROM config WHERE key = :k"),
+                {"k": LADDER_CONFIG_KEY},
+            )
+        ).scalar_one()
+        assert value == {}, (
+            f"one clear was overwritten by the other; row holds {value}"
+        )
+
+    async with AsyncSession(test_engine) as cleanup:
+        await cleanup.execute(
+            text("DELETE FROM config WHERE key = :k"), {"k": LADDER_CONFIG_KEY}
+        )
+        await cleanup.commit()

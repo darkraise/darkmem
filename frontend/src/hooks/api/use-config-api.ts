@@ -232,7 +232,16 @@ export function useUpdateVerificationLadder() {
         body: JSON.stringify(patch),
       }),
     onSuccess: (data) => {
+      // Paint the response immediately...
       qc.setQueryData(["verificationLadder"], data)
+    },
+    // ...then reconcile. Two in-flight PUTs return snapshots taken at
+    // different moments and HTTP responses may arrive out of order, so
+    // setQueryData alone can leave the cache holding the older one. The
+    // refetch is authoritative; without it the UI can show a threshold the
+    // database no longer has.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["verificationLadder"] })
     },
   })
 }
