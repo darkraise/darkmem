@@ -181,7 +181,7 @@ export function RealMemoryDetailView({ memoryId }: { memoryId: string }) {
         description="One memory, its enrichment, and its supersession lineage."
         parent={{ label: "Memories", href: "/memories" }}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
             <Pencil className="mr-2 size-4" />
             Edit
           </Button>

@@ -34,7 +34,6 @@ function CopyResumeButton({ block }: { block: string }) {
 
   return (
     <Button
-      size="sm"
       variant="outline"
       className="ml-auto"
       onClick={() => {

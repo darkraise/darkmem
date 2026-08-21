@@ -92,7 +92,6 @@ export function ContextChip() {
         <div className="flex justify-end gap-1.5">
           <Button
             type="button"
-            size="sm"
             variant="ghost"
             onClick={() => {
               clearContext()
@@ -105,7 +104,6 @@ export function ContextChip() {
           </Button>
           <Button
             type="button"
-            size="sm"
             onClick={() => {
               declareContext(draft)
               setOpen(false)

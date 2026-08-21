@@ -22,7 +22,6 @@ export function AppPageHeader() {
       {parent && back && (
         <Button
           variant="ghost"
-          size="sm"
           asChild
           className="text-muted-foreground hover:text-foreground -ml-1 shrink-0"
         >

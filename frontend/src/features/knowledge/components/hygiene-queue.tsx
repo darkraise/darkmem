@@ -126,7 +126,6 @@ function PageControls({
         {total}
       </span>
       <Button
-        size="sm"
         variant="outline"
         disabled={offset === 0}
         onClick={onPrev}
@@ -135,7 +134,6 @@ function PageControls({
         <ChevronLeft className="size-3.5" />
       </Button>
       <Button
-        size="sm"
         variant="outline"
         disabled={offset + limit >= total}
         onClick={onNext}
@@ -179,7 +177,6 @@ function ActionNotice({
           </span>
         ) : (
           <Button
-            size="sm"
             variant="outline"
             className="ml-auto"
             disabled={undoing || applied === 0}
@@ -278,7 +275,7 @@ function CategoryShell({
               {strandedTotal === 1 ? "" : "s"} still{" "}
               {strandedTotal === 1 ? "remains" : "remain"}.
             </span>
-            <Button size="sm" variant="outline" onClick={onBackToStart}>
+            <Button variant="outline" onClick={onBackToStart}>
               Back to the first page
             </Button>
           </div>
@@ -663,7 +660,6 @@ export function HygieneQueue({ project }: { project?: string }) {
           <>
             <SelectionCount n={dupSel.selected.size} unit="pair" />
             <Button
-              size="sm"
               variant="outline"
               disabled={dupSel.selected.size === 0}
               onClick={() =>
@@ -682,7 +678,6 @@ export function HygieneQueue({ project }: { project?: string }) {
               Supersede instead
             </Button>
             <Button
-              size="sm"
               disabled={dupSel.selected.size === 0}
               onClick={() =>
                 setPending({ kind: "confirm-dedup", ids: [...dupSel.selected] })
@@ -740,7 +735,6 @@ export function HygieneQueue({ project }: { project?: string }) {
           <>
             <SelectionCount n={lowSel.selected.size} unit="row" />
             <Button
-              size="sm"
               variant="outline"
               className="border-destructive/55 text-destructive"
               disabled={lowSel.selected.size === 0}
@@ -806,7 +800,6 @@ export function HygieneQueue({ project }: { project?: string }) {
           <>
             <SelectionCount n={expSel.selected.size} unit="row" />
             <Button
-              size="sm"
               variant="outline"
               className="border-destructive/55 text-destructive"
               disabled={expSel.selected.size === 0}

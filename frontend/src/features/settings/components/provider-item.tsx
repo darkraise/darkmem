@@ -111,7 +111,6 @@ export function ProviderItem({
   const actions = (
     <div className="flex flex-wrap items-center gap-1.5">
       <Button
-        size="sm"
         variant="ghost"
         aria-label={`Test connection ${provider.name}`}
         disabled={probe.isPending}
@@ -121,7 +120,6 @@ export function ProviderItem({
       </Button>
       <ProbeResult result={probe.data} />
       <Button
-        size="sm"
         variant="outline"
         className="border-primary/60 text-primary ml-auto"
         aria-label={`Edit ${provider.name}`}

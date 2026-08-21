@@ -349,7 +349,6 @@ export function CodeGraphTab({
               </p>
               <Button
                 variant="outline"
-                size="sm"
                 className="rounded-full"
                 onClick={onOpenRepositories}
               >
@@ -733,7 +732,6 @@ export function CodeGraphTab({
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                size="sm"
                 className="border-primary/50 text-primary bg-primary/8 rounded-full"
                 disabled={!selectedId}
                 onClick={() => {
@@ -917,7 +915,6 @@ export function CodeGraphTab({
                 </pre>
                 <Button
                   variant="outline"
-                  size="sm"
                   className="self-end"
                   onClick={() => copyMermaid(mermaid)}
                 >

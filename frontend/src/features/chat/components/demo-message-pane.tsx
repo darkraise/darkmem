@@ -128,7 +128,6 @@ export function DemoMessagePane({
               <Button
                 key={starter}
                 variant="outline"
-                size="sm"
                 className="rounded-full border-dashed whitespace-normal"
                 onClick={() => send(starter)}
               >

@@ -132,7 +132,6 @@ function UndoControl({ action }: { action: DemoDreamAction }) {
   // outline button commits directly; only the batch confirms via dialog.
   return (
     <Button
-      size="sm"
       variant="outline"
       className="ml-auto"
       onClick={() => undo(action.id)}
@@ -199,7 +198,6 @@ function DreamGroup({ group }: { group: DemoDreamGroup }) {
         </span>
         {group.batchable && (
           <Button
-            size="sm"
             variant="outline"
             disabled={eligible.length === 0}
             onClick={() => setConfirmOpen(true)}
@@ -591,7 +589,6 @@ function LiveActionRow({
           </div>
         ) : action.undoable ? (
           <Button
-            size="sm"
             variant="outline"
             className="ml-auto"
             onClick={() => onUndo(action.event_id)}
@@ -642,7 +639,6 @@ function LiveObjectGroupPanel({
           {group.actions.length} action{group.actions.length === 1 ? "" : "s"}
         </span>
         <Button
-          size="sm"
           variant="outline"
           className="ml-auto"
           disabled={eligible.length === 0}
@@ -778,7 +774,6 @@ export function LiveDreamDigest() {
         </span>
         {cyclesHasMore && (
           <Button
-            size="sm"
             variant="outline"
             disabled={cyclesFetchingMore}
             onClick={fetchMoreCycles}
@@ -824,7 +819,6 @@ export function LiveDreamDigest() {
 
           <div className="flex justify-end">
             <Button
-              size="sm"
               variant="outline"
               disabled={cycleEligible.length === 0}
               onClick={() => setConfirmCycle(true)}

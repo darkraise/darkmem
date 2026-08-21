@@ -399,7 +399,6 @@ export function FactsTab() {
                         {subjectActive && (
                           <Button
                             variant="outline"
-                            size="sm"
                             onClick={fetchMore}
                           >
                             Load more

@@ -134,7 +134,7 @@ export function SystemPromptDialog({
               </span>
               <span className="flex-1" />
               {!editing && (
-                <Button size="sm" variant="outline" onClick={startEditing}>
+                <Button variant="outline" onClick={startEditing}>
                   <Pencil aria-hidden className="size-[var(--icon-size)]" />
                   Edit
                 </Button>
@@ -192,7 +192,6 @@ export function SystemPromptDialog({
                   </span>
                 )}
                 <Button
-                  size="sm"
                   variant="ghost"
                   className="ml-auto"
                   disabled={value === fallback}
@@ -202,7 +201,6 @@ export function SystemPromptDialog({
                   Reset to default
                 </Button>
                 <Button
-                  size="sm"
                   variant="ghost"
                   onClick={() => {
                     setEditing(false)
@@ -212,7 +210,6 @@ export function SystemPromptDialog({
                   Cancel
                 </Button>
                 <Button
-                  size="sm"
                   variant="outline"
                   className="border-primary/60 text-primary"
                   disabled={!dirty || tooLong || update.isPending}

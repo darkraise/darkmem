@@ -113,7 +113,6 @@ export function DocumentsView({ project = "default" }: { project?: string }) {
               className="min-w-52 flex-1"
             />
             <Button
-              size="sm"
               variant="outline"
               disabled={!question.trim() || qa.isPending}
               onClick={() =>

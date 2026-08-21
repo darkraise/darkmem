@@ -97,7 +97,7 @@ export function RealMemoriesView() {
         title="Memories"
         description="The L0 capture-and-search surface"
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 size-4" />
             Create memory
           </Button>

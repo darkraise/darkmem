@@ -73,7 +73,6 @@ export function ScheduleSection({
           )}
         </div>
         <Button
-          size="sm"
           variant="outline"
           className="border-primary/60 text-primary"
           disabled={!info.ok || draft === job.cron}
@@ -167,7 +166,6 @@ export function ConfigSchemaSection({
           )
         })}
         <Button
-          size="sm"
           variant="outline"
           className="border-primary/60 text-primary"
           disabled={!validation.ok}

@@ -173,14 +173,12 @@ function PinSuggestionCard({
         {/* Accept pins a subject; it never auto-creates an article. Both
             verbs key on the subject key, never on a community id. */}
         <Button
-          size="sm"
           onClick={() => onDecide(suggestion.subjectKey, "accepted")}
         >
           <MapPin className="mr-1.5 size-3.5" />
           Accept — pin subject
         </Button>
         <Button
-          size="sm"
           variant="outline"
           onClick={() => onDecide(suggestion.subjectKey, "dismissed")}
         >

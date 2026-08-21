@@ -138,7 +138,6 @@ export function ChangePasswordDialog({
           disabled={!filled || password.pending}
           trigger={
             <Button
-              size="sm"
               variant="outline"
               className="border-primary/60 text-primary"
               disabled={!filled || password.pending}

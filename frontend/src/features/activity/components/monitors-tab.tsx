@@ -118,11 +118,11 @@ function PoisonRow({
         </span>
       </div>
       <div className="flex shrink-0 gap-2">
-        <Button size="sm" variant="outline" onClick={() => onRetry(row.id)}>
+        <Button variant="outline" onClick={() => onRetry(row.id)}>
           <RefreshCw className="mr-1.5 size-3.5" />
           Retry (re-buffer)
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onForget(row.id)}>
+        <Button variant="outline" onClick={() => onForget(row.id)}>
           Forget
         </Button>
       </div>
@@ -287,7 +287,7 @@ function DreamTargetBoard({ onOpenDigest }: { onOpenDigest: () => void }) {
       meta="target design · not yet live"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="outline" disabled title="target design — not live">
+        <Button variant="outline" disabled title="target design — not live">
           <Play className="mr-1.5 size-3.5" />
           Dream now
         </Button>
@@ -317,7 +317,6 @@ function DreamTargetBoard({ onOpenDigest }: { onOpenDigest: () => void }) {
         {lock_note}
       </p>
       <Button
-        size="sm"
         variant="link"
         className="w-fit px-0"
         onClick={onOpenDigest}

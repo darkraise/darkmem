@@ -71,7 +71,6 @@ export function JobHistoryRetention() {
             className="w-32"
           />
           <Button
-            size="sm"
             variant="outline"
             disabled={!dirty || updateConfig.isPending}
             onClick={() => {
@@ -90,7 +89,6 @@ export function JobHistoryRetention() {
             Save ceiling
           </Button>
           <Button
-            size="sm"
             variant="outline"
             className="ml-auto"
             disabled={trigger.isPending}

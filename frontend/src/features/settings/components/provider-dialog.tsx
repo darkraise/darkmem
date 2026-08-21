@@ -257,7 +257,6 @@ export function ProviderDialog({
                   <Button
                     type="button"
                     variant="ghost"
-                    size="sm"
                     onClick={() => patch({ api_key: "", keyCleared: true })}
                   >
                     Clear
@@ -267,7 +266,6 @@ export function ProviderDialog({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
                   onClick={() => setDraft(editDraft(provider))}
                 >
                   Undo
@@ -286,11 +284,10 @@ export function ProviderDialog({
         )}
 
         <div className="flex items-center justify-end gap-2 pt-1">
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
-            size="sm"
             variant="outline"
             className="border-primary/60 text-primary"
             disabled={!canSubmit}

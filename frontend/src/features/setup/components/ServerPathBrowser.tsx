@@ -92,7 +92,6 @@ export function ServerPathBrowser({
           {(rootsData?.roots ?? []).map((r) => (
             <Button
               key={r.path}
-              size="sm"
               variant={value === r.path ? "default" : "outline"}
               disabled={disabled}
               onClick={() => navigate(r.path)}
@@ -120,7 +119,6 @@ export function ServerPathBrowser({
 
         {parent && (
           <Button
-            size="sm"
             variant="ghost"
             onClick={() => navigate(parent)}
             disabled={disabled}

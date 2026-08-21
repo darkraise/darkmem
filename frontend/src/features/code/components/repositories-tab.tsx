@@ -148,7 +148,6 @@ function RepoRow({
         {hasGraph && (
           <Button
             variant="outline"
-            size="sm"
             className="rounded-full"
             onClick={() => onOpenGraph(repo.id)}
           >
@@ -156,13 +155,12 @@ function RepoRow({
           </Button>
         )}
         {indexing ? (
-          <Button variant="outline" size="sm" className="rounded-full" disabled>
+          <Button variant="outline" className="rounded-full" disabled>
             Reindex running…
           </Button>
         ) : (
           <Button
             variant="outline"
-            size="sm"
             className={cn(
               "rounded-full",
               repo.stale || repo.error

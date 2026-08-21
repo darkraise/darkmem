@@ -93,7 +93,6 @@ export function PurposeItem({
     <div className="flex flex-wrap items-center gap-2">
       {onShowPrompt && (
         <Button
-          size="sm"
           variant="ghost"
           aria-label={`System prompt for ${purpose.purpose}`}
           onClick={onShowPrompt}
@@ -103,7 +102,6 @@ export function PurposeItem({
         </Button>
       )}
       <Button
-        size="sm"
         variant="outline"
         className="border-primary/60 text-primary"
         aria-label={`Edit ${purpose.purpose}`}

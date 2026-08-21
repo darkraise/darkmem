@@ -28,7 +28,7 @@ export function DemoThreadList({
     <div className="border-border bg-card flex flex-col overflow-hidden rounded-md border">
       <div className="border-border flex items-center justify-between gap-2 border-b px-3 py-2">
         <span className="text-sm font-semibold">Conversations</span>
-        <Button size="sm" className="rounded-full" onClick={onNew}>
+        <Button className="rounded-full" onClick={onNew}>
           <Plus aria-hidden className="h-3 w-3" />
           New
         </Button>

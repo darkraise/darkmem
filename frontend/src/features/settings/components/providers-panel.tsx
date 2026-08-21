@@ -42,7 +42,6 @@ export function ProvidersPanel() {
         label="Providers layout"
       />
       <Button
-        size="sm"
         variant="outline"
         className="border-primary/60 text-primary ml-auto"
         onClick={openAdd}

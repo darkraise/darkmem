@@ -70,7 +70,6 @@ function FailureRow({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          size="sm"
           variant={poison ? "outline" : "default"}
           className={cn(poison && "border-warning/60 text-warning")}
           disabled={failure.retry_queued}
@@ -83,7 +82,7 @@ function FailureRow({
               ? "Retry anyway"
               : "Retry"}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => forget(failure.id)}>
+        <Button variant="outline" onClick={() => forget(failure.id)}>
           <X className="mr-1.5 size-3.5" />
           Forget
         </Button>
@@ -122,7 +121,6 @@ export function TriageTab() {
         actions={
           failures.length > 0 ? (
             <Button
-              size="sm"
               variant="outline"
               disabled={retryable === 0}
               onClick={retryAll}

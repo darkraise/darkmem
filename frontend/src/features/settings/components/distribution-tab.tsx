@@ -103,7 +103,7 @@ function ClientRow({ client }: { client: DemoDistClient }) {
         </div>
       ) : (
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
-          <Button size="sm" variant="outline" className="border-primary/60 text-primary w-fit font-mono">
+          <Button variant="outline" className="border-primary/60 text-primary w-fit font-mono">
             darkmem connect {client.id}
           </Button>
           {client.connect_hint && (
@@ -514,7 +514,6 @@ export function DistributionTab() {
             They were readable nowhere on this surface. */}
         <Button
           variant="outline"
-          size="sm"
           onClick={() => setPromptOpen(true)}
         >
           <FileText aria-hidden className="size-[var(--icon-size)]" />

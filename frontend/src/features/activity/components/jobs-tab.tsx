@@ -282,7 +282,6 @@ function JobRow({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          size="sm"
           variant="outline"
           aria-label={`Configure ${job.key}`}
           onClick={() => onConfigure(job.key)}
@@ -290,7 +289,6 @@ function JobRow({
           <Settings2 className="size-3.5" />
         </Button>
         <Button
-          size="sm"
           variant="outline"
           className={cn(
             job.last_status === "error" && "border-warning/60 text-warning",
@@ -337,7 +335,6 @@ function JobRow({
             </span>
           </div>
           <Button
-            size="sm"
             variant="ghost"
             aria-label="Dismiss busy notice"
             onClick={onDismissBusy}
