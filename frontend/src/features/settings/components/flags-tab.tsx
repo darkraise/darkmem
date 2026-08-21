@@ -1,5 +1,13 @@
 import { useState, type ReactNode } from "react"
+import { Pencil } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "darkraise-ui/components/dialog"
 import {
   Card,
   CardContent,
@@ -32,9 +40,7 @@ import type {
 } from "@/features/settings/types"
 import { ArmPill } from "./arm-pill"
 import {
-  SAVING_ALLOWLIST,
-  SAVING_CLASSIFICATION_AREAS,
-  SAVING_CLASSIFICATION_MODE,
+  SECTIONS,
   useFlagsTabBinding,
   type FlagsTabBinding,
 } from "../use-flags-tab-binding"
@@ -53,6 +59,110 @@ function SavingMark({ saving }: { saving: boolean }) {
       aria-hidden={!saving}
     >
       {saving && <Spinner size="sm" label="Saving" />}
+    </span>
+  )
+}
+
+/** The shell every section editor shares.
+ *
+ *  Mounted only while a section is being edited and keyed on the section, so
+ *  the draft seeds fresh from the server's values on every open rather than
+ *  needing a reset effect — the same discipline `PurposeDialog` follows.
+ *
+ *  The footer names what a save will write. That list is the point of editing
+ *  in a dialog at all: the whole section leaves in one request, so the
+ *  operator should be able to see the extent of it before committing rather
+ *  than inferring it from which fields they happen to remember touching. */
+function SectionDialog({
+  title,
+  description,
+  dirty,
+  saving,
+  canSave = true,
+  onOpenChange,
+  onSave,
+  children,
+}: {
+  title: string
+  description: string
+  /** Field names this save will write, in display order. */
+  dirty: string[]
+  saving: boolean
+  canSave?: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: () => void
+  children: ReactNode
+}) {
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-sm">{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-2">{children}</div>
+        <div className="border-border flex flex-wrap items-center gap-2 border-t pt-3">
+          {dirty.length > 0 ? (
+            <span className="text-muted-foreground font-mono text-[10px]">
+              one request will write: {dirty.join(", ")}
+            </span>
+          ) : (
+            <span className="text-muted-foreground font-mono text-[10px] italic">
+              nothing edited
+            </span>
+          )}
+          <span className="flex-1" />
+          <SavingMark saving={saving} />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="border-primary/60"
+            variant="outline"
+            disabled={dirty.length === 0 || !canSave || saving}
+            onClick={onSave}
+          >
+            Save
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A boolean at rest. A disabled Switch would read as "you may not change
+ *  this", which is the wrong sentence — the Edit button is where it changes. */
+function BoolTag({ on }: { on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap",
+        on
+          ? "border-primary/55 bg-primary/10 text-primary"
+          : "border-border text-muted-foreground bg-muted/40 border-dashed",
+      )}
+    >
+      {on ? "on" : "off"}
+    </span>
+  )
+}
+
+/** A number at rest, in the same slot its input occupies while editing. */
+function ValueTag({ value, unit }: { value: number; unit?: string }) {
+  return (
+    <span className="text-foreground font-mono text-sm font-semibold whitespace-nowrap tabular-nums">
+      {value}
+      {unit && (
+        <span className="text-muted-foreground ml-1 text-[10px] font-normal">
+          {unit}
+        </span>
+      )}
     </span>
   )
 }
@@ -148,35 +258,32 @@ function ActivationNote({ taskId }: { taskId?: string }) {
   )
 }
 
-/** Blur/Enter-commit numeric field — a keystroke is not yet an override. */
+/** Blur/Enter-commit numeric field — a keystroke is not yet an edit. */
 function ArmInput({
   arm,
-  onCommit,
+  value,
+  onChange,
   className,
 }: {
   arm: DemoRankArm
-  onCommit: (value: number) => void
+  value: number
+  onChange: (value: number) => void
   className?: string
 }) {
-  const [draft, setDraft] = useState(arm.value)
-  // The draft must follow the committed value when that value changes from
-  // OUTSIDE this field — a reset button, a refetch, another control's
-  // response. Without this the draft is initial-value-only, and the next blur
-  // commits the stale number back: measured in a browser, "reset to floor"
-  // cleared the threshold and the blur that followed re-sent the old value,
-  // silently undoing the reset with a 200 and no error anywhere. React's
-  // documented adjust-state-during-render pattern, not an effect — an effect
-  // would paint the stale draft for a frame first.
-  const [lastCommitted, setLastCommitted] = useState(arm.value)
-  if (arm.value !== lastCommitted) {
-    setLastCommitted(arm.value)
-    setDraft(arm.value)
+  const [draft, setDraft] = useState(value)
+  // Follow the value when it changes from outside this field — a dialog
+  // reopening on fresh server data, a sibling control. Without it the draft is
+  // initial-value-only and the next blur writes the stale number back.
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setDraft(value)
   }
   const commit = () => {
-    // NaN is what the field reports for text it cannot parse, and is the
-    // case a raw number input used to collapse into a committed zero.
-    if (Number.isFinite(draft) && draft !== arm.value) onCommit(draft)
-    else setDraft(arm.value)
+    // NaN is what the field reports for text it cannot parse, and is the case
+    // a raw number input used to collapse into a committed zero.
+    if (Number.isFinite(draft) && draft !== value) onChange(draft)
+    else setDraft(value)
   }
   return (
     <NumberField
@@ -191,17 +298,25 @@ function ArmInput({
   )
 }
 
+/** One ranking arm.
+ *
+ *  The same row renders at rest and under edit, so the two cannot disagree
+ *  about what an arm is — which help text it carries, which badges apply.
+ *  Only the value slot changes: a number, or the input that edits it. */
 function ArmRow({
   arm,
   help,
-  saving = false,
-  onCommit,
+  draft,
+  onChange,
 }: {
   arm: DemoRankArm
   help?: string
-  saving?: boolean
-  onCommit: (value: number) => void
+  /** Present only inside a dialog. Absent means read-only. */
+  draft?: number
+  onChange?: (value: number) => void
 }) {
+  const editing = draft !== undefined && onChange !== undefined
+  const shown = editing ? draft : arm.value
   return (
     <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
@@ -216,9 +331,12 @@ function ArmRow({
       <span className="flex-1" />
       <ActivationNote taskId={arm.activatesWith} />
       <SourceTag source={arm.source} />
-      <ArmInput arm={arm} onCommit={onCommit} />
-      <SavingMark saving={saving} />
-      <ArmPill value={arm.value} />
+      {editing ? (
+        <ArmInput arm={arm} value={draft} onChange={onChange} />
+      ) : (
+        <ValueTag value={arm.value} />
+      )}
+      <ArmPill value={shown} />
       {arm.unmeasured && <UnmeasuredTag />}
     </div>
   )
@@ -238,11 +356,16 @@ function Section({
   name,
   help,
   meta,
+  onEdit,
+  saving,
   children,
 }: {
   name: string
   help?: string
   meta?: ReactNode
+  /** Omitted for a section with nothing to edit. */
+  onEdit?: () => void
+  saving?: boolean
   children: ReactNode
 }) {
   return (
@@ -271,6 +394,21 @@ function Section({
             {meta}
           </span>
         )}
+        {onEdit && (
+          <>
+            <SavingMark saving={saving ?? false} />
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              disabled={saving}
+              onClick={onEdit}
+            >
+              <Pencil aria-hidden className="mr-1 h-3 w-3" />
+              Edit
+            </Button>
+          </>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-2 p-4">{children}</CardContent>
     </Card>
@@ -279,13 +417,14 @@ function Section({
 
 function BehavioralFlagRow({
   flag,
-  saving,
-  onToggle,
+  draft,
+  onChange,
 }: {
   flag: DemoBehavioralFlag
-  saving: boolean
-  onToggle: (enabled: boolean) => void
+  draft?: boolean
+  onChange?: (enabled: boolean) => void
 }) {
+  const editing = draft !== undefined && onChange !== undefined
   return (
     <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
@@ -294,16 +433,15 @@ function BehavioralFlagRow({
       <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
       <span className="flex-1" />
       <SourceTag source={flag.source} />
-      <SavingMark saving={saving} />
-      <Switch
-        checked={flag.enabled}
-        onCheckedChange={onToggle}
-        aria-label={flag.key}
-        // A switch acts on a single click, so a second one mid-flight sends a
-        // second write racing the first. A text field is different: taking it
-        // away mid-edit loses what is being typed.
-        disabled={saving}
-      />
+      {editing ? (
+        <Switch
+          checked={draft}
+          onCheckedChange={onChange}
+          aria-label={flag.key}
+        />
+      ) : (
+        <BoolTag on={flag.enabled} />
+      )}
       {flag.unmeasured && <UnmeasuredTag />}
     </div>
   )
@@ -315,25 +453,14 @@ function BehavioralFlagRow({
  *  signal. */
 function TunableRow({
   tunable,
-  saving,
-  onCommit,
+  draft,
+  onChange,
 }: {
   tunable: DemoTunable
-  saving: boolean
-  onCommit: (value: number) => void
+  draft?: number
+  onChange?: (value: number) => void
 }) {
-  const [draft, setDraft] = useState(tunable.value)
-  // Same external-change sync as ArmInput — see the comment there.
-  const [lastCommitted, setLastCommitted] = useState(tunable.value)
-  if (tunable.value !== lastCommitted) {
-    setLastCommitted(tunable.value)
-    setDraft(tunable.value)
-  }
-  const commit = () => {
-    const clamped = Math.min(Math.max(draft, tunable.min), tunable.max)
-    if (Number.isFinite(draft) && clamped !== tunable.value) onCommit(clamped)
-    else setDraft(tunable.value)
-  }
+  const editing = draft !== undefined && onChange !== undefined
   return (
     <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
       <span className="font-mono text-sm font-semibold whitespace-nowrap">
@@ -345,6 +472,40 @@ function TunableRow({
       </HelpTip>
       <span className="flex-1" />
       <SourceTag source={tunable.source} />
+      {editing ? (
+        <TunableInput tunable={tunable} value={draft} onChange={onChange} />
+      ) : (
+        <ValueTag value={tunable.value} unit={tunable.unit} />
+      )}
+    </div>
+  )
+}
+
+function TunableInput({
+  tunable,
+  value,
+  onChange,
+}: {
+  tunable: DemoTunable
+  value: number
+  onChange: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const [seen, setSeen] = useState(value)
+  if (value !== seen) {
+    setSeen(value)
+    setDraft(value)
+  }
+  const commit = () => {
+    // Clamped to the API's own bound so the field refuses locally exactly what
+    // the request would 422 on — and so one out-of-range field cannot fail the
+    // whole section's single write.
+    const clamped = Math.min(Math.max(draft, tunable.min), tunable.max)
+    if (Number.isFinite(draft) && clamped !== value) onChange(clamped)
+    else setDraft(value)
+  }
+  return (
+    <div className="flex items-center gap-2">
       <NumberField
         step={1}
         min={tunable.min}
@@ -356,7 +517,6 @@ function TunableRow({
         onKeyDown={(e) => e.key === "Enter" && commit()}
         className="w-24"
       />
-      <SavingMark saving={saving} />
       {tunable.unit && (
         <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
           {tunable.unit}
@@ -382,68 +542,95 @@ function NotYetImplemented({ label, note }: { label: string; note: string }) {
 }
 
 function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
-  const [draft, setDraft] = useState(binding.allowlistPatterns.join("\n"))
-  const [saved, setSaved] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const saving = binding.isSaving(SECTIONS.allowlist)
+  const patterns = binding.allowlistPatterns
 
+  return (
+    <>
+      <Section
+        name="repo auto-provision allowlist"
+        help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
+        meta={
+          patterns.length === 0
+            ? "empty — every hint refused"
+            : `${patterns.length} pattern${patterns.length === 1 ? "" : "s"}`
+        }
+        onEdit={() => setEditing(true)}
+        saving={saving}
+      >
+        {patterns.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Empty today — every repo hint is refused until at least one pattern
+            is saved.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {patterns.map((pattern) => (
+              <code
+                key={pattern}
+                className="border-border bg-muted/40 rounded-md border px-2 py-0.5 font-mono text-[11px]"
+              >
+                {pattern}
+              </code>
+            ))}
+          </div>
+        )}
+      </Section>
+      {editing && (
+        <AllowlistDialog
+          binding={binding}
+          saving={saving}
+          onOpenChange={setEditing}
+        />
+      )}
+    </>
+  )
+}
+
+function AllowlistDialog({
+  binding,
+  saving,
+  onOpenChange,
+}: {
+  binding: FlagsTabBinding
+  saving: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const committed = binding.allowlistPatterns
+  const [draft, setDraft] = useState(committed.join("\n"))
   const patterns = draft
     .split("\n")
     .map((p) => p.trim())
     .filter(Boolean)
-  const dirty = patterns.join("\n") !== binding.allowlistPatterns.join("\n")
+  const dirty =
+    patterns.join("\n") !== committed.join("\n") ? ["patterns"] : []
 
   return (
-    <Section
-      name="repo auto-provision allowlist"
-      help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
-      meta={
-        binding.allowlistPatterns.length === 0
-          ? "empty — every hint refused"
-          : `${binding.allowlistPatterns.length} pattern${binding.allowlistPatterns.length === 1 ? "" : "s"}`
-      }
+    <SectionDialog
+      title="repo_allowlist"
+      description="One pattern per line. Host, *.host, or host/path-prefix — each validated with the same parse the SSRF gate runs, so this editor and the gate cannot disagree on 'allowed'."
+      dirty={dirty}
+      saving={saving}
+      onOpenChange={onOpenChange}
+      onSave={() => {
+        binding.saveAllowlist(patterns)
+        onOpenChange(false)
+      }}
     >
-      <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
-        <span className="text-muted-foreground text-sm">
-          One pattern per line — e.g.{" "}
-          <code className="font-mono">github.com/darkraise/*</code> or{" "}
-          <code className="font-mono">*.forge.internal.example</code>.
-          {binding.allowlistPatterns.length === 0 && (
-            <>
-              {" "}
-              Empty today — every repo hint is refused until at least one
-              pattern is saved.
-            </>
-          )}
-        </span>
-        <Textarea
-          value={draft}
-          aria-label="repo_allowlist patterns"
-          onChange={(e) => {
-            setDraft(e.target.value)
-            setSaved(false)
-          }}
-          rows={3}
-          className="font-mono text-sm"
-        />
-        <div className="flex items-center gap-2.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-primary/60 text-primary"
-            disabled={!dirty || binding.isSaving(SAVING_ALLOWLIST)}
-            onClick={() => {
-              binding.saveAllowlist(patterns)
-              setSaved(true)
-            }}
-          >
-            Save allowlist
-          </Button>
-          <SavingMark saving={binding.isSaving(SAVING_ALLOWLIST)} />
-          {saved && (
-            <span className="text-success font-mono text-sm">saved</span>
-          )}
-        </div>
-      </div>
-    </Section>
+      <Textarea
+        value={draft}
+        aria-label="repo_allowlist patterns"
+        onChange={(e) => setDraft(e.target.value)}
+        rows={6}
+        className="font-mono text-sm"
+      />
+      <p className="text-muted-foreground text-sm">
+        e.g. <code className="font-mono">github.com/darkraise/*</code> or{" "}
+        <code className="font-mono">*.forge.internal.example</code>. Saving an
+        empty list leaves auto-provision inert — every hint refused.
+      </p>
+    </SectionDialog>
   )
 }
 
@@ -456,106 +643,171 @@ const LADDER_PARAM_HELP: Record<string, string> = {
     "How far apart two same-kind attributable origins must lie for the diversity gate to fire on time rather than on source-kind. Below this spacing, two origins of one kind stay at the default bar.",
 }
 
-/** Editable, with the distance between asked-for and running rendered on every
- *  row. The thresholds are floors, so a below-floor value is clamped rather
- *  than refused — and a form that echoes the typed number back would state,
- *  falsely, that the ladder promotes at it. */
+/** The promotion gate at rest: what each threshold is committed to and what
+ *  the ladder is actually running at, which are not always the same number. */
 function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
+  const [editing, setEditing] = useState(false)
+  const saving = binding.isSaving(SECTIONS.ladder)
   const corr = binding.corroboration
   const clamped = corr.params.filter((p) => p.state === "clamped")
 
   return (
-    <Section
-      name="corroboration promotion gate"
-      meta={
-        clamped.length > 0
-          ? `${clamped.length} clamped`
-          : corr.rowPresent
-            ? "tuned"
-            : "all at shipped floors"
-      }
-      help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
-    >
-      {binding.corroborationAvailable ? (
-        <>
-          {corr.params.map((param) => (
-            <div
-              key={param.name}
-              className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2"
-            >
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="font-mono text-sm font-semibold whitespace-nowrap">
-                  {param.name}
-                </span>
-                <HelpTip label={`About ${param.name}`}>
-                  {LADDER_PARAM_HELP[param.name] ?? param.name}
-                  {" The shipped floor is "}
-                  {param.floor}
-                  {param.measured
-                    ? `, and a recorded ${corr.measurementTask} measurement licenses this parameter below it.`
-                    : `, and no ${corr.measurementTask} measurement licenses going below it.`}
-                </HelpTip>
-                <span className="flex-1" />
-                <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
-                  running at{" "}
-                  <b className="text-foreground font-sans text-sm font-semibold">
-                    {param.effective}
-                  </b>
-                </span>
-                <ArmInput
-                  arm={{
-                    key: param.name,
-                    desc: "",
-                    // The box holds what was *asked for*, so an operator can
-                    // see and correct their own edit; the effective value is
-                    // rendered separately rather than overwriting it.
-                    value: param.committed ?? param.floor,
-                    coded_default: param.floor,
-                    source: param.committed === null ? "default" : "override",
-                    step: 1,
-                  }}
-                  onCommit={(v) => binding.saveCorroboration(param.name, v)}
-                  className="w-16"
-                />
-                <SavingMark saving={binding.isSaving(param.name)} />
-                <LadderStatePill param={param} />
-                {param.committed !== null && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-muted-foreground h-7 font-mono text-[10px]"
-                    disabled={binding.isSaving(param.name)}
-                    onClick={() => binding.saveCorroboration(param.name, null)}
-                  >
-                    reset to floor
-                  </Button>
+    <>
+      <Section
+        name="corroboration promotion gate"
+        meta={
+          clamped.length > 0
+            ? `${clamped.length} clamped`
+            : corr.rowPresent
+              ? "tuned"
+              : "all at shipped floors"
+        }
+        help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
+        onEdit={binding.corroborationAvailable ? () => setEditing(true) : undefined}
+        saving={saving}
+      >
+        {binding.corroborationAvailable ? (
+          <>
+            {corr.params.map((param) => (
+              <div
+                key={param.name}
+                className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="font-mono text-sm font-semibold whitespace-nowrap">
+                    {param.name}
+                  </span>
+                  <HelpTip label={`About ${param.name}`}>
+                    {LADDER_PARAM_HELP[param.name] ?? param.name}
+                    {" The shipped floor is "}
+                    {param.floor}
+                    {param.measured
+                      ? `, and a recorded ${corr.measurementTask} measurement licenses this parameter below it.`
+                      : `, and no ${corr.measurementTask} measurement licenses going below it.`}
+                  </HelpTip>
+                  <span className="flex-1" />
+                  {param.committed !== null &&
+                    param.committed !== param.effective && (
+                      <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+                        asked for {param.committed}
+                      </span>
+                    )}
+                  <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+                    running at
+                  </span>
+                  <ValueTag value={param.effective} />
+                  <LadderStatePill param={param} />
+                </div>
+                {param.state === "clamped" && param.note && (
+                  <p className="text-warning pl-0.5 text-sm">{param.note}</p>
                 )}
               </div>
-              {param.state === "clamped" && param.note && (
-                <p className="text-warning pl-0.5 text-sm">{param.note}</p>
-              )}
-            </div>
-          ))}
-          {clamped.length === 0 && !corr.rowPresent && (
-            <p className="text-muted-foreground pl-0.5 text-sm italic">
-              No config row — every threshold is at its shipped floor. Saving
-              any value here creates the row.
-            </p>
-          )}
-        </>
-      ) : binding.corroborationLoading ? null : (
-        <NotYetImplemented
-          label="n_default · n_diverse · time_gap_days"
-          note="Could not read /config/verification-ladder — the thresholds are still enforced at whatever the config row resolves to; only this editor is unavailable."
+            ))}
+            {clamped.length === 0 && !corr.rowPresent && (
+              <p className="text-muted-foreground pl-0.5 text-sm italic">
+                No config row — every threshold is at its shipped floor.
+              </p>
+            )}
+          </>
+        ) : (
+          <NotYetImplemented
+            label="n_default · n_diverse · time_gap_days"
+            note="Could not read /config/verification-ladder — the thresholds are still enforced at whatever the config row resolves to; only this editor is unavailable."
+          />
+        )}
+      </Section>
+      {editing && (
+        <LadderDialog
+          binding={binding}
+          saving={saving}
+          onOpenChange={setEditing}
         />
       )}
-    </Section>
+    </>
   )
 }
 
-/** The classification tuning that rides the same `feature_flags` row as the
- *  arms without gating a pipeline phase: which label vocabularies the
- *  classifier may draw from, and how large a label space it works in. */
+function LadderDialog({
+  binding,
+  saving,
+  onOpenChange,
+}: {
+  binding: FlagsTabBinding
+  saving: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const corr = binding.corroboration
+  // The box holds what was *asked for*, so an operator sees and corrects their
+  // own edit; a clamped threshold's effective value is rendered beside it
+  // rather than overwriting it.
+  const committed = Object.fromEntries(
+    corr.params.map((p) => [p.name, p.committed]),
+  ) as Record<string, number | null>
+  const [draft, setDraft] = useState<Record<string, number | null>>(committed)
+
+  const dirty = corr.params
+    .filter((p) => draft[p.name] !== committed[p.name])
+    .map((p) => p.name)
+
+  return (
+    <SectionDialog
+      title="corroboration promotion gate"
+      description={`Floors, not settings. Tightening is always honoured; loosening below a floor is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement, and is otherwise clamped back — the row will say so after saving.`}
+      dirty={dirty}
+      saving={saving}
+      onOpenChange={onOpenChange}
+      onSave={() => {
+        binding.saveLadder(
+          Object.fromEntries(dirty.map((name) => [name, draft[name] ?? null])),
+        )
+        onOpenChange(false)
+      }}
+    >
+      {corr.params.map((param) => (
+        <div
+          key={param.name}
+          className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2"
+        >
+          <span className="font-mono text-sm font-semibold whitespace-nowrap">
+            {param.name}
+          </span>
+          <HelpTip label={`About ${param.name}`}>
+            {LADDER_PARAM_HELP[param.name] ?? param.name}
+            {" The shipped floor is "}
+            {param.floor}.
+          </HelpTip>
+          <span className="flex-1" />
+          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+            floor {param.floor}
+          </span>
+          <ArmInput
+            arm={{
+              key: param.name,
+              desc: "",
+              value: draft[param.name] ?? param.floor,
+              coded_default: param.floor,
+              source: draft[param.name] === null ? "default" : "override",
+              step: 1,
+            }}
+            value={draft[param.name] ?? param.floor}
+            onChange={(v) => setDraft((d) => ({ ...d, [param.name]: v }))}
+            className="w-20"
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground h-7 font-mono text-[10px]"
+            disabled={draft[param.name] === null}
+            onClick={() => setDraft((d) => ({ ...d, [param.name]: null }))}
+          >
+            reset to floor
+          </Button>
+        </div>
+      ))}
+    </SectionDialog>
+  )
+}
+
 /** One label the classifier may emit, with its description on hover. */
 function LabelChip({
   label,
@@ -588,35 +840,16 @@ function LabelChip({
 }
 
 /** Mode, areas and the resulting label space, rendered as the one chain they
- *  actually are.
- *
- *  They were three sibling blocks: a toggle, a flat list of labels, and a grid
- *  of checkboxes. Nothing on the page said that the mode decides whether the
- *  areas are read at all, or that each area is what puts particular labels in
- *  the list — an operator could tick Security and have no way to see which
- *  three labels that added. Now the area IS the row that carries its labels,
- *  and an area that is off shows what enabling it would add, so the effect of
- *  a checkbox is visible before it is clicked rather than after.
- *
- *  Attribution comes from the backend, which replays its own merge to produce
- *  it: two areas may define the same label name and the later one wins, so
- *  intersecting client-side would credit the wrong area — and crediting the
- *  wrong area tells the operator that unticking the wrong box removes it. */
+ *  actually are: the mode decides whether the areas are read, and each area is
+ *  what puts particular labels in the list. Read-only here; the Edit dialog
+ *  carries the same rows with their controls live, and saves mode and areas in
+ *  one request. */
 function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
-  const selected = new Set(binding.classificationAreas)
-  const savingMode = binding.isSaving(SAVING_CLASSIFICATION_MODE)
-  const savingAreas = binding.isSaving(SAVING_CLASSIFICATION_AREAS)
+  const [editing, setEditing] = useState(false)
+  const saving = binding.isSaving(SECTIONS.classification)
   const simple = binding.classificationMode === "simple"
+  const selected = new Set(binding.classificationAreas)
 
-  const toggle = (key: string, on: boolean) => {
-    const next = on
-      ? [...binding.classificationAreas, key]
-      : binding.classificationAreas.filter((a) => a !== key)
-    binding.setClassificationAreas(next)
-  }
-
-  // Labels no area owns: the `fact` fallback, and the whole fixed vocabulary
-  // in simple mode.
   const unowned = binding.classificationLabels.filter((l) => l.area === null)
   const byArea = new Map<string, typeof binding.classificationLabels>()
   for (const label of binding.classificationLabels) {
@@ -625,32 +858,192 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
   }
 
   return (
-    <Section
-      name="classification"
-      help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). What these controls decide is the label space: the exact set of values the classifier may write to a memory's classified_type. Anything the model emits outside that set is normalised back into it."
-      meta={`${binding.classificationMode} · ${binding.classificationLabels.length} labels`}
+    <>
+      <Section
+        name="classification"
+        help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). What these controls decide is the label space: the exact set of values the classifier may write to a memory's classified_type. Anything the model emits outside that set is normalised back into it."
+        meta={`${binding.classificationMode} · ${binding.classificationLabels.length} labels`}
+        onEdit={() => setEditing(true)}
+        saving={saving}
+      >
+        <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
+          <span className="font-mono text-sm font-semibold whitespace-nowrap">
+            classification_mode
+          </span>
+          <HelpTip label="About classification_mode">
+            `simple` keeps the seven-type vocabulary extraction already emits,
+            which lets the pipeline fold classification into the single
+            extraction call instead of a second LLM round-trip. `expanded`
+            opens the per-area label space and forces two concurrent calls. The
+            mode also changes the extraction prompt, so re-extracting the same
+            content under a different mode is not bit-identical.
+          </HelpTip>
+          <span className="flex-1" />
+          <span className="border-primary/55 bg-primary/10 text-primary rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide uppercase">
+            {binding.classificationMode}
+          </span>
+        </div>
+
+        <p className="text-muted-foreground pl-0.5 text-sm">
+          {simple ? (
+            <>
+              In <span className="font-mono">simple</span> mode the label space
+              is <b className="text-foreground font-semibold">fixed</b>: the
+              classification areas are{" "}
+              <b className="text-warning font-semibold">not read at all</b>, so
+              they are hidden here rather than shown as settings that do
+              nothing. Edit and switch to{" "}
+              <span className="font-mono">expanded</span> to configure them.
+            </>
+          ) : (
+            <>
+              In <span className="font-mono">expanded</span> mode the label
+              space is <span className="font-mono">fact</span> plus the union of
+              every enabled area below. Each area contributes the labels shown
+              on its row.
+            </>
+          )}
+        </p>
+
+        <div className="border-border bg-card flex flex-col gap-2.5 rounded-md border px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="font-mono text-sm font-semibold whitespace-nowrap">
+              label space
+            </span>
+            <HelpTip label="About the label space">
+              Exactly the values the classifier may write to a memory's
+              `classified_type`, resolved by the backend's own merge function
+              rather than re-derived here. Note nothing downstream filters or
+              ranks on this column today — it is served on the memory detail
+              view.
+            </HelpTip>
+            <span className="flex-1" />
+            <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+              {binding.classificationLabels.length} label
+              {binding.classificationLabels.length === 1 ? "" : "s"}
+              {!simple && (
+                <>
+                  {" · "}
+                  {binding.classificationAreas.length} of{" "}
+                  {binding.availableAreas.length} areas enabled
+                </>
+              )}
+            </span>
+          </div>
+
+          {unowned.length > 0 && (
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-muted-foreground w-32 shrink-0 font-mono text-[10px] tracking-wide uppercase">
+                {simple ? "fixed vocabulary" : "always"}
+              </span>
+              <div className="flex flex-1 flex-wrap gap-1.5">
+                {unowned.map((label) => (
+                  <LabelChip key={label.name} label={label} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!simple &&
+            binding.availableAreas
+              .filter((area) => selected.has(area.key))
+              .map((area) => {
+                const contributed = byArea.get(area.key) ?? []
+                return (
+                  <div
+                    key={area.key}
+                    className="border-border/50 flex flex-wrap items-baseline gap-2 border-t border-dashed pt-2"
+                  >
+                    <span className="w-32 shrink-0 truncate text-sm">
+                      {area.display_name}
+                    </span>
+                    <div className="flex flex-1 flex-wrap items-baseline gap-1.5">
+                      {contributed.length > 0 ? (
+                        contributed.map((label) => (
+                          <LabelChip key={label.name} label={label} />
+                        ))
+                      ) : (
+                        <span className="text-muted-foreground text-sm italic">
+                          contributes nothing — every name it defines is already
+                          owned by another enabled area
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[10px]">
+                      +{contributed.length}
+                    </span>
+                  </div>
+                )
+              })}
+        </div>
+      </Section>
+      {editing && (
+        <ClassificationDialog
+          binding={binding}
+          saving={saving}
+          onOpenChange={setEditing}
+        />
+      )}
+    </>
+  )
+}
+
+function ClassificationDialog({
+  binding,
+  saving,
+  onOpenChange,
+}: {
+  binding: FlagsTabBinding
+  saving: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [mode, setMode] = useState(binding.classificationMode)
+  const [areas, setAreas] = useState<string[]>(binding.classificationAreas)
+  const simple = mode === "simple"
+  const selected = new Set(areas)
+
+  const dirty: string[] = []
+  if (mode !== binding.classificationMode) dirty.push("classification_mode")
+  if (
+    [...areas].sort().join(",") !==
+    [...binding.classificationAreas].sort().join(",")
+  ) {
+    dirty.push("classification_areas")
+  }
+
+  const toggle = (key: string, on: boolean) =>
+    setAreas((current) =>
+      on ? [...current, key] : current.filter((a) => a !== key),
+    )
+
+  return (
+    <SectionDialog
+      title="classification"
+      description="The mode decides whether the areas are read at all; the enabled areas decide the label space in expanded mode. Both leave in one request."
+      dirty={dirty}
+      saving={saving}
+      onOpenChange={onOpenChange}
+      onSave={() => {
+        const patch: Record<string, unknown> = {}
+        if (dirty.includes("classification_mode")) {
+          patch.classification_mode = mode
+        }
+        if (dirty.includes("classification_areas")) {
+          patch.classification_areas = areas
+        }
+        binding.saveFlags(SECTIONS.classification, patch)
+        onOpenChange(false)
+      }}
     >
       <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
         <span className="font-mono text-sm font-semibold whitespace-nowrap">
           classification_mode
         </span>
-        <HelpTip label="About classification_mode">
-          `simple` keeps the seven-type vocabulary extraction already emits,
-          which lets the pipeline fold classification into the single
-          extraction call instead of a second LLM round-trip. `expanded` opens
-          the per-area label space and forces two concurrent calls. The mode
-          also changes the extraction prompt, so re-extracting the same content
-          under a different mode is not bit-identical.
-        </HelpTip>
         <span className="flex-1" />
-        <SavingMark saving={savingMode} />
         <SegmentGroup
-          value={binding.classificationMode}
-          onValueChange={(v: string) =>
-            binding.setClassificationMode(v as "simple" | "expanded")
-          }
+          value={mode}
+          onValueChange={(v: string) => setMode(v as "simple" | "expanded")}
           aria-label="classification_mode"
-          disabled={savingMode}
         >
           <SegmentGroupIndicator />
           <SegmentGroupItem value="simple">simple</SegmentGroupItem>
@@ -658,139 +1051,218 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
         </SegmentGroup>
       </div>
 
-      {/* The one sentence that ties the three controls together. */}
-      <p className="text-muted-foreground pl-0.5 text-sm">
+      <p className="text-muted-foreground text-sm">
         {simple ? (
           <>
-            In <span className="font-mono">simple</span> mode the label space is{" "}
-            <b className="text-foreground font-semibold">fixed</b>: the
-            classification areas are{" "}
-            <b className="text-warning font-semibold">not read at all</b>, so
-            they are hidden here rather than offered as controls that do
-            nothing. Switch to <span className="font-mono">expanded</span> to
-            configure them.
+            The areas below are{" "}
+            <b className="text-warning font-semibold">not read</b> in simple
+            mode. They are still editable here, and the values you set take
+            effect the moment the mode is expanded — including in this same
+            save.
           </>
         ) : (
           <>
-            In <span className="font-mono">expanded</span> mode the label space
-            is <span className="font-mono">fact</span> plus the union of every
-            enabled area below. Each area contributes the labels shown on its
-            row.
+            The label space will be <span className="font-mono">fact</span> plus
+            the union of the areas ticked below.
           </>
         )}
       </p>
 
-      <div className="border-border bg-card flex flex-col gap-2.5 rounded-md border px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className="font-mono text-sm font-semibold whitespace-nowrap">
-            label space
-          </span>
-          <HelpTip label="About the label space">
-            Exactly the values the classifier may write to a memory's
-            `classified_type`, resolved by the backend's own merge function
-            rather than re-derived here. Note nothing downstream filters or
-            ranks on this column today — it is served on the memory detail
-            view.
-          </HelpTip>
-          <span className="flex-1" />
-          <SavingMark saving={savingAreas} />
-          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
-            {binding.classificationLabels.length} label
-            {binding.classificationLabels.length === 1 ? "" : "s"}
-            {!simple && (
-              <>
-                {" · "}
-                {binding.classificationAreas.length} of{" "}
-                {binding.availableAreas.length} areas enabled
-              </>
-            )}
-          </span>
-        </div>
-
-        {unowned.length > 0 && (
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="text-muted-foreground w-32 shrink-0 font-mono text-[10px] tracking-wide uppercase">
-              {simple ? "fixed vocabulary" : "always"}
-            </span>
-            <div className="flex flex-1 flex-wrap gap-1.5">
-              {unowned.map((label) => (
-                <LabelChip key={label.name} label={label} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Hidden in simple mode rather than rendered inert (owner ruling
-            2026-08-21). Eleven rows that cannot change the list above them are
-            noise, and every one of them repeating "not read in simple mode"
-            made the card longer the less it had to say. The mode line above
-            still names the feature and where it lives, so this is a control
-            that moved rather than one that vanished. */}
-        {!simple &&
-          binding.availableAreas.map((area) => {
+      <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+        {binding.availableAreas.map((area) => {
           const locked = area.key === "general"
-          const on = selected.has(area.key)
-          const contributed = byArea.get(area.key) ?? []
-          // An area that is off has contributed nothing, so its own type list
-          // is the preview. It is what enabling it *would* add — subject to a
-          // name another enabled area already owns.
-          const preview = area.types.map((name) => ({ name }))
           return (
-            <div
+            <label
               key={area.key}
-              className="border-border/50 flex flex-wrap items-baseline gap-2 border-t border-dashed pt-2"
+              className="flex items-center gap-2 text-sm"
+              htmlFor={`edit-area-${area.key}`}
             >
-              <label
-                className="flex w-32 shrink-0 items-center gap-2 text-sm"
-                htmlFor={`area-${area.key}`}
-              >
-                <Checkbox
-                  id={`area-${area.key}`}
-                  checked={on}
-                  disabled={locked || savingAreas}
-                  aria-label={area.key}
-                  onCheckedChange={(c) => toggle(area.key, c === true)}
-                />
-                <span className={cn("truncate", !on && "text-muted-foreground")}>
-                  {area.display_name}
-                </span>
-              </label>
-              <div className="flex flex-1 flex-wrap items-baseline gap-1.5">
-                {on ? (
-                  contributed.length > 0 ? (
-                    contributed.map((label) => (
-                      <LabelChip key={label.name} label={label} />
-                    ))
-                  ) : (
-                    <span className="text-muted-foreground text-sm italic">
-                      contributes nothing — every name it defines is already
-                      owned by another enabled area
-                    </span>
-                  )
-                ) : (
-                  <>
-                    <span className="text-muted-foreground font-mono text-[10px]">
-                      would add
-                    </span>
-                    {preview.map((label) => (
-                      <LabelChip key={label.name} label={label} muted />
-                    ))}
-                  </>
-                )}
-              </div>
-              <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[10px]">
-                {on ? `+${contributed.length}` : area.types.length}
+              <Checkbox
+                id={`edit-area-${area.key}`}
+                checked={selected.has(area.key)}
+                disabled={locked}
+                aria-label={area.key}
+                onCheckedChange={(c) => toggle(area.key, c === true)}
+              />
+              <span className={cn(locked && "text-muted-foreground")}>
+                {area.display_name}
               </span>
-            </div>
+              <HelpTip label={`About the ${area.display_name} area`}>
+                {locked && "Always on — the base area. "}
+                Adds: {area.types.join(", ")}.
+              </HelpTip>
+            </label>
           )
         })}
       </div>
-    </Section>
+    </SectionDialog>
+  )
+}
+
+/** The four `feature_flags` sections whose editors are a list of like rows.
+ *
+ *  One dialog component rather than four: the sections differ in which rows
+ *  they carry, not in how an edit works, and four near-identical dialogs is
+ *  four places for the dirty-tracking and the one-request save to drift. */
+function FlagsSectionDialog({
+  title,
+  description,
+  section,
+  binding,
+  arms,
+  flags,
+  tunables,
+  onOpenChange,
+}: {
+  title: string
+  description: string
+  section: (typeof SECTIONS)[keyof typeof SECTIONS]
+  binding: FlagsTabBinding
+  arms?: DemoRankArm[]
+  flags?: DemoBehavioralFlag[]
+  tunables?: DemoTunable[]
+  onOpenChange: (open: boolean) => void
+}) {
+  const committed: Record<string, number | boolean> = {}
+  for (const arm of arms ?? []) committed[arm.key] = arm.value
+  for (const flag of flags ?? []) committed[flag.key] = flag.enabled
+  for (const tunable of tunables ?? []) committed[tunable.key] = tunable.value
+
+  const [draft, setDraft] = useState<Record<string, number | boolean>>(committed)
+  const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
+  const set = (key: string, value: number | boolean) =>
+    setDraft((d) => ({ ...d, [key]: value }))
+
+  return (
+    <SectionDialog
+      title={title}
+      description={description}
+      dirty={dirty}
+      saving={binding.isSaving(section)}
+      onOpenChange={onOpenChange}
+      onSave={() => {
+        binding.saveFlags(
+          section,
+          Object.fromEntries(dirty.map((k) => [k, draft[k]])),
+        )
+        onOpenChange(false)
+      }}
+    >
+      {(arms ?? []).map((arm) => (
+        <ArmRow
+          key={arm.key}
+          arm={arm}
+          draft={draft[arm.key] as number}
+          onChange={(v) => set(arm.key, v)}
+        />
+      ))}
+      {(flags ?? []).map((flag) => (
+        <BehavioralFlagRow
+          key={flag.key}
+          flag={flag}
+          draft={draft[flag.key] as boolean}
+          onChange={(v) => set(flag.key, v)}
+        />
+      ))}
+      {(tunables ?? []).map((tunable) => (
+        <TunableRow
+          key={tunable.key}
+          tunable={tunable}
+          draft={draft[tunable.key] as number}
+          onChange={(v) => set(tunable.key, v)}
+        />
+      ))}
+    </SectionDialog>
+  )
+}
+
+/** Graph augmentation pairs a channel flag with its RRF list weight, so its
+ *  editor carries both in one draft and one request — a flag turned on with
+ *  its weight left at 0 produces candidates that fuse at zero weight, and
+ *  saving the two separately is what made that easy to do by accident. */
+function GraphDialog({
+  binding,
+  onOpenChange,
+}: {
+  binding: FlagsTabBinding
+  onOpenChange: (open: boolean) => void
+}) {
+  const committed: Record<string, number | boolean> = {}
+  for (const flag of binding.graphFlags) {
+    committed[flag.key] = flag.enabled
+    if (flag.paired_arm) committed[flag.paired_arm.key] = flag.paired_arm.value
+  }
+  const [draft, setDraft] = useState<Record<string, number | boolean>>(committed)
+  const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
+  const set = (key: string, value: number | boolean) =>
+    setDraft((d) => ({ ...d, [key]: value }))
+
+  return (
+    <SectionDialog
+      title="graph augmentation"
+      description="Each channel flag turns on a producer of ranked candidates; its paired w_* is that list's weight in the fusion. Both go out in one request."
+      dirty={dirty}
+      saving={binding.isSaving(SECTIONS.graph)}
+      onOpenChange={onOpenChange}
+      onSave={() => {
+        binding.saveFlags(
+          SECTIONS.graph,
+          Object.fromEntries(dirty.map((k) => [k, draft[k]])),
+        )
+        onOpenChange(false)
+      }}
+    >
+      {binding.graphFlags.map((flag) => (
+        <div
+          key={flag.key}
+          className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
+        >
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="font-mono text-sm font-semibold">{flag.key}</span>
+            <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
+            <span className="flex-1" />
+            <ActivationNote taskId={flag.activatesWith} />
+            <Switch
+              checked={draft[flag.key] as boolean}
+              onCheckedChange={(on) => set(flag.key, on)}
+              aria-label={flag.key}
+            />
+            {flag.unmeasured && <UnmeasuredTag />}
+          </div>
+          {flag.paired_arm ? (
+            <div className="flex flex-wrap items-center gap-2 pl-0.5">
+              <span className="text-muted-foreground font-mono text-sm">
+                paired weight{" "}
+                <b className="text-foreground font-sans font-semibold">
+                  {flag.paired_arm.key}
+                </b>
+              </span>
+              <HelpTip label={`About ${flag.paired_arm.key}`}>
+                {flag.paired_arm.desc}
+              </HelpTip>
+              <span className="flex-1" />
+              <ArmInput
+                arm={flag.paired_arm}
+                value={draft[flag.paired_arm.key] as number}
+                onChange={(v) => set(flag.paired_arm!.key, v)}
+              />
+              <ArmPill value={draft[flag.paired_arm.key] as number} />
+            </div>
+          ) : (
+            <p className="text-muted-foreground pl-0.5 text-sm italic">
+              {flag.no_weight_note}
+            </p>
+          )}
+        </div>
+      ))}
+    </SectionDialog>
   )
 }
 
 export function FlagsTab() {
   const binding = useFlagsTabBinding()
+  const [editing, setEditing] = useState<string | null>(null)
+  const close = () => setEditing(null)
 
   const graphWeights = binding.graphFlags.flatMap((f) =>
     f.paired_arm ? [f.paired_arm] : [],
@@ -821,11 +1293,12 @@ export function FlagsTab() {
           The tunables tab. Every value here is a row in the `feature_flags`,
           `verification_ladder` or `repo_allowlist` config row, read through
           merge-over-coded-defaults; nothing on this tab is computed, only read
-          and written. Job schedules are edited on the Jobs page, not here, and
-          which model serves each purpose is on the LLM tab. An arm at 0 renders
-          as inactive rather than being omitted, and a flag with no recorded
-          gate-ledger win renders visibly unmeasured — flipping it stays
-          possible, but is never quietly assumed proven.
+          and written. Each card is read-only until you press Edit, and each
+          card's edits are written in a single request. Job schedules are edited
+          on the Jobs page, and which model serves each purpose is on the LLM
+          tab. An arm at 0 renders as inactive rather than being omitted, and a
+          flag with no recorded gate-ledger win renders visibly unmeasured —
+          flipping it stays possible, but is never quietly assumed proven.
         </HelpTip>
       </div>
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
@@ -843,14 +1316,11 @@ export function FlagsTab() {
           name="rank_fusion_factor arms"
           help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
           meta={`${activeFusionArms} of ${binding.fusionArms.length} active`}
+          onEdit={() => setEditing(SECTIONS.arms)}
+          saving={binding.isSaving(SECTIONS.arms)}
         >
           {binding.fusionArms.map((arm) => (
-            <ArmRow
-              key={arm.key}
-              arm={arm}
-              saving={binding.isSaving(arm.key)}
-              onCommit={(v) => binding.saveArm(arm.key, v)}
-            />
+            <ArmRow key={arm.key} arm={arm} />
           ))}
         </Section>
 
@@ -858,28 +1328,21 @@ export function FlagsTab() {
           name="feature flags"
           help="Plain on/off switches, distinct from the weighted arms above: each gates a whole code path rather than scaling a score. relation_rescue is the only surviving ingestion-side flag; the other two govern retrieval."
           meta={`${flagsOn} of ${binding.behavioralFlags.length} on`}
+          onEdit={() => setEditing(SECTIONS.flags)}
+          saving={binding.isSaving(SECTIONS.flags)}
         >
           {binding.behavioralFlags.map((flag) => (
-            <BehavioralFlagRow
-              key={flag.key}
-              flag={flag}
-              saving={binding.isSaving(flag.key)}
-              onToggle={(enabled) =>
-                binding.setBehavioralFlag(flag.key, enabled)
-              }
-            />
+            <BehavioralFlagRow key={flag.key} flag={flag} />
           ))}
         </Section>
 
         <Section
           name="context match boost"
           help="The magnitude of the applies_when context boost (doc 07 §6). Its own group because it acts on a match outcome rather than on a stored column: at 0 matching still labels every row and still counts conflicts — only the multiplier goes quiet."
+          onEdit={() => setEditing(SECTIONS.contextBoost)}
+          saving={binding.isSaving(SECTIONS.contextBoost)}
         >
-          <ArmRow
-            arm={binding.contextBoost}
-            saving={binding.isSaving(binding.contextBoost.key)}
-            onCommit={(v) => binding.saveArm(binding.contextBoost.key, v)}
-          />
+          <ArmRow arm={binding.contextBoost} />
         </Section>
 
         <Section
@@ -890,62 +1353,53 @@ export function FlagsTab() {
               ? `${channelsOn} of ${binding.graphFlags.length} channels on`
               : undefined
           }
+          onEdit={
+            binding.graphAugmentationAvailable
+              ? () => setEditing(SECTIONS.graph)
+              : undefined
+          }
+          saving={binding.isSaving(SECTIONS.graph)}
         >
           {binding.graphAugmentationAvailable ? (
-            binding.graphFlags.map((flag) => {
-              const paired = flag.paired_arm
-              return (
-                <div
-                  key={flag.key}
-                  className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
-                >
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span className="font-mono text-sm font-semibold">
-                      {flag.key}
-                    </span>
-                    <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
-                    <span className="flex-1" />
-                    <ActivationNote taskId={flag.activatesWith} />
-                    <SourceTag source={flag.source} />
-                    <SavingMark saving={binding.isSaving(flag.key)} />
-                    <Switch
-                      checked={flag.enabled}
-                      onCheckedChange={(on) =>
-                        binding.setGraphFlag(flag.key, on)
-                      }
-                      aria-label={flag.key}
-                      disabled={binding.isSaving(flag.key)}
-                    />
-                    {flag.unmeasured && <UnmeasuredTag />}
-                  </div>
-                  {paired ? (
-                    <div className="flex flex-wrap items-center gap-2 pl-0.5">
-                      <span className="text-muted-foreground font-mono text-sm">
-                        paired weight{" "}
-                        <b className="text-foreground font-sans font-semibold">
-                          {paired.key}
-                        </b>
-                      </span>
-                      <HelpTip label={`About ${paired.key}`}>
-                        {paired.desc}
-                      </HelpTip>
-                      <span className="flex-1" />
-                      <SourceTag source={paired.source} />
-                      <ArmInput
-                        arm={paired}
-                        onCommit={(v) => binding.saveArm(paired.key, v)}
-                      />
-                      <SavingMark saving={binding.isSaving(paired.key)} />
-                      <ArmPill value={paired.value} />
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground pl-0.5 text-sm italic">
-                      {flag.no_weight_note}
-                    </p>
-                  )}
+            binding.graphFlags.map((flag) => (
+              <div
+                key={flag.key}
+                className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5"
+              >
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="font-mono text-sm font-semibold">
+                    {flag.key}
+                  </span>
+                  <HelpTip label={`About ${flag.key}`}>{flag.desc}</HelpTip>
+                  <span className="flex-1" />
+                  <ActivationNote taskId={flag.activatesWith} />
+                  <SourceTag source={flag.source} />
+                  <BoolTag on={flag.enabled} />
+                  {flag.unmeasured && <UnmeasuredTag />}
                 </div>
-              )
-            })
+                {flag.paired_arm ? (
+                  <div className="flex flex-wrap items-center gap-2 pl-0.5">
+                    <span className="text-muted-foreground font-mono text-sm">
+                      paired weight{" "}
+                      <b className="text-foreground font-sans font-semibold">
+                        {flag.paired_arm.key}
+                      </b>
+                    </span>
+                    <HelpTip label={`About ${flag.paired_arm.key}`}>
+                      {flag.paired_arm.desc}
+                    </HelpTip>
+                    <span className="flex-1" />
+                    <SourceTag source={flag.paired_arm.source} />
+                    <ValueTag value={flag.paired_arm.value} />
+                    <ArmPill value={flag.paired_arm.value} />
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground pl-0.5 text-sm italic">
+                    {flag.no_weight_note}
+                  </p>
+                )}
+              </div>
+            ))
           ) : binding.isLoading ? null : (
             <NotYetImplemented
               label="ppr_enabled · dual_level_enabled · community_injection_enabled"
@@ -962,14 +1416,11 @@ export function FlagsTab() {
               ? `${tunablesOverridden} overridden`
               : "all at coded defaults"
           }
+          onEdit={() => setEditing(SECTIONS.tunables)}
+          saving={binding.isSaving(SECTIONS.tunables)}
         >
           {binding.tunables.map((tunable) => (
-            <TunableRow
-              key={tunable.key}
-              tunable={tunable}
-              saving={binding.isSaving(tunable.key)}
-              onCommit={(v) => binding.saveTunable(tunable.key, v)}
-            />
+            <TunableRow key={tunable.key} tunable={tunable} />
           ))}
         </Section>
 
@@ -979,6 +1430,50 @@ export function FlagsTab() {
 
         <CorroborationSection binding={binding} />
       </div>
+
+      {editing === SECTIONS.arms && (
+        <FlagsSectionDialog
+          title="rank_fusion_factor arms"
+          description="Per-row multipliers on a row's fused rrf_score. Each is a no-op at exactly 0. All four save in one request."
+          section={SECTIONS.arms}
+          binding={binding}
+          arms={binding.fusionArms}
+          onOpenChange={close}
+        />
+      )}
+      {editing === SECTIONS.flags && (
+        <FlagsSectionDialog
+          title="feature flags"
+          description="On/off switches, each gating a whole code path rather than scaling a score. All three save in one request."
+          section={SECTIONS.flags}
+          binding={binding}
+          flags={binding.behavioralFlags}
+          onOpenChange={close}
+        />
+      )}
+      {editing === SECTIONS.contextBoost && (
+        <FlagsSectionDialog
+          title="context match boost"
+          description="The magnitude of the applies_when context boost. At 0, matching still labels every row and still counts conflicts — only the multiplier goes quiet."
+          section={SECTIONS.contextBoost}
+          binding={binding}
+          arms={[binding.contextBoost]}
+          onOpenChange={close}
+        />
+      )}
+      {editing === SECTIONS.graph && (
+        <GraphDialog binding={binding} onOpenChange={close} />
+      )}
+      {editing === SECTIONS.tunables && (
+        <FlagsSectionDialog
+          title="pipeline & embedding tunables"
+          description="Throughput and cache knobs. Each accepts a bounded range the API enforces; the fields clamp locally so one out-of-range value cannot fail the whole save."
+          section={SECTIONS.tunables}
+          binding={binding}
+          tunables={binding.tunables}
+          onOpenChange={close}
+        />
+      )}
     </div>
   )
 }

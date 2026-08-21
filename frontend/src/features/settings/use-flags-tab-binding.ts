@@ -20,6 +20,7 @@ import {
   useUpdateVerificationLadder,
   useVerificationLadder,
   type ClassificationAreaInfo,
+  type FeatureFlags,
   type ClassificationLabel,
 } from "@/hooks/api"
 
@@ -147,10 +148,22 @@ const TUNABLE_META: Record<
   },
 }
 
-/** `isSaving` keys for the writes that are not named after a single flag. */
-export const SAVING_CLASSIFICATION_MODE = "classification_mode"
-export const SAVING_CLASSIFICATION_AREAS = "classification_areas"
-export const SAVING_ALLOWLIST = "repo_allowlist"
+/** The tab's sections. A save is per section now, not per control: the whole
+ *  card's edits go out as one request, so `isSaving` is keyed on the section
+ *  and the "edited" list in a dialog footer names everything that one call
+ *  will write. */
+export const SECTIONS = {
+  arms: "arms",
+  flags: "flags",
+  contextBoost: "context_boost",
+  graph: "graph",
+  tunables: "tunables",
+  classification: "classification",
+  allowlist: "repo_allowlist",
+  ladder: "ladder",
+} as const
+
+export type SectionKey = (typeof SECTIONS)[keyof typeof SECTIONS]
 
 export interface FlagsTabBinding {
   fusionArms: DemoRankArm[]
@@ -184,16 +197,14 @@ export interface FlagsTabBinding {
   allowlistPatterns: string[]
   overridesWritten: number
   isLoading: boolean
-  saveArm: (key: string, value: number) => void
-  setBehavioralFlag: (key: string, enabled: boolean) => void
-  setGraphFlag: (key: string, enabled: boolean) => void
-  /** Commit one ladder threshold; `null` clears it back to its floor. The
-   *  response is the resolver's report, so a clamped save reports the clamp
-   *  rather than echoing the number back. */
-  saveCorroboration: (name: string, committed: number | null) => void
-  saveTunable: (key: string, value: number) => void
-  setClassificationMode: (mode: "simple" | "expanded") => void
-  setClassificationAreas: (areas: string[]) => void
+  /** One `feature_flags` write for a whole section's edits. Every control on
+   *  this tab that lives in that row goes through here, so a card with six
+   *  changed fields costs one request rather than six. */
+  saveFlags: (section: SectionKey, patch: Record<string, unknown>) => void
+  /** One `verification_ladder` write. `null` clears a threshold back to its
+   *  floor. The response is the resolver's report, so a clamped save reports
+   *  the clamp rather than echoing the number back. */
+  saveLadder: (patch: Record<string, number | null>) => void
   saveAllowlist: (patterns: string[]) => void
 }
 
@@ -295,13 +306,33 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       allowlistPatterns: demoFlags.repo_allowlist.patterns,
       overridesWritten: demoFlags.overrides_written,
       isLoading: false,
-      saveArm: saveDemoArm,
-      setBehavioralFlag: setDemoBehavioralFlag,
-      setGraphFlag: setDemoGraphFlag,
-      saveCorroboration: saveDemoCorroboration,
-      saveTunable: saveDemoTunable,
-      setClassificationMode: setDemoClassificationMode,
-      setClassificationAreas: setDemoClassificationAreas,
+      // Demo mode has no request to batch, so one section save fans back out
+      // to the store actions the fixture already had. The *caller's* shape is
+      // what matters — one save per section — and it is the same in both
+      // modes.
+      saveFlags: (_section, patch) => {
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === "classification_mode") {
+            setDemoClassificationMode(value as "simple" | "expanded")
+          } else if (key === "classification_areas") {
+            setDemoClassificationAreas(value as string[])
+          } else if (typeof value === "boolean") {
+            if (key in GRAPH_DEFAULTS) setDemoGraphFlag(key, value)
+            else setDemoBehavioralFlag(key, value)
+          } else if (typeof value === "number") {
+            if (TUNABLE_KEYS.includes(key as (typeof TUNABLE_KEYS)[number])) {
+              saveDemoTunable(key, value)
+            } else {
+              saveDemoArm(key, value)
+            }
+          }
+        }
+      },
+      saveLadder: (patch) => {
+        for (const [name, committed] of Object.entries(patch)) {
+          saveDemoCorroboration(name, committed)
+        }
+      },
       saveAllowlist: saveDemoAllowlist,
     }
   }
@@ -453,33 +484,20 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     allowlistPatterns: allowlistQuery.data?.patterns ?? [],
     overridesWritten,
     isLoading: flagsQuery.isLoading,
-    saveArm: (key, value) => {
-      track(key, () => updateFlags.mutateAsync({ [key]: value }))
-    },
-    setBehavioralFlag: (key, enabled) => {
-      track(key, () => updateFlags.mutateAsync({ [key]: enabled }))
-    },
-    setGraphFlag: (key, enabled) => {
-      track(key, () => updateFlags.mutateAsync({ [key]: enabled }))
-    },
-    saveCorroboration: (name, committed) => {
-      track(name, () => updateLadder.mutateAsync({ [name]: committed }))
-    },
-    saveTunable: (key, value) => {
-      track(key, () => updateFlags.mutateAsync({ [key]: value }))
-    },
-    setClassificationMode: (mode) => {
-      track(SAVING_CLASSIFICATION_MODE, () =>
-        updateFlags.mutateAsync({ classification_mode: mode }),
+    saveFlags: (section, patch) => {
+      // `FeatureFlagsUpdate` is a partial schema, so a many-key body is one
+      // valid request. Sending them one at a time was never required by the
+      // API — it was the UI's own habit, and it cost a round-trip and a cache
+      // reconcile per keystroke-commit.
+      track(section, () =>
+        updateFlags.mutateAsync(patch as Partial<FeatureFlags>),
       )
     },
-    setClassificationAreas: (areas) => {
-      track(SAVING_CLASSIFICATION_AREAS, () =>
-        updateFlags.mutateAsync({ classification_areas: areas }),
-      )
+    saveLadder: (patch) => {
+      track(SECTIONS.ladder, () => updateLadder.mutateAsync(patch))
     },
     saveAllowlist: (patterns) => {
-      track(SAVING_ALLOWLIST, () => updateAllowlist.mutateAsync(patterns))
+      track(SECTIONS.allowlist, () => updateAllowlist.mutateAsync(patterns))
     },
   }
 }
