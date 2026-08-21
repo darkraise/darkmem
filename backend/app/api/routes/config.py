@@ -485,6 +485,15 @@ async def update_feature_flags(
     await session.flush()
 
     measured = await get_measured_flags(session)
+    # Commit before answering, rather than leaving it to the session
+    # dependency's teardown. The teardown runs after the response is on its
+    # way, so a client that re-reads the moment it sees the 200 can open its
+    # transaction before this one commits and get the pre-write snapshot back.
+    # Measured on the Flags tab: every save landed in the database, and the
+    # invalidation refetch that followed painted the OLD value over it -- the
+    # classification_mode control read as completely dead while writing
+    # correctly every time.
+    await session.commit()
     return _flags_response(stored, measured)
 
 
@@ -611,6 +620,9 @@ async def update_verification_ladder(
     else:
         session.add(Config(key=LADDER_CONFIG_KEY, value=stored))
     await session.flush()
+    # Same reason as the feature-flags door above: a 200 must mean committed,
+    # or the client's own refetch can read around it.
+    await session.commit()
 
     return _ladder_response(await resolve_ladder(session))
 

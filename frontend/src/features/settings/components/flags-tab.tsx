@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import {
@@ -194,14 +194,46 @@ function ArmRow({
   )
 }
 
-function GroupHead({ name, help }: { name: string; help?: string }) {
+/** One titled block of controls.
+ *
+ *  The tab carries eight of these now, and the previous separator — a dashed
+ *  hairline with 12px of padding — did not read as a break at that count: the
+ *  sections ran together into one list and the headings, at the same muted
+ *  micro-size as every `(coded default)` tag on the page, did not stand out
+ *  from the rows they titled. A solid rule with real space above it, and a
+ *  heading with weight and tracking, separate them. Dashed is reserved on this
+ *  page for provisional states (an inactive arm, an unavailable surface), so
+ *  spending it on ordinary structure also blunted that signal.
+ *
+ *  `meta` is the section's own one-line summary, right-aligned to give each
+ *  block a second anchor for scanning. */
+function Section({
+  name,
+  help,
+  meta,
+  children,
+}: {
+  name: string
+  help?: string
+  meta?: ReactNode
+  children: ReactNode
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-muted-foreground font-mono text-[10px] tracking-wide uppercase">
-        {name}
-      </span>
-      {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
-    </div>
+    <section className="border-border/60 mt-3 flex flex-col gap-2.5 border-t pt-5 first:mt-0 first:border-t-0 first:pt-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-foreground font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+          {name}
+        </h3>
+        {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
+        <span className="flex-1" />
+        {meta && (
+          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+            {meta}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-2">{children}</div>
+    </section>
   )
 }
 
@@ -310,11 +342,15 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
   const dirty = patterns.join("\n") !== binding.allowlistPatterns.join("\n")
 
   return (
-    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-      <GroupHead
-        name="repo auto-provision allowlist"
-        help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
-      />
+    <Section
+      name="repo auto-provision allowlist"
+      help="Repo hints arrive over the unauthenticated MCP door; an empty allowlist refuses every hint (auto-provision inert). Patterns are host, *.host, or host/path-prefix — validated with the exact parse the SSRF gate itself runs a pattern through, so this editor and the gate can never disagree on 'allowed'."
+      meta={
+        binding.allowlistPatterns.length === 0
+          ? "empty — every hint refused"
+          : `${binding.allowlistPatterns.length} pattern${binding.allowlistPatterns.length === 1 ? "" : "s"}`
+      }
+    >
       <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
         <span className="text-muted-foreground text-sm">
           One pattern per line — e.g.{" "}
@@ -356,7 +392,7 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
           )}
         </div>
       </div>
-    </div>
+    </Section>
   )
 }
 
@@ -378,11 +414,17 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
   const clamped = corr.params.filter((p) => p.state === "clamped")
 
   return (
-    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-      <GroupHead
-        name="corroboration promotion gate"
-        help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
-      />
+    <Section
+      name="corroboration promotion gate"
+      meta={
+        clamped.length > 0
+          ? `${clamped.length} clamped`
+          : corr.rowPresent
+            ? "tuned"
+            : "all at shipped floors"
+      }
+      help={`The candidate → corroborated rung of the verification ladder. ${corr.gate_note} These three numbers are FLOORS, not settings: tightening one (asking for more evidence) is always honoured, while loosening one below its shipped default is honoured only for a parameter named by a recorded ${corr.measurementTask} measurement — otherwise it is clamped back and the row says so. The contradiction veto is absolute and reads none of this: one non-echo contradiction beats any count.`}
+    >
       {binding.corroborationAvailable ? (
         <>
           {corr.params.map((param) => (
@@ -454,7 +496,7 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
           note="Could not read /config/verification-ladder — the thresholds are still enforced at whatever the config row resolves to; only this editor is unavailable."
         />
       )}
-    </div>
+    </Section>
   )
 }
 
@@ -471,11 +513,11 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
   }
 
   return (
-    <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-      <GroupHead
-        name="classification"
-        help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). These two knobs shape the label space it works in, and both live in the same feature_flags row as the arms above."
-      />
+    <Section
+      name="classification"
+      help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). These two knobs shape the label space it works in, and both live in the same feature_flags row as the arms above."
+      meta={`${binding.classificationMode} · ${binding.classificationAreas.length} of ${binding.availableAreas.length} areas`}
+    >
       <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
         <span className="font-mono text-sm font-semibold whitespace-nowrap">
           classification_mode
@@ -546,7 +588,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           })}
         </div>
       </div>
-    </div>
+    </Section>
   )
 }
 
@@ -560,7 +602,14 @@ export function FlagsTab() {
   const activeArms = allArms.filter(
     (a) => armStatus(a.value) === "active",
   ).length
+  const activeFusionArms = binding.fusionArms.filter(
+    (a) => armStatus(a.value) === "active",
+  ).length
   const flagsOn = binding.behavioralFlags.filter((f) => f.enabled).length
+  const channelsOn = binding.graphFlags.filter((f) => f.enabled).length
+  const tunablesOverridden = binding.tunables.filter(
+    (t) => t.source === "override",
+  ).length
 
   return (
     <div className="space-y-4">
@@ -587,11 +636,11 @@ export function FlagsTab() {
         state="populated"
         meta={`${activeArms} of ${allArms.length} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
       >
-        <div className="flex flex-col gap-2">
-          <GroupHead
-            name="rank_fusion_factor arms"
-            help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
-          />
+        <Section
+          name="rank_fusion_factor arms"
+          help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
+          meta={`${activeFusionArms} of ${binding.fusionArms.length} active`}
+        >
           {binding.fusionArms.map((arm) => (
             <ArmRow
               key={arm.key}
@@ -599,13 +648,13 @@ export function FlagsTab() {
               onCommit={(v) => binding.saveArm(arm.key, v)}
             />
           ))}
-        </div>
+        </Section>
 
-        <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead
-            name="feature flags"
-            help="Plain on/off switches, distinct from the weighted arms above: each gates a whole code path rather than scaling a score. relation_rescue is the only surviving ingestion-side flag; the other two govern retrieval."
-          />
+        <Section
+          name="feature flags"
+          help="Plain on/off switches, distinct from the weighted arms above: each gates a whole code path rather than scaling a score. relation_rescue is the only surviving ingestion-side flag; the other two govern retrieval."
+          meta={`${flagsOn} of ${binding.behavioralFlags.length} on`}
+        >
           {binding.behavioralFlags.map((flag) => (
             <BehavioralFlagRow
               key={flag.key}
@@ -615,24 +664,27 @@ export function FlagsTab() {
               }
             />
           ))}
-        </div>
+        </Section>
 
-        <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead
-            name="context match boost"
-            help="The magnitude of the applies_when context boost (doc 07 §6). Its own group because it acts on a match outcome rather than on a stored column: at 0 matching still labels every row and still counts conflicts — only the multiplier goes quiet."
-          />
+        <Section
+          name="context match boost"
+          help="The magnitude of the applies_when context boost (doc 07 §6). Its own group because it acts on a match outcome rather than on a stored column: at 0 matching still labels every row and still counts conflicts — only the multiplier goes quiet."
+        >
           <ArmRow
             arm={binding.contextBoost}
             onCommit={(v) => binding.saveArm(binding.contextBoost.key, v)}
           />
-        </div>
+        </Section>
 
-        <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead
-            name="graph augmentation — RRF list weights + *_enabled flags"
-            help="Doc 07 §4. Each *_enabled flag turns on a producer of ranked candidates from the entity graph, and its paired w_* is that list's weight in the fusion — a LIST weight, not a per-row multiplier, so it scales how much the whole list counts rather than boosting individual rows. All three land inert so retrieval is byte-identical to the vector+FTS hybrid until one is measured. A flag on with its weight still at 0 produces candidates that fuse at zero weight, which is why the pairing is shown together."
-          />
+        <Section
+          name="graph augmentation — RRF list weights + *_enabled flags"
+          help="Doc 07 §4. Each *_enabled flag turns on a producer of ranked candidates from the entity graph, and its paired w_* is that list's weight in the fusion — a LIST weight, not a per-row multiplier, so it scales how much the whole list counts rather than boosting individual rows. All three land inert so retrieval is byte-identical to the vector+FTS hybrid until one is measured. A flag on with its weight still at 0 produces candidates that fuse at zero weight, which is why the pairing is shown together."
+          meta={
+            binding.graphFlags.length
+              ? `${channelsOn} of ${binding.graphFlags.length} channels on`
+              : undefined
+          }
+        >
           {binding.graphAugmentationAvailable ? (
             binding.graphFlags.map((flag) => {
               const paired = flag.paired_arm
@@ -691,13 +743,17 @@ export function FlagsTab() {
               note="Could not read /config/feature-flags — the flags are still at whatever the config row holds; only this editor is unavailable."
             />
           )}
-        </div>
+        </Section>
 
-        <div className="border-border flex flex-col gap-2 border-t border-dashed pt-3">
-          <GroupHead
-            name="pipeline & embedding tunables"
-            help="Throughput and cache knobs in the same feature_flags row as the arms. None of them gates a phase or changes what gets stored — they trade provider rate-limit headroom, memory and batch latency against each other. Each accepts a bounded range the API enforces; a value outside it is refused rather than clamped."
-          />
+        <Section
+          name="pipeline & embedding tunables"
+          help="Throughput and cache knobs in the same feature_flags row as the arms. None of them gates a phase or changes what gets stored — they trade provider rate-limit headroom, memory and batch latency against each other. Each accepts a bounded range the API enforces; a value outside it is refused rather than clamped."
+          meta={
+            tunablesOverridden
+              ? `${tunablesOverridden} overridden`
+              : "all at coded defaults"
+          }
+        >
           {binding.tunables.map((tunable) => (
             <TunableRow
               key={tunable.key}
@@ -705,7 +761,7 @@ export function FlagsTab() {
               onCommit={(v) => binding.saveTunable(tunable.key, v)}
             />
           ))}
-        </div>
+        </Section>
 
         <ClassificationSection binding={binding} />
 
