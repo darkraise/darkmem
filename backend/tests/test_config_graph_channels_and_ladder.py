@@ -573,3 +573,49 @@ async def test_the_label_space_is_the_resolver_s_own_answer(client, auth_headers
     assert served == get_merged_llm_types(
         body["classification_areas"], body["classification_mode"]
     )
+
+
+@pytest.mark.asyncio
+async def test_each_label_names_the_area_that_contributed_it(client, auth_headers):
+    """The relation the settings surface renders.
+
+    Crediting the wrong area tells the operator that unticking the wrong box
+    removes the label.
+    """
+    resp = await client.put(
+        "/api/v1/config/feature-flags",
+        headers=auth_headers,
+        json={
+            "classification_mode": "expanded",
+            "classification_areas": ["general", "debugging"],
+        },
+    )
+    by_name = {l["name"]: l for l in resp.json()["classification_labels"]}
+    assert by_name["root_cause"]["area"] == "debugging"
+    assert by_name["preference"]["area"] == "general"
+    # No area owns the fallback; unticking everything does not remove it.
+    assert by_name["fact"]["area"] is None
+
+
+@pytest.mark.asyncio
+async def test_simple_mode_credits_no_area_at_all(client, auth_headers):
+    """Because none is responsible: the areas are not read in simple mode."""
+    resp = await client.get("/api/v1/config/feature-flags", headers=auth_headers)
+    labels = resp.json()["classification_labels"]
+    assert labels and all(label["area"] is None for label in labels)
+
+
+def test_the_two_resolvers_agree_on_their_key_set():
+    """`get_label_sources` mirrors the merge loop rather than deriving from it,
+    so nothing but a test keeps the two in step."""
+    from app.services.classification_areas import (
+        AREAS,
+        get_label_sources,
+        get_merged_llm_types,
+    )
+
+    for mode in ("simple", "expanded"):
+        for areas in ([], ["general"], list(AREAS)):
+            assert set(get_label_sources(areas, mode)) == set(
+                get_merged_llm_types(areas, mode)
+            ), f"{mode} / {areas}"

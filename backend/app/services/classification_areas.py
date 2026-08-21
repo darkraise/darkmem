@@ -207,6 +207,39 @@ SIMPLE_NORMALIZATION: dict[str, str] = {
 }
 
 
+def get_label_sources(
+    enabled_areas: list[str] | None = None, mode: str = "simple"
+) -> dict[str, str | None]:
+    """Which area each label in the merged space came from.
+
+    ``None`` means no area is responsible: the ``fact`` fallback, and every
+    label in simple mode, where the vocabulary is fixed and the enabled areas
+    are not read at all.
+
+    Deliberately mirrors ``get_merged_llm_types``' loop rather than being
+    derived from its output, because the answer depends on the merge *order* --
+    two areas can define the same type name and the later one wins the
+    description, so it must also win the attribution. A settings surface that
+    credits the wrong area for a label is telling the operator that unticking
+    the wrong box will remove it. ``test_classification_areas`` asserts the two
+    functions agree on their key set.
+    """
+    if mode == "simple":
+        return {name: None for name in SIMPLE_TYPES}
+
+    if enabled_areas is None:
+        enabled_areas = ["general"]
+
+    sources: dict[str, str | None] = {"fact": None}
+    for area_key in enabled_areas:
+        area = AREAS.get(area_key)
+        if not area:
+            continue
+        for name in area.llm_types:
+            sources[name] = area_key
+    return sources
+
+
 def get_merged_llm_types(enabled_areas: list[str] | None = None, mode: str = "simple") -> dict[str, str]:
     """Merge LLM type descriptions from all enabled areas. Always includes 'fact'."""
     if mode == "simple":

@@ -305,6 +305,11 @@ class ClassificationLabel(BaseModel):
 
     name: str
     description: str
+    # The area that contributed it, or null when no area is responsible: the
+    # `fact` fallback, and every label in simple mode. Served rather than
+    # intersected client-side because the answer depends on the merge order —
+    # two areas may define the same name and the later one wins.
+    area: str | None = None
 
 
 class GraphChannelInfo(BaseModel):
@@ -425,11 +430,16 @@ def _flags_response(
     the second copy is where a newly added field goes missing on exactly one of
     them — a PUT that answers with a stale shape reads as a failed save.
     """
-    from app.services.classification_areas import AREAS, get_merged_llm_types
+    from app.services.classification_areas import (
+        AREAS,
+        get_label_sources,
+        get_merged_llm_types,
+    )
 
     mode = str(flags.get("classification_mode", "simple"))
     areas = list(flags.get("classification_areas", []) or [])
     labels = get_merged_llm_types(areas, mode)
+    label_areas = get_label_sources(areas, mode)
 
     rank_arms = [
         RankArmInfo(
@@ -460,7 +470,9 @@ def _flags_response(
         rank_arms=rank_arms,
         graph_channels=graph_channels,
         classification_labels=[
-            ClassificationLabel(name=name, description=desc)
+            ClassificationLabel(
+                name=name, description=desc, area=label_areas.get(name)
+            )
             for name, desc in sorted(labels.items())
         ],
         # Derived from the one rule that decides it, not restated: ask the
