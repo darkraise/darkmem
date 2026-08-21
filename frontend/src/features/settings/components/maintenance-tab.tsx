@@ -168,7 +168,7 @@ export function MaintenanceTab() {
           grid left a ragged bottom edge and a hole where the fourth wrapped;
           and the other two Settings tabs are stacks, so this was the last
           column layout on the page. */}
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <OpCard
           icon={RefreshCw}
           title="Re-embed"
