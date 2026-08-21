@@ -506,6 +506,9 @@ const DEMO_LABELS: ClassificationLabel[] = MEMORY_TYPES.map((name) => ({
   description:
     "A simple-mode label. On a live instance its description is served from " +
     "the backend's own vocabulary — demo mode has no backend to read it from.",
+  // Simple mode credits no area, because none is responsible for the fixed
+  // vocabulary.
+  area: null,
 }))
 
 /** The demo instance's classification areas. Real mode reads the live set from

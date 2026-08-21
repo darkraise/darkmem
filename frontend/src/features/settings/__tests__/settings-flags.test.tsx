@@ -332,12 +332,26 @@ describe("FlagsTab — the classification label space", () => {
     }
   })
 
-  it("says outright that the area toggles are inert in simple mode", () => {
+  it("says outright that the areas are not read in simple mode", () => {
     // The merge function returns SIMPLE_TYPES and never reads enabled_areas,
     // so eleven checkboxes sit there changing nothing. An operator's only
     // other way to learn that is to notice the label space never moves.
     renderTab()
-    expect(screen.getByText(/Inert in/)).toBeInTheDocument()
+    expect(screen.getByText(/not read at\s+all/)).toBeInTheDocument()
+    // Every area row says it, not just the section — relative to the rendered
+    // area count so the demo fixture can grow without breaking this.
+    const areaRows = screen.getAllByText("not read in simple mode").length
+    expect(areaRows).toBeGreaterThan(0)
+    expect(areaRows).toBe(
+      useDemoStore.getState().flags.classification_areas.length,
+    )
+  })
+
+  it("still lets an area be set up before the mode is flipped", () => {
+    // The value is durable and applies the moment the mode changes, so the
+    // control stores a real preference even while it is not being read.
+    renderTab()
+    expect(screen.getByLabelText("technical")).not.toBeDisabled()
   })
 })
 

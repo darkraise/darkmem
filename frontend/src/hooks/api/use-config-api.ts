@@ -108,6 +108,9 @@ export interface GraphChannelInfo {
 export interface ClassificationLabel {
   name: string
   description: string
+  /** The area that contributed it; null for the `fact` fallback and for every
+   *  label in simple mode, where no area is responsible. */
+  area: string | null
 }
 
 export interface FeatureFlags {

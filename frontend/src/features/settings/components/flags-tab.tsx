@@ -1,5 +1,10 @@
 import { useState, type ReactNode } from "react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "darkraise-ui/components/card"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import {
   SegmentGroup,
@@ -17,7 +22,7 @@ import {
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip, NumberField } from "@/components/darkmem"
-import { ModuleSurface } from "@/features/activity/components/module-surface"
+import { SurfaceStateChip } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
 import type {
   DemoBehavioralFlag,
@@ -219,19 +224,16 @@ function ArmRow({
   )
 }
 
-/** One titled block of controls.
+/** One card of controls.
  *
- *  The tab carries eight of these now, and the previous separator — a dashed
- *  hairline with 12px of padding — did not read as a break at that count: the
- *  sections ran together into one list and the headings, at the same muted
- *  micro-size as every `(coded default)` tag on the page, did not stand out
- *  from the rows they titled. A solid rule with real space above it, and a
- *  heading with weight and tracking, separate them. Dashed is reserved on this
- *  page for provisional states (an inactive arm, an unavailable surface), so
- *  spending it on ordinary structure also blunted that signal.
+ *  Each section is its own card rather than a band inside one long surface.
+ *  Eight bands in a single card read as one list however they are ruled: the
+ *  separator has to compete with the row borders inside every band, and it
+ *  loses. A card boundary does not compete — it is the same affordance the
+ *  rest of the app already uses to say "this is a distinct thing".
  *
- *  `meta` is the section's own one-line summary, right-aligned to give each
- *  block a second anchor for scanning. */
+ *  `meta` is the section's own one-line summary, right-aligned so each card
+ *  carries a second anchor for scanning. */
 function Section({
   name,
   help,
@@ -244,8 +246,8 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section className="border-border/60 mt-3 flex flex-col gap-2.5 border-t pt-5 first:mt-0 first:border-t-0 first:pt-0">
-      <div className="flex flex-wrap items-center gap-2">
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-border bg-muted/30 flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
         <h3 className="text-foreground font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
           {name}
         </h3>
@@ -256,9 +258,9 @@ function Section({
             {meta}
           </span>
         )}
-      </div>
-      <div className="flex flex-col gap-2">{children}</div>
-    </section>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2 p-4">{children}</CardContent>
+    </Card>
   )
 }
 
@@ -541,66 +543,58 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
 /** The classification tuning that rides the same `feature_flags` row as the
  *  arms without gating a pipeline phase: which label vocabularies the
  *  classifier may draw from, and how large a label space it works in. */
-/** The labels the classifier may actually emit right now.
- *
- *  Rendered because the two controls above it describe the label space only
- *  indirectly — "expanded" and eleven area names do not tell an operator what
- *  the classifier will put in `classified_type`. The list is the backend's own
- *  `get_merged_llm_types` answer, so it cannot drift from what the pipeline
- *  hands the model. */
-function LabelSpace({ binding }: { binding: FlagsTabBinding }) {
-  const labels = binding.classificationLabels
+/** One label the classifier may emit, with its description on hover. */
+function LabelChip({
+  label,
+  muted = false,
+}: {
+  label: { name: string; description?: string }
+  muted?: boolean
+}) {
   return (
-    <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <span className="font-mono text-sm font-semibold whitespace-nowrap">
-          label space
-        </span>
-        <HelpTip label="About the label space">
-          Exactly the values the classifier may write to a memory's
-          `classified_type`, resolved by the backend's own merge function
-          rather than re-derived here. In simple mode this is the fixed
-          nine-value vocabulary; in expanded mode it is `fact` plus the union
-          of every enabled area's types. Anything the model emits outside this
-          set is normalised back into it.
-        </HelpTip>
-        <span className="flex-1" />
-        <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
-          {labels.length} label{labels.length === 1 ? "" : "s"} ·{" "}
-          {binding.classificationMode}
-        </span>
-      </div>
-      {labels.length === 0 ? (
-        <p className="text-muted-foreground text-sm italic">
-          Not loaded — the label space is served with the feature flags.
-        </p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {labels.map((label) => (
-            <TooltipProvider key={label.name} delayDuration={150}>
-              <Tooltip>
-                <TooltipTrigger
-                  aria-label={`About the ${label.name} label`}
-                  className="border-border bg-muted/40 text-foreground/90 cursor-help rounded-full border px-2 py-0.5 font-mono text-[11px] whitespace-nowrap"
-                >
-                  {label.name}
-                </TooltipTrigger>
-                <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
-                  {label.description}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ))}
-        </div>
-      )}
-    </div>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger
+          aria-label={`About the ${label.name} label`}
+          className={cn(
+            "cursor-help rounded-full border px-2 py-0.5 font-mono text-[11px] whitespace-nowrap",
+            muted
+              ? "border-border/60 text-muted-foreground border-dashed"
+              : "border-border bg-muted/40 text-foreground/90",
+          )}
+        >
+          {label.name}
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm text-sm leading-relaxed font-normal normal-case">
+          {label.description ??
+            "Served with its description once this area is enabled."}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
+/** Mode, areas and the resulting label space, rendered as the one chain they
+ *  actually are.
+ *
+ *  They were three sibling blocks: a toggle, a flat list of labels, and a grid
+ *  of checkboxes. Nothing on the page said that the mode decides whether the
+ *  areas are read at all, or that each area is what puts particular labels in
+ *  the list — an operator could tick Security and have no way to see which
+ *  three labels that added. Now the area IS the row that carries its labels,
+ *  and an area that is off shows what enabling it would add, so the effect of
+ *  a checkbox is visible before it is clicked rather than after.
+ *
+ *  Attribution comes from the backend, which replays its own merge to produce
+ *  it: two areas may define the same label name and the later one wins, so
+ *  intersecting client-side would credit the wrong area — and crediting the
+ *  wrong area tells the operator that unticking the wrong box removes it. */
 function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
   const selected = new Set(binding.classificationAreas)
   const savingMode = binding.isSaving(SAVING_CLASSIFICATION_MODE)
   const savingAreas = binding.isSaving(SAVING_CLASSIFICATION_AREAS)
+  const simple = binding.classificationMode === "simple"
+
   const toggle = (key: string, on: boolean) => {
     const next = on
       ? [...binding.classificationAreas, key]
@@ -608,23 +602,32 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
     binding.setClassificationAreas(next)
   }
 
+  // Labels no area owns: the `fact` fallback, and the whole fixed vocabulary
+  // in simple mode.
+  const unowned = binding.classificationLabels.filter((l) => l.area === null)
+  const byArea = new Map<string, typeof binding.classificationLabels>()
+  for (const label of binding.classificationLabels) {
+    if (label.area === null) continue
+    byArea.set(label.area, [...(byArea.get(label.area) ?? []), label])
+  }
+
   return (
     <Section
       name="classification"
-      help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). These two knobs shape the label space it works in, and both live in the same feature_flags row as the arms above."
-      meta={`${binding.classificationMode} · ${binding.classificationAreas.length} of ${binding.availableAreas.length} areas`}
+      help="Classification always runs — there is no on/off flag, only which model-backed classifier serves the purpose (set on the LLM tab via classifier_kind). What these controls decide is the label space: the exact set of values the classifier may write to a memory's classified_type. Anything the model emits outside that set is normalised back into it."
+      meta={`${binding.classificationMode} · ${binding.classificationLabels.length} labels`}
     >
       <div className="border-border bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
         <span className="font-mono text-sm font-semibold whitespace-nowrap">
           classification_mode
         </span>
         <HelpTip label="About classification_mode">
-          `simple` keeps the seven-type vocabulary that extraction already
-          emits, which lets the pipeline fold classification into the single
+          `simple` keeps the seven-type vocabulary extraction already emits,
+          which lets the pipeline fold classification into the single
           extraction call instead of a second LLM round-trip. `expanded` opens
-          the per-area label space below and forces two concurrent calls. The
-          mode also changes the extraction prompt, so re-extracting the same
-          content under a different mode is not bit-identical.
+          the per-area label space and forces two concurrent calls. The mode
+          also changes the extraction prompt, so re-extracting the same content
+          under a different mode is not bit-identical.
         </HelpTip>
         <span className="flex-1" />
         <SavingMark saving={savingMode} />
@@ -642,65 +645,132 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
         </SegmentGroup>
       </div>
 
-      <LabelSpace binding={binding} />
-      <div className="border-border bg-card flex flex-col gap-2 rounded-md border px-3 py-2.5">
+      {/* The one sentence that ties the three controls together. */}
+      <p className="text-muted-foreground pl-0.5 text-sm">
+        {simple ? (
+          <>
+            In <span className="font-mono">simple</span> mode the label space is{" "}
+            <b className="text-foreground font-semibold">fixed</b> and the areas
+            below are <b className="text-warning font-semibold">not read at
+            all</b> — ticking them changes nothing until the mode is expanded.
+          </>
+        ) : (
+          <>
+            In <span className="font-mono">expanded</span> mode the label space
+            is <span className="font-mono">fact</span> plus the union of every
+            enabled area below. Each area contributes the labels shown on its
+            row.
+          </>
+        )}
+      </p>
+
+      <div className="border-border bg-card flex flex-col gap-2.5 rounded-md border px-3 py-2.5">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="font-mono text-sm font-semibold whitespace-nowrap">
-            classification_areas
+            label space
           </span>
-          <HelpTip label="About classification_areas">
-            Which label vocabularies the classifier may draw from. `general` is
-            the always-on fallback and the API adds it back server-side if you
-            clear it, so it is fixed on here rather than allowed to appear
-            cleared and then silently return.
+          <HelpTip label="About the label space">
+            Exactly the values the classifier may write to a memory's
+            `classified_type`, resolved by the backend's own merge function
+            rather than re-derived here. Note nothing downstream filters or
+            ranks on this column today — it is served on the memory detail
+            view.
           </HelpTip>
           <span className="flex-1" />
           <SavingMark saving={savingAreas} />
           <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+            {binding.classificationLabels.length} label
+            {binding.classificationLabels.length === 1 ? "" : "s"} ·{" "}
             {binding.classificationAreas.length} of{" "}
-            {binding.availableAreas.length} enabled
+            {binding.availableAreas.length} areas enabled
           </span>
         </div>
-        {!binding.classificationAreasApply && (
-          // Not a caveat in a tooltip: in simple mode the merge function
-          // returns the fixed vocabulary and never reads these toggles at all,
-          // so eleven checkboxes sit here changing nothing. Saying it once, in
-          // the open, beats an operator discovering it by watching the label
-          // space above refuse to move.
-          <p className="text-warning text-sm">
-            Inert in <span className="font-mono">simple</span> mode — the label
-            space is the fixed nine-value vocabulary and these toggles do not
-            change it. They take effect in{" "}
-            <span className="font-mono">expanded</span> mode.
-          </p>
+
+        {unowned.length > 0 && (
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-muted-foreground w-32 shrink-0 font-mono text-[10px] tracking-wide uppercase">
+              {simple ? "fixed vocabulary" : "always"}
+            </span>
+            <div className="flex flex-1 flex-wrap gap-1.5">
+              {unowned.map((label) => (
+                <LabelChip key={label.name} label={label} />
+              ))}
+            </div>
+          </div>
         )}
-        <div className="grid gap-x-4 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3">
-          {binding.availableAreas.map((area) => {
-            const locked = area.key === "general"
-            return (
+
+        {binding.availableAreas.map((area) => {
+          const locked = area.key === "general"
+          const on = selected.has(area.key)
+          const contributed = byArea.get(area.key) ?? []
+          // An area that is off has contributed nothing, so its own type list
+          // is the preview. It is what enabling it *would* add — subject to a
+          // name another enabled area already owns.
+          const preview = area.types.map((name) => ({ name }))
+          return (
+            <div
+              key={area.key}
+              className="border-border/50 flex flex-wrap items-baseline gap-2 border-t border-dashed pt-2"
+            >
               <label
-                key={area.key}
-                className="flex items-center gap-2 text-sm"
+                className="flex w-32 shrink-0 items-center gap-2 text-sm"
                 htmlFor={`area-${area.key}`}
               >
                 <Checkbox
                   id={`area-${area.key}`}
-                  checked={selected.has(area.key)}
+                  checked={on}
+                  // Deliberately still writable in simple mode. The value is
+                  // durable and takes effect the moment the mode flips, so
+                  // setting areas up first is a real workflow; disabling the
+                  // box would refuse a preference it is perfectly able to
+                  // store. The row says it is not read yet — that is the
+                  // honest half, not taking the control away.
                   disabled={locked || savingAreas}
                   aria-label={area.key}
                   onCheckedChange={(c) => toggle(area.key, c === true)}
                 />
-                <span className={cn(locked && "text-muted-foreground")}>
+                <span
+                  className={cn(
+                    "truncate",
+                    (!on || simple) && "text-muted-foreground",
+                  )}
+                >
                   {area.display_name}
                 </span>
-                <HelpTip label={`About the ${area.display_name} area`}>
-                  {locked && "Always on — the base area. "}
-                  Types: {area.types.join(", ")}.
-                </HelpTip>
               </label>
-            )
-          })}
-        </div>
+              <div className="flex flex-1 flex-wrap items-baseline gap-1.5">
+                {simple ? (
+                  <span className="text-muted-foreground text-sm italic">
+                    not read in simple mode
+                  </span>
+                ) : on ? (
+                  contributed.length > 0 ? (
+                    contributed.map((label) => (
+                      <LabelChip key={label.name} label={label} />
+                    ))
+                  ) : (
+                    <span className="text-muted-foreground text-sm italic">
+                      contributes nothing — every name it defines is already
+                      owned by another enabled area
+                    </span>
+                  )
+                ) : (
+                  <>
+                    <span className="text-muted-foreground font-mono text-[10px]">
+                      would add
+                    </span>
+                    {preview.map((label) => (
+                      <LabelChip key={label.name} label={label} muted />
+                    ))}
+                  </>
+                )}
+              </div>
+              <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[10px]">
+                {simple ? "—" : on ? `+${contributed.length}` : area.types.length}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </Section>
   )
@@ -745,11 +815,17 @@ export function FlagsTab() {
           possible, but is never quietly assumed proven.
         </HelpTip>
       </div>
-      <ModuleSurface
-        title="Flags"
-        state="populated"
-        meta={`${activeArms} of ${allArms.length} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
-      >
+      <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
+        <span className="text-sm font-semibold">Flags</span>
+        <span className="text-muted-foreground font-mono text-sm">
+          {`${activeArms} of ${allArms.length} arms active · ${flagsOn} of ${binding.behavioralFlags.length} feature flags on · ${binding.overridesWritten} overrides written`}
+        </span>
+        <span className="ml-auto">
+          <SurfaceStateChip state="populated" />
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-4">
         <Section
           name="rank_fusion_factor arms"
           help="Per-row multipliers applied to a row's fused rrf_score after Reciprocal Rank Fusion. Each is a no-op at exactly 0 — the factor is 1, so the arm is built and wired but moves nothing. Each flips only on a measured retrieval win reported with its latency and token twin, recorded in the gate ledger's arm activation log, never by intuition."
@@ -889,7 +965,7 @@ export function FlagsTab() {
         <RepoAllowlistSection binding={binding} />
 
         <CorroborationSection binding={binding} />
-      </ModuleSurface>
+      </div>
     </div>
   )
 }
