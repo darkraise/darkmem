@@ -8,12 +8,16 @@ import {
   ShieldCheck,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "darkraise-ui/components/card"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { cn } from "darkraise-ui/lib"
 import { HelpTip } from "@/components/darkmem"
 import {
-  ModuleSurface,
   SurfaceStateChip,
 } from "@/features/activity/components/module-surface"
 import {
@@ -69,6 +73,17 @@ function UnavailableRow({ k, note }: { k: string; note: string }) {
   )
 }
 
+/** One card of security facts or controls.
+ *
+ *  Mirrors the Flags tab's `Section`: a library `Card` with a one-row header
+ *  carrying the title, its help tip and a status tag, and the body below the
+ *  divider. These were `div`s nested inside one outer surface, which made five
+ *  distinct subjects — auth, tokens, the TOFU claim, the LAN posture, the key
+ *  credential — read as one long panel.
+ *
+ *  `dormant` keeps its dashed treatment for a card describing something not
+ *  wired; the border is already the inset step, so a dormant card reads softer
+ *  still rather than louder. */
 function CardShell({
   icon: Icon,
   title,
@@ -89,33 +104,39 @@ function CardShell({
   children: React.ReactNode
 }) {
   return (
-    <div
-      className={cn(
-        "border-inset bg-card flex flex-col gap-2.5 rounded-lg border p-3.5",
-        dormant && "bg-muted/10 border-dashed",
-        className,
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
-        <span
+    <Card className={cn("gap-0 py-0", dormant && "border-dashed", className)}>
+      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
+        <Icon aria-hidden className="text-muted-foreground h-4 w-4 shrink-0" />
+        <h3
           className={cn(
-            "text-sm font-semibold",
+            "min-w-0 truncate text-sm font-semibold",
             dormant && "text-muted-foreground",
           )}
         >
           {title}
-        </span>
-        {help && <HelpTip label={`About ${title}`}>{help}</HelpTip>}
+        </h3>
+        {help && (
+          <span className="shrink-0">
+            <HelpTip label={`About ${title}`}>{help}</HelpTip>
+          </span>
+        )}
         {chip}
+        <span className="flex-1" />
         {tag && (
-          <span className="text-muted-foreground border-muted-foreground/60 ml-auto rounded-full border border-dashed px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
+          <span className="text-muted-foreground border-muted-foreground/60 shrink-0 rounded-full border border-dashed px-2.5 py-0.5 font-mono text-[10px] tracking-wide uppercase whitespace-nowrap">
             {tag}
           </span>
         )}
-      </div>
-      {children}
-    </div>
+      </CardHeader>
+      <CardContent
+        className={cn(
+          "flex flex-col gap-2.5 p-4",
+          dormant && "bg-muted/10",
+        )}
+      >
+        {children}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -146,6 +167,19 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
   const [next, setNext] = useState("")
   const [confirm, setConfirm] = useState("")
   const filled = current !== "" && next.length >= 8 && next === confirm
+
+  // Why the button will not submit, said out loud. The three rules were
+  // enforced silently: a 5-character password with a mismatched confirmation
+  // greyed the button out and explained nothing, leaving the operator to
+  // guess which of the fields was the problem. Reported only once a field has
+  // been touched, so an untouched form is not scolded.
+  const tooShort = next !== "" && next.length < 8
+  const mismatch = confirm !== "" && next !== confirm
+  const blockers = [
+    tooShort && "the new password must be at least 8 characters",
+    mismatch && "the confirmation does not match",
+    current === "" && next !== "" && "the current password is required",
+  ].filter(Boolean) as string[]
 
   return (
     <CardShell icon={ShieldCheck} title="Auth">
@@ -233,6 +267,11 @@ function AuthCard({ binding }: { binding: SecurityTabBinding }) {
           setConfirm("")
         }}
       />
+      {blockers.length > 0 && (
+        <p className="text-muted-foreground text-sm">
+          Not ready — {blockers.join("; ")}.
+        </p>
+      )}
       {binding.changePasswordError && (
         <p className="text-destructive text-sm">
           {binding.changePasswordError}
@@ -580,7 +619,18 @@ function ApiKeyCard() {
                   variant="outline"
                   className="ml-auto"
                   disabled={revokeKey.isPending}
-                  onClick={() => revokeKey.mutate(key.id)}
+                  onClick={() =>
+                    revokeKey.mutate(key.id, {
+                      // "Copy this now — it is never shown again" is the wrong
+                      // thing to keep saying about a credential that has just
+                      // been revoked. Drop the panel when its own key dies;
+                      // another key's revocation leaves it alone.
+                      onSuccess: () =>
+                        setIssued((shown) =>
+                          shown?.id === key.id ? null : shown,
+                        ),
+                    })
+                  }
                 >
                   Revoke
                 </Button>
@@ -635,19 +685,25 @@ export function SecurityTab() {
           thresholds — are live reads.
         </HelpTip>
       </div>
-      <ModuleSurface
-        title="Security"
-        state={binding.isLoading ? "empty" : "populated"}
-        meta={blocklistedMeta + lockoutsMeta || undefined}
-      >
-        <div className="grid gap-3.5 sm:grid-cols-2">
-          <AuthCard binding={binding} />
-          <TokensCard binding={binding} />
-          <TofuCard binding={binding} />
-          <LanTrustCard binding={binding} />
-          <ApiKeyCard />
-        </div>
-      </ModuleSurface>
+      <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 rounded-lg border px-4 py-2.5">
+        <span className="text-sm font-semibold">Security</span>
+        {(blocklistedMeta + lockoutsMeta) && (
+          <span className="text-muted-foreground font-mono text-sm">
+            {blocklistedMeta + lockoutsMeta}
+          </span>
+        )}
+        <span className="ml-auto">
+          <SurfaceStateChip state={binding.isLoading ? "empty" : "populated"} />
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <AuthCard binding={binding} />
+        <TokensCard binding={binding} />
+        <TofuCard binding={binding} />
+        <LanTrustCard binding={binding} />
+        <ApiKeyCard />
+      </div>
     </div>
   )
 }

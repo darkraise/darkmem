@@ -95,6 +95,10 @@ export function useSecurityTabBinding(): SecurityTabBinding {
     mutationFn: (input) =>
       apiFetch<{ ok: boolean }>("/auth/change-password", {
         method: "POST",
+        // A 401 here means the CURRENT password was wrong, not that the
+        // session died. Under the default handling it signed the operator out
+        // over a typo and discarded the server's own message.
+        on401: "surface",
         body: JSON.stringify({
           current_password: input.currentPassword,
           new_password: input.newPassword,

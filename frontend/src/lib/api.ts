@@ -42,21 +42,39 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiFetchOptions extends RequestInit {
+  /** What a 401 from this endpoint means.
+   *
+   *  `"redirect"` (the default) is right almost everywhere: a 401 says the
+   *  session is gone, so the app signs out and sends the caller to /login.
+   *
+   *  `"surface"` is for the endpoints where a 401 is the *answer to what was
+   *  submitted* and says nothing about the session. Today that is exactly
+   *  `POST /auth/change-password`, which returns 401 for a wrong CURRENT
+   *  password. Under the default it signed the operator out over a typo and
+   *  threw away the server's own "Current password is incorrect" — the
+   *  session was valid throughout and the password was unchanged. With
+   *  `"surface"` the response falls through to the normal error path, so the
+   *  caller gets the real message and stays signed in. */
+  on401?: "redirect" | "surface"
+}
+
 export async function apiFetch<T>(
   path: string,
-  options: RequestInit = {},
+  options: ApiFetchOptions = {},
 ): Promise<T> {
+  const { on401 = "redirect", ...init } = options
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...(init.headers as Record<string, string>),
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...init,
     headers,
     credentials: "include",
   })
-  if (response.status === 401) {
+  if (response.status === 401 && on401 === "redirect") {
     handleUnauthorized()
     throw new ApiError("Unauthorized", 401)
   }
