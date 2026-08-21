@@ -285,16 +285,28 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(graph("ppr_enabled")?.source).toBe("default")
   })
 
-  it("setGraphFlag PUTs to /config/feature-flags, never the demo store", async () => {
+  it("saves a whole section in one PUT to /config/feature-flags", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.setGraphFlag("ppr_enabled", true)
+    result.current.saveFlags("graph", { ppr_enabled: true, w_ppr: 0.3 })
 
-    await waitFor(() => expect(putBody("/config/feature-flags")).toEqual({
-      ppr_enabled: true,
-    }))
+    // One request for the whole section, not one per control.
+    await waitFor(() =>
+      expect(putBody("/config/feature-flags")).toEqual({
+        ppr_enabled: true,
+        w_ppr: 0.3,
+      }),
+    )
+    const puts = vi
+      .mocked(apiFetch)
+      .mock.calls.filter(
+        ([path, init]) =>
+          path === "/config/feature-flags" &&
+          (init as RequestInit | undefined)?.method === "PUT",
+      )
+    expect(puts).toHaveLength(1)
   })
 
   it("carries the ladder's committed/effective split, not just the number typed", async () => {
@@ -319,24 +331,27 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(result.current.corroboration.measurementTask).toBe("T2.40")
   })
 
-  it("saveCorroboration PUTs one threshold to /config/verification-ladder", async () => {
+  it("saveLadder PUTs every edited threshold in one request", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.saveCorroboration("n_default", 5)
+    result.current.saveLadder({ n_default: 5, time_gap_days: 14 })
 
     await waitFor(() =>
-      expect(putBody("/config/verification-ladder")).toEqual({ n_default: 5 }),
+      expect(putBody("/config/verification-ladder")).toEqual({
+        n_default: 5,
+        time_gap_days: 14,
+      }),
     )
   })
 
-  it("saveCorroboration(null) clears a commitment back to its floor", async () => {
+  it("a null in the ladder patch clears that commitment back to its floor", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.saveCorroboration("time_gap_days", null)
+    result.current.saveLadder({ time_gap_days: null })
 
     await waitFor(() =>
       expect(putBody("/config/verification-ladder")).toEqual({
@@ -361,16 +376,20 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(tunable("entity_cache_ttl_minutes")?.max).toBe(1440)
   })
 
-  it("saveTunable PUTs a single-key patch to /config/feature-flags", async () => {
+  it("saves every edited tunable in one request", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.saveTunable("pipeline_concurrency", 8)
+    result.current.saveFlags("tunables", {
+      pipeline_concurrency: 8,
+      embedding_batch_size: 40,
+    })
 
     await waitFor(() =>
       expect(putBody("/config/feature-flags")).toEqual({
         pipeline_concurrency: 8,
+        embedding_batch_size: 40,
       }),
     )
   })
@@ -404,7 +423,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(result.current.classificationAreasApply).toBe(false)
   })
 
-  it("reports a write as in flight only for the key being written", async () => {
+  it("reports a write as in flight only for the section being written", async () => {
     let release: (v: unknown) => void = () => {}
     const pending = new Promise((r) => {
       release = r
@@ -422,19 +441,19 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
 
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(result.current.isSaving("w_heat")).toBe(false)
+    expect(result.current.isSaving("arms")).toBe(false)
 
-    act(() => result.current.saveArm("w_heat", 0.5))
-    await waitFor(() => expect(result.current.isSaving("w_heat")).toBe(true))
-    // One shared mutation object serves every control, so its own isPending
-    // would light up the whole tab. Only the written key may report.
-    expect(result.current.isSaving("w_recency")).toBe(false)
+    act(() => result.current.saveFlags("arms", { w_heat: 0.5 }))
+    await waitFor(() => expect(result.current.isSaving("arms")).toBe(true))
+    // One shared mutation object serves every section, so its own isPending
+    // would light up the whole tab. Only the saving section may report.
+    expect(result.current.isSaving("tunables")).toBe(false)
 
     await act(async () => {
       release(null)
       await pending
     })
-    await waitFor(() => expect(result.current.isSaving("w_heat")).toBe(false))
+    await waitFor(() => expect(result.current.isSaving("arms")).toBe(false))
   })
 
   it("stops reporting in flight when the write fails", async () => {
@@ -454,9 +473,13 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    act(() => result.current.setClassificationMode("expanded"))
+    act(() =>
+      result.current.saveFlags("classification", {
+        classification_mode: "expanded",
+      }),
+    )
     await waitFor(() =>
-      expect(result.current.isSaving("classification_mode")).toBe(true),
+      expect(result.current.isSaving("classification")).toBe(true),
     )
 
     // A spinner that never stops is worse than no spinner: it reads as a save
@@ -466,7 +489,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
       await failing.catch(() => {})
     })
     await waitFor(() =>
-      expect(result.current.isSaving("classification_mode")).toBe(false),
+      expect(result.current.isSaving("classification")).toBe(false),
     )
   })
 
@@ -482,24 +505,19 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(result.current.contextBoost.desc).toMatch(/MATCH/)
   })
 
-  it("saveArm PUTs a single-key patch to /config/feature-flags, never the demo store", async () => {
+  it("saveFlags PUTs the section patch to /config/feature-flags, never the demo store", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.saveArm("w_importance", 0.5)
+    result.current.saveFlags("arms", { w_importance: 0.5, w_heat: 0.2 })
 
     await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/config/feature-flags",
-        expect.objectContaining({ method: "PUT" }),
-      ),
+      expect(putBody("/config/feature-flags")).toEqual({
+        w_importance: 0.5,
+        w_heat: 0.2,
+      }),
     )
-    const call = vi
-      .mocked(apiFetch)
-      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT")
-    const body = JSON.parse((call![1] as RequestInit).body as string)
-    expect(body).toEqual({ w_importance: 0.5 })
   })
 
   it("saveAllowlist PUTs to /config/repo-allowlist", async () => {
