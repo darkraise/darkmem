@@ -8,7 +8,7 @@ import {
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
 import { Pencil, Plug, ShieldCheck, Trash2 } from "lucide-react"
-import { HelpTip } from "@/components/darkmem"
+import { HelpTip, IconButton } from "@/components/darkmem"
 import { apiKindLabel } from "@/features/setup/api-kinds"
 import type { LlmLayout } from "@/features/settings/use-llm-layout"
 import {
@@ -119,15 +119,13 @@ export function ProviderItem({
         {probe.isPending ? "Testing…" : "Test connection"}
       </Button>
       <ProbeResult result={probe.data} />
-      <Button
+      <IconButton
+        icon={Pencil}
+        label={`Edit ${provider.name}`}
         variant="outline"
         className="border-primary/60 text-primary ml-auto"
-        aria-label={`Edit ${provider.name}`}
         onClick={onEdit}
-      >
-        <Pencil aria-hidden className="mr-1 h-3.5 w-3.5" />
-        Edit
-      </Button>
+      />
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="inline-flex">

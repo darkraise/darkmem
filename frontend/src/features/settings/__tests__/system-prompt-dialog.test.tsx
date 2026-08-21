@@ -43,7 +43,7 @@ async function openAndWait() {
   const user = userEvent.setup()
   renderDialog()
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument(),
+    expect(screen.getByRole("button", { name: "Edit prompt" })).toBeInTheDocument(),
   )
   return user
 }
@@ -96,7 +96,7 @@ describe("SystemPromptDialog", () => {
     vi.mocked(apiFetch).mockResolvedValue(payload())
     const user = await openAndWait()
 
-    await user.click(screen.getByRole("button", { name: "Edit" }))
+    await user.click(screen.getByRole("button", { name: "Edit prompt" }))
     const field = screen.getByRole("textbox", {
       name: "extraction system prompt",
     })
@@ -120,7 +120,7 @@ describe("SystemPromptDialog", () => {
     )
     const user = await openAndWait()
 
-    await user.click(screen.getByRole("button", { name: "Edit" }))
+    await user.click(screen.getByRole("button", { name: "Edit prompt" }))
     await user.click(screen.getByRole("button", { name: /Reset to default/ }))
     await user.click(screen.getByRole("button", { name: "Save" }))
 
@@ -136,7 +136,7 @@ describe("SystemPromptDialog", () => {
     vi.mocked(apiFetch).mockResolvedValue(payload())
     const user = await openAndWait()
 
-    await user.click(screen.getByRole("button", { name: "Edit" }))
+    await user.click(screen.getByRole("button", { name: "Edit prompt" }))
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
   })
 
@@ -146,7 +146,7 @@ describe("SystemPromptDialog", () => {
     vi.mocked(apiFetch).mockResolvedValue(payload())
     const user = await openAndWait()
 
-    await user.click(screen.getByRole("button", { name: "Edit" }))
+    await user.click(screen.getByRole("button", { name: "Edit prompt" }))
     const field = screen.getByRole("textbox", {
       name: "extraction system prompt",
     })

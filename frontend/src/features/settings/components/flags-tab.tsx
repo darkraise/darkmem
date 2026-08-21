@@ -36,7 +36,7 @@ import {
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip, NumberField } from "@/components/darkmem"
+import { HelpTip, IconButton, NumberField } from "@/components/darkmem"
 import { SurfaceStateChip } from "@/features/activity/components/module-surface"
 import { armStatus, sourceLabel } from "@/demo/settings"
 import type {
@@ -409,15 +409,14 @@ function Section({
         {onEdit && (
           <>
             <SavingMark saving={saving ?? false} />
-            <Button
+            <IconButton
+              icon={Pencil}
+              label={`Edit ${name}`}
               variant="outline"
               className="shrink-0"
               disabled={saving}
               onClick={onEdit}
-            >
-              <Pencil aria-hidden className="mr-1 h-3 w-3" />
-              Edit
-            </Button>
+            />
           </>
         )}
       </CardHeader>
