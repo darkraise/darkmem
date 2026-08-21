@@ -156,7 +156,12 @@ export function useUpdateFeatureFlags() {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Paint the server's own answer rather than waiting for a refetch to
+      // tell us what we already know. Invalidating alone left a window where
+      // the control sat at its pre-save value, and if that refetch raced the
+      // write it painted the stale value back for good.
+      qc.setQueryData(["featureFlags"], data)
       qc.invalidateQueries({ queryKey: ["featureFlags"] })
       qc.invalidateQueries({ queryKey: ["pipeline"] })
     },

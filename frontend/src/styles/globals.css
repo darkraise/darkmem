@@ -243,6 +243,28 @@
   translate: none;
 }
 
+/* darkraise-ui NumberInput fix — a stepper inside a TriggerGroup paints its
+   hover state layer across the whole page.
+
+   The library gives every `.dr-number-input-stepper` a `::before` state layer
+   at `position:absolute; inset:0; z-index:-1`, and relies on the stepper's own
+   `position:relative` (plus `isolation:isolate`) to keep it inside the button.
+   The grouped variant then overrides `position: static` for its flex layout,
+   which leaves the overlay anchored to the nearest positioned ancestor
+   instead — here `.dr-sidebar-layout-content`, the entire content column.
+   Hovering an up/down arrow raised the layer's opacity and washed a
+   currentColor tint behind the whole Flags page.
+
+   `position: relative` is enough: the base rule already isolates the stepper,
+   and relative positioning does not disturb the `flex-1 / width:100% /
+   height:auto` sizing the grouped rule sets. Scoped to the grouped selector so
+   the ungrouped placement keeps whatever the library intends for it. Retire
+   this when the package fixes the grouped rule; it affects every NumberField
+   in the app, not only the Flags tab. */
+.dr-number-input-trigger-group .dr-number-input-stepper {
+  position: relative;
+}
+
 /* App chrome (owner review Pass 1). The page identity (back button + icon +
    title + description + actions) renders inside the layout header's
    `dr-layout-header-end` slot, which ships as a right-aligned ml-auto strip.

@@ -411,3 +411,85 @@ async def test_two_concurrent_ladder_clears_both_survive():
             text("DELETE FROM config WHERE key = :k"), {"k": LADDER_CONFIG_KEY}
         )
         await cleanup.commit()
+
+
+# ── a 200 must mean committed ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_flags_write_is_visible_to_an_independent_reader():
+    """The write is durable and readable on a connection that never saw it.
+
+    **This does not prove the race is closed and must not be read as doing so.**
+    It passes with the handler's `commit()` removed, because `ASGITransport`
+    awaits dependency teardown before returning the response -- so the reader
+    here always runs after the teardown commit, which is exactly the ordering a
+    real client over a socket is not guaranteed. Neither this harness nor the
+    shared-connection `client` fixture can express it.
+
+    The evidence for the race is a browser against a live server: the PUT
+    answered 200 with `classification_mode: expanded`, the invalidation refetch
+    that followed returned `simple`, and the database held `expanded` -- the
+    control read as dead while writing correctly every time. The handler's own
+    commit is what makes a 200 mean committed.
+
+    What this test is worth: it runs the real route against the real engine on
+    an independent session, so a write that never lands at all, or lands
+    malformed, still fails here.
+    """
+    from httpx import ASGITransport, AsyncClient
+    from tests.conftest import test_engine
+    from app.main import app
+    from app.database import get_session
+    from app.models.config import Config
+    from app.services.feature_flags import FEATURE_FLAGS_KEY
+
+    async def independent_session():
+        async with AsyncSession(test_engine) as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    app.dependency_overrides[get_session] = independent_session
+    try:
+        async with AsyncSession(test_engine) as setup:
+            await setup.execute(
+                text("DELETE FROM config WHERE key = :k"), {"k": FEATURE_FLAGS_KEY}
+            )
+            await setup.commit()
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://t") as http:
+            from app.api.auth import require_auth
+
+            app.dependency_overrides[require_auth] = lambda: {"sub": "admin"}
+            resp = await http.put(
+                "/api/v1/config/feature-flags",
+                json={"classification_mode": "expanded"},
+            )
+            assert resp.status_code == 200
+            assert resp.json()["classification_mode"] == "expanded"
+
+            # A different connection entirely, opened after the 200 landed.
+            async with AsyncSession(test_engine) as reader:
+                stored = (
+                    await reader.execute(
+                        select(Config).where(Config.key == FEATURE_FLAGS_KEY)
+                    )
+                ).scalar_one_or_none()
+                assert stored is not None, (
+                    "the write is not visible to an independent reader yet -- "
+                    "the response outran its own commit"
+                )
+                assert stored.value["classification_mode"] == "expanded"
+
+        async with AsyncSession(test_engine) as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM config WHERE key = :k"), {"k": FEATURE_FLAGS_KEY}
+            )
+            await cleanup.commit()
+    finally:
+        app.dependency_overrides.clear()
