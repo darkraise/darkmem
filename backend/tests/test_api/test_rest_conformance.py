@@ -96,6 +96,8 @@ EXPECTED_STATUS = {
     # darkmem request, matching the wizard probe's existing contract.
     ("POST", "/api/v1/config/llm-providers/probe-models"): 200,
     ("POST", "/api/v1/config/llm-providers/{name}/probe-models"): 200,
+    ("GET", "/api/v1/config/verification-ladder"): 200,
+    ("PUT", "/api/v1/config/verification-ladder"): 200,
     ("GET", "/api/v1/config/repo-allowlist"): 200,
     # T3.28: the auto_research operator surface. A PUT that updates a
     # config row in place, so 200 rather than 201 — nothing is created.

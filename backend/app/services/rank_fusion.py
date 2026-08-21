@@ -51,6 +51,38 @@ LIST_WEIGHT_KEYS: frozenset[str] = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class GraphChannel:
+    """One doc 07 §4 graph-augmentation producer, and the weight it fuses under.
+
+    Separate from ``RankArm`` for the same reason ``LIST_WEIGHT_KEYS`` is: these
+    name *producers of candidates*, so a channel's weight belongs to the fusion
+    rather than multiplying rows the graph never proposed. ``weight_flag`` is
+    None for a channel that injects context instead of a ranked list — there is
+    nothing to weight, and rendering a weight box beside it would invent one.
+
+    ``activation`` names the task that may turn the channel on, and lives here
+    for the reason ``RankArm.activation`` does (T1.57 ruling 1): a settings
+    surface must read the activation id off the backend's own registry rather
+    than carry a second copy that drifts the first time a task is renumbered.
+    """
+
+    name: str
+    flag: str
+    weight_flag: str | None
+    activation: str | None = None
+
+
+# All three land inert (doc 07 §4) and T2.50 measures them before any moves.
+GRAPH_CHANNELS: tuple[GraphChannel, ...] = (
+    GraphChannel("ppr", "ppr_enabled", "w_ppr", activation="T2.50"),
+    GraphChannel("dual_level", "dual_level_enabled", "w_dual", activation="T2.50"),
+    GraphChannel(
+        "community_injection", "community_injection_enabled", None, activation="T2.50"
+    ),
+)
+
+
 # ── class 1: ranked lists ────────────────────────────────────────────
 
 

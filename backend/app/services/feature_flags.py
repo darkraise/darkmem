@@ -23,15 +23,27 @@ async def get_feature_flags_dict(session: AsyncSession) -> dict:
 
 # The behavioral flags gate-ledger.md's "Standing conditional gates" table
 # (§ "Ranking-arm activation" / "Reranker on") holds to a measured win before
-# flipping away from their today-equivalent no-op. Community injection and
-# the w_ppr/w_dual arms are also named there but have no config row yet — only
-# list flags that actually exist in FEATURE_FLAGS_DEFAULTS belong here.
+# flipping away from their today-equivalent no-op. Every entry must exist in
+# FEATURE_FLAGS_DEFAULTS — a name with no row behind it badges a control that
+# is not there.
+#
+# The doc 07 §4 graph channels joined on 2026-08-21. The comment here used to
+# say they were "named there but have no config row yet", which was stale from
+# the day T2.32 landed all five in FEATURE_FLAGS_DEFAULTS; the Flags tab read
+# that same absence off the missing *response field* and rendered "no config
+# row exists yet" to operators. Missing field and missing row are not the same
+# absence, and only one of them was ever true.
 MEASURABLE_FLAGS: tuple[str, ...] = (
     "w_importance",
     "w_heat",
     "w_recency",
     "w_context_boost",
     "reranker_enabled",
+    "ppr_enabled",
+    "w_ppr",
+    "dual_level_enabled",
+    "w_dual",
+    "community_injection_enabled",
 )
 
 FLAG_MEASUREMENTS_KEY = "flag_measurements"
