@@ -247,14 +247,27 @@ function Section({
 }) {
   return (
     <Card className="gap-0 py-0">
-      <CardHeader className="border-border bg-muted/30 flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-        <h3 className="text-foreground font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
+      {/* One row, always. Wrapping put the summary under the title on the
+          longer names, which cost the header its scan line — the eye stops
+          finding the meta in the same place on every card. The title truncates
+          instead; nothing here is so long that its tail carries meaning the
+          help tip does not. */}
+      {/* `flex-row space-y-0` are not redundant: the library's `.dr-card-header`
+          is `flex flex-col space-y-1`, so setting only `flex-nowrap` left the
+          children stacked in a column — a header three lines tall that still
+          reported `display: flex` and `flex-wrap: nowrap`. */}
+      <CardHeader className="border-border bg-muted/30 flex flex-row flex-nowrap items-center gap-2 space-y-0 overflow-hidden border-b px-4 py-2.5">
+        <h3 className="text-foreground min-w-0 truncate font-mono text-[11px] font-semibold tracking-[0.14em] uppercase">
           {name}
         </h3>
-        {help && <HelpTip label={`About ${name}`}>{help}</HelpTip>}
+        {help && (
+          <span className="shrink-0">
+            <HelpTip label={`About ${name}`}>{help}</HelpTip>
+          </span>
+        )}
         <span className="flex-1" />
         {meta && (
-          <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
+          <span className="text-muted-foreground shrink-0 font-mono text-[10px] whitespace-nowrap">
             {meta}
           </span>
         )}
@@ -650,9 +663,12 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
         {simple ? (
           <>
             In <span className="font-mono">simple</span> mode the label space is{" "}
-            <b className="text-foreground font-semibold">fixed</b> and the areas
-            below are <b className="text-warning font-semibold">not read at
-            all</b> — ticking them changes nothing until the mode is expanded.
+            <b className="text-foreground font-semibold">fixed</b>: the
+            classification areas are{" "}
+            <b className="text-warning font-semibold">not read at all</b>, so
+            they are hidden here rather than offered as controls that do
+            nothing. Switch to <span className="font-mono">expanded</span> to
+            configure them.
           </>
         ) : (
           <>
@@ -680,9 +696,14 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           <SavingMark saving={savingAreas} />
           <span className="text-muted-foreground font-mono text-[10px] whitespace-nowrap">
             {binding.classificationLabels.length} label
-            {binding.classificationLabels.length === 1 ? "" : "s"} ·{" "}
-            {binding.classificationAreas.length} of{" "}
-            {binding.availableAreas.length} areas enabled
+            {binding.classificationLabels.length === 1 ? "" : "s"}
+            {!simple && (
+              <>
+                {" · "}
+                {binding.classificationAreas.length} of{" "}
+                {binding.availableAreas.length} areas enabled
+              </>
+            )}
           </span>
         </div>
 
@@ -699,7 +720,14 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
           </div>
         )}
 
-        {binding.availableAreas.map((area) => {
+        {/* Hidden in simple mode rather than rendered inert (owner ruling
+            2026-08-21). Eleven rows that cannot change the list above them are
+            noise, and every one of them repeating "not read in simple mode"
+            made the card longer the less it had to say. The mode line above
+            still names the feature and where it lives, so this is a control
+            that moved rather than one that vanished. */}
+        {!simple &&
+          binding.availableAreas.map((area) => {
           const locked = area.key === "general"
           const on = selected.has(area.key)
           const contributed = byArea.get(area.key) ?? []
@@ -719,31 +747,16 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
                 <Checkbox
                   id={`area-${area.key}`}
                   checked={on}
-                  // Deliberately still writable in simple mode. The value is
-                  // durable and takes effect the moment the mode flips, so
-                  // setting areas up first is a real workflow; disabling the
-                  // box would refuse a preference it is perfectly able to
-                  // store. The row says it is not read yet — that is the
-                  // honest half, not taking the control away.
                   disabled={locked || savingAreas}
                   aria-label={area.key}
                   onCheckedChange={(c) => toggle(area.key, c === true)}
                 />
-                <span
-                  className={cn(
-                    "truncate",
-                    (!on || simple) && "text-muted-foreground",
-                  )}
-                >
+                <span className={cn("truncate", !on && "text-muted-foreground")}>
                   {area.display_name}
                 </span>
               </label>
               <div className="flex flex-1 flex-wrap items-baseline gap-1.5">
-                {simple ? (
-                  <span className="text-muted-foreground text-sm italic">
-                    not read in simple mode
-                  </span>
-                ) : on ? (
+                {on ? (
                   contributed.length > 0 ? (
                     contributed.map((label) => (
                       <LabelChip key={label.name} label={label} />
@@ -766,7 +779,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
                 )}
               </div>
               <span className="text-muted-foreground w-10 shrink-0 text-right font-mono text-[10px]">
-                {simple ? "—" : on ? `+${contributed.length}` : area.types.length}
+                {on ? `+${contributed.length}` : area.types.length}
               </span>
             </div>
           )
@@ -870,7 +883,7 @@ export function FlagsTab() {
         </Section>
 
         <Section
-          name="graph augmentation — RRF list weights + *_enabled flags"
+          name="graph augmentation"
           help="Doc 07 §4. Each *_enabled flag turns on a producer of ranked candidates from the entity graph, and its paired w_* is that list's weight in the fusion — a LIST weight, not a per-row multiplier, so it scales how much the whole list counts rather than boosting individual rows. All three land inert so retrieval is byte-identical to the vector+FTS hybrid until one is measured. A flag on with its weight still at 0 produces candidates that fuse at zero weight, which is why the pairing is shown together."
           meta={
             binding.graphFlags.length

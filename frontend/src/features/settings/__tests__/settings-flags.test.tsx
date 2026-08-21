@@ -136,13 +136,28 @@ describe("FlagsTab — every section names itself", () => {
       "rank_fusion_factor arms",
       "feature flags",
       "context match boost",
-      "graph augmentation — RRF list weights + *_enabled flags",
+      "graph augmentation",
       "pipeline & embedding tunables",
       "classification",
       "repo auto-provision allowlist",
       "corroboration promotion gate",
     ]) {
       expect(screen.getByLabelText(`About ${name}`)).toBeInTheDocument()
+    }
+  })
+
+  it("keeps every card header on one row", () => {
+    // jsdom does not lay out, so height cannot be asserted. The class that
+    // decides this can: the library's `.dr-card-header` is `flex flex-col`,
+    // so a header carrying only `flex-nowrap` still stacks its children into
+    // a column — which is exactly the bug this pins. `flex-row` is the
+    // override that matters.
+    const { container } = renderTab()
+    const headers = container.querySelectorAll(".dr-card-header")
+    expect(headers.length).toBe(8)
+    for (const header of headers) {
+      expect(header.className).toContain("flex-row")
+      expect(header.className).toContain("flex-nowrap")
     }
   })
 
@@ -300,26 +315,14 @@ describe("FlagsTab — the tunables the API served and nothing rendered", () => 
   })
 })
 
-describe("FlagsTab — classification tuning", () => {
-  it("renders the mode control and the area checkboxes", () => {
-    renderTab()
-    expect(screen.getByLabelText("classification_mode")).toBeInTheDocument()
-    expect(screen.getByLabelText("technical")).toBeInTheDocument()
-  })
-
-  it("keeps general fixed on — the API forces it back server-side", () => {
-    renderTab()
-    expect(screen.getByLabelText("general")).toBeDisabled()
-  })
-
-  it("unchecking an area writes the remaining set", () => {
-    renderTab()
-    fireEvent.click(screen.getByLabelText("technical"))
-    expect(
-      useDemoStore.getState().flags.classification_areas,
-    ).not.toContain("technical")
-  })
-})
+/** Demo mode starts in `simple`, where the area rows are deliberately absent.
+ *  Anything asserting on them has to put the tab into the mode that has
+ *  them. */
+const switchToExpanded = () => {
+  // By role: the word also appears in the mode explainer sentence, which
+  // `getByText` matches too.
+  fireEvent.click(screen.getByRole("radio", { name: "expanded" }))
+}
 
 describe("FlagsTab — the classification label space", () => {
   it("renders the labels the classifier may actually emit", () => {
@@ -332,26 +335,57 @@ describe("FlagsTab — the classification label space", () => {
     }
   })
 
-  it("says outright that the areas are not read in simple mode", () => {
-    // The merge function returns SIMPLE_TYPES and never reads enabled_areas,
-    // so eleven checkboxes sit there changing nothing. An operator's only
-    // other way to learn that is to notice the label space never moves.
+  it("hides the areas in simple mode instead of listing them inert", () => {
+    // They cannot change the list above them there, and eleven rows each
+    // saying so made the card longest exactly when it had least to say.
     renderTab()
-    expect(screen.getByText(/not read at\s+all/)).toBeInTheDocument()
-    // Every area row says it, not just the section — relative to the rendered
-    // area count so the demo fixture can grow without breaking this.
-    const areaRows = screen.getAllByText("not read in simple mode").length
-    expect(areaRows).toBeGreaterThan(0)
-    expect(areaRows).toBe(
-      useDemoStore.getState().flags.classification_areas.length,
-    )
+    expect(screen.queryByLabelText("technical")).not.toBeInTheDocument()
+    expect(screen.queryByText("would add")).not.toBeInTheDocument()
   })
 
-  it("still lets an area be set up before the mode is flipped", () => {
-    // The value is durable and applies the moment the mode changes, so the
-    // control stores a real preference even while it is not being read.
+  it("still names the feature and where it lives, so it does not read as absent", () => {
     renderTab()
-    expect(screen.getByLabelText("technical")).not.toBeDisabled()
+    expect(screen.getByText(/not read at\s+all/)).toBeInTheDocument()
+    expect(screen.getByText(/Switch to/)).toBeInTheDocument()
+  })
+
+  it("brings the areas back in expanded mode", () => {
+    renderTab()
+    switchToExpanded()
+    expect(screen.getByLabelText("technical")).toBeInTheDocument()
+  })
+})
+
+describe("FlagsTab — classification areas (expanded mode)", () => {
+  it("renders the mode control and the area checkboxes", () => {
+    renderTab()
+    switchToExpanded()
+    expect(screen.getByLabelText("classification_mode")).toBeInTheDocument()
+    expect(screen.getByLabelText("technical")).toBeInTheDocument()
+  })
+
+  it("keeps general fixed on — the API forces it back server-side", () => {
+    renderTab()
+    switchToExpanded()
+    expect(screen.getByLabelText("general")).toBeDisabled()
+  })
+
+  it("unchecking an area writes the remaining set", () => {
+    renderTab()
+    switchToExpanded()
+    fireEvent.click(screen.getByLabelText("technical"))
+    expect(
+      useDemoStore.getState().flags.classification_areas,
+    ).not.toContain("technical")
+  })
+
+  it("shows an area that is off as what enabling it would add", () => {
+    // The whole point of the row: a checkbox's effect is legible before it is
+    // clicked, not only after.
+    renderTab()
+    switchToExpanded()
+    fireEvent.click(screen.getByLabelText("technical"))
+    expect(screen.getAllByText("would add").length).toBeGreaterThan(0)
   })
 })
 
