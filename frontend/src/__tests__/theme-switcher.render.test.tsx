@@ -14,6 +14,7 @@ const AXIS_HEADINGS: Record<string, string> = {
   preset: "Preset",
   backgroundStyle: "Background",
   backgroundIntensity: "Background Intensity",
+  gradientPattern: "Gradient Pattern",
   density: "Density",
   elevation: "Elevation",
   buttonElevation: "Button Elevation",
@@ -24,10 +25,6 @@ const AXIS_HEADINGS: Record<string, string> = {
   outerGlow: "Outer Glow",
   innerGlow: "Inner Glow",
 }
-
-// Conditional on another axis rather than on config, so it is asserted
-// separately instead of being counted as missing.
-const GRADIENT_PATTERN_HEADING = "Gradient Pattern"
 
 async function openSwitcher() {
   const user = userEvent.setup()
@@ -45,9 +42,11 @@ describe("theme switcher", () => {
     window.localStorage.clear()
   })
 
-  it("renders a control for every configured axis", async () => {
+  it("renders a control for every enabled axis", async () => {
     await openSwitcher()
-    for (const [axis, heading] of Object.entries(AXIS_HEADINGS)) {
+    for (const [axis, on] of Object.entries(themeConfig.switcher.axes)) {
+      const heading = AXIS_HEADINGS[axis]
+      if (!on || axis === "presetAxes" || !heading) continue
       expect(
         screen.queryByText(heading),
         `axis ${axis} has no control in the switcher`,
@@ -55,22 +54,29 @@ describe("theme switcher", () => {
     }
   })
 
-  it("discloses the gradient pattern once the background is a gradient", async () => {
-    const user = await openSwitcher()
-    expect(screen.queryByText(GRADIENT_PATTERN_HEADING)).not.toBeInTheDocument()
-    await user.click(screen.getByText("Gradient"))
-    expect(screen.getByText(GRADIENT_PATTERN_HEADING)).toBeInTheDocument()
+  // The other half of the same claim, and the one that actually protects the
+  // pin: a hidden axis whose control still rendered would let someone set a
+  // value the persistence layer then scrubs, which reads as a broken control
+  // rather than an absent one.
+  it("renders no control for a hidden axis", async () => {
+    await openSwitcher()
+    for (const [axis, on] of Object.entries(themeConfig.switcher.axes)) {
+      const heading = AXIS_HEADINGS[axis]
+      if (on || axis === "presetAxes" || !heading) continue
+      expect(
+        screen.queryByText(heading),
+        `hidden axis ${axis} still has a control in the switcher`,
+      ).not.toBeInTheDocument()
+    }
   })
 
   // The heading table above is only a proof of coverage while it names every
-  // axis the config enables; `presetAxes` is excluded because it is a master
-  // toggle for per-preset controls, not an axis with a heading of its own.
-  it("covers every enabled axis", async () => {
-    const enabled = Object.entries(themeConfig.switcher.axes)
-      .filter(([axis, on]) => on && axis !== "presetAxes")
-      .map(([axis]) => axis)
-    expect(enabled.sort()).toEqual(
-      [...Object.keys(AXIS_HEADINGS), "gradientPattern"].sort(),
+  // axis the config knows about; `presetAxes` is excluded because it is a
+  // master toggle for per-preset controls, not an axis with a heading.
+  it("covers every configured axis", async () => {
+    const configured = Object.keys(themeConfig.switcher.axes).filter(
+      (axis) => axis !== "presetAxes",
     )
+    expect(configured.sort()).toEqual(Object.keys(AXIS_HEADINGS).sort())
   })
 })

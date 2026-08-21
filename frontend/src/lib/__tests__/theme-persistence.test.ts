@@ -42,12 +42,28 @@ describe("themePersistence.load", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/config/theme")
   })
 
-  // Every axis is user-adjustable since the 6.3 upgrade, so a stored value
-  // must survive the load rather than being pinned back to the default.
-  it("keeps stored values for every axis", async () => {
+  it("keeps stored values for the three adjustable axes", async () => {
     apiFetchMock.mockResolvedValue({ settings: storedSettings })
     const loaded = await themePersistence.load()
-    expect(loaded).toEqual(storedSettings)
+    expect(loaded).toMatchObject({
+      accentColor: "rose",
+      surfaceColor: "teal",
+      mode: "light",
+    })
+  })
+
+  // A row written while an axis was still adjustable must not outvote the
+  // config that now hides it — there is no control left to correct it with.
+  it("pins every hidden axis back to the default", async () => {
+    apiFetchMock.mockResolvedValue({ settings: storedSettings })
+    const loaded = await themePersistence.load()
+    for (const [axis, enabled] of Object.entries(themeConfig.switcher.axes)) {
+      if (enabled || axis === "presetAxes") continue
+      expect(
+        (loaded as unknown as Record<string, unknown>)[axis],
+        `hidden axis ${axis} kept its stored value`,
+      ).toBe((themeConfig.defaults as unknown as Record<string, unknown>)[axis])
+    }
   })
 
   it("falls back per-field when a crash-capable value is unknown", async () => {

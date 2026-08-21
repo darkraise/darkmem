@@ -8,6 +8,7 @@ import {
 } from "darkraise-ui/theme"
 import { apiFetch } from "@/lib/api"
 import { themeConfig } from "@/theme.config"
+import { pinHiddenAxes } from "@/lib/theme-hidden-axes"
 import { DEMO } from "@/lib/demo-flag"
 
 interface ThemeSettingsResponse {
@@ -28,22 +29,31 @@ function pick<T extends string>(
 // provider validates the preset name itself, so they pass through as stored.
 function sanitize(stored: Partial<ThemeSettings>): ThemeSettings {
   const defaults = themeConfig.defaults
-  return {
-    ...defaults,
-    ...stored,
-    accentColor: pick(stored.accentColor, ACCENT_COLORS, defaults.accentColor),
-    surfaceColor: pick(
-      stored.surfaceColor,
-      SURFACE_COLORS,
-      defaults.surfaceColor,
-    ),
-    backgroundStyle: pick(
-      stored.backgroundStyle,
-      BACKGROUND_STYLES,
-      defaults.backgroundStyle,
-    ),
-    mode: pick(stored.mode, MODES, defaults.mode),
-  }
+  // Hidden axes are pinned last, so a row written while an axis was still
+  // adjustable cannot outvote the config it is now hidden by.
+  return pinHiddenAxes(
+    {
+      ...defaults,
+      ...stored,
+      accentColor: pick(
+        stored.accentColor,
+        ACCENT_COLORS,
+        defaults.accentColor,
+      ),
+      surfaceColor: pick(
+        stored.surfaceColor,
+        SURFACE_COLORS,
+        defaults.surfaceColor,
+      ),
+      backgroundStyle: pick(
+        stored.backgroundStyle,
+        BACKGROUND_STYLES,
+        defaults.backgroundStyle,
+      ),
+      mode: pick(stored.mode, MODES, defaults.mode),
+    },
+    themeConfig,
+  )
 }
 
 export const apiThemePersistence: ThemePersistenceAdapter = {
