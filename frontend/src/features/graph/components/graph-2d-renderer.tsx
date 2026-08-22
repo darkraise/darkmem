@@ -21,7 +21,7 @@ import {
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
-import { computeSize } from "@/features/graph/lib/graph-utils"
+import { computeSize, layoutSignature } from "@/features/graph/lib/graph-utils"
 import {
   computeHullGroups,
   drawHullForSigma,
@@ -142,6 +142,14 @@ export function Graph2DRenderer({
   const graphRef = useRef<Graph | null>(null)
   const fa2Ref = useRef<FA2Layout | null>(null)
   const fa2StopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Where every node had settled when the last graph was torn down. A rebuild
+  // that re-seeds from scratch throws the layout away and makes the canvas
+  // lurch, which is what toggling the entity layer used to do -- twice, once
+  // on the switch and again when the new data landed.
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map())
+  // What the last layout was computed for. ForceAtlas2 only needs to re-run
+  // when this changes; adding or dropping an overlay does not change it.
+  const layoutSigRef = useRef<string | null>(null)
   const selectedNodeIdRef = useRef(selectedNodeId)
   const hoveredNodeRef = useRef<string | null>(null)
   const colorModeRef = useRef(colorMode)
@@ -231,6 +239,24 @@ export function Graph2DRenderer({
       connMap.set(e.target, (connMap.get(e.target) ?? 0) + 1)
     }
 
+    const layoutSig = layoutSignature(
+      spacing,
+      clusterTightness,
+      filteredMemories.map((m) => m.id),
+    )
+    const layoutChanged = layoutSigRef.current !== layoutSig
+    layoutSigRef.current = layoutSig
+
+    const settled = positionsRef.current
+    // A node keeps where it was. Only something genuinely new is seeded, and
+    // only a changed layout is re-simulated.
+    const placeSeeded = (id: string) => ({
+      x: (seededUnit(id, 0) - 0.5) * 10,
+      y: (seededUnit(id, 1) - 0.5) * 10,
+    })
+    const place = (id: string) =>
+      layoutChanged ? placeSeeded(id) : (settled.get(id) ?? placeSeeded(id))
+
     const allNodeIds = new Set<string>()
     for (const m of filteredMemories) {
       const { color, borderColor } = nodeColors({
@@ -241,8 +267,7 @@ export function Graph2DRenderer({
       const size = computeSize(sizeMode, conns, m.importance)
       allNodeIds.add(m.id)
       graph.addNode(m.id, {
-        x: (seededUnit(m.id, 0) - 0.5) * 10,
-        y: (seededUnit(m.id, 1) - 0.5) * 10,
+        ...place(m.id),
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
         type: "disc",
@@ -275,6 +300,29 @@ export function Graph2DRenderer({
       const visibleEntities = entities.filter((ent) =>
         ent.memory_ids.some((mid) => allNodeIds.has(mid)),
       )
+
+      // A first-time entity lands on the centroid of the memories asserting
+      // it -- which is roughly where the simulation would have dragged it
+      // anyway, so the overlay can appear without one.
+      const placeEntity = (ent: { id: string; memory_ids: string[] }) => {
+        const known = settled.get(`entity:${ent.id}`)
+        if (known && !layoutChanged) return known
+        const anchors = ent.memory_ids
+          .filter((mid) => graph.hasNode(mid))
+          .map((mid) => ({
+            x: graph.getNodeAttribute(mid, "x") as number,
+            y: graph.getNodeAttribute(mid, "y") as number,
+          }))
+        if (anchors.length === 0) return placeSeeded(`entity:${ent.id}`)
+        const cx = anchors.reduce((t, a) => t + a.x, 0) / anchors.length
+        const cy = anchors.reduce((t, a) => t + a.y, 0) / anchors.length
+        // Deterministic jitter: two entities on one memory would otherwise
+        // stack exactly, and a stack reads as a single node.
+        return {
+          x: cx + (seededUnit(`entity:${ent.id}`, 2) - 0.5) * 1.5,
+          y: cy + (seededUnit(`entity:${ent.id}`, 3) - 0.5) * 1.5,
+        }
+      }
       const entityIdSet = new Set(visibleEntities.map((ent) => ent.id))
 
       for (const ent of visibleEntities) {
@@ -283,8 +331,7 @@ export function Graph2DRenderer({
           _entityData: ent,
         })
         graph.addNode(`entity:${ent.id}`, {
-          x: (seededUnit(`entity:${ent.id}`, 0) - 0.5) * 10,
-          y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
+          ...placeEntity(ent),
           label: ent.name,
           size: ENTITY_NODE_SIZE,
           _degree: ent.memory_ids.length,
@@ -643,6 +690,14 @@ export function Graph2DRenderer({
     sigma.on("afterRender", drawHulls)
     sigma.on("kill", () => hullCanvas.remove())
 
+    // No re-simulation for an overlay: the memories are already where the
+    // last run left them, and the entities were placed on their anchors.
+    // Running it anyway is what moved the whole canvas on every toggle.
+    if (!layoutChanged) {
+      onReady()
+      return
+    }
+
     const fa2 = new FA2Layout(graph, {
       settings: {
         ...inferSettings(graph),
@@ -687,6 +742,17 @@ export function Graph2DRenderer({
     const frame = requestAnimationFrame(() => buildGraph())
     return () => {
       cancelAnimationFrame(frame)
+      // Before anything is torn down: React runs this cleanup ahead of the
+      // next buildGraph, so this is the last moment the settled coordinates
+      // exist.
+      if (graphRef.current) {
+        const settled = positionsRef.current
+        graphRef.current.forEachNode((id, attrs) => {
+          const x = attrs.x as number
+          const y = attrs.y as number
+          if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
+        })
+      }
       if (fa2StopTimerRef.current !== null) {
         clearTimeout(fa2StopTimerRef.current)
         fa2StopTimerRef.current = null

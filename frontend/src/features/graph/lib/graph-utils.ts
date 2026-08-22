@@ -273,3 +273,26 @@ export function transformToGraphData(
 
   return { nodes, links }
 }
+
+
+/**
+ * What a ForceAtlas2 run is computed for.
+ *
+ * The simulation is a function of the memory set and the two force sliders and
+ * of nothing else. Deliberately absent: the entity overlay. Entities hang off
+ * memories that are already placed, so toggling the layer does not invalidate
+ * a layout -- and re-running one because of it threw every node across the
+ * canvas twice per toggle, once on the switch and again when the data landed.
+ *
+ * Adding anything here means "changing this re-scatters the graph". Weigh that
+ * before extending it.
+ */
+export function layoutSignature(
+  spacing: number,
+  clusterTightness: number,
+  memoryIds: string[],
+): string {
+  // Sorted, because the server may return the same set in a different order
+  // and that is not a reason to re-simulate.
+  return [spacing, clusterTightness, ...[...memoryIds].sort()].join("|")
+}
