@@ -43,6 +43,12 @@ interface GraphToolbarProps {
   clusterTightness: number
   onClusterTightnessChange: (v: number) => void
   onReset: () => void
+  /** Rendered at the end of the button row. The details-panel toggle lives
+   *  here rather than positioning itself over the canvas: two absolutely
+   *  positioned clusters competing for the same corner is how they ended up
+   *  stacked on each other, and an offset picked to clear one is a number
+   *  that rots the moment the row changes. */
+  trailing?: React.ReactNode
 }
 
 /** The mono-uppercase section header the settings cards use, so the popover
@@ -159,6 +165,7 @@ export function GraphToolbar({
   clusterTightness,
   onClusterTightnessChange,
   onReset,
+  trailing,
 }: GraphToolbarProps) {
   return (
     // Top-right, not centred: the graph is the page, and a bar across its
@@ -291,6 +298,8 @@ export function GraphToolbar({
       >
         <RotateCcw className="h-3.5 w-3.5" />
       </Button>
+
+      {trailing}
     </div>
   )
 }

@@ -1,4 +1,8 @@
-import { useQuery, useMutation } from "@tanstack/react-query"
+import {
+  useQuery,
+  useMutation,
+  keepPreviousData,
+} from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { useProjectScopedKey } from "@/lib/query-keys"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
@@ -83,6 +87,12 @@ export function useUnifiedGraph(
   const project = useProjectStore((s) => s.activeProject)
   return useQuery<UnifiedGraphData>({
     queryKey,
+    // `includeEntities` is part of the key, so toggling the entity layer asks
+    // for a different cache entry and `isLoading` would flip true -- swapping
+    // the whole page for a skeleton to add an overlay to a graph already on
+    // screen. Holding the previous data keeps the graph up while the new
+    // shape arrives.
+    placeholderData: keepPreviousData,
     queryFn: () =>
       apiFetch(
         `/graph/unified?similarity_threshold=${similarityThreshold}&min_cluster_size=${minClusterSize}&include_entities=${includeEntities}` +
