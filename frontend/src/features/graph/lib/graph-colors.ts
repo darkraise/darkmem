@@ -49,16 +49,21 @@ const BASE_HUES = [
 // Per-mode lightness/saturation for the three palette tiers. Tier 0 carries the
 // memory_type colors (all KNOWN_TYPE_INDICES are < 17); tiers 1-2 only widen the
 // cluster space. Darker + a touch more saturated on a light surface.
+//
+// Saturation was pulled back across the board: at S80-S85 a screenful of nodes
+// reads as noise rather than as grouping, and the hulls beneath them turned
+// bruise-coloured on a white page. The hues are untouched, so every semantic
+// identity in KNOWN_TYPE_INDICES survives.
 const TIERS: Record<"dark" | "light", { l: number; s: number }[]> = {
   dark: [
-    { l: 62, s: 85 },
-    { l: 76, s: 70 },
-    { l: 50, s: 82 },
+    { l: 58, s: 68 },
+    { l: 72, s: 58 },
+    { l: 46, s: 66 },
   ],
   light: [
-    { l: 46, s: 80 },
-    { l: 36, s: 85 },
-    { l: 58, s: 70 },
+    { l: 46, s: 64 },
+    { l: 38, s: 68 },
+    { l: 56, s: 58 },
   ],
 }
 

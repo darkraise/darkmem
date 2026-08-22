@@ -2,7 +2,9 @@ import { NodeSquareProgram } from "@sigma/node-square"
 import type { Settings } from "sigma/settings"
 import type { NodeDisplayData, PartialButFor } from "sigma/types"
 import type { GraphThemeTokens } from "./code-graph-theme"
-import { drawPlatedLabel, hoverChrome } from "./node-hover"
+import { drawFocusRing, drawPlatedLabel, hoverChrome } from "./node-hover"
+import type { ChromeKind } from "./node-hover"
+import type { SelectionTreatment } from "./graph-prefs"
 
 const DIAMOND_VERTEX_SHADER = /* glsl */ `
 attribute vec4 a_id;
@@ -48,6 +50,8 @@ export function drawDiamondNodeHover(
   data: PartialButFor<NodeDisplayData, "x" | "y" | "size" | "label" | "color">,
   settings: Settings,
   tokens: GraphThemeTokens,
+  treatment: SelectionTreatment,
+  kind: ChromeKind,
 ): void {
   const size = settings.labelSize
   const font = settings.labelFont
@@ -56,15 +60,13 @@ export function drawDiamondNodeHover(
 
   const PADDING = 2
   const r = data.size + PADDING
-  const { fill, text, stroke, shadow } = hoverChrome(tokens)
+  const chrome = hoverChrome(tokens, treatment, kind, data.color)
 
-  context.fillStyle = fill
-  context.strokeStyle = stroke
-  context.lineWidth = 1
+  context.fillStyle = chrome.fill
   context.shadowOffsetX = 0
   context.shadowOffsetY = 0
   context.shadowBlur = 8
-  context.shadowColor = shadow
+  context.shadowColor = chrome.shadow
 
   if (typeof data.label === "string") {
     const textWidth = context.measureText(data.label).width
@@ -94,8 +96,14 @@ export function drawDiamondNodeHover(
   }
 
   context.shadowBlur = 0
-  context.stroke()
-  drawPlatedLabel(context, data, settings, text)
+  if (chrome.plateStroke) {
+    context.strokeStyle = chrome.plateStroke
+    context.lineWidth = 1
+    context.stroke()
+  }
+
+  drawFocusRing(context, data.x, data.y, data.size, chrome)
+  drawPlatedLabel(context, data, settings, chrome.text)
 }
 
 export class NodeDiamondProgram extends NodeSquareProgram {

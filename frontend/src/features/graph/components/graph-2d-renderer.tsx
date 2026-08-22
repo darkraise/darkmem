@@ -7,12 +7,24 @@ import {
   drawDiamondNodeHover,
 } from "@/features/graph/lib/node-diamond-program"
 import { drawThemedDiscNodeHover } from "@/features/graph/lib/node-hover"
+import type { ChromeKind } from "@/features/graph/lib/node-hover"
+import type { NodeDisplayData } from "sigma/types"
+import {
+  focusTier,
+  groundEdgeAlpha,
+  groundNodeAlpha,
+  labelVisible,
+} from "@/features/graph/lib/focus-model"
+import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
 import { computeSize } from "@/features/graph/lib/graph-utils"
 import {
   computeHullGroups,
   drawHullForSigma,
+  drawRegionChip,
+  hullTopAnchor,
+  regionChipLabel,
 } from "@/features/graph/lib/graph-geometry"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
@@ -20,8 +32,8 @@ import {
   resolveNodeColor,
   resolveGroupColor,
   entityTypeColor,
-  lightenHex,
   darkenHex,
+  hexToRgba,
   memoryEdgeColor,
   relationEdgeColor,
   membershipEdgeColor,
@@ -55,6 +67,31 @@ interface Graph2DRendererProps {
   onEntitySelect?: (entityId: string | null) => void
   tokens: GraphThemeTokens
   palette: MemoryPalette
+  /** Derived cluster labels, keyed by cluster id. Region chips fall back to
+   *  the raw group key when a cluster has no derived name — which is what a
+   *  tag or source hull group already is. */
+  clusterNames?: Record<string, string>
+}
+
+/** Focus and hover must not look alike; the scales differ as well as the
+ *  chrome. Both are gentler than the 1.4x the previous model used for both. */
+const FOCUS_SCALE = 1.22
+const HOVER_SCALE = 1.08
+
+/** Degree at or above which a node's label survives at any zoom. */
+const HUB_DEGREE = 5
+
+/** Sigma's camera ratio counts down as you move in, so *below* this is
+ *  closer. 0.72 is the 1.4x of the spec, inverted. */
+const LABEL_ZOOM_RATIO = 0.72
+
+const FOCUS_EDGE_SIZE = 2.2
+
+/** The edge hierarchy: relation over similarity over membership. */
+function edgeWeight(kind: unknown): number {
+  if (kind === "relation") return 1.8
+  if (kind === "membership") return 1
+  return 1.1
 }
 
 export function Graph2DRenderer({
@@ -74,6 +111,7 @@ export function Graph2DRenderer({
   onEntitySelect,
   tokens,
   palette,
+  clusterNames = {},
 }: Graph2DRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sigmaRef = useRef<Sigma | null>(null)
@@ -89,6 +127,18 @@ export function Graph2DRenderer({
   tokensRef.current = tokens
   const paletteRef = useRef(palette)
   paletteRef.current = palette
+  const clusterNamesRef = useRef(clusterNames)
+  clusterNamesRef.current = clusterNames
+
+  const selectionTreatment = useGraphPrefs((s) => s.selectionTreatment)
+  const dimUnrelated = useGraphPrefs((s) => s.dimUnrelated)
+  const prefsRef = useRef({ selectionTreatment, dimUnrelated })
+  prefsRef.current = { selectionTreatment, dimUnrelated }
+
+  // Camera ratio, not a zoom "level": sigma counts down as you move in, so
+  // below the threshold is closer. Read in the node reducer to gate the
+  // ordinary label tier.
+  const zoomRatioRef = useRef(1)
 
   const nodeBaseColor = (attrs: Record<string, unknown>): string => {
     if (attrs._kind === "entity") {
@@ -154,6 +204,7 @@ export function Graph2DRenderer({
         y: (seededUnit(m.id, 1) - 0.5) * 10,
         label: m.content.slice(0, 30) + (m.content.length > 30 ? "…" : ""),
         size: size * 0.5,
+        _degree: conns,
         color,
         borderColor: darkenHex(color),
         _kind: "memory",
@@ -191,6 +242,7 @@ export function Graph2DRenderer({
           y: (seededUnit(`entity:${ent.id}`, 1) - 0.5) * 10,
           label: ent.name,
           size: 10,
+          _degree: ent.memory_ids.length,
           color: bg,
           borderColor: darkenHex(bg),
           type: "diamond",
@@ -242,10 +294,17 @@ export function Graph2DRenderer({
       nodeProgramClasses: { diamond: NodeDiamondProgram },
       edgeProgramClasses: { curve: EdgeCurveProgram },
       defaultDrawNodeHover: (context, data, settings) => {
+        // `_chromeKind` rides the reducer output: sigma mutates the reduced
+        // object in place through applyNodeDefaults, so custom keys survive
+        // into display data. It is the only way this callback can tell the
+        // node you selected from the one under the pointer.
+        const kind =
+          (data as { _chromeKind?: ChromeKind })._chromeKind ?? "hover"
+        const treatment = prefsRef.current.selectionTreatment
         if (data.type === "diamond") {
-          drawDiamondNodeHover(context, data, settings, tokensRef.current)
+          drawDiamondNodeHover(context, data, settings, tokensRef.current, treatment, kind)
         } else {
-          drawThemedDiscNodeHover(context, data, settings, tokensRef.current)
+          drawThemedDiscNodeHover(context, data, settings, tokensRef.current, treatment, kind)
         }
       },
       stagePadding: 40,
@@ -253,62 +312,94 @@ export function Graph2DRenderer({
       defaultNodeColor: mutedColor,
       nodeReducer(node, data) {
         const t = tokensRef.current
-        const res = { ...data }
+        const { dimUnrelated } = prefsRef.current
+        const res: Partial<NodeDisplayData> & { _chromeKind?: ChromeKind } = {
+          ...data,
+        }
         const hov = hoveredNodeRef.current
         const sel = selectedNodeIdRef.current
-        if (hov === node) {
-          res.color = lightenHex(data.color || t.mutedForeground, 0.4)
-          res.size = (data.size || 5) * 1.4
+        const isNeighbour =
+          !!sel && (graph.hasEdge(sel, node) || graph.hasEdge(node, sel))
+        const tier = focusTier(node, sel, isNeighbour)
+
+        // A focused node keeps its own fill. Selection is announced by what is
+        // drawn around it, never by repainting it — the fill is already
+        // carrying cluster or type, and overwriting that trades one signal for
+        // another instead of adding one.
+        if (tier === "focus") {
+          res.size = (data.size || 5) * FOCUS_SCALE
           res.highlighted = true
-        } else if (sel === node) {
-          res.color = lightenHex(data.color || t.mutedForeground, 0.4)
-          res.size = (data.size || 5) * 1.4
+          res._chromeKind = "focus"
+        } else if (hov === node) {
+          res.size = (data.size || 5) * HOVER_SCALE
           res.highlighted = true
-          if (data.type !== "diamond") {
-            res.borderColor = t.foreground
-            res.borderSize = 3
-          }
-        } else if (sel && sel !== node) {
-          const isNeighbor =
-            graph.hasEdge(sel, node) || graph.hasEdge(node, sel)
-          if (!isNeighbor) {
-            res.color = t.border
-            res.label = ""
-          }
+          res._chromeKind = "hover"
         }
+
+        // Ground recedes but is never repainted: hue and position survive, so
+        // the surrounding map stays readable as context.
+        if (tier === "ground") {
+          res.color = hexToRgba(
+            data.color || t.mutedForeground,
+            groundNodeAlpha(dimUnrelated),
+          )
+        }
+
+        if (
+          !labelVisible({
+            tier,
+            isHub: (data._degree ?? 0) >= HUB_DEGREE,
+            zoomedIn: zoomRatioRef.current < LABEL_ZOOM_RATIO,
+            isHovered: hov === node,
+          })
+        ) {
+          res.label = ""
+        }
+
         return res
       },
       edgeReducer(edge, data) {
         const t = tokensRef.current
+        const { dimUnrelated } = prefsRef.current
         const res = { ...data }
         const hov = hoveredNodeRef.current
         const sel = selectedNodeIdRef.current
         const src = graph.source(edge)
         const tgt = graph.target(edge)
 
+        // A similarity edge, a typed relation and a membership link are three
+        // different claims and carry three different weights. The eye follows
+        // the heaviest line, so the heaviest line is the most meaningful one.
+        res.size = edgeWeight(data._edgeKind)
+
         if (sel) {
           if (src === sel || tgt === sel) {
-            res.size = (data.size || 2.5) * 2
-            const neighborColor =
-              graph.getNodeAttribute(src === sel ? tgt : src, "color") ||
-              t.mutedForeground
-            res.color = lightenHex(neighborColor, 0.3)
+            res.size = FOCUS_EDGE_SIZE
+            res.color = t.primary
           } else {
-            res.color = t.border
-            res.size = (data.size || 2.5) * 0.5
+            res.color = hexToRgba(t.border, groundEdgeAlpha(dimUnrelated))
           }
         }
 
         if (hov && (src === hov || tgt === hov)) {
-          res.size = (data.size || 2.5) * 2
-          const neighborColor =
-            graph.getNodeAttribute(src === hov ? tgt : src, "color") ||
-            t.mutedForeground
-          res.color = lightenHex(neighborColor, 0.3)
+          res.size = FOCUS_EDGE_SIZE
+          res.color = t.primary
         }
 
         return res
       },
+    })
+
+    // Label tiers gate on zoom, so a camera move has to re-run the reducers.
+    zoomRatioRef.current = sigma.getCamera().ratio
+    sigma.getCamera().on("updated", () => {
+      const next = sigma.getCamera().ratio
+      const crossed =
+        next < LABEL_ZOOM_RATIO !== zoomRatioRef.current < LABEL_ZOOM_RATIO
+      zoomRatioRef.current = next
+      // Only when the threshold is actually crossed: refreshing on every
+      // frame of a zoom would re-reduce the whole graph per wheel tick.
+      if (crossed) sigma.refresh()
     })
 
     sigma.on("enterNode", ({ node }) => {
@@ -373,7 +464,35 @@ export function Graph2DRenderer({
           hullModeRef.current,
           paletteRef.current,
         )
-        drawHullForSigma(hullCtx, sigmaRef.current, members, color, 0.07, 0.2)
+        const hull = drawHullForSigma(
+          hullCtx,
+          sigmaRef.current,
+          members,
+          color,
+          0.06,
+          0.28,
+        )
+        // The zone always draws; only its name gates on zoom.
+        if (zoomRatioRef.current < LABEL_ZOOM_RATIO) {
+          const anchor = hullTopAnchor(hull)
+          if (anchor) {
+            const tk = tokensRef.current
+            drawRegionChip(
+              hullCtx,
+              anchor,
+              regionChipLabel(
+                clusterNamesRef.current[groupKey] ?? groupKey,
+                members.length,
+              ),
+              {
+                fill: tk.background,
+                stroke: hexToRgba(color, 0.5),
+                text: tk.mutedForeground,
+                font: tk.fontMono,
+              },
+            )
+          }
+        }
         idx++
       }
 
