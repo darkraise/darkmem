@@ -1,8 +1,10 @@
 import { Toggle } from "darkraise-ui/components/toggle"
+import { Switch } from "darkraise-ui/components/switch"
 import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "darkraise-ui/components/toggle-group"
+  SegmentGroup,
+  SegmentGroupIndicator,
+  SegmentGroupItem,
+} from "darkraise-ui/components/segment-group"
 import {
   Popover,
   PopoverTrigger,
@@ -60,6 +62,39 @@ function SectionLabel({
       )}
     >
       {children}
+    </div>
+  )
+}
+
+function SegmentRow({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) {
+  return (
+    <div className="text-muted-foreground flex items-center gap-2 text-sm">
+      <Label className="w-16 shrink-0 text-right font-normal">{label}</Label>
+      <SegmentGroup
+        color="accent"
+        value={value}
+        onValueChange={(v) => {
+          if (v) onChange(v)
+        }}
+        className="min-w-0 flex-1"
+      >
+        <SegmentGroupIndicator />
+        {options.map((o) => (
+          <SegmentGroupItem key={o.value} value={o.value}>
+            {o.label}
+          </SegmentGroupItem>
+        ))}
+      </SegmentGroup>
     </div>
   )
 }
@@ -126,224 +161,136 @@ export function GraphToolbar({
   onReset,
 }: GraphToolbarProps) {
   return (
-    <div className="pointer-events-none absolute top-3 right-0 left-0 z-20 flex flex-col items-center">
-      <div className="bg-card/80 border-border pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-md border px-3 py-1.5 shadow-lg backdrop-blur-sm">
-        <ToggleGroup
-          type="single"
-          value={viewMode}
-          onValueChange={(v) => {
-            if (v) onViewModeChange(v as ViewMode)
-          }}
-          className="gap-0"
+    // Top-right, not centred: the graph is the page, and a bar across its
+    // middle competes with the thing it controls. Two buttons is all that
+    // sits over the canvas now -- everything else moved into the panel.
+    <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-1.5">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Toggle
+            aria-label="Toggle graph settings"
+            className="bg-card/80 border-border data-[pressed]:bg-primary/20 data-[pressed]:text-primary pointer-events-auto h-8 w-8 rounded-md border p-0 shadow-lg backdrop-blur-sm"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Toggle>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="end"
+          className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
         >
-          <ToggleGroupItem
-            value="2d"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            2D
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="3d"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            3D
-          </ToggleGroupItem>
-        </ToggleGroup>
-
-        <div className="bg-border h-4 w-px" />
-
-        <ToggleGroup
-          type="single"
-          value={colorMode}
-          onValueChange={(v) => {
-            if (v) onColorModeChange(v as ColorMode)
-          }}
-          className="gap-0"
-        >
-          <ToggleGroupItem
-            value="type"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Type
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="cluster"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Cluster
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="tag"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Tag
-          </ToggleGroupItem>
-        </ToggleGroup>
-
-        <ToggleGroup
-          type="single"
-          value={hullMode}
-          onValueChange={(v) => {
-            if (v) onHullModeChange(v as HullMode)
-          }}
-          className="gap-0"
-        >
-          <ToggleGroupItem
-            value="none"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            None
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="cluster"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Cluster
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="tag"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Tag
-          </ToggleGroupItem>
-          <ToggleGroupItem
-            value="source"
-            variant="outline"
-            className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 px-2.5"
-          >
-            Source
-          </ToggleGroupItem>
-        </ToggleGroup>
-
-        <div className="bg-border h-4 w-px" />
-
-        <Toggle
-          pressed={entityLayer}
-          onPressedChange={onEntityLayerChange}
-          className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7"
-        >
-          Entities
-        </Toggle>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Toggle
-              aria-label="Toggle graph settings"
-              className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Toggle>
-          </PopoverTrigger>
-          <PopoverContent
-            side="bottom"
-            align="end"
-            className="bg-card/95 border-border w-[340px] rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
-          >
-            {/* Two sections, because these are two different kinds of
-                control: what the graph draws, and how it responds to you.
-                Selection leads -- it is the only one of the second kind. */}
-            <SectionLabel>Selection</SectionLabel>
-            <div className="space-y-3">
-              {/* Same component as Settings > Appearance, over the same store,
-                  so the two surfaces cannot drift. */}
-              <SelectionSettings compact />
-            </div>
-
-            <SectionLabel className="mt-4">Layout</SectionLabel>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground w-16 shrink-0 text-right text-sm">
-                  Size
-                </span>
-                <ToggleGroup
-                  type="single"
-                  value={sizeMode}
-                  onValueChange={(v) => {
-                    if (v) onSizeModeChange(v as SizeMode)
-                  }}
-                  className="min-w-0 flex-1 gap-0"
-                >
-                  <ToggleGroupItem
-                    value="connections"
-                    variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
-                  >
-                    Connections
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="importance"
-                    variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
-                  >
-                    Importance
-                  </ToggleGroupItem>
-                  <ToggleGroupItem
-                    value="uniform"
-                    variant="outline"
-                    className="data-[pressed]:bg-primary/20 data-[pressed]:text-primary h-7 min-w-0 flex-1 px-1.5 text-xs"
-                  >
-                    Uniform
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-              <SliderRow
-                label="Edges"
-                min={0.3}
-                max={0.95}
-                step={0.05}
-                value={similarityThreshold}
-                onChange={onSimilarityChange}
-                float
-              />
-              <SliderRow
-                label="Min Size"
-                min={2}
-                max={10}
-                step={1}
-                value={minClusterSize}
-                onChange={onMinClusterSizeChange}
-              />
-              {viewMode === "2d" && (
-                <SliderRow
-                  label="Tightness"
-                  min={30}
-                  max={300}
-                  step={10}
-                  value={clusterTightness}
-                  onChange={onClusterTightnessChange}
-                />
-              )}
-              <SliderRow
-                label="Spacing"
-                min={viewMode === "2d" ? 100 : 30}
-                max={viewMode === "2d" ? 500 : 200}
-                step={viewMode === "2d" ? 25 : 10}
-                value={spacing}
-                onChange={onSpacingChange}
+          <SectionLabel>View</SectionLabel>
+          <div className="space-y-3">
+            <SegmentRow
+              label="Render"
+              value={viewMode}
+              onChange={(v) => onViewModeChange(v as ViewMode)}
+              options={[
+                { value: "2d", label: "2D" },
+                { value: "3d", label: "3D" },
+              ]}
+            />
+            <SegmentRow
+              label="Colour"
+              value={colorMode}
+              onChange={(v) => onColorModeChange(v as ColorMode)}
+              options={[
+                { value: "type", label: "Type" },
+                { value: "cluster", label: "Cluster" },
+                { value: "tag", label: "Tag" },
+              ]}
+            />
+            <SegmentRow
+              label="Regions"
+              value={hullMode}
+              onChange={(v) => onHullModeChange(v as HullMode)}
+              options={[
+                { value: "none", label: "None" },
+                { value: "cluster", label: "Cluster" },
+                { value: "tag", label: "Tag" },
+                { value: "source", label: "Source" },
+              ]}
+            />
+            <div className="text-muted-foreground flex items-center gap-2 text-sm">
+              <Label className="w-16 shrink-0 text-right font-normal">
+                Entities
+              </Label>
+              <Switch
+                checked={entityLayer}
+                onCheckedChange={onEntityLayerChange}
+                aria-label="Entity layer"
               />
             </div>
-          </PopoverContent>
-        </Popover>
+          </div>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          type="button"
-          className="text-muted-foreground hover:bg-muted hover:text-foreground inline-flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
-          onClick={onReset}
-          aria-label="Reset graph view"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </Button>
-      </div>
+          <SectionLabel className="mt-4">Selection</SectionLabel>
+          <div className="space-y-3">
+            {/* Same component as Settings > Appearance, over the same store,
+                so the two surfaces cannot drift. */}
+            <SelectionSettings compact />
+          </div>
+
+          <SectionLabel className="mt-4">Layout</SectionLabel>
+          <div className="space-y-3">
+            <SegmentRow
+              label="Size"
+              value={sizeMode}
+              onChange={(v) => onSizeModeChange(v as SizeMode)}
+              options={[
+                { value: "connections", label: "Links" },
+                { value: "importance", label: "Weight" },
+                { value: "uniform", label: "Equal" },
+              ]}
+            />
+            <SliderRow
+              label="Edges"
+              min={0.3}
+              max={0.95}
+              step={0.05}
+              value={similarityThreshold}
+              onChange={onSimilarityChange}
+              float
+            />
+            <SliderRow
+              label="Min Size"
+              min={2}
+              max={10}
+              step={1}
+              value={minClusterSize}
+              onChange={onMinClusterSizeChange}
+            />
+            {viewMode === "2d" && (
+              <SliderRow
+                label="Tightness"
+                min={30}
+                max={300}
+                step={10}
+                value={clusterTightness}
+                onChange={onClusterTightnessChange}
+              />
+            )}
+            <SliderRow
+              label="Spacing"
+              min={viewMode === "2d" ? 100 : 30}
+              max={viewMode === "2d" ? 500 : 200}
+              step={viewMode === "2d" ? 25 : 10}
+              value={spacing}
+              onChange={onSpacingChange}
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        type="button"
+        className="bg-card/80 border-border text-muted-foreground hover:bg-muted hover:text-foreground pointer-events-auto inline-flex h-8 w-8 items-center justify-center rounded-md border shadow-lg backdrop-blur-sm transition-colors"
+        onClick={onReset}
+        aria-label="Reset graph view"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+      </Button>
     </div>
   )
 }

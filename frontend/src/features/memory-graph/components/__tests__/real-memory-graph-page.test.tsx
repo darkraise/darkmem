@@ -53,6 +53,15 @@ function wrapper({ children }: { children: ReactNode }) {
 // (entities are globally scoped, a standing fact, not a per-request
 // signal) and a conditional one (entities_truncated, visible only when
 // the under-return is actually happening).
+/** The entity layer moved off the canvas and into the graph settings panel,
+ *  so reaching it now means opening that panel first. */
+async function enableEntityLayer(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: /toggle graph settings/i }),
+  )
+  await user.click(await screen.findByRole("switch", { name: /entity layer/i }))
+}
+
 describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
   beforeEach(() => {
     mockUseUnifiedGraph.mockReset()
@@ -74,7 +83,7 @@ describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
     })
     render(<RealMemoryGraphPage />, { wrapper })
 
-    await user.click(screen.getByRole("button", { name: "Entities" }))
+    await enableEntityLayer(user)
 
     expect(
       screen.getByText(/shared across every project/),
@@ -90,7 +99,7 @@ describe("RealMemoryGraphPage: entity-overlay honesty captions", () => {
     })
     render(<RealMemoryGraphPage />, { wrapper })
 
-    await user.click(screen.getByRole("button", { name: "Entities" }))
+    await enableEntityLayer(user)
 
     expect(
       screen.getByText(/shared across every project/),

@@ -1,9 +1,5 @@
 import { Label } from "darkraise-ui/components/label"
 import {
-  RadioGroup,
-  RadioGroupItem,
-} from "darkraise-ui/components/radio-group"
-import {
   SegmentGroup,
   SegmentGroupIndicator,
   SegmentGroupItem,
@@ -15,34 +11,17 @@ import {
   DIM_MIN,
   DIM_STEP,
   useGraphPrefs,
-  type SelectionTreatment,
+  type SelectionColor,
 } from "@/features/graph/lib/graph-prefs"
 
-const TREATMENTS: {
-  value: SelectionTreatment
-  label: string
-  hint: string
-}[] = [
-  {
-    value: "halo",
-    label: "Halo",
-    hint: "An accent ring and glow. Reads at a distance.",
-  },
-  {
-    value: "keyline",
-    label: "Keyline",
-    hint: "A dashed ring in the node's own colour. Leaves the accent to mean 'relation'.",
-  },
-  {
-    value: "invert",
-    label: "Inverted",
-    hint: "A heavy contrast ring and a reversed label. Most legible on a crowded canvas.",
-  },
+const COLORS: { value: SelectionColor; label: string }[] = [
+  { value: "accent", label: "Accent" },
+  { value: "inverted", label: "Inverted" },
 ]
 
 /**
- * The graph's view preferences — how selection is announced, and how far the
- * rest of the map recedes behind it.
+ * The graph's view preferences — what colour a selection's halo is painted in,
+ * and how far the rest of the map recedes behind it.
  *
  * Rendered by both Settings → Appearance and the graph toolbar's own popover.
  * One component over one store, so the two surfaces cannot drift: setting it
@@ -52,67 +31,44 @@ export function SelectionSettings({
   compact = false,
   className,
 }: {
-  /** The popover is narrow — drop the per-option hints there. */
+  /** The popover is narrow — drop the prose there. */
   compact?: boolean
   className?: string
 }) {
-  const treatment = useGraphPrefs((s) => s.selectionTreatment)
-  const setTreatment = useGraphPrefs((s) => s.setSelectionTreatment)
+  const color = useGraphPrefs((s) => s.selectionColor)
+  const setColor = useGraphPrefs((s) => s.setSelectionColor)
   const dim = useGraphPrefs((s) => s.dimUnrelated)
   const setDim = useGraphPrefs((s) => s.setDimUnrelated)
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
-      {compact ? (
-        // The popover is narrow and the choice is one-of-three, which is
-        // segmented-control territory: three stacked radio rows ate half its
-        // height for a decision that fits on one line.
+      {!compact && (
+        <p className="text-muted-foreground text-sm">
+          A selected node keeps its own colour and gains a halo. This is what
+          that halo is painted in — the accent, or a high-contrast inversion
+          for a crowded canvas where the accent competes with relation edges.
+        </p>
+      )}
+
+      {/* One row shape shared with the layout controls beside it, so the panel
+          reads as a single grid. */}
+      <div className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Label className="w-16 shrink-0 text-right font-normal">Halo</Label>
         <SegmentGroup
           color="accent"
-          value={treatment}
-          onValueChange={(v) => setTreatment(v as SelectionTreatment)}
-          className="w-full"
+          value={color}
+          onValueChange={(v) => setColor(v as SelectionColor)}
+          className="min-w-0 flex-1"
         >
           <SegmentGroupIndicator />
-          {TREATMENTS.map((t) => (
-            <SegmentGroupItem key={t.value} value={t.value} className="flex-1">
-              {t.label}
+          {COLORS.map((c) => (
+            <SegmentGroupItem key={c.value} value={c.value}>
+              {c.label}
             </SegmentGroupItem>
           ))}
         </SegmentGroup>
-      ) : (
-        <>
-          <p className="text-muted-foreground text-sm">
-            How the graph marks the node you clicked. It never repaints the
-            node — that colour is already carrying cluster or type.
-          </p>
-          <RadioGroup
-            value={treatment}
-            onValueChange={(v) => setTreatment(v as SelectionTreatment)}
-            className="flex flex-col gap-1.5"
-          >
-            {TREATMENTS.map((t) => (
-              <label
-                key={t.value}
-                className="hover:bg-muted/40 flex cursor-pointer items-start gap-2.5 rounded-md px-1.5 py-1 transition-colors"
-              >
-                <RadioGroupItem value={t.value} className="mt-0.5 shrink-0" />
-                <span className="min-w-0">
-                  <span className="text-foreground block text-sm">
-                    {t.label}
-                  </span>
-                  <span className="text-muted-foreground block text-sm">
-                    {t.hint}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </RadioGroup>
-        </>
-      )}
+      </div>
 
-      {/* One row shape shared with the layout sliders below it in the popover:
-          label column, track, value column, all three aligned. */}
       <div className="text-muted-foreground flex items-center gap-2 text-sm">
         <Label className="w-16 shrink-0 text-right font-normal">Dim</Label>
         <Slider
