@@ -1,11 +1,5 @@
-import { Label } from "darkraise-ui/components/label"
-import {
-  SegmentGroup,
-  SegmentGroupIndicator,
-  SegmentGroupItem,
-} from "darkraise-ui/components/segment-group"
-import { Slider } from "darkraise-ui/components/slider"
 import { cn } from "darkraise-ui/lib"
+import { SegmentRow, SliderRow } from "./settings-rows"
 import {
   DIM_MAX,
   DIM_MIN,
@@ -41,7 +35,7 @@ export function SelectionSettings({
   const setDim = useGraphPrefs((s) => s.setDimUnrelated)
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
+    <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3", className)}>
       {!compact && (
         <p className="text-muted-foreground text-sm">
           A selected node keeps its own colour and gains a halo. This is what
@@ -50,40 +44,29 @@ export function SelectionSettings({
         </p>
       )}
 
-      {/* One row shape shared with the layout controls beside it, so the panel
-          reads as a single grid. */}
-      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Label className="w-16 shrink-0 text-right font-normal">Halo</Label>
-        <SegmentGroup
-          color="accent"
-          value={color}
-          onValueChange={(v) => setColor(v as SelectionColor)}
-          className="min-w-0 flex-1"
-        >
-          <SegmentGroupIndicator />
-          {COLORS.map((c) => (
-            <SegmentGroupItem key={c.value} value={c.value}>
-              {c.label}
-            </SegmentGroupItem>
-          ))}
-        </SegmentGroup>
-      </div>
+      {/* The same row primitives the toolbar popover uses, so the panel reads
+          as a single grid -- and so a spacing change lands on both rather than
+          on whichever copy someone remembered. The popover asks for the small
+          segments; Settings > Appearance has the room for full-size ones. */}
+      <SegmentRow
+        label="Halo"
+        value={color}
+        onChange={(v) => setColor(v as SelectionColor)}
+        size={compact ? "sm" : "default"}
+        ariaLabel="Selection halo colour"
+        options={COLORS}
+      />
 
-      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Label className="w-16 shrink-0 text-right font-normal">Dim</Label>
-        <Slider
-          value={[dim]}
-          onValueChange={([v]) => setDim(v ?? dim)}
-          min={DIM_MIN}
-          max={DIM_MAX}
-          step={DIM_STEP}
-          aria-label="Dim unrelated nodes, percent"
-          className="flex-1"
-        />
-        <span className="text-foreground w-10 shrink-0 text-right font-mono tabular-nums">
-          {dim}%
-        </span>
-      </div>
+      <SliderRow
+        label="Dim"
+        min={DIM_MIN}
+        max={DIM_MAX}
+        step={DIM_STEP}
+        value={dim}
+        onChange={setDim}
+        suffix="%"
+        ariaLabel="Dim unrelated nodes, percent"
+      />
       {!compact && (
         <p className="text-muted-foreground -mt-1 text-sm">
           How far the rest of the map recedes when something is focused. It

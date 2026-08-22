@@ -2,18 +2,11 @@ import { Toggle } from "darkraise-ui/components/toggle"
 import { Switch } from "darkraise-ui/components/switch"
 import { Spinner } from "darkraise-ui/components/spinner"
 import {
-  SegmentGroup,
-  SegmentGroupIndicator,
-  SegmentGroupItem,
-} from "darkraise-ui/components/segment-group"
-import {
   Popover,
   PopoverTrigger,
   PopoverContent,
 } from "darkraise-ui/components/popover"
-import { Slider } from "darkraise-ui/components/slider"
 import { Button } from "darkraise-ui/components/button"
-import { Label } from "darkraise-ui/components/label"
 import { Settings, RotateCcw } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
 import type React from "react"
@@ -21,6 +14,12 @@ import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import type { HullMode } from "@/features/graph/lib/graph-geometry"
 import { SelectionSettings } from "./selection-settings"
+import {
+  SectionLabel,
+  SegmentRow,
+  SliderRow,
+  SwitchRow,
+} from "./settings-rows"
 
 type ViewMode = "2d" | "3d"
 
@@ -57,96 +56,21 @@ interface GraphToolbarProps {
   trailing?: React.ReactNode
 }
 
-/** The mono-uppercase section header the settings cards use, so the popover
- *  reads as the same product rather than as a stray widget. */
-function SectionLabel({
+/** A titled group of rows. `divided` draws the hairline that separates it
+ *  from the group above -- headings alone read as one long list. */
+function Section({
+  title,
+  divided = false,
   children,
-  className,
 }: {
+  title: string
+  divided?: boolean
   children: React.ReactNode
-  className?: string
 }) {
   return (
-    <div
-      className={cn(
-        "text-muted-foreground mb-2 font-mono text-[10px] font-semibold tracking-[0.14em] uppercase",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  )
-}
-
-function SegmentRow({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-}) {
-  return (
-    <div className="text-muted-foreground flex items-center gap-2 text-sm">
-      <Label className="w-16 shrink-0 text-right font-normal">{label}</Label>
-      <SegmentGroup
-        color="accent"
-        value={value}
-        onValueChange={(v) => {
-          if (v) onChange(v)
-        }}
-        className="min-w-0 flex-1"
-      >
-        <SegmentGroupIndicator />
-        {options.map((o) => (
-          <SegmentGroupItem key={o.value} value={o.value}>
-            {o.label}
-          </SegmentGroupItem>
-        ))}
-      </SegmentGroup>
-    </div>
-  )
-}
-
-interface SliderRowProps {
-  label: string
-  min: number
-  max: number
-  step: number
-  value: number
-  onChange: (v: number) => void
-  float?: boolean
-}
-
-function SliderRow({
-  label,
-  min,
-  max,
-  step,
-  value,
-  onChange,
-  float = false,
-}: SliderRowProps) {
-  return (
-    <div className="text-muted-foreground flex items-center gap-2 text-sm">
-      <Label className="w-16 shrink-0 text-right font-normal">{label}</Label>
-      <Slider
-        value={[value]}
-        onValueChange={([v]) => {
-          const next = v ?? value
-          onChange(float ? next : Math.round(next))
-        }}
-        min={min}
-        max={max}
-        step={step}
-        className="flex-1"
-      />
-      <span className="text-foreground w-10 shrink-0 text-right font-mono tabular-nums">
-        {value}
-      </span>
+    <div className={cn(divided && "border-border/60 mt-3 border-t pt-3")}>
+      <SectionLabel>{title}</SectionLabel>
+      <div className="space-y-2">{children}</div>
     </div>
   )
 }
@@ -193,23 +117,32 @@ export function GraphToolbar({
         <PopoverContent
           side="bottom"
           align="end"
-          className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border px-4 py-3 shadow-xl backdrop-blur-sm"
+          className="bg-card/95 border-border max-h-[min(70vh,32rem)] w-[384px] overflow-y-auto rounded-lg border p-3 shadow-xl backdrop-blur-sm"
         >
-          <SectionLabel>View</SectionLabel>
-          <div className="space-y-3">
+          {/* Grouped by the kind of decision each control is, not by where
+              it happens to be read. Render gates the rest (Tightness is
+              2D-only), encodings say what a mark means, and the layout
+              sliders drive the force simulation. */}
+          <Section title="Render">
             <SegmentRow
-              label="Render"
+              label="Mode"
               value={viewMode}
               onChange={(v) => onViewModeChange(v as ViewMode)}
+              size="sm"
+              ariaLabel="Render mode"
               options={[
                 { value: "2d", label: "2D" },
                 { value: "3d", label: "3D" },
               ]}
             />
+          </Section>
+
+          <Section title="Encoding" divided>
             <SegmentRow
               label="Colour"
               value={colorMode}
               onChange={(v) => onColorModeChange(v as ColorMode)}
+              size="sm"
               options={[
                 { value: "type", label: "Type" },
                 { value: "cluster", label: "Cluster" },
@@ -220,6 +153,7 @@ export function GraphToolbar({
               label="Regions"
               value={hullMode}
               onChange={(v) => onHullModeChange(v as HullMode)}
+              size="sm"
               options={[
                 { value: "none", label: "None" },
                 { value: "cluster", label: "Cluster" },
@@ -227,51 +161,59 @@ export function GraphToolbar({
                 { value: "source", label: "Source" },
               ]}
             />
-            <div className="text-muted-foreground flex items-center gap-2 text-sm">
-              <Label className="w-16 shrink-0 text-right font-normal">
-                Entities
-              </Label>
-              <Switch
-                checked={entityLayer}
-                onCheckedChange={onEntityLayerChange}
-                aria-label="Entity layer"
-              />
-              {entityLayerLoading && <Spinner size="sm" />}
-            </div>
-            {entityLayer && (
-              <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                <Label className="w-16 shrink-0 text-right font-normal">
-                  Shared only
-                </Label>
-                <Switch
-                  checked={sharedEntitiesOnly}
-                  onCheckedChange={onSharedEntitiesOnlyChange}
-                  aria-label="Shared entities only"
-                />
-                <span className="text-sm opacity-60">2+ memories</span>
-              </div>
-            )}
-          </div>
-
-          <SectionLabel className="mt-4">Selection</SectionLabel>
-          <div className="space-y-3">
-            {/* Same component as Settings > Appearance, over the same store,
-                so the two surfaces cannot drift. */}
-            <SelectionSettings compact />
-          </div>
-
-          <SectionLabel className="mt-4">Layout</SectionLabel>
-          <div className="space-y-3">
+            {/* Node size is an encoding, not a layout parameter: it answers
+                the same question Colour and Regions do. */}
             <SegmentRow
               label="Size"
               value={sizeMode}
               onChange={(v) => onSizeModeChange(v as SizeMode)}
+              size="sm"
+              ariaLabel="Node size"
               options={[
                 { value: "connections", label: "Links" },
                 { value: "importance", label: "Weight" },
                 { value: "uniform", label: "Equal" },
               ]}
             />
+          </Section>
+
+          <Section title="Entities" divided>
+            <SwitchRow
+              label="Show"
+              hint={entityLayerLoading ? <Spinner size="sm" /> : undefined}
+            >
+              <Switch
+                checked={entityLayer}
+                onCheckedChange={onEntityLayerChange}
+                aria-label="Entity layer"
+              />
+            </SwitchRow>
+            {/* Always mounted, disabled when the layer is off: mounting it
+                with the layer resized the popover and moved every control
+                below it. */}
+            <SwitchRow
+              label="Shared"
+              hint={
+                <span
+                  className={cn(
+                    "text-xs",
+                    entityLayer ? "opacity-60" : "opacity-30",
+                  )}
+                >
+                  2+ memories
+                </span>
+              }
+            >
+              <Switch
+                checked={sharedEntitiesOnly}
+                onCheckedChange={onSharedEntitiesOnlyChange}
+                disabled={!entityLayer}
+                aria-label="Shared entities only"
+              />
+            </SwitchRow>
+          </Section>
+
+          <Section title="Layout" divided>
             <SliderRow
               label="Edges"
               min={0.3}
@@ -279,15 +221,17 @@ export function GraphToolbar({
               step={0.05}
               value={similarityThreshold}
               onChange={onSimilarityChange}
+              ariaLabel="Edge similarity threshold"
               float
             />
             <SliderRow
-              label="Min Size"
+              label="Min size"
               min={2}
               max={10}
               step={1}
               value={minClusterSize}
               onChange={onMinClusterSizeChange}
+              ariaLabel="Minimum cluster size"
             />
             {viewMode === "2d" && (
               <SliderRow
@@ -307,7 +251,13 @@ export function GraphToolbar({
               value={spacing}
               onChange={onSpacingChange}
             />
-          </div>
+          </Section>
+
+          <Section title="Selection" divided>
+            {/* Same component as Settings > Appearance, over the same store,
+                so the two surfaces cannot drift. */}
+            <SelectionSettings compact />
+          </Section>
         </PopoverContent>
       </Popover>
 

@@ -55,3 +55,23 @@ describe("SelectionSettings", () => {
     expect(screen.getByRole("radio", { name: /inverted/i })).toBeChecked()
   })
 })
+
+// The popover is narrow and asks for the small segments; Settings >
+// Appearance has the room for full-size ones. Both render the same component
+// over the same store, so the size is the only thing that may differ.
+describe("SelectionSettings row size", () => {
+  const itemClass = (el: HTMLElement) =>
+    el.querySelector(".dr-segment-group-item")!.className
+
+  it("uses compact segments inside the graph popover", () => {
+    const { container } = render(<SelectionSettings compact />)
+    expect(itemClass(container)).toContain("px-2")
+    expect(itemClass(container)).toContain("text-xs")
+  })
+
+  it("leaves them full size on the settings page", () => {
+    const { container } = render(<SelectionSettings />)
+    expect(itemClass(container)).not.toContain("px-2")
+    expect(itemClass(container)).not.toContain("text-xs")
+  })
+})
